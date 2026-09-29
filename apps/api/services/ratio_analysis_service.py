@@ -24,6 +24,7 @@ REPORTING PERFORMANCE
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Optional
 
 from fastapi import HTTPException
@@ -32,6 +33,32 @@ from core.ist_clock import fy_bounds as _fy_bounds, ist_fy_label, preceding_fy
 from domain.reporting import ratios as ratio_rules
 
 _logger = logging.getLogger("caflow.ratios")
+
+
+def _current_period_label(db, firm_id: str, client_id: str, fy: str) -> Optional[str]:
+    """"year to date to 15 Sep 2026", or None where `fy` is a CLOSED year.
+
+    A closed year's `current` Components cover the whole 1 April - 31 March
+    window, so comparing it against a full prior year is the comparison
+    clause (Q) actually asks for and needs no caveat. `fy` still in progress
+    is the case ratios.py's own docstring names (apex-accounting-reports-20):
+    `current` is really whatever has posted so far, and comparing THAT
+    against a full prior year makes an ordinary seasonal or not-yet-finished
+    line look like a >25% move that needs an explanation nobody can write.
+    """
+    if fy != ist_fy_label() or db is None:
+        return None
+    from services.ledger_span_service import ledger_span
+    start, end = fy_bounds(fy)
+    span = ledger_span(db, firm_id, [client_id])
+    last = span.get("last_entry_date")
+    # No activity yet this year is a different, out-of-scope gap (ratios.py's
+    # own "no current-year activity" is not this label's job) — and a date
+    # before `start` would make "year to date to <date>" read as though the
+    # FY had already ended weeks before it began.
+    if not last or last < start:
+        return None
+    return "year to date to " + datetime.strptime(last, "%Y-%m-%d").strftime("%d %b %Y")
 
 
 def fy_bounds(fy_label: str) -> tuple[str, str]:
@@ -115,6 +142,7 @@ def ratio_note(reporting, db, firm_id: str, client_id: str,
         current, prior,
         principal_repaid_paise=_principal_repaid(db, firm_id, client_id, fy),
         explanations=_explanations(db, firm_id, client_id, fy),
+        current_period_label=_current_period_label(db, firm_id, client_id, fy),
     )
     out["fy"] = fy
     out["preceding_fy"] = prior_fy if prior is not None else None

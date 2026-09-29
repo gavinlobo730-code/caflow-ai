@@ -585,6 +585,13 @@ class OnboardingIn(BaseModel):
     notes: Optional[str] = None
 
 
+class OnboardingStatusIn(BaseModel):
+    # Only "cancelled" is accepted (see update_onboarding_status's own
+    # docstring) — this is a cancel action, not a general status setter.
+    status: str
+    notes: Optional[str] = None
+
+
 class TaskStatusIn(BaseModel):
     status: str  # pending | in_progress | done | skipped (or title-cased variants)
     notes: Optional[str] = None
@@ -1334,6 +1341,29 @@ def create_onboarding(
 ):
     assert_client_access(current_user, data.client_id)
     db = _db()
+
+    # apex-overview-practice-08: the frontend already refuses a double-click
+    # on "New Onboarding" (its own confirm dialog), but nothing stopped two
+    # DELIBERATE clicks — a forgotten first attempt, two tabs, two sessions —
+    # from giving one client two workflows "in_progress" at once, with the
+    # task-status endpoint below unable to say which one a CA means. Refused
+    # server-side rather than only warned client-side: a warning a browser
+    # can show is a check a direct API call skips entirely.
+    if not db:
+        has_in_progress = any(
+            w.get("client_id") == data.client_id and w.get("status") == "in_progress"
+            for w in _MOCK_ONBOARDING_WORKFLOWS)
+    else:
+        has_in_progress = bool(
+            db.table("onboarding_workflows").select("id")
+              .eq("firm_id", current_user["firm_id"]).eq("client_id", data.client_id)
+              .eq("status", "in_progress").limit(1).execute().data)
+    if has_in_progress:
+        raise HTTPException(
+            status_code=409,
+            detail="This client already has an onboarding workflow in progress. "
+                   "Cancel it, or finish it, before starting another.")
+
     now = datetime.now(timezone.utc).isoformat()
     workflow_id = str(uuid.uuid4())
 
@@ -1452,6 +1482,71 @@ def update_onboarding_task(
             )
 
     return api_response(True, {**task, **update})
+
+
+@router.patch("/onboarding/{workflow_id}/status")
+def update_onboarding_status(
+    workflow_id: str,
+    data: OnboardingStatusIn,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """apex-overview-practice-08 (sweep-client-misc-03's remaining work): a
+    duplicate click on "New Onboarding" already got its own confirm-dialog
+    fix, but there was still no way to remove an unwanted workflow short of a
+    database edit. `onboarding_workflows.status` has carried 'cancelled' in
+    its own CHECK constraint since the table was created (migration 059) and
+    nothing ever wrote it — this is that first writer.
+
+    Soft-cancel only, matching this router's own convention: proposals and
+    renewals both PATCH a `.../status` sub-route rather than DELETE a row
+    (`update_proposal_status`, `update_renewal_status`), and every status
+    change here is timelined the same way theirs is. `status` is deliberately
+    the only field this door accepts and 'cancelled' the only value it takes —
+    a workflow COMPLETES on its own, above, once every task is done or
+    skipped; this is a cancel action, not a general status setter.
+    """
+    status_norm = data.status.strip().lower()
+    if status_norm != "cancelled":
+        raise HTTPException(
+            status_code=422,
+            detail="Only 'cancelled' is accepted here. A workflow completes "
+                   "on its own once every task is done or skipped.")
+
+    db = _db()
+    _assert_row_scope(db, current_user, "onboarding_workflows", workflow_id,
+                      "Onboarding workflow", _MOCK_ONBOARDING_WORKFLOWS)
+    now = datetime.now(timezone.utc).isoformat()
+    update = {"status": "cancelled", "updated_at": now}
+
+    if not db:
+        for wf in _MOCK_ONBOARDING_WORKFLOWS:
+            if wf["id"] == workflow_id:
+                if wf.get("status") == "cancelled":
+                    raise HTTPException(status_code=409, detail="This onboarding workflow is already cancelled.")
+                wf.update(update)
+                timeline_service.log(
+                    wf.get("client_id", ""), "lifecycle", "Onboarding Cancelled",
+                    data.notes or "Onboarding workflow cancelled.", "warning",
+                    firm_id=current_user["firm_id"],
+                )
+                return api_response(True, wf)
+        raise HTTPException(status_code=404, detail="Onboarding workflow not found")
+
+    existing = db.table("onboarding_workflows").select("*").eq("id", workflow_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    if not existing:
+        raise HTTPException(status_code=404, detail="Onboarding workflow not found")
+    if existing.get("status") == "cancelled":
+        raise HTTPException(status_code=409, detail="This onboarding workflow is already cancelled.")
+
+    res = db.table("onboarding_workflows").update(update).eq("id", workflow_id).eq("firm_id", current_user["firm_id"]).execute()
+    timeline_service.log(
+        existing.get("client_id", ""), "lifecycle", "Onboarding Cancelled",
+        data.notes or "Onboarding workflow cancelled.", "warning",
+        firm_id=current_user["firm_id"],
+        entity_type="onboarding_workflow", entity_id=workflow_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
+    return api_response(True, (res.data or [{}])[0])
 
 
 # ─── Onboarding Checklist (10-step Product Bible Chapter 7) ──────────────────

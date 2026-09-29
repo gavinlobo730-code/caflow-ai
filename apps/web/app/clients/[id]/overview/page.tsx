@@ -92,24 +92,15 @@ export default function OverviewPage() {
     }
     load();
     return () => { cancelled = true; };
-  }, [clientId, financialYear, reloadKey]);
-
-  if (loading) return <OverviewSkeleton />;
-  if (error) return <div className="p-6 text-state-problem text-sm">{error}</div>;
-  if (loadFailed) return (
-    <div className="p-6">
-      <div className="flex items-center justify-between gap-4 rounded-lg border border-state-problem-border bg-state-problem-surface px-5 py-4 text-sm text-state-problem">
-        <span>Couldn&apos;t load this client&apos;s overview — the request failed or timed out. Some figures may be incomplete, so they aren&apos;t shown.</span>
-        <button
-          onClick={() => setReloadKey((k) => k + 1)}
-          className="shrink-0 text-xs font-medium text-state-problem underline"
-        >
-          Retry
-        </button>
-      </div>
-    </div>
-  );
-  if (!client) return <div className="p-6 text-ps-hint text-sm">Client not found.</div>;
+    // apex-overview-practice-07: `financialYear` used to be a dependency here
+    // although nothing in this effect's body reads it — `ClientTimeline`
+    // below already takes it as its own prop and loads its own feed on
+    // change. Depending on it made changing the Activity FY picker re-run
+    // this WHOLE fetch (client, tasks, compliance calendar, health score —
+    // the heaviest call in the app), dropping all fifteen hub tiles' data
+    // back to a skeleton for several seconds to satisfy a feed that did not
+    // need any of it reloaded.
+  }, [clientId, reloadKey]);
 
   const today = todayLocalISO();
   const openTasks = tasks.filter((t) => t.status !== "completed");
@@ -117,56 +108,105 @@ export default function OverviewPage() {
     (c) => c.due_date < today && c.filing_status !== "filed"
   );
   const filedCount = compliance.filter((c) => c.filing_status === "filed").length;
+  // apex-overview-practice-07(a): loading/error/loadFailed/no-client used to
+  // be EARLY RETURNS for the whole page, which is what put `<Hub>` behind
+  // them — Hub's own fetch has nothing to do with client/tasks/compliance/
+  // health, so gating it on their `Promise.all` meant all fifteen hub tiles
+  // sat on a skeleton for however long the slowest of those four unrelated
+  // calls took (the health score calculation is the single heaviest request
+  // in the app). Turned into ordinary conditionals over a persistent layout
+  // instead, so Hub mounts and starts its own request the moment `clientId`
+  // resolves, regardless of how the rest of this page is doing.
+  const bodyState: "loading" | "error" | "loadFailed" | "notFound" | "ready" =
+    loading ? "loading" : error ? "error" : loadFailed ? "loadFailed" : !client ? "notFound" : "ready";
 
   return (
     <div className="flex h-full overflow-hidden">
       {/* ── Main feed (left) ─────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4 min-w-0">
 
-        {/* Pinned client instructions (Amendment v1.1 FR-KB-02) */}
-        <ClientInstructions clientId={clientId} pinnedOnly />
-
         {/* ── The hub at CLIENT scope — D1's fifteen, minus the three that
              are questions about the FIRM (Phase 2.2). Same component and the
              same one request as the firm hub; `clientId` is the SCOPE, not a
-             filter, so every figure below is this client's alone. */}
+             filter, so every figure below is this client's alone. Mounted
+             UNCONDITIONALLY (apex-overview-practice-07(a)) — it fetches on
+             its own and must not wait for the rest of this page. */}
         <Hub clientId={clientId} />
 
-        {/* Stat strip */}
-        <div className="grid grid-cols-3 gap-3">
-          <StatCard
-            icon={<CheckSquare size={14} className="text-blue-600" />}
-            label="Open Tasks"
-            value={openTasks.length}
-            accent={openTasks.length > 0 ? "indigo" : "neutral"}
-          />
-          <StatCard
-            icon={<Shield size={14} className="text-amber-600" />}
-            label="Overdue Filings"
-            value={overdueFiling.length}
-            accent={overdueFiling.length > 0 ? "amber" : "neutral"}
-          />
-          <StatCard
-            icon={<TrendingUp size={14} className="text-emerald-600" />}
-            label="Filed This FY"
-            value={filedCount}
-            accent="neutral"
-          />
-        </div>
-
-        {/* Timeline */}
-        <div className="bg-white rounded-xl border border-ps-border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-2xs font-semibold uppercase tracking-widest text-ps-hint">
-              Activity
-            </p>
-            <FinancialYearPicker value={financialYear} onChange={setFinancialYear} ariaLabel="Activity financial year" />
+        {bodyState === "loading" && <OverviewBodySkeleton />}
+        {bodyState === "error" && <div className="text-state-problem text-sm">{error}</div>}
+        {bodyState === "loadFailed" && (
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-state-problem-border bg-state-problem-surface px-5 py-4 text-sm text-state-problem">
+            <span>Couldn&apos;t load this client&apos;s overview — the request failed or timed out. Some figures may be incomplete, so they aren&apos;t shown.</span>
+            <button
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="shrink-0 text-xs font-medium text-state-problem underline"
+            >
+              Retry
+            </button>
           </div>
-          <ClientTimeline clientId={clientId} financialYear={financialYear} />
-        </div>
+        )}
+        {bodyState === "notFound" && <div className="text-ps-hint text-sm">Client not found.</div>}
+        {bodyState === "ready" && client && (
+          <>
+            {/* Pinned client instructions (Amendment v1.1 FR-KB-02) */}
+            <ClientInstructions clientId={clientId} pinnedOnly />
+
+            {/* Stat strip */}
+            <div className="grid grid-cols-3 gap-3">
+              <StatCard
+                icon={<CheckSquare size={14} className="text-blue-600" />}
+                label="Open Tasks"
+                value={openTasks.length}
+                accent={openTasks.length > 0 ? "indigo" : "neutral"}
+              />
+              <StatCard
+                icon={<Shield size={14} className="text-amber-600" />}
+                label="Overdue Filings"
+                value={overdueFiling.length}
+                accent={overdueFiling.length > 0 ? "amber" : "neutral"}
+              />
+              <StatCard
+                icon={<TrendingUp size={14} className="text-emerald-600" />}
+                label="Filed This FY"
+                value={filedCount}
+                accent="neutral"
+              />
+            </div>
+
+            {/* Timeline */}
+            <div className="bg-white rounded-xl border border-ps-border p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-2xs font-semibold uppercase tracking-widest text-ps-hint">
+                  Activity
+                </p>
+                <FinancialYearPicker value={financialYear} onChange={setFinancialYear} ariaLabel="Activity financial year" />
+              </div>
+              <ClientTimeline clientId={clientId} financialYear={financialYear} />
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Right sidebar ───────────────────────────────────── */}
+      {bodyState === "loading" && (
+        <div className="w-[240px] p-4 space-y-4 hidden lg:block">
+          <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
+            <Skeleton className="h-2.5 w-24" />
+            <Skeleton className="h-5 w-14" />
+            <div className="space-y-1.5 mt-1">
+              {[...Array(3)].map((_, i) => (
+                <Skeleton key={i} className="h-2 w-full" />
+              ))}
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
+            <Skeleton className="h-2.5 w-16" />
+            <SkeletonText lines={4} />
+          </div>
+        </div>
+      )}
+      {bodyState === "ready" && client && (
       <div className="w-[240px] shrink-0 border-l border-ps-border overflow-y-auto p-4 space-y-4 hidden lg:block">
         {/* Health Alerts */}
         {alerts.length > 0 && (
@@ -277,6 +317,7 @@ export default function OverviewPage() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -341,35 +382,23 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
   );
 }
 
-function OverviewSkeleton() {
+// apex-overview-practice-07(a): renamed from OverviewSkeleton and shrunk to
+// just the main feed's own content — <Hub> now mounts unconditionally above
+// this (it has its own, separate skeleton state) rather than being held
+// behind a full-page skeleton, and the sidebar's loading state is rendered
+// inline beside its real content further down rather than duplicated here.
+function OverviewBodySkeleton() {
   return (
-    <div className="flex h-full overflow-hidden">
-      <div className="flex-1 p-5 space-y-4">
-        <div className="grid grid-cols-3 gap-3">
-          {[...Array(3)].map((_, i) => (
-            <MetricCardSkeleton key={i} />
-          ))}
-        </div>
-        <div className="bg-white rounded-xl border border-ps-border p-4">
-          <Skeleton className="h-3 w-32 mb-3" />
-          <TimelineSkeleton rows={4} />
-        </div>
+    <>
+      <div className="grid grid-cols-3 gap-3">
+        {[...Array(3)].map((_, i) => (
+          <MetricCardSkeleton key={i} />
+        ))}
       </div>
-      <div className="w-[240px] p-4 space-y-4 hidden lg:block">
-        <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
-          <Skeleton className="h-2.5 w-24" />
-          <Skeleton className="h-5 w-14" />
-          <div className="space-y-1.5 mt-1">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-2 w-full" />
-            ))}
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
-          <Skeleton className="h-2.5 w-16" />
-          <SkeletonText lines={4} />
-        </div>
+      <div className="bg-white rounded-xl border border-ps-border p-4">
+        <Skeleton className="h-3 w-32 mb-3" />
+        <TimelineSkeleton rows={4} />
       </div>
-    </div>
+    </>
   );
 }

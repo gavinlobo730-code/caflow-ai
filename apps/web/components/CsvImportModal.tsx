@@ -577,7 +577,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           {step === "preview" && validCount > 0 && (
             <button
               onClick={handleImport}
-              className="px-5 py-2 bg-brand text-gray-900 text-sm font-medium rounded-lg hover:bg-brand-dark"
+              className="px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
             >
               Import {validCount} row{validCount !== 1 ? "s" : ""}
             </button>

@@ -190,11 +190,23 @@ ALL_KINDS: tuple[str, ...] = (CONTRA_BALANCE, DORMANT_BALANCE, OUTLIER_MONTH)
 
 #: What this scan CANNOT see, named so a clean result is not read as a clean
 #: set of books. Rendered beside the answer, the `table_4a_gaps` discipline.
+#:
+#: THE SECOND SENTENCE CARRIES A COUNT, AND IT IS NOT WRITTEN HERE AS A
+#: NUMBER. This module owns three of the engine's checks (`ALL_KINDS`); how
+#: many OTHER checks exist is a fact about `CHECK_CATALOGUE`, a different
+#: module, and stating it as a literal is exactly how it went stale before —
+#: "nine" was right when the catalogue held twelve entries and was never
+#: revisited as four more were added, so the Verify Books screen was still
+#: reassuring a CA about "the nine other checks" once there were sixteen.
+#: `{other_checks}` is filled in by `reconciliation_service.check_catalogue`,
+#: the one place that knows both totals, with `str.format` — a template
+#: with no such placeholder (every OTHER sentence here) passes through a
+#: `.format()` call unchanged.
 NOT_CHECKED: tuple[str, ...] = (
     "Whether a posting is to the RIGHT account — an expense coded to the wrong "
     "head nets to the same trial balance and is invisible here.",
-    "Whether a document exists behind an entry. The nine other checks in this "
-    "engine cover the sub-ledgers; this one reads only the general ledger.",
+    "Whether a document exists behind an entry. The other {other_checks} checks "
+    "in this engine cover the sub-ledgers; this one reads only the general ledger.",
     "Cut-off — an invoice dated in the wrong period moves a month's figure and "
     "looks exactly like trading.",
     "Anything about a client's FIRST four months, for the outlier check: a "

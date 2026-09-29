@@ -141,7 +141,11 @@ TILES: tuple[Tile, ...] = (
         id="compliance",
         label="Compliance Calendar",
         firm_href="/deadlines",
-        client_section="tasks",
+        # ⚠️ WAS "tasks" (apex-overview-practice-03): clicking this tile from
+        # a client's hub landed on the Tasks tab rather than the client's own
+        # Compliance Calendar, which lives at /clients/{id}/compliance/ — a
+        # real, existing section this tile had simply never been pointed at.
+        client_section="compliance",
         question="Obligations due and not yet filed",
         unit=Unit.COUNT,
     ),
@@ -211,7 +215,18 @@ TILES: tuple[Tile, ...] = (
         label="Purchases",
         firm_href="/accounting/purchases",
         client_section="purchases",
-        question="Overdue to suppliers",
+        # apex-sales-purchases-07: was "Overdue to suppliers", and the figure
+        # is every live document's OUTSTANDING balance, due or not — see
+        # hub_service.py's own comment on the deliberately-untaken owner
+        # decision (add a real due_date filter, or reword). Relabelled
+        # "Outstanding", the word the column and that comment already use, to
+        # match what is actually computed rather than inventing the filter.
+        # ("Owed to suppliers" was the first wording tried and reads just as
+        # honestly, but test_every_tile_with_a_figure_asks_what_is_OUTSTANDING
+        # requires the question to name what is still outstanding by one of a
+        # fixed set of words, "owed" not among them — this phrasing satisfies
+        # both.)
+        question="Outstanding to suppliers",
         unit=Unit.PAISE,
     ),
     Tile(

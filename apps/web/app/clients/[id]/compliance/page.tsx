@@ -57,6 +57,25 @@ interface MarkFiledForm {
   arn: string;
 }
 
+// Mirrors services/compliance_obligation_service.py's own
+// `_ACTIVE_ENGAGEMENT_STATUSES` — an engagement in one of these three is what
+// `generate_for_engagement` (and `generate_due`'s no-engagement fallback logic)
+// treats as "this client has an engagement", so this is the same question the
+// backend already answers, asked here only to explain an empty tab rather than
+// to decide anything.
+const ACTIVE_ENGAGEMENT_STATUSES = new Set(["Active", "In Progress", "Review"]);
+
+// Which sub-tabs are ENGAGEMENT-scoped, and the label to use in the empty-state
+// sentence for each. GST is excluded on purpose: generate_default_for_client's
+// no-engagement fallback generates GST obligations for any client with a GSTIN
+// recorded, engagement or not, so an empty GST tab is never explained by a
+// missing engagement.
+const ENGAGEMENT_SCOPED_LABEL: Partial<Record<ComplianceSubTab, string>> = {
+  income_tax: "Income Tax",
+  tds: "TDS",
+  mca: "MCA",
+};
+
 // ── Notices Section ────────────────────────────────────────────────────────
 
 function NoticesSection({ clientId }: { clientId: string }) {
@@ -238,6 +257,14 @@ export default function CompliancePage() {
 
   // A selection may only name rows still on screen (see lib/table/pruneSelection).
   useEffect(() => { setSelected((s) => pruneSelection(s, compliance.map((c) => c.id))); }, [compliance]);
+  // Whether this client has ANY active fee_engagements row. ITR/TDS/MCA
+  // obligations are engagement-scoped by design (generate_default_for_client's
+  // own docstring), so an empty list on those sub-tabs can mean "nothing due"
+  // or "no engagement recorded to generate anything from" — two different
+  // things the CA needs told apart. null while unknown/still loading, so the
+  // generic empty-state message shows rather than a wrong claim being made
+  // before the read completes.
+  const [hasActiveEngagement, setHasActiveEngagement] = useState<boolean | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
@@ -272,7 +299,36 @@ export default function CompliancePage() {
     load();
   }, [clientId]);
 
+  // Direct Supabase read (RLS-scoped), the same pattern NoticesSection above
+  // already uses on this page — this is only to explain an empty tab, not to
+  // decide anything, so it asks nothing of `rbac("billing", ...)`.
+  useEffect(() => {
+    if (!clientId || clientId === "_placeholder") return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await getSupabaseClient()
+        .from("fee_engagements")
+        .select("status")
+        .eq("client_id", clientId);
+      if (cancelled) return;
+      // A failed read leaves the question unanswered rather than asserting
+      // "no engagement" — the generic empty-state message is the safe default.
+      setHasActiveEngagement(
+        error ? null
+              : (data ?? []).some((e) => ACTIVE_ENGAGEMENT_STATUSES.has(e.status as string))
+      );
+    })();
+    return () => { cancelled = true; };
+  }, [clientId]);
+
   useEffect(() => { setSelected(new Set()); }, [subTab]);
+
+  // If the entity type resolves to one that cannot hold MCA obligations while
+  // that sub-tab happens to be selected (a deep link, or a switch of client),
+  // there would otherwise be no pill left to get back to "all" from.
+  useEffect(() => {
+    if (subTab === "mca" && !entity.loading && !offerMcaWorkspace) setSubTab("all");
+  }, [subTab, entity.loading, offerMcaWorkspace]);
 
   async function reloadCompliance() {
     if (!clientId || clientId === "_placeholder") return;
@@ -322,7 +378,12 @@ export default function CompliancePage() {
 
   const filtered = compliance.filter((c) => {
     if (subTab === "all") return true;
-    if (subTab === "gst") return /GSTR/i.test(c.compliance_type);
+    // PMT06 is genuinely a GST-category obligation (the QRMP monthly challan)
+    // but carries no "GSTR" substring — obligation_type overwrites the true
+    // DB category here (compliance_type: raw.obligation_type ||
+    // raw.compliance_type in lib/data/compliance.ts), so a plain /GSTR/ test
+    // silently excluded it from this tab.
+    if (subTab === "gst") return /GSTR|PMT/i.test(c.compliance_type);
     if (subTab === "tds") return /TDS|24Q|26Q/i.test(c.compliance_type);
     if (subTab === "income_tax") return /ITR|ADVANCE_TAX/i.test(c.compliance_type);
     if (subTab === "mca") return /MCA|ROC|DIR/i.test(c.compliance_type);
@@ -445,9 +506,15 @@ export default function CompliancePage() {
       {/* Government Notices */}
       {clientId && clientId !== "_placeholder" && <NoticesSection clientId={clientId} />}
 
-      {/* Sub-tab filter */}
+      {/* Sub-tab filter. MCA is gated on the SAME offerMcaWorkspace check the
+          MCA Workspace card above uses — a Proprietorship or Partnership can
+          never have MCA/ROC obligations (lib/entityObligations.ts), and this
+          pill used to show for every entity type regardless. */}
       <div className="flex gap-0.5 bg-ps-bg rounded-lg p-1 w-fit">
-        {(["all", "gst", "tds", "income_tax", "mca"] as ComplianceSubTab[]).map((id) => (
+        {([
+          "all", "gst", "tds", "income_tax",
+          ...(offerMcaWorkspace ? ["mca"] : []),
+        ] as ComplianceSubTab[]).map((id) => (
           <button
             key={id}
             onClick={() => setSubTab(id)}
@@ -600,7 +667,13 @@ export default function CompliancePage() {
                 <button onClick={reloadCompliance} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </div>
             ) : filtered.length === 0 && (
-              <div className="text-center py-12 text-ps-hint text-sm">No compliance entries</div>
+              <div className="text-center py-12 text-ps-hint text-sm">
+                {hasActiveEngagement === false && ENGAGEMENT_SCOPED_LABEL[subTab] ? (
+                  <>No active service engagement is recorded, so{" "}
+                    {ENGAGEMENT_SCOPED_LABEL[subTab]} deadlines are not
+                    generated. Add an engagement to start tracking them.</>
+                ) : "No compliance entries"}
+              </div>
             )}
           </div>
           </>

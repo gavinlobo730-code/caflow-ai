@@ -71,3 +71,28 @@ test("the CA is offered the way out that is not an override", () => {
 test("a successful finalise clears the block", () => {
   assert.match(code, /setBlockedRun\(null\);\s*\n\s*setOverrideReason\(""\);\s*\n\s*await load\(\)/);
 });
+
+/** The Register tab's own button read "Finalize"/"Finalized"/"Finalizing…"
+ *  (American) while the Release tab two screens over — and this same page's
+ *  own code comments — read "Finalise"/"Finalised" (British), so a firm
+ *  reading both in one sitting saw two products' worth of spelling. British is
+ *  what the rest of the payroll module uses (`app/payroll/page.tsx`,
+ *  `EmployeeDrawer.tsx`), so that is the spelling this page's visible text
+ *  is held to. Identifiers (`finalizeRun`, `finalizing`, `canFinalize`) are
+ *  untouched on purpose — this is about what a CA reads, not what the code is
+ *  named internally, and `Could not finalize the payroll run` (an error
+ *  string, pinned by its own test above) is a separate, pre-existing spot not
+ *  swept in with this fix. */
+test("the Register tab's button and the Release tab's copy agree on one spelling", () => {
+  for (const american of ['"Finalize"', '"Finalized"', '"Finalizing…"', '"Finalize anyway"']) {
+    assert.ok(!src.includes(american),
+      `${american} is still on screen somewhere — the Release tab reads British ` +
+      "(\"Finalise\"/\"Finalised\"), so this is the odd one out");
+  }
+  assert.match(src, /"Finalise"/, "the Register tab's own button lost its label");
+  assert.match(src, /"Finalised"/, "the finalised-run label is missing");
+  assert.match(src, /"Finalising…"/);
+  assert.match(src, /"Finalise anyway"/, "the blocked-run override button lost its label");
+  // Already true and worth pinning alongside it: the Release tab's own hint.
+  assert.match(src, /Finalise it under Register/);
+});

@@ -222,12 +222,19 @@ export default function FixedAssetsPage() {
   // reading window.location.search once on mount misses it — the tab stays
   // wherever it was and the address bar disagrees with the screen.
   // useSearchParams() re-renders this effect on every URL change, mount or not.
+  // apex-sales-purchases-09: keyed on the searchParams OBJECT this used to
+  // re-run on every unrelated query-string write elsewhere on the page and
+  // snap the tab back to whatever ?tab= still said. Keyed on the tab/doc
+  // VALUES instead, so it only re-fires when one of those actually changes.
   const tabDeepLinkParams = useSearchParams();
+  const tabParam = tabDeepLinkParams.get("tab");
+  const docParam = tabDeepLinkParams.get("doc");
   useEffect(() => {
     const { tab: t, doc } = openedAt(tabDeepLinkParams.toString());
     if (t && TABS.some((x) => x.id === t)) setTab(t as FATab);
     setOpenDoc(doc);
-  }, [tabDeepLinkParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam, docParam]);
 
   return (
     <div className="flex flex-col h-full bg-ps-bg">
@@ -861,7 +868,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
       if (body.useful_life_years !== undefined && !Number.isInteger(body.useful_life_years)) {
         setError("The useful life must be a whole number of years."); return;
       }
-      const j = await request<ApiEnvelope>("/api/fixed-assets/", { method: "POST", body: JSON.stringify(body) });
+      const j = await request<ApiEnvelope>("/api/fixed-assets", { method: "POST", body: JSON.stringify(body) });
       if (!j.success) throw new Error(refusalMessage(j, "Failed to add asset"));
       onSaved(); onClose();
     } catch (e: unknown) {
@@ -1403,6 +1410,15 @@ function DepreciationTab({ clientId }: { clientId: string }) {
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load assets — the request failed or timed out.</p>
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
+      ) : rows.length === 0 ? (
+        // apex-bank-assets-inventory-12b. The sibling Asset Register tab
+        // already says this when there is nothing to show; this table had no
+        // such branch and rendered a bare header over an empty body instead.
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <p className="px-5 py-8 text-xs text-ps-hint text-center">
+            No assets in the register for this client.
+          </p>
+        </div>
       ) : (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-xs">
@@ -1576,7 +1592,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
     try {
       // include_disposed defaults to false server-side — already-disposed
       // assets are excluded without needing a (nonexistent) status filter.
-      const j = await request<ApiEnvelope<Asset[]>>(`/api/fixed-assets/?client_id=${clientId}`);
+      const j = await request<ApiEnvelope<Asset[]>>(`/api/fixed-assets?client_id=${clientId}`);
       if (!j.success) throw new Error(j.error ?? "Failed to load");
       setAssets(j.data ?? []);
       setLoadFailed(false);
@@ -1950,7 +1966,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
         request<ApiEnvelope<MovementResponse>>(
           `/api/fixed-assets/movement?client_id=${clientId}&financial_year=${encodeURIComponent(financialYear)}`),
         request<ApiEnvelope<Omit<Asset, "lifecycle">[]>>(
-          `/api/fixed-assets/?client_id=${clientId}&include_disposed=true`),
+          `/api/fixed-assets?client_id=${clientId}&include_disposed=true`),
       ]);
       if (!mv.success) throw new Error(mv.error ?? "Failed to load the movement");
       if (!list.success) throw new Error(list.error ?? "Failed to load");

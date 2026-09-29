@@ -2705,6 +2705,80 @@ def delete_run(
                                "slip_count": len(slips)})
 
 
+def _parse_timestamp(value) -> Optional[datetime]:
+    """A PostgREST timestamptz string as an aware `datetime`, or None.
+
+    apex-payroll-yearend-04 (code half). Comparing two ISO strings lexically
+    (as services/reconciliation_service.py does elsewhere) is only safe when
+    both carry the same fractional-second precision, which `entered_at` and
+    `created_at` do not promise to — so these are parsed rather than compared
+    as text. `str(...)` first because a bare `datetime` can already reach here
+    from mock mode's in-memory rows.
+    """
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _stamp_attendance_staleness(db, run: dict, slips: list[dict]) -> None:
+    """Marks each slip `attendance_changed_since_compute` (apex-payroll-
+    yearend-04, the code half of FA-04's naming — a payroll month, not a
+    depreciation one). A slip's earnings were computed off `attendance` as it
+    stood at the moment the run was (re)computed; a CA correcting an
+    employee's days afterwards leaves that slip silently wrong, with nothing
+    on the Register tab to say so until somebody notices the figures do not
+    match what was entered.
+
+    ONLY ASKED PRE-FINALISATION. `_PAYROLL_UNRELEASED` (draft, review) is the
+    only state `POST .../recompute` accepts — PAY-04/PAY-21, migration 251 —
+    so the flag would name a staleness a finalised or paid run has no action
+    for. Every slip on a released run reads False.
+
+    `attendance.entered_at` is the fact of when a row was entered or last
+    amended (migration 326); a row written before that migration carries no
+    author or entered_at and falls back to `created_at`, the row's own
+    insertion time. Compared against the SLIP's own `created_at` — fresh on
+    every compute and recompute, since `_compute_and_store_slips` deletes and
+    re-inserts every slip — rather than `payroll_runs.generated_at`, which
+    nothing in this router ever updates on a recompute and so is stale from
+    the moment a draft is rebuilt even once.
+    """
+    for s in slips:
+        s["attendance_changed_since_compute"] = False
+    if run.get("status") not in _PAYROLL_UNRELEASED:
+        return
+
+    month_str = str(run.get("month") or "")
+    try:
+        year, month = int(month_str[:4]), int(month_str[5:7])
+    except (ValueError, IndexError):
+        return
+
+    emp_ids = [s.get("employee_id") for s in slips if s.get("employee_id")]
+    if not emp_ids:
+        return
+
+    rows = (db.table("attendance").select("employee_id, entered_at, created_at")
+            .eq("year", year).eq("month", month)
+            .in_("employee_id", emp_ids).execute().data) or []
+    touched_at: dict[str, datetime] = {}
+    for r in rows:
+        eid = r.get("employee_id")
+        stamp = _parse_timestamp(r.get("entered_at")) or _parse_timestamp(r.get("created_at"))
+        if eid and stamp:
+            touched_at[eid] = stamp
+
+    for s in slips:
+        eid = s.get("employee_id")
+        slip_created = _parse_timestamp(s.get("created_at"))
+        attendance_stamp = touched_at.get(eid) if eid else None
+        s["attendance_changed_since_compute"] = bool(
+            slip_created and attendance_stamp and attendance_stamp > slip_created)
+
+
 @router.get("/runs/{run_id}/slips")
 def get_run_slips(
     run_id: str,
@@ -2722,11 +2796,15 @@ def get_run_slips(
     db = _db()
     if not db:
         return api_response(True, [])
-    run = db.table("payroll_runs").select("id").eq("id", run_id).eq("firm_id", current_user["firm_id"]).execute()
+    run = db.table("payroll_runs").select("id, month, status").eq("id", run_id).eq("firm_id", current_user["firm_id"]).execute()
     if not run.data:
         raise HTTPException(status_code=404, detail=f"Payroll run {run_id} not found")
     slips = db.table("payroll_slips").select("*, payroll_employees(name, pan, designation, department)").eq("run_id", run_id).execute()
-    return api_response(True, slips.data or [])
+    rows = slips.data or []
+    # apex-payroll-yearend-04 (code half): a draft's attendance can be entered
+    # or corrected AFTER the slip was generated, and nothing said so.
+    _stamp_attendance_staleness(db, run.data[0], rows)
+    return api_response(True, rows)
 
 
 @router.get("/runs/summary")
@@ -5334,6 +5412,13 @@ def client_ecr_sequence(
                     "approved_on, run_id")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .is_("deleted_at", "null").execute().data) or []
+    # apex-payroll-yearend-11: asked ONLY to tell `outstanding_note` apart a
+    # client with a genuine draft on the Month selector from one with no run
+    # of any status at all — `known` (finalised_months) cannot see the
+    # difference, and neither can EPFO's own sequence, which this run does
+    # not enter until it is finalised.
+    latest_draft = (ecr_filings.latest_unreleased_month(
+        db, firm_id=firm_id, client_id=client_id) if not known else None)
     return api_response(True, {
         "client_id": client_id,
         "outstanding": list(ecr_sequence.outstanding_months(
@@ -5341,7 +5426,7 @@ def client_ecr_sequence(
         "months_known_from": known[0] if known else None,
         "note": ecr_sequence.outstanding_note(
             ecr_sequence.outstanding_months(finalised_months=known, filings=prior),
-            known[0] if known else None),
+            known[0] if known else None, latest_draft),
         "filings": sorted(rows, key=lambda r: (str(r.get("wage_month") or ""),
                                                str(r.get("return_type") or ""))),
         "interest_and_damages": ecr_sequence.INTEREST_AND_DAMAGES_NOTE,
@@ -5579,8 +5664,22 @@ def run_handoff(
     _assert_run_scope(db, current_user, run_id)
 
     firm_id = current_user["firm_id"]
-    inputs = _finalised_run_inputs(db, current_user, run_id,
-                                   what="statutory return")
+    try:
+        inputs = _finalised_run_inputs(db, current_user, run_id,
+                                       what="statutory return")
+    except HTTPException as exc:
+        # apex-payroll-yearend-08: "not finalised yet" is an expected
+        # business-rule refusal a CA can act on (finalise the run), not a
+        # server error — so it comes back as the mandated
+        # {success, data, error} envelope on a normal 200, which is what
+        # StatutoryHandoff.tsx and every other caller already check, rather
+        # than a bare FastAPI {"detail": ...} body that breaks that check.
+        # `_finalised_run_inputs`'s OTHER refusals (404 run not found, 422 an
+        # unparseable month) are left to raise as before — this catches only
+        # the specific 409 the "not yet finalised" branch produces.
+        if exc.status_code == 409:
+            return api_response(False, None, error=exc.detail)
+        raise
     run, month, _days, slips, by_id = inputs
     client_id = run.get("client_id")
     y, m = int(month[:4]), int(month[5:7])
@@ -6071,6 +6170,27 @@ def statutory_summary(
     edli = int(r.get("total_edli_paise") or 0)
     pf_admin = int(r.get("total_pf_admin_paise") or 0)
 
+    # apex-payroll-yearend-10: `pf_admin` above is `payroll_admin_charge`'s own
+    # FLOORED figure (create_run/recompute_run apply the ₹500-per-establishment
+    # minimum once, on the RUN total, because the floor is not per member —
+    # domain/payroll/statutory.admin_charge_for_establishment). Each SLIP still
+    # carries its own true, unfloored 0.5% — the salary register and the
+    # payslip PDF both read it — so summing the slips never foots to this
+    # screen's challan figure for a small client the floor actually bit. A
+    # reconciling line says why, from the two real figures rather than from a
+    # third recomputation: the per-slip sum, and what the floor added on top.
+    slip_admin_rows = (
+        db.table("payroll_slips").select("pf_admin_paise")
+        .eq("run_id", r["id"]).execute().data) or []
+    pf_admin_per_slip_paise = sum(int(s.get("pf_admin_paise") or 0) for s in slip_admin_rows)
+    pf_admin_topup_paise = max(0, pf_admin - pf_admin_per_slip_paise)
+    pf_admin_reconciliation = (
+        f"PF Admin (0.5%, per employee) ₹{rupees_paise(pf_admin_per_slip_paise)}"
+        + (f" + statutory minimum top-up ₹{rupees_paise(pf_admin_topup_paise)}"
+           if pf_admin_topup_paise else "")
+        + f" = ₹{rupees_paise(pf_admin)} challan total"
+    )
+
     return api_response(True, {
         "month":          month,
         "pf_total_paise": pf_contributions,
@@ -6079,6 +6199,15 @@ def statutory_summary(
         # The figure to pay EPFO. Named for the challan rather than for the
         # columns it is made of, because that is the number a CA is reconciling.
         "pf_challan_total_paise": pf_contributions + edli + pf_admin,
+        # apex-payroll-yearend-10: the per-slip figures (the salary register
+        # CSV, the payslip PDF) are each employee's true 0.5% and never carry
+        # the ₹500-per-establishment floor — that floor is settled once, here,
+        # on the run total. Serving both numbers, plus the sentence that
+        # reconciles them, is what lets the two screens agree instead of
+        # silently disagreeing by whatever the floor added.
+        "pf_admin_per_slip_paise": pf_admin_per_slip_paise,
+        "pf_admin_topup_paise": pf_admin_topup_paise,
+        "pf_admin_reconciliation": pf_admin_reconciliation,
         "esi_total_paise": r.get("total_esi_paise", 0),
         "pt_total_paise": r.get("total_pt_paise", 0),
         "tds_24q_paise":  r.get("total_tds_paise", 0),

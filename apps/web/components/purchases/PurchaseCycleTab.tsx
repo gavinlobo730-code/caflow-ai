@@ -20,6 +20,7 @@
  * acceptance date are `domain/purchases/three_way_match.py`'s answers.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { AlertTriangle, ClipboardList, Info, PackageCheck, Plus, X } from "lucide-react";
 import {
@@ -31,6 +32,8 @@ import {
   type ThreeWayMatch,
 } from "@/lib/api";
 import { paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { EntityLookup } from "@/components/lookups/EntityLookup";
 
 type Tab = "orders" | "receipts";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -43,6 +46,100 @@ const BLANK_LINE = { description: "", hsn_sac: "", quantity: "1", unit: "NOS",
 function rupees(paise: number): string {
   return `₹${(paise / 100).toLocaleString("en-IN", {
     minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** apex-sales-purchases-03: the picker for the three-way match's own bill. */
+interface BillMatchOption {
+  id: string;
+  bill_no: string | null;
+  our_reference: string | null;
+  bill_date: string;
+  vendor_name: string;
+}
+
+type BillRow = { id: string; bill_no: string | null; our_reference: string | null;
+                 bill_date: string; vendor_id: string; vendors: { name: string } | null };
+
+function toBillOption(r: BillRow): BillMatchOption {
+  return { id: r.id, bill_no: r.bill_no, our_reference: r.our_reference,
+           bill_date: r.bill_date, vendor_name: r.vendors?.name ?? "—" };
+}
+
+/** Searches this client's purchase_bills by bill number, our_reference,
+ * vendor name and date — a CA picks from these, rather than typing a raw
+ * bill id (apex-sales-purchases-03). Three narrow, LIMITed queries rather
+ * than one unpaged read of the whole register (CLAUDE.md's reporting-
+ * performance rule): text match on the bill's own two reference columns,
+ * vendor name resolved to ids first (purchase_bills carries no vendor NAME
+ * column to search directly), and an exact/range match when the query looks
+ * like a date. Merged and deduped by id, most recent first. */
+async function searchPurchaseBills(clientId: string, q: string): Promise<BillMatchOption[]> {
+  const supabase = getSupabaseClient();
+  // apps/api/tests/test_frontend_columns_exist_pg.py can only check a
+  // .select() whose column list is a LITERAL string against the real schema
+  // — a shared variable is invisible to it, the same trap CLAUDE.md records
+  // for the identical backend guard — so the list is written out at each of
+  // the four call sites below rather than held in one constant.
+  const query = q.trim();
+
+  if (!query) {
+    const { data } = await supabase.from("purchase_bills")
+      .select("id, bill_no, our_reference, bill_date, vendor_id, vendors(name)")
+      .eq("client_id", clientId).order("bill_date", { ascending: false }).limit(20);
+    return ((data ?? []) as unknown as BillRow[]).map(toBillOption);
+  }
+
+  const byRef = supabase.from("purchase_bills")
+    .select("id, bill_no, our_reference, bill_date, vendor_id, vendors(name)")
+    .eq("client_id", clientId)
+    .or(`bill_no.ilike.%${query}%,our_reference.ilike.%${query}%`)
+    .order("bill_date", { ascending: false }).limit(20);
+
+  const byVendor = supabase.from("vendors").select("id")
+    .eq("client_id", clientId).ilike("name", `%${query}%`).limit(20);
+
+  // YYYY, YYYY-MM or YYYY-MM-DD — a range covering whichever precision was
+  // typed, since bill_date is a real date column and cannot be ILIKE'd.
+  const dateMatch = /^\d{4}(-\d{2}(-\d{2})?)?$/.exec(query);
+  const dateRange = dateMatch ? (() => {
+    if (query.length === 10) return { gte: query, lte: query };
+    if (query.length === 7) {
+      const [y, m] = query.split("-").map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      return { gte: `${query}-01`, lte: `${query}-${String(lastDay).padStart(2, "0")}` };
+    }
+    return { gte: `${query}-01-01`, lte: `${query}-12-31` };
+  })() : null;
+
+  const [refRes, vendorRes] = await Promise.all([byRef, byVendor]);
+  const vendorIds = (vendorRes.data ?? []).map((v: { id: string }) => v.id);
+
+  const [vendorBillsRes, dateBillsRes] = await Promise.all([
+    vendorIds.length
+      ? supabase.from("purchase_bills")
+          .select("id, bill_no, our_reference, bill_date, vendor_id, vendors(name)")
+          .eq("client_id", clientId).in("vendor_id", vendorIds)
+          .order("bill_date", { ascending: false }).limit(20)
+      : Promise.resolve({ data: [] as BillRow[] }),
+    dateRange
+      ? supabase.from("purchase_bills")
+          .select("id, bill_no, our_reference, bill_date, vendor_id, vendors(name)")
+          .eq("client_id", clientId).gte("bill_date", dateRange.gte).lte("bill_date", dateRange.lte)
+          .order("bill_date", { ascending: false }).limit(20)
+      : Promise.resolve({ data: [] as BillRow[] }),
+  ]);
+
+  const merged = new Map<string, BillRow>();
+  for (const row of [
+    ...((refRes.data ?? []) as unknown as BillRow[]),
+    ...((vendorBillsRes.data ?? []) as unknown as BillRow[]),
+    ...((dateBillsRes.data ?? []) as unknown as BillRow[]),
+  ]) merged.set(row.id, row);
+
+  return Array.from(merged.values())
+    .sort((a, b) => (a.bill_date < b.bill_date ? 1 : -1))
+    .slice(0, 20)
+    .map(toBillOption);
 }
 
 export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
@@ -59,6 +156,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
   const [position, setPosition] = useState<PurchaseOrderPosition | null>(null);
   const [matchBillId, setMatchBillId] = useState("");
   const [matched, setMatched] = useState<ThreeWayMatch | null>(null);
+  const [matchSelected, setMatchSelected] = useState<BillMatchOption | null>(null);
 
   const [form, setForm] = useState({
     vendor_id: "",
@@ -96,6 +194,35 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
   }, [clientId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // apex-sales-purchases-03: "Match against order" on a bill's own drawer
+  // hands off here as ?matchBill=<id> (PurchaseBillViewDrawer.matchAgainstOrder)
+  // rather than a prop threaded through PurchaseBills/PurchasesPage — the page
+  // already syncs ?tab= reactively (ACC-22), so switching to this tab is
+  // enough to land here, and this reads the id once and strips it so a
+  // refresh doesn't repeat the match. Keyed on the param VALUE, matching the
+  // page-level ?tab=/?doc= effect's own fix, not the searchParams object.
+  const matchBillParam = useSearchParams().get("matchBill");
+  useEffect(() => {
+    if (!matchBillParam) return;
+    setMatchBillId(matchBillParam);
+    void runMatch(matchBillParam);
+    // Resolve a real label for the picker (it was handed only an id) so the
+    // box reads the bill's own number rather than sitting blank over a value
+    // nobody can see.
+    void (async () => {
+      const supabase = getSupabaseClient();
+      const { data } = await supabase.from("purchase_bills")
+        .select("id, bill_no, our_reference, bill_date, vendor_id, vendors(name)")
+        .eq("id", matchBillParam).eq("client_id", clientId).maybeSingle();
+      if (data) setMatchSelected(toBillOption(data as unknown as BillRow));
+    })();
+    const p = new URLSearchParams(window.location.search);
+    p.delete("matchBill");
+    const qs = p.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runMatch is stable across the id it's called with; re-running on it would fight the param strip above
+  }, [matchBillParam]);
 
   /** Orders that are live work: approved or part-received. */
   const open = useMemo(
@@ -161,9 +288,10 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
     }
   }
 
-  async function runMatch() {
-    if (!matchBillId.trim()) return;
-    const res = await api.purchaseCycle.matchBill(matchBillId.trim(), clientId);
+  async function runMatch(id?: string) {
+    const target = (id ?? matchBillId).trim();
+    if (!target) return;
+    const res = await api.purchaseCycle.matchBill(target, clientId);
     if (!res.success) {
       setMsg({ type: "err", text: res.error || "That bill was not found." });
       return;
@@ -500,12 +628,24 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
           Match a bill against its order and its receipts
         </h4>
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            value={matchBillId}
-            onChange={(e) => setMatchBillId(e.target.value)}
-            placeholder="Purchase bill id"
-            className="rounded border border-ps-border px-2 py-1.5 text-sm"
-          />
+          <div className="w-72">
+            <EntityLookup<BillMatchOption>
+              items={matchSelected ? [matchSelected] : []}
+              value={matchBillId}
+              onChange={(id) => { setMatchBillId(id); if (!id) setMatchSelected(null); }}
+              onSelect={setMatchSelected}
+              getId={(b) => b.id}
+              getLabel={(b) => b.bill_no || b.our_reference || b.id}
+              getSecondary={(b) => `${b.vendor_name} · ${b.bill_date}`}
+              fetchOptions={(q) => searchPurchaseBills(clientId, q)}
+              placeholder="Search bill number, reference, vendor or date…"
+              searchPlaceholder="Search bill number, reference, vendor or date…"
+              emptyText="No matching bills"
+              clearable
+              size="sm"
+              ariaLabel="Purchase bill to match"
+            />
+          </div>
           <button
             onClick={() => void runMatch()}
             className="rounded bg-brand px-3 py-1.5 text-sm text-white"

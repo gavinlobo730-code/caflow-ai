@@ -425,6 +425,25 @@ def test_check_balance_equation_flags_mismatch():
     assert "does not balance" in errors[0]
 
 
+def test_check_balance_equation_reports_rupees_not_raw_paise():
+    """apex-sales-purchases-02: the mismatch sentence interpolated raw integer
+    paise ("Total Assets (10000000 paise)"), which reaches this validator's
+    caller — and eventually a CA — verbatim. It must read in rupees, grouped
+    the Indian way, and never carry the literal word "paise"."""
+    import domain.income_tax.xbrl_service as xs
+
+    data = {
+        "BalanceSheet.CurrentAssets.CashAndCashEquivalents": 100_000_00,
+        "BalanceSheet.Equity.ShareCapital": 40_000_00,
+        "BalanceSheet.CurrentLiabilities.TradePayables": 30_000_00,
+    }
+    error, = xs._check_balance_equation(data)
+    assert "paise" not in error
+    assert "₹1,00,000.00" in error
+    assert "₹70,000.00" in error
+    assert "₹30,000.00" in error
+
+
 def test_check_balance_equation_passes_when_balanced():
     import domain.income_tax.xbrl_service as xs
 

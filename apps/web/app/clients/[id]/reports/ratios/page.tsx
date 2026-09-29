@@ -147,6 +147,7 @@ export default function ClientRatioNotePage() {
   }, [clientId, fy, load]);
 
   const outstanding = note?.needs_explanation_count ?? 0;
+  const moved = note?.moved_count ?? outstanding;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-5">
@@ -197,10 +198,15 @@ export default function ClientRatioNotePage() {
               <AlertTriangle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
               <p className="text-2xs text-amber-900">
                 <span className="font-medium">
-                  {outstanding} ratio{outstanding === 1 ? "" : "s"} moved by more than 25%
+                  {outstanding} of {moved} ratio{moved === 1 ? "" : "s"} that moved by more
+                  than 25%
                 </span>{" "}
-                against {note.preceding_fy}. Clause (Q) requires an explanation for each
-                before this note can be filed.
+                against {note.preceding_fy} still need{outstanding === 1 ? "s" : ""} an
+                explanation before this note can be filed.
+                {note.current_period_label && (
+                  <> {note.fy} is {note.current_period_label}, not the full year — a
+                  part-year figure compared with {note.preceding_fy}&apos;s full year.</>
+                )}
               </p>
             </div>
           )}

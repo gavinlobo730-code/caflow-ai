@@ -100,7 +100,14 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
     return () => { alive = false; };
   }, []);
 
+  // Deferred to when the Add-a-document drawer is actually open
+  // (apex-accounting-reports-17): the full customers/vendors list exists
+  // purely to fill the party picker inside that drawer, and most visits to
+  // this tab never open it. Fetching it on every tab mount (and again on
+  // every receivable/payable toggle) paid for a list the CA was never going
+  // to see.
   useEffect(() => {
+    if (!showForm) return;
     let alive = true;
     const fetcher: Promise<{ success: boolean; data?: { id: string; name: string }[] | null }> =
       kind === "receivable"
@@ -113,7 +120,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       })
       .catch(() => { if (alive) setParties([]); });
     return () => { alive = false; };
-  }, [clientId, kind]);
+  }, [clientId, kind, showForm]);
 
   const partyLabel = kind === "receivable" ? "Customer" : "Vendor";
   const numberLabel = useMemo(

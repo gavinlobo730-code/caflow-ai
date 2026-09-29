@@ -241,6 +241,17 @@ def test_these_guards_are_not_vacuous():
     assert BY_ID["gst"].question == "Returns prepared and not yet filed"
 
 
+def test_the_purchases_tile_label_matches_what_it_computes():
+    """apex-sales-purchases-07 / sweep-accounting-hub-1-02: the label read
+    "Overdue to suppliers" while `services/hub_service.py` sums EVERY live
+    document's outstanding balance, due or not — that mismatch is an open
+    owner decision the module's own comment declines to resolve (add a real
+    due_date filter, or reword), so the safe fix is the relabel, not a filter.
+    """
+    assert BY_ID["purchases"].question == "Outstanding to suppliers"
+    assert "overdue" not in BY_ID["purchases"].question.lower()
+
+
 def test_a_tile_may_have_a_figure_for_a_client_and_none_for_the_firm():
     """Inventory is the one, and it is a THIRD reason to have no number.
 

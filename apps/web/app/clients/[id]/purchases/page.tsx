@@ -4,7 +4,7 @@ import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal, Ban, RotateCcw } from "lucide-react";
+import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal, Ban, RotateCcw, Pencil } from "lucide-react";
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
 import { RcmDocumentPanel } from "@/components/purchases/RcmDocumentPanel";
 import { LandedCostPanel } from "@/components/purchases/LandedCostPanel";
@@ -188,6 +188,34 @@ function fyRange(fy: string): { start: string; end: string } {
   return { start: `${yr}-04-01`, end: `${yr + 1}-03-31` };
 }
 
+/** apex-sales-purchases-10: Debit Notes and Credit Notes used to load the
+ * client's WHOLE bill register on every mount of the tab, purely so an
+ * import's bill_no column could be resolved — for a client with a large
+ * purchase volume, opening an empty note tab paged the entire bill table.
+ * Resolves only the bill numbers the uploaded rows actually reference, right
+ * before building the notes, chunked so the .in() filter stays within a
+ * reasonable URL length on a large CSV. */
+async function lookupOriginalBills(clientId: string, rows: ImportRow[]): Promise<OriginalDocRef[]> {
+  const billNos = Array.from(new Set(
+    rows.map((r) => (r.bill_no ?? "").trim()).filter(Boolean)
+  ));
+  if (billNos.length === 0) return [];
+  const supabase = getSupabaseClient();
+  const out: OriginalDocRef[] = [];
+  const CHUNK = 200;
+  for (let i = 0; i < billNos.length; i += CHUNK) {
+    const { data } = await supabase
+      .from("purchase_bills")
+      .select("id, bill_no, vendor_id, is_interstate")
+      .eq("client_id", clientId)
+      .in("bill_no", billNos.slice(i, i + CHUNK));
+    for (const r of (data ?? []) as Array<{ id: string; bill_no: string | null; vendor_id: string; is_interstate: boolean }>) {
+      if (r.bill_no) out.push({ id: r.id, no: r.bill_no, partyId: r.vendor_id, isInterstate: r.is_interstate });
+    }
+  }
+  return out;
+}
+
 function toDate(): string {
   return todayLocalISO();
 }
@@ -258,12 +286,19 @@ export default function PurchasesPage() {
   // reading window.location.search once on mount misses it — the tab stays
   // wherever it was and the address bar disagrees with the screen.
   // useSearchParams() re-renders this effect on every URL change, mount or not.
+  // apex-sales-purchases-09: keyed on the searchParams OBJECT this used to
+  // re-run on every unrelated query-string write elsewhere on the page and
+  // snap the tab back to whatever ?tab= still said. Keyed on the tab/doc
+  // VALUES instead, so it only re-fires when one of those actually changes.
   const tabDeepLinkParams = useSearchParams();
+  const tabParam = tabDeepLinkParams.get("tab");
+  const docParam = tabDeepLinkParams.get("doc");
   useEffect(() => {
     const { tab: t, doc } = openedAt(tabDeepLinkParams.toString());
     if (t && TABS.some((x) => x.id === t)) setTab(t as PurchaseTab);
     setOpenDoc(doc);
-  }, [tabDeepLinkParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam, docParam]);
 
   if (!clientId || clientId === "_placeholder") {
     return (
@@ -381,6 +416,7 @@ interface PurchaseBillRow {
   total_gst_paise: number;
   tds_paise: number;
   net_payable_paise: number;
+  outstanding_paise?: number | null;
   total_paise: number;
   status: string;
   is_ai_extracted: boolean;
@@ -834,9 +870,19 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     return { imported, errors, skipped: skippedDetail.length, skippedDetail };
   }
 
-  const totalPayable = bills.filter((b) => !["paid", "cancelled"].includes(b.status))
-    .reduce((s, b) => s + b.net_payable_paise, 0);
-  const totalThisFy = bills.reduce((s, b) => s + b.total_paise, 0);
+  // apex-sales-purchases-07 / sweep-accounting-hub-1-02: the period tiles
+  // summed total_paise over EVERY bill including CANCELLED ones, and
+  // "Outstanding Payable" read net_payable_paise (excluding only paid and
+  // cancelled, so a DRAFT still counted) rather than the GENERATED
+  // outstanding_paise column, which alone accounts for partial payments and
+  // credit/debit notes. `live` is what the period actually billed: a
+  // cancelled document was never a supply, and a draft has not yet been
+  // received (no journal posted) so it is not yet really a "bill".
+  const live = bills.filter((b) => !["cancelled", "draft"].includes(b.status));
+  const cancelledCount = bills.filter((b) => b.status === "cancelled").length;
+  const totalPayable = live.filter((b) => b.status !== "paid")
+    .reduce((s, b) => s + Number(b.outstanding_paise ?? b.net_payable_paise), 0);
+  const totalThisFy = live.reduce((s, b) => s + b.total_paise, 0);
 
   // ── DataTable columns (money columns return integer paise, right-aligned) ────
   const billColumns: Column<PurchaseBillRow>[] = useMemo(() => [
@@ -1038,7 +1084,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
       {/* Summary strip */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="bg-white rounded-xl border border-ps-border p-4">
-          <p className="text-3xs text-ps-label mb-1">Outstanding Payable</p>
+          <p className="text-3xs text-ps-label mb-1">Outstanding Payable (Selected Period)</p>
           <p className="text-lg font-bold text-orange-700 tabular-nums">{loadFailed ? "—" : fmt(totalPayable)}</p>
         </div>
         <div className="bg-white rounded-xl border border-ps-border p-4">
@@ -1046,8 +1092,10 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
           <p className="text-lg font-bold text-ps-ink tabular-nums">{loadFailed ? "—" : fmt(totalThisFy)}</p>
         </div>
         <div className="bg-white rounded-xl border border-ps-border p-4">
-          <p className="text-3xs text-ps-label mb-1">Bills in Selected Period</p>
-          <p className="text-lg font-bold text-ps-ink tabular-nums">{loadFailed ? "—" : bills.length}</p>
+          <p className="text-3xs text-ps-label mb-1">
+            Bills in Selected Period{cancelledCount > 0 ? ` (+${cancelledCount} cancelled)` : ""}
+          </p>
+          <p className="text-lg font-bold text-ps-ink tabular-nums">{loadFailed ? "—" : live.length}</p>
         </div>
       </div>
 
@@ -1320,6 +1368,19 @@ interface VendorRow {
   country_of_residence: string | null;
   opening_balance_paise: number;
   is_active: boolean;
+  // apex-sales-purchases-05: the row already carried these (`.select("*")`
+  // below fetches them) — they were just never typed here, because nothing
+  // read them back out until the Edit action needed to prefill the form.
+  gst_registration_status: string | null;
+  tax_identification_number: string | null;
+  section_195_nature_of_income: string | null;
+  non_resident_payee_class: string | null;
+  trc_on_file: boolean | null;
+  form_10f_on_file: boolean | null;
+  no_pe_declaration_on_file: boolean | null;
+  no_pe_declaration_on: string | null;
+  no_pe_declaration_ref: string | null;
+  treaty_rate_bps: number | null;
 }
 
 // The GSTIN rule is `lib/gst/gstin.gstinProblem` and there is one of it. A
@@ -1343,6 +1404,13 @@ function Vendors({ clientId }: { clientId: string }) {
   // PUR-32 — active vendors of this client whose name the new one resembles.
   const [resemblances, setResemblances] = useState<PossibleDuplicate[]>([]);
   const [showForm, setShowForm] = useState(false);
+  // apex-sales-purchases-05: null means the form below is in CREATE mode; set
+  // means it is editing this vendor in place, prefilled from its row and
+  // saving via PATCH. There was no way back into this form once a vendor
+  // existed, so none of a client's vendors could have their §195 residency
+  // status or TDS section corrected from inside the client workspace at all
+  // — the row menu only ever offered Deactivate/Reactivate/Delete.
+  const [editingVendor, setEditingVendor] = useState<VendorRow | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -1477,6 +1545,45 @@ function Vendors({ clientId }: { clientId: string }) {
     return { imported, errors, skipped: skippedDetail.length, skippedDetail };
   }
 
+  /** apex-sales-purchases-05: opens the same form New Vendor uses, prefilled
+   * from this row, in edit mode. `tds_rate_bps` is deliberately not
+   * reproduced here — see the form's own note (PUR-06) on why that field is
+   * dead. `msme_status` / `msmed_agreement_days` are deliberately not on this
+   * form at all: they are recorded on the Schedule III ageing screen
+   * (`/clients/[id]/reports/ageing`) through
+   * POST /api/accounting/schedule-iii/ageing/classify, a judgement with its
+   * own RBAC (accounting:write) and its own write path — duplicating it here
+   * would be the exact second-write-path CLAUDE.md's PUR-16 already warns
+   * against. */
+  function openEdit(v: VendorRow) {
+    setEditingVendor(v);
+    // A stale "this looks like an existing vendor" banner from an earlier
+    // create is about a DIFFERENT vendor and has no place over an edit.
+    setResemblances([]);
+    setName(v.name);
+    setGstin(v.gstin ?? "");
+    setPan(v.pan ?? "");
+    setEmail(v.email ?? "");
+    setPhone(v.phone ?? "");
+    setOpeningBalance(v.opening_balance_paise ? String(v.opening_balance_paise / 100) : "");
+    setTdsApplicable(v.tds_applicable);
+    setTdsSection(v.tds_section ?? "194C");
+    setResidentialStatus(v.residential_status ?? "");
+    setGstRegistrationStatus(v.gst_registration_status ?? "");
+    setCountryOfResidence(v.country_of_residence ?? "");
+    setTaxIdentificationNumber(v.tax_identification_number ?? "");
+    setNatureOfIncome(v.section_195_nature_of_income ?? "");
+    setPayeeClass(v.non_resident_payee_class ?? "");
+    setTrcOnFile(!!v.trc_on_file);
+    setForm10fOnFile(!!v.form_10f_on_file);
+    setNoPeDeclaration(!!v.no_pe_declaration_on_file);
+    setNoPeDeclarationOn(v.no_pe_declaration_on ?? "");
+    setNoPeDeclarationRef(v.no_pe_declaration_ref ?? "");
+    setTreatyRate(v.treaty_rate_bps != null ? String(v.treaty_rate_bps / 100) : "");
+    setMsg(null);
+    setShowForm(true);
+  }
+
   async function handleSave() {
     if (!name.trim()) { setMsg({ type: "err", text: "Name is required" }); return; }
     const gstinIssue = gstinProblem(gstin);
@@ -1510,69 +1617,77 @@ function Vendors({ clientId }: { clientId: string }) {
       const cleanGstin = gstin.trim().toUpperCase() || undefined;
       const stateCode = cleanGstin ? cleanGstin.slice(0, 2) : undefined;
 
-      const result = await apiCall(
-        "/api/vendors/",
-        "POST",
-        {
-          client_id: clientId,
-          name: name.trim(),
-          gstin: cleanGstin,
-          state_code: stateCode,
-          pan: pan.trim().toUpperCase() || undefined,
-          email: email.trim() || undefined,
-          phone: phone.trim() || undefined,
-          tds_applicable: tdsApplicable,
-          tds_section: tdsApplicable ? tdsSection : undefined,
-          residential_status: residentialStatus || undefined,
-          gst_registration_status: gstRegistrationStatus || undefined,
-          // Only meaningful for a non-resident; 26Q has no field for either.
-          country_of_residence:
-            residentialStatus === "non_resident" ? countryOfResidence.trim().toUpperCase() || undefined : undefined,
-          tax_identification_number:
-            residentialStatus === "non_resident" ? taxIdentificationNumber.trim() || undefined : undefined,
-          section_195_nature_of_income:
-            residentialStatus === "non_resident" ? natureOfIncome || undefined : undefined,
-          non_resident_payee_class:
-            residentialStatus === "non_resident" ? payeeClass || undefined : undefined,
-          trc_on_file: residentialStatus === "non_resident" ? trcOnFile : false,
-          form_10f_on_file: residentialStatus === "non_resident" ? form10fOnFile : false,
-          no_pe_declaration_on_file: residentialStatus === "non_resident" ? noPeDeclaration : false,
-          no_pe_declaration_on:
-            residentialStatus === "non_resident" && noPeDeclaration ? noPeDeclarationOn || undefined : undefined,
-          no_pe_declaration_ref:
-            residentialStatus === "non_resident" && noPeDeclaration ? noPeDeclarationRef.trim() || undefined : undefined,
-          // Read through the exact percentage parser, like every other rate on
-          // this form — "10" is 1000 bps and a blank field is genuinely unset,
-          // which is what makes the backend refuse rather than assume zero.
-          treaty_rate_bps:
-            residentialStatus === "non_resident" && treatyRate.trim()
-              ? bpsFromPercentInput(treatyRate) ?? undefined
-              : undefined,
-          // tds_rate_bps is deliberately NOT written any more — see the form.
-          // The column stays for now so the reads elsewhere keep type-checking;
-          // it is dead data either way, since no backend path reads it.
-          tds_rate_bps: 0,
-          opening_balance_paise: opening,
-        },
-        token
-      );
-      if (!result.success) throw new Error(result.error ?? "Failed to add vendor");
-      // A vendor already holding this GSTIN (or, with no GSTIN, this PAN) was
-      // RETURNED rather than created — nothing typed here was saved. This used
-      // to fall through to "Vendor added." (sweep-client-purchases-04). The
-      // form stays open with what was typed, and the sentence is the server's.
-      const dup = result.data as { duplicate?: boolean; duplicate_reason?: string } | null;
-      if (dup?.duplicate) {
-        setMsg({ type: "err", text: dup.duplicate_reason
-          ?? "Not added — a vendor with this GSTIN or PAN already exists for this client. Nothing was changed." });
-        return;
+      // apex-sales-purchases-05: the same fields, for both CREATE (POST, with
+      // client_id) and EDIT (PATCH /api/vendors/{id}, no client_id — the
+      // accepted shape is models.parties.VendorUpdateIn, which is this same
+      // set of optional fields). One payload shape means Edit can never drift
+      // from what New Vendor already saves.
+      const fields = {
+        name: name.trim(),
+        gstin: cleanGstin,
+        state_code: stateCode,
+        pan: pan.trim().toUpperCase() || undefined,
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        tds_applicable: tdsApplicable,
+        tds_section: tdsApplicable ? tdsSection : undefined,
+        residential_status: residentialStatus || undefined,
+        gst_registration_status: gstRegistrationStatus || undefined,
+        // Only meaningful for a non-resident; 26Q has no field for either.
+        country_of_residence:
+          residentialStatus === "non_resident" ? countryOfResidence.trim().toUpperCase() || undefined : undefined,
+        tax_identification_number:
+          residentialStatus === "non_resident" ? taxIdentificationNumber.trim() || undefined : undefined,
+        section_195_nature_of_income:
+          residentialStatus === "non_resident" ? natureOfIncome || undefined : undefined,
+        non_resident_payee_class:
+          residentialStatus === "non_resident" ? payeeClass || undefined : undefined,
+        trc_on_file: residentialStatus === "non_resident" ? trcOnFile : false,
+        form_10f_on_file: residentialStatus === "non_resident" ? form10fOnFile : false,
+        no_pe_declaration_on_file: residentialStatus === "non_resident" ? noPeDeclaration : false,
+        no_pe_declaration_on:
+          residentialStatus === "non_resident" && noPeDeclaration ? noPeDeclarationOn || undefined : undefined,
+        no_pe_declaration_ref:
+          residentialStatus === "non_resident" && noPeDeclaration ? noPeDeclarationRef.trim() || undefined : undefined,
+        // Read through the exact percentage parser, like every other rate on
+        // this form — "10" is 1000 bps and a blank field is genuinely unset,
+        // which is what makes the backend refuse rather than assume zero.
+        treaty_rate_bps:
+          residentialStatus === "non_resident" && treatyRate.trim()
+            ? bpsFromPercentInput(treatyRate) ?? undefined
+            : undefined,
+        // tds_rate_bps is deliberately NOT written any more — see the form.
+        // The column stays for now so the reads elsewhere keep type-checking;
+        // it is dead data either way, since no backend path reads it.
+        tds_rate_bps: 0,
+        opening_balance_paise: opening,
+      };
+
+      const result = editingVendor
+        ? await apiCall(`/api/vendors/${editingVendor.id}`, "PATCH", fields, token)
+        : await apiCall("/api/vendors/", "POST", { client_id: clientId, ...fields }, token);
+      if (!result.success) throw new Error(result.error ?? (editingVendor ? "Failed to save vendor" : "Failed to add vendor"));
+      if (!editingVendor) {
+        // A vendor already holding this GSTIN (or, with no GSTIN, this PAN)
+        // was RETURNED rather than created — nothing typed here was saved.
+        // This used to fall through to "Vendor added." (sweep-client-
+        // purchases-04). The form stays open with what was typed, and the
+        // sentence is the server's. PATCH has no such duplicate branch: it is
+        // editing an already-unique row, not minting a new one.
+        const dup = result.data as { duplicate?: boolean; duplicate_reason?: string } | null;
+        if (dup?.duplicate) {
+          setMsg({ type: "err", text: dup.duplicate_reason
+            ?? "Not added — a vendor with this GSTIN or PAN already exists for this client. Nothing was changed." });
+          return;
+        }
+        // PUR-32. The vendor WAS created; this names what it resembles, and is
+        // deliberately not a msg of type "err" — the save succeeded.
+        setResemblances(
+          (result.data as { possible_duplicates?: PossibleDuplicate[] })?.possible_duplicates ?? []);
       }
-      // PUR-32. The vendor WAS created; this names what it resembles, and is
-      // deliberately not a msg of type "err" — the save succeeded.
-      setResemblances(
-        (result.data as { possible_duplicates?: PossibleDuplicate[] })?.possible_duplicates ?? []);
-      setMsg({ type: "ok", text: "Vendor added." });
+      setMsg({ type: "ok", text: editingVendor ? "Vendor updated." : "Vendor added." });
       setShowForm(false);
+      setEditingVendor(null);
       setName(""); setGstin(""); setPan(""); setEmail(""); setPhone("");
       setTdsApplicable(false); setTdsSection("194C"); setTdsRate("2"); setOpeningBalance("");
       setResidentialStatus(""); setCountryOfResidence(""); setTaxIdentificationNumber("");
@@ -1932,6 +2047,14 @@ function Vendors({ clientId }: { clientId: string }) {
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
               style={{ top: menu.top, left: menu.left }}
             >
+              {/* apex-sales-purchases-05: the only way back into a vendor's
+                  own record — the create form was drop-only, so a GSTIN
+                  typo, a §195 residency status or a TDS section could never
+                  be corrected from this tab. */}
+              <button onClick={() => { setMenu(null); openEdit(v); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
+                <Pencil size={13} /> Edit
+              </button>
               {v.is_active ? (
                 <button onClick={() => { setMenu(null); setDeactivateTarget(v); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
@@ -1969,8 +2092,8 @@ function Vendors({ clientId }: { clientId: string }) {
       {showForm && (
         <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-ps-ink">New Vendor</h3>
-            <button onClick={() => setShowForm(false)}><X size={16} className="text-ps-hint" /></button>
+            <h3 className="text-sm font-semibold text-ps-ink">{editingVendor ? `Edit ${editingVendor.name}` : "New Vendor"}</h3>
+            <button onClick={() => { setShowForm(false); setEditingVendor(null); }}><X size={16} className="text-ps-hint" /></button>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -2257,8 +2380,10 @@ function Vendors({ clientId }: { clientId: string }) {
           </div>
 
           <div className="flex gap-3 justify-end">
-            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-            <button onClick={handleSave} disabled={actionInFlight} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">{saving ? "Saving…" : "Add Vendor"}</button>
+            <button onClick={() => { setShowForm(false); setEditingVendor(null); }} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+            <button onClick={handleSave} disabled={actionInFlight} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+              {saving ? "Saving…" : editingVendor ? "Save Changes" : "Add Vendor"}
+            </button>
           </div>
         </div>
       )}
@@ -2292,7 +2417,18 @@ function Vendors({ clientId }: { clientId: string }) {
         toolbarExtra={
           <>
             <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"><Upload size={12} /> Import</button>
-            <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"><Plus size={12} /> Add Vendor</button>
+            <button
+              onClick={() => setShowForm((s) => {
+                // A stale edit target must not survive into a fresh Add — the
+                // next Save would PATCH the vendor this button was clicked
+                // from instead of creating a new one.
+                if (!s) setEditingVendor(null);
+                return !s;
+              })}
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
+            >
+              <Plus size={12} /> Add Vendor
+            </button>
           </>
         }
       />
@@ -3035,11 +3171,11 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
   const router = useRouter();
   const [debitNotes, setDebitNotes] = useState<DebitNoteRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
-  // Client's own Product/Service catalogue + full (not FY-scoped) bill list,
-  // needed only for the CSV import's product_service resolver and bill_no
-  // linking/is_interstate derivation — same role as PurchaseBills' own fetch.
+  // Client's own Product/Service catalogue, needed only for the CSV import's
+  // product_service resolver. apex-sales-purchases-10: the bill register
+  // itself is resolved lazily in handleImport, not loaded here — see
+  // lookupOriginalBills.
   const [services, setServices] = useState<ServiceCatalogueItem[]>([]);
-  const [originalBills, setOriginalBills] = useState<OriginalDocRef[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [loading, setLoading] = useState(true);
   // See PurchaseBills.loadFailed (audit M17): a failed fetch must show a retryable
@@ -3057,7 +3193,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
     try {
-      const [dnRes, vendorsRes, servicesRes, billsRes] = await Promise.all([
+      const [dnRes, vendorsRes, servicesRes] = await Promise.all([
         // debit_notes.vendor_id has no FK to vendors — resolve the name via the
         // vendors list below instead of a PostgREST embed.
         selectAll(() => supabase
@@ -3082,12 +3218,6 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
           .eq("is_active", true)
           .order("name")
           .order("id")),
-        selectAll(() => supabase
-          .from("purchase_bills")
-          .select("id, bill_no, vendor_id, is_interstate")
-          .eq("client_id", clientId)
-          .order("bill_date", { ascending: false })
-          .order("id")),
       ]);
       // M17: a failed debit-notes fetch (thrown or non-null PostgREST error) must
       // surface as retryable, not read as an empty FY (identical to having none).
@@ -3101,11 +3231,6 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
       setDebitNotes(rows);
       setVendors(vendorList);
       setServices((servicesRes.data as ServiceCatalogueItem[]) ?? []);
-      setOriginalBills(
-        ((billsRes.data ?? []) as Array<{ id: string; bill_no: string | null; vendor_id: string; is_interstate: boolean }>)
-          .filter((r) => !!r.bill_no)
-          .map((r) => ({ id: r.id, no: r.bill_no as string, partyId: r.vendor_id, isInterstate: r.is_interstate }))
-      );
     } catch {
       setDebitNotes([]);
       setLoadFailed(true);
@@ -3126,6 +3251,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
       id: s.id, name: s.name, description: s.description, hsn_sac: s.hsn_sac,
       gst_rate_bps: s.gst_rate_bps, purchase_price_paise: s.purchase_price_paise, unit: s.unit,
     }));
+    const originalBills = await lookupOriginalBills(clientId, rows);
     const { notes, errors } = buildPurchaseDebitNotes(rows, clientId, vendorRefs, originalBills, serviceRefs);
     if (notes.length === 0) return { imported: 0, errors };
     const token = await getAuthToken();
@@ -3515,9 +3641,10 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
   const router = useRouter();
   const [creditNotes, setCreditNotes] = useState<PurchaseCreditNoteRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
-  // See DebitNotes' identical fetch above — same import-only purpose.
+  // See DebitNotes' identical fetch above — same import-only purpose. The
+  // bill register itself is resolved lazily in handleImport, not loaded here
+  // — see lookupOriginalBills.
   const [services, setServices] = useState<ServiceCatalogueItem[]>([]);
-  const [originalBills, setOriginalBills] = useState<OriginalDocRef[]>([]);
   const [showImport, setShowImport] = useState(false);
   const [loading, setLoading] = useState(true);
   // See PurchaseBills.loadFailed (audit M17): a failed fetch must show a retryable
@@ -3535,7 +3662,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
     const supabase = getSupabaseClient();
     const { start, end } = fyRange(financialYear);
     try {
-      const [pcnRes, vendorsRes, servicesRes, billsRes] = await Promise.all([
+      const [pcnRes, vendorsRes, servicesRes] = await Promise.all([
         selectAll(() => supabase
           .from("purchase_credit_notes")
           .select("*, purchase_bills(bill_no, our_reference)")
@@ -3558,12 +3685,6 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
           .eq("is_active", true)
           .order("name")
           .order("id")),
-        selectAll(() => supabase
-          .from("purchase_bills")
-          .select("id, bill_no, vendor_id, is_interstate")
-          .eq("client_id", clientId)
-          .order("bill_date", { ascending: false })
-          .order("id")),
       ]);
       // M17: a failed credit-notes fetch (thrown or non-null PostgREST error) must
       // surface as retryable, not read as an empty FY (identical to having none).
@@ -3577,11 +3698,6 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
       setCreditNotes(rows);
       setVendors(vendorList);
       setServices((servicesRes.data as ServiceCatalogueItem[]) ?? []);
-      setOriginalBills(
-        ((billsRes.data ?? []) as Array<{ id: string; bill_no: string | null; vendor_id: string; is_interstate: boolean }>)
-          .filter((r) => !!r.bill_no)
-          .map((r) => ({ id: r.id, no: r.bill_no as string, partyId: r.vendor_id, isInterstate: r.is_interstate }))
-      );
     } catch {
       setCreditNotes([]);
       setLoadFailed(true);
@@ -3601,6 +3717,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
       id: s.id, name: s.name, description: s.description, hsn_sac: s.hsn_sac,
       gst_rate_bps: s.gst_rate_bps, purchase_price_paise: s.purchase_price_paise, unit: s.unit,
     }));
+    const originalBills = await lookupOriginalBills(clientId, rows);
     const { notes, errors } = buildPurchaseCreditNotes(rows, clientId, vendorRefs, originalBills, serviceRefs);
     if (notes.length === 0) return { imported: 0, errors };
     const token = await getAuthToken();

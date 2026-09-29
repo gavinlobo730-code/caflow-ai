@@ -152,13 +152,42 @@ def test_edli_and_admin_come_off_the_run_not_the_file(monkeypatch):
 
 def test_a_draft_run_is_refused_with_the_reason(monkeypatch):
     """The returns report contributions actually made, and a draft run's
-    figures can still change."""
+    figures can still change.
+
+    apex-payroll-yearend-08: this used to raise HTTPException(409) straight
+    through — a bare FastAPI {"detail": ...} body that breaks the frontend's
+    normal `res.success` / `res.error` envelope check (CLAUDE.md: "All API
+    responses must follow: { success: bool, data: any, error: string | null
+    }"). "Not finalised yet" is an expected business-rule refusal a CA can
+    act on, not a server error, so it now comes back as an ordinary 200 with
+    `success: false` — the same shape `pay.run_handoff` returns for every
+    other answer."""
     _setup(monkeypatch, status="draft")
+    res = pay.run_handoff("RUN-1", CALLER)
+    assert res["success"] is False
+    assert res["data"] is None
+    assert "not finalised" in res["error"]
+    assert "statutory return" in res["error"]
+
+
+def test_a_review_run_is_refused_the_same_way(monkeypatch):
+    """'review' is unreleased too (domain.payroll.run_status.PAYROLL_UNRELEASED)
+    and goes through the identical 409-caught-and-enveloped path."""
+    _setup(monkeypatch, status="review")
+    res = pay.run_handoff("RUN-1", CALLER)
+    assert res["success"] is False
+    assert res["data"] is None
+    assert "not finalised" in res["error"]
+
+
+def test_a_run_that_does_not_exist_is_not_enveloped(monkeypatch):
+    """Only the 409 'not finalised yet' branch is caught and enveloped — a run
+    id nobody recognises is still a real, raised 404, not a business state the
+    caller can act on by finalising something."""
+    _setup(monkeypatch)
     with pytest.raises(HTTPException) as e:
-        pay.run_handoff("RUN-1", CALLER)
-    assert e.value.status_code == 409
-    assert "not finalised" in e.value.detail
-    assert "statutory return" in e.value.detail
+        pay.run_handoff("NO-SUCH-RUN", CALLER)
+    assert e.value.status_code == 404
 
 
 def test_a_run_of_another_firm_is_not_found(monkeypatch):

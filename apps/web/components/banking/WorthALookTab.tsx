@@ -122,7 +122,7 @@ export function WorthALookTab({ clientId }: { clientId: string }) {
 
           <p className="text-xs text-ps-label">
             {data.reviewed_count === 0
-              ? "No posted lines in this period."
+              ? "No posted lines in this period — try a wider or different date range above."
               : <>
                   {data.flagged.length === 0
                     ? `Nothing stood out in ${data.reviewed_count} posted line${data.reviewed_count === 1 ? "" : "s"}.`

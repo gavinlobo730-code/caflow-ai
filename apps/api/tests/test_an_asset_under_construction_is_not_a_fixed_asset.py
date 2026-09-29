@@ -177,6 +177,22 @@ def test_over_the_approved_cost_is_enough_on_its_own():
     assert "overdue" not in out.rows[0]["reason"]
 
 
+def test_the_over_cost_reason_is_in_rupees_not_raw_paise():
+    """apex-sales-purchases-02: the reason interpolated raw integer paise
+    straight into the sentence ("exceeded the approved 500000 paise"), which
+    reaches the CWIP completion schedule screen verbatim. It must read in
+    rupees, grouped the Indian way, and never carry the literal word
+    "paise"."""
+    over = _project(approved_completion_date=date(2027, 3, 31),
+                    approved_cost_paise=5_00_000,
+                    expected_completion_date=date(2026, 12, 31))
+    out = cwip.completion_schedule(
+        [over], [_add(date(2025, 1, 1), 9_00_000)], as_of=AS_OF)
+    reason = out.rows[0]["reason"]
+    assert "paise" not in reason
+    assert "₹5,000.00" in reason
+
+
 def test_a_project_with_no_recorded_approval_is_NAMED_never_assumed_compliant():
     """Both directions of the guess are wrong: defaulting the date to the start
     reports every project overdue on day two, and defaulting the cost to what

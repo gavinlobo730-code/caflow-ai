@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, Plus, X, Activity } from "lucide-react";
+import { RefreshCw, Plus, X, Activity, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -45,6 +45,15 @@ interface HealthScore {
   last_calculated_at: string;
   is_critical: boolean;
   is_at_risk: boolean;
+  // apex-overview-practice-04: this column was already coming back on every
+  // `select("*")` above — the row just had nowhere in the type or the markup
+  // to land, so a capped score (e.g. gstr3b_overdue_2months) rendered next to
+  // an Overrides card reading "No overrides recorded", which is misleading:
+  // the cap IS an override, just not one a CA recorded by hand. See
+  // apps/web/app/health/[client_id]/HealthDetailClient.tsx, which already
+  // renders this pair.
+  hard_override?: string | null;
+  hard_override_reason?: string | null;
   [column: string]: unknown;
 }
 
@@ -365,6 +374,23 @@ export default function ClientHealthPage() {
 
       {error && <Callout tone="problem">{error}</Callout>}
 
+      {/* Hard override banner — the automatic cap, not a recorded override.
+          Ported from apps/web/app/health/[client_id]/HealthDetailClient.tsx
+          so this client-scoped copy stops showing a capped score right next
+          to "Overrides (0) — No overrides recorded" with nothing explaining
+          why the number is what it is. */}
+      {score.hard_override && (
+        <div className="flex items-start gap-3 bg-state-problem-surface border border-red-300 rounded-lg px-5 py-3">
+          <AlertTriangle size={16} className="text-red-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-state-problem">Critical Override Active</p>
+            <p className="text-xs text-red-600 mt-0.5">
+              {score.hard_override_reason ?? "Hard override forcing Critical status regardless of score."}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Score hero */}
       <Card className="bg-white border border-gray-200">
         <CardContent className="p-6">
@@ -495,7 +521,13 @@ export default function ClientHealthPage() {
         <Card className="bg-white border border-gray-200">
           <CardContent className="p-0">
             {overrides.length === 0 ? (
-              <div className="py-8 text-center"><p className="text-sm text-gray-500">No overrides recorded</p></div>
+              <div className="py-8 text-center">
+                <p className="text-sm text-gray-500">
+                  {score.hard_override
+                    ? "No overrides recorded by hand — an automatic override is currently in force (see above)."
+                    : "No overrides recorded"}
+                </p>
+              </div>
             ) : (
               <table className="w-full text-sm">
                 <thead>

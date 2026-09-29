@@ -23,6 +23,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from services import pdf_style
 
+from domain.payroll.run_status import PAYROLL_RELEASED
 from domain.reporting.amount_words import amount_in_words
 from domain.reporting.pdf_money import rupees_paise
 from services.pdf_page_furniture import numbered
@@ -284,8 +285,26 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
     small = ParagraphStyle("small", parent=styles["Normal"], fontSize=8,
                            textColor=pdf_style.C_LABEL)
     bold = ParagraphStyle("bold", parent=styles["Normal"], fontName="Helvetica-Bold")
+    # THE SAME VISUAL MECHANISM `services/year_end_pdf_service.py` USES for its
+    # own draft cover page — apex-payroll-yearend-08. `run` carries `status`,
+    # and this function never read it, so a DRAFT run's payslip was
+    # indistinguishable from a finalised one — nothing here told a CA (or an
+    # employee shown it early) that PAY-04 applies: a draft run has deducted
+    # nothing, so every figure on the page can still change before it is real.
+    # Not a second draft-marking style: same string, same size, same 35%-alpha
+    # red, same centred placement `_cover_page` uses.
+    watermark_style = ParagraphStyle(
+        "PayslipDraftWatermark", parent=styles["Normal"],
+        fontSize=28, fontName="Helvetica-Bold",
+        textColor=colors.Color(0.8, 0.1, 0.1, alpha=0.35),
+        alignment=1,
+    )
 
     story = []
+
+    if (run or {}).get("status") not in PAYROLL_RELEASED:
+        story.append(Paragraph("DRAFT — NOT FOR DISTRIBUTION", watermark_style))
+        story.append(Spacer(1, 4 * mm))
 
     # The employer's own registered name, in the order the ledger prefers it —
     # the same order the customer statement uses, so one client is named the
@@ -320,7 +339,7 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
     if reg_bits:
         story.append(Paragraph(" &nbsp;|&nbsp; ".join(reg_bits), small))
     story.append(Paragraph(f"Payslip for {period_label}", small))
-    story.append(Spacer(1, 6 * mm))
+    story.append(Spacer(1, 4 * mm))
 
     # ─── Employee details ───────────────────────────────────────────────────
     emp_lines = [f"<b>{employee.get('name', 'Employee')}</b>"]
@@ -365,7 +384,7 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
         ("BOTTOMPADDING", (0, 0), (-1, 0), 10),
     ]))
     story.append(header)
-    story.append(Spacer(1, 6 * mm))
+    story.append(Spacer(1, 4 * mm))
 
     # ─── Earnings ───────────────────────────────────────────────────────────
     # IT Act §17: components constituting 'salary'. Only render lines present
@@ -453,8 +472,8 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
             "Employer contributions are paid by the employer in addition to "
             "the gross salary above. They are not deducted from your pay.",
             small))
-        story.append(Spacer(1, 4 * mm))
-    story.append(Spacer(1, 2 * mm))
+        story.append(Spacer(1, 2 * mm))
+    story.append(Spacer(1, 1 * mm))
 
     # ─── Net Pay ────────────────────────────────────────────────────────────
     # Net is the authoritative stored value (gross - deductions), integer paise.
@@ -478,7 +497,7 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
     # and a photocopy can lose a comma.
     story.append(Paragraph(f"<b>In words:</b> {amount_in_words(net_paise)}",
                            styles["Normal"]))
-    story.append(Spacer(1, 6 * mm))
+    story.append(Spacer(1, 4 * mm))
 
     # ─── Year to date ───────────────────────────────────────────────────────
     # The FINANCIAL year to date — April to this month — because that is the
@@ -507,9 +526,23 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ]))
         story.append(ytd_table)
-        story.append(Spacer(1, 6 * mm))
+        story.append(Spacer(1, 4 * mm))
 
-    story.append(Spacer(1, 4 * mm))
+    # apex-payroll-yearend-08: this closing note used to sit behind a
+    # Spacer(1, 4 * mm) with no allowance for the fact that it is the LAST
+    # flowable. For a representative slip (employer contributions shown, a
+    # YTD block present) everything up to and including the YTD table filled
+    # page 1 almost exactly, so this one sentence — and only this sentence —
+    # spilled onto a fresh page 2 by itself: "Page 1 of 2 / Page 2 of 2" for a
+    # document that is otherwise one page. The spacers on the trailing run
+    # from the employer-contributions note through here are trimmed (this one
+    # included) rather than wrapping the note in a KeepTogether, which would
+    # not have reduced the total height at all — it would only have moved
+    # MORE content (Net Pay, "in words", the YTD table) onto the second page
+    # with it, not fewer pages. A slip with every optional line populated can
+    # still run to two pages; when it does, the disclaimer is no longer alone
+    # on the second one (test_the_closing_disclaimer_is_never_the_only_thing_on_its_page).
+    story.append(Spacer(1, 1 * mm))
     story.append(Paragraph(
         "This is a computer-generated payslip and does not require a signature. "
         "Amounts are stated in Indian Rupees. For queries, contact your employer.",
@@ -537,7 +570,12 @@ def get_payslip_pdf(slip_id: str, firm_id: Optional[str]) -> tuple[bytes, str]:
         db.table("payroll_slips")
         .select("*, payroll_employees(name, pan, designation, department, "
                 "uan, esi_number, bank_account_no, bank_ifsc), "
-                "payroll_runs(month, firm_id, client_id)")
+                # `status` is read here now (apex-payroll-yearend-08) — without
+                # it `build_payslip_pdf`'s own `run.get("status")` always read
+                # None, which is not in PAYROLL_RELEASED, so this single-slip
+                # download path would have watermarked EVERY payslip as a
+                # draft, finalised ones included.
+                "payroll_runs(month, firm_id, client_id, status)")
         .eq("id", slip_id)
         .maybe_single()
         .execute()

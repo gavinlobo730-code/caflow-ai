@@ -80,6 +80,19 @@ const STATUS_COLORS: Record<string, string> = {
   draft: "bg-ps-muted text-ps-body",
 };
 
+// The raw column value ("ca_approved") rendered unformatted where
+// STATUS_COLORS above is used to badge it. A missing key falls back to the
+// raw value itself — better than a blank badge for a status this map has not
+// been taught yet.
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Pending",
+  deposited: "Deposited",
+  prepared: "Prepared",
+  ca_approved: "CA Approved",
+  filed: "Filed",
+  draft: "Draft",
+};
+
 const KYC_COLORS: Record<string, string> = {
   active: "bg-state-ready-surface text-state-ready",
   pending: "bg-state-attention-surface text-state-attention",
@@ -339,7 +352,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2">{r.quarter as string}</td>
                 <td className="px-3 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status as string] ?? ""}`}>
-                    {r.status as string}
+                    {STATUS_LABEL[r.status as string] ?? (r.status as string)}
                   </span>
                 </td>
               </tr>
@@ -727,13 +740,22 @@ function ReturnsTab({ clientId }: { clientId: string }) {
           <tbody>
             {rows.map((r) => (
               <tr key={r.id as string} className="border-b hover:bg-ps-bg">
-                <td className="px-3 py-2 font-medium">{r.return_type as string}</td>
+                {/* statement_form is the Act's own vocabulary translated at
+                    the boundary (e.g. "Form 140 (26Q)" for an FY2026-27+
+                    period under the Income-tax Act 2025 renumbering) —
+                    return_type stays the stored routing key underneath and is
+                    never itself what a CA should read off this screen. Falls
+                    back to the raw key only for a row saved before this field
+                    existed on the response. */}
+                <td className="px-3 py-2 font-medium">
+                  {(r.statement_form as string) ?? (r.return_type as string)}
+                </td>
                 <td className="px-3 py-2">{r.quarter as string}</td>
                 <td className="px-3 py-2">{r.financial_year as string}</td>
                 <td className="px-3 py-2 text-xs">{r.due_date as string ?? "—"}</td>
                 <td className="px-3 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status as string] ?? ""}`}>
-                    {r.status as string}
+                    {STATUS_LABEL[r.status as string] ?? (r.status as string)}
                   </span>
                 </td>
                 <td className="px-3 py-2 space-x-2">

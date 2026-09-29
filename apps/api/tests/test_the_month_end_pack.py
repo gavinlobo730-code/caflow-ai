@@ -235,6 +235,74 @@ def test_a_month_with_no_run_is_none_not_zeroes(db):
                                          current_user=USER)["data"] is None
 
 
+# ─── the PF admin reconciling line (apex-payroll-yearend-10) ────────────────
+#
+# `total_pf_admin_paise` on the run is the FLOORED figure — the ₹500-per-
+# establishment minimum, settled once at slip-generation time
+# (domain/payroll/statutory.admin_charge_for_establishment) — while every
+# individual payslip still carries its own true, unfloored 0.5%. Nothing
+# apportioned the top-up back onto a slip, so the salary register and the
+# payslip PDF (both per-slip) never footed to this screen's challan figure for
+# a client small enough that the floor actually bit.
+
+def test_the_reconciling_line_names_the_floor_that_was_applied(db):
+    """Two employees at ₹60 each (₹120 total) against the ₹500 floor —
+    `total_pf_admin_paise` was seeded at ₹500 (50,000 paise) for exactly this
+    client, so the per-slip sum must come out well short of it."""
+    db.seed("payroll_slips", {"id": "S1", "run_id": "RUN-1", "firm_id": FIRM,
+                             "client_id": "CLI", "employee_id": "E1",
+                             "pf_admin_paise": 6_000})
+    db.seed("payroll_slips", {"id": "S2", "run_id": "RUN-1", "firm_id": FIRM,
+                             "client_id": "CLI", "employee_id": "E2",
+                             "pf_admin_paise": 6_000})
+    out = payroll_mod.statutory_summary(client_id="CLI", month="2026-08",
+                                        current_user=USER)["data"]
+    assert out["pf_admin_per_slip_paise"] == 12_000
+    assert out["pf_admin_paise"] == 50_000                 # the challan figure, unchanged
+    assert out["pf_admin_topup_paise"] == 38_000            # 50,000 - 12,000
+    assert "₹120.00" in out["pf_admin_reconciliation"]
+    assert "₹380.00" in out["pf_admin_reconciliation"]
+    assert "₹500.00" in out["pf_admin_reconciliation"]
+    assert "statutory minimum top-up" in out["pf_admin_reconciliation"]
+
+
+def test_no_reconciling_topup_is_named_when_the_floor_never_bit(db):
+    """A large-enough client whose 0.5% already clears ₹500 has nothing for the
+    floor to add — the sentence must not invent a top-up of zero."""
+    for r in db.rows("payroll_runs"):
+        r["total_pf_admin_paise"] = 20_000
+    db.seed("payroll_slips", {"id": "S1", "run_id": "RUN-1", "firm_id": FIRM,
+                             "client_id": "CLI", "employee_id": "E1",
+                             "pf_admin_paise": 10_000})
+    db.seed("payroll_slips", {"id": "S2", "run_id": "RUN-1", "firm_id": FIRM,
+                             "client_id": "CLI", "employee_id": "E2",
+                             "pf_admin_paise": 10_000})
+    out = payroll_mod.statutory_summary(client_id="CLI", month="2026-08",
+                                        current_user=USER)["data"]
+    assert out["pf_admin_per_slip_paise"] == 20_000
+    assert out["pf_admin_topup_paise"] == 0
+    assert "statutory minimum top-up" not in out["pf_admin_reconciliation"]
+    assert out["pf_admin_reconciliation"] == (
+        "PF Admin (0.5%, per employee) ₹200.00 = ₹200.00 challan total")
+
+
+def test_the_per_slip_sum_is_bounded_by_this_runs_own_slips(db):
+    """A slip belonging to a DIFFERENT run must not leak into this run's
+    reconciliation — the filter is on run_id, not on client_id alone."""
+    db.seed("payroll_runs", {
+        "id": "RUN-OTHER", "firm_id": FIRM, "client_id": "CLI", "month": "2026-07",
+        "status": "finalized", "total_pf_admin_paise": 50_000})
+    db.seed("payroll_slips", {"id": "S-OTHER", "run_id": "RUN-OTHER",
+                             "firm_id": FIRM, "client_id": "CLI",
+                             "employee_id": "E1", "pf_admin_paise": 999_999})
+    db.seed("payroll_slips", {"id": "S1", "run_id": "RUN-1", "firm_id": FIRM,
+                             "client_id": "CLI", "employee_id": "E1",
+                             "pf_admin_paise": 7_500})
+    out = payroll_mod.statutory_summary(client_id="CLI", month="2026-08",
+                                        current_user=USER)["data"]
+    assert out["pf_admin_per_slip_paise"] == 7_500
+
+
 # ─── 4. The headers a browser is allowed to read ─────────────────────────────
 #
 # A fourth thing was wrong, and it was invisible from the server side because

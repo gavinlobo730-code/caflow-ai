@@ -149,6 +149,38 @@ def test_the_catalogue_carries_what_the_engine_cannot_see():
     assert all(len(s) >= 40 for s in not_checked)
 
 
+def test_the_other_checks_sentence_counts_the_live_catalogue_not_a_memory():
+    """`ledger_anomalies.NOT_CHECKED` used to name the engine's other checks as
+    a literal — "the nine other checks" — and it went stale exactly once
+    without anybody having to touch it: four checks were added elsewhere and
+    the sentence never learned about them. `check_catalogue()` fills the count
+    in at read time, from the same dict the sixteen chips come from, so it
+    cannot describe a smaller engine than the one actually running.
+
+    NEGATIVE CONTROL: this is exactly what broke before — a hardcoded "nine"
+    stayed correct only for as long as nobody added a check. Asserting the
+    figure ties to `len(CHECK_CATALOGUE)` (rather than asserting the literal
+    13) is what keeps this test from going stale the same way: it fails
+    against the OLD hardcoded text (which the assertion for "9" below pins),
+    and it keeps passing as the catalogue grows, which the old sentence could
+    not."""
+    other_checks = len(rs.CHECK_CATALOGUE) - len(rs.HEURISTIC_CHECKS)
+    # Sixteen checks today, three of them this module's own heuristics — so
+    # thirteen "other" ones. If this fails because the catalogue grew, that is
+    # the fix working: the sentence must grow with it.
+    assert other_checks == 13
+
+    not_checked = rs.check_catalogue()["not_checked"]
+    other_checks_sentence = next(
+        s for s in not_checked if "cover the sub-ledgers" in s)
+    assert f"other {other_checks} checks" in other_checks_sentence
+    # The bug this test exists to catch: a number that does not move with the
+    # catalogue. Nine was right once and is not right now.
+    assert "nine other checks" not in other_checks_sentence
+    assert "{other_checks}" not in other_checks_sentence, (
+        "the template was served unformatted")
+
+
 def test_the_fixed_asset_vocabulary_matches_its_own_source():
     """`integrity.ALL_KINDS` is a DECLARATION and could drift from the module it
     declares. The kinds are read back out of that module's AST — every string

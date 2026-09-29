@@ -1,8 +1,9 @@
 "use client";
 
-import { Fragment, useEffect, useState, useCallback } from "react";
+import { Fragment, useEffect, useState, useCallback, useRef } from "react";
 import { Plus, Loader2, FileText, ChevronRight, AlertTriangle, CheckCircle } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { useClientEntityType } from "@/lib/clients/useClientEntityType";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
@@ -61,6 +62,22 @@ const STATUS_COLOR: Record<string, string> = {
 // this is the fallback for the window where the frontend has redeployed ahead
 // of the backend, in the same shape as the Schedule III caption fallback.
 const ITR_FORMS_FALLBACK = ["ITR-1", "ITR-2", "ITR-3", "ITR-4", "ITR-5", "ITR-6", "ITR-7"];
+
+// The default FORM for a new filing, from the client's own entity type —
+// resolved through the SAME `GET /api/income-tax/assessee-kind` call the
+// sibling tax/computation page already makes (domain/income_tax/assessee.py's
+// AssesseeKind is the only entity-type -> tax-basis mapping this codebase
+// holds), rather than a hardcoded "ITR-6" for every entity. A Proprietorship
+// IS an individual in tax law (see that module's own docstring) and most
+// often has business income here, so ITR-3 is the safer default over the
+// presumptive-only ITR-4 — either way this is a STARTING point the CA can
+// still change in the picker below, never a computed answer.
+const FORM_BY_ASSESSEE_KIND: Record<string, string> = {
+  individual: "ITR-3",
+  firm: "ITR-5",
+  llp: "ITR-5",
+  domestic_company: "ITR-6",
+};
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
 // 1 April with nothing saying so. `financialYearChoicesAround` is the one
@@ -167,13 +184,20 @@ export default function ITRFilingPage() {
   const [sheetLoading, setSheetLoading] = useState(false);
 
   // Create form
-  const [fy, setFy] = useState(FY_OPTIONS[0]);
+  // `financialYearChoicesAround` sorts DESCENDING, so [0] is the CURRENTLY
+  // RUNNING year — not yet over, so no ITR is due for it. [1] is the year that
+  // just closed on 31 March, which is the one a CA opening this screen is
+  // actually about to file for.
+  const [fy, setFy] = useState(FY_OPTIONS[1] ?? FY_OPTIONS[0]);
   // DERIVED, NEVER CHOSEN. IT Act §2(9) with §3: the assessment year is the
   // financial year plus one. Two independent pickers let a filing be created
   // as FY 2025-26 / AY 2027-28 — a row describing two different years — and
   // the server now refuses the mismatch, so the screen must not offer it.
   const ay = assessmentYearFor(fy);
   const [form, setForm] = useState("ITR-6");
+  // The client's own entity type, to default `form` off it below rather than
+  // leaving every client — proprietorship included — on the company form.
+  const entity = useClientEntityType(clientId);
   const [forms, setForms] = useState<string[]>(ITR_FORMS_FALLBACK);
   const [kind, setKind] = useState("original");
   const [kinds, setKinds] = useState<ReturnKind[]>(RETURN_KIND_FALLBACK);
@@ -242,6 +266,28 @@ export default function ITRFilingPage() {
     });
     return () => { cancelled = true; };
   }, []);
+  // Default `form` from the client's own entity type, once — a Partner or
+  // Manager who has already picked a different form in the picker below must
+  // never have their choice overwritten by this resolving late.
+  const formDefaultApplied = useRef(false);
+  useEffect(() => {
+    if (formDefaultApplied.current || !entity.entityType) return;
+    let cancelled = false;
+    apiFetch(`/api/income-tax/assessee-kind?entity_type=${encodeURIComponent(entity.entityType)}`)
+      .then((r) => {
+        if (cancelled || !r?.success) return;
+        const mapped = FORM_BY_ASSESSEE_KIND[r.data?.kind as string];
+        if (mapped) {
+          setForm(mapped);
+          formDefaultApplied.current = true;
+        }
+      })
+      .catch(() => {
+        // The "ITR-6" state default stands — see FORM_BY_ASSESSEE_KIND's own
+        // comment for why a wrong-but-changeable default beats none at all.
+      });
+    return () => { cancelled = true; };
+  }, [entity.entityType]);
   useEffect(() => {
     let cancelled = false;
     apiFetch("/api/itr/forms").then((r) => {

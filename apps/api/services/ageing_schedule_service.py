@@ -165,9 +165,14 @@ def _fetch_unbilled(db, firm_id: str, client_id: str, as_of: date):
     public.schedule_iii_ageing aggregates in the database, and this is the
     fallback for local dev and a failed RPC.
     """
+    # A firm-level account (client_id IS NULL) is allowed on any of the firm's
+    # entries (CLAUDE.md), so a client-only filter here reads its unbilled
+    # marking as absent for every client, silently — the same write-side bug
+    # 862bf886 fixed on `target == "account"` above, on the read this feeds.
     accounts = _paginate_all(lambda: db.table("chart_of_accounts")
             .select("id, account_code, account_name, unbilled_dues_side")
-            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("firm_id", firm_id)
+            .or_(f"client_id.eq.{client_id},client_id.is.null")
             .not_.is_("unbilled_dues_side", "null"))
     marked = [ageing.UnbilledAccount(
                   account_id=a["id"],

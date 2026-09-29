@@ -48,7 +48,7 @@ def test_successful_filing_persists_prn_ack_and_filed_at():
     return_id = _create()
     result = update_return_status(
         return_id,
-        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="123456789012345", ack_number="ACK-001"),
+        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="123456789012345", ack_number="ACK-001", acknowledge_incomplete=True),
         USER,
     )
     assert result["success"] is True
@@ -63,7 +63,7 @@ def test_failed_filing_without_prn_is_rejected():
     return_id = _create()
     result = update_return_status(
         return_id,
-        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn=""),
+        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="", acknowledge_incomplete=True),
         USER,
     )
     assert result["success"] is False
@@ -84,13 +84,13 @@ def test_failed_filing_without_ca_approved_is_rejected():
 def test_retry_after_failure_succeeds_cleanly():
     return_id = _create()
     failed = update_return_status(
-        return_id, UpdateReturnStatusRequest(status="filed", ca_approved=True, prn=""), USER,
+        return_id, UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="", acknowledge_incomplete=True), USER,
     )
     assert failed["success"] is False
 
     succeeded = update_return_status(
         return_id,
-        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="123456789012345", ack_number="ACK-002"),
+        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="123456789012345", ack_number="ACK-002", acknowledge_incomplete=True),
         USER,
     )
     assert succeeded["success"] is True
@@ -102,14 +102,14 @@ def test_duplicate_filing_prevention_never_overwrites_original_prn():
     return_id = _create()
     first = update_return_status(
         return_id,
-        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="FIRST-PRN", ack_number="ACK-FIRST"),
+        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="FIRST-PRN", ack_number="ACK-FIRST", acknowledge_incomplete=True),
         USER,
     )
     assert first["success"] is True
 
     second = update_return_status(
         return_id,
-        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="SECOND-PRN", ack_number="ACK-SECOND"),
+        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="SECOND-PRN", ack_number="ACK-SECOND", acknowledge_incomplete=True),
         USER,
     )
     assert second["success"] is False
@@ -121,7 +121,7 @@ def test_duplicate_filing_prevention_never_overwrites_original_prn():
 def test_ca_approval_persists_approver_and_timestamp():
     return_id = _create()
     result = update_return_status(
-        return_id, UpdateReturnStatusRequest(status="ca_approved", ca_approved=True), USER,
+        return_id, UpdateReturnStatusRequest(status="ca_approved", ca_approved=True, acknowledge_incomplete=True), USER,
     )
     assert result["success"] is True
     assert result["data"]["ca_approved_by"] == USER["id"]

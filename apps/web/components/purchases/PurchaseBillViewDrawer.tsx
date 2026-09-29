@@ -13,7 +13,7 @@
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 import { useState, useEffect, useCallback } from "react";
-import { Pencil, Trash2, CheckCircle, Paperclip, BookOpen, Clock, Loader2, ChevronDown, ChevronUp, AlertCircle, Copy, Ban, CreditCard, FilePlus2 } from "lucide-react";
+import { Pencil, Trash2, CheckCircle, Paperclip, BookOpen, Clock, Loader2, ChevronDown, ChevronUp, AlertCircle, Copy, Ban, CreditCard, FilePlus2, GitCompare } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
 import { Modal as ModalShell } from "@/components/ui/modal";
 import { apiGet, apiCall, getAuthToken, fmt } from "@/lib/invoices/shared";
@@ -170,6 +170,20 @@ export function PurchaseBillViewDrawer({
     }
   }
 
+  /** apex-sales-purchases-03: same window.history.replaceState convention the
+   * page's own tab-sync effect already reacts to (ACC-22's ?tab=&doc=) — a
+   * static export has no real client-side navigation, so this only needs the
+   * address bar and the page's own tab state to agree. ?matchBill= is a
+   * transient hand-off PurchaseCycleTab reads once and strips, not a
+   * durable deep link like ?doc=. */
+  function matchAgainstOrder(billId: string) {
+    const p = new URLSearchParams(window.location.search);
+    p.set("tab", "purchase-cycle");
+    p.set("matchBill", billId);
+    window.history.replaceState(null, "", `${window.location.pathname}?${p.toString()}`);
+    onClose();
+  }
+
   async function handleViewAttachment() {
     if (!bill) return;
     setAttachmentLoading(true);
@@ -299,6 +313,15 @@ export function PurchaseBillViewDrawer({
                   View Attachment
                 </Action>
               )}
+              {/* apex-sales-purchases-03: opens the Purchase Cycle tab's
+                  three-way match with THIS bill already picked, instead of the
+                  CA copying its id and pasting it into a raw text box there.
+                  Reuses the ?tab= deep-link the page already syncs from (ACC-22)
+                  rather than a prop threaded through PurchaseBills/PurchasesPage
+                  — ?matchBill= is read once by PurchaseCycleTab on the way in. */}
+              <Action onClick={() => matchAgainstOrder(bill.id)} icon={<GitCompare size={12} />}>
+                Match against order
+              </Action>
             </div>
           )}
 
