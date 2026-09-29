@@ -29,8 +29,20 @@ const PAGE = path.join(__dirname, "..", "app", "clients", "[id]", "accounting", 
 const src = stripComments(fs.readFileSync(PAGE, "utf8"));
 
 test("the Chart of Accounts tab is handed the same drill-down as Trial Balance", () => {
-  assert.match(src, /<ChartOfAccounts accounts=\{accounts\} loading=\{accsLoading\} error=\{accountsError\} onRefresh=\{loadAccounts\} onDrillDown=\{openDrillDown\} \/>/,
+  // The RULE is that this JSX tag passes onDrillDown={openDrillDown} — not
+  // the exact prop list around it, which ACC-30 legitimately grew (clientId,
+  // for the Add Account feature). A regex pinned to every prop in one order
+  // is a spelling of the rule, not the rule, and breaks on an unrelated,
+  // additive change to the same tag.
+  const tagStart = src.indexOf("<ChartOfAccounts ");
+  assert.ok(tagStart > 0, "ChartOfAccounts is not rendered on the coa tab — has it moved?");
+  const tagEnd = src.indexOf("/>", tagStart);
+  assert.ok(tagEnd > tagStart, "could not find the end of the <ChartOfAccounts .../> tag");
+  const tag = src.slice(tagStart, tagEnd);
+  assert.match(tag, /onDrillDown=\{openDrillDown\}/,
     "the coa tab must receive onDrillDown, the same prop Trial Balance/P&L/Balance Sheet already take");
+  assert.match(tag, /accounts=\{accounts\}/);
+  assert.match(tag, /onRefresh=\{loadAccounts\}/);
 });
 
 test("ChartOfAccounts declares onDrillDown and wires it to a row click", () => {
@@ -40,8 +52,15 @@ test("ChartOfAccounts declares onDrillDown and wires it to a row click", () => {
   assert.ok(end > at, "could not find the end of ChartOfAccounts — has the next section moved?");
   const body = src.slice(at, end);
 
-  assert.match(body, /onDrillDown \}: \{ accounts: Account\[\]; loading: boolean; error\?: string \| null; onRefresh: \(\) => void; onDrillDown: \(accountId: string\) => void \}/,
-    "the component must accept onDrillDown as a required prop, not an optional one silently skipped");
+  // The signature's destructured-props type object may carry other fields
+  // (clientId, added for ACC-30) in any order — only onDrillDown's own
+  // presence and REQUIRED-ness (no `?`) is the rule.
+  assert.match(body, /onDrillDown:\s*\(accountId:\s*string\)\s*=>\s*void/,
+    "the component must accept onDrillDown as a callback, not an optional " +
+    "one silently skipped");
+  assert.doesNotMatch(body, /onDrillDown\?:/,
+    "onDrillDown must be required, not optional — an optional callback can " +
+    "be silently omitted by a caller and the row would render inert");
   assert.match(body, /onRowClick=\{\(a\) => onDrillDown\(a\.id\)\}/,
     "the DataTable must open the ledger drill-down on a row click, the same call TrialBalance makes");
 });

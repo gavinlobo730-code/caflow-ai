@@ -3,7 +3,7 @@
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { changedFields, formFor, type CorrectionForm } from "@/lib/fixedAssets/correction";
 import { request } from "@/lib/api";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, AlertCircle } from "lucide-react";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
@@ -366,9 +366,16 @@ function RegisterTab({ clientId, openDoc }:
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: "Gross Block", value: loadFailed ? "—" : fmt(totalCost), accent: "blue" },
-          { label: "Accumulated Depreciation", value: loadFailed ? "—" : fmt(totalAccum), accent: "amber" },
-          { label: "Net Block (WDV)", value: loadFailed ? "—" : fmt(totalWDV), accent: "green" },
+          // `loading` is checked FIRST and separately from `loadFailed`: on
+          // every navigation to this tab, `assets` starts at `[]` before the
+          // fetch resolves, and reading that as "0 assets, ₹0 Gross Block" is
+          // indistinguishable from a client that genuinely has none — the
+          // register with real assets in it flashed exactly that for however
+          // long the fetch took, with nothing on screen saying it was still
+          // loading.
+          { label: "Gross Block", value: loading ? "…" : loadFailed ? "—" : fmt(totalCost), accent: "blue" },
+          { label: "Accumulated Depreciation", value: loading ? "…" : loadFailed ? "—" : fmt(totalAccum), accent: "amber" },
+          { label: "Net Block (WDV)", value: loading ? "…" : loadFailed ? "—" : fmt(totalWDV), accent: "green" },
         ].map((c) => (
           <div key={c.label} className="bg-white rounded-xl border border-ps-border px-5 py-4">
             <p className="text-2xs text-ps-hint font-medium">{c.label}</p>
@@ -379,7 +386,9 @@ function RegisterTab({ clientId, openDoc }:
 
       {/* Table header */}
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-ps-body">{assets.length} asset{assets.length !== 1 ? "s" : ""}</p>
+        <p className="text-xs font-semibold text-ps-body">
+          {loading ? "Loading…" : `${assets.length} asset${assets.length !== 1 ? "s" : ""}`}
+        </p>
         <div className="flex gap-2">
           <button onClick={load} className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
@@ -524,10 +533,16 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
   const [form, setForm] = useState<CorrectionForm>(() => formFor(asset));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // See AddAssetDrawer's submittingRef below: `disabled={saving}` alone lags
+  // a genuinely back-to-back double dispatch by one render, and a correction
+  // reverses and re-posts a real journal — twice, on the same typo fix, if
+  // nothing guards it.
+  const submittingRef = useRef(false);
 
   const set = (k: keyof CorrectionForm, v: string) => setForm(f => ({ ...f, [k]: v }));
 
   async function save() {
+    if (submittingRef.current) return;
     setError("");
     // Only what the CA actually CHANGED is sent, so the server can tell a
     // rename from a cost correction. Sending the whole form back would put
@@ -538,6 +553,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
     if (!diff.ok) { setError(diff.error); return; }
     const body = diff.body;
 
+    submittingRef.current = true;
     setSaving(true);
     try {
       const j = await request<ApiEnvelope>(`/api/fixed-assets/${asset.id}`, {
@@ -551,6 +567,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not correct the asset.");
     } finally {
+      submittingRef.current = false;
       setSaving(false);
     }
   }
@@ -710,6 +727,17 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   const [vendorBills, setVendorBills] = useState<{ id: string; bill_no: string | null; our_reference: string | null; bill_date: string | null }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // `disabled={saving}` alone is not a submission guard: it only takes effect
+  // once React re-renders and commits the DOM update, which happens AFTER
+  // this handler returns (or suspends at its first await) — not before. Two
+  // click events queued back to back (a stray duplicate dispatch, not a
+  // deliberate double-click) both run before that commit lands, both read
+  // `saving` as it was BEFORE either call, and both reach POST
+  // /api/fixed-assets, which is exactly how one click produced two identical
+  // assets with the full cost each. A ref has no such lag — it is read and
+  // set on the same synchronous tick as the call itself, so the second of two
+  // back-to-back invocations sees it already set and returns immediately.
+  const submittingRef = useRef(false);
 
   // Picking a category (or one of its Schedule II classes) pre-fills BOTH the
   // life and the rate from the same served row — they are one figure and its
@@ -786,6 +814,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   const selectedClass = selected?.classes[form.schedule_ii_class];
 
   async function save() {
+    if (submittingRef.current) return;
     if (!form.asset_name || !form.purchase_cost_paise) { setError("Asset name and cost are required."); return; }
     if (!form.asset_category) { setError("Pick a category."); return; }
     // The field names still say _paise (they are the payload keys); what the CA
@@ -806,6 +835,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
       return;
     }
     const taxTotal = igst + cgst + sgst;
+    submittingRef.current = true;
     setSaving(true); setError("");
     try {
       const body = {
@@ -874,6 +904,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
+      submittingRef.current = false;
       setSaving(false);
     }
   }
@@ -1608,12 +1639,26 @@ function DisposalTab({ clientId }: { clientId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // The most recently FIRED preview request (incremented once the debounce
+  // below has actually elapsed and a fetch is about to go out, not once per
+  // keystroke). `clearTimeout` in the cleanup only cancels a timer that has
+  // not fired YET — it cannot cancel a fetch already in flight, so typing
+  // proceeds, then picking "yes" for is_supply, then picking a GST rate, each
+  // more than 400ms apart, can leave the FIRST (GST-less) request still
+  // pending when the LAST (GST-inclusive) one's response comes back. Network
+  // timing is not FIFO, so the earlier, wrong answer can land after the
+  // later, right one and silently overwrite it — the P&L panel showing a
+  // no-GST loss when GST was in fact selected. Only the request that is
+  // STILL the latest by the time it resolves may write `preview`.
+  const latestPreviewRequest = useRef(0);
+
   // Debounced so typing an amount does not fire a request per keystroke. The
   // preview WRITES NOTHING — it is the same computation the disposal runs,
   // from the same module, so what is shown here is what gets posted.
   useEffect(() => {
     if (!selected) { setPreview(null); return; }
     const id = window.setTimeout(async () => {
+      const requestId = ++latestPreviewRequest.current;
       const q = new URLSearchParams({
         proceeds_paise: String(proceedsPaise ?? 0),
         disposal_date: disposalDate,
@@ -1624,10 +1669,15 @@ function DisposalTab({ clientId }: { clientId: string }) {
       try {
         const j = await request<ApiEnvelope<DisposalPreview>>(
           `/api/fixed-assets/${selected.id}/disposal-preview?${q.toString()}`);
+        // A newer request has since fired — this answer is for terms the
+        // form no longer shows, and applying it would overwrite a preview
+        // computed on what the CA actually has entered now.
+        if (latestPreviewRequest.current !== requestId) return;
         setPreview(j.success ? (objectWithLists<DisposalPreview>(j.data, "depreciation_months_outstanding") ?? null) : null);
       } catch {
         // A failed preview must not block the disposal itself — the panel
         // falls back to the figures it can show without the server.
+        if (latestPreviewRequest.current !== requestId) return;
         setPreview(null);
       }
     }, 400);

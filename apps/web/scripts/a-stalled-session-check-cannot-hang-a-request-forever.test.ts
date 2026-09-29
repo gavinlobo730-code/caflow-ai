@@ -95,3 +95,38 @@ test("the timeout is bounded and shorter than the fetch budget", () => {
 test("the timer is cleared once the race settles, either way", () => {
   assert.match(helperBody, /finally\s*\{\s*clearTimeout\(timeoutId!?\);?\s*\}/);
 });
+
+// The bounded race above makes a STALL settle instead of hanging forever —
+// but "settle" includes settling by REJECTING, and that can happen on the
+// very first getSession() call of a page's lifetime for reasons that are
+// gone a moment later (the auth client's own one-time startup racing a
+// background token refresh; a cold storage read that a repeat read does
+// not hit). Before this, request() propagated that rejection immediately:
+// no fetch was ever attempted, the CA saw "Could not verify your session —
+// please retry.", and clicking the SAME button again — unchanged — worked,
+// because whatever caused the first rejection had already cleared. This is
+// a DIFFERENT thing from "the fix is a bounded race, not a retry" above:
+// that note is about not retrying a call that might ALSO hang forever;
+// this retries a call that has already SETTLED (bounded or not) and failed,
+// which is free of side effects because nothing has reached the network yet.
+test("a session-token failure is retried once before request() gives up", () => {
+  const calls = (requestBody.match(/sessionTokenWithTimeout\(\)/g) ?? []).length;
+  assert.ok(calls >= 2,
+    "request() must call sessionTokenWithTimeout() again after a first " +
+    "failure — found only " + calls + " call(s), so a first rejection (not " +
+    "just a stall) still fails the whole request with no retry");
+});
+
+test("the retry sits in a catch of the first attempt, not a duplicate first call", () => {
+  assert.match(requestBody,
+    /try\s*\{\s*token\s*=\s*await sessionTokenWithTimeout\(\);\s*\}\s*catch[\s\S]*?try\s*\{\s*token\s*=\s*await sessionTokenWithTimeout\(\);\s*\}\s*catch/,
+    "the second call must be inside the first attempt's catch block, so it " +
+    "only runs after a failure — never on the happy path");
+});
+
+test("a second failure in a row still fails the request, with the original error", () => {
+  // No unbounded loop, and the CA sees the FIRST failure's message (the one
+  // that actually happened first), not a second attempt's possibly different
+  // wording for what is likely the same underlying cause.
+  assert.match(requestBody, /catch\s*\{\s*throw firstError;\s*\}/);
+});
