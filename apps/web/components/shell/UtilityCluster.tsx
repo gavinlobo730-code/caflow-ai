@@ -26,12 +26,18 @@ import { useAuth } from "@/lib/auth/AuthContext";
  * that both shells render — the firm rail vertically, the client top bar
  * horizontally. A copy in each would be two, and the second would drift.
  *
- * THE TWO ORIENTATIONS ARE A SURFACE, NOT A LAYOUT TWEAK. The rail is navy and
- * the bar is white, so the ink, the hover and the popover's own chrome differ;
- * what does not differ is WHICH three controls exist, which is the part the
- * guard asserts.
+ * THE ORIENTATIONS ARE A SURFACE, NOT A LAYOUT TWEAK. What differs between
+ * them is the ink, the hover and the popover's own chrome; what does not
+ * differ is WHICH three controls exist, which is the part the guard asserts.
+ *
+ * A THIRD ORIENTATION, "bar-dark", is WorkspaceTopBar's: horizontal like
+ * "bar" (it is a top bar, not a vertical rail), navy-palette like "rail" (the
+ * bar it sits on is `bg-brand`, so "bar"'s light-surface hover/popover colours
+ * would be invisible on it). LAYOUT and PALETTE were the same axis before this
+ * — "rail" was vertical-and-dark, "bar" horizontal-and-light — so they are
+ * split into two booleans here rather than a third parallel set of ternaries.
  */
-export type UtilityOrientation = "rail" | "bar";
+export type UtilityOrientation = "rail" | "bar" | "bar-dark";
 
 export function UtilityCluster({
   orientation,
@@ -44,20 +50,29 @@ export function UtilityCluster({
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const pathname = usePathname();
   const isSettingsRoute = pathname.startsWith("/settings");
-  const onRail = orientation === "rail";
+  const isRail = orientation === "rail";
+  const isDark = orientation === "rail" || orientation === "bar-dark";
 
   const initials = fullName
     ? fullName.trim().split(" ").filter(Boolean).slice(0, 2).map((n) => n[0].toUpperCase()).join("")
     : user?.email?.slice(0, 2).toUpperCase() ?? "CA";
 
-  const button = onRail
+  const button = isRail
     ? "flex items-center justify-center w-9 h-9 rounded-[9px] text-slate-500 hover:text-white hover:bg-white/10 transition-all duration-100"
+    : isDark
+    ? "flex items-center justify-center w-8 h-8 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
     : "flex items-center justify-center w-8 h-8 rounded-lg text-ps-hint hover:text-ps-ink hover:bg-ps-bg transition-colors";
+
+  const settingsActive = isRail
+    ? "relative bg-brand text-white"
+    : isDark
+    ? "bg-white/15 text-white"
+    : "bg-ps-bg text-ps-ink";
 
   return (
     <div
       className={cn(
-        onRail
+        isRail
           ? "flex flex-col items-center gap-2 pb-3 shrink-0 border-t border-white/10 pt-3"
           : "flex items-center gap-1 shrink-0"
       )}
@@ -70,12 +85,9 @@ export function UtilityCluster({
         href="/settings"
         title="Settings"
         aria-label="Settings"
-        className={cn(
-          button,
-          isSettingsRoute && (onRail ? "relative bg-brand text-white" : "bg-ps-bg text-ps-ink")
-        )}
+        className={cn(button, isSettingsRoute && settingsActive)}
       >
-        {isSettingsRoute && onRail && (
+        {isSettingsRoute && isRail && (
           <span className="absolute left-[-1px] h-5 w-[3px] rounded-r-[2px] bg-brand" />
         )}
         <Settings size={15} />
@@ -86,7 +98,10 @@ export function UtilityCluster({
           onClick={() => setAvatarMenuOpen((v) => !v)}
           title={user?.email ?? "Account"}
           aria-label="Account"
-          className="w-7 h-7 rounded-full bg-brand flex items-center justify-center text-3xs font-bold text-white hover:opacity-80 transition-opacity shrink-0"
+          className={cn(
+            "w-7 h-7 rounded-full flex items-center justify-center text-3xs font-bold hover:opacity-80 transition-opacity shrink-0",
+            isDark ? "bg-white/15 text-white" : "bg-brand text-white"
+          )}
         >
           {initials}
         </button>
@@ -96,16 +111,20 @@ export function UtilityCluster({
             <div
               className={cn(
                 "absolute z-30 w-48 rounded-xl p-1.5",
-                onRail
-                  ? "left-full bottom-0 ml-2 bg-[#1e2d5e] border border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
-                  : "right-0 top-full mt-2 bg-white border border-ps-border shadow-lg"
+                isRail ? "left-full bottom-0 ml-2" : "right-0 top-full mt-2",
+                // One literal for both dark orientations, not two — the raw
+                // hex this guard's own history warns about fixing site by
+                // site (#94A3B8, 1,567 of them) is written here exactly once.
+                isDark
+                  ? "bg-[#1e2d5e] border border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+                  : "bg-white border border-ps-border shadow-lg"
               )}
             >
-              <div className={cn("px-3 py-2 mb-1 border-b", onRail ? "border-white/10" : "border-ps-border")}>
-                <p className={cn("text-xs font-semibold truncate", onRail ? "text-white" : "text-ps-ink")}>
+              <div className={cn("px-3 py-2 mb-1 border-b", isDark ? "border-white/10" : "border-ps-border")}>
+                <p className={cn("text-xs font-semibold truncate", isDark ? "text-white" : "text-ps-ink")}>
                   {user?.email ?? "user@firm.com"}
                 </p>
-                <p className={cn("text-3xs truncate mt-0.5", onRail ? "text-slate-500" : "text-ps-hint")}>
+                <p className={cn("text-3xs truncate mt-0.5", isDark ? "text-slate-500" : "text-ps-hint")}>
                   {userRole ?? "Partner"}
                 </p>
               </div>
@@ -116,7 +135,7 @@ export function UtilityCluster({
                 }}
                 className={cn(
                   "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors",
-                  onRail
+                  isDark
                     ? "text-slate-400 hover:text-red-400 hover:bg-white/10"
                     : "text-ps-label hover:text-state-problem hover:bg-ps-bg"
                 )}

@@ -376,7 +376,7 @@ export default function ClientPortalPage() {
       // CLIENT, who has no public.users row at all, so there is no correct
       // value to put here; client_id already carries the attribution, and the
       // CA-side upload page omits the column for the same reason.
-      await sb.from("client_documents").insert({
+      const { error: insertErr } = await sb.from("client_documents").insert({
         firm_id: firmId,
         client_id: selectedClientId,
         file_name: file.name,
@@ -385,6 +385,15 @@ export default function ClientPortalPage() {
         file_size: file.size,
         mime_type: file.type || null,
       });
+      if (insertErr) {
+        // The blob is already in Storage — leaving it there orphans it with no
+        // client_documents row ever pointing back to it, and the CA sees a
+        // silent success. Remove it and surface the real error, mirroring
+        // every other document-upload handler in this codebase (e.g.
+        // app/clients/[id]/documents/page.tsx).
+        await sb.storage.from("Documents").remove([storagePath]);
+        throw new Error(insertErr.message);
+      }
 
       setUploadLabel("");
       await loadSharedDocs(selectedClientId);

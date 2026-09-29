@@ -4,10 +4,8 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { WorkspaceProvider } from "@/lib/workspace/WorkspaceContext";
 import { ClientNavProvider } from "@/lib/workspace/ClientNavContext";
-import { NavShell } from "@/components/shell/NavShell";
-import { WorkspaceRail } from "@/components/shell/WorkspaceRail";
+import { WorkspaceShell } from "@/components/shell/WorkspaceShell";
 import { ClientShell } from "@/components/shell/ClientShell";
-import { ContextPanel } from "@/components/ContextPanel";
 import { SearchModal } from "@/components/SearchModal";
 import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
 
@@ -22,9 +20,13 @@ import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
 // 2.6 a wrong answer drew the firm rails ALONGSIDE the client's own — the "two
 // sidebars" bug — because there were two shells; 2.6 left it choosing only
 // which PANEL, so the worst it could do was show the wrong list. It now
-// chooses between `NavShell` (rail + panel, firm level) and `ClientShell` (one
-// bar, full width), because the owner's decision of 25-09 is that inside a
-// client a CA sees only the client's own things.
+// chooses between `WorkspaceShell` and `ClientShell` — one top bar each, navy
+// at firm level and white inside a client, both full width — because the
+// owner's decision of 25-09 is that inside a client a CA sees only the
+// client's own things. (`WorkspaceShell` replaced the firm-level rail + 220px
+// panel with a bar of its own on 29-09, so the product speaks one navigation
+// idiom throughout rather than a sidebar outside a client and a bar inside
+// one — see WorkspaceTopBar's own header.)
 //
 // So a wrong answer is expensive again, and the mitigation is structural
 // rather than careful: the branch returns a shell EITHER WAY and never bare
@@ -116,13 +118,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {isClientWorkspace ? (
           <ClientShell onOpenSearch={() => setSearchOpen(true)}>{children}</ClientShell>
         ) : (
-          <NavShell
-            rail={<WorkspaceRail onOpenSearch={() => setSearchOpen(true)} />}
-            panel={<ContextPanel onOpenSearch={() => setSearchOpen(true)} />}
-            panelLabel="Navigation"
-          >
-            {children}
-          </NavShell>
+          <WorkspaceShell onOpenSearch={() => setSearchOpen(true)}>{children}</WorkspaceShell>
         )}
       </WorkspaceProvider>
     </ClientNavProvider>
