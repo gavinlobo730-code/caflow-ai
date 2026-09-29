@@ -248,6 +248,13 @@ export function SalesDebitNoteEditor({
 
   // ── Save ─────────────────────────────────────────────────────────────────
   async function save() {
+    // Re-entrancy guard, belt-and-braces alongside `disabled={busy}` below: a
+    // fast double-click can fire this handler a second time before React has
+    // re-rendered the button as disabled, and this endpoint has no
+    // server-side idempotency check of its own — a genuine second POST
+    // creates a genuine second debit note, confirmed live as two identical
+    // ₹7,080 debit notes from what looked like one click.
+    if (saving) return;
     setAttempted(true);
     if (!isLocked && !validation.ok) {
       setError(validation.errors.customer ?? validation.errors.debitNoteDate ?? validation.errors.lines ?? "Fix the highlighted fields.");

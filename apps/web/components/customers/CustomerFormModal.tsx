@@ -135,6 +135,19 @@ export function CustomerFormModal({
   }
 
   async function handleSave() {
+    // Re-entrancy guard, belt-and-braces alongside the Save button's own
+    // `disabled={saving}`: a fast double-click (or a double-tap trackpad
+    // gesture, which is indistinguishable from a genuine second click) can
+    // fire this handler again before React has re-rendered the button as
+    // disabled. Without this, the second call races the first's own POST —
+    // and because a create that matches an active customer by GSTIN/PAN
+    // answers `duplicate: true` with no insert, the SECOND request can
+    // resolve first (its own code path is shorter — no opening-balance sync,
+    // no audit/timeline logging) and paint "Customer already exists" over a
+    // FIRST request that genuinely succeeded moments later, on a customer
+    // that really was created. See the established pattern at
+    // app/pipeline/page.tsx's handleSubmit.
+    if (saving) return;
     if (!name.trim()) { fail("Name is required"); return; }
     const gstinIssue = gstinProblem(gstin);
     if (gstinIssue) { fail(gstinIssue); return; }

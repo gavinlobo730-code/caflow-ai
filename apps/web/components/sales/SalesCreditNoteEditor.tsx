@@ -261,6 +261,13 @@ export function SalesCreditNoteEditor({
 
   // ── Save ─────────────────────────────────────────────────────────────────
   async function save() {
+    // Re-entrancy guard, belt-and-braces alongside `disabled={busy}` below: a
+    // fast double-click can fire this handler a second time before React has
+    // re-rendered the button as disabled, and this endpoint has no
+    // server-side idempotency check of its own — a genuine second POST
+    // creates a genuine second credit note, confirmed live as two identical
+    // ₹1,486 credit notes from what looked like one click.
+    if (saving) return;
     setAttempted(true);
     if (!isLocked && !validation.ok) {
       setError(validation.errors.customer ?? validation.errors.creditNoteDate ?? validation.errors.lines ?? "Fix the highlighted fields.");

@@ -28,6 +28,7 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { duplicateAuditErrorMessage } from "@/lib/income-tax/taxAuditErrors";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -151,6 +152,79 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── Detect an existing (client, FY) record BEFORE the CA hits Save ────────
+  // tax_audits is UNIQUE(client_id, financial_year) (migration 035). The Add
+  // form defaulted client_id to blank and financial_year to the CURRENT FY —
+  // exactly the pair that already has a row the moment a firm has tracked one
+  // audit for this year — so a second "Add Audit" for the same client, or the
+  // same client re-opened from the client workspace, hit that constraint and
+  // surfaced Postgres's raw "duplicate key value violates unique constraint"
+  // text with no way to reach the record it collided with.
+  //
+  // Editing is already fully built (see the `editAudit` prop below), so rather
+  // than translate the constraint violation after the fact, this looks for the
+  // row FIRST and, when one exists, switches the very same modal into editing
+  // it — the same effect a CA gets from clicking "Edit" on that row, just
+  // reached from "Add Audit" instead of a wasted round trip to the server.
+  const [existingMatch, setExistingMatch] = useState<TaxAudit | null>(null);
+  useEffect(() => {
+    // Only relevant for a genuine CREATE — a row opened via the table's own
+    // "Edit" button already names its record and must not be second-guessed
+    // by a query keyed on fields the CA may be actively changing.
+    if (editAudit) { setExistingMatch(null); return; }
+    if (!form.clientId || !form.financialYear) { setExistingMatch(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const firmId = await getFirmId();
+        const sb = getSupabaseClient();
+        const { data, error: err } = await sb
+          .from("tax_audits")
+          .select("*")
+          .eq("firm_id", firmId)
+          .eq("client_id", form.clientId)
+          .eq("financial_year", form.financialYear)
+          .limit(1);
+        if (cancelled) return;
+        setExistingMatch(!err && data && data.length > 0 ? (data[0] as TaxAudit) : null);
+      } catch {
+        // A failed check must not block adding a genuinely new audit — the
+        // insert's own duplicate-key fallback in handleSave still catches a
+        // real collision if this silently missed one.
+        if (!cancelled) setExistingMatch(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [editAudit, form.clientId, form.financialYear]);
+
+  // Populate the form from the row this collides with, the same way the
+  // constructor above does for an explicit `editAudit` — so the CA sees what
+  // is already recorded rather than a blank form that is about to be refused.
+  useEffect(() => {
+    if (!existingMatch) return;
+    setForm(f => ({
+      ...f,
+      formType: existingMatch.form_type,
+      status: existingMatch.status,
+      auditorName: existingMatch.auditor_name ?? "",
+      auditDate: existingMatch.audit_date ?? "",
+      filingDate: existingMatch.filing_date ?? "",
+      udin: existingMatch.udin ?? "",
+      ackNumber: existingMatch.ack_number ?? "",
+      turnoverRs: existingMatch.turnover_paise > 0 ? (existingMatch.turnover_paise / 100).toFixed(2) : "",
+    }));
+    // Intentionally excludes `existingMatch` from the deps below it reads —
+    // this must run exactly once per NEWLY detected row, not on every
+    // keystroke the CA then makes correcting one of its fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingMatch?.id]);
+
+  // The record this save will actually touch: the row the table's "Edit"
+  // button named, or the one just found to already exist for this client and
+  // FY. Everything below that decides UPDATE-vs-INSERT or what the modal
+  // calls itself reads this rather than `editAudit` alone.
+  const target = editAudit ?? existingMatch;
+
   // ── §44AB applicability, ASKED not decided (IT-11) ───────────────────────
   // The badge under the turnover box used to be three lines of TypeScript
   // comparing the amount against two constants, and it read the NATURE of the
@@ -237,17 +311,23 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
         ack_number: form.ackNumber || null,
         turnover_paise: turnoverPaise,
       };
-      if (editAudit) {
-        const { error: err } = await sb.from("tax_audits").update(payload).eq("id", editAudit.id);
-        if (err) throw new Error(err.message);
+      if (target) {
+        const { error: err } = await sb.from("tax_audits").update(payload).eq("id", target.id);
+        if (err) throw err;
       } else {
         const { error: err } = await sb.from("tax_audits").insert(payload);
-        if (err) throw new Error(err.message);
+        if (err) throw err;
       }
       onSaved();
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      // Belt-and-braces for the window the up-front check above cannot close
+      // (two CAs saving the same client+FY at once, or the check itself
+      // failing silently): the CA still sees an actionable sentence instead
+      // of the constraint's own wording, which names a database object
+      // rather than a document they can go and open.
+      setError(duplicateAuditErrorMessage(e as { code?: string } | null)
+        ?? (e instanceof Error ? e.message : "Save failed"));
     } finally {
       setSaving(false);
     }
@@ -257,11 +337,21 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
     <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">{editAudit ? "Edit Tax Audit" : "Add Tax Audit"}</h3>
+          <h3 className="text-sm font-semibold text-ps-ink">{target ? "Edit Tax Audit" : "Add Tax Audit"}</h3>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         <div className="px-6 py-4 space-y-3">
           {error && <Callout tone="problem">{error}</Callout>}
+          {/* existingMatch, not editAudit — this fired on its own the moment
+              the client+FY the CA is typing turned out to already have a
+              record, so unlike an explicit "Edit" click it needs to say why
+              the form just filled itself in. */}
+          {existingMatch && !editAudit && (
+            <Callout tone="attention">
+              An audit record for this client and financial year already exists —
+              you are editing it below instead of adding a second one.
+            </Callout>
+          )}
           <div>
             <label className={lbl}>Client *</label>
             <ClientLookup
@@ -419,7 +509,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
           <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
-            {saving ? "Saving…" : editAudit ? "Update" : "Add Audit"}
+            {saving ? "Saving…" : target ? "Update" : "Add Audit"}
           </button>
         </div>
       </div>
