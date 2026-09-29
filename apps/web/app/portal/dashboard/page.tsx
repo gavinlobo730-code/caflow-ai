@@ -303,6 +303,10 @@ export default function PortalDashboardPage() {
 
   const downloadStatement = async () => {
     if (!activeClient) return;
+    // Belt and suspenders alongside the disabled button above: the same
+    // "nothing to download" condition the empty state already names must
+    // never ALSO surface as a raw backend error in the notice banner.
+    if (statement === null || statement.available === false) return;
     setBusy(true); setNotice(null);
     try { await api.portalSelf.statementPdf(activeClient, stmtStart || undefined, stmtEnd || undefined); }
     catch (e) { setNotice(e instanceof Error ? e.message : "Could not download statement"); }
@@ -466,7 +470,20 @@ export default function PortalDashboardPage() {
                 </label>
                 <button disabled={busy} onClick={reloadStatement}
                   className="rounded-lg border border-ps-border px-3 py-1 text-xs text-ps-ink hover:border-ps-hint disabled:opacity-40">Apply</button>
-                <button disabled={busy} onClick={downloadStatement}
+                {/* Disabled rather than merely caught: with no statement to
+                    download, api.portalSelf.statementPdf 404s with "No
+                    statement available for this client." — the SAME
+                    condition the friendly empty-state below already names —
+                    and a caught 404 sets `notice`, which renders as its own
+                    red banner ABOVE every tab's content (line ~411). A client
+                    who clicked this while looking at "No statement is
+                    available..." saw both at once: one plain sentence and,
+                    stacked above it, the backend's raw error text. Disabling
+                    the button here removes the second message rather than
+                    reformatting it — there is nothing further to say once
+                    the empty state has already said it. */}
+                <button disabled={busy || statement === null || statement.available === false}
+                  onClick={downloadStatement}
                   className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1 text-xs text-white disabled:opacity-40">
                   <Download size={13} /> Download PDF
                 </button>
