@@ -295,6 +295,12 @@ class UpdateReturnStatusRequest(BaseModel):
     prn: Optional[str] = None
     ack_number: Optional[str] = None
     filing_date: Optional[str] = None
+    # Approving/filing a return with no deductees, or before its own quarter
+    # has ended, is refused by default (see update_return_status). This is the
+    # deliberate override — the same shape as gst_workspace.py's
+    # `acknowledge_stale` — never defaulted true and never settable by
+    # omission, because the whole point is that the refusal is seen first.
+    acknowledge_incomplete: bool = False
 
 
 #: What the CHECK on tds_certificates.certificate_type accepts (migration 037),
@@ -989,6 +995,17 @@ def list_returns(
         else:
             from core.supabase_client import get_supabase
             rows = get_supabase().table("tds_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
+        # `return_type`/`financial_year` are the 1961-Act ROUTING KEY, stored
+        # permanently on both sides of the 2026 vocabulary fork (see
+        # domain/tds/vocabulary.py). `_statement_label` is the translator that
+        # already exists for exactly this — a caller reading the raw column
+        # sees "26Q" for a FY 2026-27 quarter that the Act itself calls
+        # Form 140, with no way to tell the two vocabularies apart. Added
+        # rather than translated in place, because `return_type` is also what
+        # `update_return_status`/`_existing_tds_return` key on.
+        for r in rows:
+            r["statement_form"] = _statement_label(
+                r.get("return_type") or "", r.get("financial_year") or "")
         return api_response(True, rows)
     except Exception as e:
         return api_response(False, None, str(e))
@@ -1314,9 +1331,11 @@ def update_return_status(
         else:
             from core.supabase_client import get_supabase
             existing = (
-                # client_id is selected purely so the scope check below has
-                # something to check -- the status is what this handler reads.
-                get_supabase().table("tds_returns").select("status, client_id")
+                # deductee_count and quarter_end are read here too, for the
+                # ca_approved/filed guard just below — client_id is selected
+                # purely so the scope check has something to check.
+                get_supabase().table("tds_returns")
+                .select("status, client_id, deductee_count, quarter_end")
                 .eq("id", return_id).eq("firm_id", firm_id).limit(1).execute().data
             )
             current = existing[0] if existing else None
@@ -1332,6 +1351,26 @@ def update_return_status(
         # original PRN/acknowledgement with a second one.
         if body.status == "filed" and current_status == "filed":
             return api_response(False, None, "This return has already been filed.")
+
+        # A statement with no deductees, or whose own quarter has not yet
+        # ended, is approved or filed on facts that cannot be right — a Q2
+        # return cannot be settled before Q2 is over, and an empty statement
+        # is not one an employer or deductor "prepared". Same shape as
+        # save_gstr3b's staleness check in gst_workspace.py: refused unless
+        # the CA explicitly names the override, rather than silently allowed
+        # or unconditionally blocked.
+        if body.status in ("ca_approved", "filed") and not body.acknowledge_incomplete:
+            problems = []
+            if (current.get("deductee_count") or 0) == 0:
+                problems.append("it has no deductees recorded")
+            quarter_end = str(current.get("quarter_end") or "")
+            if quarter_end and quarter_end[:10] > ist_today().isoformat():
+                problems.append(f"its quarter has not ended yet (ends {quarter_end[:10]})")
+            if problems:
+                return api_response(False, None,
+                    f"This return cannot be {body.status.replace('_', ' ')} because "
+                    + " and ".join(problems) + ". Resubmit with "
+                    "acknowledge_incomplete=true to record it anyway.")
 
         now_iso = datetime.utcnow().isoformat()
         update_payload: dict = {"status": body.status}

@@ -83,9 +83,13 @@ def test_tds_return_status_transitions(client):
 
     # filed with flag — still needs a PRN (TRACES proof-of-filing captured
     # server-side, migration 037). With the flag AND a PRN it should succeed.
+    # acknowledge_incomplete: this fixture return has no deductees, which the
+    # ca_approved/filed guard now refuses by default (apex-tax-compliance-03) —
+    # not what this test is about, so the override is named explicitly.
     r4 = client.patch(f"/api/tds-workspace/returns/{return_id}/status",
                       json={"status": "filed", "ca_approved": True,
-                            "prn": "PRN2526Q1000001", "ack_number": "ACK123456789"},
+                            "prn": "PRN2526Q1000001", "ack_number": "ACK123456789",
+                            "acknowledge_incomplete": True},
                       headers=_HEADERS)
     assert r4.json()["success"] is True
     assert r4.json()["data"]["status"] == "filed"
@@ -146,7 +150,8 @@ def test_return_approval_requires_manager_role(client):
     assert "Manager" in r_exec.json()["error"]
 
     r_mgr = client.patch(f"/api/tds-workspace/returns/{return_id}/status",
-                         json={"status": "ca_approved", "ca_approved": True},
+                         json={"status": "ca_approved", "ca_approved": True,
+                               "acknowledge_incomplete": True},
                          headers=manager_headers)
     assert r_mgr.json()["success"] is True
     assert r_mgr.json()["data"]["status"] == "ca_approved"
