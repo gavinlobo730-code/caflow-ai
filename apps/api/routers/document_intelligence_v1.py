@@ -16,13 +16,16 @@ from core.permissions import rbac
 from core.authz import assert_client_access
 from services.internal_client_service import assert_partner_for_internal_id
 from domain.extraction_totals import check_totals
+from domain.ai.groq_text import DEFAULT_TEXT_MODEL
 
 _logger = logging.getLogger("caflow.doc_intelligence_v1")
 _GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
 # Text-only model for PDFs with embedded text — this path works and is
 # unchanged. Overridable without a code change since Groq's model lineup
-# changes over time.
-_GROQ_TEXT_MODEL = os.environ.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile")
+# changes over time. The fallback is domain/ai/groq_text.DEFAULT_TEXT_MODEL,
+# imported rather than duplicated as a literal, so this router and _v2 cannot
+# quietly drift from the one place the default is now decided.
+_GROQ_TEXT_MODEL = os.environ.get("GROQ_TEXT_MODEL", DEFAULT_TEXT_MODEL)
 # Vision-capable model for photo/scanned invoice uploads (JPEG/PNG) — a
 # text-only model cannot read pixels (see _run_extraction's docstring for the
 # original bug this replaced: images used to be silently unreadable).
