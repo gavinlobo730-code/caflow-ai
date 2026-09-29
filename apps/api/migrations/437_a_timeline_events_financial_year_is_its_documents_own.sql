@@ -1,4 +1,4 @@
--- 436 — a timeline event's financial_year is the DOCUMENT's, not the day it
+-- 437 — a timeline event's financial_year is the DOCUMENT's, not the day it
 -- was written
 --
 -- WHAT IS WRONG

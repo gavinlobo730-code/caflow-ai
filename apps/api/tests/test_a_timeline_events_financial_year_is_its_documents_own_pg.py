@@ -1,5 +1,5 @@
 """
-Migration 436 — a timeline event's financial_year must match its own
+Migration 437 — a timeline event's financial_year must match its own
 document's date, not the day the event happened to be written.
 
 WHY THIS FILE EXISTS
@@ -14,11 +14,11 @@ WHY THIS FILE EXISTS
     (idempotent).
 
     `pg_template` (tests/conftest.py) already applies the FULL migration set,
-    436 included, before this file's `db` fixture clones it — so by the time a
-    test gets its database, 436 has already run once against EMPTY
+    437 included, before this file's `db` fixture clones it — so by the time a
+    test gets its database, 437 has already run once against EMPTY
     client_sales_invoices/purchase_bills/client_timeline_events tables (a
     no-op). Seeding WRONG data into that already-migrated, empty-of-real-rows
-    database and running 436's SQL file a SECOND time is exactly the scenario
+    database and running 437's SQL file a SECOND time is exactly the scenario
     that matters: it exercises the identical statements production runs, both
     for correctness and for idempotency (a third run changes nothing further).
 
@@ -40,21 +40,21 @@ import pytest
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
-MIGRATION_FILE = API_ROOT / "migrations" / "436_a_timeline_events_financial_year_is_its_documents_own.sql"
+MIGRATION_FILE = API_ROOT / "migrations" / "437_a_timeline_events_financial_year_is_its_documents_own.sql"
 _ADMIN = os.environ.get("HARNESS_PG")
 
 pytestmark = pytest.mark.skipif(
     not _ADMIN or shutil.which("psql") is None or not RUNNER.exists() or not MIGRATION_FILE.exists(),
-    reason="migration 436's data-correction SQL requires HARNESS_PG + psql",
+    reason="migration 437's data-correction SQL requires HARNESS_PG + psql",
 )
 
-FIRM = "f4360000-0000-0000-0000-000000000001"
-CLIENT = "c4360000-0000-0000-0000-000000000001"
-CUSTOMER = "94360000-0000-0000-0000-000000000001"
-VENDOR = "94360000-0000-0000-0000-000000000002"
-INVOICE_ID = "14360000-0000-0000-0000-000000000001"
-BILL_ID = "14360000-0000-0000-0000-000000000002"
-UNTOUCHED_INVOICE_ID = "14360000-0000-0000-0000-000000000003"
+FIRM = "f4370000-0000-0000-0000-000000000001"
+CLIENT = "c4370000-0000-0000-0000-000000000001"
+CUSTOMER = "94370000-0000-0000-0000-000000000001"
+VENDOR = "94370000-0000-0000-0000-000000000002"
+INVOICE_ID = "14370000-0000-0000-0000-000000000001"
+BILL_ID = "14370000-0000-0000-0000-000000000002"
+UNTOUCHED_INVOICE_ID = "14370000-0000-0000-0000-000000000003"
 
 
 def _psql(dsn: str, sql: str, tuples: bool = False) -> subprocess.CompletedProcess:
@@ -78,7 +78,7 @@ def _run_migration_file(dsn: str) -> subprocess.CompletedProcess:
 def db(pg_template):
     admin = _ADMIN.strip()
     admin_dsn = f"{admin} dbname=postgres"
-    name = f"tl436_{uuid.uuid4().hex[:12]}"
+    name = f"tl437_{uuid.uuid4().hex[:12]}"
     if _psql(admin_dsn, f'CREATE DATABASE "{name}" TEMPLATE "{pg_template.name}";').returncode != 0:
         pytest.skip("could not clone the migrated template")
     dsn = f"{admin} dbname={name}"
@@ -90,9 +90,9 @@ def db(pg_template):
 
 def _seed(dsn: str) -> None:
     r = _psql(dsn, f"""
-INSERT INTO firms (id, name, email) VALUES ('{FIRM}', '436 Test Firm', 'a@436test.in');
+INSERT INTO firms (id, name, email) VALUES ('{FIRM}', '437 Test Firm', 'a@437test.in');
 INSERT INTO clients (id, firm_id, client_name, entity_type)
-  VALUES ('{CLIENT}', '{FIRM}', '436 Test Client', 'Private Limited');
+  VALUES ('{CLIENT}', '{FIRM}', '437 Test Client', 'Private Limited');
 INSERT INTO customers (id, firm_id, client_id, name) VALUES ('{CUSTOMER}', '{FIRM}', '{CLIENT}', 'Test Customer');
 INSERT INTO vendors (id, firm_id, client_id, name) VALUES ('{VENDOR}', '{FIRM}', '{CLIENT}', 'Test Vendor');
 
@@ -101,29 +101,29 @@ INSERT INTO vendors (id, firm_id, client_id, name) VALUES ('{VENDOR}', '{FIRM}',
 -- POSTED in, 2026-27 (e.g. entered months later, or a backdated Tally
 -- migration entry).
 INSERT INTO client_sales_invoices (id, firm_id, client_id, customer_id, invoice_no, invoice_date)
-  VALUES ('{INVOICE_ID}', '{FIRM}', '{CLIENT}', '{CUSTOMER}', 'INV-436-TEST', '2026-01-15');
+  VALUES ('{INVOICE_ID}', '{FIRM}', '{CLIENT}', '{CUSTOMER}', 'INV-437-TEST', '2026-01-15');
 INSERT INTO client_timeline_events
   (client_id, firm_id, financial_year, category, event_type, title, entity_type, entity_id)
   VALUES ('{CLIENT}', '{FIRM}', '2026-27', 'accounting', 'invoice_posted',
-          'Sales Invoice INV-436-TEST posted', 'sales_invoice', '{INVOICE_ID}');
+          'Sales Invoice INV-437-TEST posted', 'sales_invoice', '{INVOICE_ID}');
 
 -- A bill DATED in FY 2024-25 (20 Feb 2025) wrongly stamped 2026-27.
 INSERT INTO purchase_bills (id, firm_id, client_id, vendor_id, bill_no, bill_date)
-  VALUES ('{BILL_ID}', '{FIRM}', '{CLIENT}', '{VENDOR}', 'BILL-436-TEST', '2025-02-20');
+  VALUES ('{BILL_ID}', '{FIRM}', '{CLIENT}', '{VENDOR}', 'BILL-437-TEST', '2025-02-20');
 INSERT INTO client_timeline_events
   (client_id, firm_id, financial_year, category, event_type, title, entity_type, entity_id)
   VALUES ('{CLIENT}', '{FIRM}', '2026-27', 'accounting', 'bill_posted',
-          'Purchase Bill BILL-436-TEST posted', 'purchase_bill', '{BILL_ID}');
+          'Purchase Bill BILL-437-TEST posted', 'purchase_bill', '{BILL_ID}');
 
 -- A SECOND invoice, dated 10 May 2026 (FY 2026-27), whose event was ALREADY
 -- stamped correctly (972cb98 shipped) — must not be touched, and must not
 -- appear in the migration's own row-count either.
 INSERT INTO client_sales_invoices (id, firm_id, client_id, customer_id, invoice_no, invoice_date)
-  VALUES ('{UNTOUCHED_INVOICE_ID}', '{FIRM}', '{CLIENT}', '{CUSTOMER}', 'INV-436-OK', '2026-05-10');
+  VALUES ('{UNTOUCHED_INVOICE_ID}', '{FIRM}', '{CLIENT}', '{CUSTOMER}', 'INV-437-OK', '2026-05-10');
 INSERT INTO client_timeline_events
   (client_id, firm_id, financial_year, category, event_type, title, entity_type, entity_id)
   VALUES ('{CLIENT}', '{FIRM}', '2026-27', 'accounting', 'invoice_posted',
-          'Sales Invoice INV-436-OK posted', 'sales_invoice', '{UNTOUCHED_INVOICE_ID}');
+          'Sales Invoice INV-437-OK posted', 'sales_invoice', '{UNTOUCHED_INVOICE_ID}');
 """)
     assert r.returncode == 0, f"seed failed: {r.stderr}"
 
@@ -140,7 +140,7 @@ def test_a_backdated_invoice_events_fy_is_corrected_to_its_own_invoice_date(db):
     assert _fy_of(db, INVOICE_ID) == "2026-27"          # the wrong, as-posted value
 
     result = _run_migration_file(db)
-    assert result.returncode == 0, f"migration 436 failed: {result.stderr}"
+    assert result.returncode == 0, f"migration 437 failed: {result.stderr}"
 
     assert _fy_of(db, INVOICE_ID) == "2025-26", (
         "15 Jan 2026 falls in FY 2025-26 (1 Apr 2025 - 31 Mar 2026); the "
@@ -153,7 +153,7 @@ def test_a_backdated_bills_event_fy_is_corrected_to_its_own_bill_date(db):
     assert _fy_of(db, BILL_ID) == "2026-27"
 
     result = _run_migration_file(db)
-    assert result.returncode == 0, f"migration 436 failed: {result.stderr}"
+    assert result.returncode == 0, f"migration 437 failed: {result.stderr}"
 
     assert _fy_of(db, BILL_ID) == "2024-25", "20 Feb 2025 falls in FY 2024-25"
 
@@ -163,7 +163,7 @@ def test_an_already_correct_event_is_left_untouched(db):
     assert _fy_of(db, UNTOUCHED_INVOICE_ID) == "2026-27"
 
     result = _run_migration_file(db)
-    assert result.returncode == 0, f"migration 436 failed: {result.stderr}"
+    assert result.returncode == 0, f"migration 437 failed: {result.stderr}"
 
     assert _fy_of(db, UNTOUCHED_INVOICE_ID) == "2026-27", (
         "10 May 2026 IS in FY 2026-27 — this row was already right and the "
@@ -176,7 +176,7 @@ def test_running_the_migration_a_second_time_changes_nothing_further(db):
     re-run (e.g. a manual re-application, or this very test suite)."""
     _seed(db)
     first = _run_migration_file(db)
-    assert first.returncode == 0, f"migration 436 first run failed: {first.stderr}"
+    assert first.returncode == 0, f"migration 437 first run failed: {first.stderr}"
 
     invoice_fy_after_first = _fy_of(db, INVOICE_ID)
     bill_fy_after_first = _fy_of(db, BILL_ID)
@@ -184,7 +184,7 @@ def test_running_the_migration_a_second_time_changes_nothing_further(db):
     assert bill_fy_after_first == "2024-25"
 
     second = _run_migration_file(db)
-    assert second.returncode == 0, f"migration 436 second run failed: {second.stderr}"
+    assert second.returncode == 0, f"migration 437 second run failed: {second.stderr}"
 
     assert _fy_of(db, INVOICE_ID) == invoice_fy_after_first
     assert _fy_of(db, BILL_ID) == bill_fy_after_first
@@ -194,27 +194,27 @@ def test_running_the_migration_a_second_time_changes_nothing_further(db):
 def test_the_correction_matches_ist_fy_label_across_the_1_april_boundary(db):
     """A second pair of documents straddling 31 March / 1 April, to pin the
     boundary itself rather than only mid-year dates."""
-    boundary_invoice = "14360000-0000-0000-0000-000000000004"
-    boundary_bill = "14360000-0000-0000-0000-000000000005"
+    boundary_invoice = "14370000-0000-0000-0000-000000000004"
+    boundary_bill = "14370000-0000-0000-0000-000000000005"
     r = _psql(db, f"""
 INSERT INTO client_sales_invoices (id, firm_id, client_id, customer_id, invoice_no, invoice_date)
-  VALUES ('{boundary_invoice}', '{FIRM}', '{CLIENT}', '{CUSTOMER}', 'INV-436-BOUNDARY', '2026-04-01');
+  VALUES ('{boundary_invoice}', '{FIRM}', '{CLIENT}', '{CUSTOMER}', 'INV-437-BOUNDARY', '2026-04-01');
 INSERT INTO client_timeline_events
   (client_id, firm_id, financial_year, category, event_type, title, entity_type, entity_id)
   VALUES ('{CLIENT}', '{FIRM}', '2099-99', 'accounting', 'invoice_posted',
-          'Sales Invoice INV-436-BOUNDARY posted', 'sales_invoice', '{boundary_invoice}');
+          'Sales Invoice INV-437-BOUNDARY posted', 'sales_invoice', '{boundary_invoice}');
 
 INSERT INTO purchase_bills (id, firm_id, client_id, vendor_id, bill_no, bill_date)
-  VALUES ('{boundary_bill}', '{FIRM}', '{CLIENT}', '{VENDOR}', 'BILL-436-BOUNDARY', '2026-03-31');
+  VALUES ('{boundary_bill}', '{FIRM}', '{CLIENT}', '{VENDOR}', 'BILL-437-BOUNDARY', '2026-03-31');
 INSERT INTO client_timeline_events
   (client_id, firm_id, financial_year, category, event_type, title, entity_type, entity_id)
   VALUES ('{CLIENT}', '{FIRM}', '2099-99', 'accounting', 'bill_posted',
-          'Purchase Bill BILL-436-BOUNDARY posted', 'purchase_bill', '{boundary_bill}');
+          'Purchase Bill BILL-437-BOUNDARY posted', 'purchase_bill', '{boundary_bill}');
 """)
     assert r.returncode == 0, r.stderr
 
     result = _run_migration_file(db)
-    assert result.returncode == 0, f"migration 436 failed: {result.stderr}"
+    assert result.returncode == 0, f"migration 437 failed: {result.stderr}"
 
     assert _fy_of(db, boundary_invoice) == "2026-27", "1 April 2026 starts FY 2026-27"
     assert _fy_of(db, boundary_bill) == "2025-26", "31 March 2026 is still FY 2025-26"
