@@ -131,7 +131,8 @@ def _series(label: str, attr: str, higher_is_better: Optional[bool],
 
 
 def build(years: list[tuple[str, dict, dict]], requested_fys: list[str],
-          unreadable_fys: list[str] | None = None) -> dict:
+          unreadable_fys: list[str] | None = None,
+          latest_period_label: Optional[str] = None) -> dict:
     """The trend document.
 
     `years` is [(fy_label, profit_loss, balance_sheet)] in chronological order,
@@ -139,6 +140,14 @@ def build(years: list[tuple[str, dict, dict]], requested_fys: list[str],
     asked for, so the document can say what it dropped. `unreadable_fys` are the
     years that FAILED rather than the years that were empty — see
     GAP_YEARS_UNREADABLE for why the two are never merged.
+
+    `latest_period_label` is set by the CALLER (ReportingService.
+    multi_year_trend, which knows today's date) to something like "year to
+    date to 15 Sep 2026" when the LAST column is a financial year still in
+    progress — this module holds no calendar of its own. Without it, a
+    part-year latest column sits beside four full-year ones with nothing
+    saying the rightmost movement is not a comparison of equals (apex-
+    accounting-reports-20).
     """
     labels = [fy for fy, _pl, _bs in years]
     components = [components_of(pl, bs) for _fy, pl, bs in years]
@@ -176,6 +185,7 @@ def build(years: list[tuple[str, dict, dict]], requested_fys: list[str],
         "requested_fys": requested_fys,
         "dropped_fys": dropped,
         "unreadable_fys": unreadable,
+        "latest_period_label": latest_period_label,
         "basis": NOT_A_STATUTORY_STATEMENT,
         "profit_and_loss": [_series(lbl, attr, hib, components)
                             for lbl, attr, hib in PL_LINES],
