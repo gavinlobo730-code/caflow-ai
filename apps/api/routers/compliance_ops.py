@@ -173,6 +173,11 @@ def mark_filed_obligation(record_id: str, body: MarkFiledBody,
             acknowledgement_no=body.acknowledgement_no)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Compliance obligation not found.")
+    except ValidationError as e:
+        # mark_filed fast-forwards through update_record, which is where
+        # apex-overview-practice-02's period-end check lives (a return whose
+        # own period has not ended yet cannot be walked to Filed here either).
+        raise HTTPException(status_code=422, detail=str(e))
     return api_response(True, {"obligation": updated})
 
 
