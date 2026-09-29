@@ -91,7 +91,28 @@ export default function InvoiceSettingsPage() {
     try {
       const res = await api.invoiceSettings.get() as ApiResp<{ invoice_settings: InvoiceSettings }>;
       if (res.success && res.data.invoice_settings && Object.keys(res.data.invoice_settings).length > 0) {
-        setForm({ ...DEFAULT, ...res.data.invoice_settings });
+        // Every text field here is stored NULL once a CA clears it and saves
+        // (handleSave sends `.trim() || null`), but this type says `string`,
+        // never `string | null` — so a field cleared in an earlier session
+        // came back as a literal `null`, which the spread below wrote straight
+        // into form state. The very next Save then ran `null.trim()` on it,
+        // crashing before the request went out — and because the crash was
+        // unconditional (handleSave reads all seven fields every time), the
+        // field could never be cleared, or saved at all, again. Coalescing
+        // each one to "" here is the one place that matters: nothing else in
+        // this component can put a null into `form` (`update()` only ever
+        // receives an input's own .value, always a string).
+        setForm({
+          ...DEFAULT,
+          ...res.data.invoice_settings,
+          bank_name: res.data.invoice_settings.bank_name ?? "",
+          account_number: res.data.invoice_settings.account_number ?? "",
+          account_holder: res.data.invoice_settings.account_holder ?? "",
+          ifsc_code: res.data.invoice_settings.ifsc_code ?? "",
+          upi_id: res.data.invoice_settings.upi_id ?? "",
+          upi_qr_url: res.data.invoice_settings.upi_qr_url ?? "",
+          footer_text: res.data.invoice_settings.footer_text ?? "",
+        });
       }
       setLoadError(null);
     } catch (e) {
@@ -133,13 +154,17 @@ export default function InvoiceSettingsPage() {
         starting_number: form.starting_number,
         manual_override_allowed: form.manual_override_allowed,
         credit_limit_blocks: form.credit_limit_blocks,
-        bank_name: form.bank_name.trim() || null,
-        account_number: form.account_number.trim() || null,
-        account_holder: form.account_holder.trim() || null,
-        ifsc_code: form.ifsc_code.trim().toUpperCase() || null,
-        upi_id: form.upi_id.trim() || null,
-        upi_qr_url: form.upi_qr_url.trim() || null,
-        footer_text: form.footer_text.trim() || null,
+        // (form.field || "") — belt-and-suspenders against the same crash the
+        // load() fix above closes: a null here must fall back to "" rather
+        // than throw, since these are the only lines in this file that call
+        // .trim() on a value the server can hand back as null.
+        bank_name: (form.bank_name || "").trim() || null,
+        account_number: (form.account_number || "").trim() || null,
+        account_holder: (form.account_holder || "").trim() || null,
+        ifsc_code: (form.ifsc_code || "").trim().toUpperCase() || null,
+        upi_id: (form.upi_id || "").trim() || null,
+        upi_qr_url: (form.upi_qr_url || "").trim() || null,
+        footer_text: (form.footer_text || "").trim() || null,
       });
       showToast("Invoice settings saved", "success");
     } catch (e) {

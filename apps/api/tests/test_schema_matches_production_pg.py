@@ -174,7 +174,33 @@ def report(pg_template):
 
 @_NEEDS_PG
 def test_no_column_is_required_in_production_and_optional_in_the_migrations(report):
-    offenders = report["live_requires_but_migrations_do_not"]
+    """A column production is about to STOP requiring is the mirror image of
+    the failure this test exists for, and needs the same in-flight excuse.
+
+    Migration 438 dropped `renewals.renewal_date`'s NOT NULL — deliberately,
+    the fix for a bug where a blank Renewal Date was fabricated into a real
+    date because there was no way to store the CA leaving it blank — and this
+    test failed on exactly that, the first time a migration in this repo's
+    history intentionally LOOSENED a constraint the snapshot still records as
+    required. `test_no_column_the_code_writes_is_missing_from_production`
+    already carries the reasoning for why that has to be excused rather than
+    forbidden: "the fixture records production at a moment in time, so the
+    repo is legitimately ahead of it by however many migrations have not
+    merged yet, and forbidding that made the ordinary act of adding a column
+    in a migration fail its own PR." A column whose constraint a migration
+    ABOVE the high-water mark deliberately changes is in exactly that
+    position — legitimately ahead of the snapshot, not a drift nobody
+    intended — so it gets the identical exclusion, not a second one invented
+    for the occasion.
+
+    An offender nobody can attribute to an in-flight migration still fails:
+    this loosens nothing about what the test catches for every column that
+    is NOT named by a migration past the mark, which is the whole of what
+    made `form_26as_uploads.uploaded_by` a silent loss.
+    """
+    in_flight = _columns_added_after_the_snapshot()
+    offenders = [o for o in report["live_requires_but_migrations_do_not"]
+                 if o.split(".", 1)[1] not in in_flight]
     assert not offenders, (
         "These columns are NOT NULL with no default in production, and nullable "
         "in the migrations. Code written from the migrations will omit them and "
