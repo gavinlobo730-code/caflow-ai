@@ -5,7 +5,11 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "./AuthContext";
 import { LogoIcon } from "@/components/LogoIcon";
 import { isPublicPath } from "./public-paths";
-import { mayRenderProtected, shouldBounceFromSignup } from "./guardDecision";
+import { mayRenderProtected, shouldBounceFromSignup, shouldBounceFromLogin } from "./guardDecision";
+
+// output: "export" serves every route with a trailing slash, so both forms
+// have to match — same normalisation isPublicPath uses.
+const PORTAL_RECOVERY_PATHS = ["/login/forgot-password", "/login/forgot-password/"];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, loading, mfaPending, hasFirm } = useAuth();
@@ -13,6 +17,15 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const onLogin = pathname === "/login" || pathname.startsWith("/login/");
   const onSignup = pathname === "/signup" || pathname.startsWith("/signup/");
+  // Read straight off window.location rather than useSearchParams(): this
+  // component wraps the whole app from the root layout, and useSearchParams()
+  // there would force every statically-exported route through a Suspense
+  // boundary. A plain read inside the effect below needs neither — it only
+  // ever runs client-side, after mount.
+  const isPortalRecovery =
+    PORTAL_RECOVERY_PATHS.includes(pathname) &&
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("portal") === "1";
 
   useEffect(() => {
     if (loading) return;
@@ -38,7 +51,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     // Fully authenticated (no challenge owed) — don't sit on the login page.
     // While mfaPending is still null (resolving) we do NOT redirect, so an aal1
     // session mid-challenge is never mistaken for fully authenticated.
-    if (mfaPending === false && onLogin) {
+    // isPortalRecovery is excluded — see guardDecision.ts's shouldBounceFromLogin.
+    if (shouldBounceFromLogin({ hasSession: !!session, mfaPending, onLogin, isPortalRecovery })) {
       router.replace("/");
       return;
     }
@@ -49,7 +63,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     if (shouldBounceFromSignup({ hasSession: !!session, mfaPending, hasFirm, onSignup })) {
       router.replace("/");
     }
-  }, [session, loading, mfaPending, hasFirm, onLogin, onSignup, pathname, router]);
+  }, [session, loading, mfaPending, hasFirm, onLogin, onSignup, isPortalRecovery, pathname, router]);
 
   if (loading) {
     return (

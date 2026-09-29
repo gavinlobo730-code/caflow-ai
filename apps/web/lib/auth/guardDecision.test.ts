@@ -61,6 +61,48 @@ test("a resolving firm lookup is not treated as no firm", () => {
   assert.equal(at({ hasFirm: null }), true);
 });
 
+// ── /login/forgot-password (portal) ─────────────────────────────────────────
+// The portal's own "Forgot password?" link lands on this same shared
+// reset-request page (?portal=1). A fully-authenticated session — firm staff
+// testing the portal in the same browser, or a portal client who is already
+// signed in — must not be bounced away from it before the reset form is ever
+// shown.
+//
+// NEGATIVE CONTROL: dropping the isPortalRecovery exemption (bounce
+// unconditionally whenever hasSession && onLogin && mfaPending === false)
+// fails 1 test.
+
+import { shouldBounceFromLogin } from "./guardDecision.ts";
+
+const loginBounceBase = {
+  hasSession: true, mfaPending: false, onLogin: true, isPortalRecovery: false,
+} as const;
+const bouncesFromLogin = (over: Partial<typeof loginBounceBase>) =>
+  shouldBounceFromLogin({ ...loginBounceBase, ...over });
+
+test("a fully authenticated session sitting on /login is bounced to /", () => {
+  assert.equal(bouncesFromLogin({}), true);
+});
+
+test("the portal's own forgot-password page is NOT bounced, even when fully authenticated", () => {
+  // The bug: this used to send an already-signed-in visitor to "/" before
+  // they ever saw the reset-request form.
+  assert.equal(bouncesFromLogin({ isPortalRecovery: true }), false);
+});
+
+test("no session means nothing to bounce", () => {
+  assert.equal(bouncesFromLogin({ hasSession: false }), false);
+});
+
+test("a page outside /login is never bounced by this rule", () => {
+  assert.equal(bouncesFromLogin({ onLogin: false }), false);
+});
+
+test("an unresolved or owed MFA challenge is not bounced by this rule either", () => {
+  assert.equal(bouncesFromLogin({ mfaPending: true }), false);
+  assert.equal(bouncesFromLogin({ mfaPending: null }), false);
+});
+
 // ── RoleGuard ────────────────────────────────────────────────────────────────
 // NEGATIVE CONTROL: dropping the `roleLoading` term (the old
 // `!loading && !permitted`) fails "a role still resolving is not a refusal".

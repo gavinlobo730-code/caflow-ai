@@ -44,6 +44,33 @@ export function mayRenderProtected(state: GuardState): boolean {
   return true;
 }
 
+// ── /login/forgot-password (portal) ─────────────────────────────────────────
+//
+// `mfaPending === false && onLogin` bounces a fully-authenticated visitor away
+// from anywhere under /login, including /login/forgot-password?portal=1 — the
+// SAME shared reset-request page the client portal's own "Forgot password?"
+// link uses (apps/web/app/portal/login/page.tsx). That page exists to request
+// a reset link for a DIFFERENT identity than whatever session happens to be
+// live in this browser, so bouncing it is wrong twice over: a CA tester
+// signed in as firm staff (testing the portal in the same browser/tab) never
+// sees the reset form at all, and a PORTAL CLIENT who is already signed in
+// and clicks it anyway lands on "/" — which AuthGuard then bounces AGAIN, to
+// /onboarding, because a portal contact has no `users` row. Either way the
+// reset request is silently swallowed before it is ever sent.
+
+export interface LoginBounceState {
+  hasSession: boolean;
+  mfaPending: MfaPending;
+  onLogin: boolean;
+  isPortalRecovery: boolean;
+}
+
+/** Whether AuthGuard should replace the URL with "/" from the login page. */
+export function shouldBounceFromLogin(state: LoginBounceState): boolean {
+  const { hasSession, mfaPending, onLogin, isPortalRecovery } = state;
+  return hasSession && onLogin && mfaPending === false && !isPortalRecovery;
+}
+
 // ── RoleGuard ────────────────────────────────────────────────────────────────
 //
 // The OTHER direction of the same rule. "Unresolved is not permission" keeps
