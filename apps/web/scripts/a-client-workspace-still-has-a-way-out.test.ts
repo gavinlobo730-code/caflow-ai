@@ -13,6 +13,11 @@
 // navigation, and a CA with no way to sign out, reach Settings, search, or get
 // back to the client list.
 //
+// 29-09: the firm branch changed from `NavShell` (a 64px rail + 220px panel)
+// to `WorkspaceShell` (one top bar, matching `ClientShell`'s own shape) — see
+// WorkspaceTopBar.tsx's header. The STRUCTURE this file asserts did not move:
+// exactly two shells, both reachable to UtilityCluster, never bare children.
+//
 // SO THE MITIGATION IS STRUCTURAL AND THIS ASSERTS THE STRUCTURE. There are
 // exactly two shells; `AppShell` returns one of them and never bare children;
 // the three utilities 2.6 exists for are reachable from BOTH; and the client
@@ -78,12 +83,9 @@ function reachable(roots: string[]): Set<string> {
 const APP_SHELL = "components/AppShell.tsx";
 const CLUSTER = "components/shell/UtilityCluster.tsx";
 
-/** The two shells a signed-in CA can be given, and the root each hangs off.
- *  The firm branch is rooted at the RAIL rather than at `NavShell`, because
- *  the rail is passed to the shell as a prop — an import walk from `NavShell`
- *  alone would never reach it, and would report a hole that is not there. */
+/** The two shells a signed-in CA can be given, and the root each hangs off. */
 const BRANCHES: Record<string, string[]> = {
-  "firm level": ["components/shell/NavShell.tsx", "components/shell/WorkspaceRail.tsx"],
+  "firm level": ["components/shell/WorkspaceShell.tsx"],
   "inside a client": ["components/shell/ClientShell.tsx"],
 };
 
@@ -99,17 +101,19 @@ test("the walk resolves imports, so the reachability below is not vacuous", () =
     "AppShell no longer imports ClientShell",
   );
   // The negative control: a module that does NOT reach the cluster must come
-  // back false, or "reachable" means "any file at all".
+  // back false, or "reachable" means "any file at all". A pure config module
+  // (no component imports at all — see routeOwnership.ts's own header) is a
+  // real file that provably cannot reach chrome.
   assert.ok(
-    !reachable(["components/shell/NavShell.tsx"]).has(CLUSTER),
-    "NavShell alone reaches UtilityCluster — the walk is over-broad and the " +
-      "per-branch assertions below prove nothing",
+    !reachable(["lib/workspace/workspaceConfig.ts"]).has(CLUSTER),
+    "lib/workspace/workspaceConfig.ts reaches UtilityCluster — the walk is " +
+      "over-broad and the per-branch assertions below prove nothing",
   );
 });
 
 test("AppShell offers exactly two shells and neither is 'no shell'", () => {
   const src = read(APP_SHELL);
-  for (const shell of ["NavShell", "ClientShell"]) {
+  for (const shell of ["WorkspaceShell", "ClientShell"]) {
     assert.ok(src.includes(`<${shell}`), `AppShell no longer renders <${shell}`);
   }
   // `return <>{children}</>` is legitimate EXACTLY once — the signed-out and

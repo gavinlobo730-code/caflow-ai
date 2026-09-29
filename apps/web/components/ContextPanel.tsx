@@ -19,17 +19,25 @@ import { EngagementsPanel } from "@/components/panels/EngagementsPanel";
 
 interface ContextPanelProps {
   onOpenSearch: () => void;
+  /**
+   * Preview a DIFFERENT workspace's panel than the one the URL is currently
+   * on — used by WorkspaceMegaMenu, which lets a CA hover "Payroll" while
+   * standing on a Clients page and see Payroll's own list without navigating
+   * first. `undefined`/omitted keeps the ordinary path-derived behaviour;
+   * every other caller of this component leaves it out.
+   */
+  workspaceOverride?: string | null;
 }
 
-export function ContextPanel({ onOpenSearch }: ContextPanelProps) {
+export function ContextPanel({ onOpenSearch, workspaceOverride }: ContextPanelProps) {
   const { activeWorkspace } = useWorkspace();
   const pathname = usePathname();
-  const isSettings = pathname.startsWith("/settings");
+  const isSettings = workspaceOverride === undefined && pathname.startsWith("/settings");
   // Home is the CONTENT fallback for routes no workspace owns (e.g.
   // /platform, /search) so this panel is never left blank — a deliberate,
   // separate decision from the rail's highlight, which must stay null
   // there instead of falsely lighting Home (see WorkspaceContext).
-  const panelWorkspace = activeWorkspace ?? "home";
+  const panelWorkspace = workspaceOverride ?? activeWorkspace ?? "home";
 
   // NO BOX OF ITS OWN. `NavShell` owns the 220px, the white, the border and
   // the collapse; this component is the CONTENT — which panel, for which
