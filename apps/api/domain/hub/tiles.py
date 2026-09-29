@@ -141,7 +141,11 @@ TILES: tuple[Tile, ...] = (
         id="compliance",
         label="Compliance Calendar",
         firm_href="/deadlines",
-        client_section="tasks",
+        # ⚠️ WAS "tasks" (apex-overview-practice-03): clicking this tile from
+        # a client's hub landed on the Tasks tab rather than the client's own
+        # Compliance Calendar, which lives at /clients/{id}/compliance/ — a
+        # real, existing section this tile had simply never been pointed at.
+        client_section="compliance",
         question="Obligations due and not yet filed",
         unit=Unit.COUNT,
     ),

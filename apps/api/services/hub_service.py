@@ -39,6 +39,7 @@ predicate.
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Optional
 
 from core.authz import effective_client_ids
@@ -47,6 +48,16 @@ from domain.banking import entry as bank_entry
 from domain.hub.tiles import describe, tiles_for_scope
 
 logger = logging.getLogger("caflow.hub")
+
+# Bounded worker pool for the hub's independent per-tile reads — same pattern
+# and the same justification as domain/reporting/sources.py's
+# _MAX_PARALLEL_FETCHES: httpx.Client (which supabase-py/postgrest-py wrap) is
+# documented thread-safe for concurrent requests, so sharing one client
+# instance across these workers is safe, and each fetch here is a read with
+# no shared mutable state beyond that. Comfortably above the ~14 tiles this
+# module computes today, so every one of them gets its own worker rather than
+# queueing behind another tile.
+_MAX_PARALLEL_TILE_FETCHES = 16
 
 # ── The vocabularies, read from the CHECK rather than remembered ────────────
 #
@@ -236,60 +247,72 @@ def _signals(firm_id: str, scope: Optional[list[str]],
     None), and `client_id` is whether this is the CLIENT hub. A tile with a
     figure at one scope and not the other — `inventory` is the only one —
     needs the second, and reading it off the first would ask a Partner's firm
-    hub for a per-client figure the moment they had exactly one client."""
-    out: dict[str, Optional[int]] = {
-        "compliance": _safely("compliance", lambda: _count(
+    hub for a per-client figure the moment they had exactly one client.
+
+    apex-overview-practice-07(b): every one of the ~14 fetches below is
+    independent of every other (a different table, no shared state), and
+    `_safely` already isolates a tile's own failure from the rest — which is
+    exactly what makes them safe to run CONCURRENTLY as well as isolatedly.
+    They used to run one after another, each a Singapore-to-Mumbai round
+    trip; run through a ThreadPoolExecutor instead, the same pattern
+    `domain/reporting/sources.py`'s `_base()` already uses for its own
+    independent top-level fetches, so the wall-clock cost drops from "the sum
+    of every tile" to "roughly the slowest single tile"."""
+    # Each value is a CALLABLE (never called yet) so building this dict does
+    # no I/O — only submitting it to the executor below does.
+    tasks: dict[str, Callable[[], Optional[int]]] = {
+        "compliance": lambda: _count(
             "compliance_records", firm_id, scope,
-            in_=("status", _outstanding("compliance_records", _COMPLIANCE_DONE)))),
-        "gst": _safely("gst", lambda: _count(
+            in_=("status", _outstanding("compliance_records", _COMPLIANCE_DONE))),
+        "gst": lambda: _count(
             "gstr1_returns", firm_id, scope,
             in_=("status", _outstanding("gst_returns", _GST_RETURN_DONE)))
             + _count("gstr3b_returns", firm_id, scope,
-                     in_=("status", _outstanding("gst_returns", _GST_RETURN_DONE)))),
+                     in_=("status", _outstanding("gst_returns", _GST_RETURN_DONE))),
         # `entry_state`'s own vocabulary, from `domain/banking/entry`. OPEN_STATES
         # is that module's definition of a line still needing a person, so the
         # tile cannot drift from the queue it links to.
-        "banking": _safely("banking", lambda: _count(
+        "banking": lambda: _count(
             "bank_transactions", firm_id, scope,
-            in_=("entry_state", list(bank_entry.OPEN_STATES)))),
-        "accounting": _safely("accounting", lambda: _count(
+            in_=("entry_state", list(bank_entry.OPEN_STATES))),
+        "accounting": lambda: _count(
             "journal_entries", firm_id, scope,
-            in_=("status", _outstanding("journal_entries", _JOURNAL_DONE)))),
+            in_=("status", _outstanding("journal_entries", _JOURNAL_DONE))),
         # What the clients' CUSTOMERS owe them and what they owe their
         # SUPPLIERS — over live documents only, the ageing screens' rule.
         # ⚠️ Both questions say "Overdue" and both figures are everything
         # still OUTSTANDING, due or not; whether to filter on `due_date` or
         # reword the question is an open owner decision, deliberately not
         # taken here.
-        "sales": _safely("sales", lambda: _sum_paise(
+        "sales": lambda: _sum_paise(
             "client_sales_invoices", "outstanding_paise", firm_id, scope,
-            live_documents_only=True)),
-        "purchases": _safely("purchases", lambda: _sum_paise(
+            live_documents_only=True),
+        "purchases": lambda: _sum_paise(
             "purchase_bills", "outstanding_paise", firm_id, scope,
-            live_documents_only=True)),
+            live_documents_only=True),
         # Deducted and NOT YET DEPOSITED. `challan_no` is what a deposit
         # records, so its absence is the outstanding half — summing every
         # deduction would report a deductor who has paid everything over as
         # owing the whole year.
-        "tds": _safely("tds", lambda: _sum_paise(
-            "tds_deductions", "tds_paise", firm_id, scope, extra_is_null="challan_no")),
-        "payroll": _safely("payroll", lambda: _count(
+        "tds": lambda: _sum_paise(
+            "tds_deductions", "tds_paise", firm_id, scope, extra_is_null="challan_no"),
+        "payroll": lambda: _count(
             "payroll_runs", firm_id, scope,
-            in_=("status", _outstanding("payroll_runs", _PAYROLL_DONE)))),
-        "income_tax": _safely("income_tax", lambda: _count(
+            in_=("status", _outstanding("payroll_runs", _PAYROLL_DONE))),
+        "income_tax": lambda: _count(
             "itr_filings", firm_id, scope,
-            in_=("status", _outstanding("itr_filings", _ITR_DONE)))),
-        "fixed_assets": _safely("fixed_assets", lambda: _count(
-            "fixed_assets", firm_id, scope, is_null="depreciation_posted_through")),
-        "year_end": _safely("year_end", lambda: _count(
+            in_=("status", _outstanding("itr_filings", _ITR_DONE))),
+        "fixed_assets": lambda: _count(
+            "fixed_assets", firm_id, scope, is_null="depreciation_posted_through"),
+        "year_end": lambda: _count(
             "year_end_engagements", firm_id, scope,
-            in_=("status", _outstanding("year_end_engagements", _YEAR_END_DONE)))),
+            in_=("status", _outstanding("year_end_engagements", _YEAR_END_DONE))),
         # `documents.review_status`, NOT `status` — the column this guessed
         # wrong first, and PostgREST answers 42703 on a column that is not
         # there rather than nothing, so it would have been a failed tile
         # rather than a wrong number. Still worth naming.
-        "documents": _safely("documents", lambda: _count(
-            "documents", firm_id, scope, eq={"review_status": "pending_review"})),
+        "documents": lambda: _count(
+            "documents", firm_id, scope, eq={"review_status": "pending_review"}),
     }
     # ── The one tile with a figure at one scope and not the other ──────────
     #
@@ -314,7 +337,9 @@ def _signals(firm_id: str, scope: Optional[list[str]],
     # `reorder_count_as_at` SQL function beside migration 363's
     # `stock_position_as_at` would return that integer server-side; it is a
     # migration, so it is named here rather than taken as a side effect of a
-    # hub. `_safely` already means a slow one costs this tile and no other.
+    # hub. `_safely` already means a slow one costs this tile and no other,
+    # and running it alongside every other tile's own fetch (rather than
+    # strictly after them, as it used to) no longer adds its cost on top.
     #
     # ⚠️ AND ITS FALLBACK IS LEDGER-PROPORTIONAL, which is named rather than
     # hidden because an unnamed unbounded read is what the reporting rule
@@ -327,9 +352,11 @@ def _signals(firm_id: str, scope: Optional[list[str]],
     # a degradation, not a wrong number. The `reorder_count_as_at` function
     # above removes it.
     if client_id is not None:
-        out["inventory"] = _safely("inventory", lambda: _reorder_count(
-            firm_id, client_id))
-    return out
+        tasks["inventory"] = lambda: _reorder_count(firm_id, client_id)
+
+    with ThreadPoolExecutor(max_workers=_MAX_PARALLEL_TILE_FETCHES) as ex:
+        futures = {name: ex.submit(_safely, name, fn) for name, fn in tasks.items()}
+        return {name: f.result() for name, f in futures.items()}
 
 
 def _reorder_count(firm_id: str, client_id: str) -> int:
