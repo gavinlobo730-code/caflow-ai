@@ -518,6 +518,12 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
   const [saving, setSaving] = useState(false);
 
   async function submit() {
+    // Re-entrancy guard, belt-and-braces alongside ModalActions' own
+    // `disabled={saving}`: a fast double-click can fire this handler twice
+    // before React re-renders the button disabled, and POST
+    // /api/credit-notes/ has no server-side idempotency check — a genuine
+    // second click is a genuine second credit note.
+    if (saving) return;
     setSaving(true);
     try {
       const token = await getAuthToken();
@@ -581,6 +587,12 @@ function CreateSalesDebitNoteModal({ invoice, clientId, onClose, onDone, onError
   const [saving, setSaving] = useState(false);
 
   async function submit() {
+    // Re-entrancy guard, belt-and-braces alongside ModalActions' own
+    // `disabled={saving}`: a fast double-click can fire this handler twice
+    // before React re-renders the button disabled, and
+    // POST /api/sales-debit-notes/ has no server-side idempotency check — a
+    // genuine second click is a genuine second debit note.
+    if (saving) return;
     setSaving(true);
     try {
       const token = await getAuthToken();

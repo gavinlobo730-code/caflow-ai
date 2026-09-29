@@ -29,18 +29,9 @@ import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { api, type Form3cdClause, type Form3cdRegister } from "@/lib/api";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { renderClauseValue as renderValue } from "@/lib/income-tax/form3cdRender";
 
 const FY_OPTIONS = financialYearChoicesAround(null);
-
-/** A best-effort, honest rendering of whatever a derived clause returned —
- *  a number, a string, a list or a nested object — without pretending to
- *  know the shape of every one of them. */
-function renderValue(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "string") return value;
-  if (typeof value === "number") return String(value);
-  return JSON.stringify(value, null, 2);
-}
 
 function ClauseRow({ clause, manualValue, onManualChange }: {
   clause: Form3cdClause;
