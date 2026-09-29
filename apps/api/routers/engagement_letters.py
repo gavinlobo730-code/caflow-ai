@@ -28,6 +28,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access, filter_by_client
 from services.audit_service import log_event
 from core.ist_clock import ist_today
+from domain.money_text import group_indian
 
 _logger = logging.getLogger("caflow.engagement_letters")
 
@@ -165,7 +166,7 @@ engagement as agreed between us.</p>
   <li>Annual GSTR-9 filing by 31st December — CGST Act Section 44</li>
 </ul>
 <h3>Fee</h3>
-<p>Our professional fee for the above services is <strong>₹{{engagement_fee}} per month</strong>
+<p>Our professional fee for the above services is <strong>{{engagement_fee}} per month</strong>
 (exclusive of applicable taxes), payable by the 10th of each month.</p>
 <h3>Client Responsibilities</h3>
 <p>You agree to provide all invoices, purchase documents, and bank statements by the
@@ -199,7 +200,7 @@ Income Tax Return for the relevant Assessment Year.</p>
   <li>PAN verification and Form 26AS reconciliation</li>
 </ul>
 <h3>Fee</h3>
-<p>Our professional fee for the above services is <strong>₹{{engagement_fee}} per annum</strong>
+<p>Our professional fee for the above services is <strong>{{engagement_fee}} per annum</strong>
 (exclusive of applicable taxes).</p>
 <h3>Client Responsibilities</h3>
 <p>You shall provide Form 16 / Form 16A, bank statements, investment proofs, and all
@@ -228,7 +229,7 @@ organisation under Section 44AB of the Income Tax Act, 1961.</p>
   <li>E-filing of Tax Audit Report on the Income Tax portal by 30th September</li>
 </ul>
 <h3>Fee</h3>
-<p>Our professional fee for the Tax Audit is <strong>₹{{engagement_fee}}</strong>
+<p>Our professional fee for the Tax Audit is <strong>{{engagement_fee}}</strong>
 (exclusive of applicable taxes), payable on completion of the audit.</p>
 <h3>Independence</h3>
 <p>We confirm that we are independent of your organisation as required by ICAI
@@ -258,7 +259,7 @@ Registrar of Companies (ROC) compliance services under the Companies Act, 2013.<
   <li>Board meeting minutes and secretarial record maintenance</li>
 </ul>
 <h3>Fee</h3>
-<p>Our professional fee for the above services is <strong>₹{{engagement_fee}} per annum</strong>
+<p>Our professional fee for the above services is <strong>{{engagement_fee}} per annum</strong>
 (exclusive of applicable taxes).</p>
 <p>Please sign below to confirm your acceptance.</p>
 <br/>
@@ -285,7 +286,7 @@ and accounting services for your organisation.</p>
   <li>TDS computation and deduction tracking — IT Act Chapter XVII-B</li>
 </ul>
 <h3>Fee</h3>
-<p>Our professional fee for the above services is <strong>₹{{engagement_fee}} per month</strong>
+<p>Our professional fee for the above services is <strong>{{engagement_fee}} per month</strong>
 (exclusive of applicable taxes), payable by the 15th of each month.</p>
 <h3>Client Responsibilities</h3>
 <p>You shall provide all source documents (invoices, receipts, bank statements) by
@@ -316,7 +317,7 @@ Virtual CFO (Chief Financial Officer) services to your organisation.</p>
   <li>Due diligence support for fundraising or transactions</li>
 </ul>
 <h3>Fee</h3>
-<p>Our professional retainer fee is <strong>₹{{engagement_fee}} per month</strong>
+<p>Our professional retainer fee is <strong>{{engagement_fee}} per month</strong>
 (exclusive of applicable taxes), payable in advance by the 1st of each month.</p>
 <h3>Exclusions</h3>
 <p>Out-of-pocket expenses (travel, regulatory fees) shall be billed at actuals with
@@ -438,13 +439,42 @@ def _next_engagement_no(db, firm_id: str) -> str:
 
 
 def _format_fee(fee_amount_paise: int) -> str:
-    """Format paise as ₹X — integer arithmetic only, never float."""
+    """Format paise as ₹X — integer arithmetic, Indian digit grouping, never
+    float. `group_indian` (domain/money_text.py) is the one grouping
+    implementation in the product (decision D6) — every default template's own
+    `{{engagement_fee}}` placeholder is merged with THIS string, which already
+    carries the ₹ sign, so a template must never write a literal ₹ of its own
+    beside the placeholder (that produced "₹₹18000" — a doubled sign and no
+    comma at all, since this function used to interpolate the raw integer)."""
     # All monetary values in integer paise — CGST Act compliance
     rupees = fee_amount_paise // 100
     paise_remainder = fee_amount_paise % 100
     if paise_remainder:
-        return f"₹{rupees}.{paise_remainder:02d}"
-    return f"₹{rupees}"
+        return f"₹{group_indian(str(rupees))}.{paise_remainder:02d}"
+    return f"₹{group_indian(str(rupees))}"
+
+
+def _display_date(value) -> str:
+    """A date a CLIENT reads in a signed document, not a raw ISO string.
+
+    Matches the frontend's own `formatDate` convention
+    (`apps/web/lib/services/formatting.ts`: day 2-digit, month short, year
+    numeric — "29 Sep 2026") so an engagement letter and every other screen in
+    the product describe a date the same way. `value` may be a `date` already
+    (the caller's own `ist_today()`) or an ISO string read back off a stored
+    row (`engagements.start_date`); an unparseable value is returned AS IS
+    rather than raising — this is a merge field in a document about to be
+    generated, not a validated form field, and a blank date is worse than an
+    un-prettified one.
+    """
+    if isinstance(value, date):
+        d = value
+    else:
+        try:
+            d = date.fromisoformat(str(value)[:10])
+        except (TypeError, ValueError):
+            return str(value or "")
+    return d.strftime("%d %b %Y")
 
 
 def _seed_default_templates(db, firm_id: str, created_by: Optional[str]) -> list[dict]:
@@ -1335,11 +1365,14 @@ def generate_engagement(
             "client_name":      eng.get("recipient_name") or "Client",
             "client_pan":       "",
             "client_gstin":     "",
-            "firm_name":        "Your CA Firm",
-            "partner_name":     current_user.get("name") or current_user.get("email") or "Partner",
+            "firm_name":        _firm_name(db, firm_id),
+            # current_user has no "name" key (core/auth.py builds "full_name")
+            # — reading "name" was always None and fell through to the raw
+            # login email, which is what the client's own sign-off showed.
+            "partner_name":     current_user.get("full_name") or current_user.get("email") or "Partner",
             "engagement_fee":   _format_fee(int(eng.get("fee_amount_paise") or 0)),
-            "engagement_date":  today,
-            "start_date":       eng.get("start_date") or today,
+            "engagement_date":  _display_date(today),
+            "start_date":       _display_date(eng.get("start_date") or today),
         }
         rendered = _render_merge_fields(eng.get("content", ""), fields)
         eng["content"] = rendered
@@ -1408,11 +1441,14 @@ def generate_engagement(
         "client_name":      client_name or "Client",
         "client_pan":       client_pan,
         "client_gstin":     client_gstin,
-        "firm_name":        "Your CA Firm",
-        "partner_name":     current_user.get("name") or current_user.get("email") or "Partner",
+        "firm_name":        _firm_name(db, firm_id),
+        # current_user has no "name" key (core/auth.py builds "full_name")
+        # — reading "name" was always None and fell through to the raw
+        # login email, which is what the client's own sign-off showed.
+        "partner_name":     current_user.get("full_name") or current_user.get("email") or "Partner",
         "engagement_fee":   _format_fee(int(eng.get("fee_amount_paise") or 0)),
-        "engagement_date":  today,
-        "start_date":       eng.get("start_date") or today,
+        "engagement_date":  _display_date(today),
+        "start_date":       _display_date(eng.get("start_date") or today),
     }
     rendered = _render_merge_fields(eng.get("content", ""), fields)
 

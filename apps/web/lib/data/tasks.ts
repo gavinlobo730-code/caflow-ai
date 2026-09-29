@@ -195,7 +195,23 @@ export async function deleteTask(id: string): Promise<void> {
 
 export async function updateTask(id: string, input: Partial<CreateTaskInput>): Promise<void> {
   const sb = getSupabaseClient();
-  await sb.from("tasks").update({ ...input, updated_at: new Date().toISOString() }).eq("id", id);
+  // due_date is a DATE column and Postgres has no such thing as an empty
+  // date — "" raised `invalid input syntax for type date: ""` on every save
+  // of a task whose Due Date field the CA had cleared, the same 22P02 shape
+  // assignee_id/assigned_to have below for an empty UUID. Due Date is
+  // genuinely optional (the New Task form marks it with no asterisk), so an
+  // explicit "" is normalised to NULL rather than sent as typed. A `due_date`
+  // that is simply absent from `input` (the field was not part of this PATCH
+  // at all) must stay absent, not be forced to null — hence the `in` check
+  // rather than `input.due_date ?? …`.
+  const patch: Record<string, unknown> = {
+    ...input,
+    updated_at: new Date().toISOString(),
+  };
+  if ("due_date" in input && !input.due_date) {
+    patch.due_date = null;
+  }
+  await sb.from("tasks").update(patch).eq("id", id);
 }
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {
@@ -205,11 +221,17 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   // them, never send "" (the value the "Unassigned" default writes) —
   // Postgres has no such thing as an empty UUID, so "" raises 22P02 before
   // the row is ever built, on every task created with no assignee chosen.
-  const { assignee_id, assigned_to, ...rest } = input;
+  // due_date is the same defect on a DATE column: the New Task form marks it
+  // optional (no asterisk, no `required`), and leaving it blank must store
+  // NULL, not the empty string the input's own default value is — sending ""
+  // there raised `invalid input syntax for type date: ""` before the row was
+  // ever built.
+  const { assignee_id, assigned_to, due_date, ...rest } = input;
   const { data, error } = await sb.from("tasks").insert({
     ...rest,
     ...(assignee_id ? { assignee_id } : {}),
     ...(assigned_to ? { assigned_to } : {}),
+    due_date: due_date || null,
     firm_id: firmId,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

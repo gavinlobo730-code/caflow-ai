@@ -9,7 +9,7 @@ All monetary values stored in integer paise (₹1 = 100 paise) — never float.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Annotated, Any, Optional
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone, date
 import logging
 import uuid
 
@@ -20,7 +20,6 @@ from core.validators import validate_pan, validate_gstin
 from services.timeline_service import timeline_service
 from services.audit_service import log_event
 from models.fy import FYLabel, OptionalFYLabel
-from core.ist_clock import ist_today
 
 _logger = logging.getLogger("caflow.lifecycle")
 
@@ -611,7 +610,7 @@ class ChecklistStartIn(BaseModel):
 class RenewalIn(BaseModel):
     client_id: str
     financial_year: FYLabel
-    service_type: Optional[str] = None  # kept in model for API compat, not stored in DB
+    service_type: Optional[str] = None  # migration 438 — renewals.service_type
     renewal_date: Optional[str] = None
     value_paise: int = 0               # mapped to fee_paise in DB
     status: str = "pending"
@@ -1925,8 +1924,12 @@ def create_renewal(
     assert_client_access(current_user, data.client_id)
     db = _db()
     now = datetime.now(timezone.utc).isoformat()
-    # renewals.renewal_date is NOT NULL — default to 1 year from today if not provided
-    renewal_date = data.renewal_date or (ist_today() + timedelta(days=365)).isoformat()
+    # renewals.renewal_date is nullable (migration 438) — a renewal genuinely
+    # may not have a date yet, and inventing one (this used to default to a
+    # year from today) wrote a date nobody chose as if the CA had typed it.
+    # Leaving it blank stores NULL; every reader already treats an absent
+    # renewal_date as "no date set" rather than "overdue" (see 438's own note).
+    renewal_date = data.renewal_date
     db_status = _RENEWAL_STATUS_MAP.get(data.status, "pending")
 
     row = {
@@ -1940,7 +1943,9 @@ def create_renewal(
         "notes":          data.notes,
         "created_at":     now,
         "updated_at":     now,
-        # service_type not stored in DB (no column) — kept in mock for display
+        # renewals.service_type (migration 438) — previously accepted on the
+        # request and dropped before the INSERT, so it read back blank on
+        # every reload. Now a real column, stored on both paths.
         "service_type":   data.service_type,
     }
 
@@ -1953,8 +1958,8 @@ def create_renewal(
         )
         return api_response(True, row)
 
-    # DB insert — exclude service_type (no column in schema)
-    db_row = {k: v for k, v in row.items() if k not in ("service_type", "updated_at")}
+    # DB insert — updated_at is left to the column's own DEFAULT/trigger.
+    db_row = {k: v for k, v in row.items() if k not in ("updated_at",)}
     db.table("renewals").insert(db_row).execute()
     timeline_service.log(
         data.client_id, "lifecycle", "Renewal Created",
