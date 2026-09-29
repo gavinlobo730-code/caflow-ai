@@ -6869,6 +6869,30 @@ def statutory_position(
     # revised figure.
     revisions = _salary_in_force(db, current_user["firm_id"], client_id, month)
 
+    # THE MONTH'S OWN RUN, WHEN ONE EXISTS — not just its revision. Reading the
+    # standing structure and re-projecting a full month is right for a client
+    # with no run yet (the docstring's "people no run has covered"), and wrong
+    # for one who already has: attendance and LOP are facts about THIS month
+    # that only the run's own slips carry — `_pay_in_force` resolves WHICH
+    # salary applied, never how many days of it were actually worked. An
+    # employee with a single day of LOP in September showed a full month's PF
+    # here while the real September run — draft or finalised, it makes no
+    # difference; a draft has computed the month even though it has not yet
+    # PAID it (PAY-04 is about crediting withholding/contribution HISTORY that
+    # has not happened, not about which figure is more accurate for the month
+    # itself) — correctly deducted on the LOP-adjusted figure. Any status
+    # qualifies for exactly that reason: draft, review, finalized or paid all
+    # carry the same `_compute_slip` output, the same one the Payslip Summary
+    # report reads via `useSlips({run_id})`.
+    run_rows = (db.table("payroll_runs").select("id")
+               .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+               .eq("month", month).limit(1).execute().data) or []
+    slips_by_emp: dict[str, dict] = {}
+    if run_rows:
+        slip_rows = (db.table("payroll_slips").select("*")
+                    .eq("run_id", run_rows[0]["id"]).execute().data) or []
+        slips_by_emp = {str(s["employee_id"]): s for s in slip_rows}
+
     rows: list[dict] = []
     gaps: list[str] = []
     totals = {"pf_employee_paise": 0, "pf_employer_paise": 0,
@@ -6879,38 +6903,64 @@ def statutory_position(
 
     for emp in emps:
         emp = _pay_in_force(emp, revisions)
-        basic = int(emp.get("basic_paise") or 0)
-        da = _percent_of(basic, emp.get("da_percent", 0))
-        hra = _percent_of(basic, emp.get("hra_percent", 0))
-        lta = int(emp.get("lta_paise") or 0)
-        medical = int(emp.get("medical_paise") or 0)
-        special = int(emp.get("special_allowance_paise") or 0)
-        other = int(emp.get("other_allowances_paise") or 0)
-        gross = basic + hra + da + lta + medical + special + other
+        slip = slips_by_emp.get(str(emp["id"]))
 
-        # THE SAME WAGE BASE THE RUN DEDUCTS ON, through the same helper. This
-        # projected `basic + da`, which has been the wrong rule since the Labour
-        # Codes commenced on 21-11-2025 — so this screen showed ₹1,200 of
-        # employee PF for an employee the payroll run deducted ₹1,680 from
-        # (₹10,000 basic, ₹18,000 HRA: exclusions are 64% of total, the excess
-        # over half is deemed wages and the base is ₹14,000). Two PF figures for
-        # one employee, and the CA has no way to tell which the challan will
-        # carry. The month decides which side of commencement this sits on, so
-        # a position asked for an earlier month still answers at that month's
-        # rule.
-        _wb = _pf_wage_base(
-            basic_paise=basic, da_paise=da, hra_paise=hra, lta_paise=lta,
-            medical_paise=medical, special_allowance_paise=special,
-            other_allowances_paise=other,
-            fy=fy, month=m,
-        )
-        pf = (_compute_pf(_wb.wages_paise, fy, eps_eligible=emp.get("eps_eligible", True))
-              if emp.get("pf_applicable")
-              else {"employee": 0, "employer": 0, "employer_eps": 0,
-                    "employer_epf": 0, "edli": 0, "admin": 0})
-        esi = (_compute_esi(gross, fy,
-                            covered_at_period_start=emp["id"] in esi_covered_earlier)
-               if emp.get("esi_applicable") else {"employee": 0, "employer": 0})
+        if slip is not None:
+            # THE RUN'S OWN FIGURES, ALREADY COMPUTED ON THIS MONTH'S REAL
+            # ATTENDANCE — read, never recomputed, for the same reason a
+            # released payslip's PF/EPS split is stored rather than re-derived
+            # at ECR time (migration 295): two implementations of one figure
+            # drift, and this screen is not the one that gets to be the second.
+            basic = int(slip.get("basic_paise") or 0)
+            da = int(slip.get("da_paise") or 0)
+            gross = int(slip.get("gross_paise") or 0)
+            pf = {"employee": int(slip.get("pf_employee_paise") or 0),
+                  "employer": int(slip.get("pf_employer_paise") or 0),
+                  "employer_eps": int(slip.get("pf_employer_eps_paise") or 0),
+                  "employer_epf": int(slip.get("pf_employer_epf_paise") or 0),
+                  "edli": int(slip.get("edli_paise") or 0),
+                  "admin": int(slip.get("pf_admin_paise") or 0)}
+            esi = {"employee": int(slip.get("esi_employee_paise") or 0),
+                  "employer": int(slip.get("esi_employer_paise") or 0)}
+            wb_wages_paise = int(slip.get("pf_wages_paise") or 0)
+            wb_addback_paise = int(slip.get("pf_wages_addback_paise") or 0)
+            wb_rule_applied = bool(slip.get("pf_wages_rule_applied"))
+        else:
+            basic = int(emp.get("basic_paise") or 0)
+            da = _percent_of(basic, emp.get("da_percent", 0))
+            hra = _percent_of(basic, emp.get("hra_percent", 0))
+            lta = int(emp.get("lta_paise") or 0)
+            medical = int(emp.get("medical_paise") or 0)
+            special = int(emp.get("special_allowance_paise") or 0)
+            other = int(emp.get("other_allowances_paise") or 0)
+            gross = basic + hra + da + lta + medical + special + other
+
+            # THE SAME WAGE BASE THE RUN DEDUCTS ON, through the same helper.
+            # This projected `basic + da`, which has been the wrong rule since
+            # the Labour Codes commenced on 21-11-2025 — so this screen showed
+            # ₹1,200 of employee PF for an employee the payroll run deducted
+            # ₹1,680 from (₹10,000 basic, ₹18,000 HRA: exclusions are 64% of
+            # total, the excess over half is deemed wages and the base is
+            # ₹14,000). Two PF figures for one employee, and the CA has no way
+            # to tell which the challan will carry. The month decides which
+            # side of commencement this sits on, so a position asked for an
+            # earlier month still answers at that month's rule.
+            _wb = _pf_wage_base(
+                basic_paise=basic, da_paise=da, hra_paise=hra, lta_paise=lta,
+                medical_paise=medical, special_allowance_paise=special,
+                other_allowances_paise=other,
+                fy=fy, month=m,
+            )
+            pf = (_compute_pf(_wb.wages_paise, fy, eps_eligible=emp.get("eps_eligible", True))
+                  if emp.get("pf_applicable")
+                  else {"employee": 0, "employer": 0, "employer_eps": 0,
+                        "employer_epf": 0, "edli": 0, "admin": 0})
+            esi = (_compute_esi(gross, fy,
+                                covered_at_period_start=emp["id"] in esi_covered_earlier)
+                   if emp.get("esi_applicable") else {"employee": 0, "employer": 0})
+            wb_wages_paise = _wb.wages_paise
+            wb_addback_paise = _wb.deemed_addback_paise
+            wb_rule_applied = _wb.rule_applied
 
         joining = emp.get("joining_date")
         grat = gratuity_domain.compute(
@@ -6935,9 +6985,9 @@ def statutory_position(
             # The §2(y) working, the same three fields the payslip stores
             # (migration 334), so a CA reconciling this screen against a
             # challan can see WHY the base differs from basic + DA.
-            "pf_wages_paise": _wb.wages_paise,
-            "pf_wages_addback_paise": _wb.deemed_addback_paise,
-            "pf_wages_rule_applied": _wb.rule_applied,
+            "pf_wages_paise": wb_wages_paise,
+            "pf_wages_addback_paise": wb_addback_paise,
+            "pf_wages_rule_applied": wb_rule_applied,
             "pf_applicable": bool(emp.get("pf_applicable")),
             "esi_applicable": bool(emp.get("esi_applicable")),
             "pf_employee_paise": pf["employee"],
@@ -6952,7 +7002,17 @@ def statutory_position(
             "joining_date": joining,
             "gratuity_payable_paise": grat.payable_paise,
             "gratuity_eligible": grat.eligible,
-            "gratuity_years": grat.service_years_counted,
+            # `completed_years` — the plain §4(1) floor, the SAME figure
+            # `grat.reasons` states ("N completed years of service. §4(1)
+            # requires five..."). `service_years_counted` is a DIFFERENT
+            # number: §4(2)'s "part thereof in excess of six months" rounds
+            # UP for the PAYABLE formula once eligible, so an employee at
+            # 4 years 9 months read completed_years=4 in the reason and
+            # service_years_counted=5 here — the screen and its own tooltip
+            # disagreeing about the same employee. Displaying the counted
+            # figure is right only once inside gratuity_payable_paise's own
+            # arithmetic; as a stated "years of service" it is never this.
+            "gratuity_years": grat.completed_years,
             "gratuity_reasons": grat.reasons,
         })
         totals["pf_employee_paise"] += pf["employee"]
