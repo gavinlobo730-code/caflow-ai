@@ -48,11 +48,28 @@ export type DrawerEmployee = {
   status?: string;
   basic_paise?: number;
   joining_date?: string | null;
+  // PAY-11's other half: the master-data fields three finished statutory
+  // builders need (domain/payroll/ecr.py, esic.py, the s.192 projection) and
+  // which, until the Profile section below, had no editable surface reachable
+  // from this drawer at all — only AddEmployeeModal's own create/edit form
+  // touched them. Optional because the roster's own row type (a subset,
+  // app/clients/[id]/payroll/page.tsx) does not declare every one of them;
+  // the API still returns them (`select("*")`), so they are simply undefined
+  // to TypeScript and present at runtime.
+  pan?: string | null;
+  uan?: string | null;
+  esi_number?: string | null;
+  bank_account_no?: string | null;
+  bank_ifsc?: string | null;
+  hra_percent?: number | null;
+  da_percent?: number | null;
 };
 
-type Section = "settlement" | "revisions" | "loans" | "perquisites" | "relief";
+type Section = "profile" | "settlement" | "revisions" | "loans" | "perquisites" | "relief";
 
 const SECTIONS: { key: Section; label: string; hint: string }[] = [
+  { key: "profile", label: "Profile",
+    hint: "PAN, UAN, ESI number, bank account and IFSC, joining date and the basic/HRA/DA the payslip computes from." },
   { key: "settlement", label: "Full & final",
     hint: "Gratuity, leave encashment, bonus and recoveries — computed, then recorded." },
   { key: "revisions", label: "Salary revisions",
@@ -128,7 +145,22 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const [section, setSection] = useState<Section>("settlement");
+  // Defaults to the neutral Profile section rather than the leaver's Full &
+  // Final screen — apex-payroll-yearend-07: an active employee opened here was
+  // landing on the settlement flow every time, and settlement is not the
+  // common case a roster's "Open" button is pressed for.
+  const [section, setSection] = useState<Section>("profile");
+
+  // Escape closes the drawer, matching the shared Drawer/Modal/ClientFormModal
+  // pattern (a document/window keydown listener) — this component was the one
+  // full-screen overlay with no way out but the explicit Close button.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/20" onClick={onClose}>
@@ -165,6 +197,9 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
         </p>
 
         <div className="p-5">
+          {section === "profile" && (
+            <ProfileSection employee={employee} onSaved={onChanged} />
+          )}
           {section === "settlement" && (
             <SettlementSection employee={employee} clientId={clientId}
               canFinalize={canFinalize} onRecorded={onChanged} />
@@ -182,6 +217,138 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
             <ReliefSection employee={employee} clientId={clientId} />
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Profile / master data ───────────────────────────────────────────────────
+
+/** PAY-11's other half. The roster showed seven read-only cells and offered no
+ *  way to correct a PAN, UAN, ESI number, bank detail, joining date or the
+ *  basic/HRA/DA a payslip is computed from, once the employee was created —
+ *  every field here already exists on `EmployeeUpdateIn`
+ *  (apps/api/models/payroll.py) and saves through the door AddEmployeeModal
+ *  already uses. This is a second SURFACE onto that one door, not a second
+ *  employee form: it sends exactly the fields below and nothing this drawer
+ *  invents, and the format checks (UAN twelve digits, IFSC's RBI shape,
+ *  0-100% for HRA/DA, non-negative paise) live once, server-side — an error
+ *  here is the server's own sentence, not a client-side guess at its rule. */
+function ProfileSection({ employee, onSaved }: {
+  employee: DrawerEmployee; onSaved: () => void;
+}) {
+  const [pan, setPan] = useState(employee.pan ?? "");
+  const [uan, setUan] = useState(employee.uan ?? "");
+  const [esiNumber, setEsiNumber] = useState(employee.esi_number ?? "");
+  const [bankAccountNo, setBankAccountNo] = useState(employee.bank_account_no ?? "");
+  const [bankIfsc, setBankIfsc] = useState(employee.bank_ifsc ?? "");
+  const [joiningDate, setJoiningDate] = useState(employee.joining_date ?? "");
+  const [basic, setBasic] = useState(
+    employee.basic_paise != null ? String(employee.basic_paise / 100) : "");
+  const [hraPercent, setHraPercent] = useState(
+    employee.hra_percent != null ? String(employee.hra_percent) : "");
+  const [daPercent, setDaPercent] = useState(
+    employee.da_percent != null ? String(employee.da_percent) : "");
+
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function save() {
+    setBusy(true); setErr(null); setDone(false);
+    try {
+      // A typed value not a number REFUSES here rather than being silently
+      // dropped as "blank" — parseFloat("1,25,000") is 1, and a percent typo
+      // read as "unchanged" would leave the CA believing a correction saved
+      // when it did not. Genuinely blank (never touched) still means
+      // unchanged, the same reading EmployeeUpdateIn's own `exclude_none`
+      // gives every field here, and the one AddEmployeeModal already relies
+      // on.
+      const hraBps = hraPercent.trim() === "" ? null : bpsFromPercentInput(hraPercent);
+      const daBps = daPercent.trim() === "" ? null : bpsFromPercentInput(daPercent);
+      const basicPaise = basic.trim() === "" ? null : paiseFromRupeeInput(basic);
+      const rejected = [
+        hraPercent.trim() !== "" && hraBps === null ? "HRA %" : null,
+        daPercent.trim() !== "" && daBps === null ? "DA %" : null,
+        basic.trim() !== "" && basicPaise === null ? "Basic" : null,
+      ].filter((f): f is string => f !== null);
+      if (rejected.length) {
+        throw new Error(`${rejected.join(", ")} ${rejected.length === 1 ? "is" : "are"} not `
+          + "a number — type digits only, without commas.");
+      }
+      await api.payroll.updateEmployee(employee.id, {
+        pan: pan.trim() ? pan.trim().toUpperCase() : null,
+        uan: uan.trim() || null,
+        esi_number: esiNumber.trim() || null,
+        bank_account_no: bankAccountNo.trim() || null,
+        bank_ifsc: bankIfsc.trim() ? bankIfsc.trim().toUpperCase() : null,
+        joining_date: joiningDate || null,
+        basic_paise: basicPaise,
+        hra_percent: hraBps === null ? null : hraBps / 100,
+        da_percent: daBps === null ? null : daBps / 100,
+      });
+      setDone(true);
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "That did not save.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <label className={LABEL}>PAN
+          <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())}
+            maxLength={10} className={`${FIELD} mt-1 uppercase`} />
+        </label>
+        <label className={LABEL}>UAN
+          <input value={uan} onChange={(e) => setUan(e.target.value.replace(/[^0-9]/g, ""))}
+            inputMode="numeric" maxLength={12} className={`${FIELD} mt-1`} />
+          <span className="text-3xs text-ps-hint">
+            Twelve digits — the EPFO&apos;s own format. The ECR refuses anything else.
+          </span>
+        </label>
+        <label className={LABEL}>ESI number
+          <input value={esiNumber} onChange={(e) => setEsiNumber(e.target.value)}
+            className={`${FIELD} mt-1`} />
+        </label>
+        <label className={LABEL}>Joining date
+          <input type="date" value={joiningDate} onChange={(e) => setJoiningDate(e.target.value)}
+            className={`${FIELD} mt-1`} />
+          <span className="text-3xs text-ps-hint">
+            Gratuity&apos;s five years, EPS eligibility on first joining, and whether the
+            §192 projection annualises a mid-year joiner&apos;s pay all read this.
+          </span>
+        </label>
+        <label className={LABEL}>Bank account number
+          <input value={bankAccountNo} onChange={(e) => setBankAccountNo(e.target.value)}
+            className={`${FIELD} mt-1`} />
+        </label>
+        <label className={LABEL}>Bank IFSC
+          <input value={bankIfsc} onChange={(e) => setBankIfsc(e.target.value.toUpperCase())}
+            maxLength={11} className={`${FIELD} mt-1 uppercase`} />
+        </label>
+        <Money label="Basic" value={basic} onChange={setBasic} />
+        <label className={LABEL}>HRA %
+          <input value={hraPercent} onChange={(e) => setHraPercent(e.target.value)}
+            type="text" inputMode="decimal" className={`${FIELD} mt-1`} />
+        </label>
+        <label className={LABEL}>DA %
+          <input value={daPercent} onChange={(e) => setDaPercent(e.target.value)}
+            type="text" inputMode="decimal" className={`${FIELD} mt-1`} />
+        </label>
+      </div>
+
+      {err && <Callout tone="problem">{err}</Callout>}
+      {done && <p className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700">Saved.</p>}
+
+      <div className="flex justify-end">
+        <button onClick={save} disabled={busy}
+          className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
+          {busy ? "Saving…" : "Save"}
+        </button>
       </div>
     </div>
   );

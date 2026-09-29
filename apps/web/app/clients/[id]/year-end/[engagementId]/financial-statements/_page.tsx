@@ -86,6 +86,58 @@ const EQUITY_LIABILITY_GROUPS: { label: string; lines: [string, string][] }[] = 
   ] },
 ];
 
+// apex-payroll-yearend-13: the heading above and its "share_capital" line were
+// hardcoded to the CORPORATE captions — "Shareholders' Funds" / "Share
+// Capital" — although `usesScheduleIII` was imported into this file the whole
+// time and used only to switch the footnote sentence at the bottom of the
+// page, never the group/line captions actually printed on the statement.
+// Schedule III reaches a company through Companies Act 2013 §129(1), which
+// speaks of "a company", so a Proprietorship's real capital balance rendered
+// under a caption that presupposes shares nobody issued.
+//
+// Keyed the same way lib/entityObligations.ts's own (private) `key()`
+// normalises `clients.entity_type` — trimmed, lower-cased, whitespace
+// collapsed — restated rather than reaching into that module's internals.
+function entityCaptionKey(entityType: string | null | undefined): string {
+  return String(entityType ?? "").trim().toLowerCase().replace(/[\s_]+/g, " ");
+}
+
+/** Proprietorship -> "Proprietor's Capital" / "Capital Account"; Partnership
+ *  and LLP -> "Partners' Capital" — the three entity types this finding
+ *  named. Company (Private/Public Limited) keeps the existing captions below,
+ *  which is also what an unlisted entity type (Individual, Trust, Society)
+ *  falls back to: this fix is scoped to the three the finding named, not a
+ *  full non-corporate capital taxonomy, and a caption picked from memory for
+ *  the other three would be exactly the guess CLAUDE.md's "never guess, name
+ *  the gap" rule refuses elsewhere in this codebase. */
+const CAPITAL_CAPTION_BY_ENTITY: Record<string, { heading: string; line: string }> = {
+  "proprietorship": { heading: "Proprietor's Capital", line: "Capital Account" },
+  "partnership": { heading: "Partners' Capital", line: "Capital Account" },
+  "llp": { heading: "Partners' Capital", line: "Capital Account" },
+  "limited liability partnership": { heading: "Partners' Capital", line: "Capital Account" },
+};
+
+/** EQUITY_LIABILITY_GROUPS with its first heading and "share_capital" line
+ *  swapped for the entity's own capital caption — the corporate wording
+ *  (unchanged) where no mapping is recorded. Only the LABELS move; the line
+ *  codes, and therefore which ledger figure fills each row, are exactly
+ *  EQUITY_LIABILITY_GROUPS' own. */
+function equityLiabilityGroupsFor(
+  entityType: string | null | undefined,
+): { label: string; lines: [string, string][] }[] {
+  const caption = CAPITAL_CAPTION_BY_ENTITY[entityCaptionKey(entityType)];
+  if (!caption) return EQUITY_LIABILITY_GROUPS;
+  const [shareholdersFunds, ...rest] = EQUITY_LIABILITY_GROUPS;
+  return [
+    {
+      label: caption.heading,
+      lines: shareholdersFunds.lines.map(([code, label]) =>
+        code === "share_capital" ? [code, caption.line] : [code, label]),
+    },
+    ...rest,
+  ];
+}
+
 const ASSET_GROUPS: { label: string; lines: [string, string][] }[] = [
   { label: "Non-Current Assets", lines: [
     ["tangible_assets", "Tangible Assets"],
@@ -308,7 +360,10 @@ export default function FinancialStatementsPage() {
   const compBsSource = rounding
     ? (rounding.comparative?.balance_sheet ?? undefined)
     : comp?.balance_sheet;
-  const bs = mapBSGroups(EQUITY_LIABILITY_GROUPS,
+  // apex-payroll-yearend-13: the entity's own capital caption, selected
+  // BEFORE the group/label mapping rather than the hardcoded corporate one —
+  // see equityLiabilityGroupsFor.
+  const bs = mapBSGroups(equityLiabilityGroupsFor(entity.entityType),
                          bsSource?.equity_and_liabilities,
                          compBsSource?.equity_and_liabilities);
   const assets = mapBSGroups(ASSET_GROUPS, bsSource?.assets, compBsSource?.assets);

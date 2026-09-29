@@ -160,6 +160,11 @@ interface Slip {
   pt_paise: number;
   tds_paise: number;
   payroll_employees?: { name: string; pan?: string; designation?: string };
+  // apex-payroll-yearend-04 (code half): true when this employee's
+  // attendance for this wage month was entered or corrected AFTER this slip
+  // was computed. Only ever true on a draft/review run — a finalised or
+  // paid one is immutable, so the server always answers false there.
+  attendance_changed_since_compute?: boolean;
 }
 
 interface SalaryStructure {
@@ -178,6 +183,14 @@ interface StatutoryData {
   pf_admin_paise?: number;
   /** Contributions + EDLI + admin charge: the figure on the EPFO challan. */
   pf_challan_total_paise?: number;
+  // apex-payroll-yearend-10: the sum of every slip's OWN unfloored 0.5%
+  // (what the salary register and the payslip PDF show), what the
+  // ₹500-per-establishment floor added on top of that, and the sentence
+  // reconciling the two — pf_admin_paise above stays the (floored) challan
+  // figure.
+  pf_admin_per_slip_paise?: number;
+  pf_admin_topup_paise?: number;
+  pf_admin_reconciliation?: string;
   esi_total_paise: number;
   pt_total_paise: number;
   tds_24q_paise: number;
@@ -929,36 +942,65 @@ function RunsTab({ clientId, firmId, openDoc }:
                     <button onClick={() => fetchSlips(r.id)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
                   </div>
                 ) : (
-                  <table className="w-full text-2xs">
-                    <thead>
-                      <tr className="border-b border-ps-border">
-                        {["Employee", "Gross", "PF (Emp)", "ESI (Emp)", "PT", "TDS", "Net"].map(h => (
-                          <th key={h} className="py-1.5 px-2 text-left text-3xs font-semibold text-ps-hint">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-ps-border">
-                      {slips.map(s => (
-                        <tr key={s.id} className="hover:bg-ps-bg">
-                          <td className="py-1.5 px-2 text-ps-ink font-medium">{s.payroll_employees?.name}</td>
-                          <td className="py-1.5 px-2 font-mono text-ps-ink">{fmt(s.gross_paise)}</td>
-                          <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.pf_employee_paise)}</td>
-                          <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.esi_employee_paise)}</td>
-                          <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.pt_paise)}</td>
-                          <td className="py-1.5 px-2 font-mono text-amber-600">{fmt(s.tds_paise)}</td>
-                          <td className="py-1.5 px-2 font-mono font-semibold text-emerald-600">{fmt(s.net_paise)}</td>
+                  <>
+                    {/* apex-payroll-yearend-04 (code half): a confirmed real
+                        case — a slip generated with days_present=26 while the
+                        matching attendance record was entered later showing
+                        24 — with nothing on this screen to say the figures no
+                        longer match what was entered. The server only ever
+                        sets this on a draft/review run (a finalised one is
+                        immutable), so seeing it here means Recompute, above,
+                        is live and worth pressing. */}
+                    {slips.some(s => s.attendance_changed_since_compute) && (
+                      <div className="mb-2 flex items-center gap-2 rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2">
+                        <RefreshCw size={12} className="text-amber-700 shrink-0" />
+                        <p className="text-2xs text-amber-800">
+                          Recompute recommended — attendance changed since this draft
+                          was generated
+                          {slips.filter(s => s.attendance_changed_since_compute).length > 1
+                            ? ` (${slips.filter(s => s.attendance_changed_since_compute).length} employees affected)`
+                            : ` (${slips.find(s => s.attendance_changed_since_compute)?.payroll_employees?.name ?? "1 employee"})`}
+                          . Use Recompute above to rebuild this month&apos;s slips.
+                        </p>
+                      </div>
+                    )}
+                    <table className="w-full text-2xs">
+                      <thead>
+                        <tr className="border-b border-ps-border">
+                          {["Employee", "Gross", "PF (Emp)", "ESI (Emp)", "PT", "TDS", "Net"].map(h => (
+                            <th key={h} className="py-1.5 px-2 text-left text-3xs font-semibold text-ps-hint">{h}</th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 border-ps-border font-semibold">
-                        <td className="py-1.5 px-2 text-ps-ink text-3xs">TOTAL</td>
-                        <td className="py-1.5 px-2 font-mono text-ps-ink">{fmt(r.total_gross_paise)}</td>
-                        <td colSpan={4} />
-                        <td className="py-1.5 px-2 font-mono text-emerald-600">{fmt(r.total_net_paise)}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-ps-border">
+                        {slips.map(s => (
+                          <tr key={s.id} className="hover:bg-ps-bg">
+                            <td className="py-1.5 px-2 text-ps-ink font-medium">
+                              {s.payroll_employees?.name}
+                              {s.attendance_changed_since_compute && (
+                                <span title="Attendance changed since this slip was generated"
+                                  className="ml-1.5 text-3xs text-amber-700">●</span>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2 font-mono text-ps-ink">{fmt(s.gross_paise)}</td>
+                            <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.pf_employee_paise)}</td>
+                            <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.esi_employee_paise)}</td>
+                            <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.pt_paise)}</td>
+                            <td className="py-1.5 px-2 font-mono text-amber-600">{fmt(s.tds_paise)}</td>
+                            <td className="py-1.5 px-2 font-mono font-semibold text-emerald-600">{fmt(s.net_paise)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-ps-border font-semibold">
+                          <td className="py-1.5 px-2 text-ps-ink text-3xs">TOTAL</td>
+                          <td className="py-1.5 px-2 font-mono text-ps-ink">{fmt(r.total_gross_paise)}</td>
+                          <td colSpan={4} />
+                          <td className="py-1.5 px-2 font-mono text-emerald-600">{fmt(r.total_net_paise)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </>
                 )}
               </div>
             )}
@@ -973,15 +1015,30 @@ function RunsTab({ clientId, firmId, openDoc }:
 
 // ─── Statutory Tab ────────────────────────────────────────────────────────────
 
-function StatutoryTab({ clientId }: { clientId: string }) {
+function StatutoryTab({ clientId, initialMonth }: { clientId: string; initialMonth?: string }) {
+  // apex-payroll-yearend-09: this used to compute its OWN `new Date()`
+  // default, unrelated to whichever month the Outputs shelf actually has
+  // selected (e.g. "August 2026 - draft") — so opening this tab from the
+  // shelf silently asked about the CURRENT calendar month instead of the one
+  // the CA had just been looking at. `initialMonth` seeds the FIRST render
+  // only, the same "initial value" the prop name says — a CA changing the
+  // month here afterwards is an ordinary edit to this tab's own control.
   const now = new Date();
-  const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const defaultMonth = initialMonth
+    || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
   const [data, setData] = useState<StatutoryData | null>(null);
   const [loading, setLoading] = useState(false);
   // M17: a failed statutory-summary fetch must not render as the "click Load"
   // prompt — PF/ESI/PT/TDS dues would look un-run when the fetch actually failed.
   const [loadFailed, setLoadFailed] = useState(false);
+  // apex-payroll-yearend-09: `statutory_summary` correctly answers
+  // `{success: true, data: null}` for a month with no run — a legitimate,
+  // loaded answer, not a failure — but nothing here told that apart from
+  // never having loaded at all, so both read the same generic pre-Load
+  // prompt. This flips once, on the first attempt of any kind, load-failed
+  // included, and stays that way for the rest of this tab's life.
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -994,6 +1051,7 @@ function StatutoryTab({ clientId }: { clientId: string }) {
       setLoadFailed(true); setData(null);
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
   }
 
@@ -1044,6 +1102,18 @@ function StatutoryTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
+      {/* apex-payroll-yearend-10: the PF Challan card above shows the FLOORED
+          admin charge (the ₹500-per-establishment minimum), while the salary
+          register and every payslip PDF show each employee's own unfloored
+          0.5% — so the two never footed for a small client the floor actually
+          bit. This is the SERVER's own reconciling sentence, rendered
+          verbatim, never recomposed here. */}
+      {data?.pf_admin_reconciliation && (
+        <p className="text-2xs text-ps-label bg-white rounded-xl border border-ps-border px-3 py-2">
+          {data.pf_admin_reconciliation}
+        </p>
+      )}
+
       {data && (data.one_time_paise ?? 0) !== 0 && (
         <p className="text-2xs text-ps-label">
           {fmt(data.one_time_paise ?? 0)} of the gross this month was one-time
@@ -1057,6 +1127,14 @@ function StatutoryTab({ clientId }: { clientId: string }) {
           <div className="bg-white rounded-xl border border-ps-border p-8 text-center">
             <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load statutory dues — the request failed or timed out.</p>
             <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
+          </div>
+        ) : hasLoaded ? (
+          // apex-payroll-yearend-09: `{success: true, data: null}` is a
+          // genuine, loaded answer — this client simply has no payroll run
+          // for this month — and it must not read as the pre-Load prompt
+          // below, which would tell a CA to do something they already did.
+          <div className="bg-white rounded-xl border border-ps-border p-8 text-center text-ps-hint text-sm">
+            No payroll run recorded for {fmtMonth(month)}
           </div>
         ) : (
           <div className="bg-white rounded-xl border border-ps-border p-8 text-center text-ps-hint text-sm">
@@ -1379,8 +1457,12 @@ function OutputsTab({ clientId }: { clientId: string }) {
 
       <AnnexureIIPanel clientId={clientId} month={run?.month} />
 
-      <StatutoryTab clientId={clientId} />
-      <ReportsTab clientId={clientId} />
+      {/* apex-payroll-yearend-09: the month actually selected on this shelf
+          (e.g. "August 2026 - draft"), not the two tabs' own `new Date()`
+          default — an initial value only, so switching the shelf's own
+          dropdown afterwards does not reach back into either tab. */}
+      <StatutoryTab clientId={clientId} initialMonth={run?.month} />
+      <ReportsTab clientId={clientId} initialMonth={run?.month} />
     </div>
   );
 }
@@ -2243,9 +2325,14 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
 
 // ─── Reports Tab ──────────────────────────────────────────────────────────────
 
-function ReportsTab({ clientId }: { clientId: string }) {
+function ReportsTab({ clientId, initialMonth }: { clientId: string; initialMonth?: string }) {
+  // apex-payroll-yearend-09: threaded from the Outputs shelf's own selected
+  // run (see OutputsTab) rather than always defaulting to the calendar's
+  // current month — an initial value only; the month control below is this
+  // tab's own after the first render.
   const now = new Date();
-  const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const defaultMonth = initialMonth
+    || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
   const [data, setData] = useState<SalaryRegister | null>(null);
   const [loading, setLoading] = useState(false);

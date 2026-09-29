@@ -214,16 +214,34 @@ class Sequence:
         )
 
 
-def outstanding_note(outstanding, months_known_from: str | None) -> str:
+def outstanding_note(outstanding, months_known_from: str | None,
+                      latest_unreleased_month: str | None = None) -> str:
     """The client-level sentence: what EPFO is still waiting for, in order.
 
     A sentence rather than a count, and it lives here rather than in the screen
     that renders it, because "what is outstanding, and what did we not look at"
     is a statement about EPFO's rules — the same reason no computation lives in
     the frontend. The screen prints this; it does not compose it.
+
+    `latest_unreleased_month` is asked ONLY where `months_known_from` is None —
+    apex-payroll-yearend-11. Both `finalised_months` returning nothing and a
+    client with only a DRAFT run look identical from `months_known_from`
+    alone, and "no month has been run here yet" is false of the second: a run
+    genuinely exists and is sitting right there on the Month selector, only
+    not yet finalised. It changes nothing about EPFO's sequence — a draft
+    still counts for nothing until it is released — only the sentence read
+    when there is, for this one reason, nothing outstanding to report.
     """
     months = tuple(outstanding or ())
     if not months:
+        if months_known_from is None and latest_unreleased_month:
+            return (
+                f"No released wage month yet — {latest_unreleased_month} is "
+                "still a draft; EPFO ordering applies once a month is "
+                "finalised. A month run on paper, with a previous provider, "
+                "or before this client was onboarded is not counted and will "
+                "still block an upload."
+            )
         return (
             "No wage month is outstanding"
             + (f" among those run here since {months_known_from}. "

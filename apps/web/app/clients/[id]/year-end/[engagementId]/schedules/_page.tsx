@@ -4,16 +4,21 @@ import { useEffect, useState, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
-/** Format paise → ₹ Indian number format */
+import { formatPaise } from "@/lib/money/format";
+
+/** Format paise → ₹ Indian number format, WITH THE SIGN PRESERVED.
+ *
+ *  apex-payroll-yearend-05: this used to `Math.abs(paise)` unconditionally and
+ *  never restored the sign, so a credit-balance (overdrawn) bank account
+ *  showed as a POSITIVE amount on this Cash & Bank schedule, when the
+ *  backend's own financial-statements API correctly returns it signed
+ *  negative. Same pattern as components/payroll/EmployeeDrawer.tsx's own
+ *  fmt(): the magnitude through the one formatter, " Cr" appended for a
+ *  negative figure — applied here to both the per-line amounts and the
+ *  schedule's own Total row, since both read through this one function. */
 function fmt(paise: number): string {
   if (paise === 0) return "—";
-  return (
-    "₹" +
-    new Intl.NumberFormat("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(Math.abs(paise) / 100)
-  );
+  return formatPaise(Math.abs(paise)) + (paise < 0 ? " Cr" : "");
 }
 
 type ScheduleType = "cash_bank" | "receivables" | "payables" | "fixed_assets" | "gst" | "tds" | "loans";
