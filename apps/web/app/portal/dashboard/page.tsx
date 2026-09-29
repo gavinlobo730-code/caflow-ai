@@ -135,12 +135,25 @@ export default function PortalDashboardPage() {
     let cancelled = false;
     (async () => {
       const supabase = getSupabaseClient();
+      let hasSession = false;
       for (let attempt = 0; attempt < 10; attempt++) {
         const { data } = await supabase.auth.getSession();
-        if (data?.session) break;
+        if (data?.session) { hasSession = true; break; }
         await new Promise((r) => setTimeout(r, 500));
       }
       if (cancelled) return;
+      // No session ever turned up — a stale tab left open after signing out,
+      // a bookmark to this exact URL, a refresh after the token expired with
+      // nothing to restore. Calling the API here would only draw a raw 401
+      // back ("Missing or invalid Authorization header"), which this used to
+      // render straight into the page with no header, no nav and no way
+      // back in. There is nothing to load without a session, so go to the
+      // login screen rather than to that string.
+      if (!hasSession) {
+        setRedirecting(true);
+        router.replace("/portal/login");
+        return;
+      }
       try {
         if (inviteToken) {
           // Best-effort: an already-accepted/expired token here just means the
@@ -172,6 +185,18 @@ export default function PortalDashboardPage() {
         setMemberships(ms);
         if (ms.length === 1) setActiveClient(ms[0].client_id);
       } catch (e) {
+        // A request that reached here despite the session check above means
+        // the session was found a moment ago and is rejected now — expired
+        // with no live refresh token, revoked, or otherwise stale. There is
+        // no page to recover into except signing in again, and a raw backend
+        // error string is never something a client should be shown here.
+        const { data: recheck } = await supabase.auth.getSession();
+        if (cancelled) return;
+        if (!recheck?.session) {
+          setRedirecting(true);
+          router.replace("/portal/login");
+          return;
+        }
         setError(e instanceof Error ? e.message : "Unable to load your portal");
       } finally {
         if (!cancelled) setLoading(false);
