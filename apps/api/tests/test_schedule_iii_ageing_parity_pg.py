@@ -548,6 +548,69 @@ def test_another_clients_marked_account_stays_out_of_this_note(db):
     assert doc["receivables"]["unbilled_accounts"] == []
 
 
+def test_a_firm_level_account_is_visible_to_the_client(db):
+    """Migration 436: `chart_of_accounts` rows with client_id IS NULL are
+    firm-level (CLAUDE.md) and marking one is a firm-wide act (commit
+    862bf886's fix to services/ageing_schedule_service.classify()). The read
+    side had no matching widening until this migration: `unbilled_acct`
+    filtered `a.client_id = p_client`, which a NULL column never satisfies, so
+    a correctly-marked shared account stayed invisible to every client's note."""
+    shared = "a3050000-0000-0000-0000-0000000000ff"
+    seed = _psql(db, _seed_sql([], []) + f"""
+        INSERT INTO chart_of_accounts (id, firm_id, client_id, account_code, account_name,
+                                       account_type, unbilled_dues_side)
+          VALUES ('{shared}', '{FIRM}', NULL, '1450', 'Unbilled Revenue (shared)',
+                  'Asset', 'receivable');
+        INSERT INTO journal_entries (id, firm_id, client_id, entry_date, narration,
+                                     entry_type, is_posted)
+          VALUES ('e3050000-0000-0000-0000-0000000000ff', '{FIRM}', '{CLIENT}',
+                  '2026-02-01', 'accrual', 'Journal', true);
+        INSERT INTO journal_lines (journal_entry_id, account_id, debit_paise, credit_paise)
+          VALUES ('e3050000-0000-0000-0000-0000000000ff', '{shared}', 4_00_000, 0);
+        INSERT INTO schedule_iii_unbilled_reviews (firm_id, client_id, reviewed_on)
+          VALUES ('{FIRM}', '{CLIENT}', '2026-04-02');
+    """)
+    assert seed.returncode == 0, f"seed failed: {seed.stderr}"
+    doc = _sql_schedule(db)
+    assert doc["receivables"]["unbilled_dues_paise"] == 4_00_000, (
+        "a firm-level (client_id IS NULL) account, correctly marked, must "
+        "reach this client's unbilled-dues disclosure")
+    assert [a["account_id"] for a in doc["receivables"]["unbilled_accounts"]] == [shared]
+
+
+def test_a_firm_level_accounts_balance_is_scoped_to_this_clients_own_lines(db):
+    """A shared account's balance is still THIS client's own postings against
+    it, never another client's — widening which ACCOUNTS are visible must not
+    widen which LINES are summed. `unbilled_bal`'s journal join stays keyed on
+    je.client_id = p_client, deliberately unchanged by migration 436."""
+    shared = "a3050000-0000-0000-0000-0000000000fe"
+    other = "c3050000-0000-0000-0000-0000000000fd"
+    seed = _psql(db, _seed_sql([], []) + f"""
+        INSERT INTO clients (id, firm_id, client_name, entity_type)
+          VALUES ('{other}', '{FIRM}', 'Sibling Co', 'Private Limited');
+        INSERT INTO chart_of_accounts (id, firm_id, client_id, account_code, account_name,
+                                       account_type, unbilled_dues_side)
+          VALUES ('{shared}', '{FIRM}', NULL, '1450', 'Unbilled Revenue (shared)',
+                  'Asset', 'receivable');
+        INSERT INTO journal_entries (id, firm_id, client_id, entry_date, narration,
+                                     entry_type, is_posted) VALUES
+          ('e3050000-0000-0000-0000-0000000000fd', '{FIRM}', '{CLIENT}',
+           '2026-02-01', 'accrual', 'Journal', true),
+          ('e3050000-0000-0000-0000-0000000000fe', '{FIRM}', '{other}',
+           '2026-02-01', 'accrual', 'Journal', true);
+        INSERT INTO journal_lines (journal_entry_id, account_id, debit_paise, credit_paise) VALUES
+          ('e3050000-0000-0000-0000-0000000000fd', '{shared}', 4_00_000, 0),
+          ('e3050000-0000-0000-0000-0000000000fe', '{shared}', 9_00_000, 0);
+        INSERT INTO schedule_iii_unbilled_reviews (firm_id, client_id, reviewed_on)
+          VALUES ('{FIRM}', '{CLIENT}', '2026-04-02');
+    """)
+    assert seed.returncode == 0, f"seed failed: {seed.stderr}"
+    doc = _sql_schedule(db)
+    assert doc["receivables"]["unbilled_dues_paise"] == 4_00_000, (
+        "the sibling client's own posting to the SAME shared account must "
+        "not inflate this client's disclosure")
+
+
 def test_a_misposted_line_on_this_clients_account_stays_out(db):
     """A line whose account belongs to another client — or another FIRM — must
     not reach this client's schedule.

@@ -198,6 +198,7 @@ class _RpcDB:
             def eq(self, *a, **k): return self
             def gt(self, *a, **k): return self
             def is_(self, *a, **k): return self
+            def or_(self, *a, **k): return self
             def order(self, *a, **k): return self
             def limit(self, *a, **k): return self
             @property
