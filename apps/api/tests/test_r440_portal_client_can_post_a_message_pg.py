@@ -1,5 +1,5 @@
 """
-R438 — proves migration 438's fix on real PostgreSQL: a portal client may
+R440 — proves migration 440's fix on real PostgreSQL: a portal client may
 post to, and read, their own thread; nobody else's identity can touch it.
 
 WHAT THIS REPRODUCES
@@ -15,7 +15,7 @@ WHAT THIS REPRODUCES
     (migration 084's declared policy, restored by 294's drift sweep) — a
     RESTRICTIVE policy gated on `can_access_client()`, which is TRUE only for
     a Partner or an assigned staff member and collapses to NULL (deny) for a
-    portal client, who has no `users` row at all. Migration 438 is the fix,
+    portal client, who has no `users` row at all. Migration 440 is the fix,
     in the shape migration 262 already established for the same defect on
     payroll_employees/payroll_runs.
 
@@ -121,7 +121,7 @@ def _as_count(dsn: str, auth_uid: str, sql: str) -> int:
 @pytest.fixture()
 def migrated_db(pg_template):
     admin = _ADMIN.strip()
-    dbname = f"r438_{uuid.uuid4().hex[:12]}"
+    dbname = f"r440_{uuid.uuid4().hex[:12]}"
     admin_dsn = f"{admin} dbname=postgres"
     if _psql(admin_dsn, f'CREATE DATABASE "{dbname}" TEMPLATE "{pg_template.name}";').returncode != 0:
         pytest.skip("could not create throwaway db")
@@ -161,7 +161,7 @@ def test_a_portal_client_can_read_their_empty_thread(migrated_db):
 
 
 def test_a_portal_client_can_post_to_their_own_thread(migrated_db):
-    """This is the bug. Before migration 438 this failed with:
+    """This is the bug. Before migration 440 this failed with:
     'new row violates row-level security policy "portal_messages_assignment_scope"'."""
     r = _as(migrated_db, PORTAL_AUTH_1, _INSERT_C1_FROM_CLIENT)
     assert r.returncode == 0, r.stderr

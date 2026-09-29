@@ -1,4 +1,4 @@
--- Migration 438: a portal client may post to their own message thread.
+-- Migration 440: a portal client may post to their own message thread.
 --
 -- WHAT BROKE
 -- Every send from the client portal's Messages tab failed with a raw 500:
