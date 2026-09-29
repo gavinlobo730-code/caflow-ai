@@ -57,6 +57,34 @@ async function resolveUserContext(user: User | null): Promise<ResolvedContext> {
 }
 
 /**
+ * Is the current tab a PORTAL principal's, not firm staff's?
+ *
+ * `AuthContext` wraps the whole app, `/portal/*` included, and a portal
+ * session — a client (core/portal_auth.get_current_portal_client) or an
+ * employee (get_current_portal_employee) — has no `users` row and no RBAC
+ * role. `"PortalClient"`/`"PortalEmployee"` are not entries in `PERMISSIONS`
+ * (CLAUDE.md), so `GET /api/identity/permissions` correctly 403s for either
+ * one — correctly, but on every single portal page, since `applyContext`
+ * calls it for any signed-in identity with no way to tell the two kinds
+ * apart. This is the equivalent of that backend distinction on THIS side:
+ * there is no portal-scoped API call to make instead, so the route itself —
+ * the one structural fact the browser already has — is what stands in for
+ * it, the same way `guardDecision.ts`'s `isPortalRecovery` already reads the
+ * URL rather than asking the server which kind of session this is.
+ *
+ * `"/portal"` is deliberately not imported from `PUBLIC_PREFIXES`
+ * (public-paths.ts): that list also covers `/login`, `/signup`, `/join`,
+ * `/auth`, `/platform` and `/sign`, none of which is this question, and an
+ * authenticated `/platform` session is a different principal this function
+ * is not the place to decide about.
+ */
+function isPortalPrincipalPath(): boolean {
+  if (typeof window === "undefined") return false;
+  const p = window.location.pathname;
+  return p === "/portal" || p.startsWith("/portal/");
+}
+
+/**
  * Fetch the caller's resource→actions map from the backend.
  *
  * Returns null on ANY failure — an unreachable/cold-starting API, an older
@@ -228,7 +256,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Reset only for a DIFFERENT user: clearing it on every hourly
     // TOKEN_REFRESHED hid every action control until the API answered again.
     if (newUser) setPermissions(null);
-    if (u) {
+    // A portal principal (client or employee) has no RBAC role at all, so this
+    // 403s correctly but noisily on every one of their pages — see
+    // isPortalPrincipalPath's own comment. `can()` already answers false with
+    // permissions left null, which is exactly what a portal page needs: it
+    // never renders a staff action control in the first place.
+    if (u && !isPortalPrincipalPath()) {
       resolvePermissions().then(setPermissions).catch(() => { if (newUser) setPermissions(null); });
     }
   }
