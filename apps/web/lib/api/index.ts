@@ -5095,6 +5095,14 @@ export const api = {
       request<ApiResp<{ employee_id: string; name?: string; client_id?: string }>>(
         "/api/portal/employee/accept-invite",
         { method: "POST", body: JSON.stringify({ token }) }),
+    // Turns a bare invite token into the ingredients for a real Supabase
+    // session (supabase.auth.verifyOtp({ token_hash, type })) — no session
+    // required to call this, since the token itself is what authorises it.
+    // See services/employee_portal_service.mint_activation_session.
+    mintEmployeeActivationSession: (token: string) =>
+      request<ApiResp<{ token_hash: string; verification_type: string }>>(
+        "/api/portal/employee/activation-session",
+        { method: "POST", body: JSON.stringify({ token }) }),
     // me/dashboard select the active client explicitly via X-Portal-Client-Id when
     // the identity belongs to more than one client (no implicit switching).
     me: (clientId?: string) =>

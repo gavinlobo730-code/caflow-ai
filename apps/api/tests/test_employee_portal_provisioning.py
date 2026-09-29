@@ -280,3 +280,144 @@ def test_portal_status_never_returns_the_hash(monkeypatch):
     leaked = _h.sha256(b"x").hexdigest()[:0]  # length probe only
     assert not any(isinstance(v, str) and len(v) == 64 and all(c in "0123456789abcdef" for c in v)
                    for v in status.values()), "a sha256-shaped value is in the status payload"
+
+
+# ─── mint_activation_session — bootstrapping a session from a bare token ────
+#
+# The bug this closes: neither the emailed activation link nor its
+# copy-paste fallback ever carried a real Supabase session (nothing had ever
+# called Supabase's Auth API for that email), so the activation page's
+# "wait for the magic-link session" step polled forever and always landed on
+# "invalid" — regardless of which of the two links was opened. This is the
+# other half of accept_employee_invite: it does not bind anything, it only
+# proves the token is genuine and asks Supabase's ADMIN API for the
+# ingredients of a session the BROWSER then establishes for itself with
+# supabase.auth.verifyOtp({token_hash, type}).
+
+class _FakeLinkProperties:
+    def __init__(self, hashed_token: str, verification_type: str):
+        self.hashed_token = hashed_token
+        self.verification_type = verification_type
+
+
+class _FakeLinkResponse:
+    def __init__(self, hashed_token: str, verification_type: str):
+        self.properties = _FakeLinkProperties(hashed_token, verification_type)
+
+
+class _FakeAdminAuthAPI:
+    """Stands in for db.auth.admin. `calls` records every generate_link
+    invocation so a test can assert exactly which types were tried and in
+    what order, without needing a real Supabase project."""
+
+    def __init__(self, invite_fails: bool = False, magiclink_fails: bool = False):
+        self.invite_fails = invite_fails
+        self.magiclink_fails = magiclink_fails
+        self.calls: list[dict] = []
+
+    def generate_link(self, params: dict):
+        self.calls.append(dict(params))
+        kind = params["type"]
+        if kind == "invite" and self.invite_fails:
+            raise RuntimeError("email_exists: A user with this email address has already been registered")
+        if kind == "magiclink" and self.magiclink_fails:
+            raise RuntimeError("Supabase Auth is unreachable")
+        return _FakeLinkResponse(f"th-{kind}", kind)
+
+
+def _wire_admin(db, **kwargs):
+    from types import SimpleNamespace
+    admin = _FakeAdminAuthAPI(**kwargs)
+    db.auth = SimpleNamespace(admin=admin)
+    return admin
+
+
+def test_a_fresh_invite_mints_a_session_via_type_invite(monkeypatch):
+    eps, db = _setup(monkeypatch)
+    invite = _invite(eps)
+    admin = _wire_admin(db)
+
+    result = eps.mint_activation_session(invite["token"])
+
+    assert admin.calls == [{"type": "invite", "email": EMP_EMAIL}]
+    assert result == {"token_hash": "th-invite", "verification_type": "invite"}
+
+
+def test_an_already_registered_email_falls_back_to_magiclink(monkeypatch):
+    """The re-invite-after-revoke case: the Supabase Auth user from the first
+    activation still exists (revoke clears the BINDING, not the identity),
+    so `type=invite` refuses and `type=magiclink` is what actually works."""
+    eps, db = _setup(monkeypatch)
+    invite = _invite(eps)
+    admin = _wire_admin(db, invite_fails=True)
+
+    result = eps.mint_activation_session(invite["token"])
+
+    assert [c["type"] for c in admin.calls] == ["invite", "magiclink"]
+    assert result == {"token_hash": "th-magiclink", "verification_type": "magiclink"}
+
+
+def test_both_admin_calls_failing_is_a_503_not_an_invalid_invite(monkeypatch):
+    """A caller here already holds a token proven pending and unexpired — the
+    failure is Supabase's, not the token's, and saying so plainly poses no
+    probing risk (there is nothing left to probe for)."""
+    eps, db = _setup(monkeypatch)
+    invite = _invite(eps)
+    _wire_admin(db, invite_fails=True, magiclink_fails=True)
+
+    with pytest.raises(HTTPException) as e:
+        eps.mint_activation_session(invite["token"])
+    assert e.value.status_code == 503
+
+
+def test_minting_a_session_for_a_bad_token_never_calls_the_admin_api(monkeypatch):
+    """The same probing-resistance property accept_employee_invite has: an
+    unknown token is refused before it can cause any side effect at all."""
+    eps, db = _setup(monkeypatch)
+    _invite(eps)
+    admin = _wire_admin(db)
+
+    with pytest.raises(HTTPException) as e:
+        eps.mint_activation_session("not-a-real-token")
+    assert e.value.status_code == 404
+    assert admin.calls == []
+
+
+def test_minting_a_session_for_an_expired_invite_is_refused(monkeypatch):
+    eps, db = _setup(monkeypatch)
+    invite = _invite(eps)
+    db.rows("payroll_employees")[0]["portal_invite_expires_at"] = (
+        datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    admin = _wire_admin(db)
+
+    with pytest.raises(HTTPException) as e:
+        eps.mint_activation_session(invite["token"])
+    assert e.value.status_code == 404
+    assert admin.calls == []
+
+
+def test_minting_does_not_consume_the_invite(monkeypatch):
+    """Only accept_employee_invite spends the token — minting a session is a
+    read, so the SAME token still has to work for the bind that follows it."""
+    eps, db = _setup(monkeypatch)
+    invite = _invite(eps)
+    _wire_admin(db)
+
+    eps.mint_activation_session(invite["token"])
+    row = _row(db)
+    assert row["portal_invite_token_hash"] is not None, "minting must not have spent the invite"
+    assert row["auth_user_id"] is None
+
+    # The token still works for the real bind, exactly as if minting had
+    # never happened — this is the sequence the activation page now runs.
+    eps.accept_employee_invite(invite["token"], "auth-asha", EMP_EMAIL)
+    assert _row(db)["auth_user_id"] == "auth-asha"
+
+
+def test_minting_reads_the_invites_own_email_never_a_caller_supplied_one(monkeypatch):
+    """mint_activation_session takes only a token — there is no email
+    parameter for a caller to substitute, unlike accept_employee_invite's
+    defence-in-depth check. This pins that there is nothing to substitute."""
+    import inspect
+    import services.employee_portal_service as eps
+    assert "email" not in inspect.signature(eps.mint_activation_session).parameters
