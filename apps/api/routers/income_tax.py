@@ -20,7 +20,9 @@ from domain.income_tax.capital_gains_engine import (
     compute_capital_gains, ASSET_TYPES, REGISTER_ASSET_TYPES, CII_BY_FY, LATEST_CII_FY,
     ASSESSEE_TYPES, ASSESSEE_UNSPECIFIED,
 )
-from domain.income_tax.assessee import AssesseeKind, assessee_kind_for_entity_type
+from domain.income_tax.assessee import (
+    AssesseeKind, assessee_kind_for_entity_type, implies_business_income,
+)
 from domain.income_tax.chapter_vi_a import ChapterVIAClaims
 from domain.income_tax import self_assessment as sa_domain
 from services import self_assessment_service
@@ -609,12 +611,20 @@ def resolve_assessee_kind(
 
     A refusal comes back as `kind: null` with the sentence, so the screen can
     say WHAT is missing instead of offering a computation that will 422.
+
+    `implies_business_income` answers a SECOND statutory question the same
+    call is needed for: a Proprietorship, Partnership or LLP carries business
+    income by construction, which `kind` alone cannot say (a Proprietorship
+    and a purely salaried Individual are both "individual"). Serving it here
+    keeps that judgment out of the screen, which otherwise has no way to ask
+    it without re-deriving the entity-type mapping itself.
     """
     kind, refusal = assessee_kind_for_entity_type(entity_type)
     return api_response(True, {
         "entity_type": entity_type,
         "kind": kind,
         "is_entity": kind in ("firm", "llp", "domestic_company"),
+        "implies_business_income": implies_business_income(entity_type),
         "refusal": refusal,
     })
 
