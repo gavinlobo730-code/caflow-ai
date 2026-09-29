@@ -103,6 +103,19 @@ KNOWN: dict[str, set[str]] = {
     "app/mca/page.tsx": {"Filed", "Overdue", "Pending"},
     "app/payroll/declarations/page.tsx": {"rejected", "verified"},
     "app/payroll/reports/page.tsx": {"due-soon", "overdue"},
+    # NOT TRIAGED. Phase 8 added a direct `.from("fee_engagements")` read to
+    # this page (to explain an empty ITR/TDS/MCA sub-tab with "no active
+    # engagement" rather than a bare "No compliance entries"), which gave the
+    # file its first non-empty status union and moved it out of UNMEASURED
+    # below — where it had sat because its only OTHER direct table,
+    # government_notices, carries no status CHECK at all. `filed` is the
+    # KNOWN-LIMITATION shape this file's own header describes: `filing_status:
+    # "filed"` (line ~352) is a CLIENT-SIDE optimistic-update literal set after
+    # `markObligationFiled` returns, not a raw table write — the real column,
+    # compliance_records.status, is written server-side as 'Filed' (migration
+    # 108's CHECK). Whether the frontend's own lowercase convention should be
+    # renamed off the `status`-shaped name is real work and a separate change.
+    "app/clients/[id]/compliance/page.tsx": {"filed"},
 }
 
 #: Files that READ a table and USE a status literal, but whose tables carry no
@@ -154,8 +167,6 @@ UNMEASURED: dict[str, set[str]] = {
     "components/purchases/BillsOfEntryTab.tsx": {"posted"},
     # mca_filings.status allows all three; the page reads mca_companies only.
     "app/clients/[id]/compliance/mca/page.tsx": {"filed", "in_progress", "not_started"},
-    # compliance_tasks.status allows 'filed'; the page reads government_notices.
-    "app/clients/[id]/compliance/page.tsx": {"filed"},
     # `GSTFiling.status` is DERIVED in the browser by computeOverdueStatus and
     # never written — compliance_calendar has no `status` column at all, and the
     # column the screen does write is `filing_status`, whose 'pending' is

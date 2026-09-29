@@ -379,7 +379,29 @@ UNFIXED: dict[str, str] = {}
 # filters on against the LIVE schema, and `..._table.py` pins each to the table
 # it belongs to — so the columns this scanner cannot read are checked by name
 # somewhere it can. A string scan would only have told us they parse.
-MAX_UNREADABLE = 463
+# 463 -> 469, three independent additions from Phase 8's long-tail fix pass.
+# `services/phase2_journal_service.py` +4: `_party_name(db, firm_id, client_id,
+# table, party_id, fallback)` is a single-row lookup by id shared by
+# `journal_for_sales_invoice` (table="customers") and `journal_for_purchase_bill`
+# (table="vendors") — the `party_identifiers.py` shape this file already
+# budgets for above: one generic helper over `db.table(table)` rather than two
+# near-identical copies. Its one `.select("name")` plus three `.eq(...)` calls
+# (id, firm_id, client_id) are each their own AST node in the chain and each
+# invisible once `table` is a parameter.
+# `services/ageing_schedule_service.py` +1: `_fetch_unbilled`'s
+# `.or_(f"client_id.eq.{client_id},client_id.is.null")` — a firm-level
+# (client_id IS NULL) chart-of-accounts row must be visible to every one of the
+# firm's clients, and an f-string is not the `ast.Constant` this scanner reads
+# a `.or_()` argument as. Firm-scoping still applies via `.eq("firm_id", ...)`
+# on the same query; `tests/test_the_unbilled_dues_fetch_reaches_firm_level_accounts.py`
+# is the compensating control for the predicate this cannot read.
+# `routers/lifecycle.py` +1: `update_onboarding_status`'s
+# `db.table("onboarding_workflows").update(update)` builds its payload as an
+# ordinary local dict (`update = {"status": "cancelled", "updated_at": now}`)
+# rather than an inline literal, the same "genuinely dynamic, no literal exists
+# to read" shape already budgeted above for `routers/payroll.py`'s declaration
+# VERIFY path.
+MAX_UNREADABLE = 469
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

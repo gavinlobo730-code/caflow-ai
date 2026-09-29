@@ -194,6 +194,7 @@ def test_running_the_migration_a_second_time_changes_nothing_further(db):
 def test_the_correction_matches_ist_fy_label_across_the_1_april_boundary(db):
     """A second pair of documents straddling 31 March / 1 April, to pin the
     boundary itself rather than only mid-year dates."""
+    _seed(db)
     boundary_invoice = "14370000-0000-0000-0000-000000000004"
     boundary_bill = "14370000-0000-0000-0000-000000000005"
     r = _psql(db, f"""
