@@ -149,6 +149,12 @@ export default function Gstr9cWorking({ clientId, financialYear }: { clientId: s
   const [form, setForm] = useState(emptyForm());
   const [reconciliationId, setReconciliationId] = useState<string | null>(null);
   const [loadingRecon, setLoadingRecon] = useState(false);
+  // Distinguishes "the fetch failed" from "nothing saved for this FY yet" —
+  // before this, a network failure or timeout on GET .../reconciliation threw
+  // BEFORE setForm()/setReconciliationId() ran, so the component silently fell
+  // back to its initial empty-form state and rendered as a clean "not
+  // recorded" 9C rather than a genuine load failure.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -158,6 +164,7 @@ export default function Gstr9cWorking({ clientId, financialYear }: { clientId: s
 
   const loadReconciliation = useCallback(async () => {
     setLoadingRecon(true);
+    setLoadError(null);
     try {
       const res = await api.gstr9c.getReconciliation(clientId, financialYear);
       const row = objectOrNull<Record<string, unknown>>(res.success ? res.data : null);
@@ -194,6 +201,9 @@ export default function Gstr9cWorking({ clientId, financialYear }: { clientId: s
         setRateWiseLines({ "9": [], "11": [], "partv": [] });
         setExpenseLines([]);
       }
+    } catch (e) {
+      setLoadError(e instanceof Error && e.message
+        ? e.message : "Couldn't load the 9C reconciliation.");
     } finally {
       setLoadingRecon(false);
     }
@@ -201,7 +211,11 @@ export default function Gstr9cWorking({ clientId, financialYear }: { clientId: s
 
   useEffect(() => {
     setStatement(null);
-    loadReconciliation();
+    // Backstop only — loadReconciliation now catches its own failures and sets
+    // loadError itself. A rejection reaching here means something threw before
+    // that try even ran, and must still not surface as an uncaught promise
+    // rejection with the form quietly showing "not recorded".
+    loadReconciliation().catch(() => setLoadError("Couldn't load the 9C reconciliation."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [financialYear]);
 
@@ -255,6 +269,23 @@ export default function Gstr9cWorking({ clientId, financialYear }: { clientId: s
   }, [clientId, financialYear]);
 
   const isEcommerceYear = parseInt(financialYear.slice(0, 4), 10) >= 2024;
+
+  // A load failure is reported here, not folded into the form below: rendering
+  // the (empty) form over a fetch that never actually confirmed "nothing
+  // saved" would look exactly like a clean 9C with nothing recorded, which is
+  // a different fact and a worse one to get wrong on a return.
+  if (loadError && !loadingRecon) {
+    return (
+      <div className="mt-2 border border-ps-border rounded-lg p-3 space-y-3 bg-ps-bg/40">
+        <h5 className="text-xs font-semibold text-ps-ink">Prepare FORM GSTR-9C</h5>
+        <Callout tone="problem">Couldn&apos;t load 9C reconciliation — {loadError}</Callout>
+        <button onClick={loadReconciliation}
+          className="text-2xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-2 border border-ps-border rounded-lg p-3 space-y-4 bg-ps-bg/40">

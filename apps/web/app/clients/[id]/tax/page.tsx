@@ -23,7 +23,11 @@ const MODULES = [
     desc: "Workflow: Draft → Review → Partner Review → Ready for Filing → Filed",
     icon: FileText,
     href: "tax/filing",
-    badge: "ITR-3 / ITR-5 / ITR-6 / ITR-7",
+    // Form-agnostic on purpose — GET /api/itr/forms serves all seven forms
+    // (domain/income_tax/itr_json.ITR_FORMS), and naming only four of them
+    // here read as though ITR-1/2/4 (most of a practice's salaried and
+    // presumptive filings) were not handled.
+    badge: "ITR-1 to ITR-7",
   },
   {
     id: "26as",
@@ -211,6 +215,8 @@ export default function TaxPage() {
         <ul className="text-2xs text-ps-label space-y-1">
           <li>• Advance tax: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)</li>
           <li>• ITR due date: 31st July (individuals), 31st October (audited entities)</li>
+          <li>• Tax audit report (§44AB) due date: 30th September — one month before the ITR itself</li>
+          <li>• ITR due date: 30th November where a §92E transfer-pricing report is required</li>
           <li>• All monetary values computed in integer paise — never floating point</li>
           <li>• Every adjustment requires evidence document attachment</li>
           <li>• Partner review mandatory before marking Ready for Filing</li>

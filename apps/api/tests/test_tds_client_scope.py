@@ -195,8 +195,13 @@ def test_your_own_row_still_reads(fn, rid, rows, deny):
 # ── Marking a return FILED is the write that matters most ────────────────────
 
 def _file_it(return_id):
+    # acknowledge_incomplete: these fixture returns carry no deductee_count/
+    # quarter_end at all, which the ca_approved/filed guard now refuses by
+    # default (apex-tax-compliance-03) — this file is about TENANCY, not
+    # deductee content, so the override is named explicitly.
     return tw.UpdateReturnStatusRequest(
-        status="filed", ca_approved=True, prn="PRN-999", ack_number="ACK-1")
+        status="filed", ca_approved=True, prn="PRN-999", ack_number="ACK-1",
+        acknowledge_incomplete=True)
 
 
 def test_another_clients_return_cannot_be_marked_filed(rows, deny, monkeypatch):

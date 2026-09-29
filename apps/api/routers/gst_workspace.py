@@ -601,6 +601,21 @@ def save_gstr3b(
         err = validate_gstin(gstin)
         if err:
             raise HTTPException(status_code=422, detail=err)
+
+        # GST-20: a well-formed GSTIN is not necessarily one this CLIENT
+        # holds. The GSTR-9/GSTR-9C/IFF compute paths in this file already
+        # refuse a GSTIN the client does not hold by resolving it through
+        # client_gst_registration_service before building anything off it;
+        # this save path only ever checked the checksum, so a CA could save a
+        # GSTR-3B under a registration belonging to somebody else — correctable
+        # afterwards only by an amendment inside the s.37(3) window. Skipped in
+        # mock mode, which has no client_gst_registrations table to resolve
+        # against, matching every other resolve() call site in this file.
+        if not _USE_MOCK:
+            from core.supabase_client import get_supabase
+            from services import client_gst_registration_service as regs
+            regs.resolve(get_supabase(), firm_id, body.client_id, gstin)
+
         period_date = f"{body.period[2:]}-{body.period[:2]}-01"
         period_validation_service.validate_posting_date(firm_id, period_date)
 
@@ -729,6 +744,23 @@ def update_gstr3b_status(
         existing = _load_return_or_none(current_user, "gstr3b_returns", _MOCK_GSTR3B, return_id)
         if existing is None:
             return api_response(False, None, "Not found")
+
+        # GST-20: the return's own GSTIN must still be one this client holds
+        # before a CA rubber-stamps it. save_gstr3b already refuses this at
+        # save time, but a registration recorded in error and corrected
+        # afterwards, or a return written before that check existed, would
+        # otherwise reach approval/filing unchecked. Same registrations
+        # service the compute paths use; the HTTPException is turned into the
+        # same api_response(False, ...) shape every other refusal in this
+        # function already returns, rather than the generic message below.
+        if body.status in ("ca_approved", "submitted") and not _USE_MOCK:
+            from core.supabase_client import get_supabase
+            from services import client_gst_registration_service as regs
+            try:
+                regs.resolve(get_supabase(), firm_id, existing.get("client_id") or "",
+                             existing.get("gstin") or None)
+            except HTTPException as e:
+                return api_response(False, None, str(e.detail))
 
         # ── The books may have moved since this return was computed ──────────
         #

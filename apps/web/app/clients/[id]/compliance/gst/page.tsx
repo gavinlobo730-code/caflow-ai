@@ -10,6 +10,7 @@ import AmendmentsTab from "@/components/gst/AmendmentsTab";
 import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
 import RegistrationsTab from "@/components/gst/RegistrationsTab";
 import { todayLocalISO } from "@/lib/dateMath";
+import { gstPeriodLabel } from "@/lib/gst/period";
 import GSTR9Working from "@/components/gst/GSTR9Working";
 import Gstr9cWorking from "@/components/gst/Gstr9cWorking";
 import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
@@ -414,7 +415,7 @@ function GSTDashboard({ clientId }: { clientId: string }) {
                     : "bg-blue-50 text-blue-700 ring-blue-200"}`}>
           {quarterly ? "QRMP — quarterly returns, monthly payment" : "Monthly filer"}
         </span>
-        <span className="text-ps-hint">Period {data.currentPeriod}</span>
+        <span className="text-ps-hint">Period {gstPeriodLabel(data.currentPeriod)}</span>
         {quarterly && data.monthInQuarter && (
           <span className="text-ps-hint">· month {data.monthInQuarter} of the quarter</span>
         )}
@@ -445,7 +446,13 @@ function GSTDashboard({ clientId }: { clientId: string }) {
           the scheme, and previously not mentioned anywhere in this product. */}
       {quarterly && (
         <div className="grid grid-cols-2 gap-4">
-          <div className="rounded border p-4 bg-state-problem-surface">
+          {/* The alarm tint is conditional on there GENUINELY being a PMT-06
+              due this month — it used to be hardcoded, so "Not due — this
+              month's tax is paid with the quarterly return" rendered on an
+              alarm-red background, the same false alert the plain-bordered
+              IFF card beside it (also an optional/not-applicable message)
+              never gives. */}
+          <div className={`rounded border p-4 ${data.pmt06Due ? "bg-state-problem-surface" : ""}`}>
             <p className="text-xs text-ps-label">PMT-06 challan (tax is still paid monthly)</p>
             <p className="font-semibold">
               {data.pmt06Due ?? "Not due — this month's tax is paid with the quarterly return"}
@@ -1368,11 +1375,12 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {loading && returns.length === 0 ? <TableSkeleton cols={6} bare /> : (
+      {loading && returns.length === 0 ? <TableSkeleton cols={8} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-ps-bg text-left">
               <th className="px-3 py-2 border-b">Period</th>
+              <th className="px-3 py-2 border-b">GSTIN</th>
               <th className="px-3 py-2 border-b">Tax Liability</th>
               <th className="px-3 py-2 border-b">ITC Claimed</th>
               <th className="px-3 py-2 border-b">After set-off</th>
@@ -1385,6 +1393,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             {returns.flatMap((r) => [
               <tr key={r.id as string} className="border-b hover:bg-ps-bg">
                 <td className="px-3 py-2">{r.period as string}</td>
+                <td className="px-3 py-2 text-xs">{r.gstin as string}</td>
                 <td className="px-3 py-2">{rupees((r.tax_liability_paise as number) ?? 0)}</td>
                 <td className="px-3 py-2">{rupees((r.itc_claimed_paise as number) ?? 0)}</td>
                 <td className="px-3 py-2">{rupees((r.net_tax_paise as number) ?? 0)}</td>
@@ -1462,7 +1471,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
               </tr>,
               freshness[r.id as string] ? (
                 <tr key={`${r.id}-fresh`}>
-                  <td colSpan={6} className="px-3 pb-3">
+                  <td colSpan={8} className="px-3 pb-3">
                     {freshness[r.id as string].stale ? (
                       <div className="text-xs bg-state-attention-surface text-state-attention border border-state-attention-border rounded px-3 py-2 space-y-1">
                         <p className="font-semibold">
@@ -1499,12 +1508,12 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
               ) : null,
             ])}
             {loadError ? (
-              <tr><td colSpan={6} className="px-3 py-6 text-center">
+              <tr><td colSpan={8} className="px-3 py-6 text-center">
                 <p className="text-sm text-state-problem font-medium">{loadError}</p>
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : returns.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No GSTR-3B returns yet.</td></tr>
+              <tr><td colSpan={8} className="px-3 py-4 text-center text-ps-hint">No GSTR-3B returns yet.</td></tr>
             )}
           </tbody>
         </table>

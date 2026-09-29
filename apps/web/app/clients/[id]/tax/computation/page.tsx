@@ -336,6 +336,20 @@ export default function TaxComputationPage() {
   const isEntity = assesseeKind === "firm" || assesseeKind === "llp"
                    || assesseeKind === "domestic_company";
   const isCompany = assesseeKind === "domestic_company";
+  // Whether the entity type carries business income BY DEFINITION (a
+  // Proprietorship, Partnership or LLP) — answered by the SAME
+  // /api/income-tax/assessee-kind call below, never decided here: a
+  // Proprietorship maps to the "individual" assessee kind, the same bucket a
+  // purely salaried individual falls into, so assesseeKind alone cannot tell
+  // the two apart, and re-deriving the entity-type mapping in this file is
+  // exactly the statutory judgment CLAUDE.md keeps out of the frontend. Used
+  // so the §115BAC(6)/Form 10-IEA panel below reflects reality before any
+  // figure is typed — it used to show "no Form 10-IEA needed" for a
+  // Proprietorship until the CA manually entered a nonzero business-income
+  // figure. `isEntity` above already routes a Partnership/LLP to the flat-rate
+  // branch with no election, so only the Proprietorship case is reachable at
+  // this panel today.
+  const [entityImpliesBusinessIncome, setEntityImpliesBusinessIncome] = useState(false);
 
   // Computation inputs
   const [regime, setRegime] = useState("new");
@@ -538,7 +552,12 @@ export default function TaxComputationPage() {
   };
 
   const load = useCallback(async () => {
-    if (!clientId || clientId === "_placeholder") return;
+    // `fy` starts at "" and is only set once GET /api/income-tax/financial-years
+    // resolves; the effect below fires on `[load]`, so without this check
+    // `load()` ran once with an empty/invalid `financial_year=eq.` filter (two
+    // wasted queries) and again the moment the real FY resolved changed
+    // `load`'s identity — doubling every query on initial page load.
+    if (!clientId || clientId === "_placeholder" || !fy) return;
     // Plain reads — routed directly to Supabase (RLS: firm_isolation) instead
     // of through the FastAPI backend, which cold-starts. Mirrors the exact
     // table/columns/filters/ordering of list_snapshots, list_disallowances,
@@ -614,7 +633,11 @@ export default function TaxComputationPage() {
   // figure, rather than as a 422 after they have.
   useEffect(() => {
     let cancelled = false;
-    if (!entityType) { setAssesseeKind(null); setAssesseeRefusal(null); return; }
+    if (!entityType) {
+      setAssesseeKind(null); setAssesseeRefusal(null);
+      setEntityImpliesBusinessIncome(false);
+      return;
+    }
     (async () => {
       try {
         const r = await apiFetch(
@@ -622,6 +645,7 @@ export default function TaxComputationPage() {
         if (cancelled || !r.success) return;
         setAssesseeKind(r.data?.kind ?? null);
         setAssesseeRefusal(r.data?.refusal ?? null);
+        setEntityImpliesBusinessIncome(Boolean(r.data?.implies_business_income));
       } catch {
         /* leave it unresolved; the compute call answers definitively anyway */
       }
@@ -1163,7 +1187,8 @@ export default function TaxComputationPage() {
                       <RegimeElectionPanel
                         financialYear={fy}
                         wantsOldRegime={regime === "old"}
-                        hasBusinessIncome={Boolean(businessIncome) && Number(businessIncome) !== 0}
+                        hasBusinessIncome={entityImpliesBusinessIncome
+                          || (Boolean(businessIncome) && Number(businessIncome) !== 0)}
                       />
                     </div>
                   </>

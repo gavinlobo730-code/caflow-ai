@@ -114,3 +114,35 @@ def assessee_kind_for_entity_type(
 def is_entity(kind: AssesseeKind) -> bool:
     """Whether this assessee is charged at a flat entity rate rather than slabs."""
     return kind in ("firm", "llp", "domestic_company")
+
+
+#: Entity types the Act treats as necessarily carrying business or
+#: professional income — the proprietor's whole assessment IS the business,
+#: and a firm or an LLP is one by its own constitution. §115BAC(6)'s two
+#: clauses turn on exactly this fact (Form 10-IEA where there is business
+#: income, the return itself where there is not — see
+#: domain/income_tax/regime_election.py's own docstring), so a screen that
+#: waits for a CA to type a nonzero business-income figure before treating a
+#: Proprietorship, Partnership or LLP client that way is wrong from the
+#: moment it opens. `_KIND_BY_ENTITY_TYPE` maps every one of these three to
+#: "individual" or "firm"/"llp" already; this set names which of THOSE keys
+#: carry business income by construction — an ordinary salaried "individual"
+#: does not, so `assessee_kind` alone cannot answer this question and a
+#: second table is needed.
+_ENTITY_TYPES_IMPLYING_BUSINESS_INCOME: frozenset[str] = frozenset({
+    "proprietorship", "partnership", "llp",
+})
+
+
+def implies_business_income(entity_type: Optional[str]) -> bool:
+    """Whether this entity type carries business/professional income by
+    definition, independent of any figure a CA has or has not typed yet.
+
+    Statutory knowledge, so it lives here rather than being re-derived from
+    the raw `clients.entity_type` string in the browser — CLAUDE.md, "zero
+    business logic in the frontend" — and `GET /api/income-tax/assessee-kind`
+    serves it alongside the assessee kind so the computation screen has both
+    answers from the one call it already makes.
+    """
+    key = normalise_entity_type(entity_type)
+    return bool(key) and key in _ENTITY_TYPES_IMPLYING_BUSINESS_INCOME
