@@ -220,7 +220,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
             </button>
             <button
               type="submit" disabled={saving}
-              className="flex-1 rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-brand-dark disabled:opacity-60"
+              className="flex-1 rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-60"
             >
               {saving ? "Creating…" : "Create Task"}
             </button>
