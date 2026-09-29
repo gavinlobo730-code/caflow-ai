@@ -157,14 +157,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const roleOwner = useRef<string | null | undefined>(undefined);
   // The user whose role/hasFirm are currently in state from a SUCCESSFUL read.
   const resolvedFor = useRef<string | null | undefined>(undefined);
+  // apex-overview-practice-07(c): the owner a context resolution is CURRENTLY
+  // in flight for, or undefined/null between resolutions. getSession().then(...)
+  // and onAuthStateChange's own INITIAL_SESSION event both call applyContext
+  // for the same user on every page load — 2x the users-table query and 2x
+  // resolvePermissions() before either had a chance to answer. A call for a
+  // user already being resolved is a duplicate of work already in flight, not
+  // a new fact to learn, so it is skipped; a call once that work has settled
+  // (the hourly TOKEN_REFRESHED case) still runs, because the token itself
+  // changed and this is a genuine refresh rather than a duplicate.
+  const contextInFlightFor = useRef<string | null | undefined>(undefined);
   const [mfaPending, setMfaPending] = useState<boolean | null>(null);
   const [hasFirm, setHasFirm] = useState<boolean | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<PermissionMap | null>(null);
 
   function applyContext(u: User | null) {
-    setHasFirm(null);
     const owner = u?.id ?? null;
+    // A resolution for this exact identity is already running (getSession()
+    // and onAuthStateChange's INITIAL_SESSION firing back to back on mount is
+    // the common case) — nothing new to learn by starting a second one, and
+    // its result would just be discarded by the `request` guard below anyway.
+    if (owner === contextInFlightFor.current) return;
+    contextInFlightFor.current = owner;
+    setHasFirm(null);
     const newUser = owner !== roleOwner.current;
     if (newUser) {
       roleOwner.current = owner;
@@ -172,25 +188,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const request = ++contextRequest.current;
     (async () => {
-      let ctx = await resolveUserContext(u);
-      if (ctx.failed) {
-        // One retry: most failures here are a request racing a token refresh.
-        await new Promise((r) => setTimeout(r, 1500));
+      try {
+        let ctx = await resolveUserContext(u);
+        if (ctx.failed) {
+          // One retry: most failures here are a request racing a token refresh.
+          await new Promise((r) => setTimeout(r, 1500));
+          if (request !== contextRequest.current) return;
+          ctx = await resolveUserContext(u);
+        }
         if (request !== contextRequest.current) return;
-        ctx = await resolveUserContext(u);
-      }
-      if (request !== contextRequest.current) return;
-      if (ctx.failed && resolvedFor.current === owner) {
-        // Still failing, for the SAME user we already resolved: keep the last
-        // good answer rather than demoting them mid-session.
+        if (ctx.failed && resolvedFor.current === owner) {
+          // Still failing, for the SAME user we already resolved: keep the last
+          // good answer rather than demoting them mid-session.
+          setRoleLoading(false);
+          return;
+        }
+        setUserRole(ctx.role);
+        setHasFirm(ctx.hasFirm);
+        setFullName(ctx.fullName);
+        if (!ctx.failed) resolvedFor.current = owner;
         setRoleLoading(false);
-        return;
+      } finally {
+        // Only clear it if nothing NEWER for this same owner has already
+        // taken over the slot (can't happen given the guard above, but a
+        // stray `undefined` is what unblocks a genuinely later resolution,
+        // e.g. the hourly TOKEN_REFRESHED, rather than leaving it wedged).
+        if (contextInFlightFor.current === owner) contextInFlightFor.current = undefined;
       }
-      setUserRole(ctx.role);
-      setHasFirm(ctx.hasFirm);
-      setFullName(ctx.fullName);
-      if (!ctx.failed) resolvedFor.current = owner;
-      setRoleLoading(false);
     })().catch(() => {
       if (request !== contextRequest.current) return;
       setRoleLoading(false);
