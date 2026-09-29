@@ -37,7 +37,12 @@ test("the GSTR-1 tab only shows the skeleton on the first load", () => {
 
 test("the GSTR-3B tab only shows the skeleton on the first load", () => {
   const src = read("app/clients/[id]/compliance/gst/page.tsx");
-  assert.match(src, /\{loading && returns\.length === 0 \? <TableSkeleton cols=\{6\} bare \/> : \(/);
+  // cols=8 since the GSTIN column was added (a registration a return was
+  // filed under is a fact worth showing beside it, not the column count this
+  // test is actually about) — the property under test is unchanged: the
+  // skeleton renders only while `returns` is still empty, never on a reload
+  // of an already-populated table.
+  assert.match(src, /\{loading && returns\.length === 0 \? <TableSkeleton cols=\{8\} bare \/> : \(/);
 });
 
 test("neither tab swaps the whole table out on every reload any more", () => {
