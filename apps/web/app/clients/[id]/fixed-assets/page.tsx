@@ -868,7 +868,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
       if (body.useful_life_years !== undefined && !Number.isInteger(body.useful_life_years)) {
         setError("The useful life must be a whole number of years."); return;
       }
-      const j = await request<ApiEnvelope>("/api/fixed-assets/", { method: "POST", body: JSON.stringify(body) });
+      const j = await request<ApiEnvelope>("/api/fixed-assets", { method: "POST", body: JSON.stringify(body) });
       if (!j.success) throw new Error(refusalMessage(j, "Failed to add asset"));
       onSaved(); onClose();
     } catch (e: unknown) {
@@ -1592,7 +1592,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
     try {
       // include_disposed defaults to false server-side — already-disposed
       // assets are excluded without needing a (nonexistent) status filter.
-      const j = await request<ApiEnvelope<Asset[]>>(`/api/fixed-assets/?client_id=${clientId}`);
+      const j = await request<ApiEnvelope<Asset[]>>(`/api/fixed-assets?client_id=${clientId}`);
       if (!j.success) throw new Error(j.error ?? "Failed to load");
       setAssets(j.data ?? []);
       setLoadFailed(false);
@@ -1966,7 +1966,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
         request<ApiEnvelope<MovementResponse>>(
           `/api/fixed-assets/movement?client_id=${clientId}&financial_year=${encodeURIComponent(financialYear)}`),
         request<ApiEnvelope<Omit<Asset, "lifecycle">[]>>(
-          `/api/fixed-assets/?client_id=${clientId}&include_disposed=true`),
+          `/api/fixed-assets?client_id=${clientId}&include_disposed=true`),
       ]);
       if (!mv.success) throw new Error(mv.error ?? "Failed to load the movement");
       if (!list.success) throw new Error(list.error ?? "Failed to load");

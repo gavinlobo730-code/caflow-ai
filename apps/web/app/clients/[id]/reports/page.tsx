@@ -80,9 +80,9 @@ const GROUPS: ReportGroup[] = [
     desc: "Account-level detail behind the statements",
     icon: ClipboardList,
     reports: [
-      { id: "coa", title: "Chart of Accounts", desc: "Every account, its group and its balance",
+      { id: "coa", title: "Chart of Accounts", desc: "Every account, its type and subtype — not the balance; see Trial Balance for that",
         href: "accounting?tab=coa" },
-      { id: "journal", title: "Journal", desc: "Entries written by hand — auto-posted entries appear per account, not here",
+      { id: "journal", title: "Journal", desc: "Entries written by hand — auto-posted entries appear on the Day Book tab or per account, not here",
         href: "accounting?tab=journal" },
       { id: "verify", title: "Verify Books", desc: "Integrity checks across the ledger",
         href: "accounting?tab=verify-books" },

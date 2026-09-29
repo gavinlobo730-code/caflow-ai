@@ -38,6 +38,7 @@ import { financialYearOfMonth } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
+import { formatDate } from "@/lib/services/formatting";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 
 export type DrawerEmployee = {
@@ -441,7 +442,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
           <input type="date" value={leavingDate} onChange={(e) => setLeavingDate(e.target.value)}
             className={`${FIELD} mt-1`} />
           <span className="text-3xs text-ps-hint">
-            Joined {employee.joining_date || "— not recorded, so gratuity cannot be computed"}.
+            Joined {employee.joining_date ? formatDate(employee.joining_date) : "— not recorded, so gratuity cannot be computed"}.
           </span>
         </label>
         <label className={LABEL}>Recorded as

@@ -783,12 +783,21 @@ HEURISTIC_CHECKS: frozenset[str] = frozenset(ledger_anomalies.ALL_KINDS)
 
 def check_catalogue() -> dict:
     """The vocabulary `GET /api/reconciliation/checks` serves."""
+    # `NOT_CHECKED`'s own "the other N checks" sentence names a count this
+    # module owns and that one does not — CHECK_CATALOGUE minus the three
+    # `ledger_anomalies` contributes itself. Filled in here, with `.format`,
+    # rather than written as a literal in `ledger_anomalies.py`, which is the
+    # defect this replaced: "nine" survived four checks being added after it.
+    other_checks = len(CHECK_CATALOGUE) - len(HEURISTIC_CHECKS)
     return {
         "checks": [
             {"check_name": name, "is_heuristic": name in HEURISTIC_CHECKS, **body}
             for name, body in CHECK_CATALOGUE.items()
         ],
-        "not_checked": list(ledger_anomalies.NOT_CHECKED),
+        "not_checked": [
+            sentence.format(other_checks=other_checks)
+            for sentence in ledger_anomalies.NOT_CHECKED
+        ],
     }
 
 

@@ -183,7 +183,11 @@ _DRAWER = _strip_comments(
 #: in the form STATE as well, so deleting the line that SENDS one still matched
 #: — the same "assert the spelling, not the rule" mistake CLAUDE.md records
 #: about the money parser, inside guards written to prevent it.
-_POST = 'request<ApiEnvelope>("/api/fixed-assets/"'
+#: No trailing slash — the collection POST is registered as `@router.post("")`
+#: under `prefix="/api/fixed-assets"`, so a request for the trailing-slash
+#: form costs a 307 redirect. The drawer's fetch was corrected to match; this
+#: marker moved with it.
+_POST = 'request<ApiEnvelope>("/api/fixed-assets"'
 _PAYLOAD = _DRAWER[_DRAWER.index("const body = {"):_DRAWER.index(_POST)]
 _RENDER = _DRAWER[_DRAWER.index("  return (\n    <div className=\"fixed inset-0"):]
 

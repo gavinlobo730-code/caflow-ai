@@ -236,6 +236,21 @@ test("Worth a Look advises and cannot act", () => {
   assert.match(s, /to_date:/, "the period must be sent");
 });
 
+/** The tab opens on the previous whole month by default (its own docstring
+ *  says why), with no fallback to whatever month actually has posted bank
+ *  activity — so a client with little posted volume opened on a bare "No
+ *  posted lines in this period" every time, with nothing telling the CA what
+ *  to do about it. Widening the date range is the one thing this read-only
+ *  tab lets a CA try, so the empty state has to say so rather than reading
+ *  like a dead end. */
+test("the empty state on a quiet month suggests widening the range, not just naming it empty", () => {
+  const s = fs.readFileSync(path.join(BANKING, "WorthALookTab.tsx"), "utf8");
+  assert.ok(!s.includes('"No posted lines in this period."'),
+    "the empty-state sentence still ends flat, with nothing for the CA to do next");
+  assert.match(s, /No posted lines in this period[\s\S]{0,40}(different|wider|widen)/i,
+    "the empty state must point the CA at trying a different or wider date range");
+});
+
 test("accounts and statement import are reached from Entries, not from a tab", () => {
   const s = tab();
   assert.match(s, /from "@\/components\/banking\/AccountsPanel"/, "Entries must import the Accounts panel");

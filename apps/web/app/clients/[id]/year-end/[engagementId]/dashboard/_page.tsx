@@ -10,6 +10,11 @@ import {
   ArrowRight,
   TrendingUp,
   User,
+  FileEdit,
+  Search,
+  CheckCircle2,
+  Lock,
+  type LucideIcon,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { yearEndApi, type ChecklistItem, type EngagementStatus, type YearEndEvent } from "@/lib/api/yearEnd";
@@ -40,11 +45,12 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-const STATUS_ICON: Record<EngagementStatus, string> = {
-  draft: "📝",
-  in_review: "🔍",
-  approved: "✅",
-  locked: "🔒",
+// No emoji on product UI (CLAUDE.md) — a lucide icon per status instead of one.
+const STATUS_ICON: Record<EngagementStatus, LucideIcon> = {
+  draft: FileEdit,
+  in_review: Search,
+  approved: CheckCircle2,
+  locked: Lock,
 };
 
 const STATUS_LABEL: Record<EngagementStatus, string> = {
@@ -306,12 +312,14 @@ export default function YearEndDashboardPage() {
     ? new Date(statements_generated_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
     : null;
 
+  const StatusIcon = STATUS_ICON[engagement.status];
+
   return (
     <div className="p-6 space-y-5 max-w-4xl mx-auto">
 
       {/* Status card */}
       <div className={`rounded-xl px-5 py-4 flex items-center gap-4 ${STATUS_COLOR[engagement.status]}`}>
-        <span className="text-3xl">{STATUS_ICON[engagement.status]}</span>
+        <StatusIcon size={28} />
         <div className="flex-1">
           <p className="text-sm font-semibold">{STATUS_LABEL[engagement.status]}</p>
           <p className="text-xs opacity-70 mt-0.5">
