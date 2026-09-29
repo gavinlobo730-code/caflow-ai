@@ -23,19 +23,32 @@ export default function LoginPage() {
   const [loading, setLoading]   = useState(false);
   const [mfaFactorId, setMfaFactorId] = useState("");
   const [mfaCode, setMfaCode]   = useState("");
+  // `mfaFactorId` arrives a round trip after `mfaStep` flips true — long
+  // enough that a fast typist, or a password manager autofilling the TOTP
+  // field, could submit while it is still "". The challenge then posted with
+  // an empty factor id, Supabase rejected it, and the UI showed the same
+  // "Invalid code" a genuinely wrong code gets — misleading, since the code
+  // itself may have been right. `mfaFactorLoadFailed` is a SEPARATE state
+  // from "still loading": listFactors() answering with no verified TOTP
+  // factor at all is not something retrying the same fetch will fix, and
+  // leaving the button merely disabled forever with no explanation is its
+  // own dead end.
+  const [mfaFactorLoadFailed, setMfaFactorLoadFailed] = useState(false);
+  const mfaFactorReady = mfaFactorId !== "";
 
   // The challenge is driven by the global auth state (mfaPending) so it survives
   // the post-sign-in redirect race and page refreshes. When pending, fetch the
   // verified TOTP factor to challenge against.
   const mfaStep = mfaPending === true;
   useEffect(() => {
-    if (mfaStep && !mfaFactorId) {
+    if (mfaStep && !mfaFactorReady && !mfaFactorLoadFailed) {
       supabase.auth.mfa.listFactors().then(({ data }) => {
         const totp = ((data as { totp?: { id: string }[] } | null)?.totp ?? [])[0];
         if (totp) setMfaFactorId(totp.id);
-      }).catch(() => {});
+        else setMfaFactorLoadFailed(true);
+      }).catch(() => setMfaFactorLoadFailed(true));
     }
-  }, [mfaStep, mfaFactorId, supabase]);
+  }, [mfaStep, mfaFactorReady, mfaFactorLoadFailed, supabase]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -59,6 +72,12 @@ export default function LoginPage() {
 
   async function handleMfaSubmit(e: FormEvent) {
     e.preventDefault();
+    // Belt-and-braces: the button is disabled until mfaFactorReady, which
+    // already stops a normal click or an Enter-key implicit submit. This
+    // guards a programmatic one (an autofill extension calling
+    // form.requestSubmit() directly) from posting a challenge with no
+    // factor id and getting back the same "Invalid code" a wrong code does.
+    if (!mfaFactorReady) return;
     setError(null);
     setLoading(true);
     try {
@@ -150,6 +169,16 @@ export default function LoginPage() {
                   className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                 />
               </div>
+              {mfaFactorLoadFailed && (
+                <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
+                  <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-state-problem text-3xs font-bold leading-none">!</span>
+                  </div>
+                  <p className="text-sm text-red-600 leading-snug">
+                    Could not load your authenticator details. Please refresh the page and try again.
+                  </p>
+                </div>
+              )}
               {error && (
                 <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
                   <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
@@ -159,11 +188,17 @@ export default function LoginPage() {
                 </div>
               )}
               <button
-                type="submit" disabled={loading || mfaCode.length < 6}
+                type="submit" disabled={loading || mfaCode.length < 6 || !mfaFactorReady}
                 className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
               >
                 {loading ? (
                   <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Verifying…</>
+                ) : !mfaFactorReady ? (
+                  // The UI honestly reflects its own readiness rather than
+                  // hoping the user waits long enough: a code typed (or
+                  // autofilled) faster than listFactors() answers has nothing
+                  // to be verified against yet.
+                  <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Preparing verification…</>
                 ) : (
                   <>Verify <ArrowRight size={15} /></>
                 )}

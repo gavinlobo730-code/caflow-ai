@@ -196,3 +196,76 @@ test("still loading renders the wizard's own placeholder rather than the expired
   assert.equal(mayRenderOnboardingWizard({ loading: true, hasSession: false }), true);
   assert.equal(mayRenderOnboardingWizard({ loading: true, hasSession: true }), true);
 });
+
+// ── No `users` row: /onboarding OR /portal/login ────────────────────────────
+// A portal client hitting a staff URL resolves hasFirm=false exactly like a
+// brand-new firm signup does, and used to land on the same /onboarding
+// "Create your firm" wizard either way — confusing for a business owner who
+// already has a password and does not run a firm, though nothing staff-only
+// is ever fetched first.
+//
+// NEGATIVE CONTROL: hardcoding "/onboarding" regardless of isPortalClient
+// (the old behaviour) fails the first test below.
+
+import { noFirmRedirectTarget } from "./guardDecision.ts";
+
+test("a portal client with no firm row goes to the portal's own login, not the firm wizard", () => {
+  assert.equal(noFirmRedirectTarget(true), "/portal/login");
+});
+
+test("staff mid-signup with no firm row yet still goes to onboarding, unchanged", () => {
+  assert.equal(noFirmRedirectTarget(false), "/onboarding");
+});
+
+// ── AuthGuard's portal-recovery signal must not read window.location ───────
+// The forgot-password bounce fix (above) tests shouldBounceFromLogin as a
+// pure function given isPortalRecovery already resolved, and passes
+// regardless of HOW that boolean was computed — which is exactly the gap a
+// later regression lived in and these five tests could not see: AuthGuard
+// computed isPortalRecovery from `new URLSearchParams(window.location.search)`,
+// read once per render straight off the BROWSER's own address bar — a
+// different, independently-updated clock from `usePathname()`, which Next.js
+// updates through React context on every navigation. On a client-side
+// transition (an in-app <Link>, not a hard reload — the exact "Forgot
+// password?" link the portal's own login page uses) the pathname context
+// updates before history.pushState() catches window.location up to it, so an
+// ALREADY-AUTHENTICATED session clicking it read the OLD query string for one
+// effect run and was bounced to "/" (and on, from there) before the portal
+// exemption ever had a chance to apply. A hard reload never showed it,
+// because there window.location is correct from the very first render — the
+// case the original fix's own tests exercised.
+//
+// No React/DOM runner is wired up for this file (see the header), so this is
+// a structural check on the SOURCE rather than a rendered one: the fix is for
+// AuthGuard to derive isPortalRecovery from useSearchParams() — read out of
+// the SAME router context as usePathname(), in the SAME render, on every
+// navigation — instead of window.location, and this pins that shape rather
+// than a spelling of it.
+//
+// NEGATIVE CONTROL: reverting to `new URLSearchParams(window.location.search)`
+// fails this test.
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { stripComments } from "../../scripts/stripComments.ts";
+
+// Stripped, not raw: the comment explaining the fix (and the one it replaced)
+// names "window.location.search" in prose, which a plain substring check
+// cannot tell apart from the code doing it — the same hazard every guard in
+// scripts/ strips comments to avoid.
+const authGuardSrc = stripComments(readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "AuthGuard.tsx"),
+  "utf8",
+));
+
+test("the portal-recovery signal is read off useSearchParams(), never window.location", () => {
+  assert.ok(
+    /useSearchParams\s*\(/.test(authGuardSrc),
+    "AuthGuard no longer reads the ?portal=1 flag off Next's own router state",
+  );
+  assert.ok(
+    !authGuardSrc.includes("window.location.search"),
+    "AuthGuard still reads window.location.search, which lags usePathname() on a client-side navigation",
+  );
+});
