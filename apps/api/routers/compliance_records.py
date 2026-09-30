@@ -29,7 +29,11 @@ class ComplianceRecordUpdateIn(BaseModel):
     status: Optional[str] = None
     due_date: Optional[str] = None
     notes: Optional[str] = None
+    # `filing_date` was declared here and never read — the service looks for
+    # `filed_date` — so a caller that sent it had it dropped with a 200. It is
+    # now the old spelling of `filed_date`, and either is honoured.
     filing_date: Optional[str] = None
+    filed_date: Optional[str] = None
     acknowledgement_no: Optional[str] = None
 
 router = APIRouter(prefix="/api/compliance-records", tags=["compliance-records"])
@@ -114,9 +118,16 @@ def update_compliance_record(record_id: str, data: ComplianceRecordUpdateIn, cur
         # that sibling GET.
         existing = compliance_record_service.get_record(record_id, firm_id=current_user.get("firm_id"))
         assert_client_access(current_user, existing.get("client_id"))
+        payload = data.model_dump(exclude_none=True)
+        legacy = payload.pop("filing_date", None)
+        if legacy and "filed_date" not in payload:
+            payload["filed_date"] = legacy
         record = compliance_record_service.update_record(
-            record_id, data.model_dump(exclude_none=True), firm_id=current_user.get("firm_id")
+            record_id, payload, firm_id=current_user.get("firm_id")
         )
+        # The filing-lock answer is for the two dedicated Filed doors; here the
+        # row comes back as it always has.
+        record.pop("filing_lock", None)
         return api_response(True, record)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

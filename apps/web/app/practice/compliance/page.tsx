@@ -8,6 +8,8 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { objectOrNull } from "@/lib/api/shape";
+import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
+import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
 
 // Compliance lifecycle (mirrors the server-side VALID_TRANSITIONS — presentation
 // only; the backend is the source of truth and rejects invalid transitions).
@@ -73,6 +75,12 @@ function ComplianceDashboard() {
   const [busy, setBusy] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  // The obligation being moved to Filed. That move is the one that RECORDS a
+  // filing — and, for a GSTR-1 or GSTR-3B, closes its period — so it asks for
+  // the date the return was filed rather than stamping one; every other move is
+  // a plain status change.
+  const [filing, setFiling] = useState<Obligation | null>(null);
+  const [filingError, setFilingError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -92,8 +100,26 @@ function ComplianceDashboard() {
   }
 
   async function transition(o: Obligation, status: string) {
+    if (status === "Filed") { setFilingError(null); setFiling(o); return; }
     await act(() => api.complianceOps.transition(o.id, status),
       () => `${o.obligation_type ?? o.compliance_type} → ${status}`);
+  }
+
+  async function markFiled(v: { filedDate: string; arn: string }) {
+    if (!filing) return;
+    const o = filing;
+    setBusy(true); setFilingError(null);
+    try {
+      const res = await api.complianceOps.markFiled(o.id, {
+        acknowledgementNo: v.arn || undefined, filedDate: v.filedDate,
+      });
+      const outcome = describeFilingOutcome(res.data, o.period_label ?? o.obligation_type ?? o.compliance_type);
+      setFiling(null);
+      setMsg(`${outcome.title}. ${outcome.description}`);
+      await load();
+    } catch (e) {
+      setFilingError(e instanceof Error ? e.message : "Couldn't mark this filed.");
+    } finally { setBusy(false); }
   }
 
   const today = todayLocalISO();
@@ -242,6 +268,16 @@ function ComplianceDashboard() {
           </table>
         )}
       </div>
+
+      {filing && (
+        <MarkFiledModal
+          intro={`${filing.client_name ?? "Client"} — ${filing.period_label ?? filing.obligation_type ?? filing.compliance_type}`}
+          busy={busy}
+          error={filingError}
+          onConfirm={markFiled}
+          onClose={() => { setFiling(null); setFilingError(null); }}
+        />
+      )}
 
       <p className="text-2xs text-gray-400 mt-4">
         Obligations are generated from active engagements using statutory due dates. Escalations are internal only —
