@@ -107,6 +107,23 @@
  * mean re-architecting Year-End, Compliance or Tax into tabs, which is a
  * product decision rather than a codemod.
  *
+ * A PLAIN RULE AFTER A DYNAMIC ONE IS COUNTED AS DYNAMIC (30-09-2026).
+ * Cloudflare's parser keeps rules in file order once it has met the first
+ * dynamic one, so every rule after it — placeholder or not — is spent from
+ * the 100-dynamic budget. The 32 literal shadow-leaf rules
+ * (staticLeafShadowRules) used to be sorted in among the dynamic ones, so
+ * Cloudflare counted 98 + 32 = 130 and silently DROPPED THE LAST 30: the
+ * /relationships/* rules and all twelve splats. Measured live, rule by rule:
+ * rules 1-108 answered, 109-138 did not, and the casualties included a
+ * plain non-splat rule (/relationships/:entity_id), which is what showed it
+ * was a position cut and not a wildcard bug. Every hard reload or shared
+ * link into /clients/<id>/<section>/ returned 404 while in-app navigation
+ * (client-side, never asks the server) kept working. The test that said
+ * "98 of 100" counted syntax, not position, so it stayed green throughout.
+ * Plain rules are therefore emitted FIRST, in their own block — still in
+ * sorted order, so each shadow leaf still precedes the dynamic sibling it
+ * protects against. Do not interleave them again.
+ *
  * Usage:
  *   node scripts/generate-redirects.js        # (re)writes public/_redirects
  *   import { buildRedirectsFile } from "./generate-redirects.js"
@@ -127,12 +144,14 @@ const HEADER = `# GENERATED FILE — do not hand-edit.
 # ([param]) route segment; do not add entries here by hand — they will be
 # overwritten on the next build.
 #
-# Rules are first-match-wins. Every page's own "bare path" / "bare RSC"
-# rules come first (exact-shape, mutually exclusive — order among these
-# doesn't matter), followed by one splat rule per dynamic-segment group,
-# deepest group first, covering every page's "trailing slash" / "RSC
-# payload" shapes at once. See generate-redirects.js's module doc for why
-# this specific split/ordering is required, not just stylistic.
+# Rules are first-match-wins. Literal rules (no ":" or "*") come first,
+# because Cloudflare counts every rule after the first dynamic one against
+# its 100-dynamic cap. Then every page's own "bare path" / "bare RSC"
+# rules (exact-shape, mutually exclusive — order among these doesn't
+# matter), followed by one splat rule per dynamic-segment group, deepest
+# group first, covering every page's "trailing slash" / "RSC payload"
+# shapes at once. See generate-redirects.js's module doc for why this
+# specific split/ordering is required, not just stylistic.
 `;
 
 /** Recursively collects every page.tsx's path, as an array of segments
@@ -362,10 +381,17 @@ export function buildRedirectsFile(appDir) {
     ) + 2;
   const pad = (s) => s + " ".repeat(Math.max(1, fromWidth - s.length));
 
-  const enumeratedBody = enumerated.map((r) => `${pad(r.from)}${r.to}  200`).join("\n");
-  const splatBody = splats.map((r) => `${pad(r.from)}${r.to}  200`).join("\n");
+  // Literal rules first — see the module doc: a literal rule listed after a
+  // dynamic one is counted against the 100-dynamic cap by Cloudflare.
+  const isDynamicRule = (from) => from.includes(":") || from.includes("*");
+  const body = (rules) => rules.map((r) => `${pad(r.from)}${r.to}  200`).join("\n");
+  const blocks = [
+    body(enumerated.filter((r) => !isDynamicRule(r.from))),
+    body(enumerated.filter((r) => isDynamicRule(r.from))),
+    body(splats),
+  ].filter(Boolean);
 
-  return `${HEADER}\n${enumeratedBody}\n\n${splatBody}\n`;
+  return `${HEADER}\n${blocks.join("\n\n")}\n`;
 }
 
 function main() {

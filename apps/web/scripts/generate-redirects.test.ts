@@ -60,13 +60,77 @@ function rulesIn(generated: string) {
     });
 }
 
-/** Cloudflare Pages counts a rule as DYNAMIC when its `from` carries a
- * `:placeholder` or a `*` splat — that is the population the 100 cap
- * applies to, and it is what this file must be measured against. Counting
- * "lines ending in 200" happens to give the same number today only because
- * the generator emits nothing static; the test below asserts that rather
- * than assuming it. */
+/** A rule is DYNAMIC by its own syntax when its `from` carries a
+ * `:placeholder` or a `*` splat. That is NOT the population Cloudflare's
+ * 100 cap is measured against — see cloudflareDynamicCount below. */
 const isDynamicRule = (from: string) => from.includes(":") || from.includes("*");
+
+/** How many rules Cloudflare spends from its 100-dynamic budget. Once its
+ * parser has met the first dynamic rule it keeps everything after it in file
+ * order, so EVERY later rule counts — a literal one included. Counting by
+ * syntax (isDynamicRule) gave 98 for the file that was shipping 130, and the
+ * 30 rules past the cap were dropped silently. */
+function cloudflareDynamicCount(generated: string) {
+  const rules = rulesIn(generated);
+  const first = rules.findIndex((r) => isDynamicRule(r.from));
+  return first === -1 ? 0 : rules.length - first;
+}
+
+test("no literal rule is listed after a dynamic one, so Cloudflare counts the budget the way this file does", () => {
+  // Regression pin (30-09-2026). 32 literal shadow-leaf rules sat among the
+  // dynamic ones, Cloudflare counted 98 + 32 = 130 against a cap of 100, and
+  // it silently dropped rules 109-138: /relationships/* and all twelve
+  // splats. Every hard reload of /clients/<id>/<section>/ then 404ed in
+  // production while the syntactic count below read a comfortable 98.
+  const generated = buildRedirectsFile(APP_DIR);
+  const rules = rulesIn(generated);
+  const firstDynamic = rules.findIndex((r) => isDynamicRule(r.from));
+  assert.ok(firstDynamic > -1, "the app has dynamic routes, so the file has a dynamic rule");
+  const stranded = rules.slice(firstDynamic).filter((r) => !isDynamicRule(r.from));
+  assert.deepEqual(
+    stranded.map((r) => r.from),
+    [],
+    "literal rules listed after the first dynamic rule are counted by Cloudflare " +
+      "as dynamic and eat the 100-rule budget — emit them first"
+  );
+  const syntactic = rules.filter((r) => isDynamicRule(r.from)).length;
+  assert.equal(cloudflareDynamicCount(generated), syntactic,
+    "Cloudflare's positional count must equal the syntactic one");
+  assert.ok(cloudflareDynamicCount(generated) <= 100,
+    `Cloudflare would count ${cloudflareDynamicCount(generated)} dynamic rules against a cap of 100`);
+});
+
+test("literal rules come first whatever the tree looks like", () => {
+  // The same rule on a synthetic tree, so it is a statement about the
+  // generator and not a second measurement of app/ — a static sibling of a
+  // dynamic segment is exactly what produces literal rules.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "redirects-order-"));
+  try {
+    const page = "export default function P() { return null; }";
+    const mk = (...segs: string[]) => {
+      const dir = path.join(tmp, ...segs);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "page.tsx"), page);
+    };
+    mk("clients", "[id]");
+    mk("clients", "[id]", "overview");
+    mk("clients", "documents");
+    mk("health", "[client_id]");
+    mk("health", "critical");
+    const rules = rulesIn(buildRedirectsFile(tmp));
+    const lastLiteral = rules.map((r) => isDynamicRule(r.from)).lastIndexOf(false);
+    const firstDynamic = rules.findIndex((r) => isDynamicRule(r.from));
+    assert.ok(lastLiteral > -1, "the fixture produces literal shadow rules");
+    assert.ok(lastLiteral < firstDynamic,
+      "every literal rule must precede the first dynamic one");
+    // Hoisting must not cost the shadow its precedence over its sibling.
+    const from = rules.map((r) => r.from);
+    assert.ok(from.indexOf("/health/critical") < from.indexOf("/health/:client_id"));
+    assert.ok(from.indexOf("/clients/documents") < from.indexOf("/clients/:id"));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
 
 test("the dynamic-rule count stays under Cloudflare Pages' 100-dynamic-redirect cap", () => {
   // Regression pin for the "whole client workspace 404s" incident: 39
