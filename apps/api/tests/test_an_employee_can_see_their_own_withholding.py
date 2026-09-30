@@ -210,8 +210,12 @@ def test_there_is_no_second_way_to_ask_who_the_caller_is(app_db):
     """
     client, _ = app_db
     assert client.get("/api/portal/employee/me").status_code == 404
+    # The second route is the employee's own payslip PDF (payroll-01). It names a
+    # DOCUMENT, never a person: `slip_id` is resolved only within the principal's
+    # own released slips (see test_an_employee_can_download_their_own_payslip).
     assert [getattr(r, "path", "") for r in portal_mod.router.routes] == [
-        "/api/portal/employee/tds-projection"]
+        "/api/portal/employee/tds-projection",
+        "/api/portal/employee/payslips/{slip_id}/pdf"]
 
 
 # ── the principal itself ────────────────────────────────────────────────────
