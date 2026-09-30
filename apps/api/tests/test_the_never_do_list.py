@@ -220,6 +220,13 @@ OUTBOUND_MODULES: dict[str, str] = {
     "scripts/smoke_api.py":
         "this product's OWN deployed API, over its public URL. A smoke test, "
         "and not part of the running service",
+    "core/readiness.py":
+        "this product's OWN database host — the Supabase project at "
+        "SUPABASE_URL, which is fixed configuration and not a portal — one "
+        "bounded GET against its REST endpoint, to learn whether the database "
+        "answers and still accepts the service key (GET /ready, ops-05). It "
+        "sends no client data, reads no row, and is cached for five seconds so "
+        "an unauthenticated route cannot amplify load on the database",
     # ── the one open destination, and it is worth knowing about ──────────────
     "services/invoice_pdf_service.py":
         "whatever URL the FIRM gave as its branding logo, fetched to embed on "
