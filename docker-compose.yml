@@ -1,12 +1,43 @@
-version: "3.9"
-
+# The backend, in a container, from a clean clone with one command:
+#
+#     docker compose up --build        # API at http://localhost:8000, docs at /docs
+#
+# WHAT THAT GIVES YOU, AND WHAT IT DOES NOT
+#     With no apps/api/.env the API starts in MOCK MODE: every router that would call Supabase sees
+#     SUPABASE_URL unset and answers from in-memory data, and APP_ENV=development (set below) turns on
+#     the dev auth fallback, which reads X-User-Role / X-Firm-Id headers in place of a JWT. That is
+#     enough to read /docs and try an endpoint. It is NOT the product: there is no database here, so
+#     nothing persists, and the web app cannot sign in because sign-in is Supabase's.
+#
+#     For a real stack, create apps/api/.env with the values of a Supabase project
+#     (apps/api/.env.example lists them). Do NOT copy the example unchanged: its placeholder
+#     SUPABASE_URL is a value, so mock mode turns OFF and every call then goes to a host that does not
+#     exist. The file is optional below for exactly that reason — a clean clone has none.
+#
+# WHY THERE IS NO `web` SERVICE
+#     It used to build from apps/web/Dockerfile, which never existed, so the first command a new
+#     developer ran failed. apps/web is a STATIC EXPORT (`output: "export"`): it has no server to put
+#     in an image, Cloudflare Pages serves the built files, and in development a container would only
+#     add a bind mount and a file watcher that works badly through one. Run it beside this, on the
+#     host, as the README says:  cd apps/web && pnpm install && pnpm dev
+#
+# WHY NO LOCAL POSTGRES
+#     Suggested and not built, for a reason worth keeping: the API does not speak SQL. It talks to
+#     Supabase over HTTP (PostgREST for data, GoTrue's JWKS for auth), so a bare Postgres container
+#     would be a database nothing can reach. A local copy of the stack is the Supabase CLI's
+#     `supabase start`, and this repository is not set up for it (there is no supabase/config.toml).
+#     The README's "Local stack" section says what is and is not built.
+#
+# `required: false` needs Docker Compose 2.24 or later (January 2024).
+# tests/test_docker_compose_names_only_what_a_clean_clone_has.py holds the rule.
 services:
   api:
     build: ./apps/api
     ports:
       - "8000:8000"
     env_file:
-      - ./apps/api/.env
+      - path: ./apps/api/.env
+        required: false
     environment:
       - APP_ENV=development
     restart: unless-stopped
@@ -15,15 +46,3 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  web:
-    build:
-      context: ./apps/web
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    env_file:
-      - ./apps/web/.env.local
-    depends_on:
-      - api
-    restart: unless-stopped
