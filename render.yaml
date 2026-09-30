@@ -152,6 +152,19 @@ services:
       - key: MARKETING_URL
         sync: false
 
+      # How many proxies stand between the internet and this service AND append to
+      # X-Forwarded-For. core/client_ip.py takes the caller's address as the Nth
+      # entry from the RIGHT, because the left of that header is whatever the
+      # caller wrote. OPTIONAL: unset means 1, the choice that can never read the
+      # caller's own entries — too small names a proxy (a coarser rate limit, a
+      # signing address that is the proxy's) and too large is the spoofing this
+      # exists to stop. Render's real hop count was recalled and not read, so
+      # CONFIRM IT WITH ONE REQUEST: send `X-Forwarded-For: 203.0.113.9` to the
+      # API and look at the `forwarded_for` on the next signing event; if the
+      # chain ends in a proxy's address, set this to 2. (SECURITY-PRIVACY-25.)
+      - key: TRUSTED_PROXY_HOPS
+        sync: false
+
       # --- Scheduled jobs --------------------------------------------------
       # Off unless this reads exactly "true". When unset, jobs/scheduler.py
       # logs a warning and stays dormant — compliance reminders, recurring

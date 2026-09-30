@@ -56,6 +56,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from core.client_ip import client_ip
 from models.common import api_response
 from services import email_service
 
@@ -116,21 +117,20 @@ class DemoRequestIn(BaseModel):
 
 
 def _client_ip(request: Request) -> str:
-    """Best-effort caller identity for rate limiting.
+    """The caller's address, as the last proxy we trust saw it.
 
-    Render terminates TLS and proxies, so request.client.host is the proxy.
-    X-Forwarded-For's FIRST entry is the original client as the platform saw it.
-    This is spoofable by anyone willing to set the header, which is why it is
-    the per-IP limiter's input and not an authorization decision — the global
-    window is what holds when this value cannot be trusted.
+    This is the per-IP limiter's KEY, so what it returns has to be something the
+    caller cannot choose. It used to be X-Forwarded-For's FIRST entry — which is
+    the one a caller writes themselves, so rotating the header walked straight
+    round the limit (the old docstring conceded it was spoofable and leaned on
+    the global window instead). `core.client_ip` counts from the RIGHT, where the
+    entries are our own infrastructure's; see that module for why the default is
+    one hop and what to set if Render puts more in front of the service.
+
+    The global window is still what holds against a source that rotates real
+    addresses; it is no longer also what holds against a forged header.
     """
-    fwd = request.headers.get("x-forwarded-for", "")
-    if fwd:
-        first = fwd.split(",")[0].strip()
-        if first:
-            return first[:64]
-    client = request.client
-    return (client.host if client else "unknown")[:64]
+    return (client_ip(request) or "unknown")[:64]
 
 
 def _prune(dq: Deque[float], now: float, window: float) -> None:
