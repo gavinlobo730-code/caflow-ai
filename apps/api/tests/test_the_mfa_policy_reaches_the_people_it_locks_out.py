@@ -147,25 +147,122 @@ def _guarded_prefixes() -> set[str]:
     return out
 
 
+def _browser_sources() -> list[pathlib.Path]:
+    out = []
+    for top in ("app", "components", "lib"):
+        for path in (_WEB / top).rglob("*"):
+            if path.suffix not in (".ts", ".tsx") or re.search(r"\.test\.tsx?$", path.name):
+                continue
+            if "node_modules" in path.parts or path == _WEB / "lib" / "api" / "index.ts":
+                continue
+            out.append(path)
+    return out
+
+
 def test_every_browser_reader_of_a_guarded_refusal_translates_it():
-    """A screen that fetches an MFA-guarded path itself and reads `.detail`
-    off the refusal must pass it through explainMfaRefusal — or the raw
-    sentence reaches the CA again. Screens going through lib/api are covered
-    by its errorMessage/refusalFrom, which the next test holds."""
+    """A screen or helper that fetches an MFA-guarded path itself and reads
+    `.detail` off the refusal must pass it through explainMfaRefusal — or the
+    raw sentence reaches the CA again. lib/api/index.ts is held by the next
+    test. The path counts however the URL is built — a quoted literal, a
+    template after `${API}`, a concatenation — so the prefix is matched
+    anywhere, bounded only so /api/firms does not match /api/firmsomething."""
     prefixes = _guarded_prefixes()
     assert {"/api/firms", "/api/identity", "/api/payroll"} <= prefixes, prefixes
+    sources = _browser_sources()
+    assert any(p.suffix == ".ts" for p in sources) and any(p.suffix == ".tsx" for p in sources)
     offenders = []
-    for path in list((_WEB / "app").rglob("*.tsx")) + list((_WEB / "components").rglob("*.tsx")):
+    for path in sources:
         src = _code(path.read_text())
-        names_a_guarded_path = any(re.search(r"[\"'`]" + re.escape(p) + r"[/\"'`?]", src) for p in prefixes)
+        names_a_guarded_path = any(re.search(re.escape(p) + r"(?![\w-])", src) for p in prefixes)
         if names_a_guarded_path and re.search(r"\.detail\b", src) and "explainMfaRefusal" not in src:
             offenders.append(str(path.relative_to(_WEB)))
     assert not offenders, f"these read a guarded refusal's detail without translating it: {offenders}"
 
 
+# A read of `.detail` off a parsed body: `parsed?.detail`, `body.detail`,
+# `JSON.parse(body)?.detail`.
+_DETAIL_READ = re.compile(r"[\w\])]\s*\??\.\s*detail\b")
+# Calls whose argument is inspected or translated, not turned into text.
+_CALLS_THAT_INSPECT = {"if", "while", "isArray", "explainMfaRefusal"}
+
+
+def _reaches_text(src: str, start: int, end: int) -> str | None:
+    """Why the value at src[start:end] reaches text untranslated, or None."""
+    tail = src[end:]
+    trimmed = re.match(r"\s*\.\s*trim\(\s*\)", tail)
+    if trimmed:
+        tail = tail[trimmed.end():]
+    if re.match(r"\s*(\??\.|\[)", tail):
+        return None  # a property of it (`.message`, `.map`), not the string itself
+    head = src[:start].rstrip()
+    if re.search(r"(?:^|[^=!<>])=$", head) or re.search(r"\breturn$", head):
+        return "returned or assigned"
+    if head.endswith(("??", "||", "?", ":", "${", ",")):
+        return "used as a value"
+    call = re.search(r"(\w+)\s*\($", head)
+    if call and call.group(1) not in _CALLS_THAT_INSPECT:
+        return f"passed to {call.group(1)}()"
+    return None
+
+
+def untranslated_detail_reads(src: str) -> tuple[int, list[str]]:
+    """Every read of a refusal's `detail` in `src`, and the ones that turn it
+    into text without explainMfaRefusal — read straight into a return or an
+    assignment, or bound to a name that is then returned, assigned,
+    interpolated or passed on."""
+    src = _code(src)
+    reads, offenders = 0, []
+    for m in _DETAIL_READ.finditer(src):
+        reads += 1
+        read_start = m.start() + 1  # the match begins on the character before the dot
+        line_start = src.rfind("\n", 0, read_start) + 1
+        bound = re.match(r"\s*(?:const|let|var)\s+(\w+)\s*=", src[line_start:read_start])
+        if bound:
+            name = bound.group(1)
+            stmt_end = src.find(";", read_start)
+            stmt_end = len(src) if stmt_end < 0 else stmt_end
+            for use in re.finditer(r"(?<![\w.$])" + re.escape(name) + r"\b", src[stmt_end:]):
+                at = stmt_end + use.start()
+                why = _reaches_text(src, at, at + len(name))
+                if why:
+                    line_end = src.find("\n", at)
+                    offenders.append(f"{name} {why}: {src[src.rfind(chr(10), 0, at) + 1:line_end if line_end >= 0 else None].strip()}")
+            continue
+        head = src[line_start:read_start]
+        receiver = re.search(r"[\w$.?()\[\]]+$", head.rstrip())
+        value_start = line_start + (receiver.start() if receiver else len(head))
+        why = _reaches_text(src, value_start, m.end())
+        if why and "explainMfaRefusal(" not in head:
+            line_end = src.find("\n", read_start)
+            offenders.append(f"detail {why}: {src[line_start:line_end if line_end >= 0 else None].strip()}")
+    return reads, offenders
+
+
 def test_every_refusal_reader_in_lib_api_translates_the_detail():
-    src = _code((_WEB / "lib" / "api" / "index.ts").read_text())
-    reads = re.findall(r"[^\n]*detail\.trim\(\)[^\n]*", src)
-    assert reads, "no refusal reader found in lib/api — the scan is looking at nothing"
-    untranslated = [r.strip() for r in reads if "explainMfaRefusal(" not in r]
-    assert not untranslated, f"lib/api turns a refusal into text without explainMfaRefusal: {untranslated}"
+    reads, offenders = untranslated_detail_reads((_WEB / "lib" / "api" / "index.ts").read_text())
+    assert reads >= 2, "no refusal reader found in lib/api — the scan is looking at nothing"
+    assert not offenders, f"lib/api turns a refusal into text without explainMfaRefusal: {offenders}"
+
+
+@pytest.mark.parametrize("snippet", [
+    "const d = parsed?.detail;\nif (typeof d === 'string') return d;",
+    "const detail = JSON.parse(body)?.detail;\nmessage = detail;",
+    "const detail = parsed?.detail ?? parsed?.error;\nthrow new Error(detail);",
+    "const detail = parsed.detail;\nreturn `API error: ${detail}`;",
+    "return parsed.detail;",
+    "message = JSON.parse(body)?.detail ?? 'x';",
+])
+def test_the_lib_api_scan_catches_an_untranslated_reader(snippet):
+    reads, offenders = untranslated_detail_reads(snippet)
+    assert reads == 1 and offenders, snippet
+
+
+@pytest.mark.parametrize("snippet", [
+    "const detail = parsed?.detail;\nif (typeof detail === 'string' && detail.trim()) return explainMfaRefusal(detail.trim());",
+    "const detail = parsed?.detail;\nif (detail && typeof detail === 'object') return detail.message;",
+    "const detail = parsed?.detail;\nif (Array.isArray(detail)) return detail.map((d) => d.msg).join(' ');",
+    "return explainMfaRefusal(parsed.detail);",
+])
+def test_the_lib_api_scan_passes_a_translated_reader(snippet):
+    reads, offenders = untranslated_detail_reads(snippet)
+    assert reads == 1 and not offenders, (snippet, offenders)

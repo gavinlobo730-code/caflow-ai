@@ -89,3 +89,15 @@ test("a permissions answer is applied only through the latest-wins gate", () => 
   assert.doesNotMatch(src, /\.then\(\s*setMfaPolicy\s*\)|\.then\(\s*setHasVerifiedFactor\s*\)/,
     "the enrolment facts must be applied latest-wins too");
 });
+
+test("the setup page offers a way on once enrolment is no longer owed", () => {
+  const src = code(read("app/settings/security/page.tsx"));
+  assert.match(src, /setupPageLead\(\s*setup\s*,\s*mustEnrolMfa\s*\)/,
+    "the setup page does not ask whether enrolment is still owed, so it welcomes somebody already enrolled");
+  const welcome = src.indexOf("Welcome — one last step");
+  assert.ok(welcome > 0, "the welcome has moved — re-read this rule");
+  const gate = src.lastIndexOf('lead === "welcome"', welcome);
+  assert.ok(gate > 0 && welcome - gate < 200, "the welcome renders whether or not enrolment is still owed");
+  assert.match(src, /lead === "continue"[\s\S]{0,600}href=\{SETUP_CONTINUE_HREF\}/,
+    "once enrolled, nothing on the setup page leads on to the workspace");
+});

@@ -24,6 +24,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
 import { Callout } from "@/components/ui/callout";
+import Link from "next/link";
+import { setupPageLead, SETUP_CONTINUE_HREF } from "@/lib/auth/mfaEnrolment";
 
 import { todayLocalISO } from "@/lib/dateMath";
 const MIN_PASSWORD_LENGTH = 10;
@@ -48,14 +50,30 @@ export default function SecuritySettingsPage() {
   useEffect(() => {
     setSetup(new URLSearchParams(window.location.search).get("setup") === "1");
   }, []);
+  const { mustEnrolMfa } = useAuth();
+  const lead = setupPageLead(setup, mustEnrolMfa);
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-5">
       <div>
         <h1 className="text-xl font-semibold text-ps-ink">Security</h1>
         <p className="text-sm text-ps-label mt-0.5">Manage your password and two-factor authentication</p>
       </div>
+      {lead === "continue" && (
+        <Callout tone="note" title="You're all set">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm">Your account has what it needs. Carry on to your workspace.</p>
+            <Link
+              href={SETUP_CONTINUE_HREF}
+              className="inline-flex items-center rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark"
+            >
+              Continue to your workspace
+            </Link>
+          </div>
+        </Callout>
+      )}
       {setup ? (
         <>
+          {lead === "welcome" && (
           <Callout tone="note" title="Welcome — one last step">
             <p className="text-sm">
               Your practice holds clients&apos; financial records, so Team, Payroll, Billing and firm
@@ -64,6 +82,7 @@ export default function SecuritySettingsPage() {
               6-digit number the app shows.
             </p>
           </Callout>
+          )}
           <MfaCard />
           <ChangePasswordCard />
         </>

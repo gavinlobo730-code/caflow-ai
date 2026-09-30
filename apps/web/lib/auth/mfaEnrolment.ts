@@ -67,6 +67,19 @@ export function onboardingCompletionTarget(mustEnrol: boolean): string {
   return mustEnrol ? MFA_SETUP_HREF : "/?welcome=1";
 }
 
+/** What leads the enrol screen when it was opened with `?setup=1`: the
+ *  welcome while enrolment is still owed, and a way on once it is not — the
+ *  page stays mounted after a factor verifies, and nothing else on it leaves. */
+export type SetupPageLead = "welcome" | "continue" | null;
+
+export function setupPageLead(setup: boolean, mustEnrol: boolean): SetupPageLead {
+  if (!setup) return null;
+  return mustEnrol ? "welcome" : "continue";
+}
+
+/** Where "Continue to your workspace" goes: where onboarding would have gone. */
+export const SETUP_CONTINUE_HREF = onboardingCompletionTarget(false);
+
 /** Whether the "Secure your account" banner belongs on this path. The enrol
  *  screen itself is excluded — a banner pointing at the page it sits on. */
 export function showsSecureAccountBanner(mustEnrol: boolean, pathname: string): boolean {

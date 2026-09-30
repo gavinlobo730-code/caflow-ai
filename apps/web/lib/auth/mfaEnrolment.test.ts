@@ -10,6 +10,8 @@ import {
   onboardingCompletionTarget,
   parseMfaPolicy,
   showsSecureAccountBanner,
+  setupPageLead,
+  SETUP_CONTINUE_HREF,
   type EnrolmentState,
   type MfaPolicy,
 } from "./mfaEnrolment.ts";
@@ -82,4 +84,12 @@ test("the banner shows everywhere except on the enrol screen itself", () => {
   assert.equal(showsSecureAccountBanner(true, "/settings/security"), false);
   assert.equal(showsSecureAccountBanner(true, "/settings/security/"), false);
   assert.equal(showsSecureAccountBanner(false, "/team"), false);
+});
+
+test("the setup page welcomes while enrolment is owed and offers a way on once it is not", () => {
+  assert.equal(setupPageLead(true, true), "welcome");
+  assert.equal(setupPageLead(true, false), "continue");
+  assert.equal(setupPageLead(false, true), null);
+  assert.equal(setupPageLead(false, false), null);
+  assert.equal(SETUP_CONTINUE_HREF, onboardingCompletionTarget(false));
 });
