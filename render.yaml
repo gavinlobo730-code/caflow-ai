@@ -83,6 +83,15 @@ services:
       # Without it, get_user_client() raises and the USE_USER_JWT path is dead.
       - key: SUPABASE_ANON_KEY
         sync: false
+      # The `iss` a login token must carry. OPTIONAL and normally unset: core/auth.py
+      # derives it as {SUPABASE_URL}/auth/v1, which is what a hosted project signs.
+      # It exists only for a project served from a custom domain, where the token's
+      # issuer is that domain and not SUPABASE_URL. An override REPLACES the derived
+      # value — one exact string is still required, so it cannot loosen the check —
+      # and a wrong one rejects every login, so set it only after decoding a live
+      # token's `iss`. (SECURITY-PRIVACY-21.)
+      - key: SUPABASE_JWT_ISSUER
+        sync: false
       - key: ALLOWED_ORIGINS
         sync: false
       # The app's public origin, and the SINGLE source of every user-facing
