@@ -5,12 +5,14 @@
 # ([param]) route segment; do not add entries here by hand — they will be
 # overwritten on the next build.
 #
-# Rules are first-match-wins. Every page's own "bare path" / "bare RSC"
-# rules come first (exact-shape, mutually exclusive — order among these
-# doesn't matter), followed by one splat rule per dynamic-segment group,
-# deepest group first, covering every page's "trailing slash" / "RSC
-# payload" shapes at once. See generate-redirects.js's module doc for why
-# this specific split/ordering is required, not just stylistic.
+# Rules are first-match-wins. Literal rules (no ":" or "*") come first,
+# because Cloudflare counts every rule after the first dynamic one against
+# its 100-dynamic cap. Then every page's own "bare path" / "bare RSC"
+# rules (exact-shape, mutually exclusive — order among these doesn't
+# matter), followed by one splat rule per dynamic-segment group, deepest
+# group first, covering every page's "trailing slash" / "RSC payload"
+# shapes at once. See generate-redirects.js's module doc for why this
+# specific split/ordering is required, not just stylistic.
 
 /clients/documents                                   /clients/documents/  200
 /clients/documents/                                  /clients/documents/  200
@@ -20,6 +22,39 @@
 /clients/onboarding/                                 /clients/onboarding/  200
 /clients/onboarding/index.txt                        /clients/onboarding/index.txt  200
 /clients/onboarding.txt                              /clients/onboarding/index.txt  200
+/health/alerts                                       /health/alerts/  200
+/health/alerts/                                      /health/alerts/  200
+/health/alerts/index.txt                             /health/alerts/index.txt  200
+/health/alerts.txt                                   /health/alerts/index.txt  200
+/health/at-risk                                      /health/at-risk/  200
+/health/at-risk/                                     /health/at-risk/  200
+/health/at-risk/index.txt                            /health/at-risk/index.txt  200
+/health/at-risk.txt                                  /health/at-risk/index.txt  200
+/health/critical                                     /health/critical/  200
+/health/critical/                                    /health/critical/  200
+/health/critical/index.txt                           /health/critical/index.txt  200
+/health/critical.txt                                 /health/critical/index.txt  200
+/health/overrides                                    /health/overrides/  200
+/health/overrides/                                   /health/overrides/  200
+/health/overrides/index.txt                          /health/overrides/index.txt  200
+/health/overrides.txt                                /health/overrides/index.txt  200
+/relationships/cross-client                          /relationships/cross-client/  200
+/relationships/cross-client/                         /relationships/cross-client/  200
+/relationships/cross-client/index.txt                /relationships/cross-client/index.txt  200
+/relationships/cross-client.txt                      /relationships/cross-client/index.txt  200
+/relationships/explorer                              /relationships/explorer/  200
+/relationships/explorer/                             /relationships/explorer/  200
+/relationships/explorer/index.txt                    /relationships/explorer/index.txt  200
+/relationships/explorer.txt                          /relationships/explorer/index.txt  200
+/relationships/intelligence                          /relationships/intelligence/  200
+/relationships/intelligence/                         /relationships/intelligence/  200
+/relationships/intelligence/index.txt                /relationships/intelligence/index.txt  200
+/relationships/intelligence.txt                      /relationships/intelligence/index.txt  200
+/relationships/ownership-map                         /relationships/ownership-map/  200
+/relationships/ownership-map/                        /relationships/ownership-map/  200
+/relationships/ownership-map/index.txt               /relationships/ownership-map/index.txt  200
+/relationships/ownership-map.txt                     /relationships/ownership-map/index.txt  200
+
 /clients/:id                                         /clients/_placeholder/  200
 /clients/:id/accounting                              /clients/_placeholder/accounting/  200
 /clients/:id/accounting/journal/:entryId/edit        /clients/_placeholder/accounting/journal/_placeholder/edit/  200
@@ -102,40 +137,8 @@
 /clients/:id/year-end/:engagementId.txt              /clients/_placeholder/year-end/_placeholder/index.txt  200
 /clients/:id/year-end.txt                            /clients/_placeholder/year-end/index.txt  200
 /clients/:id.txt                                     /clients/_placeholder/index.txt  200
-/health/alerts                                       /health/alerts/  200
-/health/alerts/                                      /health/alerts/  200
-/health/alerts/index.txt                             /health/alerts/index.txt  200
-/health/alerts.txt                                   /health/alerts/index.txt  200
-/health/at-risk                                      /health/at-risk/  200
-/health/at-risk/                                     /health/at-risk/  200
-/health/at-risk/index.txt                            /health/at-risk/index.txt  200
-/health/at-risk.txt                                  /health/at-risk/index.txt  200
-/health/critical                                     /health/critical/  200
-/health/critical/                                    /health/critical/  200
-/health/critical/index.txt                           /health/critical/index.txt  200
-/health/critical.txt                                 /health/critical/index.txt  200
-/health/overrides                                    /health/overrides/  200
-/health/overrides/                                   /health/overrides/  200
-/health/overrides/index.txt                          /health/overrides/index.txt  200
-/health/overrides.txt                                /health/overrides/index.txt  200
 /health/:client_id                                   /health/_placeholder/  200
 /health/:client_id.txt                               /health/_placeholder/index.txt  200
-/relationships/cross-client                          /relationships/cross-client/  200
-/relationships/cross-client/                         /relationships/cross-client/  200
-/relationships/cross-client/index.txt                /relationships/cross-client/index.txt  200
-/relationships/cross-client.txt                      /relationships/cross-client/index.txt  200
-/relationships/explorer                              /relationships/explorer/  200
-/relationships/explorer/                             /relationships/explorer/  200
-/relationships/explorer/index.txt                    /relationships/explorer/index.txt  200
-/relationships/explorer.txt                          /relationships/explorer/index.txt  200
-/relationships/intelligence                          /relationships/intelligence/  200
-/relationships/intelligence/                         /relationships/intelligence/  200
-/relationships/intelligence/index.txt                /relationships/intelligence/index.txt  200
-/relationships/intelligence.txt                      /relationships/intelligence/index.txt  200
-/relationships/ownership-map                         /relationships/ownership-map/  200
-/relationships/ownership-map/                        /relationships/ownership-map/  200
-/relationships/ownership-map/index.txt               /relationships/ownership-map/index.txt  200
-/relationships/ownership-map.txt                     /relationships/ownership-map/index.txt  200
 /relationships/:entity_id                            /relationships/_placeholder/  200
 /relationships/:entity_id.txt                        /relationships/_placeholder/index.txt  200
 
