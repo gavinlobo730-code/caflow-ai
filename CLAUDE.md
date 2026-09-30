@@ -4143,7 +4143,52 @@ no failing check to point at. Filter inside, in the `scope` job, as these workfl
 - API → Render, Docker, **Singapore region**. It must stay near the Mumbai Supabase; the
   reasoning and the measurements are in `render.yaml` and Render cannot move a service
   between regions.
-- `apps/web` and `apps/marketing` → two separate Cloudflare Pages projects.
+- `apps/web` and `apps/marketing` → two separate Cloudflare Pages projects. **Which
+  hostname is which is not guessable**: the product is the Cloudflare project
+  `practicesync-ai` and it serves at **`caflow-ai.pages.dev`** (the project's `pages.dev`
+  name predates the rename and cannot change); **`practicesync.pages.dev` is the
+  MARKETING site**, a different project built from `apps/marketing`. Both build from
+  this repo, so every PR shows two Cloudflare checks and two bot comments.
+- **THE REDIRECT FILE IS A 100-RULE BUDGET THAT FAILS SILENTLY, AND CLOUDFLARE COUNTS IT
+  BY POSITION** (30-09-2026). A static export cannot serve `/clients/<any id>/...` by
+  itself, so `apps/web/public/_redirects` rewrites every such URL to the pre-built
+  `_placeholder` page; `scripts/generate-redirects.js` writes it from the `app/` tree on
+  every build (never hand-edit). Cloudflare Pages allows 2,000 static and **100
+  dynamic** rules, and **once its parser has met the first dynamic rule (one with a
+  `:placeholder` or `*`) every later rule counts as dynamic — a plain literal rule
+  included.** Rules past the cap are dropped with no warning. The generator used to sort
+  its 32 literal shadow-leaf rules in among the dynamic ones, so Cloudflare counted 98 +
+  32 = 130 and silently dropped rules 109-138: `/relationships/*` and all twelve splats,
+  including `/clients/:id/*`. Every reload, bookmark or shared link into
+  `/clients/<id>/<section>/` returned 404 in production while in-app navigation (the
+  client router never asks the server) looked fine, and the old "98 of 100" test stayed
+  green because it counted by SYNTAX. **Literal rules are emitted FIRST now**, and
+  `scripts/generate-redirects.test.ts` measures `cloudflareDynamicCount` (rules from the
+  first dynamic one onward) and asserts the order on a synthetic tree as well as `app/`.
+  **Do not interleave them again, and do not read the budget off a count of lines that
+  contain `:` or `*`.** Budget: 98 dynamic + 40 static, so **one more page under a
+  dynamic prefix costs 2 and lands on 100, and one that opens a new splat group costs 3
+  and breaks it** — decision D10: no new dynamic route under `/clients/[id]`; a new
+  section there is a QUERY PARAMETER on an existing route. A route with no `:` of its
+  own can still be shadowed by a sibling's placeholder (`/health/critical` vs
+  `/health/:client_id`), which is what `staticLeafShadowRules` is for.
+  **THE PLANNED WAY OUT IS DECISION D26 (`docs/plan/THE-PLAN.md`) AND NOTHING OF IT IS
+  BUILT**: migrate `apps/web` from Pages to a Cloudflare Worker with static assets, and
+  do the `_placeholder` rewrite in ~15 lines of a `fetch` handler that runs only on
+  `/clients/*` page loads. The cap disappears, and so do `generate-redirects.js` and D10
+  as a constraint. **Moving to Workers alone does NOT help** — `_redirects` has the
+  identical 100-dynamic limit there, so the rewrite must move out of the file and into
+  code. No new subscription (Workers Free is 100,000 requests a day; static-asset
+  requests are free and unlimited). It is the OWNER'S Cloudflare account and it changes
+  how the live site is served, so it needs their cutover: verify every route shape on a
+  preview URL first, then move the domain. Status is OPEN and is the owner's call; do
+  not start it unasked.
+  **To verify a redirect change live**, request every rule's own URL on
+  `caflow-ai.pages.dev` after the deploy lands (about 4 minutes) — but a splat's test URL
+  must be a REAL page under it (`/clients/x/accounting/`, not `/clients/x/a/b/`), or it
+  404s with the rule working. This sandbox's egress allows only that exact host, so
+  preview-deployment URLs (`<hash>.caflow-ai.pages.dev`) cannot be reached from here:
+  the check happens on production after the merge.
 - `render.yaml` must declare every environment variable the backend reads —
   `tests/test_render_manifest_matches_code.py` enforces this in both directions
   (nothing read-but-undeclared, nothing declared-but-unread).
