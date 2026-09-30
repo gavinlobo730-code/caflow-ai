@@ -33,6 +33,7 @@ import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
+import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -57,7 +58,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data:
   // included) fell through as if the request had succeeded. `!res.ok` is the
   // one signal `res.json()` can't lose.
   if (!res.ok && body && typeof body === "object" && !("success" in body)) {
-    return { ...body, success: false };
+    // Payroll sits behind mfa_guard; its refusal says where to go, as lib/api's does.
+    const detail = (body as { detail?: unknown }).detail;
+    return typeof detail === "string"
+      ? { ...body, detail: explainMfaRefusal(detail), success: false }
+      : { ...body, success: false };
   }
   return body;
 }

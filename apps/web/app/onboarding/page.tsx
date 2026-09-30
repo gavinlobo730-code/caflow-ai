@@ -14,6 +14,7 @@ import {
   SESSION_EXPIRED_MESSAGE,
 } from "@/lib/auth/reauth";
 import { mayRenderOnboardingWizard } from "@/lib/auth/guardDecision";
+import { onboardingCompletionTarget } from "@/lib/auth/mfaEnrolment";
 import { api, type ApiResp } from "@/lib/api";
 import CsvImportModal, { type ImportRow, type ImportResult } from "@/components/CsvImportModal";
 import { FirmHsnLibraryQuickAddModal } from "@/components/lookups/FirmHsnLibraryQuickAddModal";
@@ -279,7 +280,7 @@ function ProgressBar({ step }: { step: number }) {
 
 // ─── Main page ─────────────────────────────────────────────────────────────
 export default function OnboardingPage() {
-  const { user, session, loading: authLoading, refreshUserContext } = useAuth();
+  const { user, session, loading: authLoading, refreshUserContext, resolveEnrolmentRequired } = useAuth();
   const router = useRouter();
   const supabase = getSupabaseClient();
 
@@ -399,7 +400,12 @@ export default function OnboardingPage() {
       return;
     }
     await refreshUserContext();
-    router.replace("/?welcome=1");
+    // A new owner the MFA policy covers is refused by every administration
+    // screen until they enrol, and nothing at sign-in asks them to — so the
+    // wizard's last step is the enrol screen for them, and Home for everyone
+    // else. An unanswerable policy lands on Home, which is what it did before.
+    const mustEnrol = await resolveEnrolmentRequired().catch(() => false);
+    router.replace(onboardingCompletionTarget(mustEnrol));
   }
 
   // ─── Step 1: Set a password ───────────────────────────────────────────

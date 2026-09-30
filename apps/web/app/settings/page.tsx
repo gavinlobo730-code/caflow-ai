@@ -11,6 +11,8 @@ import { api, type FirmProfile } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { isValidPan } from "@/lib/identifiers/pan";
+import { RefusalText } from "@/components/auth/RefusalText";
+import { isMfaRefusal } from "@/lib/auth/mfaRefusal";
 
 // ─── Indian states list ────────────────────────────────────────────────────
 const INDIAN_STATES = [
@@ -143,7 +145,7 @@ function Toast({
           : "bg-red-600 text-white"
       }`}
     >
-      <span>{message}</span>
+      <span><RefusalText message={message} /></span>
       <button onClick={onClose} className="opacity-70 hover:opacity-100 text-lg leading-none">
         ×
       </button>
@@ -223,6 +225,9 @@ export default function SettingsPage() {
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const [errors, setErrors] = useState<Partial<Record<keyof FirmForm, string>>>({});
+  // mfa_guard refused the profile: a blank form under it invites typing into
+  // something that cannot be loaded or saved until an authenticator is set up.
+  const profileLocked = isMfaRefusal(loadError);
 
   const fy = getCurrentFinancialYear();
 
@@ -469,7 +474,15 @@ export default function SettingsPage() {
           <h2 className="text-sm font-semibold text-ps-ink">Firm Profile</h2>
         </div>
 
-        {loadError && !loading && (
+        {profileLocked && !loading && (
+          <div className="mx-5 my-4 bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
+            <p className="text-xs text-state-attention">
+              <RefusalText message={loadError ?? ""} />
+            </p>
+          </div>
+        )}
+
+        {loadError && !profileLocked && !loading && (
           <div className="mx-5 mt-4 flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">
             <p className="text-xs text-state-problem">
               Couldn&apos;t load your saved firm profile — the form below may not reflect what&apos;s saved. {loadError}
@@ -482,7 +495,7 @@ export default function SettingsPage() {
 
         {loading ? (
           <div className="px-5 py-5"><FormSkeleton fields={6} /></div>
-        ) : (
+        ) : profileLocked ? null : (
           <div className="px-5 py-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Row 1: Firm name spans full width */}
@@ -556,6 +569,7 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {!profileLocked && (
         <div className="px-5 py-3 border-t border-ps-border flex justify-end">
           <button
             onClick={handleSave}
@@ -565,6 +579,7 @@ export default function SettingsPage() {
             {saving ? "Saving…" : "Save Changes"}
           </button>
         </div>
+        )}
       </div>
 
       </RoleGuard>

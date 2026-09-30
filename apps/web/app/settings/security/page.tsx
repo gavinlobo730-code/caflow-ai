@@ -23,6 +23,9 @@ import { ShieldCheck, Smartphone, Trash2, CheckCircle2, Loader2, AlertCircle, Ke
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
+import { Callout } from "@/components/ui/callout";
+import Link from "next/link";
+import { setupPageLead, SETUP_CONTINUE_HREF } from "@/lib/auth/mfaEnrolment";
 
 import { todayLocalISO } from "@/lib/dateMath";
 const MIN_PASSWORD_LENGTH = 10;
@@ -41,14 +44,54 @@ interface Enrolling {
 }
 
 export default function SecuritySettingsPage() {
+  // `?setup=1` is where onboarding and the "Secure your account" banner send
+  // somebody who has no authenticator yet. Read in an effect: static export.
+  const [setup, setSetup] = useState(false);
+  useEffect(() => {
+    setSetup(new URLSearchParams(window.location.search).get("setup") === "1");
+  }, []);
+  const { mustEnrolMfa } = useAuth();
+  const lead = setupPageLead(setup, mustEnrolMfa);
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-5">
       <div>
         <h1 className="text-xl font-semibold text-ps-ink">Security</h1>
         <p className="text-sm text-ps-label mt-0.5">Manage your password and two-factor authentication</p>
       </div>
-      <ChangePasswordCard />
-      <MfaCard />
+      {lead === "continue" && (
+        <Callout tone="note" title="You're all set">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm">Your account has what it needs. Carry on to your workspace.</p>
+            <Link
+              href={SETUP_CONTINUE_HREF}
+              className="inline-flex items-center rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark"
+            >
+              Continue to your workspace
+            </Link>
+          </div>
+        </Callout>
+      )}
+      {setup ? (
+        <>
+          {lead === "welcome" && (
+          <Callout tone="note" title="Welcome — one last step">
+            <p className="text-sm">
+              Your practice holds clients&apos; financial records, so Team, Payroll, Billing and firm
+              settings open only after you add an authenticator app (Google Authenticator, Authy,
+              1Password or similar). It takes about a minute: scan the code below, then enter the
+              6-digit number the app shows.
+            </p>
+          </Callout>
+          )}
+          <MfaCard />
+          <ChangePasswordCard />
+        </>
+      ) : (
+        <>
+          <ChangePasswordCard />
+          <MfaCard />
+        </>
+      )}
     </div>
   );
 }
@@ -218,6 +261,14 @@ function ChangePasswordCard() {
 /** ── Two-Factor Authentication (TOTP) ────────────────────────────────────── */
 function MfaCard() {
   const supabase = getSupabaseClient();
+  const { refreshUserContext, resolveEnrolmentRequired } = useAuth();
+  // The session is aal2 once a factor verifies, so the permissions map the
+  // aal1 token was refused, and the enrolment banner, are re-asked here rather
+  // than left to whichever auth event happens to fire next.
+  const reResolveAccess = useCallback(() => {
+    refreshUserContext().catch(() => {});
+    resolveEnrolmentRequired().catch(() => {});
+  }, [refreshUserContext, resolveEnrolmentRequired]);
   const [factors, setFactors] = useState<Factor[]>([]);
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState<Enrolling | null>(null);
@@ -283,6 +334,7 @@ function MfaCard() {
       setEnrolling(null);
       setCode("");
       setNotice("Multi-factor authentication is now enabled for your account.");
+      reResolveAccess();
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Invalid code — check your authenticator app and try again.");
@@ -297,6 +349,7 @@ function MfaCard() {
       const { error } = await supabase.auth.mfa.unenroll({ factorId });
       if (error) throw error;
       setNotice("Authenticator removed.");
+      reResolveAccess();
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not remove the authenticator.");

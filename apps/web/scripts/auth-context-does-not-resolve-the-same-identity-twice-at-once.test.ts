@@ -73,6 +73,17 @@ test("the in-flight slot is released in a finally, so a thrown/failed resolution
 test("resolvePermissions() is still called for a genuinely new (or newly signed-in) user", () => {
   // Negative-of-the-negative: the fix must not have accidentally deleted the
   // permissions fetch entirely while adding the guard.
+  // The RULE is that the answer lands in the permissions state — directly, or
+  // through the latest-wins gate built on setPermissions (lib/auth/latestWins).
+  // It used to be spelled `.then(setPermissions)`, which the gate broke without
+  // breaking the rule.
   const body = stripComments(applyContextBody(read()));
-  assert.match(body, /resolvePermissions\(\)\.then\(setPermissions\)/);
+  const m = body.match(/resolvePermissions\(\)\.then\((\w+)\)/);
+  assert.ok(m, "applyContext no longer resolves the permissions map");
+  const setter = m[1];
+  assert.ok(
+    setter === "setPermissions" ||
+      new RegExp(`const ${setter}\\s*=\\s*[\\w.]+\\.begin<[^>]*>\\(setPermissions\\)`).test(body),
+    `the permissions answer goes to ${setter}, which does not reach setPermissions`,
+  );
 });

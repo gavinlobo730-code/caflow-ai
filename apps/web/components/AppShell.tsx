@@ -7,6 +7,7 @@ import { ClientNavProvider } from "@/lib/workspace/ClientNavContext";
 import { WorkspaceShell } from "@/components/shell/WorkspaceShell";
 import { ClientShell } from "@/components/shell/ClientShell";
 import { SearchModal } from "@/components/SearchModal";
+import { SecureAccountBanner } from "@/components/shell/SecureAccountBanner";
 import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
 
 // usePathname() reflects the App Router's FlightRouterState, which under
@@ -111,14 +112,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // id from window.location and answers "" off a client route, so it is inert
   // everywhere else, which is what makes hoisting it safe rather than a
   // widening of its scope.
+  //
+  // The enrolment banner rides inside BOTH shells' content, so it is staff-only
+  // by construction: the portals and signed-out pages returned bare above.
+  const content = (
+    <>
+      <SecureAccountBanner pathname={realPathname} />
+      {children}
+    </>
+  );
   return (
     <ClientNavProvider>
       <WorkspaceProvider>
         <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
         {isClientWorkspace ? (
-          <ClientShell onOpenSearch={() => setSearchOpen(true)}>{children}</ClientShell>
+          <ClientShell onOpenSearch={() => setSearchOpen(true)}>{content}</ClientShell>
         ) : (
-          <WorkspaceShell onOpenSearch={() => setSearchOpen(true)}>{children}</WorkspaceShell>
+          <WorkspaceShell onOpenSearch={() => setSearchOpen(true)}>{content}</WorkspaceShell>
         )}
       </WorkspaceProvider>
     </ClientNavProvider>
