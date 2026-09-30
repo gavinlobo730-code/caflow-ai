@@ -19,6 +19,7 @@ from core.exceptions import (NotFoundError, ValidationError, postgres_message,
                              document_failure_detail)
 from core.observability import capture_posting_failure, capture_soft_failure
 from core.permissions import rbac
+from middleware.rate_limit import ai_limit
 # filter_by_client is not called by anything below any more (its one call site
 # was the retired GET /journal list route, apex-sales-purchases-01) but stays
 # imported: tests/test_accounting_client_scope.py's shared `deny` fixture
@@ -1550,6 +1551,7 @@ async def get_statement_analysis(
     client_id: Optional[str] = Query(None),
     basis: str = Query("accrual", pattern="^(accrual|cash)$"),
     current_user: dict = Depends(rbac("accounting", "read")),
+    _limit: None = Depends(ai_limit("intelligence")),
 ):
     """
     Short AI-generated narrative plus liquidity/profitability ratios for the

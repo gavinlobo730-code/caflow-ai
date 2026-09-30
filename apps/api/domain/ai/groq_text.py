@@ -57,6 +57,8 @@ from typing import Any, Optional
 
 import httpx
 
+from domain.ai.redaction import redact_messages
+
 _logger = logging.getLogger("caflow.ai.groq")
 
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -170,7 +172,11 @@ async def chat(
     Groq rather than a copy of it.
     """
     model = text_model()
-    payload: dict[str, Any] = {"model": model, "messages": messages, "max_tokens": max_tokens}
+    # Redacted HERE, at the one place a chat request is built, so a prompt
+    # builder that forgets the rule still cannot send a PAN or a GSTIN
+    # (domain/ai/redaction). The caller's own list is untouched.
+    payload: dict[str, Any] = {"model": model, "messages": redact_messages(messages),
+                               "max_tokens": max_tokens}
     if temperature is not None:
         payload["temperature"] = temperature
 

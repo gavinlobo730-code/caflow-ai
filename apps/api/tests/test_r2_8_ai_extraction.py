@@ -36,6 +36,27 @@ PARTNER_A = {"id": "u-a", "auth_user_id": "u-a", "firm_id": FIRM_A, "role": "Par
 PARTNER_B = {"id": "u-b", "auth_user_id": "u-b", "firm_id": FIRM_B, "role": "Partner", "email": "b@f"}
 
 
+def _text_pdf() -> bytes:
+    """A real PDF WITH a text layer — what a digitally generated invoice is.
+
+    These tests used `_TEXT_PDF` as "a PDF", which has no text layer
+    at all. That string used to reach the text model as base64 noise dressed up
+    as the document (ai-03), and the tests passed because the fake bytes took the
+    text path; now a PDF with no text is read as a scan, so a test that means
+    "an invoice with text" has to be one."""
+    import io
+    from reportlab.pdfgen import canvas
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf)
+    c.drawString(72, 720, "TAX INVOICE  INV-777  Real Vendor Ltd  Total 5900.00")
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+_TEXT_PDF = _text_pdf()
+
+
 def _client_for(router, user):
     app = FastAPI()
     app.include_router(router)
@@ -63,7 +84,7 @@ class TestInvoiceExtractionV1:
         }
         monkeypatch.setattr(mod, "_groq_extract_text", MagicMock(return_value=real))
         c = _client_for(mod.router, PARTNER_A)
-        files = {"file": ("invoice.pdf", b"%PDF-1.4 fake bytes", "application/pdf")}
+        files = {"file": ("invoice.pdf", _TEXT_PDF, "application/pdf")}
         data = {"client_id": "c-001"}
         r = c.post("/api/document-intelligence-v1/extract-invoice", files=files, data=data)
         assert r.status_code == 200
@@ -78,7 +99,7 @@ class TestInvoiceExtractionV1:
         import routers.document_intelligence_v1 as mod
         monkeypatch.setattr(mod, "_GROQ_KEY", "")
         c = _client_for(mod.router, PARTNER_A)
-        files = {"file": ("invoice.pdf", b"%PDF-1.4 fake bytes", "application/pdf")}
+        files = {"file": ("invoice.pdf", _TEXT_PDF, "application/pdf")}
         data = {"client_id": "c-001"}
         r = c.post("/api/document-intelligence-v1/extract-invoice", files=files, data=data)
         assert r.status_code == 503
@@ -99,7 +120,7 @@ class TestInvoiceExtractionV1:
         monkeypatch.setattr(mod, "_GROQ_KEY", "fake-key")
         monkeypatch.setattr(mod, "_groq_extract_text", MagicMock(side_effect=RuntimeError("groq is down")))
         c = _client_for(mod.router, PARTNER_A)
-        files = {"file": ("invoice.pdf", b"%PDF-1.4 fake bytes", "application/pdf")}
+        files = {"file": ("invoice.pdf", _TEXT_PDF, "application/pdf")}
         data = {"client_id": "c-001"}
         r = c.post("/api/document-intelligence-v1/extract-invoice", files=files, data=data)
         assert r.status_code == 502
@@ -156,7 +177,7 @@ class TestInvoiceExtractionV1:
         monkeypatch.setattr(mod, "_groq_extract_text", text_mock)
         monkeypatch.setattr(mod, "_gemini_extract_image", image_mock)
         c = _client_for(mod.router, PARTNER_A)
-        files = {"file": ("invoice.pdf", b"%PDF-1.4 fake bytes", "application/pdf")}
+        files = {"file": ("invoice.pdf", _TEXT_PDF, "application/pdf")}
         data = {"client_id": "c-001"}
         r = c.post("/api/document-intelligence-v1/extract-invoice", files=files, data=data)
         assert r.status_code == 200

@@ -7,6 +7,7 @@ from typing import Optional, List
 from models.common import api_response
 from core.permissions import rbac
 from domain.ai import groq_text
+from middleware.rate_limit import ai_limit
 from domain.money_text import whole_rupees
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
@@ -219,6 +220,12 @@ def split_source(full_answer: str) -> tuple[str, str]:
     if "Source:" not in full_answer:
         return full_answer, ""
     body, citation = full_answer.rsplit("Source:", 1)
+    # A marker with NOTHING after it is a malformed citation, and it must read as
+    # an absent one: rebuilt below it would be the truthy string "Source: ", and
+    # the page would show an empty citation as though a section had been named
+    # (ai-18). The reply keeps its text; the dangling marker is what is dropped.
+    if not citation.strip():
+        return body.strip(), ""
     # Rebuilt with the space: .strip() removes the one the model wrote after the
     # colon, and rebuilding without it rendered every citation as
     # "Source:CGST Act, Section 37".
@@ -288,7 +295,8 @@ def _client_brief(client_id: str, current_user: dict) -> Optional[str]:
 
 
 @router.post("")
-async def assistant(request: AssistantRequest, current_user: dict = Depends(rbac("ai", "read"))):
+async def assistant(request: AssistantRequest, current_user: dict = Depends(rbac("ai", "read")),
+                    _limit: None = Depends(ai_limit("chat"))):
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         # 503 and the variable's name: a missing key is a deployment setting,

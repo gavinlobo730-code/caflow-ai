@@ -11,6 +11,7 @@ from models.ai_copilot import (
     GLOBAL_SUGGESTED_QUESTIONS, CLIENT_SUGGESTED_QUESTIONS, COMPLIANCE_SUGGESTED_QUESTIONS,
 )
 from core.permissions import rbac
+from middleware.rate_limit import ai_limit
 from core.authz import assert_client_access, can_access_client, effective_client_ids, filter_by_client
 
 router = APIRouter(prefix="/api/copilot", tags=["AI Copilot Phase 11"])
@@ -119,6 +120,7 @@ async def send_message(
     conversation_id: str,
     payload: MessageIn,
     current_user: dict = Depends(rbac("task", "read")),
+    _limit: None = Depends(ai_limit("chat")),
 ):
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id", "user-dev")
@@ -165,6 +167,7 @@ def rate_message(
 async def quick_chat(
     payload: MessageIn,
     current_user: dict = Depends(rbac("task", "read")),
+    _limit: None = Depends(ai_limit("chat")),
 ):
     """Single-turn chat without persisting conversation history."""
     firm_id = current_user["firm_id"]
@@ -208,6 +211,7 @@ def get_suggestions(
 async def client_intelligence(
     client_id: str,
     current_user: dict = Depends(rbac("client", "read")),
+    _limit: None = Depends(ai_limit("intelligence")),
 ):
     """Generate AI-powered intelligence report for a specific client."""
     assert_client_access(current_user, client_id)
@@ -219,6 +223,7 @@ async def client_intelligence(
 @router.get("/intelligence/compliance")
 async def compliance_intelligence(
     current_user: dict = Depends(rbac("compliance", "read")),
+    _limit: None = Depends(ai_limit("intelligence")),
 ):
     """Generate AI-powered compliance intelligence for all clients."""
     firm_id = current_user["firm_id"]
@@ -234,6 +239,7 @@ async def compliance_intelligence(
 @router.get("/intelligence/workflows")
 async def workflow_intelligence(
     current_user: dict = Depends(rbac("task", "read")),
+    _limit: None = Depends(ai_limit("intelligence")),
 ):
     """Generate AI-powered workflow performance intelligence."""
     firm_id = current_user["firm_id"]
@@ -249,6 +255,7 @@ async def workflow_intelligence(
 @router.get("/intelligence/relationships")
 async def relationship_intelligence(
     current_user: dict = Depends(rbac("client", "read")),
+    _limit: None = Depends(ai_limit("intelligence")),
 ):
     """Generate AI-powered relationship and ownership risk analysis."""
     firm_id = current_user["firm_id"]
@@ -266,6 +273,7 @@ async def relationship_intelligence(
 @router.get("/executive-dashboard")
 async def executive_dashboard(
     current_user: dict = Depends(rbac("firm", "read")),
+    _limit: None = Depends(ai_limit("intelligence")),
 ):
     """AI-powered executive dashboard with firm-wide intelligence."""
     firm_id = current_user["firm_id"]

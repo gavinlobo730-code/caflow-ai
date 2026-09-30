@@ -133,6 +133,33 @@ def page_images(content: bytes, *, resolution: int = _RESOLUTION) -> list[bytes]
     return out
 
 
+def first_pages(content: bytes, limit: int, *, resolution: int = _RESOLUTION) -> tuple[list[bytes], int]:
+    """The first `limit` pages of a PDF as PNG bytes, and how many pages it HAS.
+
+    For a caller that reads a short document — a scanned invoice — rather than a
+    statement. `page_images` refuses anything over MAX_PAGES and rasterises every
+    page before answering; this rasterises only what it was asked for and reports
+    the true page count beside it, so the caller can refuse a document longer
+    than it can read as one (never silently read the first few of many: a
+    reading that stops at page three drops the line items on page four and
+    nothing on screen says so)."""
+    import pdfplumber
+
+    try:
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            total = len(pdf.pages)
+            out: list[bytes] = []
+            for page in pdf.pages[:limit]:
+                buf = io.BytesIO()
+                page.to_image(resolution=resolution).save(buf, format="PNG")
+                out.append(buf.getvalue())
+    except Exception as e:  # noqa: BLE001 — the PDF library's own exceptions
+        _logger.warning("could not rasterise PDF: %s: %s", type(e).__name__, e)
+        raise StatementParseError(
+            "This file could not be opened as a PDF.") from e
+    return out, total
+
+
 def _rows_from_reply(reply: str) -> list[dict]:
     """The model's reply as a list of row dicts.
 

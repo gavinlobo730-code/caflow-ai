@@ -21,6 +21,9 @@ from core.auth import get_current_user
 import routers.purchase_bills as pb
 from models.invoices import PurchaseBillIn, PurchaseBillLineIn
 from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
+# A PDF WITH a text layer: bare "%PDF-1.4 fake bytes" has none, so it is a scan now and
+# is never sent to the text model (ai-03) — see tests/test_r2_8_ai_extraction._text_pdf.
+from tests.test_r2_8_ai_extraction import _TEXT_PDF
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "auth_user_id": "u1", "email": "ca@firma.test", "role": "Partner"}
@@ -89,7 +92,7 @@ class TestExtractInvoiceAttachment:
         }))
         monkeypatch.setattr(mod, "_upload_bill_document", MagicMock(return_value="firm-aaa/c-001/purchase_bill/abc_invoice.pdf"))
         c = _client_for(mod.router, PARTNER_A)
-        files = {"file": ("invoice.pdf", b"%PDF-1.4 fake bytes", "application/pdf")}
+        files = {"file": ("invoice.pdf", _TEXT_PDF, "application/pdf")}
         r = c.post("/api/document-intelligence-v1/extract-invoice", files=files, data={"client_id": "c-001"})
         assert r.status_code == 200
         body = r.json()
@@ -104,7 +107,7 @@ class TestExtractInvoiceAttachment:
         monkeypatch.setattr(mod, "_groq_extract_text", MagicMock(side_effect=RuntimeError("groq down")))
         monkeypatch.setattr(mod, "_upload_bill_document", MagicMock(return_value="firm-aaa/c-001/purchase_bill/abc_invoice.pdf"))
         c = _client_for(mod.router, PARTNER_A)
-        files = {"file": ("invoice.pdf", b"%PDF-1.4 fake bytes", "application/pdf")}
+        files = {"file": ("invoice.pdf", _TEXT_PDF, "application/pdf")}
         r = c.post("/api/document-intelligence-v1/extract-invoice", files=files, data={"client_id": "c-001"})
         assert r.status_code == 502
         body = r.json()
@@ -121,7 +124,7 @@ class TestExtractInvoiceAttachment:
         }))
         monkeypatch.setattr(mod, "_upload_bill_document", MagicMock(return_value=None))
         c = _client_for(mod.router, PARTNER_A)
-        files = {"file": ("invoice.pdf", b"%PDF-1.4 fake bytes", "application/pdf")}
+        files = {"file": ("invoice.pdf", _TEXT_PDF, "application/pdf")}
         r = c.post("/api/document-intelligence-v1/extract-invoice", files=files, data={"client_id": "c-001"})
         assert r.status_code == 200
         body = r.json()

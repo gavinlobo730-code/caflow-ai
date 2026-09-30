@@ -21,6 +21,17 @@ def _passbook_off_by_default(monkeypatch):
     monkeypatch.setenv("REPORTING_PASSBOOK_MODE", "off")
 
 
+@pytest.fixture(autouse=True)
+def _ai_rate_limit_windows_start_empty():
+    """The limiter's windows are process-wide. Without this, the dozen tests that
+    upload an invoice for the same firm id would exhaust the extraction bucket
+    and the next one would get a 429 for a reason nothing in it is about."""
+    from middleware import rate_limit
+    rate_limit.reset()
+    yield
+    rate_limit.reset()
+
+
 @pytest.fixture
 def dev_header_auth(monkeypatch):
     """Opt in to the documented dev/test auth mode: X-User-Role / X-Firm-Id /
