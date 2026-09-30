@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -2644,7 +2645,7 @@ export async function errorMessage(res: Response): Promise<string> {
   try {
     const parsed = JSON.parse(body);
     const detail = parsed?.detail ?? parsed?.error;
-    if (typeof detail === "string" && detail.trim()) return detail.trim();
+    if (typeof detail === "string" && detail.trim()) return explainMfaRefusal(detail.trim());
     // A validation error's detail is an array of {loc, msg, ...}.
     if (Array.isArray(detail)) {
       const msgs = detail.map((d) => d?.msg).filter((m) => typeof m === "string");
@@ -2695,7 +2696,7 @@ export async function refusalFrom(res: Response): Promise<ApiRefusal> {
   let code: string | null = null;
   try {
     const detail = JSON.parse(body)?.detail;
-    if (typeof detail === "string" && detail.trim()) message = detail.trim();
+    if (typeof detail === "string" && detail.trim()) message = explainMfaRefusal(detail.trim());
     else if (detail && typeof detail === "object") {
       if (typeof detail.message === "string") message = detail.message;
       if (typeof detail.code === "string") code = detail.code;
@@ -6368,6 +6369,13 @@ export const api = {
       request<ApiResp<GSTR1WithAmendments>>(
         "/api/gst/gstr1/with-amendments",
         { method: "POST", body: JSON.stringify(body) }),
+  },
+  security: {
+    /** REQUIRE_MFA, the roles it covers, and whether it covers the caller —
+     *  mounted OUTSIDE the MFA guard, because the person who needs the
+     *  answer is by construction at aal1. Read by AuthContext only. */
+    mfaPolicy: () =>
+      request<ApiResp<unknown>>("/api/security/mfa-policy"),
   },
   identity: {
     listUsers: () => request<ApiResp<{

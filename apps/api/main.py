@@ -76,6 +76,7 @@ from routers import dsc  # H6: DSC (Digital Signature Certificate) backend
 from routers import assignments
 from routers import approvals
 from routers import identity
+from routers import security_policy  # the MFA policy, readable at aal1
 from routers import customers, vendors, sales_invoices, receipts, credit_notes, customer_statements, debit_notes
 from routers import sales_debit_notes, purchase_credit_notes  # CGST §34(3) increase-side correction notes
 from routers import hsn  # HSN/SAC smart lookup (search firm_hsn_library merged with firm history)
@@ -375,6 +376,9 @@ app.include_router(dsc.router)
 app.include_router(assignments.router, dependencies=_MFA_GUARD)  # M3: client-assignment administration
 app.include_router(approvals.router)  # M4: governance approval workflows; MFA enforced per-action (approve/reject) not on read endpoints
 app.include_router(identity.router, dependencies=_MFA_GUARD)  # M6: identity administration (audited, server-side)
+# NOT behind _MFA_GUARD: it tells an aal1 Partner or Manager to enrol, so
+# guarding it would answer only the people who have already done so.
+app.include_router(security_policy.router)
 # Phase 14 — Tax/XBRL/integrations routers (previously written but never mounted;
 # their frontend pages were dead 404s until now). All client-scoped → guarded.
 app.include_router(itr_workspace.router, dependencies=_CLIENT_GUARD)

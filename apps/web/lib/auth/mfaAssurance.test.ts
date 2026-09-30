@@ -35,6 +35,7 @@ import assert from "node:assert/strict";
 import {
   resolveAssurance,
   resolveAssuranceOnce,
+  resolveVerifiedFactor,
   toMfaPending,
   type AssuranceCapableAuth,
 } from "./mfaAssurance.ts";
@@ -178,4 +179,18 @@ test("unresolved maps to null, never to false", async () => {
   assert.equal(toMfaPending("satisfied"), false);
   assert.equal(toMfaPending("unresolved"), null,
     "unresolved was flattened to 'nothing owed'");
+});
+
+// ── resolveVerifiedFactor — what the enrolment nudge asks ───────────────────
+
+test("a verified factor is true, none or only an unverified one is false", async () => {
+  assert.equal(await resolveVerifiedFactor(auth(null, VERIFIED)), true);
+  assert.equal(await resolveVerifiedFactor(auth(null, NO_FACTORS)), false);
+  assert.equal(await resolveVerifiedFactor(auth(null, UNVERIFIED)), false);
+});
+
+test("an unreadable factor list is unknown, not 'no factor'", async () => {
+  // "No factor" puts a banner in front of somebody who may be enrolled.
+  assert.equal(await resolveVerifiedFactor(auth(null, null)), null);
+  assert.equal(await resolveVerifiedFactor(auth(null, new Error("offline"))), null);
 });

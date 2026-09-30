@@ -384,8 +384,8 @@ def mfa_guard(current_user: dict = Depends(get_current_user)) -> dict:
     flag is off this is a no-op pass-through, so it is safe to attach to sensitive
     routes now and switch on after MFA is validated in staging.
     """
-    from core.security_config import require_mfa as _flag, mfa_required_roles
-    if _flag() and current_user.get("role") in mfa_required_roles():
+    from core.security_config import mfa_required_for
+    if mfa_required_for(current_user.get("role")):
         if current_user.get("aal") != "aal2":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
