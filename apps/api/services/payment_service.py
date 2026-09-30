@@ -13,7 +13,10 @@ Boundaries (hard rules):
 
 db-driven (tests pass a fake db; prod passes the Supabase client). Integer paise.
 """
+import dataclasses
+import json
 import logging
+import threading
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -21,6 +24,7 @@ from fastapi import HTTPException
 
 from core.authz import can_access_client
 from core.ist_clock import ist_fy_label, ist_today
+from core.rate_window import SlidingWindowLimiter
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services import email_service
@@ -339,9 +343,99 @@ def _apply_event(db, payment: dict, event, firm_id: str) -> None:
       .eq("id", payment["id"]).execute()
 
 
-def process_webhook(db, provider_name: str, headers: dict, raw_body: bytes) -> dict:
+# ── What an UNSIGNED request to the public webhook may cost us ───────────────
+#
+# SECURITY-PRIVACY-23. The route is public by design — a gateway cannot log in —
+# so anybody can POST to it, and every such request used to (1) insert a
+# customer_payment_events row carrying the caller's own JSON as `raw_payload`,
+# sized by nothing, and (2) call audit_service.log_event with firm_id "".
+#
+# (2) never wrote a row in production and is still worth removing: audit_log's
+# firm_id is UUID NOT NULL, so "" is refused by Postgres, swallowed by
+# log_event's own except and logged at ERROR — a failed round trip and an ERROR
+# line per request, to record nothing. (The finding said the append-only
+# audit_log was growing; it was not, because of that very failure. The table that
+# WAS growing without bound is (1).) A forged delivery is not an audited action
+# of any firm — it has no firm — so nothing is written to audit_log for it at
+# all, and what it leaves is a log line and a counter.
+#
+# What an unsigned request may leave, then: a WARNING (first ten, then every
+# hundredth, so a flood is one line not a million), an in-process count, and at
+# most UNSIGNED_SAMPLE_CAP event rows an hour across the whole process — each
+# bounded — so the last few forged deliveries can still be looked at.
+#
+# THE LIMITER COUNTS UNSIGNED REQUESTS ONLY, and runs AFTER the signature check.
+# A signed delivery is never throttled by anything a stranger does: the key is an
+# address, and if a flood and the real gateway ever shared one (a proxy hop
+# miscounted, see core/client_ip.py) a limiter on every request would let the
+# flood lock the gateway out of settling payments.
+UNSIGNED_PER_IP_MAX = 100
+UNSIGNED_WINDOW_SECONDS = 60
+UNSIGNED_SAMPLE_CAP = 20
+UNSIGNED_SAMPLE_WINDOW_SECONDS = 3600
+#: What a stored sample keeps of a caller-supplied value.
+_SAMPLE_EVENT_ID_CHARS = 128
+_SAMPLE_PAYLOAD_JSON_CHARS = 4096
+
+_unsigned_per_ip = SlidingWindowLimiter(UNSIGNED_PER_IP_MAX, UNSIGNED_WINDOW_SECONDS)
+_unsigned_samples = SlidingWindowLimiter(UNSIGNED_SAMPLE_CAP, UNSIGNED_SAMPLE_WINDOW_SECONDS)
+_unsigned_lock = threading.Lock()
+_unsigned_total = 0
+
+
+def unsigned_total() -> int:
+    """How many unsigned webhook requests this process has refused."""
+    return _unsigned_total
+
+
+def _reset_unsigned_state() -> None:
+    """Test seam: a fresh window and counter."""
+    global _unsigned_total
+    with _unsigned_lock:
+        _unsigned_total = 0
+    _unsigned_per_ip.reset()
+    _unsigned_samples.reset()
+
+
+def _bounded_sample(event):
+    """The event with every caller-controlled value cut to a storable size."""
+    try:
+        raw_json = json.dumps(event.raw, default=str)
+    except Exception:                                        # noqa: BLE001
+        raw_json = ""
+    raw = event.raw if len(raw_json) <= _SAMPLE_PAYLOAD_JSON_CHARS else {
+        "_truncated": True, "json_chars": len(raw_json)}
+    return dataclasses.replace(
+        event, raw=raw, event_id=(event.event_id or "")[:_SAMPLE_EVENT_ID_CHARS])
+
+
+def _refuse_unsigned(db, event, client_ip: Optional[str]) -> dict:
+    global _unsigned_total
+    ip = client_ip or "unknown"
+    with _unsigned_lock:
+        _unsigned_total += 1
+        count = _unsigned_total
+    within_budget = _unsigned_per_ip.hit(ip)
+    if count <= 10 or count % 100 == 0:
+        _logger.warning(
+            "payment webhook: unsigned or badly signed delivery #%d refused "
+            "(provider=%s ip=%s%s)", count, event.provider, ip,
+            "" if within_budget else ", rate limited")
+    if not within_budget:
+        return {"ok": False, "reason": "rate_limited"}
+    if _unsigned_samples.hit("process"):
+        _record_event(db, None, _bounded_sample(event), firm_id=None)
+    return {"ok": False, "reason": "invalid_signature"}
+
+
+def process_webhook(db, provider_name: str, headers: dict, raw_body: bytes,
+                    client_ip: Optional[str] = None) -> dict:
     """Verify → dedupe → correlate → transition → (on capture) settle via receipt engine.
-    Returns a small status dict; never raises on a bad signature (records + rejects)."""
+    Returns a small status dict; never raises on a bad signature (rejects, and
+    leaves almost nothing behind — see `_refuse_unsigned`).
+
+    `client_ip` is the caller's address as `core.client_ip` resolved it; it keys
+    the limiter on UNSIGNED requests and nothing else."""
     try:
         provider = get_provider(provider_name)   # pinned to the configured provider
     except ValueError:
@@ -350,10 +444,7 @@ def process_webhook(db, provider_name: str, headers: dict, raw_body: bytes) -> d
 
     # (I) Signature gate — refuse to act on unverified events.
     if not event.signature_verified:
-        _record_event(db, None, event, firm_id=None)
-        log_event("", "payment_webhook", event.event_id or "unknown", "signature_failed",
-                  new_data={"provider": event.provider, "event_type": event.event_type})
-        return {"ok": False, "reason": "invalid_signature"}
+        return _refuse_unsigned(db, event, client_ip)
 
     # (I) Replay protection — an event id is ingested at most once.
     if _event_seen(db, event.provider, event.event_id):
