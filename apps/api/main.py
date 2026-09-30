@@ -375,6 +375,7 @@ app.include_router(dsc.router)
 app.include_router(assignments.router, dependencies=_MFA_GUARD)  # M3: client-assignment administration
 app.include_router(approvals.router)  # M4: governance approval workflows; MFA enforced per-action (approve/reject) not on read endpoints
 app.include_router(identity.router, dependencies=_MFA_GUARD)  # M6: identity administration (audited, server-side)
+app.include_router(identity.invite_router)  # accept-invite only: the invitee has no users row for mfa_guard to find
 # Phase 14 — Tax/XBRL/integrations routers (previously written but never mounted;
 # their frontend pages were dead 404s until now). All client-scoped → guarded.
 app.include_router(itr_workspace.router, dependencies=_CLIENT_GUARD)

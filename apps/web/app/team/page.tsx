@@ -6,6 +6,7 @@ import { Users, UserPlus, Shield, Mail, MoreVertical, X, AlertCircle, Lock, Slid
 import MemberAccessDrawer from "@/components/team/MemberAccessDrawer";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import { authErrorSentence, inviteEmailNotSentMessage } from "@/lib/auth/authErrorSentence";
 
 // Module 9.0 / M1 — canonical staff roles (single source of truth = backend Role enum).
 // Client is external (uses the portal) and is not a team member here.
@@ -98,7 +99,8 @@ const ROLE_COLORS: Record<Role, string> = {
 // ---- Invite Modal ----
 interface InviteModalProps {
   onClose: () => void;
-  onInvite: (name: string, email: string, role: Role) => Promise<void>;
+  // Resolves to why the invite EMAIL did not go, or null when it did.
+  onInvite: (name: string, email: string, role: Role) => Promise<string | null>;
 }
 
 function InviteModal({ onClose, onInvite }: InviteModalProps) {
@@ -107,6 +109,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
   const [role, setRole] = useState<Role>("Executive");
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [emailProblem, setEmailProblem] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -115,13 +118,30 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
     setSaving(true);
     setError(null);
     try {
-      await onInvite(name.trim(), email.trim(), role);
+      setEmailProblem(await onInvite(name.trim(), email.trim(), role));
       setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send invitation");
     } finally {
       setSaving(false);
     }
+  }
+
+  if (success && emailProblem) {
+    return (
+      <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+          <h3 className="text-sm font-semibold text-ps-ink">Invite created — email not sent</h3>
+          <div role="alert" className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 flex gap-2 text-xs text-ps-body">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>{inviteEmailNotSentMessage(name, email, emailProblem)}</span>
+          </div>
+          <button onClick={onClose} className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
+            Close
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (success) {
@@ -762,14 +782,22 @@ export default function TeamPage() {
   // row is created server-side; the magic link is still sent for self-onboarding.
   // F21 fix: the join link now carries the server-issued, single-use invite
   // token (never firm_id/role) — /join exchanges it via POST accept-invite.
-  async function handleInvite(name: string, email: string, role: Role) {
+  async function handleInvite(name: string, email: string, role: Role): Promise<string | null> {
     const created = await api.identity.createUser(name, email, role);
     const joinUrl =
       (typeof window !== "undefined" ? window.location.origin : "") +
       "/join?token=" + encodeURIComponent(created.data.invite_token);
     const supabase = getSupabaseClient();
-    await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: joinUrl } }).catch(() => {});
+    // signInWithOtp RETURNS its error rather than throwing it, so both are read.
+    let emailProblem: string | null;
+    try {
+      const { error: sendError } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: joinUrl } });
+      emailProblem = authErrorSentence(sendError);
+    } catch (thrown) {
+      emailProblem = authErrorSentence(thrown ?? "unknown error");
+    }
     await loadTeam();
+    return emailProblem;
   }
 
   async function handleEditRole(id: string, role: Role) {
