@@ -6,7 +6,7 @@ import { Users, UserPlus, Shield, Mail, MoreVertical, X, AlertCircle, Lock, Slid
 import MemberAccessDrawer from "@/components/team/MemberAccessDrawer";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
-import { authErrorSentence, inviteEmailNotSentMessage } from "@/lib/auth/authErrorSentence";
+import { inviteEmailNotSentMessage, inviteEmailProblem } from "@/lib/auth/authErrorMessage";
 
 // Module 9.0 / M1 — canonical staff roles (single source of truth = backend Role enum).
 // Client is external (uses the portal) and is not a team member here.
@@ -792,9 +792,9 @@ export default function TeamPage() {
     let emailProblem: string | null;
     try {
       const { error: sendError } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: joinUrl } });
-      emailProblem = authErrorSentence(sendError);
+      emailProblem = inviteEmailProblem(sendError);
     } catch (thrown) {
-      emailProblem = authErrorSentence(thrown ?? "unknown error");
+      emailProblem = inviteEmailProblem(thrown ?? {});
     }
     await loadTeam();
     return emailProblem;

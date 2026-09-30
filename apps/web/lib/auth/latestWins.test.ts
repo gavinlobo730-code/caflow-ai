@@ -1,7 +1,7 @@
 // node --experimental-strip-types --test lib/auth/latestWins.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { latestWins } from "./latestWins.ts";
+import { keepLastGood, latestWins } from "./latestWins.ts";
 
 test("an older answer landing after a newer one does not overwrite it", () => {
   const gate = latestWins();
@@ -43,4 +43,18 @@ test("two gates are independent", () => {
   fromA(1);
   assert.equal(x, 1);
   assert.equal(y, 0);
+});
+
+test("a failed refresh for the same identity keeps the last good answer", () => {
+  let state: string | null = "good";
+  keepLastGood<string>((v) => { state = v; }, false)(null);
+  assert.equal(state, "good");
+  keepLastGood<string>((v) => { state = v; }, false)("newer");
+  assert.equal(state, "newer");
+});
+
+test("a different identity's failure does replace the old answer", () => {
+  let state: string | null = "previous user's map";
+  keepLastGood<string>((v) => { state = v; }, true)(null);
+  assert.equal(state, null);
 });

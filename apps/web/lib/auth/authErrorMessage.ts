@@ -19,8 +19,10 @@ const SESSION_ENDED =
   "Your session has ended. Open a fresh link from your email, or sign in again.";
 
 export const AUTH_ERROR_SENTENCES: Readonly<Record<string, string>> = {
+  // The limit is the whole app's, per hour — a first sign-up can hit it having
+  // been sent nothing, so the sentence must not blame this address.
   over_email_send_rate_limit:
-    `Too many sign-in emails have been sent to this address recently. ${TRY_AGAIN_SHORTLY}`,
+    "Too many emails have been sent from this app in the last hour. Please try again later.",
   over_request_rate_limit: `Too many attempts in a short time. ${TRY_AGAIN_SHORTLY}`,
   over_sms_send_rate_limit: `Too many text messages have been sent recently. ${TRY_AGAIN_SHORTLY}`,
   email_address_invalid:
@@ -38,6 +40,11 @@ export const AUTH_ERROR_SENTENCES: Readonly<Record<string, string>> = {
   email_not_confirmed: "Please confirm your email address first, using the link we emailed you.",
   user_banned: "This account has been disabled. Please contact your firm's administrator.",
   signup_disabled: "New sign-ups are not open at the moment.",
+  email_provider_disabled: "Signing in by email is switched off for this app.",
+  otp_disabled: "Email sign-in links are switched off for this app.",
+  // A 500 from the mail server itself: the address may be perfectly good, so
+  // this must not read like email_address_invalid.
+  unexpected_failure: "The mail server refused to send the email. Please try again later.",
   session_expired: SESSION_ENDED,
   session_not_found: SESSION_ENDED,
   refresh_token_not_found: SESSION_ENDED,
@@ -52,6 +59,8 @@ export const AUTH_ERROR_SENTENCES: Readonly<Record<string, string>> = {
 };
 
 const DEFAULT_FALLBACK = "Something went wrong. Please try again.";
+const SERVICE_UNREACHABLE =
+  "The sign-in service could not be reached. Please check your connection and try again.";
 
 function asErrorLike(err: unknown): ErrorLike | null {
   return err !== null && typeof err === "object" ? (err as ErrorLike) : null;
@@ -94,6 +103,10 @@ export function knownAuthErrorMessage(err: unknown): string | null {
   if (e.name === "AuthSessionMissingError") return AUTH_ERROR_SENTENCES.session_expired;
   // A 429 from an older server that sends no code is still a rate limit.
   if (!code && e.status === 429) return AUTH_ERROR_SENTENCES.over_request_rate_limit;
+  const message = typeof e.message === "string" ? e.message : "";
+  if (e.name === "AuthRetryableFetchError" || (e.name === "TypeError" && /fetch|network/i.test(message))) {
+    return SERVICE_UNREACHABLE;
+  }
   return null;
 }
 
@@ -109,4 +122,40 @@ export function authErrorMessage(err: unknown, fallback: string = DEFAULT_FALLBA
   const e = asErrorLike(err);
   const message = e && typeof e.message === "string" ? e.message.trim() : "";
   return message || fallback;
+}
+
+// On the Team screen the reader is the Partner who can fix the cause, not the
+// person the email was for, so a code whose remedy is theirs says so.
+const INVITE_EMAIL_SENTENCES: Readonly<Record<string, string>> = {
+  email_address_not_authorized:
+    "The email service is only allowed to send to pre-approved addresses. A custom mail server (SMTP) has to be set up before invites can reach anybody else.",
+};
+
+export const INVITE_EMAIL_REFUSED_NO_REASON = "The email service refused it and gave no reason.";
+
+/**
+ * Why a staff invite email was not sent, as one sentence, or null when it
+ * was. Reads both what `signInWithOtp` RESOLVES with as `error` and what a
+ * failed fetch THROWS, so an error object with nothing in it is still an
+ * error and never success.
+ */
+export function inviteEmailProblem(error: unknown): string | null {
+  if (error === null || error === undefined) return null;
+  const e = asErrorLike(error);
+  const code = e && typeof e.code === "string" ? e.code : "";
+  if (code && Object.prototype.hasOwnProperty.call(INVITE_EMAIL_SENTENCES, code)) {
+    return INVITE_EMAIL_SENTENCES[code];
+  }
+  const known = knownAuthErrorMessage(error);
+  if (known) return known;
+  const raw = authErrorMessage(error, "");
+  if (!raw) return INVITE_EMAIL_REFUSED_NO_REASON;
+  // The server's own words, kept rather than hidden, inside a sentence that
+  // says whose words they are.
+  return `The email service refused it: ${raw.replace(/[.\s]+$/, "")}.`;
+}
+
+/** What the Team screen shows when the member row was created and the email did not go. */
+export function inviteEmailNotSentMessage(name: string, email: string, reason: string): string {
+  return `The invite for ${name} was created, but the email to ${email} could not be sent. ${reason} Until an email reaches them they have no link to join with.`;
 }

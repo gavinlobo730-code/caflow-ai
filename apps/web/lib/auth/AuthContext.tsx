@@ -174,7 +174,7 @@ interface AuthContextValue {
 
 import { resolveAssurance, resolveVerifiedFactor, toMfaPending } from "./mfaAssurance";
 import { enrolmentRequired, parseMfaPolicy, type MfaPolicy } from "./mfaEnrolment";
-import { latestWins } from "./latestWins";
+import { keepLastGood, latestWins } from "./latestWins";
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -320,10 +320,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const portal = isPortalPrincipalPath();
     setPortalPrincipal(portal);
     if (u && !portal) {
+      // Both resolvers answer null on failure rather than rejecting, so the
+      // `.catch` that used to sit here never ran and a failed hourly refresh
+      // wiped the map. keepLastGood applies a null only for a NEW identity.
       const applyPermissions = permissionsGate.current.begin<PermissionMap | null>(setPermissions);
-      resolvePermissions().then(applyPermissions).catch(() => { if (newUser) applyPermissions(null); });
+      resolvePermissions().then(keepLastGood(applyPermissions, newUser));
       const applyPolicy = policyGate.current.begin<MfaPolicy | null>(setMfaPolicy);
-      resolveMfaPolicy().then(applyPolicy).catch(() => applyPolicy(null));
+      resolveMfaPolicy().then(keepLastGood(applyPolicy, newUser));
     }
   }
 

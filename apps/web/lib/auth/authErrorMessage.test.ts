@@ -12,6 +12,9 @@ import {
   knownAuthErrorMessage,
   AUTH_ERROR_SENTENCES,
   PASSWORD_BREACHED,
+  INVITE_EMAIL_REFUSED_NO_REASON,
+  inviteEmailProblem,
+  inviteEmailNotSentMessage,
 } from "./authErrorMessage.ts";
 
 // The shape of an AuthApiError as auth-js builds it: an Error with code/status.
@@ -29,7 +32,9 @@ test("the email rate limit Supabase answered sign-up with becomes a sentence a C
   const shown = authErrorMessage(raw);
   assert.notEqual(shown, "email rate limit exceeded");
   assert.match(shown, /too many/i);
-  assert.match(shown, /wait a few minutes/i);
+  assert.match(shown, /last hour/i);
+  // The limit is the app's, not the address's: a first-time sign-up can hit it.
+  assert.doesNotMatch(shown, /this address/i);
 });
 
 test("an address Supabase refuses is not shown as the SDK's quoted string", () => {
@@ -158,4 +163,48 @@ test("knownAuthErrorMessage answers only for what it recognises", () => {
     knownAuthErrorMessage(authApiError("email rate limit exceeded", 429, "over_email_send_rate_limit")),
     AUTH_ERROR_SENTENCES.over_email_send_rate_limit,
   );
+});
+
+test("a network failure says the service could not be reached, whichever way auth-js reports it", () => {
+  const thrown = new TypeError("Failed to fetch");
+  assert.match(authErrorMessage(thrown), /could not be reached/);
+  const retryable = Object.assign(new Error(""), { name: "AuthRetryableFetchError", status: 0 });
+  assert.match(authErrorMessage(retryable), /could not be reached/);
+  // A TypeError that is not about the network is a bug and keeps its own words.
+  assert.equal(knownAuthErrorMessage(new TypeError("x is not a function")), null);
+});
+
+test("the mail server refusing is not reported as the address being wrong", () => {
+  const smtp = authApiError("Error sending magic link email", 500, "unexpected_failure");
+  const bad = authApiError("Email address is invalid", 400, "email_address_invalid");
+  assert.notEqual(authErrorMessage(smtp), authErrorMessage(bad));
+  assert.match(authErrorMessage(smtp), /mail server/i);
+});
+
+test("an invite email that went is no problem; one that did not is always a sentence", () => {
+  assert.equal(inviteEmailProblem(null), null);
+  assert.equal(inviteEmailProblem(undefined), null);
+  assert.equal(inviteEmailProblem({}), INVITE_EMAIL_REFUSED_NO_REASON);
+});
+
+test("an address the default mailer will not reach tells the Partner what to set up", () => {
+  const e = authApiError("Email address not authorized", 400, "email_address_not_authorized");
+  assert.match(inviteEmailProblem(e)!, /SMTP/);
+  // The sign-up screen's reader cannot set up a mail server, so it is not told to.
+  assert.doesNotMatch(authErrorMessage(e), /SMTP/);
+});
+
+test("an invite refusal with an unknown code keeps the server's words inside a sentence", () => {
+  const e = authApiError("Something specific happened.", 500, "saml_idp_not_found");
+  assert.equal(inviteEmailProblem(e), "The email service refused it: Something specific happened.");
+  assert.equal(inviteEmailProblem(authApiError("email rate limit exceeded", 429, "over_email_send_rate_limit")),
+    AUTH_ERROR_SENTENCES.over_email_send_rate_limit);
+});
+
+test("the Team screen's sentence says the row exists and the email did not go", () => {
+  const s = inviteEmailNotSentMessage("Priya Sharma", "priya@firm.test",
+    AUTH_ERROR_SENTENCES.over_email_send_rate_limit);
+  assert.match(s, /^The invite for Priya Sharma was created, but the email to priya@firm\.test could not be sent\./);
+  assert.match(s, /last hour/);
+  assert.doesNotMatch(s, /\bsent!/);
 });

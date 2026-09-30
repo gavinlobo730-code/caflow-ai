@@ -108,7 +108,7 @@ test("resolvePermissions() is still reachable for a genuinely new staff user", (
   // condition, not delete the call — and the answer must land in the
   // permissions state, directly or through the latest-wins gate on it.
   const body = stripComments(applyContextBody(read()));
-  const m = body.match(/resolvePermissions\(\)\.then\((\w+)\)/);
+  const m = body.match(/resolvePermissions\(\)\.then\((?:keepLastGood\()?(\w+)/);
   assert.ok(m, "applyContext no longer resolves the permissions map");
   assert.ok(
     m[1] === "setPermissions" ||

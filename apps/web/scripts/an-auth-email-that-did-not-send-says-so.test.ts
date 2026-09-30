@@ -63,7 +63,7 @@ test("the Team screen hands what it read to the modal, in plain words", () => {
   const page = stripComments(fs.readFileSync(path.join(WEB, "app", "team", "page.tsx"), "utf8"));
   assert.doesNotMatch(page, /\.catch\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)/,
     "an empty .catch swallows the one failure this screen must report");
-  assert.match(page, /authErrorSentence\(/);
+  assert.match(page, /inviteEmailProblem\(/);
   assert.match(page, /return emailProblem;/);
   assert.match(page, /onInvite:\s*\([^)]*\)\s*=>\s*Promise<string \| null>/);
   assert.match(page, /inviteEmailNotSentMessage\(/);

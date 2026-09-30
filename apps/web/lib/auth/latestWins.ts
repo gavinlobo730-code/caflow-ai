@@ -26,3 +26,16 @@ export function latestWins(): LatestWins {
     },
   };
 }
+
+/**
+ * Wrap a setter so that `null` — a resolver's "that failed" — is applied only
+ * when `replaceWithNull` is true. AuthContext passes `newUser`: for a different
+ * identity the old answer is wrong and must go, while for the SAME identity a
+ * failed hourly TOKEN_REFRESHED fetch is not news about them, and applying it
+ * hid every action control until the next refresh.
+ */
+export function keepLastGood<T>(apply: (value: T | null) => void, replaceWithNull: boolean) {
+  return (value: T | null) => {
+    if (value !== null || replaceWithNull) apply(value);
+  };
+}
