@@ -10,14 +10,14 @@ compliance_record_service. Distinct paths from routers/compliance.py (which owns
 """
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import filter_by_client, assert_client_access, effective_client_ids
 from core.exceptions import ValidationError, NotFoundError
 from services import compliance_obligation_service as obligations
-from domain.compliance_record_service import compliance_record_service
+from domain.compliance_record_service import clean_filed_date, compliance_record_service
 from models.fy import OptionalFYLabel
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance_ops"])
@@ -50,12 +50,46 @@ class AssignBody(BaseModel):
     approver_id: Optional[str] = None
 
 
+def _a_filing_date(v: Optional[str]) -> Optional[str]:
+    """A date somebody typed, or nothing. Absent stays absent — whether it is
+    REQUIRED depends on the obligation (a GSTR-1/3B closes a period and needs it)
+    and only the service knows the obligation."""
+    return None if v in (None, "") else clean_filed_date(v)
+
+
 class TransitionBody(BaseModel):
     status: str
+    # Read only on the move to Filed. See compliance_obligation_service.transition.
+    filed_date: Optional[str] = None
+    acknowledgement_no: Optional[str] = None
+
+    _date = field_validator("filed_date")(lambda cls, v: _a_filing_date(v))
 
 
 class MarkFiledBody(BaseModel):
     acknowledgement_no: Optional[str] = None
+    # REQUIRED (422 from the service) for a GSTR-1 or GSTR-3B, which closes its
+    # period; optional for every other obligation, where today is recorded.
+    filed_date: Optional[str] = None
+
+    _date = field_validator("filed_date")(lambda cls, v: _a_filing_date(v))
+
+
+def _filing_fields(updated: dict) -> dict:
+    """What the caller must be able to see about whether the period closed.
+
+    The same four keys `PATCH /calendar/{id}/filed` answers, for the same
+    reason: a tick that locked nothing has to say so. Popped off the obligation
+    because it is a property of the act of filing, not a column of the row."""
+    lock = updated.pop("filing_lock", None)
+    if lock is None:
+        return {}
+    return {
+        "filing_recorded": lock["recorded"],
+        "filing_not_recorded_reason": lock["reason"],
+        "period_locked_from": lock["locked_from"],
+        "period_locked_to": lock["locked_to"],
+    }
 
 
 class GenerateBody(BaseModel):
@@ -150,12 +184,14 @@ def transition_obligation(record_id: str, body: TransitionBody,
     """Advance an obligation through its lifecycle (validated; invalid transitions rejected)."""
     _assert_obligation_scope(current_user, record_id)
     try:
-        updated = obligations.transition(current_user["firm_id"], record_id, body.status, actor=current_user)
+        updated = obligations.transition(
+            current_user["firm_id"], record_id, body.status, actor=current_user,
+            filed_date=body.filed_date, acknowledgement_no=body.acknowledgement_no)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Compliance obligation not found.")
-    return api_response(True, {"obligation": updated})
+    return api_response(True, {"obligation": updated, **_filing_fields(updated)})
 
 
 @router.post("/obligations/{record_id}/mark-filed")
@@ -165,12 +201,18 @@ def mark_filed_obligation(record_id: str, body: MarkFiledBody,
     simple pending/filed model of compliance_calendar: walks the real
     multi-step workflow's shortest valid path to Filed rather than requiring
     the caller to step through it manually. Optionally records an ARN /
-    acknowledgement number in the same call."""
+    acknowledgement number in the same call.
+
+    For a GSTR-1 or GSTR-3B this is also what CLOSES THE PERIOD: the filing is
+    written to `public.filings`, the only table the period lock reads, so the
+    books inside the return's own window stop moving — and `filed_date` is
+    required, because the lock message quotes it. The answer says whether a
+    period was locked and, where none was, why not."""
     _assert_obligation_scope(current_user, record_id)
     try:
         updated = compliance_record_service.mark_filed(
             record_id, firm_id=current_user["firm_id"], actor=current_user,
-            acknowledgement_no=body.acknowledgement_no)
+            acknowledgement_no=body.acknowledgement_no, filed_date=body.filed_date)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Compliance obligation not found.")
     except ValidationError as e:
@@ -178,7 +220,7 @@ def mark_filed_obligation(record_id: str, body: MarkFiledBody,
         # apex-overview-practice-02's period-end check lives (a return whose
         # own period has not ended yet cannot be walked to Filed here either).
         raise HTTPException(status_code=422, detail=str(e))
-    return api_response(True, {"obligation": updated})
+    return api_response(True, {"obligation": updated, **_filing_fields(updated)})
 
 
 @router.get("/dashboard")

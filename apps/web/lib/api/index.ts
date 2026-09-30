@@ -23,6 +23,24 @@ export type MarkFiledResult = {
   workspace_return: { id: string; period: string; status: string; table: string } | null;
 };
 
+/** What `POST /api/compliance/obligations/{id}/mark-filed` (and `/transition`
+ *  to Filed) answers — the OBLIGATION path, which is what /deadlines, a client's
+ *  Compliance tab and Practice → Compliance use. The four `filing_*` /
+ *  `period_locked_*` keys mean exactly what they mean on `MarkFiledResult`
+ *  above and are ABSENT when the move was not to Filed.
+ *
+ *  For a GSTR-1 or GSTR-3B the server records the filing, and so closes the
+ *  period, and REQUIRES the date it was filed on (422 without one): that date
+ *  is what the lock message quotes to the next person who tries to post into the
+ *  period, so it is asked for rather than assumed. */
+export type ObligationFilingResult = {
+  obligation: Record<string, unknown>;
+  filing_recorded?: boolean;
+  filing_not_recorded_reason?: string | null;
+  period_locked_from?: string | null;
+  period_locked_to?: string | null;
+};
+
 /** `public.firms` as the product reads it. `gstin` is RESOLVED — the row's two
  *  GSTIN columns are not both served, because choosing between them is
  *  `domain/firm/identity.py`'s job and a screen that could see both would have
@@ -4233,10 +4251,19 @@ export const api = {
     assign: (id: string, body: { preparer_id?: string; reviewer_id?: string; approver_id?: string }) =>
       request(`/api/compliance/obligations/${id}/assign`, { method: "POST", body: JSON.stringify(body) }),
     transition: (id: string, status: string) =>
-      request(`/api/compliance/obligations/${id}/transition`, { method: "POST", body: JSON.stringify({ status }) }),
-    markFiled: (id: string, acknowledgementNo?: string) =>
-      request(`/api/compliance/obligations/${id}/mark-filed`, {
-        method: "POST", body: JSON.stringify({ acknowledgement_no: acknowledgementNo ?? null }),
+      request<ApiResp<ObligationFilingResult>>(`/api/compliance/obligations/${id}/transition`, {
+        method: "POST", body: JSON.stringify({ status }),
+      }),
+    /** `filedDate` (YYYY-MM-DD) is REQUIRED by the server for a GSTR-1/3B —
+     *  see ObligationFilingResult. Sent for every obligation, because the CA is
+     *  always asked for it. */
+    markFiled: (id: string, opts: { acknowledgementNo?: string; filedDate?: string } = {}) =>
+      request<ApiResp<ObligationFilingResult>>(`/api/compliance/obligations/${id}/mark-filed`, {
+        method: "POST",
+        body: JSON.stringify({
+          acknowledgement_no: opts.acknowledgementNo ?? null,
+          filed_date: opts.filedDate ?? null,
+        }),
       }),
     runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
   },

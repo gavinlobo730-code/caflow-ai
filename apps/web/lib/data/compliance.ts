@@ -20,7 +20,7 @@
  * Advance tax: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
  */
 import { api } from "@/lib/api";
-import type { ApiResp } from "@/lib/api";
+import type { ApiResp, ObligationFilingResult } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
 
@@ -162,7 +162,19 @@ export async function seedComplianceCalendar(clientId: string): Promise<void> {
 }
 
 /** Marks an obligation filed, walking the canonical workflow's remaining
- * steps server-side. Optionally records an ARN/acknowledgement number. */
-export async function markFiled(id: string, arnNumber?: string): Promise<void> {
-  await api.complianceOps.markFiled(id, arnNumber);
+ * steps server-side. Optionally records an ARN/acknowledgement number.
+ *
+ * `filedDate` is the date the return was filed on the portal. For a GSTR-1 or
+ * GSTR-3B the server requires it and, with it, records the filing and closes
+ * the period — the answer says whether it did, and this returns it so the
+ * screen can tell the CA, rather than discarding it the way this function used
+ * to. A refusal (422) is thrown as an Error carrying the server's sentence. */
+export async function markFiled(
+  id: string,
+  opts: { arn?: string; filedDate?: string } = {},
+): Promise<ObligationFilingResult> {
+  const res = await api.complianceOps.markFiled(id, {
+    acknowledgementNo: opts.arn, filedDate: opts.filedDate,
+  });
+  return res.data;
 }

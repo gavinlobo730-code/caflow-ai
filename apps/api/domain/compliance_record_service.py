@@ -3,6 +3,7 @@ Compliance Record Engine.
 Manages compliance records lifecycle: Not Started → Filed.
 Risk scoring and client health scores.
 """
+import os
 from datetime import date, timedelta
 from typing import Optional
 
@@ -57,6 +58,129 @@ def _assert_return_period_has_ended(record: dict) -> None:
             f"period ends on {period_end_d.isoformat()}. A return declares a "
             f"period that has not closed yet."
         )
+
+
+def clean_filed_date(v: object) -> str:
+    """YYYY-MM-DD, a real date, and not in the future (IST).
+
+    The shape check keeps a typo out of `filings.filed_date`, which is a DATE
+    column — without it a malformed value is a 500 from Postgres rather than a
+    422 the CA can act on. The future check is the same reasoning as the value
+    itself: a return cannot have been filed tomorrow, and this is the field the
+    audit reads to say when it went. IST, because a filing date is an Indian
+    calendar date. Raises ValueError with the sentence, so a Pydantic validator
+    and the service can both use it — the two doors that take a date."""
+    try:
+        when = date.fromisoformat(str(v or "").strip())
+    except ValueError:
+        raise ValueError("filed_date must be YYYY-MM-DD")
+    if when > ist_today():
+        raise ValueError("filed_date cannot be in the future")
+    return when.isoformat()
+
+
+def _closes_a_gst_period(record: dict) -> bool:
+    """Whether recording this obligation as filed closes a GST period — the
+    two returns of supplies, GSTR-1 and GSTR-3B. Asked of the service that owns
+    the map, never restated here."""
+    from services.gst_filing_record_service import FILING_TYPE_FOR_RETURN
+    return str(record.get("obligation_type") or "") in FILING_TYPE_FOR_RETURN
+
+
+def _filed_date_for(record: dict, data: dict) -> Optional[str]:
+    """The date this obligation was filed on, as the CA said it.
+
+    For a GSTR-1 or GSTR-3B the date is REQUIRED and is never defaulted. The
+    filing is what `journal_period_lock_reason` reads, and the lock message
+    tells the CA "this return was filed on <date>" — a date the software made up
+    because nobody typed one is a fact about the portal it does not hold. The
+    calendar path (`PATCH /calendar/{id}/filed`) has always required it; this
+    path used to stamp today and lock nothing. Every other obligation keeps the
+    old behaviour (the caller may omit it and today is recorded), because it
+    closes no period and the date is a convenience there.
+
+    A return cannot be filed before the period it declares has ended, so a date
+    earlier than `period_end` is refused for every return type — the same rule
+    `_assert_return_period_has_ended` applies to the clock, applied to the date
+    somebody typed."""
+    given = data.get("filed_date")
+    if given:
+        try:
+            filed = clean_filed_date(given)
+        except ValueError as e:
+            raise ValidationError("filed_date", str(e))
+    else:
+        filed = record.get("filed_date") or None
+    if filed is None:
+        if _closes_a_gst_period(record):
+            raise ValidationError(
+                "filed_date",
+                f"Say the date this {record.get('obligation_type')} was filed on the "
+                f"portal. Recording it closes the period for new entries, and the "
+                f"lock message quotes the date — so it is asked for, not assumed.")
+        return None
+    from services.compliance_obligation_service import RETURN_OBLIGATION_TYPES
+    period_end = record.get("period_end")
+    if (record.get("obligation_type") in RETURN_OBLIGATION_TYPES and period_end
+            and str(filed)[:10] < str(period_end)[:10]):
+        raise ValidationError(
+            "filed_date",
+            f"A return cannot have been filed on {str(filed)[:10]}, before the "
+            f"period it declares ended on {str(period_end)[:10]}.")
+    return str(filed)[:10]
+
+
+def _filing_db():
+    """The handle the `filings` row is written through, or None where there is
+    no database (mock mode). One function so a test can hand in a double."""
+    if not os.environ.get("SUPABASE_URL"):
+        return None
+    from core.supabase_client import get_supabase
+    return get_supabase()
+
+
+def _close_the_period(record: dict, filed_date: Optional[str], arn: Optional[str]) -> dict:
+    """Record the filing this obligation stands for, so the books inside its
+    period stop moving — and say what happened either way.
+
+    WHAT WAS WRONG (gst-27, practice_management-15, frontend_ux-26)
+        Mark Filed on /deadlines and on the client's Compliance tab walked a
+        `compliance_records` row to Filed and wrote nothing else. The only
+        table `journal_period_lock_reason` reads is `public.filings`, so a
+        return the CA had just told the product was filed did NOT lock its
+        period — the books could still move under a return already at the
+        government. GST-14 fixed that for the `/gst` tracker
+        (`compliance_calendar`) and left these two doors, which are the ones a
+        CA uses, open. Two trackers, one return, opposite answers.
+
+    It is asked from `update_record`, the ONE place an obligation becomes
+    Filed, so `mark-filed`, `transition` and `PATCH /compliance-records` all
+    record the filing rather than each remembering to.
+
+    The result is ALWAYS a dict with the same four keys, `recorded` false where
+    nothing was written and `reason` saying why — a tick that closed nothing has
+    to be visible, per type, exactly as on the calendar path. Nothing is
+    swallowed: a failure to write the row propagates and the obligation stays
+    where it was, because "Filed but unlocked" is the defect and an open
+    obligation the CA can retry is not.
+    """
+    from services import gst_filing_record_service as filings
+    otype = str(record.get("obligation_type") or "")
+    if not _closes_a_gst_period(record):
+        return {"recorded": False, "reason": filings.not_recorded_reason(otype),
+                "locked_from": None, "locked_to": None}
+    db = _filing_db()
+    if db is None:
+        return {"recorded": False,
+                "reason": "Recording a filing needs the database, so no period was locked.",
+                "locked_from": None, "locked_to": None}
+    row = filings.record_obligation_filing(db, record=record, filed_date=filed_date or "", arn=arn)
+    if not row:
+        return {"recorded": False,
+                "reason": "This obligation carries no period dates, so there is no period to lock.",
+                "locked_from": None, "locked_to": None}
+    return {"recorded": True, "reason": None,
+            "locked_from": row["period_start"], "locked_to": row["period_end"]}
 
 
 def _compute_risk_score(record: dict) -> int:
@@ -187,6 +311,17 @@ class ComplianceRecordService:
                 "derives them from the financial year; a record created by hand "
                 "has to state them, because the table requires them."
             )
+        # A record is not BORN filed. `update_record` is the one place an
+        # obligation becomes Filed, because that is where the filing is recorded
+        # and the period closed; creating a record already in a terminal status
+        # would be a second way to "Filed" that writes no filing and locks
+        # nothing — the defect this service's Filed path was rewritten to end.
+        if data.get("status") in ("Filed", "Completed"):
+            raise ValidationError(
+                "status",
+                f"A compliance record cannot be created as {data['status']}. Create it "
+                f"open and mark it filed, which records the filing date and closes the "
+                f"period.")
         payload = {
             "firm_id": firm_id,  # Always from current_user, never from request body
             "client_id": client_id,
@@ -216,6 +351,7 @@ class ComplianceRecordService:
         updates: dict = {}
         old_status = record["status"]
         new_status = None
+        filing_date: Optional[str] = None
 
         if "status" in data:
             new_status = data["status"]
@@ -227,11 +363,17 @@ class ComplianceRecordService:
                 )
             if new_status == "Filed":
                 _assert_return_period_has_ended(record)
+                filing_date = _filed_date_for(record, data)
             updates["status"] = new_status
-            if new_status == "Filed" and not record.get("filed_date"):
-                # filed_date IS a date column, and a filing date is a date —
-                # a return is filed on a day, not at an instant.
-                updates["filed_date"] = ist_today().isoformat()
+            if new_status == "Filed":
+                if filing_date:
+                    updates["filed_date"] = filing_date
+                elif not record.get("filed_date"):
+                    # filed_date IS a date column, and a filing date is a date —
+                    # a return is filed on a day, not at an instant. Reached
+                    # only by an obligation that closes no GST period: for
+                    # GSTR-1 and GSTR-3B the date was required above.
+                    updates["filed_date"] = ist_today().isoformat()
             if new_status == "Completed" and not record.get("completed_at"):
                 # completed_at is timestamptz, and this wrote a bare date.
                 # Postgres accepts that — it parses '2026-09-08' as midnight in
@@ -248,6 +390,16 @@ class ComplianceRecordService:
             if field in data:
                 updates[field] = data[field]
 
+        # The filing is recorded BEFORE the obligation moves, so a failure
+        # leaves the obligation open for a retry rather than Filed with its
+        # period unlocked. record_filing is idempotent on the period, so the
+        # retry writes the same row.
+        filing_lock = None
+        if new_status == "Filed":
+            filing_lock = _close_the_period(
+                record, updates.get("filed_date") or record.get("filed_date"),
+                (updates.get("acknowledgement_no") or record.get("acknowledgement_no") or None))
+
         updated = compliance_records_repo.update(record_id, updates)
         if not updated:
             raise NotFoundError("ComplianceRecord", record_id)
@@ -256,7 +408,12 @@ class ComplianceRecordService:
         # never blocks the mutation). Reuses the firm-wide audit_log + client timeline.
         if new_status and new_status != old_status:
             _audit_transition(record, old_status, new_status, firm_id, actor)
-        return {**updated, "risk_score": _compute_risk_score(updated)}
+        out = {**updated, "risk_score": _compute_risk_score(updated)}
+        if filing_lock is not None:
+            # A RESPONSE-only key, never a column: what the caller must be able
+            # to see about whether the period closed.
+            out["filing_lock"] = filing_lock
+        return out
 
     # Deterministic path from any open status to Filed, skipping the
     # documents-waiting branch (not applicable when a CA is asserting the
@@ -264,23 +421,42 @@ class ComplianceRecordService:
     _FAST_FORWARD_PATH = ["In Progress", "Ready For Review", "Ready To File", "Filed"]
 
     def mark_filed(self, record_id: str, firm_id: Optional[str] = None,
-                   actor: Optional[dict] = None, acknowledgement_no: Optional[str] = None) -> dict:
+                   actor: Optional[dict] = None, acknowledgement_no: Optional[str] = None,
+                   filed_date: Optional[str] = None) -> dict:
         """R3.13e: one-click "mark as filed" for callers migrating off
         compliance_calendar's simple pending/filed model — walks the real
         multi-step workflow (VALID_TRANSITIONS) via its shortest path rather
         than bypassing it, so every intermediate step is still individually
-        valid and still audited/timelined. A no-op if already Filed/Completed."""
+        valid and still audited/timelined. A no-op if already Filed/Completed.
+
+        Everything that can refuse the LAST step is asked BEFORE the first, so a
+        refusal never leaves the obligation half-walked at "Ready To File". The
+        date and the ARN ride on that last step — one update, one filings row —
+        rather than the ARN being written afterwards, which is too late for the
+        filing record that carries it."""
         record = self.get_record(record_id, firm_id=firm_id)
         if record["status"] in ("Filed", "Completed"):
-            updated = record
+            updated = {**record, "filing_lock": {
+                "recorded": False, "locked_from": None, "locked_to": None,
+                "reason": "This obligation was already recorded as filed, so nothing "
+                          "was recorded this time."}}
+            if acknowledgement_no:
+                updated = {**self.update_record(record_id, {"acknowledgement_no": acknowledgement_no},
+                                                firm_id=firm_id, actor=actor),
+                           "filing_lock": updated["filing_lock"]}
         else:
+            _assert_return_period_has_ended(record)
+            _filed_date_for(record, {"filed_date": filed_date})
             start = self._FAST_FORWARD_PATH.index(record["status"]) \
                 if record["status"] in self._FAST_FORWARD_PATH else -1
             for step in self._FAST_FORWARD_PATH[start + 1:]:
-                updated = self.update_record(record_id, {"status": step}, firm_id=firm_id, actor=actor)
-        if acknowledgement_no:
-            updated = self.update_record(record_id, {"acknowledgement_no": acknowledgement_no},
-                                         firm_id=firm_id, actor=actor)
+                step_data: dict = {"status": step}
+                if step == "Filed":
+                    if filed_date:
+                        step_data["filed_date"] = filed_date
+                    if acknowledgement_no:
+                        step_data["acknowledgement_no"] = acknowledgement_no
+                updated = self.update_record(record_id, step_data, firm_id=firm_id, actor=actor)
         return updated
 
     @staticmethod

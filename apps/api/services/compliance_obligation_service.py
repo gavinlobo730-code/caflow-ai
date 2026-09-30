@@ -1299,12 +1299,26 @@ def assign(firm_id: str, record_id: str, preparer_id: Optional[str] = None,
     return updated
 
 
-def transition(firm_id: str, record_id: str, new_status: str, actor: Optional[dict] = None) -> dict:
+def transition(firm_id: str, record_id: str, new_status: str, actor: Optional[dict] = None,
+               filed_date: Optional[str] = None,
+               acknowledgement_no: Optional[str] = None) -> dict:
     """Move an obligation through its lifecycle. Reuses the canonical transition
-    validation + audit/timeline in compliance_record_service (rejects invalid)."""
+    validation + audit/timeline in compliance_record_service (rejects invalid).
+
+    `filed_date` and `acknowledgement_no` are read only on the move to Filed,
+    where a GSTR-1 or GSTR-3B REQUIRES the date (it closes the period — see
+    compliance_record_service._close_the_period) and the ARN is carried onto
+    the filing record. Sent with any other status they are ignored rather than
+    written, so a stale field in a request body cannot stamp a filing date on an
+    obligation that has not been filed."""
     from domain.compliance_record_service import compliance_record_service
-    return compliance_record_service.update_record(record_id, {"status": new_status},
-                                                   firm_id=firm_id, actor=actor)
+    data: dict = {"status": new_status}
+    if new_status == "Filed":
+        if filed_date:
+            data["filed_date"] = filed_date
+        if acknowledgement_no:
+            data["acknowledgement_no"] = acknowledgement_no
+    return compliance_record_service.update_record(record_id, data, firm_id=firm_id, actor=actor)
 
 
 def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) -> None:

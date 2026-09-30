@@ -17,6 +17,10 @@ import { writeTimelineEvent } from "@/lib/services/timeline";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
+import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
+import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
+import { useToast } from "@/components/ui/use-toast";
+import { formatRangeLabel } from "@/lib/dates/periods";
 import { useClientEntityType, offerWhenKnown } from "@/lib/clients/useClientEntityType";
 import { hasMcaObligations, mcaRegime } from "@/lib/entityObligations";
 import { errorMessage } from "@/lib/api";
@@ -253,6 +257,12 @@ export default function CompliancePage() {
   const [subTab, setSubTab] = useState<ComplianceSubTab>("all");
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
   const [filingLoading, setFilingLoading] = useState(false);
+  // The server's sentence when the last attempt was refused, shown in the
+  // prompt — the old inline form had no catch, so a refusal vanished.
+  const [filingError, setFilingError] = useState<string | null>(null);
+  // Whether the bulk prompt (ONE filing date for the selection) is open.
+  const [bulkPromptOpen, setBulkPromptOpen] = useState(false);
+  const { toast } = useToast();
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // A selection may only name rows still on screen (see lib/table/pruneSelection).
@@ -341,18 +351,31 @@ export default function CompliancePage() {
     }
   }
 
-  async function handleMarkFiled() {
+  async function handleMarkFiled(v: { filedDate: string; arn: string }) {
     if (!markFiled) return;
     setFilingLoading(true);
+    setFilingError(null);
     try {
       const entry = compliance.find((c) => c.id === markFiled.id);
-      await markObligationFiled(markFiled.id, markFiled.arn || undefined);
+      const result = await markObligationFiled(markFiled.id, {
+        arn: v.arn || undefined, filedDate: v.filedDate,
+      });
       setCompliance((prev) =>
         prev.map((c) =>
-          c.id === markFiled.id ? { ...c, filing_status: "filed", arn_number: markFiled.arn || undefined } : c
+          c.id === markFiled.id
+            ? { ...c, filing_status: "filed", filed_date: v.filedDate, arn_number: v.arn || undefined }
+            : c
         )
       );
       setMarkFiled(null);
+      // What the server did about the period — the answer this used to discard,
+      // so a GSTR-3B tick that closed nothing looked like one that closed the
+      // month.
+      const outcome = describeFilingOutcome(
+        result,
+        `${entry?.compliance_type ?? "Filing"}${entry ? ` ${formatRangeLabel(entry.period_start, entry.period_end)}` : ""}`,
+      );
+      toast({ title: outcome.title, description: outcome.description });
 
       // Emit timeline event
       try {
@@ -365,12 +388,14 @@ export default function CompliancePage() {
           event_type: "filing_marked_filed",
           severity: "success",
           title: `${entry?.compliance_type ?? "Filing"} marked as filed`,
-          description: markFiled.arn ? `ARN: ${markFiled.arn}` : undefined,
+          description: [`Filed on ${v.filedDate}`, v.arn ? `ARN: ${v.arn}` : null].filter(Boolean).join(" · "),
           entity_type: "compliance_record",
           entity_id: markFiled.id,
           actor_type: "user",
         });
       } catch { /* timeline is non-blocking */ }
+    } catch (e) {
+      setFilingError(e instanceof Error ? e.message : "Couldn't mark this filed.");
     } finally {
       setFilingLoading(false);
     }
@@ -413,46 +438,54 @@ export default function CompliancePage() {
     setSelected(new Set());
     setBulkError(null);
   }
-  async function bulkMarkFiled() {
+  async function bulkMarkFiled(v: { filedDate: string }) {
     if (selected.size === 0) return;
     setBulkBusy(true);
     setBulkError(null);
+    setFilingError(null);
     const ids = Array.from(selected);
     try {
       const results = await Promise.all(
         ids.map(async (id) => {
           const entry = compliance.find((c) => c.id === id);
-          if (entry?.filing_status === "filed") return "skipped" as const;
+          if (entry?.filing_status === "filed") return { kind: "skipped" as const };
           try {
-            await markObligationFiled(id);
-            return "success" as const;
+            const res = await markObligationFiled(id, { filedDate: v.filedDate });
+            return { kind: "success" as const, locked: describeFilingOutcome(res, "").locked };
           } catch (e) {
-            return e instanceof Error ? e.message : "Failed";
+            return { kind: "failed" as const, message: e instanceof Error ? e.message : "Failed" };
           }
         })
       );
-      const successCount = results.filter((r) => r === "success").length;
-      const skipCount = results.filter((r) => r === "skipped").length;
-      const failCount = results.length - successCount - skipCount;
+      const successCount = results.filter((r) => r.kind === "success").length;
+      const lockedCount = results.filter((r) => r.kind === "success" && r.locked).length;
+      const skipCount = results.filter((r) => r.kind === "skipped").length;
+      const failed = results.filter((r): r is { kind: "failed"; message: string } => r.kind === "failed");
 
       if (successCount > 0) {
         await reloadCompliance();
+        toast({
+          title: "Marked filed",
+          description: `${successCount} marked filed${lockedCount > 0 ? `, ${lockedCount} period${lockedCount > 1 ? "s" : ""} locked` : ""}.`,
+        });
       }
 
-      if (failCount > 0) {
+      if (failed.length > 0) {
         setBulkError(
-          `Failed to mark ${failCount} of ${ids.length} filing${ids.length === 1 ? "" : "s"} as filed.` +
+          `Failed to mark ${failed.length} of ${ids.length} filing${ids.length === 1 ? "" : "s"} as filed: ${failed[0].message}` +
             (skipCount > 0 ? ` ${skipCount} already filed (skipped).` : "")
         );
       } else {
         clearSelection();
       }
+      setBulkPromptOpen(false);
     } catch (e) {
       // Each mark converts its own rejection into a result, so reaching here
       // means reloadCompliance() failed after the filings went through: the
       // work is done but the list on screen is stale. Selection is kept so the
       // CA can see which rows were involved.
       setBulkError(e instanceof Error ? e.message : "Marked as filed, but the list could not be refreshed.");
+      setBulkPromptOpen(false);
     } finally {
       setBulkBusy(false);
     }
@@ -527,34 +560,31 @@ export default function CompliancePage() {
         ))}
       </div>
 
-      {/* Mark as Filed inline form */}
+      {/* The prompt asks for the date the return was filed and shows what the
+          server did about the period afterwards. */}
       {markFiled && (
-        <Card className="border-blue-200 bg-blue-50">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-sm font-medium text-blue-900 mb-3">Mark as Filed</p>
-            <div className="flex gap-3 items-center">
-              <input
-                value={markFiled.arn}
-                onChange={(e) => setMarkFiled({ ...markFiled, arn: e.target.value })}
-                placeholder="ARN Number (optional)"
-                className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-brand bg-white"
-              />
-              <button
-                onClick={handleMarkFiled}
-                disabled={actionInFlight}
-                className="text-xs px-3 py-1.5 bg-brand text-white rounded-md hover:bg-brand-dark disabled:opacity-50"
-              >
-                {filingLoading ? "Saving…" : "Confirm Filed"}
-              </button>
-              <button
-                onClick={() => setMarkFiled(null)}
-                className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted"
-              >
-                Cancel
-              </button>
-            </div>
-          </CardContent>
-        </Card>
+        <MarkFiledModal
+          intro={(() => {
+            const e = compliance.find((c) => c.id === markFiled.id);
+            return e ? `${e.compliance_type}, ${formatRangeLabel(e.period_start, e.period_end)}` : undefined;
+          })()}
+          initialArn={markFiled.arn}
+          busy={filingLoading}
+          error={filingError}
+          onConfirm={handleMarkFiled}
+          onClose={() => { setMarkFiled(null); setFilingError(null); }}
+        />
+      )}
+      {bulkPromptOpen && (
+        <MarkFiledModal
+          title={`Mark ${selected.size} filed`}
+          intro="One filing date applies to every selected obligation. Mark them separately if they were filed on different days."
+          showArn={false}
+          busy={bulkBusy}
+          error={filingError}
+          onConfirm={(v) => bulkMarkFiled(v)}
+          onClose={() => { setBulkPromptOpen(false); setFilingError(null); }}
+        />
       )}
 
       <Card>
@@ -581,7 +611,7 @@ export default function CompliancePage() {
                 <span className="font-semibold text-brand-dark">{selected.size} selected</span>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                   <button
-                    onClick={bulkMarkFiled}
+                    onClick={() => { setFilingError(null); setBulkPromptOpen(true); }}
                     disabled={actionInFlight}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-brand-light bg-white px-2.5 py-1.5 font-medium text-brand hover:bg-ps-hover disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -650,7 +680,7 @@ export default function CompliancePage() {
                     <td className="px-5 py-3">
                       {c.filing_status !== "filed" && (
                         <button
-                          onClick={() => setMarkFiled({ id: c.id, arn: c.arn_number ?? "" })}
+                          onClick={() => { setFilingError(null); setMarkFiled({ id: c.id, arn: c.arn_number ?? "" }); }}
                           className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                         >
                           <CheckCircle size={12} /> Mark Filed

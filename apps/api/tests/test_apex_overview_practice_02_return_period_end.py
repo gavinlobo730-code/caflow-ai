@@ -84,7 +84,11 @@ def test_every_return_type_is_refused_when_its_period_has_not_ended(obligation_t
 def test_the_same_return_type_files_fine_once_its_period_has_ended():
     past_end = (ist_today() - timedelta(days=1)).isoformat()
     rec = _make("GSTR3B", past_end)
-    updated = compliance_record_service.update_record(rec["id"], {"status": "Filed"}, firm_id=FIRM, actor=ACTOR)
+    # A GSTR-3B closes its period, so the date it was filed on is required —
+    # see test_marking_an_obligation_filed_closes_its_period.py.
+    updated = compliance_record_service.update_record(
+        rec["id"], {"status": "Filed", "filed_date": ist_today().isoformat()},
+        firm_id=FIRM, actor=ACTOR)
     assert updated["status"] == "Filed"
     assert updated["filed_date"]
 
@@ -130,15 +134,16 @@ def test_mark_filed_is_refused_for_a_return_whose_period_has_not_ended():
     with pytest.raises(ValidationError):
         compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
     reloaded = compliance_records_repo.find_by_id(rec["id"])
-    # The fast-forward stopped at the last step it could legally take —
-    # Ready To File — rather than leaving the record wherever it started.
-    assert reloaded["status"] != "Filed"
+    # Refused BEFORE the first step of the walk: the refusal does not leave the
+    # obligation half-walked at "Ready To File" any more.
+    assert reloaded["status"] == "Not Started"
 
 
 def test_mark_filed_still_works_for_a_return_whose_period_has_ended():
     past_end = (ist_today() - timedelta(days=10)).isoformat()
     rec = _make("GSTR3B", past_end, status="Not Started")
-    updated = compliance_record_service.mark_filed(rec["id"], firm_id=FIRM, actor=ACTOR)
+    updated = compliance_record_service.mark_filed(
+        rec["id"], firm_id=FIRM, actor=ACTOR, filed_date=ist_today().isoformat())
     assert updated["status"] == "Filed"
 
 

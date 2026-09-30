@@ -646,7 +646,10 @@ def test_calendar_assignment_scope(monkeypatch):
 def test_mark_filed_endpoint_walks_workflow_and_records_arn():
     from routers.compliance_ops import mark_filed_obligation, MarkFiledBody
     rec = _seed_obl("CL-A", "GSTR3B", "2026-06-20", status="Not Started")
-    resp = mark_filed_obligation(rec["id"], MarkFiledBody(acknowledgement_no="ARN99"), current_user=PARTNER)
+    # A GSTR-3B closes its period, so the date it was filed on is required.
+    resp = mark_filed_obligation(
+        rec["id"], MarkFiledBody(acknowledgement_no="ARN99", filed_date="2026-06-20"),
+        current_user=PARTNER)
     obligation = resp["data"]["obligation"]
     assert obligation["status"] == "Filed"
     assert obligation["acknowledgement_no"] == "ARN99"

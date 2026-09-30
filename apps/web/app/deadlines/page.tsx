@@ -9,11 +9,13 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Modal } from "@/components/ui/modal";
+import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import Link from "next/link";
 import { formatDate } from "@/lib/services/formatting";
 import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
 import { isOverdue } from "@/lib/compliance/overdue";
+import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
+import { formatRangeLabel } from "@/lib/dates/periods";
 import { getComplianceCalendar, markFiled as markObligationFiled } from "@/lib/data/compliance";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { getClients } from "@/lib/data/clients";
@@ -48,6 +50,15 @@ const TYPE_LABELS: Record<string, string> = {
   MCA:    "MCA",
   PAYROLL: "Payroll deposits",
 };
+
+/** "Acme Traders — GSTR-3B, 1 Jun 2026 – 30 Jun 2026": which obligation the
+ *  prompt is about, so a CA marking one of thirty rows can see it is the right
+ *  one. Display only — the period comes off the row. */
+function obligationLabel(r: ComplianceEntry, clientMap: Record<string, string>): string {
+  const who = clientMap[r.client_id] ?? "This client";
+  const what = TYPE_LABELS[r.compliance_type] ?? r.compliance_type;
+  return `${who} — ${what}, ${formatRangeLabel(r.period_start, r.period_end)}`;
+}
 
 interface EmptyStateCopy { title: string; desc: string }
 const TYPE_EMPTY_STATES: Record<string, EmptyStateCopy> = {
@@ -99,7 +110,7 @@ function LoadingSpinner() {
   );
 }
 
-interface MarkFiledForm { id: string; arn: string }
+interface MarkFiledForm { id: string; arn: string; label: string }
 
 // ─── Inner component — reads search params ─────────────────────────────────
 function DeadlinesContent() {
@@ -111,7 +122,12 @@ function DeadlinesContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
+  // Rows a bulk "Mark Filed" is waiting to ask ONE date for.
+  const [bulkFiling, setBulkFiling] = useState<ComplianceEntry[] | null>(null);
   const [filingLoading, setFilingLoading] = useState(false);
+  // The server's sentence when the last attempt was refused — shown in the
+  // prompt, because the old flow had no catch at all and a refusal vanished.
+  const [filingError, setFilingError] = useState<string | null>(null);
   const { toast } = useToast();
 
   const loadData = useCallback(async () => {
@@ -133,52 +149,89 @@ function DeadlinesContent() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  async function handleMarkFiled() {
+  async function handleMarkFiled(v: { filedDate: string; arn: string }) {
     if (!markFiled) return;
     setFilingLoading(true);
+    setFilingError(null);
     try {
-      await markObligationFiled(markFiled.id, markFiled.arn || undefined);
+      const result = await markObligationFiled(markFiled.id, {
+        arn: v.arn || undefined, filedDate: v.filedDate,
+      });
       setRecords(prev => prev.map(r =>
-        r.id === markFiled.id ? { ...r, filing_status: "filed", arn_number: markFiled.arn } : r
+        r.id === markFiled.id
+          ? { ...r, filing_status: "filed", filed_date: v.filedDate, arn_number: v.arn || r.arn_number }
+          : r
       ));
       setMarkFiled(null);
+      // What the server did about the period — the answer this used to discard,
+      // so a GSTR-3B tick that closed nothing looked like one that closed the
+      // month.
+      const outcome = describeFilingOutcome(result, markFiled.label);
+      toast({ title: outcome.title, description: outcome.description });
+    } catch (err) {
+      setFilingError(err instanceof Error ? err.message : "Couldn't mark this filed.");
     } finally {
       setFilingLoading(false);
     }
   }
 
-  // Bulk mark filed — ARN/acknowledgement number is optional on this endpoint
-  // (same as the single-row flow above), so this loops markFiled(id) with no
-  // reference number over the selection instead of collecting one per row.
-  // Rows already filed/na are skipped client-side (the backend would 409/no-op
-  // on them) and reported as "skipped", not "failed".
-  const handleBulkMarkFiled = useCallback(async (selected: ComplianceEntry[]) => {
-    const alreadyFiled = selected.filter((r) => r.filing_status === "filed" || r.filing_status === "na");
+  // Bulk mark filed. The date a return was filed on is asked for, never
+  // assumed — a GSTR-1/3B needs it on the server, and it is the date the period
+  // lock quotes — so the bulk action collects ONE date for the selection first
+  // (shown in the prompt as applying to all of them) instead of looping with
+  // nothing. Rows already filed/na are skipped client-side and reported as
+  // "skipped", not "failed". The ARN is optional on this endpoint and is not
+  // collected per row here.
+  const askForBulkDate = useCallback(async (selected: ComplianceEntry[]) => {
     const toFile = selected.filter((r) => r.filing_status !== "filed" && r.filing_status !== "na");
-    const results = await Promise.all(
-      toFile.map((r) =>
-        markObligationFiled(r.id)
-          .then(() => ({ ok: true as const }))
-          .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : "Mark filed failed" }))
-      )
-    );
-    const filedCount = results.filter((r) => r.ok).length;
-    const failed = results.filter((r): r is { ok: false; error: string } => !r.ok);
-    if (filedCount > 0) await loadData();
+    if (toFile.length === 0) {
+      toast({ title: "Nothing to mark filed", description: "Every selected obligation is already filed." });
+      return false;
+    }
+    setFilingError(null);
+    setBulkFiling(toFile);
+    // false keeps the selection: the prompt is still to come.
+    return false;
+  }, [toast]);
 
-    const hasIssue = alreadyFiled.length > 0 || failed.length > 0;
-    const parts = [`${filedCount} marked filed`];
-    if (alreadyFiled.length > 0) parts.push(`${alreadyFiled.length} already filed`);
-    if (failed.length > 0) parts.push(`${failed.length} failed (${failed[0].error}${failed.length > 1 ? `, +${failed.length - 1} more` : ""})`);
-    toast({
-      title: hasIssue ? "Some obligations weren't marked filed" : "Marked filed",
-      description: `${parts.join(", ")}.`,
-      variant: hasIssue ? "destructive" : undefined,
-    });
-    // Keep the selection alive when something didn't go through, so the CA can
-    // see exactly what's still pending and retry/investigate.
-    return !hasIssue;
-  }, [loadData, toast]);
+  async function handleBulkMarkFiled(v: { filedDate: string }) {
+    if (!bulkFiling) return;
+    const toFile = bulkFiling;
+    setFilingLoading(true);
+    setFilingError(null);
+    try {
+      const results = await Promise.all(
+        toFile.map((r) =>
+          markObligationFiled(r.id, { filedDate: v.filedDate })
+            .then((res) => ({ ok: true as const, locked: describeFilingOutcome(res, "").locked }))
+            .catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : "Mark filed failed" }))
+        )
+      );
+      const okRows = results.filter((r): r is { ok: true; locked: boolean } => r.ok);
+      const failed = results.filter((r): r is { ok: false; error: string } => !r.ok);
+      if (okRows.length > 0) await loadData();
+
+      const parts = [`${okRows.length} marked filed`];
+      const locked = okRows.filter((r) => r.locked).length;
+      if (locked > 0) parts.push(`${locked} period${locked > 1 ? "s" : ""} locked`);
+      if (failed.length > 0) parts.push(`${failed.length} failed (${failed[0].error}${failed.length > 1 ? `, +${failed.length - 1} more` : ""})`);
+      toast({
+        title: failed.length > 0 ? "Some obligations weren't marked filed" : "Marked filed",
+        description: `${parts.join(", ")}.`,
+        variant: failed.length > 0 ? "destructive" : undefined,
+      });
+      if (failed.length === 0) {
+        setBulkFiling(null);
+      } else {
+        // Narrow the prompt to what still needs doing, so a retry is the rest.
+        const failedIds = new Set(toFile.filter((_, i) => !results[i].ok).map((r) => r.id));
+        setBulkFiling(toFile.filter((r) => failedIds.has(r.id)));
+        setFilingError(failed[0].error);
+      }
+    } finally {
+      setFilingLoading(false);
+    }
+  }
 
   // ── Client name / GSTIN lookups (compliance rows carry only client_id) ─────
   const clientMap = useMemo(
@@ -328,11 +381,10 @@ function DeadlinesContent() {
   const bulkActions: BulkAction<ComplianceEntry>[] = useMemo(() => [
     {
       id: "bulk-mark-filed", label: "Mark Filed", icon: <CheckCircle size={13} />,
-      confirm: "Mark the selected obligations as filed? Already-filed rows will be skipped.",
-      run: handleBulkMarkFiled,
+      run: askForBulkDate,
     },
     exportSelectedAction<ComplianceEntry>("deadlines-selected.csv", columns),
-  ], [handleBulkMarkFiled, columns]);
+  ], [askForBulkDate, columns]);
 
   const pageTitle = urlType && TYPE_LABELS[urlType]
     ? `Deadlines — ${TYPE_LABELS[urlType]}`
@@ -420,29 +472,25 @@ function DeadlinesContent() {
           and closes on Escape, so the prompt now appears where the click
           happened regardless of the row's position in the table. */}
       {markFiled && (
-        <Modal title="Mark as Filed" onClose={() => setMarkFiled(null)} maxWidthClass="max-w-md">
-          <div className="flex gap-3 items-center">
-            <input
-              value={markFiled.arn}
-              onChange={e => setMarkFiled({ ...markFiled, arn: e.target.value })}
-              placeholder="ARN Number (optional)"
-              className="flex-1 px-3 py-1.5 text-sm border border-state-working-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand bg-white"
-            />
-            <button
-              onClick={handleMarkFiled}
-              disabled={filingLoading}
-              className="text-xs px-3 py-1.5 bg-brand text-white rounded-md hover:bg-brand-dark disabled:opacity-50"
-            >
-              {filingLoading ? "Saving…" : "Confirm Filed"}
-            </button>
-            <button
-              onClick={() => setMarkFiled(null)}
-              className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted bg-white"
-            >
-              Cancel
-            </button>
-          </div>
-        </Modal>
+        <MarkFiledModal
+          intro={markFiled.label}
+          initialArn={markFiled.arn}
+          busy={filingLoading}
+          error={filingError}
+          onConfirm={handleMarkFiled}
+          onClose={() => { setMarkFiled(null); setFilingError(null); }}
+        />
+      )}
+      {bulkFiling && (
+        <MarkFiledModal
+          title={`Mark ${bulkFiling.length} filed`}
+          intro="One filing date applies to every selected obligation. Mark them separately if they were filed on different days."
+          showArn={false}
+          busy={filingLoading}
+          error={filingError}
+          onConfirm={(v) => handleBulkMarkFiled(v)}
+          onClose={() => { setBulkFiling(null); setFilingError(null); }}
+        />
       )}
 
       {/* E-WAY BILLS EXPIRING (SALES-28) — deliberately ABOVE the table and
@@ -475,7 +523,7 @@ function DeadlinesContent() {
           <div className="flex items-center gap-3 flex-wrap justify-end">
             {r.filing_status !== "filed" && r.filing_status !== "na" && (
               <button
-                onClick={() => setMarkFiled({ id: r.id, arn: r.arn_number ?? "" })}
+                onClick={() => { setFilingError(null); setMarkFiled({ id: r.id, arn: r.arn_number ?? "", label: obligationLabel(r, clientMap) }); }}
                 className="text-xs text-blue-600 hover:underline flex items-center gap-1"
               >
                 <CheckCircle size={12} /> Mark Filed

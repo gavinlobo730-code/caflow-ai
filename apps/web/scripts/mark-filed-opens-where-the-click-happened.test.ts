@@ -31,15 +31,25 @@ function read(rel: string): string {
 }
 
 const PAGE = "app/deadlines/page.tsx";
+const PROMPT = "components/compliance/MarkFiledModal.tsx";
 
-test("the deadlines page imports the shared Modal", () => {
+// THE RULE, not a spelling of it: the confirmation is a centred dialog. It used
+// to be written inline in the page as `<Modal title="Mark as Filed" ...>`; it is
+// now the shared MarkFiledModal (one prompt for /deadlines, a client's
+// Compliance tab and Practice -> Compliance, each asking for the filing date),
+// which renders through the shared Modal. Either spelling satisfies the rule;
+// a static card does not.
+test("the deadlines page renders the confirmation through a dialog", () => {
   const src = read(PAGE);
-  assert.match(src, /import\s*\{\s*Modal\s*\}\s*from\s*"@\/components\/ui\/modal"/);
+  assert.match(src, /<MarkFiledModal\b/, "the page must open the shared prompt");
+  assert.doesNotMatch(src, /<Card className="border-blue-200 bg-blue-50">/);
 });
 
-test("Mark as Filed renders through the shared Modal, not a static Card", () => {
-  const src = read(PAGE);
-  assert.match(src, /<Modal\s+title="Mark as Filed"\s+onClose=\{\(\)\s*=>\s*setMarkFiled\(null\)\}/);
+test("the shared prompt renders through the shared Modal, not a static Card", () => {
+  const src = read(PROMPT);
+  assert.match(src, /import\s*\{\s*Modal\s*\}\s*from\s*"@\/components\/ui\/modal"/);
+  assert.match(src, /<Modal\b[^>]*\bonClose=\{onClose\}/);
+  assert.doesNotMatch(src, /<Card\b/);
 });
 
 test("the old top-of-page Card confirmation is gone", () => {

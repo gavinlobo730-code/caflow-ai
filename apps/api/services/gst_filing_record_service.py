@@ -56,6 +56,79 @@ FILING_TYPE_GSTR3B = "GSTR-3B"
 # filings.status is CHECK-constrained to these (migration 001).
 _FILED = "filed"
 
+# Which obligations close a period when they are recorded as filed, and under
+# which `filings.filing_type`. Keyed on the vocabulary BOTH calendars share —
+# compliance_calendar.compliance_type and compliance_records.obligation_type
+# both say "GSTR1" / "GSTR3B" — so the two doors that record a filing ask ONE
+# map rather than keeping a copy each. Deliberately NOT every return: see
+# NO_FILING_ROW_REASON.
+FILING_TYPE_FOR_RETURN = {
+    "GSTR1":  FILING_TYPE_GSTR1,
+    "GSTR3B": FILING_TYPE_GSTR3B,
+}
+
+# Why a type can be marked filed on a calendar and still lock nothing. Said out
+# loud, per type, and returned to the caller: a silent no-op here is the same
+# defect in a new place — the CA has to be able to see that the tick did not
+# close the period.
+NO_FILING_ROW_REASON = {
+    "GSTR9": ("GSTR-9 is the annual return. Furnishing it closes the CORRECTION "
+              "WINDOW under §37(3)/§39(9)/§16(4) — see "
+              "compliance_engine.correction_window_closes() — which is a "
+              "different rule from the period lock. Recording it here would "
+              "freeze a whole financial year's books."),
+    "GSTR9C": ("GSTR-9C is the reconciliation statement that goes with the "
+               "annual return GSTR-9. It closes no GST period; the correction "
+               "window is what GSTR-9 itself closes."),
+    "ITR":    "An income-tax return is not a GST period; the GST period lock does not apply.",
+    # All the quarterly statements, because the calendar generates all of them
+    # (TDS-12 added 24Q) and this map exists to say it PER TYPE — a generic
+    # sentence about GST returns is a worse answer than the specific one.
+    "TDS24Q": "A TDS return is not a GST period; the GST period lock does not apply.",
+    "TDS26Q": "A TDS return is not a GST period; the GST period lock does not apply.",
+    "TDS27Q": "A TDS return is not a GST period; the GST period lock does not apply.",
+    "TDS27EQ": "A TCS return is not a GST period; the GST period lock does not apply.",
+}
+NO_FILING_ROW_DEFAULT = (
+    "public.filings records GST returns of supplies (GSTR-1 and GSTR-3B). "
+    "This obligation is tracked on the calendar but closes no GST period."
+)
+
+
+def not_recorded_reason(obligation_type: str) -> str:
+    """Why an obligation of this type recorded no `filings` row."""
+    return NO_FILING_ROW_REASON.get(obligation_type, NO_FILING_ROW_DEFAULT)
+
+
+def record_obligation_filing(
+    db, *, record: dict, filed_date: str, arn: Optional[str] = None,
+) -> Optional[dict]:
+    """Record the filing an OBLIGATION stands for, if it is a GST return of
+    supplies — and return the `filings` row, or None if this obligation closes
+    no period.
+
+    The window is the obligation's OWN `period_start`/`period_end`, never a
+    month derived from them: a QRMP client's GSTR-1 obligation covers a quarter
+    and locking only its first month would leave two filed months editable
+    (GST-11). Both bounds or no row — `compliance_records` has them NOT NULL, so
+    a missing one cannot happen against the real schema, but `record_filing`
+    would otherwise fall back to `period_bounds("")` and raise ValueError,
+    turning a malformed row into a 500 instead of a stated reason.
+
+    The key is `obligation_type` — `compliance_type` on this table is the
+    family ("GST"), not the return.
+    """
+    filing_type = FILING_TYPE_FOR_RETURN.get(str(record.get("obligation_type") or ""))
+    start = str(record.get("period_start") or "")[:10]
+    end = str(record.get("period_end") or "")[:10]
+    if not filing_type or len(start) != 10 or len(end) != 10:
+        return None
+    return record_filing(
+        db, firm_id=record.get("firm_id") or "", client_id=record.get("client_id") or "",
+        filing_type=filing_type, period=f"{start[5:7]}{start[0:4]}",
+        filed_date=filed_date, arn=arn, bounds=(start, end),
+    )
+
 
 def period_bounds(period: str, frequency: Optional[str] = None) -> tuple[str, str]:
     """'MMYYYY' → (first_iso, last_iso) of the period the return covered.

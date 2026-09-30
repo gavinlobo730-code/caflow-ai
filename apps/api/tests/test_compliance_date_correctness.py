@@ -121,8 +121,11 @@ def test_compute_risk_score_not_yet_critical_when_due_today_via_ist(monkeypatch)
 def test_update_record_filed_date_uses_ist(monkeypatch):
     _freeze_utc(monkeypatch, "2026-03-31T23:59:00")
     firm = "FIRM-UPDATE-RECORD-TEST"
+    # PMT06 rather than a GSTR-1: this test is about the DEFAULT date being the
+    # Indian calendar date, and a GSTR-1/3B has no default — it closes a period
+    # and its date is required (test_marking_an_obligation_filed_closes_its_period).
     rec = compliance_records_repo.create({"firm_id": firm, "client_id": CLIENT, "compliance_type": "GST",
-                                          "obligation_type": "GSTR1", "due_date": "2026-04-05", "status": "Ready To File"})
+                                          "obligation_type": "PMT06", "due_date": "2026-04-05", "status": "Ready To File"})
     updated = crs.compliance_record_service.update_record(rec["id"], {"status": "Filed"})
     assert updated["filed_date"] == "2026-04-01"
 

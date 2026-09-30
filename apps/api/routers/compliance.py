@@ -20,9 +20,11 @@ from services.compliance_engine import (
     advance_tax_due_dates, enrich_compliance_task
 )
 from services.gst_filing_record_service import (
-    FILING_TYPE_GSTR1, FILING_TYPE_GSTR3B, record_filing)
+    FILING_TYPE_FOR_RETURN, NO_FILING_ROW_DEFAULT, NO_FILING_ROW_REASON,
+    record_filing)
 from datetime import date
 from core.ist_clock import ist_today
+from domain.compliance_record_service import clean_filed_date
 from typing import Annotated, Optional
 from models.fy import FYLabel, OptionalFYLabel
 
@@ -53,34 +55,14 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 # lock reads. Both paths write it now.
 
 # compliance_calendar.compliance_type → the filings.filing_type it records
-# under. Deliberately NOT every calendar type.
-_CALENDAR_TYPE_TO_FILING_TYPE = {
-    "GSTR1":  FILING_TYPE_GSTR1,
-    "GSTR3B": FILING_TYPE_GSTR3B,
-}
-
-# Why a type can be marked filed on the calendar and still lock nothing. Said
-# out loud, per type, and returned to the caller: a silent no-op here is the
-# same defect in a new place — the CA has to be able to see that the tick did
-# not close the period.
-_NO_FILING_ROW_REASON = {
-    "GSTR9": ("GSTR-9 is the annual return. Furnishing it closes the CORRECTION "
-              "WINDOW under §37(3)/§39(9)/§16(4) — see "
-              "compliance_engine.correction_window_closes() — which is a "
-              "different rule from the period lock. Recording it here would "
-              "freeze a whole financial year's books."),
-    "ITR":    "An income-tax return is not a GST period; the GST period lock does not apply.",
-    # All three quarterly statements, because the calendar generates all three
-    # (TDS-12 added 24Q) and this map exists to say it PER TYPE — a generic
-    # sentence about GST returns is a worse answer than the specific one.
-    "TDS24Q": "A TDS return is not a GST period; the GST period lock does not apply.",
-    "TDS26Q": "A TDS return is not a GST period; the GST period lock does not apply.",
-    "TDS27Q": "A TDS return is not a GST period; the GST period lock does not apply.",
-}
-_NO_FILING_ROW_DEFAULT = (
-    "public.filings records GST returns of supplies (GSTR-1 and GSTR-3B). "
-    "This obligation is tracked on the calendar but closes no GST period."
-)
+# under, and why a type that is NOT in that map locks nothing. Both live in
+# services/gst_filing_record_service now, because the obligation path
+# (routers/compliance_ops) records a filing too and two copies of "which returns
+# close a period" is how the two doors came to disagree. The old names stay
+# importable: a guard pins the salary-statement reasons through them.
+_CALENDAR_TYPE_TO_FILING_TYPE = FILING_TYPE_FOR_RETURN
+_NO_FILING_ROW_REASON = NO_FILING_ROW_REASON
+_NO_FILING_ROW_DEFAULT = NO_FILING_ROW_DEFAULT
 
 
 class MarkFiledIn(BaseModel):
@@ -90,22 +72,11 @@ class MarkFiledIn(BaseModel):
     @field_validator("filed_date")
     @classmethod
     def a_real_past_date(cls, v: str) -> str:
-        """YYYY-MM-DD, and not in the future.
-
-        The shape check keeps a typo out of `filings.filed_date`, which is a
-        DATE column — without it a malformed value is a 500 from Postgres
-        rather than a 422 the CA can act on. The past check is the same
-        reasoning as the value itself: a return cannot have been filed
-        tomorrow, and this is the field the audit reads to say when it went.
-        IST, because a filing date is an Indian calendar date.
-        """
-        try:
-            when = date.fromisoformat((v or "").strip())
-        except ValueError:
-            raise ValueError("filed_date must be YYYY-MM-DD")
-        if when > ist_today():
-            raise ValueError("filed_date cannot be in the future")
-        return when.isoformat()
+        """YYYY-MM-DD, and not in the future — the rule lives in
+        `compliance_record_service.clean_filed_date`, which the obligation
+        path asks too, so the two doors that take a filing date cannot
+        disagree about what one is."""
+        return clean_filed_date(v)
 
 
 @router.get("/tasks")
