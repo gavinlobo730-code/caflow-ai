@@ -112,7 +112,7 @@ def test_cross_firm_user_not_found():
 
 def _jwt_client(jwt_user):
     app = FastAPI()
-    app.include_router(identity_router)
+    app.include_router(idmod.invite_router)
     app.dependency_overrides[get_jwt_user] = lambda: jwt_user
     return TestClient(app, raise_server_exceptions=False)
 

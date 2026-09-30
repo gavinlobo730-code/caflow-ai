@@ -25,6 +25,11 @@ from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/identity", tags=["identity"])
 
+# Mounted in main.py WITHOUT _MFA_GUARD: the invitee has no users row yet, and
+# mfa_guard's get_current_user refuses exactly that caller, so on the guarded
+# router no invite could ever be accepted. Nothing else belongs on it.
+invite_router = APIRouter(prefix="/api/identity", tags=["identity"])
+
 _CANONICAL = {r.value for r in Role}
 
 # F21 fix: an invite must be accepted within this window. Chosen to match the
@@ -92,7 +97,7 @@ class AcceptInviteBody(BaseModel):
     token: str
 
 
-@router.post("/accept-invite")
+@invite_router.post("/accept-invite")
 def accept_invite(body: AcceptInviteBody, jwt_user: dict = Depends(get_jwt_user)):
     """Complete a staff invite (F21 fix). JWT-only auth — the caller has no
     `users` row yet (that is exactly what this endpoint creates by linking).
