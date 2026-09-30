@@ -629,3 +629,24 @@ def healthcheck():
         "status": "ok",
         "schema": "ok" if _SCHEMA_DRIFT.get("checked") else "checking",
     })
+
+
+# ops-05. The question a MONITOR asks — never Render's healthCheckPath, which
+# must stay on /health above (see core/readiness.py for why, and for what this
+# probes). Unauthenticated on purpose: a monitor has no JWT. It answers 503
+# within five seconds when the database is unreachable, hung, or refuses our
+# key, and says which, so the person paged knows whether to look at Supabase or
+# at a rotated service-role key.
+@app.get("/ready")
+def readiness():
+    from fastapi.responses import JSONResponse
+    from core.readiness import check, readiness_payload
+    from models.common import api_response
+
+    result, reused = check()
+    if result.ready:
+        return api_response(True, readiness_payload(result, reused))
+    return JSONResponse(
+        status_code=503,
+        content=api_response(False, readiness_payload(result, reused), result.sentence),
+    )
