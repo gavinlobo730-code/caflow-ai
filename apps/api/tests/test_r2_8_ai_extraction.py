@@ -200,7 +200,11 @@ class TestInvoiceExtractionV1:
         li = data["line_items"][0]
         assert li["rate_paise"] == 1000
         assert li["quantity"] == 2.0
-        assert li["gst_rate_bps"] == 1800  # missing/null defaults to 18%
+        # AI-01: a null rate is UNKNOWN, not 18%. This line used to pin the
+        # default — the very behaviour that turned a read 0% into 18% — and the
+        # new contract is in tests/test_an_unread_invoice_line_is_not_a_guess.py.
+        assert li["gst_rate_bps"] is None
+        assert "gst_rate" in li["not_read"]
 
     def test_gemini_extract_image_sends_the_actual_image_bytes(self, monkeypatch):
         """Regression guard for the fix itself: the vision call must include

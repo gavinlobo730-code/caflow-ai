@@ -21,7 +21,7 @@ from core.ist_clock import assessment_year_for
 from domain.reporting.amount_words import indian_rupees
 from domain.income_tax.statutory_rates import (
     FYTaxRates, apply_rebate_87a, apply_surcharge_with_marginal_relief,
-    cess_paise, rates_for, resolve_surcharge_bracket, slab_tax_paise,
+    cess_paise, fy_rate_gap, rates_for, resolve_surcharge_bracket, slab_tax_paise,
 )
 from domain.income_tax.entity_rates import compute_entity_tax
 from domain.income_tax.loss_set_off import (
@@ -617,15 +617,18 @@ def _stamp_rate_provenance(result, requested_fy: str, rates) -> None:
     """
     requested = (requested_fy or "").strip()
     result.fy = rates.fy
+    # The sentences live in `statutory_rates.fy_rate_gap` so payroll, which
+    # withholds §192 tax at these same rates, says the same thing in the same
+    # words. A year that was held but unverified (FY 2026-27 today) used to set
+    # `rates_verified = False` and write NOTHING to `warnings`: a CA reading the
+    # words rather than the flag saw no sign of it.
+    gap = fy_rate_gap(requested or rates.fy)
     if requested and requested != rates.fy:
         result.rates_verified = False
-        result.warnings.append(
-            f"No rates are held for FY {requested}; this was computed at "
-            f"FY {rates.fy} rates. Slabs, surcharge, rebate and the entity and "
-            f"minimum-tax rates all move by Finance Act, so treat every figure "
-            f"as indicative until FY {requested} is added to the registries.")
-        return
-    result.rates_verified = rates.verified
+    else:
+        result.rates_verified = rates.verified
+    if gap:
+        result.warnings.append(gap)
 
 
 # ── Engine ────────────────────────────────────────────────────────────────────

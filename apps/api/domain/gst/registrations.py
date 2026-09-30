@@ -263,6 +263,50 @@ def resolve(client: dict[str, Any], rows: list[dict[str, Any]],
         f"GST registrations before filing under it.")
 
 
+# ── What a return for ONE registration can honestly say (GST-05) ─────────────
+
+def documents_not_split_caveat(regs: list[Registration],
+                               chosen_gstin: Optional[str]) -> Optional[str]:
+    """The sentence a return owes when its client holds several registrations
+    and no document records which one it belongs to, or None when it owes none.
+
+    THE DEFECT. `gst_return_service` fetches sales invoices, purchase bills and
+    notes by `(firm_id, client_id)` and nothing else — there is no registration
+    on any of them. So a return built "for" a second GSTIN is assembled from the
+    CLIENT-WIDE documents, including the first state's, and renders as
+    authoritatively as one built from a clean book. The interim answer is to say
+    so on the return (GST-05); the durable one is to attribute each document to
+    a registration (GST-16), and this module is what that change retires.
+
+    A CAVEAT, NOT A REFUSAL, and that is deliberate: a saved return whose GSTIN
+    the client holds must stay readable and markable as filed
+    (`gst_workspace._registration_for` records why), so refusing inside the
+    builder would strand a return somebody already prepared.
+
+    EVERY registration that files GSTR-1 and GSTR-3B carries it, the PRIMARY
+    included. The primary's return is built from the same client-wide documents,
+    so it over-declares exactly as much; asking only of a non-primary one would
+    leave the commoner wrong answer unmarked. A registration that files neither
+    (composition, ISD, a TDS deductor, a TCS collector) has its own returns built
+    from its own tables and owes nothing here.
+    """
+    filers = [r for r in regs if r.files_gstr1_and_3b]
+    chosen = (chosen_gstin or "").strip().upper()
+    if len(filers) < 2 or not any(r.gstin == chosen for r in filers):
+        return None
+    others = ", ".join(r.gstin for r in filers if r.gstin != chosen)
+    chosen_reg = next(r for r in filers if r.gstin == chosen)
+    which = ("the primary registration" if chosen_reg.is_primary
+             else "a second registration")
+    return (
+        f"This client holds {len(filers)} registrations that file GSTR-1 and "
+        f"GSTR-3B, and no invoice, bill or note records which registration it "
+        f"belongs to. This return for {chosen} ({which}) is therefore built from "
+        f"ALL of the client's documents, including any that belong to {others}. "
+        f"Do not file it as {chosen}'s own return until the documents have been "
+        f"split by registration.")
+
+
 # ── Adding one ───────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)

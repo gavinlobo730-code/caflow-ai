@@ -21,7 +21,7 @@ import { Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { api, type ApiResp } from "@/lib/api/index";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
-import { GST_RATES } from "@/lib/invoices/shared";
+import { gstRateOptions, gstRateToPercent } from "@/lib/invoices/shared";
 import { UQC_CODES } from "@/lib/constants/uqc";
 import {
   validateServiceForm, serviceFormToPayload, serviceToForm,
@@ -140,12 +140,12 @@ export function ProductServiceFormModal({
         <div className="grid grid-cols-2 gap-3">
           <Field label="HSN/SAC (optional)">
             <HsnLookup value={form.hsn_sac} onChange={(val) => set("hsn_sac", val)}
-              onPick={(p) => { if (p.gst_rate_bps != null) set("gstRate", Math.round(p.gst_rate_bps / 100)); }}
+              onPick={(p) => { if (p.gst_rate_bps != null) set("gstRate", gstRateToPercent(p.gst_rate_bps)); }}
               type={form.kind === "good" ? "goods" : "services"} size="sm" ariaLabel="HSN or SAC code" />
           </Field>
           <Field label="Default GST rate">
             <select value={form.gstRate} onChange={(e) => set("gstRate", parseFloat(e.target.value))} className={inputCls}>
-              {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
+              {gstRateOptions(form.gstRate).map((r) => <option key={r} value={r}>{r}%</option>)}
             </select>
           </Field>
         </div>

@@ -39,11 +39,11 @@ const GUIDES: { icon: ReactNode; title: string; desc: string; points: string[] }
   {
     icon: <ArrowUpRight size={18} />,
     title: "Moving from Tally",
-    desc: "Bring a client's books across without losing history — in three passes.",
+    desc: "Bring a client's masters across and open the books at the right balances — in three passes.",
     points: [
-      "Export ledgers, masters and the trial balance",
-      "Import masters, then map account groups",
-      "Load opening balances and reconcile the TB",
+      "Export ledgers, masters and the trial balance from Tally",
+      "Import the customer and vendor masters, then map account groups",
+      "Load opening balances — bill by bill or from the trial balance — and reconcile",
     ],
   },
   {
@@ -52,7 +52,7 @@ const GUIDES: { icon: ReactNode; title: string; desc: string; points: string[] }
     desc: "The two quarterly statements most practices file, and how they differ.",
     points: [
       "24Q — TDS on salaries · 26Q — non-salary payments",
-      "Due the 31st of the month after each quarter ends",
+      "Due Q1 31 Jul · Q2 31 Oct · Q3 31 Jan · Q4 31 May",
       "Reconcile deductee entries against Form 26AS",
     ],
   },
@@ -105,7 +105,7 @@ const CALENDAR: { name: string; freq: string; icon: ReactNode; due: ReactNode }[
     name: "TDS returns (24Q / 26Q)",
     freq: "Quarterly",
     icon: <Calculator size={16} />,
-    due: "31st of the month following the quarter end",
+    due: "Q1 31 Jul · Q2 31 Oct · Q3 31 Jan · Q4 31 May",
   },
   {
     name: "Advance tax",

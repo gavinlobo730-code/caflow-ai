@@ -56,6 +56,14 @@ def db(monkeypatch):
     d = FakeDB()
     wire_e2e(monkeypatch, d, [payroll_mod])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
+    # These runs are for June 2026, FY 2026-27 — a year whose income-tax rates the
+    # registry carries forward unverified, which is now a gap of its own
+    # (PAYROLL-09, tests/test_an_unverified_tax_year_is_a_payroll_gap.py). This
+    # module is about the OTHER gaps and about the release rule itself, so the
+    # registry's state is held fixed here; otherwise "a clean run" would stop
+    # meaning clean the day somebody verifies a year and start again the next
+    # April, and every test below would be measuring the calendar.
+    monkeypatch.setattr(payroll_mod, "income_tax_rate_gap", lambda fy: None)
     d.seed("clients", {"id": "CLI", "firm_id": FIRM,
                        "financial_year_start": "2026-04-01"})
     # Payroll is switched ON for this client (migration 332). A firm that

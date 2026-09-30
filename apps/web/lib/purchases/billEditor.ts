@@ -15,6 +15,7 @@ import { parseLineAmounts } from "../money/lineInput.ts";
 import { bpsFromPercentInput, paiseFromRupeeInput } from "../money/rupeeInput.ts";
 import { lineCess } from "../money/cessLine.ts";
 import { dnLineGst } from "./debitNoteGst.ts";
+import { blockingUnread, UNREAD_LABEL, type UnreadField } from "./extractedLine.ts";
 
 export interface PurchaseBillLine {
   description: string;
@@ -55,6 +56,17 @@ export interface PurchaseBillLine {
    */
   cessPercent?: string;
   cessPerUnit?: string;
+  /** AI-01: the fields of an AI-EXTRACTED line the document did not state.
+   *  Present only on a line that came out of `lineFromExtraction`, and emptied
+   *  field by field as the CA types into them (`unreadAfterEdit`). The value in
+   *  such a field is an EMPTY PLACEHOLDER, never a reading — which is the whole
+   *  point: this screen used to render an invented `NOS` and an invented 18%
+   *  exactly as it rendered a unit and a rate the document carried. */
+  unread?: UnreadField[];
+  /** The unit as the document printed it, when that was not one of CBIC's
+   *  codes (`Kg`, `Pieces`). Shown beside the unit picker so the CA chooses the
+   *  code from their own document; never converted for them. */
+  unitAsPrinted?: string;
 }
 
 /** A line is "valid" (postable) when it has positive qty & rate and a linked
@@ -65,7 +77,13 @@ export function isValidBillLine(l: PurchaseBillLine): boolean {
   // `(parseFloat(l.rate) || 0) > 0`, and parseFloat("1,25,000") is 1 — so a
   // rate typed the way Indian amounts are grouped passed as a valid ONE RUPEE
   // line, previewed at ₹1 and saved at ₹1 with nothing said.
-  return parseLineAmounts(l.qty, l.rate) !== null && !!l.service_catalogue_id;
+  //
+  // AI-01: and nothing the document left unstated is still unconfirmed. The
+  // quantity and the rate are already refused when blank; the GST RATE is the
+  // one that cannot be — it is a select whose placeholder is not a number — so
+  // the flag is what says "nobody has chosen this".
+  return parseLineAmounts(l.qty, l.rate) !== null && !!l.service_catalogue_id
+    && blockingUnread(l).length === 0;
 }
 
 /** ONE LINE PAYLOAD, sent to the TDS preview AND to the save.
@@ -265,6 +283,11 @@ export interface BillEditorValidation {
     exchangeRate?: string;
     /** CGST Act §17(5) — a line marked blocked with no clause named. */
     itc?: string;
+    /** AI-01: a line the AI read from a document that did not state its
+     *  quantity, rate or GST rate. Its own message, because the lines error
+     *  ("add at least one line with a Product/Service, quantity and rate")
+     *  would send the CA looking for something already there. */
+    unread?: string;
   };
   ok: boolean;
 }
@@ -287,6 +310,16 @@ export function validateBillEditor(input: BillEditorValidationInput): BillEditor
   if (itc.length) {
     errors.itc = itc.map((p) => `Line ${p.lineIndex + 1}: ${p.message}`).join(" ");
   }
+  // AI-01. Refused rather than dropped: `buildLinePayload` filters to the valid
+  // lines, so an extracted line with an unconfirmed rate would otherwise vanish
+  // from the saved bill with nothing said.
+  const unread = input.lines.flatMap((l, i) => {
+    const fields = blockingUnread(l);
+    return fields.length
+      ? [`Line ${i + 1}: the document did not state the ${fields.map((f) => UNREAD_LABEL[f]).join(", ")} — enter it.`]
+      : [];
+  });
+  if (unread.length) errors.unread = unread.join(" ");
   return { errors, ok: Object.keys(errors).length === 0 };
 }
 

@@ -718,6 +718,11 @@ export type GSTR1ExceptionReport = {
   arn?: string;
   clean?: boolean;
   finding_count?: number;
+  /** GST-05 — set when the client holds several registrations: the books side
+   *  of this comparison is built from ALL the client's documents, so a finding
+   *  may belong to another registration's return. Null where the client holds
+   *  one. */
+  registration_caveat?: string | null;
   documents?: {
     /** In the books, never filed. Goes in the CURRENT period's ordinary
      *  table — there is no filed entry to amend. */
@@ -6303,10 +6308,14 @@ export const api = {
 
     /** What the books say NOW against what the filed GSTR-1 actually said.
      *  Reports drift; drafts no amendment and alters no return. */
-    gstr1Exceptions: (clientId: string, period: string) =>
+    gstr1Exceptions: (clientId: string, period: string, gstin?: string) =>
       request<ApiResp<GSTR1ExceptionReport>>(
         `/api/gst-workspace/gstr1/exceptions?client_id=${encodeURIComponent(clientId)}`
-        + `&period=${encodeURIComponent(period)}`),
+        + `&period=${encodeURIComponent(period)}`
+        // Which registration (GST-04). Omitted means the primary; the server
+        // refuses a GSTIN the client does not hold rather than answering as
+        // the primary.
+        + (gstin ? `&gstin=${encodeURIComponent(gstin)}` : "")),
 
     /** What THIS period's GSTR-1 must carry from earlier filed periods. */
     gstr1Amendments: (clientId: string, period: string) =>

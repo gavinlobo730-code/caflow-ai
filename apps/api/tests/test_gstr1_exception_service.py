@@ -258,7 +258,7 @@ def test_the_endpoint_returns_the_report(db):
     _file_return(db, _books_payload(db))
 
     resp = gw.gstr1_exception_report(
-        client_id=CLIENT, period=PERIOD,
+        client_id=CLIENT, period=PERIOD, gstin=None,
         current_user={"firm_id": FIRM, "id": "u1", "auth_user_id": "auth",
                       "email": "ca@f.test", "role": "Partner"},
     )

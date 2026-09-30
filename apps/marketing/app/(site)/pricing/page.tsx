@@ -85,8 +85,8 @@ const TIERS: Tier[] = [
 ];
 
 const INCLUDED = [
-  { title: "Data hosted in India", desc: "Your firm's and clients' data stays on infrastructure hosted in India." },
-  { title: "Two-factor authentication", desc: "MFA and role-based access on every account, so only your team gets in." },
+  { title: "Database in Mumbai", desc: "Your firm's and clients' records are stored in a database in the Mumbai region. The application servers run in Singapore, and the AI features send document text to providers outside India." },
+  { title: "Two-factor authentication", desc: "TOTP two-factor for Partners and Managers on firm administration, billing, payroll and approvals, and role-based access on every account." },
   { title: "Nothing auto-submitted", desc: "PracticeSync prepares the return; a CA files it on the portal. The software never transmits anything to a government portal." },
   { title: "Free trial, no card", desc: "Start on any plan with a free trial and no credit card required." },
 ];
@@ -101,8 +101,8 @@ const FAQS = [
     a: "Yes. The Firm plan includes dedicated onboarding and data migration, and our team can help import client masters and opening balances on any plan.",
   },
   {
-    q: "Is my data secure and hosted in India?",
-    a: "Your data is hosted in India, encrypted, and protected with two-factor authentication and role-based access, so only your team sees your clients' information.",
+    q: "Is my data secure, and where is it hosted?",
+    a: "The database is in the Mumbai region and encrypted; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India. Partners and Managers use two-factor authentication on firm administration, billing, payroll and approvals, and everyone works under role-based access, so only your team sees your clients' information.",
   },
   {
     q: "Does PracticeSync file returns for me?",

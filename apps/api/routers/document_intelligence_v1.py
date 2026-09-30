@@ -16,6 +16,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access
 from services.internal_client_service import assert_partner_for_internal_id
 from domain.extraction_totals import check_totals
+from domain.extraction_lines import read_line
 from domain.ai.groq_text import DEFAULT_TEXT_MODEL
 
 _logger = logging.getLogger("caflow.doc_intelligence_v1")
@@ -64,16 +65,20 @@ the data as valid JSON with exactly these keys:
     {
       "description": "string",
       "hsn_sac": "string or null",
-      "quantity": number,
-      "rate_paise": integer,
-      "gst_rate_bps": integer (basis points: 1800 = 18%)
+      "quantity": number or null,
+      "unit": "string or null (the unit printed against the quantity, e.g. NOS, KGS, LTR, MTR)",
+      "rate_paise": integer or null,
+      "gst_rate_bps": integer or null (basis points: 1800 = 18%; 0 = the document prints 0%, nil-rated or exempt)
     }
   ]
 }
 
 Rules:
 - All rupee amounts must be converted to paise (multiply by 100, integer only, no floats).
-- If a field is not present in the document, use null or 0 as appropriate.
+- If a header field is not present in the document, use null or 0 as appropriate.
+- For each line item, NEVER guess quantity, unit, rate_paise or gst_rate_bps. If the document does
+  not print it, use null. 0 is an answer, not a blank: use 0 for gst_rate_bps only when the document
+  shows 0%, nil-rated or exempt.
 - GSTIN format is 15 characters: 2-digit state code + 10-char PAN + entity digit + Z + check digit.
 - Return ONLY the JSON object, no markdown, no explanation.
 
@@ -239,10 +244,13 @@ def _parse_extraction_json(raw: str) -> dict:
     for field in ("taxable_amount_paise", "cgst_paise", "sgst_paise", "igst_paise", "total_paise"):
         data[field] = int(data.get(field) or 0)
 
-    for item in data.get("line_items", []):
-        item["rate_paise"] = int(item.get("rate_paise") or 0)
-        item["gst_rate_bps"] = int(item.get("gst_rate_bps") or 1800)
-        item["quantity"] = float(item.get("quantity") or 1)
+    # AI-01: an absent value is UNKNOWN, never a default. The two lines this
+    # replaced were `int(x or 1800)` and `float(x or 1)`, and `0` is falsy — so a
+    # nil-rated or exempt line read as 0% came back as 18%, and ITC on an exempt
+    # purchase was overstated unless the CA spotted it. `read_line` keeps a real
+    # zero as zero, leaves what was not read as None, and names it in `not_read`
+    # so the screen can leave it empty instead of showing a guess as a reading.
+    data["line_items"] = [read_line(item) for item in (data.get("line_items") or [])]
 
     return data
 

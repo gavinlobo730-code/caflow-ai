@@ -16,6 +16,7 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError, fiel
 from dataclasses import asdict
 from domain.purchases import near_duplicate
 from domain.gst import compensation_cess
+from domain.extraction_lines import LABELS, UNIT, read_line
 from models.common import api_response
 from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocumentIn
 from core.authz import assert_client_access
@@ -2057,20 +2058,45 @@ def _lines_from_extraction(extracted: dict) -> list[dict]:
     percentage, so it is divided rather than re-derived from the tax heads —
     deriving it would turn two extracted figures into a third that neither the
     document nor the model ever stated.
+
+    A QUANTITY, A RATE OR A GST RATE NOBODY READ IS REFUSED, NOT DEFAULTED
+    (AI-01). This used to read `int(x or 0)` for the rate — so a line whose rate
+    the model could not read became a nil-rated one, and a missing quantity
+    became 1 — while the editor's own extraction path defaulted the same
+    missing rate to 18%: two doors disagreeing about one unknown. Only an
+    ABSENT value is unknown (`domain/extraction_lines.unread_fields`); a real
+    `0` is a reading and passes. The unit is the one field left alone: it is
+    optional here and this function invents none.
     """
     out: list[dict] = []
-    for ln in extracted.get("line_items") or []:
+    problems: list[str] = []
+    for i, ln in enumerate(extracted.get("line_items") or [], start=1):
+        # `read_line` on a COPY: it is the one coercion (a string "2", a
+        # "1,000", a float 1800.0), and the caller's dict is the audit copy kept
+        # in `ai_extraction_data`, which must stay exactly what was posted.
+        read = read_line(dict(ln))
+        missing = [f for f in read["not_read"] if f != UNIT]
+        if missing:
+            problems.append(
+                f"line {i} ({str(ln.get('description') or 'no description').strip()[:40]}): "
+                + ", ".join(LABELS[f] for f in missing))
+            continue
         out.append({
             "description": str(ln.get("description") or "").strip() or "As per supplier invoice",
             "hsn_sac": ln.get("hsn_sac") or None,
-            "quantity": float(ln.get("quantity") or 1),
+            "quantity": float(read["quantity"]),
             "unit": ln.get("unit") or None,
-            "rate_paise": int(ln.get("rate_paise") or 0),
-            "gst_rate_percent": float(int(ln.get("gst_rate_bps") or 0)) / 100.0,
+            "rate_paise": int(read["rate_paise"]),
+            "gst_rate_percent": float(int(read["gst_rate_bps"])) / 100.0,
             # No product-catalogue awareness in an extraction, and none
             # invented: the CA links a Product/Service in the draft's editor.
             "service_catalogue_id": None,
         })
+    if problems:
+        raise HTTPException(status_code=422, detail=(
+            "The document did not state everything a bill line needs, and a "
+            "figure nobody read is not filled in: " + "; ".join(problems)
+            + ". Enter the bill directly, or re-upload a clearer scan."))
     return out
 
 

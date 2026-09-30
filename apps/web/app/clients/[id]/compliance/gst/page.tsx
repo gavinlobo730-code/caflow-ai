@@ -1248,6 +1248,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                   reconciliation={computeResult.reconciliation as GLReconciliation | undefined}
                   bankLineCaveats={computeResult.bank_line_caveats as string[] | undefined}
                   undeclarableRows={computeResult.undeclarable_rows as UndeclarableRow[] | undefined}
+                  registrationCaveat={computeResult.registration_caveat as string | null | undefined}
                 />
                 {/* THE TABLES, not just the totals.
                     The GSTN offline utility is table by table, and a CA

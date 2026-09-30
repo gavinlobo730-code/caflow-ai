@@ -42,7 +42,7 @@ import { invoiceBreadcrumbs } from "@/lib/invoices/workspaceNav";
 import { todayLocalISO } from "@/lib/dateMath";
 import {
   apiCall, apiGet, getAuthToken, fmt,
-  GST_RATES, INDIAN_STATES, STATUS_BADGE,
+  gstRateOptions, gstRateToPercent, gstRatePercentFromSelect, INDIAN_STATES, STATUS_BADGE,
   percentBpsOf, previewTotals, validateInvoiceEditor, isValidLine,
   type Customer, type InvoiceDetail, type InvoiceLine, type CurrencyOption,
 } from "@/lib/invoices/shared";
@@ -86,7 +86,7 @@ function detailLinesToEditorLines(lines: InvoiceDetail["lines"]): EditorLine[] {
     hsn_sac: l.hsn_sac ?? "",
     qty: String(l.quantity ?? 1),
     rate: String((l.rate_paise ?? 0) / 100),
-    gst_rate: Math.round((l.gst_rate_bps ?? 0) / 100),
+    gst_rate: gstRateToPercent(l.gst_rate_bps),
     unit: l.unit ?? "",
     // Round-tripped (not just presentational `product`, which isn't
     // rehydrated here) so re-editing and resaving an invoice doesn't
@@ -1364,7 +1364,7 @@ export function InvoiceEditor({
                         <HsnLookup clientId={clientId} value={line.hsn_sac} onChange={(v) => setLine(idx, { hsn_sac: v })}
                           onPick={(p) => {
                             const patch: Partial<InvoiceLine> = {};
-                            if (p.gst_rate_bps != null) patch.gst_rate = Math.round(p.gst_rate_bps / 100);
+                            if (p.gst_rate_bps != null) patch.gst_rate = gstRateToPercent(p.gst_rate_bps);
                             if (p.uqc) patch.unit = p.uqc;
                             setLine(idx, patch);
                           }}
@@ -1406,12 +1406,12 @@ export function InvoiceEditor({
                             always lands on the NEXT row's Product/Service
                             cell, creating that row first if this is the last
                             one (see onGstKeyDown). */}
-                        <select value={line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseInt(e.target.value) })}
+                        <select value={line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: gstRatePercentFromSelect(e.target.value) })}
                           onKeyDown={(e) => onGstKeyDown(e, idx)}
                           disabled={isLocked}
                           aria-label={`Line ${idx + 1} GST rate`}
                           className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-xs disabled:bg-ps-bg disabled:text-ps-hint">
-                          {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
+                          {gstRateOptions(line.gst_rate).map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
                       </td>
                       <td className="py-1.5 pr-2">

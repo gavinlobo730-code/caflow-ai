@@ -151,7 +151,7 @@ export default function AccessPage() {
             </p>
             <p className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-3.5 py-1.5 text-[12px] text-white/50">
               <Lock size={13} />
-              Protected with 2-factor authentication · Data hosted in India
+              Two-factor sign-in for Partners and Managers · Database in Mumbai
             </p>
           </div>
         </div>

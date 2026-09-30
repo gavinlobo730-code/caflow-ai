@@ -310,6 +310,10 @@ export interface GSTR3BComputeResult {
   undeclarable_rows?: UndeclarableRow[];
   bank_line_caveats?: string[];
   reconciliation?: GLReconciliation;
+  /** GST-05 — a sentence when the client holds several registrations and no
+   *  document names which it belongs to, so this return contains all of them.
+   *  Null where the client holds one. Rendered by `Gstr3bFindings`. */
+  registration_caveat?: string | null;
   /** WHAT THIS RETURN ACTUALLY COVERS (GST-11). A month for an ordinary
    *  registration; the whole QUARTER for a QRMP one (CGST Rule 61A), keyed on
    *  its first month. The frequency is a fact about the REGISTRATION and the
@@ -470,6 +474,7 @@ interface FromBooksGSTR3B {
   late_filing?: LateFilingBlock;
   undeclarable_rows?: UndeclarableRow[];
   bank_line_caveats?: string[];
+  registration_caveat?: string | null;
   period_window?: ReturnPeriodWindow;
   months_without_gstr2b?: string[];
 }
@@ -817,6 +822,7 @@ export async function computeGSTR3B(
     late_filing: result.late_filing,
     undeclarable_rows: result.undeclarable_rows,
     bank_line_caveats: result.bank_line_caveats,
+    registration_caveat: result.registration_caveat ?? null,
     reconciliation: result.reconciliation,
     period_window: result.period_window,
     months_without_gstr2b: result.months_without_gstr2b,
