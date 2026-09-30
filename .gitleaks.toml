@@ -1,0 +1,69 @@
+# Secret scanning for this repository (engineering-05). Read by .github/workflows/secret-scan.yml.
+#
+# THE DEFAULT RULES, PLUS THREE THINGS
+#   `useDefault = true` keeps gitleaks' own ruleset. Measured with synthetic tokens on
+#   30-09-2026, it catches what this product holds: a Supabase SERVICE-ROLE JWT (the `jwt`
+#   rule), a Gemini key (`gcp-api-key`), a Groq key, Razorpay and Resend values (the generic
+#   entropy rule). It does not catch a Sentry DSN, and that is correct: a DSN is an
+#   ingest-only identifier that ships in every browser bundle by design.
+#
+#   What this file ADDS is (1) a Groq rule that still fires where the generic entropy rule is
+#   switched off, (2) the allowlists below, each for a finding that was looked at and is not a
+#   secret, and (3) nothing else. The scan found 8 such findings in the working tree and 26 in
+#   the 2,519 commits of history on 30-09-2026, all of these kinds, and no real credential.
+#
+# EVERY ALLOWLIST IS BY VALUE OR BY NARROW SHAPE, NEVER BY A WHOLE FILE FOR ALL RULES
+#   Allowlisting `apps/web/wrangler.toml` outright would let a service-role key pasted into it
+#   through. So the public anon key is matched by its own header and payload prefix, which pins
+#   the issuer, this project's ref AND `"role":"anon"`: a token with `service_role` in the same
+#   place differs at the very character that tells `a` from `s`, and is still caught. A test
+#   (apps/api/tests/test_a_secret_scan_runs_on_every_change.py) re-derives that prefix from
+#   wrangler.toml, so rotating the anon key fails there with a sentence instead of as a
+#   mystery red scan.
+#
+#   The noisy rule, `generic-api-key`, is the only one allowed to stay quiet under test paths:
+#   test fixtures are full of ids and UUIDs that look like entropy. The vendor-specific rules
+#   (`jwt`, `gcp-api-key`, `groq-api-key`, every cloud token) still apply inside tests.
+
+title = "PracticeSync gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "groq-api-key"
+description = "A Groq API key. AI keys are backend-only (CLAUDE.md); one in a test or in apps/web is a leak."
+regex = '''\bgsk_[A-Za-z0-9]{40,}\b'''
+keywords = ["gsk_"]
+
+# ── the public anon key ─────────────────────────────────────────────────────────────────────────
+[[allowlists]]
+description = "This project's PUBLIC Supabase anon key (NEXT_PUBLIC_*, shipped to every browser; apps/web/wrangler.toml). Pinned to header + issuer + project ref + role=anon, so a service_role token is NOT covered."
+targetRules = ["jwt"]
+regexTarget = "secret"
+regexes = ['''^eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZ29leWp2bWxscmFmemF2a2d4Iiwicm9sZSI6ImFub24i''']
+
+# ── the two example env files ───────────────────────────────────────────────────────────────────
+[[allowlists]]
+description = "The example env files show `eyJ...` placeholders: a JWT header followed by three dots. A real token has a payload segment after the header's dot, so this cannot match one."
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.\.\.$''']
+
+# ── a persistence key is a label, not a credential ──────────────────────────────────────────────
+[[allowlists]]
+description = "DataTable's `persistKey=\"bank.entries.v1\"` is the localStorage namespace for a column layout; the word `Key` is all it shares with a credential."
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = ['''persistKey\s*=\s*["'][A-Za-z0-9._-]+["']''']
+
+# ── test fixtures ───────────────────────────────────────────────────────────────────────────────
+[[allowlists]]
+description = "Ids, UUIDs and section codes in test fixtures trip the entropy rule. ONLY the generic rule is silenced here; the vendor rules still fire inside tests."
+targetRules = ["generic-api-key"]
+# `(^|/)` and not `^`: a history scan reports repo-relative paths and a working-tree scan
+# reports absolute ones, and a pattern anchored for one silently matches nothing in the other.
+paths = [
+  '''(^|/)apps/api/tests/''',
+  '''\.test\.(ts|tsx)$''',
+]

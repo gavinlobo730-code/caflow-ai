@@ -1,0 +1,49 @@
+{
+  "dependencies": [
+    {
+      "name": "fastapi",
+      "version": "0.109.2",
+      "vulns": []
+    },
+    {
+      "name": "gunicorn",
+      "version": "21.2.0",
+      "vulns": [
+        {
+          "id": "PYSEC-2026-1434",
+          "fix_versions": [
+            "22.0.0"
+          ],
+          "aliases": [
+            "GHSA-w3h3-4rj7-4ph4",
+            "CVE-2024-1135"
+          ],
+          "description": "Gunicorn fails to properly validate Transfer-Encoding headers, leading to HTTP Request Smuggling (HRS) vulnerabilities. By crafting requests with conflicting Tr"
+        },
+        {
+          "id": "PYSEC-2026-1433",
+          "fix_versions": [
+            "22.0.0"
+          ],
+          "aliases": [
+            "CVE-2024-6827",
+            "GHSA-hc5x-x2vx-497g"
+          ],
+          "description": "Gunicorn version 21.2.0 does not properly validate the value of the 'Transfer-Encoding' header as specified in the RFC standards, which leads to the default fal"
+        },
+        {
+          "id": "PYSEC-2026-1434",
+          "fix_versions": [
+            "22.0.0"
+          ],
+          "aliases": [
+            "GHSA-w3h3-4rj7-4ph4",
+            "CVE-2024-1135"
+          ],
+          "description": "Gunicorn fails to properly validate Transfer-Encoding headers, leading to HTTP Request Smuggling (HRS) vulnerabilities. By crafting requests with conflicting Tr"
+        }
+      ]
+    }
+  ],
+  "fixes": []
+}
