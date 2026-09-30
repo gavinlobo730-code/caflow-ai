@@ -249,6 +249,9 @@ def test_a_partner_reads_the_posture(monkeypatch):
     assert body["data"]["use_user_jwt"] is True
     assert body["data"]["require_mfa"] is True
     assert body["data"]["app_env_is_production"] is True
+    # SECURITY-PRIVACY-26's half, so the one place that answers "what is exposed"
+    # says the schema is not.
+    assert body["data"]["api_docs_public"] is False
 
 
 @pytest.mark.parametrize("role", ["Manager", "Executive", "Reviewer"])

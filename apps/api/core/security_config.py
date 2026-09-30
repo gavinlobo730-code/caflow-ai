@@ -39,6 +39,12 @@ import os
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"0", "false", "no", "off"})
 
+#: APP_ENV values under which the API docs may be served. Anything else —
+#: including unset — keeps them off, which is core/auth.py's own reading of an
+#: unset APP_ENV (it is production).
+_DEVELOPMENT_ENVS = frozenset({"development", "dev", "local", "test", "testing"})
+
+
 def app_env() -> str:
     """APP_ENV, trimmed and lower-cased; "" when unset."""
     return os.environ.get("APP_ENV", "").strip().lower()
@@ -47,6 +53,34 @@ def app_env() -> str:
 def is_production() -> bool:
     """True only when APP_ENV is explicitly "production". See the module header."""
     return app_env() == "production"
+
+
+def api_docs_enabled() -> bool:
+    """Whether /docs, /redoc and /openapi.json may be served (SECURITY-PRIVACY-26).
+
+    They list every route this app mounts — about 1,100 of them — which is a map
+    of the system with no use to anyone but its developers. On only under an
+    explicitly development-like APP_ENV, so an unset one fails CLOSED: the same
+    reading core/auth.py gives it (production), and the opposite of the flag
+    defaults above, which key on the literal "production" because turning MFA on
+    for every unit test would change what they exercise. Turning a page off
+    cannot.
+    """
+    return app_env() in _DEVELOPMENT_ENVS
+
+
+def docs_kwargs() -> dict[str, str | None]:
+    """The three FastAPI arguments that decide whether the schema is public.
+
+    All three, because they are independent: `openapi_url=None` alone leaves
+    /docs and /redoc routes mounted pointing at a schema that 404s, and
+    `docs_url=None` alone leaves the schema itself public. `app.openapi()` still
+    works in-process either way, which is what anything that generates a client
+    from the code should call rather than fetching it over HTTP.
+    """
+    if api_docs_enabled():
+        return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
+    return {"docs_url": None, "redoc_url": None, "openapi_url": None}
 
 
 def flag_setting(name: str) -> bool | None:

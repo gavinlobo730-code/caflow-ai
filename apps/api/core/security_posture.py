@@ -170,6 +170,7 @@ def security_posture() -> dict[str, Any]:
         "mfa_required_roles": sorted(sc.mfa_required_roles()),
         "supabase_anon_key_present": anon_present,
         "scheduler_enabled": scheduler,
+        "api_docs_public": sc.api_docs_enabled(),
         "cors_origin_count": origins_count,
         "allowed_origins_set": not _blank("ALLOWED_ORIGINS"),
         "frontend_url_set": not _blank("FRONTEND_URL"),
@@ -194,6 +195,7 @@ def readiness_flags() -> dict[str, bool]:
         "require_mfa": bool(posture["require_mfa"]),
         "supabase_anon_key_present": bool(posture["supabase_anon_key_present"]),
         "scheduler_enabled": bool(posture["scheduler_enabled"]),
+        "api_docs_public": bool(posture["api_docs_public"]),
         "allowed_origins_set": bool(posture["allowed_origins_set"]),
         "frontend_url_set": bool(posture["frontend_url_set"]),
     }

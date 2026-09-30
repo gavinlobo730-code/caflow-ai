@@ -166,7 +166,13 @@ async def _lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="PracticeSync AI API", version="2.0.0", lifespan=_lifespan)
+# SECURITY-PRIVACY-26: /docs, /redoc and /openapi.json list every route this app
+# mounts, so outside an explicitly development-like APP_ENV none of the three is
+# served. core.security_config.docs_kwargs is the one place that decides; an unset
+# APP_ENV keeps them OFF, which is how core/auth.py already reads it.
+from core.security_config import docs_kwargs, api_docs_enabled
+
+app = FastAPI(title="PracticeSync AI API", version="2.0.0", lifespan=_lifespan, **docs_kwargs())
 
 
 def _failure_response(request: Request, exc: Exception) -> JSONResponse:
@@ -589,7 +595,11 @@ def _boot_background() -> None:
 @app.get("/")
 def root():
     from models.common import api_response
-    return api_response(True, {"message": "PracticeSync AI API v2.0", "docs": "/docs"})
+    data = {"message": "PracticeSync AI API v2.0"}
+    if api_docs_enabled():
+        # Pointing a stranger at a page that 404s is worse than saying nothing.
+        data["docs"] = "/docs"
+    return api_response(True, data)
 
 
 @app.get("/health")
