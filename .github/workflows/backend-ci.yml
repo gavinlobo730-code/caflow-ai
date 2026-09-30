@@ -24,10 +24,12 @@ on:
     branches: [main]
 
 # One run per branch. Pushing again to an open PR supersedes the previous run,
-# and without this the old one keeps going to completion — paying full price for
-# a result nobody will read. The account hit 100% of its 2,000 included Actions
-# minutes on 16 Aug 2026, and a busy PR branch re-running a ~6 minute real-
-# Postgres job for every intermediate push is a large part of why.
+# and without this the old one keeps going to completion for a result nobody
+# will read — a busy PR branch re-running a ~6 minute real-Postgres job for
+# every intermediate push, each leaving a stale verdict in the checks list.
+# This is about time and signal, not a minutes budget: the repository is public,
+# where GitHub-hosted runner minutes are free (wake-before-scheduler.yml says the
+# same).
 #
 # main is excluded from cancellation: those runs gate what is already merged, so
 # they must finish even when several merges land together.
@@ -239,9 +241,11 @@ jobs:
   #
   # Widening `api` to include apps/web is the obvious fix and the wrong one:
   # that buys a ~7 minute suite plus a ~6 minute real-Postgres job on every
-  # frontend push, and this account hit 100% of its 2,000 included Actions
-  # minutes on 16 Aug 2026 (see the concurrency comment above). A redesign is
-  # dozens of PRs with several pushes each.
+  # frontend push — about thirteen minutes of waiting, on a change that cannot
+  # fail them because nothing under apps/api moved. It is the wait that costs,
+  # not minutes (the repository is public, where they are free; see the
+  # concurrency comment above). A redesign is dozens of PRs with several pushes
+  # each.
   #
   # So this job runs ONLY the modules that can actually see an apps/web change —
   # about 33 files, ~700 tests, ~50 seconds. The list is DERIVED, not held:
