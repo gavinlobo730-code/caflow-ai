@@ -431,7 +431,9 @@ def test_running_your_own_job_still_works(jobs, deny, monkeypatch):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _from_books(client_id):
-    return g.FromBooksRequest(client_id=client_id, period="012026")
+    # The GSTR-1 subclass (gst-33) — a FromBooksRequest in every respect the
+    # GSTR-3B endpoint reads, plus the amendments switch GSTR-1 takes.
+    return g.GSTR1FromBooksRequest(client_id=client_id, period="012026")
 
 
 # The compute paths resolve the WHOLE registration, not its number alone
@@ -469,6 +471,12 @@ def test_building_from_your_own_books_still_works(fn, service, deny, monkeypatch
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: object())
     monkeypatch.setattr(g, "_client_registration", lambda *a, **k: _REGISTRATION)
     monkeypatch.setattr(g.gst_return_service, service, lambda *a, **k: {"ok": True})
+    # GSTR-1's default build folds in the outstanding amendments (gst-33). What
+    # they are is not this test's question — whose books are read is — so the
+    # fold is stubbed; tests/test_the_gstr1_build_carries_the_amendments_it_owes
+    # exercises it for real.
+    monkeypatch.setattr(g, "_with_outstanding_amendments",
+                        lambda *a, **k: ({}, {"included": True}))
     out = getattr(g, fn)(_from_books(MINE), current_user=USER)
     assert out["success"] is True
 

@@ -29,6 +29,7 @@ import {
 import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
+import { Gstr1Amendments } from "@/components/gst/Gstr1Amendments";
 import { IffPanel } from "@/components/gst/IffPanel";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -88,6 +89,10 @@ export default function GSTR1Page() {
   const [yearMonth, setYearMonth] = useState(PERIOD_OPTIONS[1]?.value ?? "");
 
   const [loading, setLoading] = useState(false);
+  // gst-33: the corrections this period owes (9A / 9C / 10, CGST Act §37) are
+  // part of the build by default, so the one file this screen produces is the
+  // one to upload. The box is the way to build the return without them.
+  const [includeAmendments, setIncludeAmendments] = useState(true);
   const [result, setResult] = useState<GSTR1BuildResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filingStatus, setFilingStatus] = useState<GSTReturnStatus | null>(null);
@@ -120,7 +125,7 @@ export default function GSTR1Page() {
     setError(null);
     setResult(null);
     try {
-      const res = await buildGSTR1(clientId, yearMonth);
+      const res = await buildGSTR1(clientId, yearMonth, { includeAmendments });
       setResult(res);
       // from-books raises on anything it will not compute, so a returned
       // result is a validated one; a failure lands in catch below.
@@ -241,6 +246,20 @@ export default function GSTR1Page() {
             </select>
           </div>
         </div>
+        <label className="flex items-start gap-2 text-sm text-ps-body">
+          <input
+            type="checkbox"
+            checked={includeAmendments}
+            onChange={e => { setIncludeAmendments(e.target.checked); setResult(null); setError(null); }}
+            className="mt-0.5"
+          />
+          <span>
+            <strong>Include the amendments this period owes.</strong>{" "}
+            Corrections to returns already filed are declared in this return&apos;s
+            amendment tables (CGST Act §37), so this is the one file to upload.
+            Untick to build the return without them.
+          </span>
+        </label>
         <button
           onClick={handleBuild}
           disabled={actionInFlight || !clientId || !yearMonth}
@@ -318,6 +337,11 @@ export default function GSTR1Page() {
               )}
             </div>
           </div>
+
+          {/* What the build did about the amendment tables, with the count of
+              what it added (gst-33). Renders nothing when the server sent no
+              block — absent is unknown, never "none added". */}
+          <Gstr1Amendments block={result.amendments} />
 
           {/* The hard-errors panel lived here. From-books validates before it
               computes and raises 422, so an error never arrives as part of a

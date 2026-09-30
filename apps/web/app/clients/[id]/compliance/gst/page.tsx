@@ -14,9 +14,10 @@ import { gstPeriodLabel } from "@/lib/gst/period";
 import GSTR9Working from "@/components/gst/GSTR9Working";
 import Gstr9cWorking from "@/components/gst/Gstr9cWorking";
 import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
+import { Gstr1Amendments } from "@/components/gst/Gstr1Amendments";
 import { IffPanel } from "@/components/gst/IffPanel";
 import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
-import type { GLReconciliation, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
+import type { GLReconciliation, GSTR1AmendmentsBlock, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
 import type { ValidationError, PayloadGap } from "@/lib/data/gst";
 import { formatPaise } from "@/lib/money/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
@@ -500,6 +501,9 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
 
   const [showCompute, setShowCompute] = useState(false);
   const [computePeriod, setComputePeriod] = useState("");
+  // gst-33: the build carries the amendment tables this period owes unless the
+  // CA unticks this. The server decides what is owed; this only says whether to ask.
+  const [includeAmendments, setIncludeAmendments] = useState(true);
   const [computing, setComputing] = useState(false);
   const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
@@ -604,9 +608,16 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
     setComputing(true);
     setComputeError(null);
     setComputeResult(null);
+    // `include_amendments` is sent only when the CA asked to leave them out:
+    // an absent key is the server's default (in), so an older backend that
+    // does not know the field is not handed one it would have to ignore.
     const r = await apiFetch("/api/gst/gstr1/from-books", {
       method: "POST",
-      body: JSON.stringify({ client_id: clientId, period: computePeriod }),
+      body: JSON.stringify({
+        client_id: clientId,
+        period: computePeriod,
+        ...(includeAmendments ? {} : { include_amendments: false }),
+      }),
     });
     if (r.success) setComputeResult(r.data as Record<string, unknown>);
     else setComputeError(r.error ?? "Couldn't compute GSTR-1 from books.");
@@ -674,6 +685,16 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
           <input placeholder="Period (MMYYYY e.g. 042025)" value={computePeriod}
             onChange={(e) => setComputePeriod(e.target.value)}
             className="w-full border rounded px-3 py-1.5 text-sm" />
+          <label className="flex items-start gap-2 text-xs text-ps-label">
+            <input type="checkbox" checked={includeAmendments}
+              onChange={(e) => { setIncludeAmendments(e.target.checked); setComputeResult(null); setComputeError(null); }}
+              className="mt-0.5" />
+            <span>
+              Include the amendments this period owes (9A, 9C, 10). A filed GSTR-1
+              cannot be revised, so corrections to earlier returns are declared in
+              this one. Untick to build a file without them.
+            </span>
+          </label>
           {computeError && <p className="text-state-problem text-sm">{computeError}</p>}
           <div className="flex gap-2">
             <button onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
@@ -719,6 +740,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   gaps={(computeResult.payload_gaps ?? []) as PayloadGap[]}
                   compact
                 />
+                {/* WHAT THE BUILD DID ABOUT THE AMENDMENT TABLES (gst-33). The
+                    same component the firm-level /gst/gstr1 page renders, so a
+                    file never carries amendments nobody was told about. */}
+                <Gstr1Amendments block={computeResult.amendments as GSTR1AmendmentsBlock | undefined} />
                 {/* THE INVOICE FURNISHING FACILITY (GST-11). This return's own
                     caveats already say the two interim months' customers are
                     waiting on it — `return_period.IFF_AVAILABLE` — and the

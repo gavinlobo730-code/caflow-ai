@@ -376,6 +376,10 @@ export interface GSTR1BuildResult {
    *  wrong; a gap is a document that is not in the return at all. Filing short
    *  is the failure a CA hears about from the recipient. */
   payload_gaps: PayloadGap[];
+  /** What the build did about the amendment tables, so the screen can show the
+   *  count of what was added (gst-33). Absent from an older server — unknown,
+   *  not "none". */
+  amendments?: GSTR1AmendmentsBlock;
   /** The period the server actually resolved (GST-11). A QRMP registration's
    *  return covers a QUARTER however one of its months was asked for, and the
    *  two interim months' Invoice Furnishing Facility hangs off exactly this —
@@ -412,6 +416,40 @@ export interface PayloadGap {
   withheld?: boolean;
 }
 
+/** What the GSTR-1 build did about the amendment tables (gst-33).
+ *
+ *  CGST Act §37: a filed GSTR-1 can never be revised, so a correction to an
+ *  earlier period is declared in a LATER return's amendment tables (9A
+ *  invoices, 9C notes, 10 B2C-others). The main build folds the ones this
+ *  period owes into `payload` BY DEFAULT — one file to upload — and says what it
+ *  added here. `included: false` is the build the CA asked for without them.
+ *
+ *  EVERY FIELD IS OPTIONAL BESIDE `included` and the whole block may be ABSENT:
+ *  a frontend redeployed ahead of the backend gets no block at all, and ABSENT
+ *  is "this server did not say", never "nothing was added". Nothing here
+ *  decides which table a correction goes in or whether its window is open —
+ *  those are the server's. */
+export interface GSTR1AmendmentsBlock {
+  included: boolean;
+  /** The GSTN section keys that now carry a correction (b2ba, cdnra, ...). */
+  sections?: string[];
+  counts?: {
+    amendments?: number;
+    needs_decision?: number;
+    carry_forward?: number;
+    already_declared?: number;
+    expired_periods?: number;
+    source_periods?: number;
+  };
+  /** Earlier filed periods the added corrections belong to. */
+  source_periods?: string[];
+  /** Corrections a LATER filed return already declared — NOT repeated here. */
+  already_declared?: Array<{
+    section: string; table: string; from_period: string;
+    declared_in: string; original_ref: string;
+  }>;
+}
+
 /** Raw shape of POST /api/gst/gstr1/from-books. */
 interface FromBooksGSTR1 {
   period: string;
@@ -425,6 +463,8 @@ interface FromBooksGSTR1 {
   validation_errors: ValidationError[];
   validation_warnings: ValidationError[];
   payload_gaps: PayloadGap[];
+  /** See `GSTR1AmendmentsBlock`. Absent from an older server. */
+  amendments?: GSTR1AmendmentsBlock;
   /** The resolved window — a QUARTER for a QRMP registration, keyed on its
    *  first month. `gstr1_from_books` has sent this since GST-11 and nothing
    *  read it. */
@@ -972,6 +1012,7 @@ export async function approveGSTR3B(
 export async function buildGSTR1(
   clientId: string,
   yearMonth: string,
+  options: { includeAmendments?: boolean } = {},
 ): Promise<GSTR1BuildResult> {
   const period = toPeriod(yearMonth);
   // NO `aggregate_turnover_paise` (GST-17). It used to send 0, which is a REAL
@@ -981,9 +1022,15 @@ export async function buildGSTR1(
   // on the client's GST → Registrations tab for the PRECEDING financial year —
   // which is what Notification 78/2020-Central Tax reads on — and NAME the gap
   // where nobody has recorded one.
+  //
+  // THE AMENDMENTS THIS PERIOD OWES ARE IN THE BUILD BY DEFAULT (gst-33), so the
+  // one file this screen produces is the one to upload — the server decides
+  // that, and only the OPT-OUT is sent. Sending `true` would freeze today's
+  // default into every caller; omitting it leaves the server's own.
   const result = await apiPost<FromBooksGSTR1>("/api/gst/gstr1/from-books", {
     client_id: clientId,
     period,
+    ...(options.includeAmendments === false ? { include_amendments: false } : {}),
   });
 
   const shaped: GSTR1BuildResult = {
@@ -1002,6 +1049,9 @@ export async function buildGSTR1(
     validation_errors: result.validation_errors ?? [],
     validation_warnings: result.validation_warnings ?? [],
     payload_gaps: result.payload_gaps ?? [],
+    // CARRIED (gst-33): a key dropped here is a count the screen cannot show,
+    // and an absent block must stay absent rather than become "0 added".
+    amendments: result.amendments,
     // CARRIED, for GST-22's reason on the 3B side: a key dropped here is a
     // panel the firm-level screen cannot render, and nothing says why.
     period_window: result.period_window,
