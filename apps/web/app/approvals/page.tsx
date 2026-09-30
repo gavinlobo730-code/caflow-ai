@@ -6,10 +6,7 @@ import Link from "next/link";
 import { api, type ApprovalRequest } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { ListSkeleton } from "@/components/ui/skeleton";
-
-function isMfaError(msg: string) {
-  return msg.toLowerCase().includes("multi-factor") || msg.toLowerCase().includes("mfa");
-}
+import { MFA_SETUP_HREF, isMfaRefusal } from "@/lib/auth/mfaRefusal";
 
 // Module 9.0 M4 — Governance Approval Inbox (maker-checker).
 // Partners approve/reject; everyone with access sees pending + history.
@@ -91,19 +88,19 @@ export default function ApprovalsPage() {
         ))}
       </div>
 
-      {error && (isMfaError(error) ? (
+      {error && (isMfaRefusal(error) ? (
         <div className="flex flex-col items-center gap-3 py-14 text-center">
           <div className="w-12 h-12 rounded-full bg-state-attention-surface flex items-center justify-center">
             <Lock size={20} className="text-amber-600" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-brand">Multi-factor authentication required</p>
+            <p className="text-sm font-semibold text-brand">Set up your authenticator app</p>
             <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">
-              This area contains sensitive approval workflows. Enable MFA to continue.
+              This area contains sensitive approval workflows. Add an authenticator app to continue.
             </p>
           </div>
           <Link
-            href="/settings/security"
+            href={MFA_SETUP_HREF}
             className="mt-1 px-4 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-[#1e2d5e] transition-colors"
           >
             Set Up MFA

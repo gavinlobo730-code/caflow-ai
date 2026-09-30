@@ -171,3 +171,23 @@ export function toMfaPending(assurance: Assurance): boolean | null {
   if (assurance === "satisfied") return false;
   return null;
 }
+
+/**
+ * Whether the account holds a VERIFIED factor: `true`/`false` from the
+ * authoritative list, `null` where it could not be read.
+ *
+ * A different question from `resolveAssurance`, which asks whether a challenge
+ * is owed NOW and rightly answers "satisfied" for an account with no factor at
+ * all — which is exactly the account mfa_guard refuses on every
+ * administration screen. This is what lets that account be told.
+ */
+export async function resolveVerifiedFactor(
+  auth: Pick<AssuranceCapableAuth, "listFactors">,
+): Promise<boolean | null> {
+  try {
+    const data = (await auth.listFactors())?.data ?? null;
+    return data === null ? null : hasVerifiedFactor(data);
+  } catch {
+    return null;
+  }
+}

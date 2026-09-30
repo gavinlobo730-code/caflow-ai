@@ -48,3 +48,15 @@ def mfa_required_roles() -> set[str]:
     """
     raw = os.environ.get("MFA_REQUIRED_ROLES", "Partner,Manager")
     return {r.strip() for r in raw.split(",") if r.strip()}
+
+
+def mfa_required_for(role: str | None) -> bool:
+    """Whether a caller holding `role` must present aal2.
+
+    The one comparison `core.auth.mfa_guard` makes, named so that
+    `GET /api/security/mfa-policy` tells the browser the SAME answer rather
+    than the browser re-deriving it from a role list. The raw stored role is
+    compared, exactly as the guard compares it, so a legacy spelling cannot
+    make the two disagree.
+    """
+    return require_mfa() and role in mfa_required_roles()

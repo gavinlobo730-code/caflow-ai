@@ -11,6 +11,7 @@ import {
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase, getSupabaseClient } from "@/lib/supabase/client";
+import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 import {
   can as canDo,
   normalizeRole,
@@ -104,6 +105,26 @@ async function resolvePermissions(): Promise<PermissionMap | null> {
   }
 }
 
+/** GET /api/security/mfa-policy, or null on any failure. Null means no nudge:
+ *  the nudge is advice and mfa_guard is the gate, so an unknown policy must not
+ *  tell an enrolled Partner their account is unsecured. */
+async function resolveMfaPolicy(): Promise<MfaPolicy | null> {
+  try {
+    const { api } = await import("@/lib/api");
+    const res = await api.security.mfaPolicy();
+    if (!res?.success) return null;
+    return parseMfaPolicy(res.data);
+  } catch {
+    return null;
+  }
+}
+
+async function resolveFactorState(session: Session | null): Promise<boolean | null> {
+  if (!session) return null;
+  const mfa = getSupabaseClient().auth.mfa;
+  return resolveVerifiedFactor({ listFactors: () => mfa.listFactors() });
+}
+
 interface AuthContextValue {
   session: Session | null;
   user: User | null;
@@ -139,11 +160,21 @@ interface AuthContextValue {
   can: (resource: string, action: string) => boolean;
   /** Re-resolve role + firm membership (call after creating a firm in onboarding). */
   refreshUserContext: () => Promise<boolean>;
+  /**
+   * The caller must set up an authenticator app before mfa_guard will answer
+   * them (lib/auth/mfaEnrolment.ts). False while anything is unknown.
+   */
+  mustEnrolMfa: boolean;
+  /** Fetch the policy and the factor list afresh and answer the same question,
+   *  for a caller that must decide NOW (onboarding's last step). */
+  resolveEnrolmentRequired: () => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
-import { resolveAssurance, toMfaPending } from "./mfaAssurance";
+import { resolveAssurance, resolveVerifiedFactor, toMfaPending } from "./mfaAssurance";
+import { enrolmentRequired, parseMfaPolicy, type MfaPolicy } from "./mfaEnrolment";
+import { keepLastGood, latestWins } from "./latestWins";
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -154,8 +185,12 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 // as "nothing owed", read a null payload the same way, and asked only
 // getAuthenticatorAssuranceLevel() — whose nextLevel comes from the cached user
 // object, so a restored session reports "nothing owed" for an account that has a
-// verified factor. Production showed the result: both Partners enrolled on
-// 2026-08-15, and every session since is aal1 with a `password` AMR claim only.
+// verified factor. (This used to cite production evidence — "both Partners
+// enrolled on 2026-08-15, every session since aal1" — and both halves were
+// wrong: auth.mfa_factors shows the two verified Partner factors created on
+// 2026-06-15 and 2026-09-29, and the aal1 sessions were the CI smoke script's
+// password grants. mfaAssurance.ts records the re-measurement. The fail-opens
+// were real defects in this code whatever production showed.)
 //
 // `null` now means UNRESOLVED and AuthGuard refuses to render on it. It is no
 // longer a synonym for false.
@@ -199,6 +234,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [hasFirm, setHasFirm] = useState<boolean | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<PermissionMap | null>(null);
+  const [mfaPolicy, setMfaPolicy] = useState<MfaPolicy | null>(null);
+  const [hasVerifiedFactor, setHasVerifiedFactor] = useState<boolean | null>(null);
+  // Set from the URL inside applyContext (an effect), never read during render.
+  const [portalPrincipal, setPortalPrincipal] = useState(false);
+  // Only the most recently STARTED request settles each of these — see
+  // latestWins.ts for the aal1 403 that landed after the aal2 success.
+  const permissionsGate = useRef(latestWins());
+  const policyGate = useRef(latestWins());
+  const factorGate = useRef(latestWins());
+
+  function refreshFactorState(s: Session | null) {
+    const apply = factorGate.current.begin<boolean | null>(setHasVerifiedFactor);
+    resolveFactorState(s).then(apply).catch(() => apply(null));
+  }
 
   function applyContext(u: User | null) {
     const owner = u?.id ?? null;
@@ -255,14 +304,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // can() answers false and action controls stay hidden.
     // Reset only for a DIFFERENT user: clearing it on every hourly
     // TOKEN_REFRESHED hid every action control until the API answered again.
-    if (newUser) setPermissions(null);
+    if (newUser) {
+      // Supersede anything still in flight for the previous identity (a
+      // sign-out starts no request of its own to do it).
+      permissionsGate.current.begin(() => {});
+      policyGate.current.begin(() => {});
+      setPermissions(null);
+      setMfaPolicy(null);
+    }
     // A portal principal (client or employee) has no RBAC role at all, so this
     // 403s correctly but noisily on every one of their pages — see
     // isPortalPrincipalPath's own comment. `can()` already answers false with
     // permissions left null, which is exactly what a portal page needs: it
     // never renders a staff action control in the first place.
-    if (u && !isPortalPrincipalPath()) {
-      resolvePermissions().then(setPermissions).catch(() => { if (newUser) setPermissions(null); });
+    const portal = isPortalPrincipalPath();
+    setPortalPrincipal(portal);
+    if (u && !portal) {
+      // Both resolvers answer null on failure rather than rejecting, so the
+      // `.catch` that used to sit here never ran and a failed hourly refresh
+      // wiped the map. keepLastGood applies a null only for a NEW identity.
+      const applyPermissions = permissionsGate.current.begin<PermissionMap | null>(setPermissions);
+      resolvePermissions().then(keepLastGood(applyPermissions, newUser));
+      const applyPolicy = policyGate.current.begin<MfaPolicy | null>(setMfaPolicy);
+      resolveMfaPolicy().then(keepLastGood(applyPolicy, newUser));
     }
   }
 
@@ -292,6 +356,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Resolve MFA assurance for the restored session (null = computing).
       setMfaPending(null);
       resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(true));
+      if (!isPortalPrincipalPath()) refreshFactorState(session);
     }).catch(() => {
       clearTimeout(timeout);
       setLoading(false);
@@ -309,6 +374,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // "fully authenticated" and skips the challenge.
         setMfaPending(null);
         resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(true));
+        // A factor verified on the security page arrives here as
+        // MFA_CHALLENGE_VERIFIED, which is what takes the banner down.
+        if (!isPortalPrincipalPath()) refreshFactorState(session);
       }
     );
 
@@ -331,9 +399,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Onboarding calls this right after the users row gains a firm_id and a
     // role; without re-resolving here the map stays null for the rest of the
     // session and every action control would remain hidden for a new Partner.
-    resolvePermissions().then(setPermissions).catch(() => setPermissions(null));
+    // It is also what the security page calls after a factor is verified: the
+    // session is aal2 from then on and the map the aal1 token was refused
+    // becomes answerable without signing out.
+    const applyPermissions = permissionsGate.current.begin<PermissionMap | null>(setPermissions);
+    resolvePermissions().then(applyPermissions).catch(() => applyPermissions(null));
     return hasFirm === true;
   }, []);
+
+  const resolveEnrolmentRequired = useCallback(async (): Promise<boolean> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return false;
+    const applyPolicy = policyGate.current.begin<MfaPolicy | null>(setMfaPolicy);
+    const applyFactor = factorGate.current.begin<boolean | null>(setHasVerifiedFactor);
+    const [policy, factor] = await Promise.all([
+      resolveMfaPolicy().catch(() => null),
+      resolveFactorState(session).catch(() => null),
+    ]);
+    applyPolicy(policy);
+    applyFactor(factor);
+    return enrolmentRequired({ policy, hasVerifiedFactor: factor, isPortalPrincipal: false });
+  }, []);
+
+  const mustEnrolMfa = enrolmentRequired({
+    policy: mfaPolicy,
+    hasVerifiedFactor,
+    isPortalPrincipal: portalPrincipal,
+  });
 
   // A sign-in is RECORDED once the session is fully signed in, not at the
   // password step. POST /api/identity/login-event sits behind mfa_guard, which
@@ -356,7 +448,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // M6: login history (best-effort; never blocks sign-in) — recorded by the
     // effect above once any MFA challenge has been passed.
     if (!error) loginToRecord.current = true;
-    return { error: error?.message ?? null };
+    return { error: error ? authErrorMessage(error) : null };
   }, []);
 
   const signOut = useCallback(async () => {
@@ -374,7 +466,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ session, user, userRole, loading, roleLoading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, userRole, loading, roleLoading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, mustEnrolMfa, resolveEnrolmentRequired, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

@@ -73,6 +73,28 @@ test("the in-flight slot is released in a finally, so a thrown/failed resolution
 test("resolvePermissions() is still called for a genuinely new (or newly signed-in) user", () => {
   // Negative-of-the-negative: the fix must not have accidentally deleted the
   // permissions fetch entirely while adding the guard.
+  // The RULE is that the answer lands in the permissions state — directly, or
+  // through the latest-wins gate built on setPermissions (lib/auth/latestWins).
+  // It used to be spelled `.then(setPermissions)`, which the gate broke without
+  // breaking the rule.
   const body = stripComments(applyContextBody(read()));
-  assert.match(body, /resolvePermissions\(\)\.then\(setPermissions\)/);
+  const m = body.match(/resolvePermissions\(\)\.then\((?:keepLastGood\()?(\w+)/);
+  assert.ok(m, "applyContext no longer resolves the permissions map");
+  const setter = m[1];
+  assert.ok(
+    setter === "setPermissions" ||
+      new RegExp(`const ${setter}\\s*=\\s*[\\w.]+\\.begin<[^>]*>\\(setPermissions\\)`).test(body),
+    `the permissions answer goes to ${setter}, which does not reach setPermissions`,
+  );
+});
+
+test("a failed hourly refresh does not wipe the SAME user's permissions or MFA policy", () => {
+  // Both resolvers answer null on failure instead of rejecting, so a `.catch`
+  // guarded on newUser never ran and a null from the hourly TOKEN_REFRESHED
+  // was written over a good map. The null may land only for a new identity.
+  const body = stripComments(applyContextBody(read()));
+  for (const resolver of ["resolvePermissions", "resolveMfaPolicy"]) {
+    assert.match(body, new RegExp(`${resolver}\\(\\)\\.then\\(keepLastGood\\(\\w+,\\s*newUser\\)\\)`),
+      `${resolver}'s answer is applied without keepLastGood(…, newUser)`);
+  }
 });

@@ -81,19 +81,38 @@ function applyContextBody(rawSrc: string): string {
 }
 
 test("applyContext skips resolvePermissions() for a portal principal", () => {
+  // The RULE: the call sits inside a block whose condition requires a user AND
+  // excludes a portal principal — asked directly, or through a local bound to
+  // isPortalPrincipalPath(). It used to be spelled as the one literal form.
   const body = stripComments(applyContextBody(read()));
-  assert.match(
-    body,
-    /if\s*\(\s*u\s*&&\s*!\s*isPortalPrincipalPath\(\)\s*\)\s*\{\s*\n?\s*resolvePermissions\(\)/,
-    "resolvePermissions() must be called only when the caller is signed in " +
-    "AND is not a portal principal — a bare `if (u)` reintroduces the bug"
-  );
+  const m = body.match(/if\s*\(\s*u\s*&&\s*!\s*(isPortalPrincipalPath\(\)|(\w+))\s*\)\s*\{/);
+  assert.ok(m, "resolvePermissions() must be called only when the caller is signed in " +
+    "AND is not a portal principal — a bare `if (u)` reintroduces the bug");
+  if (m[2]) {
+    assert.match(body, new RegExp(`const ${m[2]}\\s*=\\s*isPortalPrincipalPath\\(\\)`),
+      `the guard tests ${m[2]}, which is not the portal-path answer`);
+  }
+  let depth = 0;
+  let i = (m.index ?? 0) + m[0].length - 1;
+  const open = i;
+  for (; i < body.length; i++) {
+    if (body[i] === "{") depth++;
+    else if (body[i] === "}" && --depth === 0) break;
+  }
+  assert.match(body.slice(open, i), /resolvePermissions\(\)/,
+    "resolvePermissions() is not inside the signed-in, non-portal block");
 });
 
 test("resolvePermissions() is still reachable for a genuinely new staff user", () => {
   // Negative-control companion to the guard above: the fix must narrow the
-  // condition, not delete the call. Same assertion the dedup-guard test file
-  // already makes; kept here too so this file alone proves the property.
+  // condition, not delete the call — and the answer must land in the
+  // permissions state, directly or through the latest-wins gate on it.
   const body = stripComments(applyContextBody(read()));
-  assert.match(body, /resolvePermissions\(\)\.then\(setPermissions\)/);
+  const m = body.match(/resolvePermissions\(\)\.then\((?:keepLastGood\()?(\w+)/);
+  assert.ok(m, "applyContext no longer resolves the permissions map");
+  assert.ok(
+    m[1] === "setPermissions" ||
+      new RegExp(`const ${m[1]}\\s*=\\s*[\\w.]+\\.begin<[^>]*>\\(setPermissions\\)`).test(body),
+    `the permissions answer goes to ${m[1]}, which does not reach setPermissions`,
+  );
 });
