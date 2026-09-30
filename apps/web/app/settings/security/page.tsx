@@ -23,6 +23,7 @@ import { ShieldCheck, Smartphone, Trash2, CheckCircle2, Loader2, AlertCircle, Ke
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
+import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 
 import { todayLocalISO } from "@/lib/dateMath";
 const MIN_PASSWORD_LENGTH = 10;
@@ -239,7 +240,7 @@ function MfaCard() {
       const all = ((data as { all?: Factor[] } | null)?.all ?? []) as Factor[];
       setFactors(all.filter((f) => f.factor_type === "totp"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load MFA status.");
+      setError(authErrorMessage(e, "Could not load MFA status."));
     } finally {
       setLoading(false);
     }
@@ -264,7 +265,7 @@ function MfaCard() {
       setEnrolling({ factorId: d.id, qr: d.totp.qr_code, secret: d.totp.secret });
       setCode("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start enrolment.");
+      setError(authErrorMessage(e, "Could not start enrolment."));
     } finally {
       setBusy(false);
     }
@@ -285,7 +286,7 @@ function MfaCard() {
       setNotice("Multi-factor authentication is now enabled for your account.");
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Invalid code — check your authenticator app and try again.");
+      setError(authErrorMessage(e, "Invalid code — check your authenticator app and try again."));
     } finally {
       setBusy(false);
     }
@@ -299,7 +300,7 @@ function MfaCard() {
       setNotice("Authenticator removed.");
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not remove the authenticator.");
+      setError(authErrorMessage(e, "Could not remove the authenticator."));
     } finally {
       setBusy(false);
     }

@@ -444,6 +444,7 @@ export default function OnboardingPage() {
             otpTrace("step 2 response: reauthenticate error", {
               code: raErr.code, status: raErr.status, message: raErr.message,
             });
+            if (isSessionMissingError(raErr)) throw new Error(SESSION_EXPIRED_MESSAGE);
             throw new Error(knownAuthErrorMessage(raErr) ?? "Could not send verification code. Please try again.");
           }
           otpTrace("step 2 response: reauthenticate OK — verification code emailed");
@@ -530,6 +531,7 @@ export default function OnboardingPage() {
         otpTrace("resend response: reauthenticate error", {
           code: raErr.code, status: raErr.status, message: raErr.message,
         });
+        if (isSessionMissingError(raErr)) throw new Error(SESSION_EXPIRED_MESSAGE);
         throw new Error(knownAuthErrorMessage(raErr) ?? "Could not resend the code. Please try again in a moment.");
       }
       setReauthOtp("");

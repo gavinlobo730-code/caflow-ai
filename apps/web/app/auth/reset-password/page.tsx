@@ -35,7 +35,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api, type ApiResp } from "@/lib/api";
-import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
+import {
+  setPasswordWithReauthNonce,
+  isInvalidNonceError,
+  isSessionMissingError,
+  RESET_LINK_ENDED_MESSAGE,
+} from "@/lib/auth/reauth";
 import { authErrorMessage, knownAuthErrorMessage } from "@/lib/auth/authErrorMessage";
 import { hasRecoveryMarkerInUrl } from "@/lib/auth/recoveryLink";
 import { ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
@@ -118,8 +123,10 @@ export default function ResetPasswordPage() {
     try {
       const { error: upErr } = await supabase.auth.updateUser({ password: pw });
       if (upErr) {
+        if (isSessionMissingError(upErr)) throw new Error(RESET_LINK_ENDED_MESSAGE);
         if (upErr.message.toLowerCase().includes("reauthentication")) {
           const { error: raErr } = await supabase.auth.reauthenticate();
+          if (raErr && isSessionMissingError(raErr)) throw new Error(RESET_LINK_ENDED_MESSAGE);
           if (raErr) throw new Error(knownAuthErrorMessage(raErr) ?? "Could not send a verification code. Please try again.");
           setStage("reauth");
           return;
@@ -145,9 +152,11 @@ export default function ResetPasswordPage() {
       const { error: upErr } = await setPasswordWithReauthNonce(supabase.auth, pwRef.current, reauthOtp);
       if (upErr) {
         throw new Error(
-          isInvalidNonceError(upErr)
-            ? "That code is incorrect or has expired. Request a new reset link and try again."
-            : authErrorMessage(upErr),
+          isSessionMissingError(upErr)
+            ? RESET_LINK_ENDED_MESSAGE
+            : isInvalidNonceError(upErr)
+              ? "That code is incorrect or has expired. Request a new reset link and try again."
+              : authErrorMessage(upErr),
         );
       }
       setStage("done");

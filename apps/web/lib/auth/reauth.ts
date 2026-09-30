@@ -47,6 +47,10 @@ export function isSessionMissingError(err: Pick<AuthError, "message"> | null | u
 export const SESSION_EXPIRED_MESSAGE =
   "This sign-up link has expired or you are not signed in. Please request a new sign-up link or sign in.";
 
+/** The same, on the reset-password page, where the visitor has no working password. */
+export const RESET_LINK_ENDED_MESSAGE =
+  "This password-reset link has expired or has already been used. Please request a new reset link.";
+
 /**
  * Finalize a password change using the reauthentication nonce emailed by
  * supabase.auth.reauthenticate(). The nonce is sent VERBATIM (only trimmed) —

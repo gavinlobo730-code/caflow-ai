@@ -8,9 +8,15 @@
 //
 // Dependency-free so it strips to plain JS for `node --experimental-strip-types`.
 
-type ErrorLike = { code?: unknown; name?: unknown; status?: unknown; message?: unknown };
+type ErrorLike = {
+  code?: unknown; name?: unknown; status?: unknown; message?: unknown; reasons?: unknown;
+};
 
 const TRY_AGAIN_SHORTLY = "Please wait a few minutes and try again.";
+// Reached from screens where the visitor may have no password yet (onboarding,
+// reset-password), so it must not point them only at a sign-in form.
+const SESSION_ENDED =
+  "Your session has ended. Open a fresh link from your email, or sign in again.";
 
 export const AUTH_ERROR_SENTENCES: Readonly<Record<string, string>> = {
   over_email_send_rate_limit:
@@ -27,15 +33,19 @@ export const AUTH_ERROR_SENTENCES: Readonly<Record<string, string>> = {
   reauthentication_needed:
     "For your security we need to confirm it is you. Request a verification code and try again.",
   same_password: "Your new password must be different from your current one.",
-  weak_password: "That password is too easy to guess. Use a longer password with a mix of words, numbers or symbols.",
+  weak_password: "That password is not strong enough. Please choose a different one.",
   invalid_credentials: "The email or password is incorrect.",
   email_not_confirmed: "Please confirm your email address first, using the link we emailed you.",
   user_banned: "This account has been disabled. Please contact your firm's administrator.",
   signup_disabled: "New sign-ups are not open at the moment.",
-  session_expired: "Your session has expired. Please sign in again.",
-  session_not_found: "Your session has expired. Please sign in again.",
-  refresh_token_not_found: "Your session has expired. Please sign in again.",
-  refresh_token_already_used: "Your session has expired. Please sign in again.",
+  session_expired: SESSION_ENDED,
+  session_not_found: SESSION_ENDED,
+  refresh_token_not_found: SESSION_ENDED,
+  refresh_token_already_used: SESSION_ENDED,
+  mfa_verification_failed:
+    "That code is incorrect. Enter the current six-digit code from your authenticator app.",
+  mfa_challenge_expired:
+    "That code was entered too late. Enter the current six-digit code from your authenticator app.",
   request_timeout: "The sign-in service took too long to respond. Please try again.",
   hook_timeout: "The sign-in service took too long to respond. Please try again.",
   hook_timeout_after_retry: "The sign-in service took too long to respond. Please try again.",
@@ -47,11 +57,36 @@ function asErrorLike(err: unknown): ErrorLike | null {
   return err !== null && typeof err === "object" ? (err as ErrorLike) : null;
 }
 
+export const PASSWORD_BREACHED =
+  "This password has appeared in a known data breach, so it cannot be used. Please choose a different one.";
+
+/**
+ * weak_password says WHICH rule failed in `reasons` (auth-js
+ * AuthWeakPasswordError), and the server's own message states the rule
+ * exactly: the required character groups, or the minimum length. The screens
+ * check only length before submitting, so a generic sentence would hide the
+ * one detail the CA needs.
+ */
+function weakPasswordMessage(e: ErrorLike): string {
+  const reasons = Array.isArray(e.reasons) ? e.reasons.filter((r) => typeof r === "string") : [];
+  const serverSays = typeof e.message === "string" ? e.message.trim() : "";
+  if (reasons.includes("characters") && serverSays) return serverSays;
+  const parts: string[] = [];
+  if (reasons.includes("length")) {
+    const n = /at least (\d+) characters/i.exec(serverSays)?.[1];
+    parts.push(n ? `Use at least ${n} characters.` : "That password is too short. Please use a longer one.");
+  }
+  if (reasons.includes("pwned")) parts.push(PASSWORD_BREACHED);
+  if (parts.length) return parts.join(" ");
+  return serverSays || AUTH_ERROR_SENTENCES.weak_password;
+}
+
 /** The plain sentence for an error this module recognises, or null. */
 export function knownAuthErrorMessage(err: unknown): string | null {
   const e = asErrorLike(err);
   if (!e) return null;
   const code = typeof e.code === "string" ? e.code : "";
+  if (code === "weak_password") return weakPasswordMessage(e);
   if (code && Object.prototype.hasOwnProperty.call(AUTH_ERROR_SENTENCES, code)) {
     return AUTH_ERROR_SENTENCES[code];
   }
