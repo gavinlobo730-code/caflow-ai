@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import * as XLSX from "xlsx";
+// xlsx is fetched by the export click below and is NOT imported here: a static
+// `import * as XLSX from "xlsx"` put SheetJS (135 KB gzip) in this page's first
+// load for a button most visits never press. Namespace object, never `.default`
+// (scripts/a-dynamic-xlsx-import-has-no-default.test.ts); the rule that no file
+// imports it statically is scripts/the-spreadsheet-library-is-not-in-the-first-load.test.ts.
 import {
   ArrowLeft, RefreshCw, AlertTriangle, Info, Loader2, Download,
   TrendingUp, TrendingDown, Minus,
@@ -119,8 +123,15 @@ export default function ClientTrendPage() {
     return `${y}-${String(y + 1).slice(2)}`;
   });
 
-  const exportExcel = useCallback(() => {
+  const exportExcel = useCallback(async () => {
     if (!trend) return;
+    let XLSX: typeof import("xlsx");
+    try {
+      XLSX = await import("xlsx");
+    } catch {
+      setError("Could not load the Excel writer. Check your connection and try again.");
+      return;
+    }
     // Rupees at the spreadsheet boundary only — the wire and every computation
     // above are integer paise. A money cell is a NUMBER so `=SUM()` works;
     // the RATIO rows share these columns and stay STRINGS ("12.5%", "1.8
