@@ -85,7 +85,7 @@ const TIERS: Tier[] = [
 ];
 
 const INCLUDED = [
-  { title: "Database in Mumbai", desc: "Your firm's and clients' records are stored in a database in the Mumbai region. The application servers run in Singapore, and the AI features send document text to providers outside India." },
+  { title: "Database in Mumbai", desc: "Records sit in a Mumbai database. The servers that run the application are in Singapore, and the AI features call providers outside India." },
   { title: "Two-factor authentication", desc: "TOTP two-factor for Partners and Managers on firm administration, billing, payroll and approvals, and role-based access on every account." },
   { title: "Nothing auto-submitted", desc: "PracticeSync prepares the return; a CA files it on the portal. The software never transmits anything to a government portal." },
   { title: "Free trial, no card", desc: "Start on any plan with a free trial and no credit card required." },
