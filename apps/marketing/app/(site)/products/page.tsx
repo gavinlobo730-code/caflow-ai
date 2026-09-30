@@ -90,7 +90,7 @@ const MODULES = [
     points: [
       "Monthly salary runs and payslip generation",
       "EPF on the Code on Social Security wage base, ESI, and §192 TDS on salary",
-      "Employee portal — payslips to download, leave balance, and the tax deducted so far",
+      "Employee portal — payslips, leave balance, the tax declaration and a projection of the tax to be deducted",
       "Form 12BB tax declarations filed by the employee, not retyped by you",
       "Full-and-final settlement, gratuity and leave encashment",
       "Where a state's professional tax or LWF is not modelled, the run says so instead of deducting nothing silently",
@@ -99,21 +99,21 @@ const MODULES = [
   {
     eyebrow: "Clients & CRM",
     title: "One record for everything about a client",
-    desc: "Every entity, relationship and engagement in a single place, with health scoring and a secure portal to collect documents and share updates.",
+    desc: "Every entity, relationship and engagement in a single place, with health scoring and a secure portal to share documents and updates with your client.",
     points: [
       "One record per client, with all their entities together",
       "Entity relationships and ownership maps",
       "Client-health scoring and lifecycle tracking",
       "Tasks and engagement letters, signed by the client on a link",
-      "Secure client portal for documents and updates",
+      "Secure client portal — the documents you share, what you have asked for, and messages",
     ],
   },
   {
     eyebrow: "AI Assistant & Document Intelligence",
-    title: "An assistant that already knows your practice",
-    desc: "Ask about any client in plain language, pull data straight out of invoices and documents, and let proactive insights surface what needs attention — always reviewed by you before anything is acted on.",
+    title: "An assistant for the work in front of you",
+    desc: "Ask what is outstanding across your clients in plain language, pull data straight out of invoices and documents, and let proactive insights surface what needs attention — always reviewed by you before anything is acted on.",
     points: [
-      "Chat and ask about any client or engagement",
+      "Chat about what is outstanding across your clients and engagements",
       "Auto-extract data from invoices and bills — typed PDFs and photographed ones",
       "Draft client replies and notices",
       "Proactive insights and deadline reminders",
@@ -143,22 +143,22 @@ const MODULES = [
   },
   {
     eyebrow: "Moving from Tally",
-    title: "Bring the history with you",
-    desc: "A staged import that parses, validates and shows you a preview before anything is written — and rolls the whole batch back if the preview is wrong.",
+    title: "Bring your customers and suppliers across",
+    desc: "A staged import that parses, validates and shows you a preview before anything is written — and rolls the whole batch back if the preview is wrong. It writes customer and vendor masters today.",
     points: [
-      "Ledgers, journals, customers, vendors, masters and opening balances",
+      "Customer and vendor masters, written from a Tally XML export",
+      "Ledgers, journals and opening balances are read and checked but not yet written — you enter those through the chart of accounts, a journal or the opening-balance screens",
       "Parse → validate → preview → import, with the preview before the write",
       "Roll a completed batch back if it went in wrong",
-      "Imported entries post through the same ledger as everything else",
     ],
   },
 ];
 
 const SECURITY = [
-  { title: "Data hosted in India", desc: "Your firm's and your clients' data is stored on infrastructure hosted in India." },
+  { title: "Database in Mumbai", desc: "Your firm's and your clients' records are stored in a database in the Mumbai region. The application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India." },
   { title: "Role-based access", desc: "Give every team member exactly the access their role needs — and nothing more." },
-  { title: "Two-factor authentication", desc: "TOTP-based MFA protects every firm sign-in to the platform." },
-  { title: "Full audit logs", desc: "A complete record of who viewed, edited, approved and recorded as filed — for every client." },
+  { title: "Two-factor authentication", desc: "TOTP-based MFA is required of Partners and Managers on firm administration, billing, payroll and approvals. Executives and Reviewers are not asked for it today." },
+  { title: "Audit log of changes", desc: "A record of who created, changed and deleted what, for every client. It records changes, not who looked at a screen." },
 ];
 
 export default function ProductsPage() {

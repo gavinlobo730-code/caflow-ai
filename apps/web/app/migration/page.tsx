@@ -10,6 +10,9 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { api, request } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
+import {
+  ALL_IMPORT_TYPES, importTypeNote, migrationSubtitle, noClientOptionLabel,
+} from "@/lib/migration/writtenTypes";
 
 /**
  * ONE CALL, ANSWERED AS DATA OR AS THE SERVER'S SENTENCE.
@@ -87,7 +90,7 @@ const STATUS_COLOR: Record<string, string> = {
   error: "bg-state-problem-surface text-state-problem",
 };
 
-const IMPORT_TYPES = ["ledgers", "journals", "customers", "vendors", "opening_balances", "masters"];
+const IMPORT_TYPES: readonly string[] = ALL_IMPORT_TYPES;
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
 // 1 April with nothing saying so. `financialYearChoicesAround` is the one
@@ -530,7 +533,7 @@ export default function MigrationPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-ps-ink">Migration Center</h2>
-          <p className="text-xs text-ps-hint mt-0.5">Import data from Tally — Masters, Ledgers, Journals, Balances</p>
+          <p className="text-xs text-ps-hint mt-0.5">{migrationSubtitle()}</p>
         </div>
         {canStartImport && (
           <button onClick={() => { setShowCreate(true); setStep("create"); setJobId(null); setParseResult(null); setImportResult(null); setProgress(null); setClientId(""); setError(null); }}
@@ -587,7 +590,7 @@ export default function MigrationPage() {
                   </label>
                   <select value={clientId} onChange={e => setClientId(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg bg-white">
-                    <option value="">No client — firm-level ledgers and journals</option>
+                    <option value="">{noClientOptionLabel()}</option>
                     {clients.map(c => (
                       <option key={c.id} value={c.id}>{c.client_name ?? c.id}</option>
                     ))}
@@ -601,6 +604,9 @@ export default function MigrationPage() {
                     <button key={t} onClick={() => toggleType(t)}
                       className={`text-3xs px-2 py-1 rounded-full border ${selectedTypes.includes(t) ? "bg-brand text-white border-brand" : "border-ps-border text-ps-label"}`}>
                       {t}
+                      {importTypeNote(t) && (
+                        <span className="opacity-70"> · {importTypeNote(t)}</span>
+                      )}
                     </button>
                   ))}
                 </div>

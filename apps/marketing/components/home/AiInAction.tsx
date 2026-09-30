@@ -37,9 +37,9 @@ import { Sparkles } from "../icons";
 
 const STEPS = [
   {
-    surface: "Client portal",
-    title: "Your client sends a photo of a purchase bill",
-    body: "They upload it to the portal you invited them to, against the document you asked for. No email thread, no WhatsApp forward to chase.",
+    surface: "Upload",
+    title: "A photo of a purchase bill is uploaded against the client",
+    body: "Your team uploads the photo or PDF a client sends, against that client's books — one upload, straight into the reader below.",
   },
   {
     surface: "Document intelligence",

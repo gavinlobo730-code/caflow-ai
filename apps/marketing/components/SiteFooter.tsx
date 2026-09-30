@@ -99,7 +99,7 @@ export function SiteFooter() {
             </Link>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              Data hosted in India
+              Database in Mumbai
             </span>
           </div>
         </div>

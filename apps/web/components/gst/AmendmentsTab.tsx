@@ -226,6 +226,13 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
           </div>
         )}
 
+        {exceptions?.status === "ok" && exceptions.registration_caveat && (
+          <p role="alert"
+             className="text-xs px-3 py-2 rounded-lg border border-state-attention-border bg-state-attention-surface text-state-attention">
+            {exceptions.registration_caveat}
+          </p>
+        )}
+
         {exceptions?.status === "ok" && (
           exceptions.clean ? (
             <p className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700">

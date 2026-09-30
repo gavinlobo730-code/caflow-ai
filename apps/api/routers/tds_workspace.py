@@ -1440,9 +1440,14 @@ def create_certificate(
     current_user: dict = Depends(rbac("tds", "compute")),
 ):
     """
-    Generate Form 16/16A DRAFT certificate. IT Act §203.
+    Record a Form 16/16A certificate in the client's register. IT Act §203.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to TRACES or deductee.
-    Draft only — CA must review and sign before issuance.
+
+    THIS INSERTS A REGISTER ROW AND PRODUCES NO DOCUMENT (TDS-INCOME-TAX-33).
+    The certificate itself — Form 16 / 16A, Form 130 / 131 from FY 2026-27 — is
+    generated and downloaded from TRACES; nothing here renders one. The route and
+    the `tds_certificates` table keep their names, but the screen must not say
+    "generate" or "draft" over a row that holds a PAN, a section and an amount.
     """
     try:
         assert_client_access(current_user, body.client_id)

@@ -585,7 +585,7 @@ export default function TDSReturnsPage() {
               <button onClick={() => result && downloadTDSJSON(result)}
                 className="flex items-center gap-2 bg-white border border-gray-300 text-ps-body px-4 py-2 rounded-lg text-sm font-medium hover:bg-ps-bg">
                 <Download size={15} />
-                Download JSON (for e-filing upload)
+                Download the prepared figures (JSON)
               </button>
             )}
             {/* Only on an approved return, and only where the server says

@@ -5086,6 +5086,77 @@ not parse, so `"1200abc"` passed at 1200 while `toPaise` returned NaN, and
   `return_type` and a migration replacing migration 319's
   `UNIQUE (firm_id, client_id, financial_year, itr_form)`.
 
+## A screen says what it read, what it did not, and what it will not do
+
+Five small rules from the 30-09-2026 sweep, each with a guard, and all of them one
+shape: **an unknown is never rendered as a value, and a label never promises more
+than the code does.**
+
+- **AN ABSENT VALUE IS UNKNOWN, AND A GENUINE ZERO IS A READING** (AI-01).
+  `_parse_extraction_json` read `int(gst_rate_bps or 1800)` and
+  `float(quantity or 1)`; `0` is falsy, so a nil-rated or exempt line came back as
+  **18%**, and the editor added `unit: "NOS"` and `gst_rate ?? 1800` beside it.
+  `domain/extraction_lines.read_line` keeps a real 0 as 0, leaves what nobody read as
+  `None`, and names it in `not_read` on the line; `unread_fields` judges a line from
+  its VALUES, so the parser's own output and an `extracted_data` body a client posts
+  back to `POST /purchase-bills/from-document` are read the same way. **That door
+  REFUSES (422) a line whose quantity, rate or GST rate nobody read** — it used to
+  book a missing rate at 0% while the editor booked the same unknown at 18%, two doors
+  and two answers. `unit` is read only where it IS one of CBIC's codes
+  (`domain/gst/uqc`); `Kg` is kept as `unit_as_printed` and never converted. In the
+  browser `lib/purchases/extractedLine.ts` builds the editor line with nothing invented
+  and is its OWN module because `billEditor.ts` is pinned to know nothing of an AI
+  reading's totals. An unread quantity, rate or GST rate blocks the save with its own
+  message (an unconfirmed line would otherwise be dropped by `buildLinePayload`'s
+  filter); an unread unit is flagged but saves, and the caption says the server's
+  existing `unit or "NOS"` fallback on the bill-create path applies — **that fallback
+  is a separate invention at a separate door and is left for an owner decision.**
+  Two other `?? 1800` sites (`RecurringBills.tsx`, the recurring-invoice editor) load
+  STORED template lines whose column is required, and are not this defect.
+- **A STORED GST RATE IS NEVER ROUNDED ON THE WAY INTO A SCREEN** (GST-01/02). Six
+  editors loaded `gst_rate_bps` with `Math.round(bps / 100)` and the sales invoice saved
+  with `parseInt`, so 7.5% reopened as 8% and 1.5% as 2%, and a re-save wrote the wrong
+  tax into GSTR-1 and GSTR-3B. `lib/invoices/gst.gstRateToPercent` divides and never
+  rounds (it is NOT named `…FromBps`: `every-amount-field-uses-the-one-parser` reads a
+  name ending in `Bps` that takes a string as a paise maker), and `gstRateOptions` adds
+  a stored rate that is not on the list to the dropdown instead of losing it. The list
+  carries 40% (IGST §5(1), from 22-09-2025, `[S]`) beside the 12% and 28% that
+  documents before that date still carry. `shared/gst-parity-vectors.json` gained seven
+  vectors, **appended** — the `documents` vectors select cases by POSITION.
+- **AN UNVERIFIED YEAR SAYS SO IN WORDS, AND PAYROLL ASKS IT** (TDS-INCOME-TAX-19,
+  PAYROLL-09). `statutory_rates.fy_rate_gap` is the one sentence, in two kinds — a
+  year the registry does not hold (a substitution) and one it holds but has not read
+  against its Finance Act (carried forward) — and `itr_engine._stamp_rate_provenance`
+  and `routers/payroll._withholding_rate_gap` both take it from there. **Consequence
+  worth knowing: while FY 2026-27 is unverified, every payroll run for that year
+  carries a statutory gap, so finalising needs the typed reason the release path
+  already demands.** That is the finding's own design, not a side effect; verifying the
+  year (a human step, `docs/compliance/`) turns it off, and the gap is recomputed at
+  release so the draft need not be rebuilt.
+- **A RETURN FOR ONE OF SEVERAL REGISTRATIONS SAYS ITS DOCUMENTS ARE NOT SPLIT**
+  (GST-04, GST-05). No invoice, bill or note names a registration and every fetch is by
+  client, so a return "for" a second GSTIN contains all of the client's documents.
+  `registrations.documents_not_split_caveat` returns the sentence for EVERY registration
+  that files GSTR-1 and GSTR-3B, the primary included (its return is built from the same
+  client-wide documents). It is a CAVEAT — `GAP_RETURN_CAVEAT` in GSTR-1's gaps and
+  `registration_caveat` on GSTR-3B, always present and null where the client holds one —
+  and NOT a refusal, because a saved return must stay readable and markable as filed.
+  `gst_exception_service._filed_return` takes the GSTIN with no default (migration 390
+  keyed `gstr1_returns` on it; the old `limit(1)` read whichever row came first).
+  GST-16, attributing each document to a registration, is what retires the caveat.
+  `gst_amendment_service` still asks the exception report for the primary only.
+- **THE PUBLIC SITE IS HELD TO THE CODE FROM THE PYTHON SIDE**
+  (`tests/test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py`; the
+  marketing app has no test runner). MFA is required of Partner and Manager on the routers
+  that carry `mfa_guard`, not "every sign-in"; the audit log records changes, not views;
+  the database is in Mumbai, the API in Singapore, and AI calls leave India; the Tally
+  importer writes customer and vendor masters only (the Migration Center's copy is built
+  from `lib/migration/writtenTypes.ts`, pinned to `WRITTEN_ITEM_TYPES`); no ITR JSON or FVU
+  file is produced; a client cannot upload to the portal; TDS return dates are
+  Q1 31 Jul · Q2 31 Oct · Q3 31 Jan · Q4 31 May, asserted against `compliance_engine`. The
+  TDS certificate screen **records** a register row and says the certificate comes from
+  TRACES; the returns screen offers "the prepared figures", not an e-filing upload.
+
 ## Bug fixing
 
 - When the user reports a bug, don't just patch the one instance. Identify the underlying pattern (wrong column name, missing null check, stale label, unapplied migration, etc.) and grep/search the rest of the codebase for the same pattern before calling the fix done. Report what else was found, even if you decide not to touch it.

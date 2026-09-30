@@ -1599,6 +1599,139 @@
         "igst_paise": 0,
         "line_total_paise": 123456
       }
+    },
+    {
+      "label": "slab 40% intra",
+      "qty": "1",
+      "rate": "1234.56",
+      "gst_rate_percent": 40,
+      "is_interstate": false,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 123456,
+        "gst_rate_bps": 4000
+      },
+      "expected": {
+        "taxable_paise": 123456,
+        "cgst_paise": 24691,
+        "sgst_paise": 24691,
+        "igst_paise": 0,
+        "line_total_paise": 172838
+      }
+    },
+    {
+      "label": "slab 40% inter",
+      "qty": "1",
+      "rate": "1234.56",
+      "gst_rate_percent": 40,
+      "is_interstate": true,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 123456,
+        "gst_rate_bps": 4000
+      },
+      "expected": {
+        "taxable_paise": 123456,
+        "cgst_paise": 0,
+        "sgst_paise": 0,
+        "igst_paise": 49382,
+        "line_total_paise": 172838
+      }
+    },
+    {
+      "label": "40% slab, round amount",
+      "qty": "1",
+      "rate": "1000.00",
+      "gst_rate_percent": 40,
+      "is_interstate": false,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 100000,
+        "gst_rate_bps": 4000
+      },
+      "expected": {
+        "taxable_paise": 100000,
+        "cgst_paise": 20000,
+        "sgst_paise": 20000,
+        "igst_paise": 0,
+        "line_total_paise": 140000
+      }
+    },
+    {
+      "label": "40% slab, odd paise splits 20+20",
+      "qty": "1",
+      "rate": "333.33",
+      "gst_rate_percent": 40,
+      "is_interstate": false,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 33333,
+        "gst_rate_bps": 4000
+      },
+      "expected": {
+        "taxable_paise": 33333,
+        "cgst_paise": 6666,
+        "sgst_paise": 6667,
+        "igst_paise": 0,
+        "line_total_paise": 46666
+      }
+    },
+    {
+      "label": "40% slab inter-state, all IGST",
+      "qty": "1",
+      "rate": "333.33",
+      "gst_rate_percent": 40,
+      "is_interstate": true,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 33333,
+        "gst_rate_bps": 4000
+      },
+      "expected": {
+        "taxable_paise": 33333,
+        "cgst_paise": 0,
+        "sgst_paise": 0,
+        "igst_paise": 13333,
+        "line_total_paise": 46666
+      }
+    },
+    {
+      "label": "slab 1.5% inter",
+      "qty": "1",
+      "rate": "1234.56",
+      "gst_rate_percent": 1.5,
+      "is_interstate": true,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 123456,
+        "gst_rate_bps": 150
+      },
+      "expected": {
+        "taxable_paise": 123456,
+        "cgst_paise": 0,
+        "sgst_paise": 0,
+        "igst_paise": 1851,
+        "line_total_paise": 125307
+      }
+    },
+    {
+      "label": "slab 7.5% inter",
+      "qty": "1",
+      "rate": "1234.56",
+      "gst_rate_percent": 7.5,
+      "is_interstate": true,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 123456,
+        "gst_rate_bps": 750
+      },
+      "expected": {
+        "taxable_paise": 123456,
+        "cgst_paise": 0,
+        "sgst_paise": 0,
+        "igst_paise": 9259,
+        "line_total_paise": 132715
+      }
     }
   ]
 }

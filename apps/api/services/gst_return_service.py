@@ -28,6 +28,7 @@ import services.gst_advance_service as gst_advance_service
 import services.itc_register_service as itc_register_service
 import services.bill_of_entry_service as bill_of_entry_service
 import services.client_gst_turnover_service as client_gst_turnover_service
+import services.client_gst_registration_service as client_gst_registration_service
 from domain.gst.gstr3b_computer import (
     SalesTransaction, PurchaseTransaction, ITCReversal, GSTR2ARecord,
     ImportOfGoods,
@@ -2107,6 +2108,14 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # 4(D)(2) — carried their reason only in a source comment beside the
         # literal zero. A superset, so a screen renders one list.
         "undeclarable_rows": _undeclarable_rows(),
+        # A CLIENT WITH SEVERAL REGISTRATIONS (GST-05). Every document here is
+        # fetched by client and none names a registration, so this return
+        # contains the client's documents whichever GSTIN it is for. A sentence,
+        # or None — ALWAYS PRESENT, because an absent key and a null key read
+        # the same to a screen and are different states: null says the question
+        # was asked and the answer was no.
+        "registration_caveat": client_gst_registration_service.documents_not_split_caveat(
+            db, firm_id, client_id, gstin),
         # WHAT THE BANK LINES PUT ON THE RETURN, AND WHAT THEY CANNOT SUPPLY
         # (BANK-24). A charge the CA marked as carrying GST now reaches Table
         # 4(A)(5) and a receipt so marked reaches 3.1(a) — both were on the
@@ -2714,6 +2723,20 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             "kind": gstr1_builder.GAP_RETURN_CAVEAT,
             "reference_no": window.key,
             "reason": return_period.IFF_AVAILABLE,
+        })
+
+    # A CLIENT WITH SEVERAL REGISTRATIONS (GST-05). Nothing on an invoice, note
+    # or bill names the registration it belongs to, so this return is built from
+    # the client-wide documents whichever GSTIN it is "for". Said on the return
+    # as a caveat — not refused, because a saved return must stay readable — and
+    # asked once, here, rather than by each router that calls this.
+    registration_caveat = client_gst_registration_service.documents_not_split_caveat(
+        db, firm_id, client_id, gstin)
+    if registration_caveat:
+        payload.gaps.append({
+            "kind": gstr1_builder.GAP_RETURN_CAVEAT,
+            "reference_no": gstin,
+            "reason": registration_caveat,
         })
 
     # Reconcile output tax to the GL. GSTR-1 tax total is gross (before credit

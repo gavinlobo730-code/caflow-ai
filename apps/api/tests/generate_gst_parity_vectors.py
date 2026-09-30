@@ -72,6 +72,22 @@ CASES = [
     ("zero rate",                                 "1", "0.00", 18, False),
     ("zero quantity",                             "0", "1234.56", 18, False),
     ("zero GST (exempt supply)",                  "1", "1234.56", 0, False),
+    # ── APPENDED, never inserted: the `documents` block below selects cases by
+    #    POSITION, so inserting above would silently change which lines an
+    #    existing document vector is built from. ───────────────────────────────
+    # The 40% slab (IGST Act §5(1) caps the integrated rate at 40%; CGST §9(1)
+    # caps each of CGST and SGST at 20%, so an intra-state 40% splits 20+20).
+    # The screen's rate list used to stop at 28, so a 40% line could not be
+    # raised at all.
+    ("slab 40% intra",                            "1", "1234.56", 40, False),
+    ("slab 40% inter",                            "1", "1234.56", 40, True),
+    ("40% slab, round amount",                    "1", "1000.00", 40, False),
+    ("40% slab, odd paise splits 20+20",          "1", "333.33", 40, False),
+    ("40% slab inter-state, all IGST",            "1", "333.33", 40, True),
+    # Fractional slabs that the editors used to round on reopen (7.5 -> 8,
+    # 1.5 -> 2): pin the inter-state split of each.
+    ("slab 1.5% inter",                           "1", "1234.56", 1.5, True),
+    ("slab 7.5% inter",                           "1", "1234.56", 7.5, True),
 ]
 
 

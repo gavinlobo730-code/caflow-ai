@@ -952,9 +952,9 @@ function CertificatesTab({ clientId }: { clientId: string }) {
         method: "POST",
         body: JSON.stringify({ ...form, client_id: clientId, tds_amount_paise: tdsAmount }),
       });
-      if (!res.success) { setSaveError(res.error ?? "Could not generate the certificate draft."); return; }
+      if (!res.success) { setSaveError(res.error ?? "Could not record the certificate."); return; }
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Could not generate the certificate draft.");
+      setSaveError(e instanceof Error ? e.message : "Could not record the certificate.");
       return;
     }
     setShowNew(false);
@@ -964,19 +964,27 @@ function CertificatesTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="font-medium">TDS Certificates (Form 16/16A)</h3>
+        <h3 className="font-medium">TDS certificate register (Form 16/16A)</h3>
         <button onClick={() => setShowNew(true)}
           className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-          + Generate Draft
+          + Record certificate
         </button>
       </div>
+      {/* The register entry is ALL this creates. No certificate document is
+          produced here — Form 16 / 16A (Form 130 / 131 from FY 2026-27) are
+          generated and downloaded from TRACES — and a button reading
+          "Generate" over a row that holds a PAN, a section and an amount told
+          a CA one had been drafted (TDS-INCOME-TAX-33). IT Act §203 makes the
+          deductor responsible for issuing the certificate. */}
       <div className="rounded border p-3 bg-state-attention-surface text-xs text-state-attention">
-        ⚠ Certificates are draft only. CA must review and sign before issuance. IT Act §203.
+        ⚠ This records a certificate in your register so you can track it. PracticeSync does not
+        produce the certificate itself: generate Form 16 / 16A on TRACES, sign and issue it, then
+        record it here. IT Act §203.
       </div>
 
       {showNew && (
         <div className="border rounded p-4 bg-ps-bg space-y-3">
-          <p className="text-sm font-medium">Generate Certificate Draft</p>
+          <p className="text-sm font-medium">Record a certificate</p>
           <div className="grid grid-cols-2 gap-3">
             {[
               { key: "deductee_pan", placeholder: "Deductee PAN" },
@@ -1003,7 +1011,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
           </div>
           {saveError && <p className="text-sm text-state-problem">{saveError}</p>}
           <div className="flex gap-2">
-            <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Generate Draft</button>
+            <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Record certificate</button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -1041,7 +1049,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2">{rupees((r.tds_deducted_paise as number) ?? 0)}</td>
                 <td className="px-3 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${KYC_COLORS["pending"]}`}>
-                    Draft — CA Review Required
+                    Recorded — issue from TRACES
                   </span>
                 </td>
               </tr>
@@ -1052,7 +1060,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No certificates generated.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No certificates recorded.</td></tr>
             )}
           </tbody>
         </table>

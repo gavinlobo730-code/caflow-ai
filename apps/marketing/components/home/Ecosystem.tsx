@@ -105,7 +105,7 @@ const MODULES: Module[] = [
     label: "Clients",
     icon: <Building size={16} />,
     headline: "One record for everything about a client",
-    body: "Every entity, relationship and engagement together, with a secure portal for collecting documents and sharing what you have done.",
+    body: "Every entity, relationship and engagement together, with a secure portal for sharing documents and what you have done.",
     points: [
       "All of a client's entities under one record",
       "Ownership maps and cross-client relationships",

@@ -211,6 +211,40 @@ def rates_for(fy: str | None = None) -> FYTaxRates:
     return RATES_BY_FY[LATEST_VERIFIED_FY]
 
 
+def fy_rate_gap(fy: str | None = None) -> str | None:
+    """The sentence naming what could not be confirmed for this year's income-tax
+    rates, or None. The TDS registry's `section_rates.fy_rate_gap`, for slabs.
+
+    TWO DIFFERENT SENTENCES, because they are two different problems and a CA
+    can act on only one of them. A year the registry has never heard of is a
+    SUBSTITUTION — `rates_for` silently answered with `LATEST_VERIFIED_FY`'s
+    figures — and every number may be wrong in either direction. A year held but
+    unverified (FY 2026-27 today) is this year's own table, carried forward on
+    the assumption that the Finance Act changed nothing and not yet read against
+    it. Both used to live inline in `itr_engine._stamp_rate_provenance`, and only
+    the first was ever said in words: the second returned `rates_verified:
+    False` with an empty `warnings`, and payroll — which withholds §192 tax at
+    these very rates and never read the flag — said nothing at all (PAYROLL-09).
+    """
+    key = (fy or "").strip() or current_fy()
+    entry = RATES_BY_FY.get(key)
+    if entry is None:
+        return (
+            f"No rates are held for FY {key}; this was computed at "
+            f"FY {LATEST_VERIFIED_FY} rates. Slabs, surcharge, rebate and the entity and "
+            f"minimum-tax rates all move by Finance Act, so treat every figure "
+            f"as indicative until FY {key} is added to the registries.")
+    if not entry.verified:
+        return (
+            f"FY {key} rates were carried forward from FY "
+            f"{LATEST_VERIFIED_FY} on the assumption that the Finance Act changed "
+            f"nothing, and have not been read against that year's Finance Act. "
+            f"Slabs, surcharge, rebate and the entity and minimum-tax rates all "
+            f"move by Finance Act, so treat every figure as indicative until FY "
+            f"{key} is verified.")
+    return None
+
+
 # ── Pure computation helpers (paise in, paise out; never float) ─────────────
 
 def slab_tax_paise(taxable_income_paise: int, slabs: tuple[SlabBracket, ...]) -> int:

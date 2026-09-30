@@ -23,7 +23,7 @@ import { useServerTdsPreview } from "@/lib/purchases/serverTdsPreview";
 import { formatMoney } from "@/lib/services/formatting";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-import { apiCall, apiGet, getAuthToken, fmt, GST_RATES, type CurrencyOption } from "@/lib/invoices/shared";
+import { apiCall, apiGet, getAuthToken, fmt, gstRateOptions, gstRateToPercent, type CurrencyOption } from "@/lib/invoices/shared";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
 import {
@@ -32,6 +32,9 @@ import {
   lineIsItcEligible, reasonForHintLabel, supplySplitPreview,
   type PurchaseBillLine,
 } from "@/lib/purchases/billEditor";
+import {
+  lineFromExtraction, unreadAfterEdit, type ExtractedLine,
+} from "@/lib/purchases/extractedLine";
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 
@@ -57,6 +60,14 @@ type EditorLine = PurchaseBillLine & {
 };
 const EMPTY_LINE: PurchaseBillLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "NOS", expense_account_id: "", service_catalogue_id: "" };
 
+/** AI-01 — a field the document did not state, drawn so the CA cannot mistake it
+ *  for one that was read. Tokens only: `state-attention` is the palette's amber. */
+const UNREAD_CLASS = "border-state-attention-border bg-state-attention-surface";
+const NOT_STATED_TITLE = "The document did not state this, so it has been left for you.";
+function unreadOn(l: EditorLine, f: NonNullable<EditorLine["unread"]>[number]): boolean {
+  return !!l.unread?.includes(f);
+}
+
 function todayISO(): string {
   return todayLocalISO();
 }
@@ -66,7 +77,9 @@ interface ExtractedInvoice {
   vendor_gstin?: string;
   invoice_no?: string;
   invoice_date?: string;
-  line_items?: { description?: string; hsn_sac?: string; quantity?: number; rate_paise?: number; gst_rate_bps?: number }[];
+  /** Every figure here may be null — null is "the document did not say" and 0
+   *  is an answer (AI-01). See lib/purchases/billEditor.ts's ExtractedLine. */
+  line_items?: ExtractedLine[];
   taxable_amount_paise?: number;
   cgst_paise?: number;
   sgst_paise?: number;
@@ -185,7 +198,7 @@ function detailLinesToEditorLines(lines: PurchaseBillDetail["lines"]): EditorLin
     hsn_sac: l.hsn_sac ?? "",
     qty: String(l.quantity ?? 1),
     rate: String((l.rate_paise ?? 0) / 100),
-    gst_rate: Math.round((l.gst_rate_bps ?? 0) / 100),
+    gst_rate: gstRateToPercent(l.gst_rate_bps),
     unit: l.unit ?? "NOS",
     expense_account_id: l.expense_account_id ?? "",
     service_catalogue_id: l.service_catalogue_id ?? "",
@@ -490,7 +503,10 @@ export function PurchaseBillEditor({
   }
 
   function setLine(idx: number, patch: Partial<EditorLine>) {
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+    // Typing into a field the document did not state IS the CA stating it, so
+    // that field stops being flagged (AI-01).
+    setLines((prev) => prev.map((l, i) => (
+      i === idx ? { ...l, ...patch, unread: unreadAfterEdit(l.unread, patch) } : l)));
   }
   function removeLine(idx: number) {
     if (lines.length <= 1) return;
@@ -579,11 +595,12 @@ export function PurchaseBillEditor({
           ?? null;
         if (matched) onVendorChange(matched.id);
         if (ex.line_items?.length) {
+          // AI-01: nothing is invented here. A quantity, unit, rate or GST rate
+          // the document did not state arrives as null and is shown EMPTY and
+          // flagged, where this used to put 1, "NOS" and 18% on the line as if
+          // they had been read — and a real 0% came back as 18%.
           const rawLines: EditorLine[] = ex.line_items.map((li) => ({
-            description: li.description ?? "", hsn_sac: li.hsn_sac ?? "",
-            qty: String(li.quantity ?? 1), unit: "NOS",
-            rate: String(Math.floor((li.rate_paise ?? 0)) / 100),
-            gst_rate: (li.gst_rate_bps ?? 1800) / 100,
+            ...lineFromExtraction(li),
             expense_account_id: "", service_catalogue_id: "",
             _k: nextKey(),
           }));
@@ -606,7 +623,7 @@ export function PurchaseBillEditor({
   async function save() {
     setAttempted(true);
     if (!validation.ok) {
-      setError(validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.lines ?? validation.errors.exchangeRate ?? "Fix the highlighted fields.");
+      setError(validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.unread ?? validation.errors.lines ?? validation.errors.exchangeRate ?? "Fix the highlighted fields.");
       return;
     }
     setSaving(true);
@@ -812,7 +829,7 @@ export function PurchaseBillEditor({
       {attempted && !validation.ok && (
         <div className="flex items-start gap-1.5 text-3xs text-state-problem bg-state-problem-surface rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
-          <span>{validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.lines ?? validation.errors.exchangeRate}</span>
+          <span>{validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.unread ?? validation.errors.lines ?? validation.errors.exchangeRate}</span>
         </div>
       )}
     </div>
@@ -1227,22 +1244,33 @@ export function PurchaseBillEditor({
                       </td>
                       <td className="py-1.5 px-1">
                         <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label={`Line ${idx + 1} quantity`}
-                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
+                          placeholder={unreadOn(line, "quantity") ? "?" : undefined}
+                          title={unreadOn(line, "quantity") ? NOT_STATED_TITLE : undefined}
+                          className={`w-full px-2 py-1 border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs ${unreadOn(line, "quantity") ? UNREAD_CLASS : "border-ps-border"}`} />
                       </td>
                       <td className="py-1.5 px-1">
-                        <select value={line.unit || "NOS"} onChange={(e) => setLine(idx, { unit: e.target.value })} aria-label={`Line ${idx + 1} unit`}
-                          className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none text-xs">
+                        <select value={unreadOn(line, "unit") ? "" : (line.unit || "NOS")} onChange={(e) => setLine(idx, { unit: e.target.value })} aria-label={`Line ${idx + 1} unit`}
+                          title={unreadOn(line, "unit")
+                            ? (line.unitAsPrinted
+                              ? `The document prints "${line.unitAsPrinted}", which is not one of the unit codes — choose the code. ${NOT_STATED_TITLE}`
+                              : NOT_STATED_TITLE)
+                            : undefined}
+                          className={`w-full px-1 py-1 border rounded focus:outline-none text-xs ${unreadOn(line, "unit") ? UNREAD_CLASS : "border-ps-border"}`}>
+                          {unreadOn(line, "unit") && <option value="">— unit? —</option>}
                           {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
                         </select>
                       </td>
                       <td className="py-1.5 px-1">
-                        <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })} placeholder="0.00" aria-label={`Line ${idx + 1} rate`}
-                          className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
+                        <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })} placeholder={unreadOn(line, "rate") ? "?" : "0.00"} aria-label={`Line ${idx + 1} rate`}
+                          title={unreadOn(line, "rate") ? NOT_STATED_TITLE : undefined}
+                          className={`w-full px-2 py-1 border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs ${unreadOn(line, "rate") ? UNREAD_CLASS : "border-ps-border"}`} />
                       </td>
                       <td className="py-1.5 px-1">
-                        <select value={line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseFloat(e.target.value) })} aria-label={`Line ${idx + 1} GST rate`}
-                          className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none text-xs">
-                          {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
+                        <select value={unreadOn(line, "gst_rate") ? "" : line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseFloat(e.target.value) })} aria-label={`Line ${idx + 1} GST rate`}
+                          title={unreadOn(line, "gst_rate") ? NOT_STATED_TITLE : undefined}
+                          className={`w-full px-1 py-1 border rounded focus:outline-none text-xs ${unreadOn(line, "gst_rate") ? UNREAD_CLASS : "border-ps-border"}`}>
+                          {unreadOn(line, "gst_rate") && <option value="">— rate? —</option>}
+                          {gstRateOptions(line.gst_rate).map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
                       </td>
                       {showCess && (
@@ -1281,6 +1309,14 @@ export function PurchaseBillEditor({
             <Plus size={13} /> Add line
           </button>
           </fieldset>
+          {lines.some((l) => l.unread?.length) && (
+            <p className="mt-2 text-3xs text-state-attention">
+              Amber, empty fields were not stated on the document and have been left for you
+              rather than guessed — a quantity, rate or GST rate must be entered before the bill
+              can be saved. A unit left blank is saved as NOS.
+            </p>
+          )}
+          {fieldErr(validation.errors.unread)}
           {fieldErr(validation.errors.lines)}
           {fieldErr(validation.errors.itc)}
         </section>

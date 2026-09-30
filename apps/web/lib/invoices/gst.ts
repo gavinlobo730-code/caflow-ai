@@ -16,8 +16,47 @@ import { applyDiscountsToLines, computeLineGst, taxablePaise,
          quantityFromInput, ratePaiseFromRupees, splitLineGst,
          gstRateBpsFromPercent } from "../money/gstLine.ts";
 
-/** GST rate slabs (%) offered in the invoice/credit-note line editors. */
-export const GST_RATES = [0, 0.1, 0.25, 1, 1.5, 3, 5, 6, 7.5, 12, 18, 28];
+/**
+ * GST rate slabs (%) offered in the line editors.
+ *
+ * 40 is the special slab GST 2.0 introduced from 22-09-2025 for sin and luxury
+ * goods; IGST Act §5(1) caps the integrated rate at 40% (CGST §9(1) caps each
+ * of CGST and SGST at 20%), so the screen must be able to express it. 12 and 28
+ * stay because a document raised before that date carries its own rate and
+ * must still open with it. The server accepts 0 to 100 (domain/gst/rate_bounds)
+ * — only this list ever stopped a 40% line. [S]-graded: egress is refused here.
+ */
+export const GST_RATES = [0, 0.1, 0.25, 1, 1.5, 3, 5, 6, 7.5, 12, 18, 28, 40];
+
+/**
+ * A stored gst_rate_bps as the percentage a rate select shows — NEVER rounded.
+ * The editors used `Math.round(bps / 100)`, so a 150 bps line reopened as 2%,
+ * 750 as 8% and 10 or 25 as 0%, and because saving deletes and re-inserts every
+ * line the wrong rate was written back: tax silently changed on GSTR-1 and
+ * GSTR-3B (CGST §9 charges the rate notified for the supply). PostgREST returns
+ * a bigint as a string, hence Number().
+ */
+export function gstRateToPercent(bps: number | string | null | undefined): number {
+  if (bps == null) return 0;
+  const n = Number(bps);
+  return Number.isFinite(n) ? n / 100 : 0;
+}
+
+/** The percentage a rate select's value means. `parseInt` made 7.5 into 7. */
+export function gstRatePercentFromSelect(value: string): number {
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * The slabs to render for a line: GST_RATES, plus the line's own rate when it is
+ * not one of them, so a stored rate can never open as a select with no matching
+ * option (which shows the first option and saves it on the next edit).
+ */
+export function gstRateOptions(current: number | null | undefined): number[] {
+  if (current == null || !Number.isFinite(current) || GST_RATES.includes(current)) return GST_RATES;
+  return [...GST_RATES, current].sort((a, b) => a - b);
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export type InvoiceStatus = "draft" | "issued" | "partially_paid" | "paid" | "cancelled";

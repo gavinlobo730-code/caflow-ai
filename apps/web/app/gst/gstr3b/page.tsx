@@ -1278,6 +1278,7 @@ export default function GSTR3BPage() {
               reconciliation={result.reconciliation}
               bankLineCaveats={result.bank_line_caveats}
               undeclarableRows={result.undeclarable_rows}
+              registrationCaveat={result.registration_caveat}
             />
           </div>
 

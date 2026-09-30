@@ -97,6 +97,7 @@ def _fy_for_month(month: str) -> Optional[str]:
 from domain.income_tax.statutory_rates import (
     rates_for, slab_tax_paise, apply_rebate_87a,
     apply_surcharge_with_marginal_relief, cess_paise, current_fy,
+    fy_rate_gap as income_tax_rate_gap,
 )
 from models.fy import FYLabel, OptionalFYLabel
 from services.compliance_obligation_service import fy_months
@@ -2340,6 +2341,9 @@ def _compute_and_store_slips(db, firm_id: str, client_id: str, month: str,
     # client of this firm.
     statutory_gaps.extend(firm_rates.slabs_recorded_against_a_modelled_state(
         firm_pt_slabs, _PT_MODELLED_STATES))
+    # The income-tax rates §192 is withheld at, when the registry has not
+    # confirmed them for this year. Once per run: it is a fact about the year.
+    statutory_gaps.extend(_withholding_rate_gap(fy))
     # Employees for whom NOBODY entered attendance this month. Reported with
     # the run, never silently defaulted — see _attendance_gap.
     attendance_gaps: list[str] = []
@@ -3015,6 +3019,28 @@ def download_run_payslips(
     return Response(content=blob, media_type="application/zip", headers=headers)
 
 
+def _withholding_rate_gap(fy: str) -> list[str]:
+    """§192 withholding on a year whose income-tax rates nobody has confirmed.
+
+    `statutory_rates.verified` was never read by payroll. A run for FY 2026-27
+    — whose registry entry is last year's figures carried forward — withheld
+    tax, posted the journal and released with no sign of it, although §192(1)
+    makes the EMPLOYER liable for a shortfall, with §201(1A) interest on top
+    (PAYROLL-09). It is a GAP, not a refusal, in the same list as the state and
+    attendance gaps, so finalising needs the typed reason that list already
+    demands — and the next April repeats it without anyone remembering.
+
+    The sentence is the registry's own (`statutory_rates.fy_rate_gap`) under a
+    prefix saying what rests on it, so the screen and the ITR computation say
+    the same thing about the same figures. A year that is verified adds nothing.
+    """
+    gap = income_tax_rate_gap(fy)
+    if not gap:
+        return []
+    return [f"Income tax withheld under §192 for FY {fy} is computed at rates "
+            f"nobody has confirmed. {gap}"]
+
+
 # ── The defensible release ───────────────────────────────────────────────────
 # Migration 328. create_run returns two lists of things it could not establish —
 # statutory_gaps and attendance_gaps — and both were advice. Nothing stopped a
@@ -3061,6 +3087,9 @@ def _release_gaps(db, firm_id: str, run: dict) -> list[str]:
     gaps: list[str] = []
     gaps.extend(firm_rates.slabs_recorded_against_a_modelled_state(
         firm_pt_slabs, _PT_MODELLED_STATES))
+    # The FY of the payroll period, not today's — the same date the run was
+    # computed against, so the gap a CA saw on the draft is the gap asked again.
+    gaps.extend(_withholding_rate_gap(current_fy(on)))
     gaps.extend(identity_domain.pt_registration_gaps(
         {(e.get("pt_state") or "").strip().upper() for e in emps
          if e.get("pt_applicable") and (e.get("pt_state") or "").strip()},

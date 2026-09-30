@@ -40,7 +40,7 @@ import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import {
-  apiCall, getAuthToken, fmt, GST_RATES,
+  apiCall, getAuthToken, fmt, gstRateOptions, gstRateToPercent,
   previewTotals, isValidLine,
   type Customer, type InvoiceLine,
 } from "@/lib/invoices/shared";
@@ -119,7 +119,7 @@ function detailLinesToEditorLines(lines: SalesCreditNoteDetail["lines"]): Editor
     hsn_sac: l.hsn_sac ?? "",
     qty: String(l.quantity ?? 1),
     rate: String((l.rate_paise ?? 0) / 100),
-    gst_rate: Math.round((l.gst_rate_bps ?? 0) / 100),
+    gst_rate: gstRateToPercent(l.gst_rate_bps),
     unit: l.unit ?? "NOS",
     serviceCatalogueId: l.service_catalogue_id ?? null,
     _k: i,
@@ -504,7 +504,7 @@ export function SalesCreditNoteEditor({
                       <td className="py-1.5 px-1">
                         <select value={line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseFloat(e.target.value) })} aria-label={`Line ${idx + 1} GST rate`}
                           className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none text-xs">
-                          {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
+                          {gstRateOptions(line.gst_rate).map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
                       </td>
                       <td className="py-1.5 px-2 text-right font-mono text-ps-body">{g.grand_total_paise > 0 ? fmt(g.grand_total_paise) : "—"}</td>

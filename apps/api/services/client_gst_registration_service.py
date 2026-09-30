@@ -126,6 +126,27 @@ def resolve(db, firm_id: str, client_id: str,
         raise HTTPException(status_code=422, detail=str(e))
 
 
+def documents_not_split_caveat(db, firm_id: str, client_id: str,
+                               gstin: Optional[str]) -> Optional[str]:
+    """`reg.documents_not_split_caveat` over this client's registrations.
+
+    A client row that is not there answers None rather than raising: the router
+    has already resolved the registration by the time a return is being built,
+    so a 404 here can only be a caller with no client to ask about, and it must
+    not take a return down over a caveat. Every OTHER failure propagates — a
+    failed read that silently answered "no caveat" would be the false clean
+    result this function exists to prevent.
+    """
+    try:
+        client = _client(db, firm_id, client_id)
+    except HTTPException as e:
+        if e.status_code == 404:
+            return None
+        raise
+    return reg.documents_not_split_caveat(
+        reg.all_registrations(client, _rows(db, firm_id, client_id)), gstin)
+
+
 def create(db, firm_id: str, client_id: str, *, gstin: str,
            state_code: Optional[str] = None,
            registration_type: str = reg.REGULAR,

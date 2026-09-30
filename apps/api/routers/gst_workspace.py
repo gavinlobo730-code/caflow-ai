@@ -1532,6 +1532,8 @@ def gstr1_outstanding_amendments(
 def gstr1_exception_report(
     client_id: str = Query(..., description="Client whose filed period to check"),
     period: str = Query(..., description="MMYYYY, e.g. 062025"),
+    gstin: Optional[str] = Query(
+        None, description="Which registration — omit for the primary (GST-04)"),
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """What the books say now, against what the GSTR-1 actually said.
@@ -1559,7 +1561,7 @@ def gstr1_exception_report(
     from core.supabase_client import get_supabase
     from services.gst_exception_service import gstr1_exceptions
     return api_response(True, gstr1_exceptions(
-        get_supabase(), current_user["firm_id"], client_id, period))
+        get_supabase(), current_user["firm_id"], client_id, period, gstin))
 
 
 class ITCReversalIn(BaseModel):

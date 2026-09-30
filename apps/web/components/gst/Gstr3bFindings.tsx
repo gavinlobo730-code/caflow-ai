@@ -30,6 +30,27 @@ function rupees(paise: number): string {
     { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** A RETURN FOR ONE OF SEVERAL REGISTRATIONS (GST-05).
+ *
+ *  No invoice, bill or note names the registration it belongs to, so a return
+ *  built "for" one GSTIN of a client that holds several is assembled from ALL
+ *  the client's documents. The server says so in one sentence and this renders
+ *  it, first and in the attention palette: it qualifies every figure below it.
+ *  Null where the client holds one registration — rendering nothing then is
+ *  the truth, not an omission. Every word is the server's. */
+export function Gstr3bRegistrationCaveat({ caveat }: { caveat?: string | null }) {
+  if (!caveat) return null;
+  return (
+    <div role="alert"
+         className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3 text-sm space-y-1">
+      <p className="font-medium text-state-attention">
+        These figures are not split by registration
+      </p>
+      <p className="text-2xs text-state-attention">{caveat}</p>
+    </div>
+  );
+}
+
 /** WHAT PERIOD THIS RETURN COVERS (GST-11).
  *
  *  CGST Rule 61A with the proviso to s.39(1) lets a registered person with up
@@ -213,7 +234,7 @@ export function Gstr3bUndeclarableRows({ rows = [] }: { rows?: UndeclarableRow[]
  *  a figure for that window. */
 export function Gstr3bFindings({
   lateFiling, reconciliation, bankLineCaveats, undeclarableRows,
-  periodWindow, monthsWithout2b,
+  periodWindow, monthsWithout2b, registrationCaveat,
 }: {
   lateFiling?: LateFilingBlock;
   reconciliation?: GLReconciliation;
@@ -221,9 +242,11 @@ export function Gstr3bFindings({
   undeclarableRows?: UndeclarableRow[];
   periodWindow?: ReturnPeriodWindow;
   monthsWithout2b?: string[];
+  registrationCaveat?: string | null;
 }) {
   return (
     <>
+      <Gstr3bRegistrationCaveat caveat={registrationCaveat} />
       <Gstr3bPeriodWindow periodWindow={periodWindow}
                           monthsWithout2b={monthsWithout2b} />
       <Gstr3bLateFiling lateFiling={lateFiling} />

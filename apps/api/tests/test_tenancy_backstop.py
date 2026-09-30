@@ -81,6 +81,14 @@ def test_finalize_run_own_firm_succeeds(payroll_app, monkeypatch):
         "services.phase2_journal_service.Phase2JournalService.journal_for_payroll",
         lambda self, run, firm_id, client_id: "JE-FAKE",
     )
+    # This test is about WHO may finalise, not about the release rule. The run is
+    # for June 2026, FY 2026-27, whose income-tax rates the registry carries
+    # forward unverified — a gap of its own that needs a typed reason (PAYROLL-09,
+    # tests/test_an_unverified_tax_year_is_a_payroll_gap.py). The registry's state
+    # is held fixed so this keeps meaning "a Partner of the owning firm can
+    # finalise" on the day a year is verified and again the next April.
+    import routers.payroll as payroll_mod
+    monkeypatch.setattr(payroll_mod, "income_tax_rate_gap", lambda fy: None)
     run = db.seed("payroll_runs", {
         "firm_id": "F1", "client_id": "C1", "status": "draft",
         "total_gross_paise": 100000_00, "month": "2026-06",

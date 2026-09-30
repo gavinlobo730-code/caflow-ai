@@ -80,8 +80,8 @@ const TICKER = [
 const TRUST = [
   {
     icon: <Lock size={18} />,
-    title: "Two-factor on every firm sign-in",
-    body: "TOTP, not an SMS code. The client portal and the employee portal are separate principals with their own, narrower access.",
+    title: "Two-factor where the firm is run",
+    body: "TOTP, not an SMS code, is required of Partners and Managers on firm administration, billing, payroll and approvals. Executives and Reviewers are not asked for it today. The client portal and the employee portal are separate principals with their own, narrower access.",
   },
   {
     icon: <Users size={18} />,
@@ -95,8 +95,8 @@ const TRUST = [
   },
   {
     icon: <Landmark size={18} />,
-    title: "Data hosted in India",
-    body: "Your firm's and your clients' data sits on infrastructure in the Mumbai region. Bank statements are handled as their own retention category under the DPDP Act.",
+    title: "Database in Mumbai",
+    body: "Your firm's and your clients' records sit in a database in the Mumbai region. The application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India. Bank statements are handled as their own retention category under the DPDP Act.",
   },
   {
     icon: <Shield size={18} />,
@@ -225,14 +225,14 @@ export default function HomePage() {
           index="07"
           eyebrow="How filing works"
           lines={[{ text: "We compute it." }, { text: "You file it.", italic: true }]}
-          subtitle="PracticeSync reads your books and produces the return — GSTR-1, GSTR-3B, GSTR-9, the ITR JSON, 24Q and 26Q — computed, reconciled and ready to file. You upload and sign on the government portal, then record the ARN here and the period locks. No software files in your name."
+          subtitle="PracticeSync reads your books and computes the return — GSTR-1 and GSTR-3B as the JSON you upload to the GST portal; GSTR-9, the income-tax return, 24Q and 26Q worked out and laid out for you to key into the government's own utilities. You upload and sign on the government portal, then record the ARN here and the period locks. No software files in your name."
         />
 
         <div className="mt-16 grid grid-cols-2 gap-x-10 gap-y-12 sm:grid-cols-4">
           {[
             { n: 11, suffix: "+", label: "Modules, one connected workspace" },
             { n: 4, suffix: "", label: "Separate tools replaced by one login" },
-            { n: 100, suffix: "%", label: "Filings reviewed by a CA before submit" },
+            { n: 0, suffix: "", label: "Returns the software files for you — you sign every one" },
             { n: 4, suffix: "", label: "Compliance domains — GST, ITR, TDS, MCA" },
           ].map((s, i) => (
             <Reveal key={s.label} variant="up" delay={i * 90}>
