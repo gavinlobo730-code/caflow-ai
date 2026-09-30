@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { ErrorState } from "@/components/ui/states";
+import { reportClientError } from "@/lib/monitoring";
 
 /**
  * What a module segment renders when something below it throws.
@@ -40,6 +41,10 @@ export default function ModuleErrorBoundary({
     // The browser console is where the smoke walk and a developer both look.
     // console.error is what `pageerror`/`console` handlers in the walk record.
     console.error(`[module error]${moduleName ? ` ${moduleName}:` : ""}`, error);
+    // A boundary CATCHES the throw, so the SDK's global handler never sees it: without this line every
+    // render crash in the product would show the CA this screen and tell nobody (ops-09). The report
+    // is scrubbed before it leaves (lib/monitoring/scrub.ts) and is a no-op with no DSN built in.
+    reportClientError(error, moduleName || "page");
   }, [error, moduleName]);
 
   return (

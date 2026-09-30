@@ -6,6 +6,7 @@ import { AuthGuard } from "@/lib/auth/AuthGuard";
 import { AppShell } from "@/components/AppShell";
 import { Toaster } from "@/components/ui/toaster";
 import { ConfirmDialogHost } from "@/components/ui/confirm-dialog";
+import { MonitoringInit } from "@/components/monitoring/MonitoringInit";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -43,6 +44,8 @@ export default function RootLayout({
         />
       </head>
       <body className={inter.className}>
+        {/* Outside the providers: a crash while signing in is one somebody has to hear about. */}
+        <MonitoringInit />
         <AuthProvider>
           <AuthGuard>
             <AppShell>{children}</AppShell>
