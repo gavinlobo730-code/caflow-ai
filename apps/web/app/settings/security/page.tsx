@@ -26,6 +26,7 @@ import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reau
 import { Callout } from "@/components/ui/callout";
 import Link from "next/link";
 import { setupPageLead, SETUP_CONTINUE_HREF } from "@/lib/auth/mfaEnrolment";
+import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 
 import { todayLocalISO } from "@/lib/dateMath";
 const MIN_PASSWORD_LENGTH = 10;
@@ -290,7 +291,7 @@ function MfaCard() {
       const all = ((data as { all?: Factor[] } | null)?.all ?? []) as Factor[];
       setFactors(all.filter((f) => f.factor_type === "totp"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load MFA status.");
+      setError(authErrorMessage(e, "Could not load MFA status."));
     } finally {
       setLoading(false);
     }
@@ -315,7 +316,7 @@ function MfaCard() {
       setEnrolling({ factorId: d.id, qr: d.totp.qr_code, secret: d.totp.secret });
       setCode("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start enrolment.");
+      setError(authErrorMessage(e, "Could not start enrolment."));
     } finally {
       setBusy(false);
     }
@@ -337,7 +338,7 @@ function MfaCard() {
       reResolveAccess();
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Invalid code — check your authenticator app and try again.");
+      setError(authErrorMessage(e, "Invalid code — check your authenticator app and try again."));
     } finally {
       setBusy(false);
     }
@@ -352,7 +353,7 @@ function MfaCard() {
       reResolveAccess();
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not remove the authenticator.");
+      setError(authErrorMessage(e, "Could not remove the authenticator."));
     } finally {
       setBusy(false);
     }

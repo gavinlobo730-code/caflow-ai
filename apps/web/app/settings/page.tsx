@@ -439,7 +439,7 @@ export default function SettingsPage() {
               type="text"
               value={personalName}
               onChange={(e) => setPersonalName(e.target.value)}
-              placeholder="e.g. CA Gavin Lobo"
+              placeholder="e.g. CA Ravi Sharma"
               className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
             />
           </div>
@@ -500,7 +500,7 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Row 1: Firm name spans full width */}
               <div className="sm:col-span-2">
-                <Field label="Firm Name" field="name" form={form} onChange={handleChange} errors={errors} placeholder="e.g. Gavin Lobo & Associates" required />
+                <Field label="Firm Name" field="name" form={form} onChange={handleChange} errors={errors} placeholder="e.g. Sharma & Associates" required />
               </div>
 
               {/* Row 2: GSTIN + PAN */}

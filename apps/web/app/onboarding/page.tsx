@@ -15,6 +15,7 @@ import {
 } from "@/lib/auth/reauth";
 import { mayRenderOnboardingWizard } from "@/lib/auth/guardDecision";
 import { onboardingCompletionTarget } from "@/lib/auth/mfaEnrolment";
+import { authErrorMessage, knownAuthErrorMessage } from "@/lib/auth/authErrorMessage";
 import { api, type ApiResp } from "@/lib/api";
 import CsvImportModal, { type ImportRow, type ImportResult } from "@/components/CsvImportModal";
 import { FirmHsnLibraryQuickAddModal } from "@/components/lookups/FirmHsnLibraryQuickAddModal";
@@ -449,7 +450,8 @@ export default function OnboardingPage() {
             otpTrace("step 2 response: reauthenticate error", {
               code: raErr.code, status: raErr.status, message: raErr.message,
             });
-            throw new Error("Could not send verification code. Please try again.");
+            if (isSessionMissingError(raErr)) throw new Error(SESSION_EXPIRED_MESSAGE);
+            throw new Error(knownAuthErrorMessage(raErr) ?? "Could not send verification code. Please try again.");
           }
           otpTrace("step 2 response: reauthenticate OK — verification code emailed");
           setNeedsReauth(true);
@@ -460,7 +462,7 @@ export default function OnboardingPage() {
         // SDK string "Auth session missing!"; show the CA something they can
         // act on instead (sweep-auth-and-public-04).
         if (isSessionMissingError(upErr)) throw new Error(SESSION_EXPIRED_MESSAGE);
-        throw new Error(upErr.message);
+        throw new Error(authErrorMessage(upErr));
       }
       otpTrace("step 1 response: password set without reauthentication");
       setPwSet(true);
@@ -468,7 +470,7 @@ export default function OnboardingPage() {
       setPw(""); setPw2("");
       goNext();
     } catch (err) {
-      setPwError(err instanceof Error ? err.message : "Could not set your password. Please try again.");
+      setPwError(authErrorMessage(err, "Could not set your password. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -508,7 +510,7 @@ export default function OnboardingPage() {
             ? SESSION_EXPIRED_MESSAGE
             : isInvalidNonceError(upErr)
               ? "That code is incorrect or has expired. Request a new code and try again."
-              : upErr.message,
+              : authErrorMessage(upErr),
         );
       }
       otpTrace("verify response: password updated — reauthentication accepted");
@@ -518,7 +520,7 @@ export default function OnboardingPage() {
       setPw(""); setPw2("");
       goNext();
     } catch (err) {
-      setReauthError(err instanceof Error ? err.message : "Verification failed. Please try again.");
+      setReauthError(authErrorMessage(err, "Verification failed. Please try again."));
     } finally {
       setReauthSending(false);
     }
@@ -535,12 +537,13 @@ export default function OnboardingPage() {
         otpTrace("resend response: reauthenticate error", {
           code: raErr.code, status: raErr.status, message: raErr.message,
         });
-        throw new Error("Could not resend the code. Please try again in a moment.");
+        if (isSessionMissingError(raErr)) throw new Error(SESSION_EXPIRED_MESSAGE);
+        throw new Error(knownAuthErrorMessage(raErr) ?? "Could not resend the code. Please try again in a moment.");
       }
       setReauthOtp("");
       setReauthError("A new code has been sent to your email.");
     } catch (err) {
-      setReauthError(err instanceof Error ? err.message : "Could not resend the code.");
+      setReauthError(authErrorMessage(err, "Could not resend the code."));
     } finally {
       setReauthSending(false);
     }
@@ -702,7 +705,7 @@ export default function OnboardingPage() {
                   type="text"
                   value={ownerName}
                   onChange={(e) => setOwnerName(e.target.value)}
-                  placeholder="e.g. CA Gavin Lobo"
+                  placeholder="e.g. CA Ravi Sharma"
                   autoComplete="name"
                   className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 />

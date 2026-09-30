@@ -11,6 +11,7 @@ import {
 } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase, getSupabaseClient } from "@/lib/supabase/client";
+import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 import {
   can as canDo,
   normalizeRole,
@@ -444,7 +445,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // M6: login history (best-effort; never blocks sign-in) — recorded by the
     // effect above once any MFA challenge has been passed.
     if (!error) loginToRecord.current = true;
-    return { error: error?.message ?? null };
+    return { error: error ? authErrorMessage(error) : null };
   }, []);
 
   const signOut = useCallback(async () => {

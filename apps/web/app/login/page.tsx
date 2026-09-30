@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 import { Shield, Zap, TrendingUp, ArrowRight } from "lucide-react";
 
 const FEATURES = [
@@ -61,7 +62,7 @@ export default function LoginPage() {
       // is owed, mfaPending flips true and the challenge form renders below; if not,
       // AuthGuard moves the user off /login. This avoids racing the redirect.
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Connection error. Please try again.");
+      setError(authErrorMessage(err, "Connection error. Please try again."));
     } finally {
       // All three exits lowered this already; one release covers them and any
       // added later. Sign in stays enabled whatever happens, which on a login
@@ -90,7 +91,7 @@ export default function LoginPage() {
       // routes onward. Push as well for immediacy.
       router.push("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Verification failed. Please try again.");
+      setError(authErrorMessage(err, "Verification failed. Please try again."));
       setLoading(false);
     }
   }
