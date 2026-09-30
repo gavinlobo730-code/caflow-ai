@@ -127,8 +127,9 @@ def email_statement(
     # chartered accountant's name misstates who is owed — in the PDF's
     # letterhead and in the covering email alike. This loaded the firm.
     holder = load_account_holder(db, firm_id, data.client_id)
-    holder_name = (holder.get("legal_name") or holder.get("trade_name")
-                   or holder.get("client_name") or "your supplier")
+    real_holder_name = (holder.get("legal_name") or holder.get("trade_name")
+                        or holder.get("client_name"))
+    holder_name = real_holder_name or "your supplier"
     pdf_bytes = build_statement_pdf(stmt, holder, stmt["customer"])
     name = (stmt["customer"].get("name") or "customer").replace(" ", "-").lower()
     success, provider_id = send_statement_to_customer(
@@ -136,7 +137,13 @@ def email_statement(
         firm_name=holder_name,
         period_start=data.start_date, period_end=data.end_date,
         closing_balance_paise=stmt["closing_balance_paise"],
-        pdf_bytes=pdf_bytes, pdf_filename=f"statement-{name}.pdf")
+        pdf_bytes=pdf_bytes, pdf_filename=f"statement-{name}.pdf",
+        # practice_management-04. The CLIENT's name and contact address, never
+        # the practice's: the customer owes the client (see the note above), so
+        # that is who a reply should reach. A client with no address on record
+        # sets no Reply-To, and one with no name keeps the default sender — the
+        # neutral "your supplier" is body text, not a display name.
+        sender_name=real_holder_name, reply_to=holder.get("email"))
 
     customer_statement_service.finish_delivery(
         db, delivery_id, success, provider_id,

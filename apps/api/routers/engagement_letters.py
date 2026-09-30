@@ -606,15 +606,29 @@ def _resolve_recipient_email(db, eng: dict, override: Optional[str]) -> Optional
     return None
 
 
+def _firm_sender(db, firm_id: str) -> tuple[Optional[str], Optional[str]]:
+    """(name, contact email) of the PRACTICE, each None where not recorded.
+
+    practice_management-04. The engagement letter is the practice writing to its
+    own client, so the mail goes out under the practice's name and a client who
+    answers it writes to the firm's contact address — not to the no-reply sender
+    every mail used. `firms.email` is the practice's own contact address (NOT NULL
+    in migration 003); a read that fails or a blank value is None, and the mail
+    then goes as it always did rather than failing over a header.
+    """
+    if not db:
+        return None, None
+    try:
+        r = db.table("firms").select("name, email").eq("id", firm_id).maybe_single().execute()
+        row = r.data or {}
+        return (row.get("name") or None), (row.get("email") or None)
+    except Exception:
+        return None, None
+
+
 def _firm_name(db, firm_id: str) -> str:
     """Resolve the firm's display name for the letter/email; safe default on failure."""
-    if not db:
-        return "Your Chartered Accountant"
-    try:
-        r = db.table("firms").select("name").eq("id", firm_id).maybe_single().execute()
-        return (r.data or {}).get("name") or "Your Chartered Accountant"
-    except Exception:
-        return "Your Chartered Accountant"
+    return _firm_sender(db, firm_id)[0] or "Your Chartered Accountant"
 
 
 def _deliver_engagement_email(db, eng: dict, firm_id: str, to_email: Optional[str],
@@ -647,7 +661,8 @@ def _deliver_engagement_email(db, eng: dict, firm_id: str, to_email: Optional[st
         return {"success": False, "to": dest, "provider_message_id": None,
                 "error": f"Invalid email address: {dest}"}
 
-    firm_name = _firm_name(db, firm_id)
+    real_firm_name, firm_email = _firm_sender(db, firm_id)
+    firm_name = real_firm_name or "Your Chartered Accountant"
 
     # Render the PDF attachment. On failure, degrade gracefully to a body-only
     # email — the full letter is already in the body, so the client still gets it.
@@ -677,6 +692,12 @@ def _deliver_engagement_email(db, eng: dict, firm_id: str, to_email: Optional[st
         # holds the wording is the email service's business, and a second
         # reader of `email_templates` is how a second vocabulary starts.
         firm_id=firm_id,
+        # practice_management-04: the practice is the sender of this mail, so
+        # it goes out under the practice's name and a reply lands with the
+        # practice. The fallback "Your Chartered Accountant" is body text, never
+        # a display name — a mail is not sent "from" a placeholder.
+        sender_name=real_firm_name,
+        reply_to=firm_email,
     )
     if not success:
         # The true cause is logged in full by the email transport layer

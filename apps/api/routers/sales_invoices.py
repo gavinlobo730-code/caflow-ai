@@ -2668,13 +2668,20 @@ def _do_send_invoice(invoice_id: str, body: _SendInvoiceBody, current_user: dict
     # `invoice_pdf_service._client_party(legal_name_first=True)` applies to
     # this very document, because Rule 46(b) wants the name the registration
     # is held in and the covering mail must agree with the invoice it carries.
+    #
+    # `email` rides on the same read (practice_management-04): it is the
+    # CLIENT's contact address, the Reply-To of this mail, so a customer who
+    # answers the invoice reaches the supplier who issued it. The client's
+    # name is the From display name, but only where there IS one — the neutral
+    # "Your supplier" is body text and is never put on a header.
     supplier_row = (
-        db.table("clients").select("legal_name, client_name")
+        db.table("clients").select("legal_name, client_name, email")
         .eq("id", inv["client_id"]).eq("firm_id", firm_id)
         .maybe_single().execute()
     ).data or {}
-    firm_name = (supplier_row.get("legal_name")
-                 or supplier_row.get("client_name") or "Your supplier")
+    real_supplier_name = (supplier_row.get("legal_name")
+                          or supplier_row.get("client_name"))
+    firm_name = real_supplier_name or "Your supplier"
 
     # 8. Send via Resend
     success, provider_id = _send_email(
@@ -2687,6 +2694,8 @@ def _do_send_invoice(invoice_id: str, body: _SendInvoiceBody, current_user: dict
         total_paise=inv.get("total_paise", 0),
         pdf_bytes=pdf_bytes,
         pdf_filename=pdf_filename,
+        sender_name=real_supplier_name,
+        reply_to=supplier_row.get("email"),
     )
 
     # 9. Update delivery status
