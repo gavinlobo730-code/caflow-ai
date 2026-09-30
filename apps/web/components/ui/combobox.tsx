@@ -501,7 +501,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
               static button/chip even while open (see above), so its search
               box still lives here, inside the panel, exactly as before. */}
           {plain && (
-            <div className="flex items-center gap-2 border-b border-ps-border px-2.5 py-2">
+            <div className="flex items-center gap-2 border-b border-ps-border px-2.5 py-2 focus-within:ring-2 focus-within:ring-inset focus-within:ring-brand">
               <Search size={13} className="flex-shrink-0 text-ps-hint" />
               <input
                 ref={inputRef}

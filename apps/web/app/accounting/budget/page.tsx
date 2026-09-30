@@ -402,7 +402,7 @@ function BudgetTable({
                             if (e.key === "Enter") onConfirmEdit(row.account_id);
                             if (e.key === "Escape") onCancelEdit();
                           }}
-                          className="w-28 px-2 py-1 text-xs border border-blue-400 rounded focus:outline-none text-right"
+                          className="w-28 px-2 py-1 text-xs border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-brand text-right"
                           placeholder="₹ amount"
                         />
                         <button

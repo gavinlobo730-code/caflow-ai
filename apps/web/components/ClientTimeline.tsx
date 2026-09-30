@@ -228,7 +228,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search events…"
-          className="flex-1 min-w-[120px] bg-ps-bg border border-ps-border rounded-lg px-2.5 py-1 text-2xs text-ps-label placeholder:text-ps-disabled outline-none focus:border-brand"
+          className="flex-1 min-w-[120px] bg-ps-bg border border-ps-border rounded-lg px-2.5 py-1 text-2xs text-ps-label placeholder:text-ps-hint outline-none focus:border-brand"
         />
         {/* Category filter */}
         <div className="relative">

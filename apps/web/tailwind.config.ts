@@ -161,7 +161,17 @@ const config: Config = {
 
              `disabled` is deliberately left failing: WCAG 1.4.3 exempts text in
              an inactive control, and darkening it would stop it reading as
-             inactive, which is the one thing it has to say. */
+             inactive, which is the one thing it has to say.
+
+             ⚠️ A PLACEHOLDER IS NOT TEXT IN AN INACTIVE CONTROL. The box it
+             sits in is live and somebody is being asked to type into it, so
+             1.4.3 applies in full and `disabled` (1.48:1 on white) is the
+             wrong token for it. The exemption above reads like permission and
+             was taken as some: fourteen inputs on the sign-in, sign-up,
+             reset and portal screens wore it, and ten more wore gray-400
+             (2.54:1) in two spellings for the same reason. A placeholder
+             is `hint`, the lightest step that passes, and
+             scripts/a-keyboard-user-can-see-where-they-are.test.ts holds it. */
           ink:      "#0D1635",  /* headings, figures, anything load-bearing */
           body:     "#334155",  /* body copy, and the hover target */
           label:    "#475569",  /* labels, secondary copy, quiet controls */

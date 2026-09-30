@@ -900,7 +900,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                 <input
                   readOnly
                   value={`${typeof window !== "undefined" ? window.location.origin : ""}/sign/?t=${letter.sign_token}`}
-                  className="flex-1 rounded-lg border border-ps-border bg-ps-bg px-3 py-2 text-xs text-ps-label outline-none"
+                  className="flex-1 rounded-lg border border-ps-border bg-ps-bg px-3 py-2 text-xs text-ps-label outline-none focus:border-brand focus:ring-2 focus:ring-brand"
                 />
                 <button
                   onClick={doCopyLink}

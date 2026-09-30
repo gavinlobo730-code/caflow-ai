@@ -131,7 +131,7 @@ export default function RelationshipExplorerPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search entities…"
-              className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+              className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-300 rounded-lg text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
             />
           </div>
           {loading ? (

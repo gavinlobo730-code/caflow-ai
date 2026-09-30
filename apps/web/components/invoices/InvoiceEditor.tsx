@@ -1388,7 +1388,7 @@ export function InvoiceEditor({
                         {(line.product?.kind === "good" || !!line.unit) ? (
                           <select value={line.unit} onChange={(e) => setLine(idx, { unit: e.target.value })}
                             aria-label={`Line ${idx + 1} unit`}
-                            className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none text-xs text-ps-label">
+                            className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand text-xs text-ps-label">
                             <option value="">Unit</option>
                             {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
                           </select>

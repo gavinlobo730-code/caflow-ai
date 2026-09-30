@@ -173,7 +173,7 @@ export default function LoginPage() {
                   autoFocus inputMode="numeric" pattern="[0-9]*" value={mfaCode} maxLength={6}
                   onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   placeholder="123456"
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                 />
               </div>
               {mfaFactorLoadFailed && (
@@ -222,7 +222,7 @@ export default function LoginPage() {
                 id="login-email" name="email" autoComplete="username"
                 type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                 placeholder="ca@yourfirm.com"
-                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
               />
             </div>
             <div className="space-y-1.5">
@@ -236,7 +236,7 @@ export default function LoginPage() {
                 id="login-password" name="password" autoComplete="current-password"
                 type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
               />
             </div>
 

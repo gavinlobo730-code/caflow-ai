@@ -111,7 +111,7 @@ function EntityFormModal({
   saveDisabled?: boolean;
 }) {
   const inputClass =
-    "w-full mt-1 px-3 py-2 text-sm bg-ps-surface border border-ps-border-strong rounded-md text-ps-ink placeholder-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand";
+    "w-full mt-1 px-3 py-2 text-sm bg-ps-surface border border-ps-border-strong rounded-md text-ps-ink placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand";
   return (
     <div className="fixed inset-0 bg-brand/60 flex items-center justify-center z-50 px-4">
       <div className="bg-ps-surface border border-ps-border rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">

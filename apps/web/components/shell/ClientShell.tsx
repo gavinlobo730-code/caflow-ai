@@ -1,6 +1,7 @@
 "use client";
 
 import { ClientTopBar } from "@/components/shell/ClientTopBar";
+import { MAIN_CONTENT_ID } from "@/components/shell/SkipToContent";
 
 /**
  * The client workspace's shell: a bar across the top, and the module below it
@@ -35,7 +36,8 @@ export function ClientShell({
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-ps-bg">
       <ClientTopBar onOpenSearch={onOpenSearch} />
-      <main className="flex-1 min-h-0 overflow-y-auto">{children}</main>
+      {/* The skip link's target — see SkipToContent. */}
+      <main id={MAIN_CONTENT_ID} tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto outline-none">{children}</main>
     </div>
   );
 }

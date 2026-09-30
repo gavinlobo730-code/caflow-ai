@@ -133,7 +133,7 @@ export default function ClientKnowledgePage() {
           <button onClick={() => load(query)} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
         </div>
       </div>
-      <div className="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-1.5 bg-white mb-4">
+      <div className="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-1.5 bg-white mb-4 focus-within:ring-2 focus-within:ring-brand">
         <Search size={14} className="text-gray-400" />
         {/* No Enter-key handler: the debounced effect above already covers
             every keystroke, Enter included, ~300ms after typing stops. */}

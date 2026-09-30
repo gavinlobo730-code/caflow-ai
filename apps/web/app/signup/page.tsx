@@ -99,7 +99,7 @@ export default function SignupPage() {
                       id={id} name={name} autoComplete={autoComplete}
                       type={type} value={value} onChange={(e) => setter(e.target.value)}
                       placeholder={placeholder} required
-                      className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                      className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                     />
                   </div>
                 ))}

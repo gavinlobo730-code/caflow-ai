@@ -493,7 +493,7 @@ export function SalesCreditNoteEditor({
                       </td>
                       <td className="py-1.5 px-1">
                         <select value={line.unit || "NOS"} onChange={(e) => setLine(idx, { unit: e.target.value })} aria-label={`Line ${idx + 1} unit`}
-                          className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none text-xs">
+                          className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand text-xs">
                           {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
                         </select>
                       </td>
@@ -503,7 +503,7 @@ export function SalesCreditNoteEditor({
                       </td>
                       <td className="py-1.5 px-1">
                         <select value={line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseFloat(e.target.value) })} aria-label={`Line ${idx + 1} GST rate`}
-                          className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none text-xs">
+                          className="w-full px-1 py-1 border border-ps-border rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand text-xs">
                           {gstRateOptions(line.gst_rate).map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
                       </td>
