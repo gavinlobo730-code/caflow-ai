@@ -120,11 +120,15 @@ def accept_invite(body: AcceptInviteBody, jwt_user: dict = Depends(get_jwt_user)
         # here means the wrong mailbox somehow held the link — refuse rather than
         # silently link the wrong identity.
         raise HTTPException(status_code=404, detail="Invalid or expired invite.")
+    if invite.get("is_active") is False:
+        # A Partner who deactivated a pending invitee has withdrawn the invite;
+        # accepting it must not reactivate them. Reactivation is
+        # POST /users/{id}/reactivate, a Partner's act, never the invitee's.
+        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
 
     updated = user_repo.update(invite["id"], {
         "auth_user_id": jwt_user["auth_user_id"],
         "status": "active",
-        "is_active": True,
         "invite_token": None,
         "invite_expires_at": None,
     }, firm_id=invite["firm_id"])
@@ -152,8 +156,12 @@ def change_role(user_id: str, body: RoleBody, current_user: dict = Depends(rbac(
 def suspend_user(user_id: str, current_user: dict = Depends(rbac("team", "write"))):
     member = _get_member(user_id, current_user["firm_id"])
     # Disable AND revoke sessions so any existing JWT is rejected immediately.
-    updated = user_repo.update(user_id, {"is_active": False, "sessions_revoked_at": _now()},
-                               firm_id=current_user["firm_id"])
+    change = {"is_active": False, "sessions_revoked_at": _now()}
+    if member.get("auth_user_id") is None:
+        # A pending invitee has no session to revoke, only the emailed link:
+        # withdraw it, so a later reactivate does not revive it either.
+        change.update({"invite_token": None, "invite_expires_at": None})
+    updated = user_repo.update(user_id, change, firm_id=current_user["firm_id"])
     log_event(current_user["firm_id"], "user", user_id, "suspend",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
     login_events_repo.record(current_user["firm_id"], user_id, member.get("email"), "suspended")

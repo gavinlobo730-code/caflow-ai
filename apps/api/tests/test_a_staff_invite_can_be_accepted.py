@@ -16,6 +16,13 @@ main.py's dependencies, which is why nothing saw it. These go through
 The fix gives accept-invite its own router, mounted without the guard, and
 every other identity route keeps it — asserted from the mounted app rather
 than from a list of paths.
+
+Making the route reachable made a second defect live: Deactivate is the only
+control a Partner has over a pending invite, and it left the emailed token in
+place while accept-invite wrote `is_active: True` — so a deactivated invitee
+could still join, reactivated, at the invited role. Accept now refuses an
+inactive row and no longer reactivates one, and suspending a pending invitee
+clears the token.
 """
 from __future__ import annotations
 
@@ -56,9 +63,13 @@ class _InviteRepo:
         self.row = {
             "id": "u-invited", "firm_id": "F1", "role": "Manager",
             "full_name": "New Hire", "email": INVITEE_EMAIL, "status": "invited",
-            "auth_user_id": None, "invite_token": INVITE_TOKEN,
+            "is_active": True, "auth_user_id": None, "invite_token": INVITE_TOKEN,
             "invite_expires_at": (datetime.now(timezone.utc) + timedelta(days=3)).isoformat(),
         }
+
+    def find_by_id(self, uid, *, firm_id):
+        r = self.row
+        return r if r["id"] == uid and r["firm_id"] == firm_id else None
 
     def find_by_invite_token(self, token):
         r = self.row
@@ -136,11 +147,39 @@ def test_the_unguarded_route_still_refuses_another_mailbox(invitee, monkeypatch)
     assert invitee.row["auth_user_id"] is None
 
 
+def test_a_deactivated_invitee_cannot_accept_the_link_they_were_sent(invitee):
+    # Deactivate is the only control a Partner has over a pending invite, so
+    # the emailed link must stop working even if the token survived.
+    invitee.row["is_active"] = False
+    r = _app_client().post(ACCEPT, json={"token": INVITE_TOKEN},
+                           headers={"Authorization": "Bearer x"})
+    assert r.status_code == 404
+    assert invitee.row["auth_user_id"] is None
+    assert invitee.row["is_active"] is False
+
+
+def test_deactivating_a_pending_invitee_withdraws_the_link(invitee):
+    from fastapi import FastAPI
+    from core.auth import get_current_user
+
+    app = FastAPI()
+    app.include_router(idmod.router)
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "p", "firm_id": "F1", "role": "Partner", "email": "p@firm.test"}
+    r = TestClient(app, raise_server_exceptions=False).post(
+        f"/api/identity/users/{invitee.row['id']}/suspend")
+    assert r.status_code == 200, r.text
+    assert invitee.row["invite_token"] is None
+    assert invitee.row["invite_expires_at"] is None
+
+
 def _identity_routes_and_whether_guarded():
+    """One (METHOD path, guarded) pair per MOUNTED route. A list, not a dict:
+    a route mounted twice must show up twice, whichever copy came last."""
     import main
     from core.auth import mfa_guard
 
-    out = {}
+    out = []
     for route in main.app.routes:
         path = str(getattr(route, "path", ""))
         if not path.startswith("/api/identity"):
@@ -148,17 +187,17 @@ def _identity_routes_and_whether_guarded():
         deps = getattr(getattr(route, "dependant", None), "dependencies", [])
         guarded = mfa_guard in {getattr(d, "call", None) for d in deps}
         for method in sorted(getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}):
-            out[f"{method} {path}"] = guarded
+            out.append((f"{method} {path}", guarded))
     return out
 
 
 def test_accept_invite_is_the_only_identity_route_without_the_mfa_guard():
-    routes = _identity_routes_and_whether_guarded()
-    assert len(routes) >= 10, f"the sweep found only {sorted(routes)} — bad prefix?"
-    unguarded = sorted(k for k, g in routes.items() if not g)
+    rows = _identity_routes_and_whether_guarded()
+    assert len(rows) >= 10, f"the sweep found only {sorted(rows)} — bad prefix?"
+    unguarded = sorted(k for k, g in rows if not g)
     assert unguarded == [f"POST {ACCEPT}"], unguarded
 
 
 def test_accept_invite_is_mounted_exactly_once():
-    routes = _identity_routes_and_whether_guarded()
-    assert [k for k in routes if k.endswith(" " + ACCEPT)] == [f"POST {ACCEPT}"]
+    rows = _identity_routes_and_whether_guarded()
+    assert [k for k, _ in rows if k.endswith(" " + ACCEPT)] == [f"POST {ACCEPT}"], rows
