@@ -40,21 +40,11 @@ if _SENTRY_DSN:
     )
 
 # ── CORS origins — parse before router imports so value is fixed early ─────────
-# Handles comma-separated values, accidental newlines, surrounding quotes,
-# and trailing slashes that would cause silent origin mismatches.
-def _parse_origins(raw: str) -> list[str]:
-    origins = []
-    for part in raw.replace("\n", ",").replace(";", ",").split(","):
-        o = part.strip().strip('"').strip("'").rstrip("/")
-        if o:
-            origins.append(o)
-    return origins
+# The parse lives in core/urls.py (parse_origins / allowed_origins) so the boot
+# report counts the list with the same code the middleware is built from.
+from core.urls import allowed_origins
 
-from core.urls import default_allowed_origins
-
-_ALLOWED_ORIGINS = _parse_origins(
-    os.environ.get("ALLOWED_ORIGINS") or default_allowed_origins()
-)
+_ALLOWED_ORIGINS = allowed_origins()
 _logger.info("CORS allowed origins: %s", _ALLOWED_ORIGINS)
 
 from routers import clients, compliance, documents, assistant, insights, tasks, reminders, team

@@ -24,6 +24,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
 import { Callout } from "@/components/ui/callout";
+import { api, type SecurityPosture } from "@/lib/api/index";
+import { objectWithLists } from "@/lib/api/shape";
 import Link from "next/link";
 import { setupPageLead, SETUP_CONTINUE_HREF } from "@/lib/auth/mfaEnrolment";
 import { authErrorMessage } from "@/lib/auth/authErrorMessage";
@@ -91,8 +93,99 @@ export default function SecuritySettingsPage() {
         <>
           <ChangePasswordCard />
           <MfaCard />
+          <PostureCard />
         </>
       )}
+    </div>
+  );
+}
+
+/** ── Deployment posture (Partner only) ──────────────────────────────────────
+ *
+ * SECURITY-PRIVACY-16. Whether row-level security and two-step sign-in are
+ * really on for the whole practice is decided by two switches that live in the
+ * hosting dashboard, where nobody reading the code can see them. The server
+ * reports what it actually resolved (`GET /api/security/posture`, Partner-only
+ * and behind the MFA guard) and this card shows it — sentences, tones and
+ * booleans as served, nothing derived here.
+ *
+ * Hidden for anyone `firm:admin` is not granted to, because the endpoint would
+ * refuse them: a card that can only ever say "forbidden" is noise.
+ */
+function PostureCard() {
+  const { can } = useAuth();
+  const allowed = can("firm", "admin");
+  const [posture, setPosture] = useState<SecurityPosture | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!allowed) return;
+    let live = true;
+    api.security.posture()
+      .then((res) => {
+        if (!live) return;
+        if (!res.success) { setError(res.error || "Could not read the security posture."); return; }
+        const next = objectWithLists<SecurityPosture>(res.data, "problems", "mfa_required_roles");
+        if (!next) { setError("The server answered with something unreadable."); return; }
+        setError(null);
+        setPosture(next);
+      })
+      .catch(() => { if (live) setError("Could not read the security posture."); });
+    return () => { live = false; };
+  }, [allowed]);
+
+  if (!allowed) return null;
+
+  const rows: Array<{ label: string; on: boolean; note?: string }> = posture ? [
+    { label: "Database access runs as the signed-in user (row-level security)", on: posture.use_user_jwt },
+    {
+      label: "Two-step sign-in required",
+      on: posture.require_mfa,
+      note: posture.require_mfa && posture.mfa_required_roles.length > 0
+        ? `for ${posture.mfa_required_roles.join(", ")}` : undefined,
+    },
+    { label: "Scheduled jobs (reminders, recurring documents)", on: posture.scheduler_enabled },
+  ] : [];
+
+  return (
+    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+      <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
+        <ShieldCheck size={15} className="text-blue-600" />
+        <h2 className="text-sm font-semibold text-ps-ink">How this deployment is set up</h2>
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        {error && (
+          <p className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle size={13} className="mt-0.5 shrink-0" /> {error}</p>
+        )}
+        {!posture && !error && <p className="text-sm text-ps-label">Reading the live settings…</p>}
+        {posture && (
+          <>
+            <ul className="divide-y divide-ps-border">
+              {rows.map((r) => (
+                <li key={r.label} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <span className="text-ps-body">
+                    {r.label}{r.note ? <span className="text-ps-label"> — {r.note}</span> : null}
+                  </span>
+                  <span
+                    className={
+                      "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium " +
+                      (r.on ? "bg-state-ready-surface text-state-ready" : "bg-state-problem-surface text-state-problem")
+                    }
+                  >
+                    {r.on ? "On" : "Off"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {posture.problems.map((p) => (
+              <Callout key={p.code} tone={p.tone}>{p.message}</Callout>
+            ))}
+            <p className="text-xs text-ps-label">
+              This is what the running service reports about itself, not what a note says it should be.
+            </p>
+          </>
+        )}
+      </div>
     </div>
   );
 }

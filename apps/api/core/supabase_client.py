@@ -195,6 +195,18 @@ def get_supabase() -> Client:
     return _service_client()
 
 
+def anon_key() -> str:
+    """The anon key a per-user client is built from ("" when neither name is set).
+
+    One reader so that `get_user_supabase` and the boot-time posture check
+    (core/security_posture.py) agree on what "an anon key is configured" means —
+    the check exists to say whether the user-JWT path can work at all.
+    """
+    return os.environ.get("SUPABASE_ANON_KEY", "").strip() or os.environ.get(
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY", ""
+    ).strip()
+
+
 def get_user_supabase(access_token: str) -> Client:
     """
     M6 (staged) — a per-request Supabase client authenticated as the END USER
@@ -205,9 +217,7 @@ def get_user_supabase(access_token: str) -> Client:
     header) — do NOT cache it, as it is user-scoped.
     """
     url = os.environ.get("SUPABASE_URL", "").strip()
-    anon = os.environ.get("SUPABASE_ANON_KEY", "").strip() or os.environ.get(
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY", ""
-    ).strip()
+    anon = anon_key()
     if not url or not anon:
         raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY must be set for user-scoped access.")
     client = _force_http1(create_client(url, anon))

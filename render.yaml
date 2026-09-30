@@ -204,10 +204,19 @@ services:
       # "Multi-factor authentication required for this action.", and production
       # returns that string verbatim.
       #
-      # Neither is verifiable from code — `sync: false` means the value lives in
-      # the dashboard, and no test can see it (see the header of
-      # tests/test_render_manifest_matches_code.py). This comment is the only
-      # record that the answer is "true". Do not soften it back to a default.
+      # Neither is verifiable from THIS FILE — `sync: false` means the value lives
+      # in the dashboard, and no test can see it (see the header of
+      # tests/test_render_manifest_matches_code.py). What changed on 2026-09-30
+      # (SECURITY-PRIVACY-16 / OPS-06) is that the RUNNING SERVICE can now say:
+      #   * with APP_ENV=production (declared above) an UNSET, blank or
+      #     unrecognisable value now means ON (core/security_config.py). An
+      #     explicit "false" is still honoured — it is the rollback — but
+      #     core/security_posture.py logs it at ERROR at boot.
+      #   * GET /api/security/posture (Partner-only, behind the MFA guard)
+      #     returns what the process actually resolved, as booleans. That
+      #     response, not this comment, is the record that the answer is "true".
+      # Set both to "true" in the dashboard anyway, so the decision is written
+      # down where an operator looks. Do not soften this back to a default.
       - key: USE_USER_JWT
         sync: false
       - key: REQUIRE_MFA

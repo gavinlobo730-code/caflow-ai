@@ -65,6 +65,30 @@ export type FirmProfile = {
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+/** `GET /api/security/posture` — booleans, counts and fixed sentences. Every
+ *  field but the two lists is a scalar; the lists are named in
+ *  `objectWithLists` at the setter. */
+export interface SecurityPostureProblem {
+  code: string;
+  level: "error" | "warning";
+  /** The Callout tone the server chose for this level. */
+  tone: "problem" | "attention";
+  message: string;
+}
+export interface SecurityPosture {
+  ok: boolean;
+  app_env_is_production: boolean;
+  use_user_jwt: boolean;
+  use_user_jwt_explicit: boolean;
+  require_mfa: boolean;
+  require_mfa_explicit: boolean;
+  mfa_required_roles: string[];
+  supabase_anon_key_present: boolean;
+  scheduler_enabled: boolean;
+  cors_origin_count: number;
+  problems: SecurityPostureProblem[];
+}
+
 /** A row of `GET /api/clients`, narrowed to what a picker needs. The endpoint
  *  serves the whole `clients` row; naming only these keeps a caller from
  *  quietly depending on a column that is not part of the contract. */
@@ -6412,6 +6436,13 @@ export const api = {
      *  answer is by construction at aal1. Read by AuthContext only. */
     mfaPolicy: () =>
       request<ApiResp<unknown>>("/api/security/mfa-policy"),
+    /** What the deployment actually resolved for USE_USER_JWT, REQUIRE_MFA and
+     *  the settings that fail the same way (SECURITY-PRIVACY-16). Partner-only
+     *  (`firm:admin`) and behind the MFA guard; read by the Security settings
+     *  page's posture card, which renders the server's sentences and decides
+     *  nothing. */
+    posture: () =>
+      request<ApiResp<SecurityPosture>>("/api/security/posture"),
   },
   identity: {
     listUsers: () => request<ApiResp<{
