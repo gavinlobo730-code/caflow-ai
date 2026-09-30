@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from core.permissions import rbac
+from core.uploads import read_limited
 from domain.branding import image_source
 from models.common import api_response
 from repositories.branding_repository import branding_repo
@@ -194,9 +195,8 @@ def upload_logo(
     if _USE_MOCK:
         return api_response(True, {"logo_url": f"https://example.com/logos/{firm_id}/logo.{ext}"})
 
-    content = file.file.read()
-    if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Logo file must be smaller than 5 MB.")
+    # Bounded read (SECURITY-PRIVACY-20): at most 5 MB + 1 byte is ever in memory.
+    content = read_limited(file, 5 * 1024 * 1024, message="Logo file must be smaller than 5 MB.")
 
     try:
         from core.supabase_client import get_service_supabase

@@ -79,6 +79,7 @@ from domain.banking.normalizer import (
     balance_agreement, header_fingerprint, inspect_statement, validate_mapping,
 )
 from services import bank_column_mapping_service as column_mappings
+from core.uploads import read_limited
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -952,11 +953,11 @@ def upload_statement(
         on a scan, where nothing but the model read the file.
     """
     assert_client_access(current_user, client_id)
-    content = file.file.read()
+    # Bounded read: at most _MAX_UPLOAD_BYTES + 1 bytes ever reach memory. It
+    # used to read the whole body and then compare its length (SECURITY-PRIVACY-20).
+    content = read_limited(file, _MAX_UPLOAD_BYTES, message="File too large (max 10 MB).")
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-    if len(content) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
     db = _db()
 
     # A mapping the CA supplied for THIS upload wins; otherwise a mapping saved
@@ -1183,11 +1184,11 @@ def inspect_statement_file(
     being asked the same question twice.
     """
     assert_client_access(current_user, client_id)
-    content = file.file.read()
+    # Bounded read: at most _MAX_UPLOAD_BYTES + 1 bytes ever reach memory. It
+    # used to read the whole body and then compare its length (SECURITY-PRIVACY-20).
+    content = read_limited(file, _MAX_UPLOAD_BYTES, message="File too large (max 10 MB).")
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-    if len(content) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
     try:
         info = inspect_statement(file.filename or "", content)
     except StatementParseError as e:
@@ -1222,11 +1223,11 @@ def preview_statement_with_mapping(
     would catch that, and the balance arithmetic catches it on the first row.
     """
     assert_client_access(current_user, client_id)
-    content = file.file.read()
+    # Bounded read: at most _MAX_UPLOAD_BYTES + 1 bytes ever reach memory. It
+    # used to read the whole body and then compare its length (SECURITY-PRIVACY-20).
+    content = read_limited(file, _MAX_UPLOAD_BYTES, message="File too large (max 10 MB).")
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-    if len(content) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
     try:
         mapping = json.loads(column_mapping)
     except (TypeError, ValueError):

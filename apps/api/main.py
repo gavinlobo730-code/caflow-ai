@@ -213,7 +213,8 @@ def _failure_response(request: Request, exc: Exception) -> JSONResponse:
 
 
 # Middleware ordering (Starlette applies the LAST-added as the OUTERMOST):
-#   _carry_user_token  ->  CORSMiddleware  ->  _errors_with_cors  ->  routes
+#   _carry_user_token  ->  CORSMiddleware  ->  BodySizeLimitMiddleware
+#                      ->  _errors_with_cors  ->  routes
 # _errors_with_cors is INNERMOST, so any unhandled exception it converts to a
 # JSONResponse travels back OUT through CORSMiddleware and carries the CORS
 # headers. This matters because FastAPI's built-in catch-all `Exception` handler
@@ -226,6 +227,16 @@ async def _errors_with_cors(request: Request, call_next):
         return await call_next(request)
     except Exception as exc:                                 # noqa: BLE001
         return _failure_response(request, exc)
+
+
+# SECURITY-PRIVACY-20: a request body over 32 MB is refused from its
+# Content-Length before the multipart parser spools it to disk (middleware/
+# body_limit.py). It is added HERE — after _errors_with_cors, before CORS — so it
+# sits INSIDE CORSMiddleware: a 413 from outside it would carry no
+# Access-Control-Allow-Origin header and reach the browser as an opaque "Failed to
+# fetch", the exact failure the paragraph above describes for unhandled errors.
+from middleware.body_limit import BodySizeLimitMiddleware
+app.add_middleware(BodySizeLimitMiddleware)
 
 
 # `expose_headers` is NOT cosmetic. A browser lets script read only the seven

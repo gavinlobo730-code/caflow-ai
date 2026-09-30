@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from models.common import api_response
 from core.permissions import rbac
+from core.uploads import read_limited
 from core.authz import assert_client_access
 from services.internal_client_service import assert_partner_for_internal_id
 from domain.extraction_totals import check_totals
@@ -108,9 +109,9 @@ def extract_invoice(
     assert_client_access(current_user, client_id)
     # File size guard (10 MB)
     MAX_BYTES = 10 * 1024 * 1024
-    content = file.file.read()
-    if len(content) > MAX_BYTES:
-        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
+    # Bounded read (SECURITY-PRIVACY-20): it used to read the whole body and then
+    # compare its length, so the cap protected nothing it was written to protect.
+    content = read_limited(file, MAX_BYTES, message="File too large (max 10 MB)")
 
     content_type = (file.content_type or "").lower()
     filename = file.filename or ""

@@ -8,6 +8,7 @@ from repositories.document_repository import document_repo
 from services.activity_service import log_activity
 from services.audit_service import log_event
 from core.permissions import rbac
+from core.uploads import accept_upload, safe_path_segment
 from core.authz import assert_client_access, can_access_client, filter_by_client
 from services.internal_client_service import assert_partner_for_internal_id
 
@@ -43,6 +44,19 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 BUCKET = "Documents"
 
+#: What `documents.document_type` accepts — `documents_document_type_check`, from
+#: migration 001 and still in the production snapshot. It is the route's own
+#: vocabulary because `document_type` is interpolated into the storage key as a
+#: FOLDER, so a free string there is a caller choosing part of a key (SECURITY-
+#: PRIVACY-20). A value the database would refuse is refused here first, as a 422
+#: with the list, instead of after the file has already been uploaded.
+#: `tests/test_an_upload_is_read_bounded_typed_and_named_once.py` pins this to the
+#: migration.
+DOCUMENT_TYPES = frozenset({
+    "FORM16", "GST_INVOICE", "BANK_STATEMENT", "AIS", "FORM26AS",
+    "TDS_CERTIFICATE", "RENTAL_AGREEMENT", "CAPITAL_GAINS_STATEMENT", "OTHER",
+})
+
 
 @router.get("")
 def list_documents(
@@ -71,12 +85,19 @@ def upload_document(
     Returns a signed download URL valid for 1 hour.
     """
     _scope_client(client_id, current_user)  # block upload to an unassigned client
+    if document_type not in DOCUMENT_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"document_type must be one of: {', '.join(sorted(DOCUMENT_TYPES))}.")
+    # Bounded read, extension allowlist, bytes-match-name, and two names (one to
+    # show, one ASCII for the key) — core/uploads.py is the one place that decides.
+    accepted = accept_upload(file)
+    content = accepted.content
     firm_id = current_user["firm_id"]
     file_id = str(uuid.uuid4())
-    safe_name = file.filename or "upload"
-    storage_path = f"{firm_id}/{client_id}/{document_type}/{file_id}_{safe_name}"
-
-    content = file.file.read()
+    safe_name = accepted.display_name
+    storage_path = (f"{firm_id}/{safe_path_segment(client_id, field='client_id')}/"
+                    f"{document_type}/{file_id}_{accepted.storage_name}")
 
     if _USE_MOCK:
         # In mock mode just store metadata — no real upload
@@ -110,7 +131,8 @@ def upload_document(
     upload_result = sb.storage.from_(BUCKET).upload(
         path=storage_path,
         file=content,
-        file_options={"content-type": file.content_type or "application/octet-stream"},
+        # OUR content type, from the validated extension — never the caller's header.
+        file_options={"content-type": accepted.content_type},
     )
 
     if hasattr(upload_result, "error") and upload_result.error:
