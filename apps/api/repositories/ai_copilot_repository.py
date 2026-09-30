@@ -16,6 +16,14 @@ from typing import Optional
 
 from repositories.base import BaseRepository
 
+
+def _configured_text_model() -> str:
+    """The Groq text model as configured NOW — the one place a stored row's
+    `model_used` label comes from. Imported here rather than at module level: this
+    is a repository and domain/ai is a leaf it should not depend on at import."""
+    from domain.ai import groq_text
+    return groq_text.text_model()
+
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 
@@ -193,9 +201,16 @@ class AICopilotRepository(BaseRepository):
         content: str,
         tokens_used: Optional[int] = None,
         metadata: Optional[dict] = None,
-        model_used: str = "llama-3.3-70b-versatile",
+        model_used: Optional[str] = None,
     ) -> dict:
         now = _now()
+        # WHICH MODEL ANSWERED is recorded as the one actually configured, read at
+        # call time — it was the literal "llama-3.3-70b-versatile", the model Groq
+        # retired, written against every stored reply (and the column's own default
+        # is the same string, so leaving it out would have stored it anyway). A
+        # user's message was answered by no model and records none.
+        if model_used is None and role == "assistant":
+            model_used = _configured_text_model()
         msg = {
             "id": _uid(),
             "conversation_id": conversation_id,
@@ -448,7 +463,7 @@ class AICopilotRepository(BaseRepository):
             "snoozed_until": None,
             "acted_by": None,
             "acted_at": None,
-            "model_used": "llama-3.3-70b-versatile",
+            "model_used": _configured_text_model(),
             "source_context": {},
             "created_at": _now(),
             "updated_at": _now(),

@@ -27,6 +27,7 @@ import logging
 import os
 from typing import Optional
 from domain.ai.groq_text import text_model
+from domain.ai.redaction import redact_messages
 from domain.money_text import rupees_paise
 
 _logger = logging.getLogger("caflow.financial_analysis")
@@ -133,7 +134,13 @@ async def _call_groq(messages: list[dict]) -> Optional[str]:
             response = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {_GROQ_API_KEY}", "Content-Type": "application/json"},
-                json={"model": text_model(), "messages": messages, "max_tokens": 300, "temperature": 0.3},
+                # The prompt is figures only, so this changes nothing today; it is
+                # here because this module builds its own request and every such
+                # request is redacted by name (domain/ai/redaction) — the
+                # guard in tests/test_no_model_call_site_sends_an_identifier.py
+                # lists every sender.
+                json={"model": text_model(), "messages": redact_messages(messages),
+                      "max_tokens": 300, "temperature": 0.3},
             )
             response.raise_for_status()
             data = response.json()

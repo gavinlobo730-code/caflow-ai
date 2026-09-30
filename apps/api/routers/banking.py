@@ -75,6 +75,7 @@ from domain.banking import account_kind
 from domain.banking.register import opening_balance_gap, OPENING_DATE_REQUIRED
 from domain.banking import vision
 from services import statement_vision
+from middleware import rate_limit
 from domain.banking.normalizer import (
     balance_agreement, header_fingerprint, inspect_statement, validate_mapping,
 )
@@ -779,7 +780,8 @@ _IMAGE_MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
 
 
 def _read_statement_file(filename: str, content: bytes, mapping, *,
-                         allow_vision: bool, has_balances: bool):
+                         allow_vision: bool, has_balances: bool,
+                         rate_key: Optional[tuple] = None):
     """(transactions, source_format, used_vision, printed_totals) for an upload.
 
     `printed_totals` is the "Grand Total" row the bank printed on the statement,
@@ -845,6 +847,12 @@ def _read_statement_file(filename: str, content: bytes, mapping, *,
             "Reading a scanned statement is not configured on this deployment. "
             "Upload the CSV or Excel export instead.")
 
+    # The model is about to be used. An upload is a model call ONLY here — a CSV or
+    # a text PDF never reaches this line — so the limit is asked at this point and
+    # not on every upload, and it is asked BEFORE the pages are rasterised: a scan
+    # can be up to twenty images a call, the dearest thing this product sends.
+    if rate_key is not None:
+        rate_limit.enforce("vision", *rate_key)
     images = [content] if is_image else vision.page_images(content)
     mime = _IMAGE_MIME.get(ext, "image/png")
 
@@ -993,7 +1001,8 @@ def upload_statement(
     try:
         txns, fmt, used_vision, printed = _read_statement_file(
             file.filename or "", content, mapping,
-            allow_vision=allow_vision, has_balances=has_balances)
+            allow_vision=allow_vision, has_balances=has_balances,
+            rate_key=(current_user.get("firm_id") or "", current_user.get("id")))
     except StatementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

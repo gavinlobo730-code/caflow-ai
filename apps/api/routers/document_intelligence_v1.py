@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from models.common import api_response
 from core.permissions import rbac
+from middleware.rate_limit import ai_limit
 from core.authz import assert_client_access
 from services.internal_client_service import assert_partner_for_internal_id
 from domain.extraction_totals import check_totals
@@ -91,6 +92,7 @@ def extract_invoice(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     current_user: dict = Depends(rbac("document", "write")),
+    _limit: None = Depends(ai_limit("extract")),
 ):
     """
     Upload invoice PDF or image. AI extracts fields and returns a DRAFT purchase bill payload.
@@ -189,9 +191,6 @@ def _run_extraction(
     now use two different providers rather than forcing one non-working fit.
     """
     is_pdf = "pdf" in content_type or filename.lower().endswith(".pdf")
-    if is_pdf and not _GROQ_KEY:
-        _logger.info("No GROQ_API_KEY — refusing to fabricate an extraction")
-        return None, "AI extraction is not configured on the server", 503
     if not is_pdf and not _GEMINI_KEY:
         _logger.info("No GEMINI_API_KEY — refusing to fabricate an extraction")
         return None, "AI extraction is not configured on the server", 503
@@ -199,6 +198,18 @@ def _run_extraction(
     try:
         if is_pdf:
             doc_text = _extract_pdf_text(content)
+            if doc_text is None:
+                # A PDF with no text layer is a SCAN. It used to be sent to the
+                # text model as "[PDF content — base64 prefix, no extractable
+                # text layer]: <200 base64 characters>" under an "extract invoice
+                # fields" prompt, and since confidence is presence-based a
+                # plausible invented vendor and invoice number could come back
+                # from gibberish (ai-03). It is read as the picture it is, or
+                # refused — never guessed at.
+                return _extract_scanned_pdf(content)
+            if not _GROQ_KEY:
+                _logger.info("No GROQ_API_KEY — refusing to fabricate an extraction")
+                return None, "AI extraction is not configured on the server", 503
             return _groq_extract_text(doc_text), None, 200
         return _gemini_extract_image(content, content_type), None, 200
     except Exception as e:
@@ -211,11 +222,49 @@ def _run_extraction(
         return None, "AI extraction failed — please retry or enter the bill details manually", 502
 
 
-def _extract_pdf_text(content: bytes) -> str:
-    """Best-effort text extraction from a PDF. Scanned/image-only PDFs (no
-    embedded text layer) fall back to base64 noise, same limitation as
-    before — pdfminer can't OCR a raster PDF. A genuinely scanned PDF should
-    be uploaded as an image instead so it goes through the vision path."""
+#: The most pages of a scanned PDF that are read as ONE invoice. An invoice is a
+#: page or two; more than this is a statement-sized scan, and reading only its
+#: first pages would drop line items without saying so, so it is refused instead.
+SCANNED_PDF_PAGE_LIMIT = 3
+
+
+def _extract_scanned_pdf(content: bytes) -> tuple[Optional[dict], Optional[str], int]:
+    """Read a PDF that has no text layer through the image path, or say why not.
+
+    The image path is Gemini, the same one a photographed invoice takes
+    (`_gemini_extract_image`): each page is rasterised and sent as the picture it
+    is. Three refusals, each its own sentence because the remedy differs:
+    image reading is not configured, the file is not a readable PDF, and the scan
+    is longer than one invoice can be."""
+    if not _GEMINI_KEY:
+        if not _GROQ_KEY:
+            # Neither provider is set up — the honest answer is the general one.
+            return None, "AI extraction is not configured on the server", 503
+        return None, ("This PDF is a scan with no readable text, and image reading is "
+                      "not switched on for this server. Upload a photo of the invoice "
+                      "instead, or enter the bill details by hand."), 422
+    from domain.banking import vision
+    try:
+        pages, total = vision.first_pages(content, SCANNED_PDF_PAGE_LIMIT)
+    except vision.StatementParseError:
+        return None, ("This PDF is a scan with no readable text, and it could not be "
+                      "opened to read as a picture. Upload a photo of the invoice "
+                      "instead, or enter the bill details by hand."), 422
+    if total > SCANNED_PDF_PAGE_LIMIT:
+        return None, (f"This PDF is a scan of {total} pages — more than can be read as "
+                      f"one invoice. Upload a photo of the invoice page, or enter the "
+                      f"bill details by hand."), 422
+    if not pages:
+        return None, "This PDF has no pages to read.", 422
+    return _gemini_extract_images(pages, "image/png"), None, 200
+
+
+def _extract_pdf_text(content: bytes) -> Optional[str]:
+    """Best-effort text extraction from a PDF, or None when it has no text layer.
+
+    None — not a stand-in string — is what a scan returns: a marker dressed as
+    document text is exactly what reached the text model as base64 noise before
+    (ai-03). The caller decides what a scan gets; nothing here invents text."""
     try:
         import io
         from pdfminer.high_level import extract_text as pdf_extract
@@ -224,8 +273,7 @@ def _extract_pdf_text(content: bytes) -> str:
             return text[:8000]  # cap at 8000 chars for token budget
     except Exception:
         pass
-    b64 = base64.b64encode(content[:4096]).decode()
-    return f"[PDF content — base64 prefix, no extractable text layer]: {b64[:200]}..."
+    return None
 
 
 def _parse_extraction_json(raw: str) -> dict:
@@ -275,15 +323,20 @@ def _gemini_extract_image(content: bytes, content_type: str) -> dict:
     """Call Gemini's vision-capable model with the actual image bytes so it
     can genuinely read a photographed or scanned invoice. See _run_extraction
     for why this is Gemini rather than Groq."""
+    mime = content_type if content_type.startswith("image/") else "image/jpeg"
+    return _gemini_extract_images([content], mime)
+
+
+def _gemini_extract_images(images: list[bytes], mime: str) -> dict:
+    """One Gemini call over one or more page images of the SAME invoice."""
     from google import genai
     from google.genai import types
 
     client = genai.Client(api_key=_GEMINI_KEY)
-    mime = content_type if content_type.startswith("image/") else "image/jpeg"
     response = client.models.generate_content(
         model=_GEMINI_VISION_MODEL,
         contents=[
-            types.Part.from_bytes(data=content, mime_type=mime),
+            *[types.Part.from_bytes(data=img, mime_type=mime) for img in images],
             _EXTRACTION_PROMPT.strip(),
         ],
     )

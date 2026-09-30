@@ -32,11 +32,14 @@ frontend environment is at best ignored and at worst published. All AI calls hap
 `apps/api`, with keys in `apps/api/.env` ONLY.
 
 - **Groq** — chat/text features and PDF (text-only) invoice extraction. Needs
-  `GROQ_API_KEY`. Default model `llama-3.3-70b-versatile`, overridable via
-  `GROQ_TEXT_MODEL`.
-- **Gemini** — image-based invoice extraction only (photographed/scanned bills, in
-  `routers/document_intelligence_v1.py`). Needs `GEMINI_API_KEY`. Default model
-  `gemini-3.5-flash`, overridable via `GEMINI_VISION_MODEL`.
+  `GROQ_API_KEY`. Default model `openai/gpt-oss-120b` (`groq_text.DEFAULT_TEXT_MODEL`
+  is the authority), overridable via `GROQ_TEXT_MODEL`. The default was
+  `llama-3.3-70b-versatile` until 29-09-2026, when Groq retired it for this account
+  (a live `model_not_found` 404); this file kept naming the dead one for a day after.
+- **Gemini** — image-based invoice extraction (photographed or scanned bills, and a
+  PDF with no text layer — see below), in `routers/document_intelligence_v1.py`.
+  Needs `GEMINI_API_KEY`. Default model `gemini-3.5-flash`, overridable via
+  `GEMINI_VISION_MODEL`.
 
 Why two providers: Groq's vision models returned a live 404 `model_not_found` on this
 account; Gemini's free tier is multimodal-native and already provisioned. The PDF/text
@@ -44,6 +47,62 @@ path stayed on Groq and works fine. Treat the model names above as current defau
 not as contracts — `gemini-2.5-flash` was retired by Google ahead of its announced
 shutdown, and the code reads the env var precisely so the next retirement is a config
 change. The code is the authority; keep this file in step with it.
+
+**What reaches a provider, and what it may not** (ai-03, ai-09, ai-15, ai-17,
+security_privacy-12/22 — the AI-safety sweep of 30-09-2026). Five rules, each with a
+guard that states the rule rather than a spelling of it:
+
+- **A tax identifier never leaves for an AI provider.** `domain/ai/redaction.py`
+  replaces anything shaped like a PAN or a GSTIN (shape, not checksum — the GSTIN a CA
+  pastes is the transposed one) with `[PAN]` / `[GSTIN]` at the ONE place a chat request
+  is built (`groq_text.chat`, and the two modules that build their own:
+  `routers/ai_copilot.py`, `financial_analysis_service.py`). The builders no longer ask
+  for a name, PAN or GSTIN in the first place; the redactor is what stops the next
+  builder that forgets. **It does NOT pseudonymise NAMES** and the reversible
+  `Client A` / `Vendor 3` layer is unbuilt. **Document extraction is exempt by name**,
+  not by silence: the supplier's GSTIN is printed on the invoice being read.
+  `tests/test_no_model_call_site_sends_an_identifier.py` lists every sender to Groq and
+  fails a new one. ⚠️ **The assistant's client brief still sends the client's NAME and entity
+  type**, by design — `domain/ai/client_brief` says "the model needs to know WHO it is
+  answering about, not enough to impersonate them" — which sits beside the firm-level
+  copilot's "names go" decision and has never been reconciled with it. That is an open
+  question for the owner, and it is not changed here.
+- **A PDF with no text layer is a SCAN and is never sent to the text model.** It was
+  sent as "[PDF content — base64 prefix, no extractable text layer]: …" under an
+  "extract invoice fields" prompt, and since confidence is presence-based a plausible
+  vendor and invoice number could come back from gibberish. `_extract_pdf_text` returns
+  `None` for a scan; `_extract_scanned_pdf` reads up to `SCANNED_PDF_PAGE_LIMIT` (3)
+  pages as pictures through the Gemini path, or refuses in words (image reading off,
+  unreadable file, more than three pages — **never read in part**, because a reading
+  that stops at page three drops the line items on page four and says nothing).
+- **Every route that reaches a model is rate limited, per firm AND per user.**
+  `middleware/rate_limit.ai_limit(bucket)` is a dependency declared AFTER `rbac()` so a
+  permission refusal spends nothing; `enforce` is the same check for a route that only
+  sometimes reaches a model (a statement upload is a model call only when it is a scan).
+  Buckets differ on purpose: `chat` 20/min, `intelligence` 10, `extract` 10, `vision` 5,
+  a user getting half the firm's share (never under three). A refusal is a 429 with
+  `Retry-After`. `tests/test_every_route_that_reaches_a_model_is_rate_limited.py` derives
+  the AI routes from the routes' own source and fails an unlimited one. ⚠️ **The windows
+  are in-process**: right for one worker, wrong for several, and forgotten on restart.
+  **No per-firm monthly token or page budget and no usage screen exists** — that needs a
+  usage table and a migration and is its own piece of work.
+- **The executive dashboard and the copilot's global context answer for the CALLER's
+  clients.** `allowed_client_ids` used to feed only the cache key, so a scoped Manager
+  got every other client's name in `churn_signals` — with the cache correctly keeping
+  their answer apart from a Partner's, which made it look handled. Clients, overdue
+  tasks, compliance records and workflow failures/approvals are all narrowed, and the
+  payload says `scoped` the way the relationship view does.
+- **A reply shows its citation, and says when there is none.** `/api/assistant` parses
+  the trailing `Source:` line off the answer; the page rendered only the answer. It is
+  shown now, three states kept apart: a citation, none given (`""`, which is also what a
+  marker with nothing after it is — `split_source` no longer returns the truthy
+  `"Source: "`), and unknown (`undefined`, a message saved before the field existed,
+  which is NOT rendered as missing).
+- **A stored reply names the model that gave it.** `add_message` and
+  `create_recommendation` defaulted `model_used` to the retired Llama and the column's
+  own default (migration 069) is the same string; they record `groq_text.text_model()`
+  now. The column default is left — changing it is a migration — and is wrong only for a
+  row written by something that does not set the label.
 
 ## Money and the general ledger
 
@@ -4598,6 +4657,28 @@ backend's `record_filing` never ran either, and **a filed return did not lock
 its period**. It now PATCHes, and checks `res.success` — the GST workspace
 router answers refusals as HTTP 200 with `{success: false}`, so an unchecked
 call showed "Filed" for a request the server had declined.
+
+**THERE ARE TWO TRACKERS AND BOTH LOCK THE PERIOD** (gst-27, practice_management-15,
+frontend_ux-26). GST-14 made the `/gst` tracker (`compliance_calendar`) write
+`public.filings`; the OTHER tracker, `compliance_records` — which `/deadlines`, a
+client's Compliance tab and Practice → Compliance all show — moved an obligation to
+"Filed" and wrote nothing else, so the two doors a CA actually uses were the two that
+locked nothing. `compliance_record_service.update_record` is the ONE place an
+obligation becomes Filed, so the filing is recorded THERE and `mark-filed`,
+`transition` and `PATCH /compliance-records` all get it. For a GSTR-1 or GSTR-3B it
+writes the `filings` row over the obligation's OWN period bounds (a QRMP quarter locks
+all three months) **before** the status moves, so a failed write leaves the obligation
+open for a retry rather than Filed-but-unlocked (`record_filing` is idempotent).
+**The filed date is REQUIRED for those two and never defaulted** — the lock message
+quotes it — and a refusal is asked BEFORE the first step of the four-step walk, so it
+does not strand the obligation at Ready To File. A record cannot be CREATED already
+Filed (a second way to Filed that locks nothing), and `gst_filing_record_service` now
+holds the one map of which returns lock and the per-type reason for each that does not
+(GSTR-9, TDS, ITR…), re-exported by the calendar router so the two doors cannot
+disagree. The screens share `components/compliance/MarkFiledModal` and tell the CA what
+the server did (`lib/compliance/filingOutcome`, which renders an ABSENT answer as
+"could not confirm", never as "nothing was locked"). Nothing is backfilled: production
+held one GSTR-3B obligation Filed without a lock, in a QA test firm.
 
 ### Live bank feeds through the Account Aggregator
 

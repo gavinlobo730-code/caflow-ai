@@ -253,10 +253,16 @@ class AICopilotService:
                     else:
                         client = _get_client_repo().find_by_id(context_id)
                     if client:
+                        # NO NAME, GSTIN OR PAN (ai-15, security_privacy-12). The
+                        # client-level copilot was withdrawn for sending exactly
+                        # these to a third party, and this builder — reachable by
+                        # API though no screen calls it — kept sending them. The
+                        # model is told about "the client" and their figures; a
+                        # CA who asked about a client knows which one. The same
+                        # rule is enforced a second time, on the wire, by
+                        # domain/ai/redaction.
                         lines += [
-                            f"CLIENT NAME: {client.get('client_name', 'Unknown')}",
-                            f"GSTIN: {client.get('gstin', 'N/A')}",
-                            f"PAN: {client.get('pan', 'N/A')}",
+                            "CLIENT: the client this conversation is about (name and tax IDs withheld)",
                             f"CLIENT STATUS: {client.get('status', 'unknown')}",
                             f"HEALTH SCORE: {client.get('health_score', 'N/A')}",
                             f"LIFECYCLE STAGE: {client.get('lifecycle_stage', 'N/A')}",
@@ -279,12 +285,18 @@ class AICopilotService:
 
         try:
             if context_type in ("global", "compliance"):
-                overdue_tasks = _get_task_repo().find_overdue(firm_id=firm_id)
+                # Narrowed to the caller's clients, like the client count above
+                # it: a scoped Manager was told the WHOLE firm's overdue work
+                # while being told only their own client count (ai-09).
+                overdue_tasks = self._visible(
+                    _get_task_repo().find_overdue(firm_id=firm_id), allowed_client_ids)
                 lines.append(f"OVERDUE TASKS: {len(overdue_tasks)}")
                 # One fetch, not two — comp_overdue and due_soon are both
                 # derived from the same result set instead of each doing its
                 # own full-history find_all() for the same firm.
-                comp_records = _get_compliance_records_repo().find_all(firm_id=firm_id)
+                comp_records = self._visible(
+                    _get_compliance_records_repo().find_all(firm_id=firm_id),
+                    allowed_client_ids)
                 comp_overdue = [r for r in comp_records if r.get("status") == "Overdue"]
                 due_soon = _due_soon_from_records(comp_records, 7)
                 lines.append(f"OVERDUE COMPLIANCE FILINGS: {len(comp_overdue)}")
@@ -295,8 +307,15 @@ class AICopilotService:
         try:
             if context_type in ("global", "workflow"):
                 wf_repo = _get_workflow_repo()
-                failures = wf_repo.list_failures(firm_id, resolved=False, limit=10)
-                approvals = wf_repo.list_approvals(firm_id, status="pending", limit=10)
+                # Narrowed like every other count in this context (ai-09): these
+                # rows carry no client_id of their own and hang off an instance
+                # that may have one, which is what _visible_by_instance resolves.
+                failures = self._visible_by_instance(
+                    firm_id, wf_repo.list_failures(firm_id, resolved=False, limit=10),
+                    allowed_client_ids)
+                approvals = self._visible_by_instance(
+                    firm_id, wf_repo.list_approvals(firm_id, status="pending", limit=10),
+                    allowed_client_ids)
                 # Aware UTC: `workflow_approvals.due_at` is TIMESTAMPTZ and
                 # comes back from PostgREST carrying an offset, so the two
                 # sides of this string comparison must be written the same way.
@@ -425,10 +444,14 @@ class AICopilotService:
 
         now = datetime.now(timezone.utc)
 
-        # Fetch real client data before calling Groq
+        # Fetch real client data before calling Groq. The name, PAN and GSTIN
+        # are read by nobody here on purpose (ai-15, security_privacy-12): the
+        # report is about the client the caller asked for, and the provider does
+        # not need to be told who that is. domain/ai/redaction removes a
+        # PAN/GSTIN-shaped string from any prompt regardless. The NAME is kept
+        # below for the stored summary's own metadata only — it is ours, it never
+        # reaches the prompt.
         client_name = client_id
-        client_pan = "N/A"
-        client_gstin = "N/A"
         client_status = "unknown"
         client_health = "N/A"
         overdue_count = 0
@@ -439,8 +462,6 @@ class AICopilotService:
             client = _get_client_repo().find_by_id(client_id, firm_id=firm_id)
             if client:
                 client_name = client.get("client_name", client_id)
-                client_pan = client.get("pan", "N/A")
-                client_gstin = client.get("gstin", "N/A")
                 client_status = client.get("status", "unknown")
                 client_health = client.get("health_score", "N/A")
         except Exception:
@@ -458,10 +479,7 @@ class AICopilotService:
 
         prompt = f"""Generate a comprehensive practice intelligence report for the following client.
 
-CLIENT DETAILS:
-- Name: {client_name}
-- PAN: {client_pan}
-- GSTIN: {client_gstin}
+CLIENT DETAILS (name and tax IDs are withheld from this request):
 - Status: {client_status}
 - Health Score: {client_health}/100
 - Overdue compliance tasks: {overdue_count}
@@ -832,16 +850,26 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
         active_automations = 0
         all_tasks: list[dict] = []
 
+        # EVERY read below is narrowed to the caller's clients (ai-09). The scope
+        # used to feed only the CACHE KEY, so a scoped Manager or Executive got
+        # the whole practice's client names back in `churn_signals` and the whole
+        # firm's counts — with the cache correctly keeping their answer apart
+        # from a Partner's, which made it look handled.
         try:
-            clients = _get_client_repo().find_all(firm_id=firm_id)
+            clients = self._visible(
+                _get_client_repo().find_all(firm_id=firm_id), allowed_client_ids, "id")
         except Exception:
             pass
 
         try:
             wf_repo = _get_workflow_repo()
-            failures = wf_repo.list_failures(firm_id, resolved=False, limit=100)
+            failures = self._visible_by_instance(
+                firm_id, wf_repo.list_failures(firm_id, resolved=False, limit=100),
+                allowed_client_ids)
             wf_failures = len(failures)
-            approvals = wf_repo.list_approvals(firm_id, status="pending", limit=100)
+            approvals = self._visible_by_instance(
+                firm_id, wf_repo.list_approvals(firm_id, status="pending", limit=100),
+                allowed_client_ids)
             pending_approvals = len(approvals)
             templates = wf_repo.list_templates(firm_id, is_active=True)
             active_automations = len([t for t in templates if t.get("is_active")])
@@ -849,7 +877,8 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
             pass
 
         try:
-            all_tasks = _get_task_repo().find_overdue(firm_id=firm_id)
+            all_tasks = self._visible(
+                _get_task_repo().find_overdue(firm_id=firm_id), allowed_client_ids)
             tasks_overdue = len(all_tasks)
         except Exception:
             pass
@@ -939,6 +968,11 @@ Firm data as of {ist_now().strftime('%d %B %Y')}:
 
         dashboard_data = {
             "firm_id": firm_id,
+            # Said the way the relationship view says it: a scoped answer is
+            # narrowed AND labelled, so nobody reads a Manager's three clients
+            # as the practice's health.
+            "scoped": allowed_client_ids is not None,
+            "analysed_client_count": len(clients),
             "revenue_insights": {
                 "outstanding_invoices": 0,
                 "outstanding_amount_paise": 0,

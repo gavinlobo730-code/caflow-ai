@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.permissions import rbac
+from middleware.rate_limit import ai_limit
 from core.authz import assert_client_access, can_access_client
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
@@ -169,6 +170,7 @@ def _assert_notice_scope(current_user: dict, notice_id: str) -> dict | None:
 def extract_notice(
     body: ExtractNoticeRequest,
     current_user: dict = Depends(rbac("compliance", "write")),
+    _limit: None = Depends(ai_limit("extract")),
 ):
     """
     Extract government notice details from text using AI.

@@ -9,9 +9,14 @@ from fastapi import HTTPException
 
 from domain.ai_copilot_service import AICopilotService
 
+# C2's STATUS is distinctive because the client block no longer carries a NAME
+# (ai-15): these tests used the name as the thing that proves a client was or was
+# not injected, and with the name withheld from every prompt that assertion would
+# have passed vacuously — "Secret Co" cannot appear whether or not C2 leaked. The
+# status line is what the block still carries and what tells the two apart.
 CLIENTS = [
     {"id": "C1", "client_name": "Allowed Co", "status": "active", "gstin": "G1", "pan": "P1"},
-    {"id": "C2", "client_name": "Secret Co", "status": "active", "gstin": "G2", "pan": "P2"},
+    {"id": "C2", "client_name": "Secret Co", "status": "dormant_secret", "gstin": "G2", "pan": "P2"},
 ]
 
 
@@ -43,11 +48,25 @@ def test_client_context_blocked_for_unauthorized(svc):
     # Asking for C2's context while only authorized for C1 must not leak C2.
     ctx = svc._build_context("F1", "client", "C2", allowed_client_ids={"C1"})
     assert "Secret Co" not in ctx
+    # The assertion that can actually fail: no client block at all, so none of C2's
+    # figures — its status being the distinctive one — reached the prompt.
+    assert "dormant_secret" not in ctx
+    assert "CLIENT STATUS" not in ctx
 
 
 def test_client_context_allowed_for_authorized(svc):
     ctx = svc._build_context("F1", "client", "C1", allowed_client_ids={"C1"})
-    assert "Allowed Co" in ctx
+    # The authorised client's FIGURES are in; its name and tax IDs are not — they
+    # are withheld from every prompt (ai-15, security_privacy-12).
+    assert "CLIENT STATUS: active" in ctx
+    assert "Allowed Co" not in ctx
+    assert "G1" not in ctx.replace("FIRM: F1", "") and "P1" not in ctx
+
+
+def test_the_unauthorized_assertion_is_not_vacuous(svc):
+    """The premise the test above relies on: with access, the block IS there."""
+    ctx = svc._build_context("F1", "client", "C2", allowed_client_ids={"C1", "C2"})
+    assert "CLIENT STATUS: dormant_secret" in ctx
 
 
 def test_router_gates_context_id(monkeypatch):

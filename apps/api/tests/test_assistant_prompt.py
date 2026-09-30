@@ -70,6 +70,16 @@ def test_a_reply_without_the_marker_degrades_to_an_empty_source():
     assert source == ""
 
 
+def test_a_marker_with_nothing_after_it_is_an_absent_citation_not_an_empty_one():
+    """ai-18. "Source:" followed by nothing used to come back as the truthy string
+    "Source: ", which the page would have rendered as a citation with no section in
+    it. A malformed citation must read as a missing one."""
+    for reply in ("Answer.\nSource:", "Answer.\nSource:   ", "Answer.\nSource:\n"):
+        answer, source = assistant.split_source(reply)
+        assert source == "", repr(reply)
+        assert answer == "Answer.", repr(reply)
+
+
 def test_only_the_last_marker_splits_the_reply():
     """rsplit, not split. A reply that discusses the word earlier must not have
     its answer carved in half — the prompt forbids that, but the parser should

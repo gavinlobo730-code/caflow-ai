@@ -7,6 +7,13 @@ import { api } from "@/lib/api";
 interface Message {
   role: "user" | "assistant";
   content: string;
+  /** The statutory citation the server parsed off the end of the reply
+   *  ("Source: CGST Act, Section 39"). THREE states, and they are not the same:
+   *  a string is a citation, "" is a reply that came back with none (or a
+   *  malformed one — the server decides which), and `undefined` is a message
+   *  from before this field existed, whose citation is unknown and so is not
+   *  rendered as missing. */
+  source?: string;
 }
 
 const SUGGESTED_PROMPTS = [
@@ -133,7 +140,7 @@ export default function AIAssistantPage() {
         // the server branches on truthiness and an empty string would take the
         // scoped path with nothing to scope.
         ...(clientId ? { client_id: clientId } : {}),
-      }) as { success: boolean; data: { answer?: string; reply?: string } | null; error: string | null };
+      }) as { success: boolean; data: { answer?: string; reply?: string; source?: string } | null; error: string | null };
 
       if (!json.success || !json.data) {
         throw new Error(json.error ?? "Request failed");
@@ -143,7 +150,10 @@ export default function AIAssistantPage() {
       const reply: string = json.data.answer ?? json.data.reply ?? "";
       if (!reply) throw new Error("Empty response from AI service");
 
-      const finalHistory: Message[] = [...newHistory, { role: "assistant", content: reply }];
+      // `source` is "" when the model gave none; a backend one deploy behind
+      // sends no key at all, which is unknown and stays undefined.
+      const source = typeof json.data.source === "string" ? json.data.source : undefined;
+      const finalHistory: Message[] = [...newHistory, { role: "assistant", content: reply, source }];
       setMessages(finalHistory);
       saveHistory(finalHistory);
     } catch (err) {
@@ -280,6 +290,20 @@ export default function AIAssistantPage() {
               }`}
             >
               {msg.content}
+              {msg.role === "assistant" && msg.source !== undefined && (
+                msg.source ? (
+                  // The page tells the CA every answer cites its sections, so the
+                  // citation the server parsed is shown — it used to be parsed,
+                  // stripped from the answer, and thrown away here.
+                  <p className="mt-2 pt-2 border-t border-ps-border text-xs text-ps-label not-italic">
+                    {msg.source}
+                  </p>
+                ) : (
+                  <p className="mt-2 pt-2 border-t border-ps-border text-xs text-state-attention">
+                    No citation given — verify before relying on this.
+                  </p>
+                )
+              )}
             </div>
           </div>
         ))}

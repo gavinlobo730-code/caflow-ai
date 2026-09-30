@@ -14,6 +14,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from middleware.rate_limit import check_rate_limit
 from domain.ai import groq_text
+from domain.ai.redaction import redact_messages
 
 _logger = logging.getLogger("caflow.ai_copilot")
 
@@ -259,7 +260,9 @@ async def copilot_chat(request: Request, body: CopilotRequest, current_user: dic
             response = await client.post(
                 GROQ_API_URL,
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"model": model, "messages": messages, "max_tokens": 1024},
+                # Redacted as groq_text.chat does: this route builds its own
+                # request, so it asks for the same cleaning by name.
+                json={"model": model, "messages": redact_messages(messages), "max_tokens": 1024},
                 timeout=30,
             )
 
