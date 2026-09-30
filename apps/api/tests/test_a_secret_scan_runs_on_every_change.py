@@ -18,7 +18,13 @@ WHAT THIS PINS, AND WHAT IT CANNOT
          role, so a SERVICE-ROLE token in the same place is still caught, and only the noisy generic rule is
          ever silenced by path;
       4. where a real gitleaks is on PATH, the script catches a secret in a pull request's range, is quiet
-         about one committed before it, and does not print the token it found.
+         about one committed before it, and does not print the token it found;
+      5. THE TREE ITSELF IS CLEAN UNDER THE CONFIG. The first draft of this module pinned the rules around
+         the scan and never ran the scan over the repository it guards, so the commit that added a fake JWT
+         to a test (ops-09) turned the new check red on its own pull request and nothing here noticed. Two
+         tests now ask the question directly: one with no binary (every JWT-shaped token in a tracked file
+         must be covered by a `jwt` allowlist, so it runs in the required pytest check, where gitleaks is
+         not installed) and one with the real binary over a copy of the tracked files.
 """
 from __future__ import annotations
 
@@ -216,10 +222,20 @@ def test_only_the_noisy_generic_rule_is_ever_silenced_by_path():
             assert a["targetRules"] == ["generic-api-key"], a["description"]
 
 
+def _jwt_allowlists() -> list[dict]:
+    return [x for x in ALLOWLISTS if x["targetRules"] == ["jwt"]]
+
+
+def _jwt_patterns() -> list[re.Pattern]:
+    return [re.compile(r) for a in _jwt_allowlists() for r in a["regexes"]]
+
+
 def _anon_allowlist() -> re.Pattern:
-    (a,) = [x for x in ALLOWLISTS if x["targetRules"] == ["jwt"]]
-    (pattern,) = a["regexes"]
-    return re.compile(pattern)
+    """The one jwt allowlist that covers wrangler.toml's public anon key. There is more than one jwt allowlist
+    (see the fixture one below), so it is found by what it matches and not by being the only one."""
+    anon = _wrangler_anon_key()
+    (pattern,) = [p for p in _jwt_patterns() if p.match(anon)]
+    return pattern
 
 
 def _wrangler_anon_key() -> str:
@@ -276,6 +292,76 @@ def test_the_path_allowlists_match_a_relative_and_an_absolute_path():
         assert not any(p.search(path) for p in patterns), path
 
 
+# ── the tree itself ─────────────────────────────────────────────────────────────
+
+# The scrub tests' own fake token (apps/web/lib/monitoring/scrub.test.ts): header {"alg":"HS256"}, payload
+# {"sub":"1234567890"}, signature the word "signature". Built here and not written out, so this file does not
+# carry the literal it is about.
+def _fixture_jwt() -> str:
+    return f"{_b64({'alg': 'HS256'})}.{_b64({'sub': '1234567890'})}.{base64.urlsafe_b64encode(b'signature').decode().rstrip('=')}"
+
+
+# gitleaks' own `jwt` rule shape (v8.30.0). Kept loose on purpose: a token this matches and gitleaks does not is
+# a harmless extra question, and one gitleaks matches and this does not is what the binary-backed test below
+# is there to catch.
+JWT_SHAPE = re.compile(r"\b(ey[a-zA-Z0-9]{17,}\.ey[a-zA-Z0-9/\\_-]{17,}\.(?:[a-zA-Z0-9/\\_-]{10,}={0,2})?)(?:['\"|\n\r\s`;]|$)")
+
+
+def _tracked_files() -> list[Path]:
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=REPO, check=True, capture_output=True, text=True).stdout
+    return [REPO / name for name in out.split("\0") if name]
+
+
+def _uncovered_jwts(texts: dict[str, str]) -> list[tuple[str, int]]:
+    """(path, line) of every JWT-shaped token that no `jwt` allowlist in the config matches."""
+    patterns = _jwt_patterns()
+    found = []
+    for path, text in texts.items():
+        for m in JWT_SHAPE.finditer(text):
+            if not any(p.search(m.group(1)) for p in patterns):
+                found.append((path, text.count("\n", 0, m.start()) + 1))
+    return found
+
+
+def test_the_fixture_token_allowlist_is_by_value_and_shelters_nothing_else():
+    """The first draft of the config allowlisted the public anon key and nothing else, and the scrub test's fake
+    JWT went through as a finding. Allowlisting `jwt` by PATH is forbidden (only the generic rule may be silenced
+    by path), so the exception is the token's own value, anchored at both ends: nothing longer, nothing shorter,
+    and nothing whose payload says it is a real credential."""
+    fixture = _fixture_jwt()
+    (pattern,) = [p for p in _jwt_patterns() if p.search(fixture)]
+    assert pattern.pattern.startswith("^") and pattern.pattern.endswith("$"), "a value allowlist must be anchored both ends"
+    assert not pattern.search(_jwt("service_role")), "a service-role token must still be caught"
+    assert not pattern.search(_jwt("anon")) and not pattern.search(_jwt("anon", ref="zzzzzzzzzzzzzzzzzzzz"))
+    assert not pattern.search(fixture + "x") and not pattern.search("x" + fixture)
+    assert not pattern.search(fixture.rsplit(".", 1)[0] + "." + "A" * 43), "same header and payload, a different signature"
+    assert not pattern.search(_wrangler_anon_key()), "the anon key has its own allowlist and is not this one"
+
+
+def test_a_jwt_shaped_token_nothing_allowlists_is_reported_by_the_binary_free_check():
+    """Control for the test below: it must be able to fail. A service-role token is uncovered, the two tokens the
+    repository legitimately holds are not."""
+    assert _uncovered_jwts({"apps/api/settings.py": f'KEY = "{_jwt("service_role")}"\n'}) == [("apps/api/settings.py", 1)]
+    assert _uncovered_jwts({"a.ts": f"const t = '{_fixture_jwt()}'\n", "wrangler.toml": f'K = "{_wrangler_anon_key()}"\n'}) == []
+
+
+def test_every_jwt_shaped_token_in_a_tracked_file_is_covered_by_a_jwt_allowlist():
+    """THE TEST THE FIRST DRAFT LACKED. Needs no binary, so it runs in the required pytest check; gitleaks itself
+    is exercised over the same tree by the test in the next section when it is installed."""
+    texts = {}
+    for path in _tracked_files():
+        try:
+            texts[str(path.relative_to(REPO))] = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue          # a binary or a deleted file holds no token a person typed
+    assert len(texts) > 1000, "the tree was not read, so this test would pass having looked at nothing"
+    assert _uncovered_jwts(texts) == [], (
+        "a JWT-shaped token is committed and no allowlist in .gitleaks.toml covers it, so the Secret scan check "
+        "fails on the pull request that adds it. If it is a fake, build it at run time or allowlist its exact "
+        "value (and mind that it stays in HISTORY: removing it later does not clear the finding). If it is real, "
+        "it is a leak and has to be rotated.")
+
+
 # ── with a real gitleaks ────────────────────────────────────────────────────────
 
 needs_gitleaks = pytest.mark.skipif(shutil.which("gitleaks") is None, reason="gitleaks is not on PATH")
@@ -330,3 +416,47 @@ def test_end_to_end_a_groq_key_is_caught_even_inside_a_test_file(tmp_path):
     repo, _ = _repo_with_commits(tmp_path, [{"apps/api/tests/test_x.py": f'KEY = "gsk_{"aB3" * 18}"\n'}])
     shutil.copy(CONFIG, repo / ".gitleaks.toml")
     assert _run_script(repo, {"EVENT_NAME": "schedule"}, Path(shutil.which("gitleaks"))).returncode == 1
+
+
+def _copy_tracked_tree(dest: Path) -> Path:
+    """The tracked files as they are NOW (uncommitted edits included), without the untracked clutter of a worktree
+    (node_modules, .next, sibling worktrees) that `gitleaks dir .` would wander into."""
+    for path in _tracked_files():
+        if not path.is_file():
+            continue
+        target = dest / path.relative_to(REPO)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target)
+    shutil.copy(CONFIG, dest / ".gitleaks.toml")
+    return dest
+
+
+@needs_gitleaks
+def test_end_to_end_the_real_tree_is_clean_under_the_real_config(tmp_path):
+    """Run the actual binary over the actual repository. This is the check that was red on its own pull request."""
+    tree = _copy_tracked_tree(tmp_path / "tree")
+    r = subprocess.run([shutil.which("gitleaks"), "dir", str(tree), "--config", str(tree / ".gitleaks.toml"),
+                        "--redact", "--verbose", "--no-banner"], capture_output=True, text=True)
+    assert r.returncode == 0, "gitleaks reports a finding in the tracked tree:\n" + r.stdout + r.stderr
+
+
+@needs_gitleaks
+def test_end_to_end_a_fixture_token_committed_and_later_removed_is_still_allowlisted_in_history(tmp_path):
+    """Why the fix is in the CONFIG and not in the test file: a pull request is judged on the commits it adds, and
+    the commit that introduced the literal stays in that range however the next commit tidies it, as does the
+    weekly full-history scan. Removing the token from the tree clears nothing; only an allowlist does."""
+    repo, _ = _repo_with_commits(tmp_path / "fixture", [
+        {"apps/web/lib/x.test.ts": f'const t = "{_fixture_jwt()}";\n'},
+        {"apps/web/lib/x.test.ts": "const t = 1;\n"},
+    ])
+    shutil.copy(CONFIG, repo / ".gitleaks.toml")
+    gitleaks = Path(shutil.which("gitleaks"))
+    assert _run_script(repo, {"EVENT_NAME": "schedule"}, gitleaks).returncode == 0
+
+    control, _ = _repo_with_commits(tmp_path / "control", [
+        {"apps/web/lib/x.test.ts": f'const t = "{_jwt("service_role")}";\n'},
+        {"apps/web/lib/x.test.ts": "const t = 1;\n"},
+    ])
+    shutil.copy(CONFIG, control / ".gitleaks.toml")
+    assert _run_script(control, {"EVENT_NAME": "schedule"}, gitleaks).returncode == 1, (
+        "a service-role token in a test file, removed the next commit, must still be found in history")

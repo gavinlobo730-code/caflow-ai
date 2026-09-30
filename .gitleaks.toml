@@ -43,6 +43,13 @@ targetRules = ["jwt"]
 regexTarget = "secret"
 regexes = ['''^eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZ29leWp2bWxscmFmemF2a2d4Iiwicm9sZSI6ImFub24i''']
 
+# ── a fake token a test feeds the scrubber ──────────────────────────────────────────────────────
+[[allowlists]]
+description = "The fake JWT in apps/web/lib/monitoring/scrub.test.ts (header {\"alg\":\"HS256\"}, payload {\"sub\":\"1234567890\"}, signature the word `signature`) that proves the error scrubber removes a token. Allowlisted by its exact VALUE, anchored at both ends, and NOT by path: `jwt` is a vendor rule and stays live inside tests, so a real token pasted into the same file is still caught. It has to be here and not only fixed in the file, because the commit that added it (ops-09) stays in every pull request range and in the weekly full-history scan whatever a later commit does to the tree."
+targetRules = ["jwt"]
+regexTarget = "secret"
+regexes = ['''^eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.c2lnbmF0dXJl$''']
+
 # ── the two example env files ───────────────────────────────────────────────────────────────────
 [[allowlists]]
 description = "The example env files show `eyJ...` placeholders: a JWT header followed by three dots. A real token has a payload segment after the header's dot, so this cannot match one."

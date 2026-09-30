@@ -12,10 +12,17 @@ WHAT CANNOT BE TESTED HERE
     around those: the configuration reaches every manifest, the gate is never wrapped in something that
     swallows its exit code, the baselines parse and only hold what the gate counts, and the scope filter
     matches the files that matter.
+
+    What IS pinned about the baselines' CONTENT is one thing, and it is what made the audit red on the day
+    this merged: a baseline is written from a report, and the first one was written from a report that did
+    not name every high advisory the lockfile was already carrying (axios GHSA-M8M8-QJ5V-23W3), so the
+    workflow the change introduced failed on its own pull request. A recorded snapshot of each report sits in
+    tests/fixtures/audit/, and each baseline must name every advisory in it that still applies.
 """
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import sys
 from pathlib import Path
@@ -224,3 +231,49 @@ def test_the_pip_baseline_names_no_severity_because_pip_audit_reports_none():
     gate = _gate()
     notes = "\n".join(gate.read_baseline((BASELINES / "pip-api.txt").read_text(encoding="utf-8")).values())
     assert not re.search(r"\[(low|moderate|high|critical)\]", notes)
+
+
+# ── the baselines cover the reports they were written from ──────────────────────
+
+SNAPSHOT = json.loads((Path(__file__).resolve().parent / "fixtures" / "audit" / "pnpm-reports-2026-09-30.json")
+                      .read_text(encoding="utf-8"))
+
+
+def _locked(lockfile: str, package: str, version: str) -> bool:
+    """Does the lockfile still resolve `package@version`? pnpm writes the key as `name@1.2.3:` (scoped names in
+    quotes), and again with a peer suffix — `name@1.2.3(peer@4):` — under `snapshots:`."""
+    text = (REPO / lockfile).read_text(encoding="utf-8")
+    return re.search(rf"(?m)^\s+['\"]?{re.escape(package)}@{re.escape(version)}['\"]?[(:]", text) is not None
+
+
+@pytest.mark.parametrize("app", sorted(SNAPSHOT["apps"]))
+def test_a_pnpm_baseline_names_every_high_advisory_its_own_report_carried_against_a_version_still_locked(app):
+    """THE DEFECT: `.github/audit-baseline/pnpm-web.txt` was short by one advisory, so the dependency-audit job
+    exited 1 on the very pull request that added it, and "it starts green" was false on the day of merge.
+
+    WHY THIS ASKS ABOUT VERSIONS STILL LOCKED, AND DOES NOT PIN THE LOCKFILE'S HASH: a Dependabot bump is
+    supposed to make baseline lines stale (the gate prints them, and the file may only shrink), and it must not
+    turn a required check red to do it. An advisory whose affected version has left the lockfile is no longer
+    this baseline's to name; one that is still there must be, or the gate fails on it.
+    """
+    entry = SNAPSHOT["apps"][app]
+    baseline = _gate().read_baseline((REPO / entry["baseline"]).read_text(encoding="utf-8"))
+    applies = [a for a in entry["advisories"] if _locked(entry["lockfile"], a["package"], a["version"])]
+    assert len(applies) >= 10, (
+        f"only {len(applies)} of {len(entry['advisories'])} snapshot advisories still match a version in "
+        f"{entry['lockfile']}: the snapshot has gone stale (regenerate it, see the fixture's how_to_regenerate) "
+        "and this test would otherwise pass having looked at almost nothing")
+    missing = [f"{a['package']} {a['version']} {a['id']} [{a['severity']}]" for a in applies if a["id"].upper() not in baseline]
+    assert not missing, (
+        f"{entry['baseline']} does not name {missing}. The dependency-audit job fails on each of these as NEW. "
+        "Add the line (with its `package version [severity] — title` note and the reason it is carried) or upgrade "
+        "the package so it leaves the lockfile.")
+
+
+def test_the_snapshot_covers_the_population_and_is_not_an_empty_shell():
+    """Vacuity guard for the test above: every pnpm app in the tree has a snapshot, each with real rows."""
+    assert sorted(SNAPSHOT["apps"]) == _npm_apps()
+    for app, entry in SNAPSHOT["apps"].items():
+        assert entry["advisories"], app
+        assert {a["severity"] for a in entry["advisories"]} <= {"high", "critical"}, app
+        assert all(a["id"].upper().startswith("GHSA-") for a in entry["advisories"]), app

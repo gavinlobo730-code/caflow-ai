@@ -19,6 +19,13 @@ GHSA-3PQ3-5FJ3-CG6V      # axios 1.16.1 [high] — Axios: HTTP/2 adapter bypasse
 GHSA-542G-H47M-68V8      # axios 1.16.1 [high] — Axios: Denial of Service via Unhandled 'error' Event in HTTP/2 ClientHttp2Session Initiali (fix: >=1.20.0)
 GHSA-C29M-XWM3-CM6R      # axios 1.16.1 [high] — Axios: ReDoS in fromDataURI data: URL parser freezes the Node event loop (DoS) (fix: >=1.20.0)
 GHSA-GCFJ-64VW-6MP9      # axios 1.16.1 [high] — Axios Node HTTP adapter can use an inherited proxy after interceptor config cloning (fix: >=1.18.0)
+# Added 30-09-2026: the baseline did not name this advisory, so running the gate over this branch reported it NEW
+# and the dependency-audit job would have failed on the pull request that introduced it.
+# Same package, same version and the same fix (axios >=1.20.0) as the six axios lines around it, so it is carried
+# for the same reason: engineering-03's upgrade clears all seven together. Nothing in apps/web imports axios
+# (it is declared in package.json and used by no source file), so that upgrade, or removing the dependency, is
+# the cheapest one on this list.
+GHSA-M8M8-QJ5V-23W3      # axios 1.16.1 [high] — Axios: Node HTTP adapter prototype-pollution gadget allows request socket hijack via inher (fix: >=1.20.0)
 GHSA-MGHH-PGCX-3JJJ      # axios 1.16.1 [high] — Axios: ReDoS (O(N²)) in shouldBypassProxy host normalization, reachable via untrusted redi (fix: >=1.20.0)
 GHSA-X97P-JQ2G-JP4F      # axios 1.16.1 [high] — Axios: Prototype Pollution Gadget in axios toFormData Options (fix: >=1.20.0)
 GHSA-3JXR-9VMJ-R5CP      # brace-expansion 5.0.6 [high] — brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups (fix: >=5.0.7)
