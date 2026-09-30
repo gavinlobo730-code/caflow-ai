@@ -36,6 +36,7 @@ import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api, type ApiResp } from "@/lib/api";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
+import { authErrorMessage, knownAuthErrorMessage } from "@/lib/auth/authErrorMessage";
 import { hasRecoveryMarkerInUrl } from "@/lib/auth/recoveryLink";
 import { ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
 
@@ -119,18 +120,18 @@ export default function ResetPasswordPage() {
       if (upErr) {
         if (upErr.message.toLowerCase().includes("reauthentication")) {
           const { error: raErr } = await supabase.auth.reauthenticate();
-          if (raErr) throw new Error("Could not send a verification code. Please try again.");
+          if (raErr) throw new Error(knownAuthErrorMessage(raErr) ?? "Could not send a verification code. Please try again.");
           setStage("reauth");
           return;
         }
-        throw new Error(upErr.message);
+        throw new Error(authErrorMessage(upErr));
       }
       setStage("done");
       setPw(""); setPw2("");
       const dest = await resolveRedirectPath();
       setTimeout(() => router.push(dest), 1200);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update your password. Please try again.");
+      setError(authErrorMessage(err, "Could not update your password. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -146,7 +147,7 @@ export default function ResetPasswordPage() {
         throw new Error(
           isInvalidNonceError(upErr)
             ? "That code is incorrect or has expired. Request a new reset link and try again."
-            : upErr.message,
+            : authErrorMessage(upErr),
         );
       }
       setStage("done");
@@ -154,7 +155,7 @@ export default function ResetPasswordPage() {
       const dest = await resolveRedirectPath();
       setTimeout(() => router.push(dest), 1200);
     } catch (err) {
-      setReauthError(err instanceof Error ? err.message : "Verification failed. Please try again.");
+      setReauthError(authErrorMessage(err, "Verification failed. Please try again."));
     } finally {
       setSaving(false);
     }

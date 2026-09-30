@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 import { ArrowRight, Mail } from "lucide-react";
 
 export default function SignupPage() {
@@ -33,10 +34,10 @@ export default function SignupPage() {
             (typeof window !== "undefined" ? window.location.origin : "") + "/onboarding",
         },
       });
-      if (otpErr) throw new Error(otpErr.message);
+      if (otpErr) throw new Error(authErrorMessage(otpErr));
       setSent(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(authErrorMessage(err));
     } finally {
       setLoading(false);
     }

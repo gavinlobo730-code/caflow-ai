@@ -342,7 +342,7 @@ export default function InvoiceSettingsPage() {
                   type="text"
                   value={form.account_holder}
                   onChange={(e) => update("account_holder", e.target.value)}
-                  placeholder="e.g. Gavin Lobo & Associates"
+                  placeholder="e.g. Sharma & Associates"
                   className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 />
               </div>
