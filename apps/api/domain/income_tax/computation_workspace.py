@@ -20,6 +20,11 @@ _MOCK_DISALLOWANCES: dict[str, dict] = {}
 _MOCK_DEDUCTIONS: dict[str, dict] = {}
 _MOCK_LOSSES: dict[str, dict] = {}
 
+# How many times a snapshot save re-reads the version after losing a race to
+# another save for the same client and year. Five concurrent savers is far past
+# anything a practice does; past it the caller's 409 is the honest answer.
+_SNAPSHOT_VERSION_ATTEMPTS = 5
+
 
 def _supabase():
     from core.supabase_client import get_supabase
@@ -93,18 +98,11 @@ def save_computation_snapshot(
         return snap
 
     sb = _supabase()
-    # Determine next version
-    existing = sb.table("tax_computation_snapshots").select("version").eq(
-        "firm_id", firm_id
-    ).eq("client_id", client_id).eq("financial_year", financial_year).execute()
-    version = (max((r["version"] for r in existing.data), default=0) + 1) if existing.data else 1
-
-    row = {
+    base = {
         "firm_id": firm_id,
         "client_id": client_id,
         "financial_year": financial_year,
         "assessment_year": assessment_year,
-        "version": version,
         "regime": regime,
         **_income_columns(income),
         "computation_json": computation_result,
@@ -112,8 +110,36 @@ def save_computation_snapshot(
         "notes": notes,
         "created_by": created_by,
     }
-    res = sb.table("tax_computation_snapshots").insert(row).execute()
-    return res.data[0] if res.data else row
+    # The version is read and then written, so two saves for the same client
+    # and year at the same moment read the same maximum. The database is the
+    # referee — migration 319 declares UNIQUE (firm_id, client_id,
+    # financial_year, version) — so the loser gets a 23505 and NOT a duplicate
+    # row. What used to happen next was a 409 telling the CA to press Save
+    # again; what happens now is that the loser reads the new maximum and
+    # writes the next version itself, which is all the CA would have done.
+    # ONLY a unique violation is retried: any other failure would fail the
+    # same way again, and retrying it would hide it behind a delay.
+    from core.exceptions import _sqlstate
+    last_error: Exception | None = None
+    for _attempt in range(_SNAPSHOT_VERSION_ATTEMPTS):
+        existing = sb.table("tax_computation_snapshots").select("version").eq(
+            "firm_id", firm_id
+        ).eq("client_id", client_id).eq("financial_year", financial_year).execute()
+        version = (max((r["version"] for r in existing.data), default=0) + 1) if existing.data else 1
+        row = {**base, "version": version}
+        try:
+            res = sb.table("tax_computation_snapshots").insert(row).execute()
+        except Exception as exc:                                  # noqa: BLE001
+            if _sqlstate(exc) != "23505":
+                raise
+            last_error = exc
+            continue
+        return res.data[0] if res.data else row
+    # Every attempt lost its race. Hand the last unique violation to the
+    # caller, whose 409 ("another snapshot was saved at the same moment") is
+    # the honest answer for a save that was contended this many times.
+    assert last_error is not None
+    raise last_error
 
 
 def list_snapshots(firm_id: str, client_id: str, financial_year: str) -> list[dict]:
