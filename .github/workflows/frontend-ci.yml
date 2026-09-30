@@ -106,6 +106,15 @@ jobs:
         working-directory: apps/web
         run: pnpm exec tsc --noEmit
 
+      # tsconfig.json excludes **/*.test.ts and the suite below runs on
+      # `node --experimental-strip-types`, which erases types without checking
+      # them — so nothing checked the tests themselves (engineering-17). Their
+      # own program, under the same strictness: see tsconfig.test.json.
+      - name: Type check the test files
+        if: needs.scope.outputs.web == 'true'
+        working-directory: apps/web
+        run: pnpm exec tsc -p tsconfig.test.json
+
       - name: Test
         if: needs.scope.outputs.web == 'true'
         working-directory: apps/web

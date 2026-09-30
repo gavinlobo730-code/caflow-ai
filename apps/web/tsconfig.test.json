@@ -1,0 +1,36 @@
+{
+  // The type-check the test files never had (engineering-17).
+  //
+  // tsconfig.json EXCLUDES **/*.test.ts, and the suite runs on
+  // `node --experimental-strip-types`, which ERASES types without checking
+  // them — so for as long as this file did not exist, 318 test files were
+  // never type-checked by anything. A measurement on the day it was written
+  // found 23 errors in 8 of them, all of the kind that hides a test asserting
+  // something other than what it reads: an `as const` that narrowed
+  // Partial<...> to literals, a helper that had not learned a required field
+  // was added to its type, and a `.js` import returning `any`.
+  //
+  // It EXTENDS tsconfig.json rather than restating it, so the two cannot
+  // disagree about strictness. The only differences:
+  //   - `target: es2022`, because the tests use syntax the app's default
+  //     target does not accept (the finding's own measurement used this too);
+  //   - `types: ["node"]`, because node:test and node:assert are their own
+  //     world and the app's config has no reason to load them;
+  //   - `incremental: false`, so a CI run writes no .tsbuildinfo beside it.
+  // What it INCLUDES is the test files alone; everything they import is pulled
+  // in through the import graph, so a test that imports a component checks that
+  // component's types as the test sees them.
+  //
+  // Run: pnpm exec tsc -p tsconfig.test.json
+  // The rule that every test file is in this program, and that CI runs it, is
+  // scripts/every-test-file-is-type-checked.test.ts — it asks tsc which files
+  // the program holds rather than trusting the glob below to say so.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "es2022",
+    "incremental": false,
+    "types": ["node"]
+  },
+  "include": ["**/*.test.ts"],
+  "exclude": ["node_modules"]
+}
