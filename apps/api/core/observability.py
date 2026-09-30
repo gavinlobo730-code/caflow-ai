@@ -25,10 +25,26 @@ alert instead of a line in a log nobody is tailing.
 from __future__ import annotations
 
 import logging
+from typing import Callable, Optional
 
 import sentry_sdk
+from sentry_sdk.integrations.logging import ignore_logger
 
 _logger = logging.getLogger("caflow.observability")
+
+# THE ERROR LOG BELOW IS FOR RENDER'S LOG STREAM, NOT FOR SENTRY (ops-10).
+# Sentry's default logging integration turns every ERROR record into an event, and
+# `_capture` logs at ERROR with exc_info BEFORE it reports — so the record's event
+# was the one that reached Sentry, carrying none of the tags and not the fingerprint,
+# and the explicit capture that does carry them was then dropped as a duplicate of
+# the same exception. Every alert rule built on `posting_operation` or
+# `soft_operation` would have matched nothing, and every posting failure would have
+# grouped by stack trace instead of by operation. Measured with the real SDK on
+# 30-09-2026: one event, `tags: None`, `fingerprint: None`. The tests that existed
+# replaced `sentry_sdk.capture_exception` and `new_scope` with fakes, which is why
+# none of them could see it. Ignoring THIS logger leaves the line in the log stream
+# and lets the tagged capture be the only event.
+ignore_logger(_logger.name)
 
 
 def _safe_str(value: object) -> str:
@@ -115,3 +131,95 @@ def capture_soft_failure(exc: Exception, *, operation: str, **context) -> None:
     """
     _capture(exc, kind="soft", tag="soft_operation",
              operation=operation, context=context)
+
+
+# ── starting it, and saying whether it started ──────────────────────────────────
+
+def init_error_reporting(
+    dsn: Optional[str],
+    *,
+    environment: str = "production",
+    traces_sample_rate: float = 0.0,
+    transport: Optional[Callable] = None,
+) -> bool:
+    """Start Sentry if there is a DSN; say whether it started. Called once, from main.py.
+
+    It lives here rather than inline in main.py so a test can start it with a capturing
+    transport and look at what would have left the process — the only way to test
+    what a third party receives.
+
+    THIS IS AN ERROR-REPORTING INSTALL, NOT AN APM ONE. Tracing is off by default: at
+    1.0 every request became a transaction and the scheduler alone ticks once a minute
+    — roughly 43k a month before a single user request, against a free-tier allowance
+    of about 10k — and an exhausted quota makes Sentry DROP events, including the
+    errors this is here for. Raise it deliberately, with a paid plan, if anyone wants
+    latency data.
+
+    WHAT LEAVES THE PROCESS IS CHOSEN HERE, and three options do it. `send_default_pii`
+    is off, but it does not govern the other two, and the comment this replaced —
+    "No request bodies, headers or user records" — was false of both, measured with the
+    real SDK on 30-09-2026 against an endpoint that raised:
+
+      * `max_request_body_size="never"`: the SDK attached the request's JSON body to
+        the event regardless of the PII flag, so a 500 from a deductee or payroll
+        endpoint sent `{"pan": "ABCDE1234F", "amount_paise": 12500000}` to a third
+        party. Headers were already filtered (`Authorization` and `Cookie` arrive as
+        `[Filtered]`); the body was not.
+      * `include_local_variables=False`: every frame of the stack carries its local
+        variables by default — the PAN, the amount, the customer's name in the failing
+        function. The posting-failure TAGS chosen in `_capture` below are the only
+        application data that should reach Sentry, and these two defaults were the
+        rest of it.
+
+    Returns False, and starts nothing, when `dsn` is empty.
+    """
+    if not dsn:
+        return False
+    options = dict(
+        dsn=dsn,
+        environment=environment,
+        traces_sample_rate=traces_sample_rate,
+        send_default_pii=False,
+        max_request_body_size="never",
+        include_local_variables=False,
+    )
+    if transport is not None:
+        options["transport"] = transport
+    sentry_sdk.init(**options)
+    return True
+
+
+def error_reporting_enabled() -> bool:
+    """True if a Sentry client with a DSN is live in this process.
+
+    Asked of the SDK rather than of the environment: `SENTRY_DSN` being set says
+    somebody typed a value, and `init` having run says it is being used. `/health`
+    serves the answer so the state can be confirmed with one `curl` — the repo cannot
+    see Render's dashboard, which is where `SENTRY_DSN` is set (`sync: false`).
+    """
+    try:
+        client = sentry_sdk.get_client()
+        # `is_active()` alone is True for ANY client `init` built, including one built with no DSN —
+        # which drops every event while reporting itself active — so the DSN and the transport it
+        # opens are asked too.
+        return bool(client.is_active() and client.dsn and client.transport is not None)
+    except Exception:
+        return False
+
+
+def boot_notice(dsn: Optional[str], app_env: Optional[str]) -> tuple[int, str]:
+    """(log level, sentence) for the boot log — pure, so the wording is tested.
+
+    Nothing said whether error reporting was on, so an unset DSN in production was
+    silent: a swallowed financial-posting failure would reach Render's log stream and
+    nobody's phone. That is the one configuration where the sentence must be a
+    WARNING. In development an unset DSN is normal and stays an INFO.
+    """
+    if dsn:
+        return logging.INFO, "Error reporting: Sentry is ON."
+    if (app_env or "production") == "production":
+        return logging.WARNING, (
+            "Error reporting: Sentry is OFF because SENTRY_DSN is not set. Swallowed "
+            "financial-posting failures reach this log stream only — nobody is alerted."
+        )
+    return logging.INFO, f"Error reporting: Sentry is off (SENTRY_DSN is not set; APP_ENV={app_env})."

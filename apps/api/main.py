@@ -10,34 +10,23 @@ import os
 import contextlib
 import logging
 import threading
-import sentry_sdk
 
 _logger = logging.getLogger("caflow.main")
 logging.basicConfig(level=logging.INFO)
 
+# Error reporting. What is sent, and why tracing is off, is decided in
+# core.observability.init_error_reporting — it moved out of this file so a test can start
+# it with a capturing transport and read what would have left the process (ops-10).
+from core.observability import boot_notice, error_reporting_enabled, init_error_reporting
+
 _SENTRY_DSN = os.environ.get("SENTRY_DSN")
-if _SENTRY_DSN:
-    sentry_sdk.init(
-        dsn=_SENTRY_DSN,
-        environment=os.environ.get("ENVIRONMENT", "production"),
-        # Performance tracing OFF. This is an error-reporting install, not an
-        # APM one: what it exists to surface is capture_posting_failure() —
-        # swallowed exceptions in fail-soft financial-posting code, the class
-        # of bug that lost five sales invoices' COGS journals for weeks (task
-        # #244). At 1.0 every request became a transaction, and the scheduler
-        # alone now ticks once a minute — roughly 43k transactions a month
-        # before a single user request, against a free-tier allowance of about
-        # 10k. Exhausting the quota makes Sentry DROP events, including the
-        # errors this is here for, so a sample rate meant to buy insight
-        # silently buys blindness instead. Raise it deliberately, with a paid
-        # plan, if anyone actually wants latency data.
-        traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0")),
-        # No request bodies, headers or user records. The posting-failure tags
-        # set in core/observability.py are the ONLY app data that reaches
-        # Sentry, and they are chosen explicitly there — this flag does not
-        # govern them.
-        send_default_pii=False,
-    )
+init_error_reporting(
+    _SENTRY_DSN,
+    environment=os.environ.get("ENVIRONMENT", "production"),
+    traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0")),
+)
+_level, _sentence = boot_notice(_SENTRY_DSN, os.environ.get("APP_ENV"))
+_logger.log(_level, _sentence)
 
 # ── CORS origins — parse before router imports so value is fixed early ─────────
 # Handles comma-separated values, accidental newlines, surrounding quotes,
@@ -628,6 +617,11 @@ def healthcheck():
     return api_response(True, {
         "status": "ok",
         "schema": "ok" if _SCHEMA_DRIFT.get("checked") else "checking",
+        # Whether a swallowed financial-posting failure would reach anybody (ops-10). SENTRY_DSN is
+        # set in Render's dashboard and the repo cannot see it, so this is how it is confirmed:
+        # `curl .../health`. A fact about this process, not a call to Sentry: this route touches
+        # no network, and the ops-05 note on /ready below says why it must stay that way.
+        "error_reporting": "on" if error_reporting_enabled() else "off",
     })
 
 
