@@ -26,6 +26,7 @@ from core.validators import validate_gstin
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services import gst_2b_reconciliation_service
+from domain.gst import gstr2b_intake
 from domain.gst.gstr2b import parse_gstr2b, paise as gstr2b_paise
 from services.period_validation_service import period_validation_service
 from services.compliance_engine import (
@@ -173,7 +174,12 @@ class UpdateStatusRequest(BaseModel):
 
 class GSTR2BUploadRequest(BaseModel):
     client_id: str
-    period: str
+    # gst-09: the month is READ OFF THE FILE (`data.rtnprd`), so a caller no
+    # longer has to type it. Optional and only ever a CHECK: one that disagrees
+    # with the file refuses the upload (`domain/gst/gstr2b_intake`). It is still
+    # accepted because an API caller predating the file chooser sends one, and
+    # because a file that names no period falls back to it.
+    period: Optional[str] = None
     file_url: Optional[str] = None
     raw_data: dict = Field(default_factory=dict, description="GSTR-2B JSON from portal")
 
@@ -912,6 +918,30 @@ def _txval_to_paise(txval) -> int:
     return gstr2b_paise(txval)
 
 
+def _2b_intake(current_user: dict, body: "GSTR2BUploadRequest"):
+    """(parsed file, what it may be reconciled as) — the ONE place a 2B is judged.
+
+    Asked by `POST /gstr2b/inspect` (so the screen can say it before anything is
+    uploaded) and again by `POST /gstr2b/upload` (which acts on it): the preview
+    is the upload's own walk, not a second composition of the same rule.
+
+    The registrations are fetched here because this is where the firm and the
+    database are. Mock mode has no `client_gst_registrations` table to read, so
+    it passes None and the rule says the GSTIN was not checked rather than
+    saying it matched — the same carve-out every `regs.resolve` call in this
+    file takes.
+    """
+    parsed = parse_gstr2b(body.raw_data)
+    registrations = None
+    if not _USE_MOCK:
+        from core.supabase_client import get_supabase
+        from services import client_gst_registration_service as regs
+        registrations = regs.held(get_supabase(), current_user["firm_id"],
+                                  body.client_id)
+    return parsed, gstr2b_intake.assess(
+        parsed, typed_period=body.period, registrations=registrations)
+
+
 @router.post("/gstr2b/upload")
 def upload_gstr2b(
     body: GSTR2BUploadRequest,
@@ -933,25 +963,44 @@ def upload_gstr2b(
     THE BOOKS ARE READ HERE. The caller sends the portal file and nothing else.
     Asking a screen to supply the purchase register it is reconciling is asking
     it to supply the answer.
+
+    THE FILE SAYS WHICH MONTH AND WHOSE (gst-09). The period is read off
+    `data.rtnprd` and the file's GSTIN must be one this client holds; a typed
+    period is only a check, and a file that disagrees with it, names a
+    registration the client does not hold, or names none at all is REFUSED (422)
+    before anything is read or written. A refused file is not kept either: it is
+    another taxpayer's list of suppliers, and storing it under this client would
+    be filing it under the wrong person. `POST /gstr2b/inspect` asks the same
+    question without acting, so the screen can say it before the upload.
     """
     try:
         firm_id = current_user["firm_id"]
         assert_client_access(current_user, body.client_id)
 
+        parsed, intake = _2b_intake(current_user, body)
+        if intake.refusals:
+            raise HTTPException(status_code=422, detail=" ".join(intake.refusals))
+        # A file that is not a 2B at all resolves no month (there is nothing to
+        # read one from); the service reports it and persists nothing.
+        period = intake.period or (body.period or "")
+        extra_problems = list(intake.notes) + (
+            [intake.registration_caveat] if intake.registration_caveat else [])
+
         if _USE_MOCK:
             # Mock mode has no purchase ledger to read, so the parse is real and
             # the match is against nothing. Reported as such rather than shown
             # as a clean reconciliation, which is the defect this replaces.
-            parsed = parse_gstr2b(body.raw_data)
             return api_response(True, {
-                "period": body.period,
+                "period": period,
+                "period_source": intake.period_source,
                 "gstin": parsed.gstin,
                 "return_period_in_file": parsed.return_period,
                 "generated_on": parsed.generated_on,
                 "sections_seen": parsed.sections_seen,
-                "problems": parsed.problems + [
+                "problems": parsed.problems + extra_problems + [
                     "Running without a database: the file was parsed and NOT "
                     "matched against any purchase bill."],
+                "registration_caveat": intake.registration_caveat,
                 "persisted": False,
                 "portal_document_count": len(parsed.documents),
                 "summary": None, "matches": [], "defaulters": [],
@@ -961,7 +1010,10 @@ def upload_gstr2b(
         db = get_supabase()
         result = gst_2b_reconciliation_service.reconcile_2b(
             db, firm_id=firm_id, client_id=body.client_id,
-            period=body.period, raw=body.raw_data)
+            period=period, raw=body.raw_data)
+        result["problems"] = list(result.get("problems") or []) + extra_problems
+        result["period_source"] = intake.period_source
+        result["registration_caveat"] = intake.registration_caveat
 
         # The upload itself is kept whether or not it reconciled — a file that
         # would not parse is exactly the one a CA needs to be able to point at.
@@ -969,7 +1021,7 @@ def upload_gstr2b(
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
             "client_id": body.client_id,
-            "period": body.period,
+            "period": period,
             "file_url": body.file_url,
             "raw_data": body.raw_data,
             "reconciliation_result": {k: v for k, v in result.items()
@@ -984,7 +1036,7 @@ def upload_gstr2b(
             timeline_service.log_timeline_event(
                 client_id=body.client_id, firm_id=firm_id,
                 financial_year="", category="gst", event_type="gst_mismatch_detected",
-                title=(f"GSTR-2B for {body.period}: "
+                title=(f"GSTR-2B for {period}: "
                        f"{summary.get('missing_in_2b_count', 0)} bills the supplier "
                        f"has not filed, {summary.get('amount_mismatch_count', 0)} "
                        f"amount mismatches"),
@@ -999,6 +1051,57 @@ def upload_gstr2b(
     except Exception:
         _logger.exception("gstr2b reconciliation failed for %s %s",
                           body.client_id, body.period)
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
+
+
+@router.post("/gstr2b/inspect")
+def inspect_gstr2b(
+    body: GSTR2BUploadRequest,
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """What this GSTR-2B file is, before anything is reconciled (gst-09).
+
+    Reads the month and the recipient GSTIN off the FILE and says whether the
+    client holds that registration — the two facts the screen used to ask a CA
+    to type and to trust. WRITES NOTHING, and is a POST only because the request
+    carries a multi-megabyte file: `test_a_2b_file_says_which_month_and_whose`
+    counts the writes the database saw either side of the call.
+
+    `ok` is the upload's own answer: true means `POST /gstr2b/upload` with this
+    file will not be refused on the file's account. A refusal comes back as DATA
+    (`ok: false` with `refusals`), not as an error, because a screen choosing a
+    file needs to say what is wrong with it beside the file's name.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing is sent to a portal; the
+    # file the CA downloaded from gst.gov.in is read here and nowhere else.
+    """
+    try:
+        assert_client_access(current_user, body.client_id)
+        parsed, intake = _2b_intake(current_user, body)
+        reg = intake.registration
+        return api_response(True, {
+            "ok": intake.can_reconcile,
+            "is_gstr2b": intake.is_gstr2b,
+            "period": intake.period,
+            "period_source": intake.period_source,
+            "gstin": intake.gstin,
+            "registration": ({"gstin": reg.gstin, "label": reg.label,
+                              "is_primary": reg.is_primary} if reg else None),
+            # A file that is not a 2B has no rule to fail: the parser's own
+            # sentences are what is wrong with it.
+            "refusals": (list(intake.refusals) if intake.is_gstr2b
+                         else list(parsed.problems)),
+            "problems": ((list(parsed.problems) + list(intake.notes))
+                         if intake.is_gstr2b else []),
+            "registration_caveat": intake.registration_caveat,
+            "document_count": len(parsed.documents),
+            "sections_seen": parsed.sections_seen,
+            "generated_on": parsed.generated_on,
+        })
+    except HTTPException:
+        raise
+    except Exception:
+        _logger.exception("gstr2b inspect failed for %s", body.client_id)
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 

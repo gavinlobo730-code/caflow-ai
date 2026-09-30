@@ -111,6 +111,18 @@ def listing(db, firm_id: str, client_id: str) -> list[dict]:
     return out
 
 
+def held(db, firm_id: str, client_id: str) -> list[reg.Registration]:
+    """Every registration this client holds, primary first, as the domain type.
+
+    For a caller that has to ask "is THIS GSTIN one of theirs" of something it
+    read off a document rather than off a request (gst-09: the recipient GSTIN
+    of an uploaded GSTR-2B). An EMPTY list is an answer — the client has none —
+    and is not the same as not having asked.
+    """
+    client = _client(db, firm_id, client_id)
+    return reg.all_registrations(client, _rows(db, firm_id, client_id))
+
+
 def resolve(db, firm_id: str, client_id: str,
             gstin: Optional[str] = None) -> reg.Registration:
     """Which registration a request means — the compute paths' one entry point.

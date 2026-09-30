@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,8 @@ import type { ValidationError, PayloadGap } from "@/lib/data/gst";
 import { formatPaise } from "@/lib/money/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { objectWithLists } from "@/lib/api/shape";
+import { errorMessage } from "@/lib/api";
+import { readGstr2bText } from "@/lib/gst/gstr2bFile";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -32,6 +34,12 @@ async function getToken(): Promise<string> {
   return session?.access_token ?? "";
 }
 
+/** A refusal comes back in the envelope every caller already reads. FastAPI's
+ *  HTTPException is `{"detail": "..."}` with no `error` key, so every
+ *  `resp.error ?? "Upload failed"` on this page showed the fallback over the
+ *  sentence the server wrote — the 2B upload's 422 ("this file is for another
+ *  month / another registration") among them. `errorMessage` reads a string
+ *  detail, an array of them, and a body that is not JSON at all. */
 async function apiFetch(path: string, opts?: RequestInit) {
   const token = await getToken();
   const res = await fetch(`${API}${path}`, {
@@ -42,6 +50,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
       ...(opts?.headers ?? {}),
     },
   });
+  if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
   return res.json();
 }
 
@@ -1588,6 +1597,23 @@ interface Recon2BMatch {
   itc_available: string | null;
 }
 
+/** What `POST /gstr2b/inspect` made of the chosen file (gst-09). The month and
+ *  the GSTIN are the FILE's, and whether the client holds that registration is
+ *  the server's — this screen decides none of it. */
+interface Inspection2B {
+  ok: boolean;
+  is_gstr2b: boolean;
+  period: string | null;
+  period_source: "file" | "typed" | "none";
+  gstin: string;
+  registration: { gstin: string; label: string; is_primary: boolean } | null;
+  refusals: string[];
+  problems: string[];
+  registration_caveat: string | null;
+  document_count: number;
+  generated_on: string;
+}
+
 interface Recon2BResult {
   period: string;
   gstin: string;
@@ -1615,20 +1641,34 @@ const RECON_2B_BUCKETS: { status: string; label: string; hint: string; tone: str
 ];
 
 function GSTR2BTab({ clientId }: { clientId: string }) {
-  const [period, setPeriod] = useState("");
-  const [jsonText, setJsonText] = useState("");
+  // THE FILE IS THE INPUT, AND THE MONTH IS NOT (gst-09). There is no period box
+  // and no textarea: the CA chooses (or drops) the .json the portal gave them,
+  // the server reads the month and the recipient GSTIN off it
+  // (`POST /gstr2b/inspect`) and says whether this client holds that
+  // registration, and the upload sends the file and nothing else — so a month
+  // typed against the wrong file, which used to replace another month's
+  // reconciliation, cannot be typed at all.
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [raw, setRaw] = useState<Record<string, unknown> | null>(null);
+  const [inspection, setInspection] = useState<Inspection2B | null>(null);
+  const [reading, setReading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const [result, setResult] = useState<Recon2BResult | null>(null);
   const [saved, setSaved] = useState<{ record_count: number; by_status: Record<string, number> } | null>(null);
   const [bucket, setBucket] = useState<string>("missing_in_2b");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The month the FILE names — only once the server has cleared the file.
+  const period = inspection?.ok ? inspection.period : null;
+
   // What the LAST reconciliation for this period found. The whole reason the
   // answer is persisted: the browser reconciliation this replaces started from
   // zero every time it was reopened.
   useEffect(() => {
     let cancelled = false;
-    if (!/^\d{6}$/.test(period)) { setSaved(null); return; }
+    if (!period) { setSaved(null); return; }
     (async () => {
       try {
         const r = await apiFetch(
@@ -1640,21 +1680,59 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
     return () => { cancelled = true; };
   }, [clientId, period]);
 
+  function forgetFile() {
+    setFileName(null);
+    setRaw(null);
+    setInspection(null);
+    setResult(null);
+    setSaved(null);
+    setError(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function chooseFile(file: File | null) {
+    forgetFile();
+    if (!file) return;
+    setFileName(file.name);
+    setReading(true);
+    try {
+      let text: string;
+      try {
+        text = await file.text();
+      } catch {
+        setError("That file could not be read. Choose it again.");
+        return;
+      }
+      const read = readGstr2bText(text);
+      if (!read.ok) { setError(read.error); return; }
+      setRaw(read.raw);
+      // The server reads the month and the GSTIN. Nothing is stored by this.
+      const resp = await apiFetch("/api/gst-workspace/gstr2b/inspect", {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId, raw_data: read.raw }),
+      });
+      if (resp.success) {
+        setInspection(objectWithLists<Inspection2B>(resp.data, "refusals", "problems"));
+      } else {
+        setError(resp.error ?? "Couldn't read that file. Please try again.");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't read that file. Please try again.");
+    } finally {
+      setReading(false);
+    }
+  }
+
   async function upload() {
+    if (!raw || !inspection?.ok) return;
     setLoading(true);
     setError(null);
-    let raw_data: unknown;
     try {
-      raw_data = JSON.parse(jsonText);
-    } catch {
-      setError("That is not valid JSON. Paste the .json file the portal gives you, not a screenshot of it.");
-      setLoading(false);
-      return;
-    }
-    try {
+      // The file and the client — no period. The server takes the month from the
+      // file and asks the same question `inspect` just answered.
       const resp = await apiFetch("/api/gst-workspace/gstr2b/upload", {
         method: "POST",
-        body: JSON.stringify({ client_id: clientId, period, raw_data }),
+        body: JSON.stringify({ client_id: clientId, raw_data: raw }),
       });
       if (resp.success) setResult(objectWithLists<Recon2BResult>(resp.data, "defaulters", "problems"));
       else setError(resp.error ?? "Upload failed");
@@ -1673,25 +1751,82 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
       <div>
         <h3 className="font-medium">GSTR-2B Reconciliation</h3>
         <p className="text-xs text-ps-label mt-0.5">
-          Paste the GSTR-2B JSON exactly as downloaded from the portal. The purchase
-          bills are read from this client&apos;s own books — nothing needs exporting.
+          Choose the GSTR-2B .json file exactly as downloaded from the portal. The
+          month and the GSTIN are read from the file — there is nothing to type —
+          and the purchase bills are read from this client&apos;s own books.
         </p>
       </div>
       <div className="space-y-3">
-        <input placeholder="Period (MMYYYY e.g. 042025)" value={period}
-          onChange={(e) => setPeriod(e.target.value)}
-          className="w-full border rounded px-3 py-1.5 text-sm" />
+        <div
+          data-testid="gstr2b-dropzone"
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            void chooseFile(e.dataTransfer.files?.[0] ?? null);
+          }}
+          className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+            dragOver ? "border-blue-400 bg-blue-50/30" : "border-ps-border-strong"}`}>
+          <p className="text-sm font-medium text-ps-body">
+            {fileName ?? "Drop the GSTR-2B .json file here"}
+          </p>
+          <label className="inline-block mt-2 px-3 py-1.5 border rounded text-sm cursor-pointer hover:bg-ps-bg focus-within:ring-2 focus-within:ring-blue-400">
+            {fileName ? "Choose a different file" : "Choose file"}
+            <input ref={fileRef} type="file" accept=".json,application/json"
+              aria-label="GSTR-2B JSON file" className="sr-only"
+              onChange={(e) => { void chooseFile(e.target.files?.[0] ?? null); }} />
+          </label>
+        </div>
+        {reading && <p className="text-xs text-ps-label">Reading the file…</p>}
+
+        {/* WHAT THE SERVER MADE OF THE FILE. The month and the GSTIN are the
+            file's and whether this client holds that registration is the
+            server's; nothing is decided here. */}
+        {inspection && inspection.ok && inspection.period && (
+          <div className="text-sm border rounded p-3 space-y-1" data-testid="gstr2b-inspection">
+            <p>
+              <span className="text-xs text-ps-label">Return period, read from the file: </span>
+              <span className="font-medium" data-testid="gstr2b-period">{gstPeriodLabel(inspection.period)}</span>
+              <span className="text-xs text-ps-hint"> ({inspection.period})</span>
+            </p>
+            <p className="text-xs text-ps-label">
+              GSTIN {inspection.registration?.label ?? inspection.gstin}
+              {" "}· {inspection.document_count} document(s)
+              {inspection.generated_on ? ` · generated ${inspection.generated_on}` : ""}
+            </p>
+          </div>
+        )}
+        {inspection && !inspection.ok && (
+          <div role="alert" className="border border-state-problem-border bg-state-problem-surface rounded p-3 space-y-1">
+            <p className="text-sm font-medium text-state-problem">This file was not uploaded.</p>
+            {inspection.refusals.map((r, i) => (
+              <p key={i} className="text-xs text-state-problem">{r}</p>
+            ))}
+          </div>
+        )}
+        {/* Hidden once the upload has answered: its own `problems` carry the same
+            sentences and showing both would say everything twice. */}
+        {inspection && inspection.ok && !result
+          && (inspection.registration_caveat || inspection.problems.length > 0) && (
+          <div className="border border-state-attention-border bg-state-attention-surface rounded p-3 space-y-1">
+            {inspection.registration_caveat && (
+              <p className="text-xs text-state-attention">{inspection.registration_caveat}</p>
+            )}
+            {inspection.problems.map((p, i) => (
+              <p key={i} className="text-xs text-state-attention">{p}</p>
+            ))}
+          </div>
+        )}
+
         {saved && saved.record_count > 0 && (
           <p className="text-xs text-ps-label">
             Last reconciled for this period: {saved.record_count} document(s) —{" "}
             {Object.entries(saved.by_status).map(([k, v]) => `${k}: ${v}`).join(", ")}.
           </p>
         )}
-        <textarea placeholder="Paste the GSTR-2B JSON downloaded from the portal"
-          value={jsonText} onChange={(e) => setJsonText(e.target.value)}
-          rows={8} className="w-full border rounded px-3 py-2 text-sm font-mono" />
-        {error && <p className="text-state-problem text-sm">{error}</p>}
-        <button onClick={upload} disabled={loading || !period || !jsonText}
+        {error && <p role="alert" className="text-state-problem text-sm">{error}</p>}
+        <button onClick={upload} disabled={loading || reading || !raw || !inspection?.ok}
           className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
           {loading ? "Reconciling…" : "Upload & Reconcile"}
         </button>

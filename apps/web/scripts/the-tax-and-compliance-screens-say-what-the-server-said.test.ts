@@ -47,10 +47,13 @@ const AS26 = "app/clients/[id]/tax/26as/page.tsx";
 const COMPLIANCE = "app/clients/[id]/compliance/page.tsx";
 const TDS = "app/clients/[id]/compliance/tds/page.tsx";
 const MCA = "app/clients/[id]/compliance/mca/page.tsx";
+const GST = "app/clients/[id]/compliance/gst/page.tsx";
 const REGISTRATIONS = "components/gst/RegistrationsTab.tsx";
 
 test("a page's own apiFetch hands a refusal back as the server's sentence", () => {
-  for (const page of [COMPUTATION, FILING, AS26, COMPLIANCE, MCA]) {
+  // GST joined the list with gst-09: its 2B upload refuses a file for another
+  // month or another registration with a 422, and the screen read `.error`.
+  for (const page of [COMPUTATION, FILING, AS26, COMPLIANCE, MCA, GST]) {
     const src = code(page);
     const at = src.indexOf("async function apiFetch(");
     assert.ok(at >= 0, `${page} no longer has its own apiFetch — move this assertion with it`);
