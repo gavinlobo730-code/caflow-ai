@@ -83,14 +83,20 @@ export default function SignupPage() {
               )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Each box is tied to its label by `htmlFor`/`id` and says what it
+                    holds to the browser (`autoComplete`). There is no password on
+                    this screen — the account is opened from the emailed link — so
+                    nothing here is `new-password`; the email is `email`, not
+                    `username`, because this is not a sign-in form. */}
                 {[
-                  { label: "Firm Name", value: firmName, setter: setFirmName, placeholder: "e.g. Sharma & Associates", type: "text" },
-                  { label: "Your Full Name", value: fullName, setter: setFullName, placeholder: "e.g. CA Ravi Sharma", type: "text" },
-                  { label: "Email Address", value: email, setter: setEmail, placeholder: "you@example.com", type: "email" },
-                ].map(({ label, value, setter, placeholder, type }) => (
-                  <div key={label} className="space-y-1.5">
-                    <label className="block text-sm font-semibold text-ps-ink">{label}</label>
+                  { id: "signup-firm-name", name: "firm_name", autoComplete: "organization", label: "Firm Name", value: firmName, setter: setFirmName, placeholder: "e.g. Sharma & Associates", type: "text" },
+                  { id: "signup-full-name", name: "name", autoComplete: "name", label: "Your Full Name", value: fullName, setter: setFullName, placeholder: "e.g. CA Ravi Sharma", type: "text" },
+                  { id: "signup-email", name: "email", autoComplete: "email", label: "Email Address", value: email, setter: setEmail, placeholder: "you@example.com", type: "email" },
+                ].map(({ id, name, autoComplete, label, value, setter, placeholder, type }) => (
+                  <div key={id} className="space-y-1.5">
+                    <label htmlFor={id} className="block text-sm font-semibold text-ps-ink">{label}</label>
                     <input
+                      id={id} name={name} autoComplete={autoComplete}
                       type={type} value={value} onChange={(e) => setter(e.target.value)}
                       placeholder={placeholder} required
                       className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"

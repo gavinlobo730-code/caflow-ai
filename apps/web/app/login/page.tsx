@@ -162,9 +162,15 @@ export default function LoginPage() {
           {mfaStep ? (
             <form onSubmit={handleMfaSubmit} className="space-y-5">
               <div className="space-y-1.5">
-                <label className="block text-sm font-semibold text-ps-ink">Authentication code</label>
+                <label htmlFor="login-mfa-code" className="block text-sm font-semibold text-ps-ink">Authentication code</label>
+                {/* `one-time-code` is what makes a phone offer the code from an SMS
+                    or a password manager offer a TOTP; `inputMode="numeric"` is
+                    what puts the digit pad up. Without a label tied to the box by
+                    `htmlFor`/`id`, neither a screen reader nor an autofill
+                    extension can tell which box is the code. */}
                 <input
-                  autoFocus inputMode="numeric" value={mfaCode} maxLength={6}
+                  id="login-mfa-code" name="code" autoComplete="one-time-code"
+                  autoFocus inputMode="numeric" pattern="[0-9]*" value={mfaCode} maxLength={6}
                   onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   placeholder="123456"
                   className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
@@ -208,8 +214,12 @@ export default function LoginPage() {
           ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
-              <label className="block text-sm font-semibold text-ps-ink">Email address</label>
+              <label htmlFor="login-email" className="block text-sm font-semibold text-ps-ink">Email address</label>
+              {/* `username`, not `email`: the email IS the account name here, and
+                  `username` is the token a password manager pairs with the
+                  `current-password` box below to offer a saved credential. */}
               <input
+                id="login-email" name="email" autoComplete="username"
                 type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                 placeholder="ca@yourfirm.com"
                 className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
@@ -217,12 +227,13 @@ export default function LoginPage() {
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="block text-sm font-semibold text-ps-ink">Password</label>
+                <label htmlFor="login-password" className="block text-sm font-semibold text-ps-ink">Password</label>
                 <Link href="/login/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">
                   Forgot password?
                 </Link>
               </div>
               <input
+                id="login-password" name="password" autoComplete="current-password"
                 type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
