@@ -54,6 +54,28 @@ Six services. **None of them is a government system**, and none of them files
 anything. `ITR_SOFTWARE_PROVIDER_ID` is also declared, and is the exception that
 proves the rule — see §5.
 
+**Sentry is a sub-processor, and this table is where that is recorded** (SECURITY-
+PRIVACY-36). What leaves today is the API's error events, from `apps/api/main.py`
+when `SENTRY_DSN` is set: `send_default_pii=False`, `traces_sample_rate` 0 unless
+`SENTRY_TRACES_SAMPLE_RATE` says otherwise. **The browser SDK is not wired** —
+`apps/web/sentry.client.config.ts` exists, but `next.config.mjs` has no
+`withSentryConfig` and there is no `instrumentation-client.ts`, so nothing in the
+browser is sent. Its settings are nonetheless fixed to what a practice's screens
+warrant (media blocked, all text and inputs masked, no traces, no routine session
+recording, error replays only and bounded) and pinned by
+`apps/web/scripts/a-session-replay-does-not-record-what-is-on-screen.test.ts`, so
+that wiring it up is a decision and not a regression.
+**The region is NOT recorded here, and that is a human step**: Sentry hosts a
+project in the US or the EU, chosen when the organisation is created, and it is
+visible in the DSN's host (`…ingest.us.sentry.io` or `…ingest.de.sentry.io`) and
+in the organisation settings. Neither is readable from this repository. Nobody
+should write a region in from memory — it decides whether an error event
+containing a client's identifiers (an exception message can carry a GSTIN, a PAN
+or a party name) leaves India, and `06-data-protection-dpdp.md` §5 already names
+Render (Singapore), Groq and Gemini on that footing (Rule 15: permitted by
+default today, a policy risk to monitor). Sentry belongs on the same list once
+somebody has read the region off the DSN.
+
 ## 3. What the product produces
 
 Each row is a real artifact a CA can download or read, computed from the ledger.
