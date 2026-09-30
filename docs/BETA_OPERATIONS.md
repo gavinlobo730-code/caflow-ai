@@ -41,7 +41,11 @@ Watch the boot log for `CONFIG: missing REQUIRED environment variables: …`.
 
 ## 4. Monitoring & operations
 
-- Enable Sentry (`SENTRY_DSN`).
+- Enable Sentry (`SENTRY_DSN`), and confirm it with `curl <api>/health` — it answers `"error_reporting": "on"`
+  or `"off"`. `docs/operations/error-tracking.md` has the alert rules to create, the test event to send
+  (`scripts/sentry_verify.py`) and the browser side (`NEXT_PUBLIC_SENTRY_DSN`).
+- Watch the database itself — advisors, slow statements, connections, disk — on a monthly routine:
+  `docs/operations/database-monitoring.md`, with the queries in `apps/api/scripts/db/monthly_review.sql`.
 - Scheduler: set `ENABLE_SCHEDULER=true` or configure an external cron to POST
   `/api/scheduler/run`, else compliance reminders / recurring jobs never fire (the
   boot log states which mode is active).
