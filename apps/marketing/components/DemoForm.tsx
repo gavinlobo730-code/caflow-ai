@@ -3,6 +3,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Check, ArrowRight, Lock } from "./icons";
 import { CONTACT } from "@/lib/site";
+import {
+  SLOW_COPY,
+  TIMEOUT_COPY,
+  WAITING_COPY,
+  buildDemoMailto,
+  watchSlowRequest,
+} from "@/lib/demoRequestWait";
 
 /**
  * The "Book a demo" form.
@@ -20,6 +27,13 @@ import { CONTACT } from "@/lib/site";
  * reports a send it did not get confirmation of; a failure shows the email
  * address instead, with what the visitor typed still in the fields so they can
  * copy it rather than write it again.
+ *
+ * A SLEEPING API MUST NOT MAKE THE FORM LOOK DEAD (market_and_trust-17). The
+ * wait is named the instant it starts, the email fallback appears beside the
+ * running request after `SLOW_AFTER_MS` with what was typed already in it, and
+ * the request is abandoned after `GIVE_UP_AFTER_MS` — all of it in
+ * `lib/demoRequestWait.ts`, which also records why there is NO automatic retry
+ * (this endpoint is not idempotent, so a resend can become a second lead).
  *
  * The honeypot is a real input, positioned off-screen rather than
  * `display:none` — some bots skip hidden inputs and fill everything else.
@@ -53,9 +67,19 @@ export function DemoForm() {
   const [sizes, setSizes] = useState<string[]>(FALLBACK_SIZES);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  // True once the request has run past SLOW_AFTER_MS without an answer.
+  const [slow, setSlow] = useState(false);
+  // The email link. It starts as the bare address and becomes the prefilled one
+  // — what the visitor typed, in the message — the moment they press the button.
+  const [mailto, setMailto] = useState(
+    `mailto:${CONTACT.email}?subject=${encodeURIComponent("Demo request")}`,
+  );
 
   useEffect(() => {
     let cancelled = false;
+    // This call also does a second job: it is the first request the page makes
+    // to an API that may be asleep, so it starts the wake-up while the visitor
+    // is still reading and typing.
     fetch(`${API}/api/public/demo-request/options`)
       .then((r) => r.json())
       .then((res) => {
@@ -75,6 +99,7 @@ export function DemoForm() {
     if (status === "sending") return;
     setStatus("sending");
     setError(null);
+    setSlow(false);
 
     const form = new FormData(e.currentTarget);
     const payload = {
@@ -86,12 +111,29 @@ export function DemoForm() {
       message: String(form.get("message") ?? "").trim() || null,
       website: String(form.get("website") ?? ""),
     };
+    // The email link carries what was just typed, so the fallback is "send
+    // this" and not "start again".
+    setMailto(buildDemoMailto(CONTACT.email, payload));
+
+    // Two clocks on the ONE request below. The first reveals the email link
+    // beside it (the request keeps running); the second abandons it. There is
+    // no second send: see lib/demoRequestWait.ts for why a retry is not safe.
+    const controller = new AbortController();
+    let timedOut = false;
+    const watch = watchSlowRequest({
+      onSlow: () => setSlow(true),
+      onGiveUp: () => {
+        timedOut = true;
+        controller.abort();
+      },
+    });
 
     try {
       const res = await fetch(`${API}/api/public/demo-request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
       // Two shapes are possible and both must be handled: this API's own
       // {success, data, error} envelope, and FastAPI's {detail: …} for a
@@ -110,10 +152,14 @@ export function DemoForm() {
       setError(body?.error || GENERIC_FAILURE);
       setStatus("failed");
     } catch {
-      // A network error, a CORS refusal, or the API asleep on Render's free
-      // tier. The visitor does not need to know which.
-      setError(GENERIC_FAILURE);
+      // Our own give-up clock, which says nobody can tell whether the request
+      // arrived — or a network error, a CORS refusal, or the API asleep on
+      // Render's free tier, which the visitor does not need told apart.
+      setError(timedOut ? TIMEOUT_COPY : GENERIC_FAILURE);
       setStatus("failed");
+    } finally {
+      watch.stop();
+      setSlow(false);
     }
   }
 
@@ -247,13 +293,14 @@ export function DemoForm() {
         >
           {error}{" "}
           <a
-            href={`mailto:${CONTACT.email}?subject=${encodeURIComponent("Demo request")}`}
+            href={mailto}
             className="font-semibold text-white underline underline-offset-4"
           >
             {CONTACT.email}
           </a>
           <span className="mt-1.5 block text-red-200/70">
             What you typed is still here — nothing was lost.
+            {error === TIMEOUT_COPY ? " You can also press the button to try again." : ""}
           </span>
         </div>
       ) : null}
@@ -266,6 +313,38 @@ export function DemoForm() {
         {status === "sending" ? "Sending…" : "Request a demo"}
         {status === "sending" ? null : <ArrowRight size={16} />}
       </button>
+
+      {/* The live region is always in the document and only its CONTENT changes,
+          so a screen reader announces the wait rather than missing a region that
+          appeared with its text already in it. It sits below the button, not
+          above it, so showing it never moves the button out from under the
+          cursor. */}
+      <div
+        role="status"
+        aria-live="polite"
+        className={
+          status === "sending"
+            ? "mt-5 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-[14px] leading-relaxed text-slate-300"
+            : undefined
+        }
+      >
+        {status === "sending" ? (
+          <>
+            <p>{WAITING_COPY}</p>
+            {slow ? (
+              <p className="mt-2">
+                {SLOW_COPY}{" "}
+                <a
+                  href={mailto}
+                  className="font-semibold text-white underline underline-offset-4"
+                >
+                  {CONTACT.email}
+                </a>
+              </p>
+            ) : null}
+          </>
+        ) : null}
+      </div>
 
       <p className="mt-5 inline-flex items-center gap-2 text-[12.5px] text-white/40">
         <Lock size={13} />
