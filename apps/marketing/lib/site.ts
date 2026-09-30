@@ -25,6 +25,50 @@ export const APP_URL =
 export const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://practicesync.pages.dev";
 
+/**
+ * THE PAGES A SEARCH ENGINE IS ASKED TO LIST — the sitemap's whole content, and
+ * the one list it is built from (market_and_trust-29).
+ *
+ * It is a list and not a walk of `app/` because a static export has no
+ * filesystem to read at run time and a sitemap must be written at build time,
+ * but it is not left to memory either:
+ * apps/api/tests/test_the_site_can_be_found_and_says_which_page_is_which.py
+ * compares it with the page files under `app/(site)/`, so a page added without
+ * an entry here — or an entry whose page was deleted — fails there.
+ *
+ * `/access` is deliberately NOT here. It is the sign-in chooser (firm workspace
+ * or client portal): it has nothing for a search to rank and listing it invites
+ * people to land on a login gateway from a results page. It is not blocked in
+ * robots.txt either — a blocked URL that other pages link to can still be
+ * listed, with no description, which is worse than a page that simply is not
+ * offered.
+ */
+export const INDEXABLE_PATHS = [
+  "/",
+  "/products",
+  "/pricing",
+  "/support",
+  "/resources",
+  "/demo",
+] as const;
+
+/**
+ * The absolute URL of a PAGE on this site, in the form the static export
+ * serves it: with a trailing slash (`trailingSlash: true` in next.config.mjs),
+ * because `/products` answers with a redirect to `/products/` and a sitemap or
+ * canonical that names the redirecting form asks a crawler to start from a hop.
+ */
+export function pageUrl(path: string): string {
+  const withSlash = path.endsWith("/") ? path : `${path}/`;
+  return new URL(withSlash, SITE_URL).toString();
+}
+
+/** The absolute URL of a FILE at the root (robots.txt, sitemap.xml) — no
+ *  trailing slash, which would name a path that does not exist. */
+export function fileUrl(path: string): string {
+  return new URL(path, SITE_URL).toString();
+}
+
 /** Cross-app destinations (routes that live in apps/web). */
 export const appLinks = {
   /** Chartered Accountant / firm staff sign-in (email + password + TOTP MFA). */
