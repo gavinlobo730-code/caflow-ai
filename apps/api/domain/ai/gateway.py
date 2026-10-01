@@ -40,7 +40,10 @@ WHAT IT DOES NOT DO
     There is no per-firm monthly budget and no usage screen; those need this
     table and a screen for a Partner to read it, and are their own piece of work
     (the table is firm-scoped so that work can read it). The rate limiter in
-    `middleware/rate_limit` is untouched and still asked first.
+    `middleware/rate_limit` is untouched and still asked first. What it DOES now
+    keep, in memory, is the last attempt and the last answer per provider
+    (`last_attempt`, `last_success`, `provider_status`), which `/health` and the
+    Partner's AI status screen read (ai-06) — see `domain/ai/probe`.
 """
 from __future__ import annotations
 
@@ -491,8 +494,95 @@ def _default_sink(ev: UsageEvent) -> None:
         _logger.warning("ai_usage: could not queue a usage row", exc_info=True)
 
 
+# ── what this process has SEEN a provider do ────────────────────────────────
+#
+# THE QUESTION (ai-06): "does the AI answer at all, live?" Nothing could say. The
+# usage table says it per firm and only once somebody has made a call, so the
+# gateway also keeps, IN THIS PROCESS, the last attempt and the last success per
+# provider. It is read by `/health` (one word per provider, no database call, so
+# the route stays what Render's health check needs it to be) and by the Partner's
+# AI status screen. It is memory, so a restart forgets it and the honest answer
+# after a restart is `unverified`, never `ok`.
+
+#: Outcomes that mean the provider ANSWERED. A reply cut off by the response
+#: budget is still an answer; every other outcome is a failure of the attempt.
+ANSWERED = frozenset({OK, TRUNCATED})
+
+STATUS_OK = "ok"
+STATUS_FAILING = "failing"
+STATUS_UNVERIFIED = "unverified"
+STATUS_NOT_CONFIGURED = "not_configured"
+
+
+@dataclass(frozen=True)
+class Seen:
+    """One attempt, reduced to what a status screen needs. No text, no firm."""
+    provider: str
+    model: str
+    outcome: str
+    at: float            # epoch seconds, UTC
+    latency_ms: int
+    total_tokens: Optional[int] = None
+    http_status: Optional[int] = None
+
+
+_seen_lock = threading.Lock()
+_last_attempt: dict[str, Seen] = {}
+_last_success: dict[str, Seen] = {}
+
+
+def reset_health() -> None:
+    """Forget what this process has seen. For tests, and for nothing else: the
+    honest state after a restart is the empty one."""
+    with _seen_lock:
+        _last_attempt.clear()
+        _last_success.clear()
+
+
+def _note(ev: UsageEvent) -> None:
+    # A PARAM_REJECTED attempt is the gateway's own housekeeping (the call goes
+    # again without the hint) and says nothing about whether the provider works.
+    if ev.outcome == PARAM_REJECTED:
+        return
+    seen = Seen(provider=ev.provider, model=ev.model, outcome=ev.outcome,
+                at=time.time(), latency_ms=ev.latency_ms,
+                total_tokens=ev.total_tokens, http_status=ev.http_status)
+    with _seen_lock:
+        _last_attempt[ev.provider] = seen
+        if ev.outcome in ANSWERED:
+            _last_success[ev.provider] = seen
+
+
+def last_attempt(provider: str) -> Optional[Seen]:
+    with _seen_lock:
+        return _last_attempt.get(provider)
+
+
+def last_success(provider: str) -> Optional[Seen]:
+    with _seen_lock:
+        return _last_success.get(provider)
+
+
+def provider_status(provider: str, configured: bool) -> str:
+    """One word. `not_configured` is its own state because a missing key and a
+    provider nobody has called yet send a person to different places; `failing`
+    is the LAST attempt failing (an earlier success does not hide it);
+    `unverified` is the honest answer to "has it ever worked, since this process
+    started" when nothing has been asked of it."""
+    if not configured:
+        return STATUS_NOT_CONFIGURED
+    attempt = last_attempt(provider)
+    if attempt is None:
+        return STATUS_UNVERIFIED
+    return STATUS_OK if attempt.outcome in ANSWERED else STATUS_FAILING
+
+
 def record(ev: UsageEvent) -> None:
     """Hand one attempt to the sink. Never raises."""
+    try:
+        _note(ev)
+    except Exception:                                            # noqa: BLE001
+        _logger.warning("ai_health: could not note an attempt", exc_info=True)
     try:
         (_sink or _default_sink)(ev)
     except Exception:                                            # noqa: BLE001

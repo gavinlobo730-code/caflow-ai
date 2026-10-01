@@ -220,6 +220,7 @@ export const SCREENS: Screen[] = [
   firm("/settings/branding", "Branding", "Settings", ["logo", "letterhead"]),
   firm("/settings/dsc-tracker", "DSC tracker", "Settings", ["digital signature", "dsc expiry", "token"]),
   firm("/settings/email-templates", "Email templates", "Settings", ["mail wording"]),
+  firm("/settings/ai", "AI status", "Settings", ["ai", "assistant", "groq", "gemini", "probe", "model"]),
   firm("/settings/firm-hsn-library", "HSN library", "Settings", ["hsn", "sac", "rate master"]),
   firm("/settings/invoice-settings", "Invoice numbering", "Settings", ["series", "prefix", "rule 46(b)"]),
   firm("/settings/invoice-templates", "Invoice templates", "Settings", ["layout", "pdf design"]),

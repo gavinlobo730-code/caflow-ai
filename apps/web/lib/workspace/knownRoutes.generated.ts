@@ -146,6 +146,7 @@ export const KNOWN_ROUTE_SHAPES: string[][] = [
   ["risks"],
   ["search"],
   ["settings"],
+  ["settings","ai"],
   ["settings","audit-log"],
   ["settings","branding"],
   ["settings","dsc-tracker"],

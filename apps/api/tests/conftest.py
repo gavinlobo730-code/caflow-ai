@@ -65,8 +65,12 @@ def ai_usage_events(monkeypatch):
     monkeypatch.setattr(gateway, "sleep_async", _sleep_async)
     monkeypatch.setattr(gateway, "sleep_sync", lambda seconds: events.sleeps.append(seconds))
     gateway.set_sink(events.append)
+    # What the gateway has SEEN a provider do is process-wide memory (ai-06); without
+    # this a test that made a call would leave `/health` saying "ok" for the next.
+    gateway.reset_health()
     yield events
     gateway.set_sink(None)
+    gateway.reset_health()
 
 
 @pytest.fixture

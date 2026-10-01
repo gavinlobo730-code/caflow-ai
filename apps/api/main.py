@@ -56,6 +56,7 @@ from routers import assignments
 from routers import approvals
 from routers import identity
 from routers import security_policy  # the MFA policy, readable at aal1
+from routers import ai_status  # is the AI answering? Partner status + one probe button (ai-06)
 from routers import customers, vendors, sales_invoices, receipts, credit_notes, customer_statements, debit_notes
 from routers import sales_debit_notes, purchase_credit_notes  # CGST §34(3) increase-side correction notes
 from routers import hsn  # HSN/SAC smart lookup (search firm_hsn_library merged with firm history)
@@ -380,6 +381,9 @@ app.include_router(identity.invite_router)  # accept-invite only: the invitee ha
 # NOT behind _MFA_GUARD: it tells an aal1 Partner or Manager to enrol, so
 # guarding it would answer only the people who have already done so.
 app.include_router(security_policy.router)
+# Firm-level (no client_id surface) and carrying `mfa_guard` route by route: it reports what
+# the deployment is configured with and spends the firm's AI quota. See routers/ai_status.py.
+app.include_router(ai_status.router)
 # Phase 14 — Tax/XBRL/integrations routers (previously written but never mounted;
 # their frontend pages were dead 404s until now). All client-scoped → guarded.
 app.include_router(itr_workspace.router, dependencies=_CLIENT_GUARD)
@@ -640,6 +644,7 @@ def root():
 def healthcheck():
     from fastapi.responses import JSONResponse
     from models.common import api_response
+    from services import ai_status_service
 
     # task #244: a deploy whose code depends on a migration that was never
     # applied to this database fails its own health check instead of going
@@ -667,6 +672,11 @@ def healthcheck():
         # `curl .../health`. A fact about this process, not a call to Sentry: this route touches
         # no network, and the ops-05 note on /ready below says why it must stay that way.
         "error_reporting": "on" if error_reporting_enabled() else "off",
+        # Whether each AI provider has been SEEN to answer by this process (ai-06): one word each
+        # — ok, failing, unverified (nothing asked since boot) or not_configured — from memory, so
+        # like the line above it touches no network and cannot turn this route into a 503. Model
+        # names and times are configuration and live behind the Partner's AI status screen.
+        "ai": ai_status_service.health_words(),
     })
 
 

@@ -124,7 +124,7 @@ MODEL_MARKERS = (
     ".get_client_intelligence(", ".get_compliance_intelligence(",
     ".get_workflow_intelligence(", ".get_relationship_intelligence(",
     ".get_executive_dashboard(", "GROQ_API_URL", "_read_statement_file(",
-    "digest_service.todays_digest(",
+    "digest_service.todays_digest(", "ai_probe.probe(",
 )
 
 #: Routes limited INSIDE the handler rather than by a dependency, with where.
@@ -164,7 +164,7 @@ def test_the_scan_finds_the_model_routes_and_is_not_vacuous():
     names = {r.endpoint.__name__ for r, _ in _ai_routes()}
     for expected in ("assistant", "extract_invoice", "extract_notice", "quick_chat",
                      "send_message", "executive_dashboard", "get_statement_analysis",
-                     "copilot_chat", "upload_statement"):
+                     "copilot_chat", "upload_statement", "run_probe"):
         assert expected in names, f"the scan did not find {expected}"
     assert len(names) >= 12
 
