@@ -983,7 +983,7 @@ def convert_lead(
             or existing.get("contact_name")
             or existing.get("company_name", "")
         )
-        # entity_type CHECK: Proprietorship|Partnership|LLP|Private Limited|Public Limited|Trust|Society|Individual
+        # entity_type CHECK: Proprietorship|Partnership|LLP|Private Limited|Public Limited|Trust|Society|Individual|HUF|AOP|BOI (migration 453 added the last three)
         entity_type = data.entity_type or "Individual"
 
         # Validate the Indian tax identifiers BEFORE the insert (Objective 2 —

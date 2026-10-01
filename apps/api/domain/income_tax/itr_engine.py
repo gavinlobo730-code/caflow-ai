@@ -14,6 +14,7 @@ All monetary values in integer paise. Never float.
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
 """
 from __future__ import annotations
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -23,6 +24,9 @@ from domain.income_tax.statutory_rates import (
     FYTaxRates, apply_rebate_87a, apply_surcharge_with_marginal_relief,
     cess_paise, fy_rate_gap, rates_for, resolve_surcharge_bracket, slab_tax_paise,
 )
+from domain.income_tax import aop_boi
+from domain.income_tax.aop_boi import is_aop_or_boi
+from domain.income_tax.relief_reach import reaches, why_not
 from domain.income_tax.entity_rates import compute_entity_tax
 from domain.income_tax.loss_set_off import (
     apply_brought_forward_losses, BroughtForwardLoss,
@@ -413,6 +417,16 @@ class ITRComputeRequest:
     # statutory knowledge and belongs in apps/api, not on a screen.
     assessee_kind: str = "individual"
 
+    # AOP and BOI only (§167B). Whether the members' shares are determinate and
+    # known, and — where they are — whether any member's own total income
+    # exceeds the maximum amount not chargeable to tax. NEITHER is held against
+    # a client record, so each is the CA's answer to this computation, and an
+    # unstated one is REFUSED (domain/income_tax/aop_boi.UNSTATED_REFUSAL)
+    # rather than assumed: the two guesses charge the association on the slabs
+    # or at the top rate from the first rupee, and the Act decides which.
+    aop_shares_determinate: Optional[bool] = None
+    aop_any_member_over_exemption: Optional[bool] = None
+
     # Company only. §115BAA (22%) and §115BAB (15%) are ELECTIONS, and their
     # surcharge is a flat 10% whatever the income — reusing the normal
     # brackets for a company that has opted in understates its tax by a tenth.
@@ -576,6 +590,16 @@ class ITRComputeResult:
     entity_rate_percent: int = 0
     turnover_reference_fy: Optional[str] = None
     entity_workings: list[str] = field(default_factory=list)
+    #: Whether the §87A rebate was available to this assessee at all. False for
+    #: a HUF, an AOP, a BOI and every entity: a screen reading `rebate_87a_paise
+    #: == 0` as "the rebate gave nothing" would show a relief line to somebody
+    #: the section never reached. True is the individual's, and the default.
+    rebate_87a_applies: bool = True
+    #: How §167B charged an AOP or a BOI: "maximum_marginal_rate" or "slab".
+    #: Empty for everyone else.
+    assessee_basis: str = ""
+    #: What the basis leaves out, named (domain/income_tax/aop_boi.CAVEATS).
+    assessee_caveats: list[str] = field(default_factory=list)
 
     # §115JB (company) / §115JC (firm, LLP). The credit is the point: §115JAA
     # and §115JD carry the excess forward for fifteen assessment years, and
@@ -652,6 +676,37 @@ class ITREngine:
         result = ITRComputeResult()
         result.regime = "new" if req.use_new_regime else "old"
         _stamp_rate_provenance(result, req.fy, rates)
+        result.assessee_kind = req.assessee_kind
+
+        # WHO IS ON THE SLAB PATH, AND WHAT THEY MAY CLAIM (TDS-INCOME-TAX-16).
+        # This path used to be the individual's and nobody else's, so a
+        # reliefs-by-kind question never arose. A HUF, an AOP and a BOI take it
+        # now, and each relief below asks `relief_reach` rather than assuming
+        # the assessee is a person: §87A, §16(ia) and the higher exemption at 60
+        # and 80 are an individual's alone. For an individual every answer is
+        # True, so no individual's figure moves.
+        gets_87a = reaches("rebate_87a", req.assessee_kind)
+        gets_standard_deduction = reaches("standard_deduction_16ia", req.assessee_kind)
+        aop_basis: Optional[aop_boi.Basis] = None
+        if req.assessee_kind != "individual":
+            refusals, aop_basis = self._screen_non_individual(req)
+            if refusals:
+                result.validation_errors.extend(refusals)
+                return result
+            # The senior-citizen flags are an INDIVIDUAL's. Ignoring them gives
+            # the general slabs, which is the higher tax — the direction that
+            # cannot under-charge — and the answer says so rather than
+            # silently differing from what the form was told.
+            if ((req.is_senior_citizen or req.is_very_senior_citizen)
+                    and not reaches("senior_citizen_slab", req.assessee_kind)):
+                result.warnings.append(
+                    why_not("senior_citizen_slab", req.assessee_kind)
+                    + " The general slabs were used.")
+                req = dataclasses.replace(req, is_senior_citizen=False,
+                                          is_very_senior_citizen=False)
+        result.rebate_87a_applies = gets_87a
+        if not gets_87a:
+            result.entity_workings.append(why_not("rebate_87a", req.assessee_kind))
 
         # 1. Standard deduction on salary (IT Act Section 16(ia)). F17 fix:
         # this used to apply the NEW regime's ₹75,000 to both regimes — the
@@ -659,7 +714,8 @@ class ITREngine:
         # 2019 and was never revised alongside the new-regime increases.
         std_ded_limit = (rates.new_regime_standard_deduction_paise if req.use_new_regime
                          else rates.old_regime_standard_deduction_paise)
-        std_ded = min(std_ded_limit, req.gross_salary_paise)
+        std_ded = (min(std_ded_limit, req.gross_salary_paise)
+                   if gets_standard_deduction else 0)
         result.standard_deduction_paise = std_ded
 
         # 2. Gross Total Income
@@ -1005,7 +1061,24 @@ class ITREngine:
 
         # 5. Tax computation (ordinary/slab income only)
         slabs = self._slabs_for(rates, req.use_new_regime, req.is_senior_citizen, req.is_very_senior_citizen)
-        tax = slab_tax_paise(ordinary_taxable, slabs)
+        # §167B: an AOP or a BOI whose shares are indeterminate, or one of whose
+        # members is above the exemption limit, is charged on its WHOLE total
+        # income at the maximum marginal rate (§2(29C)) — the top slab from the
+        # first rupee, with no basic exemption. The rate is read off the slab
+        # table in force, so a Finance Act that moves the top slab moves it.
+        at_mmr = (aop_basis is not None
+                  and aop_basis.basis == aop_boi.BASIS_MAXIMUM_MARGINAL_RATE)
+        if aop_basis is not None:
+            result.assessee_basis = aop_basis.basis
+            result.assessee_caveats = list(aop_boi.CAVEATS)
+            result.entity_workings.append(f"{aop_basis.section}: {aop_basis.reason}")
+        if at_mmr:
+            mmr_percent = aop_boi.maximum_marginal_rate_percent(slabs)
+            result.entity_rate_percent = mmr_percent
+            tax_on = lambda income: income * mmr_percent // 100  # noqa: E731
+        else:
+            tax_on = lambda income: slab_tax_paise(income, slabs)  # noqa: E731
+        tax = tax_on(ordinary_taxable)
 
         # Special rate capital gains (add on top of slab tax; never eligible
         # for Chapter VI-A deductions or §87A rebate/marginal relief below —
@@ -1084,7 +1157,10 @@ class ITREngine:
         # statutory hard cliff (crossing ₹5,00,000 by ₹1 forfeits the whole
         # ₹12,500) — encoded on the RebateRule as data, not a code branch.
         rebate_rule = rates.new_regime_rebate if req.use_new_regime else rates.old_regime_rebate
-        rebate = tax - apply_rebate_87a(taxable_income, tax, rebate_rule)
+        # §87A reaches "an assessee, being an individual resident in India" — a
+        # HUF, an AOP and a BOI never get it (TDS-INCOME-TAX-16).
+        rebate = (tax - apply_rebate_87a(taxable_income, tax, rebate_rule)
+                  if gets_87a else 0)
         result.rebate_87a_paise = rebate
         ordinary_tax_after_rebate = max(0, tax - rebate)
         capital_gains_tax = stcg_tax + ltcg_tax + ltcg_other_tax  # Sections 111A + 112A + 112
@@ -1108,7 +1184,10 @@ class ITREngine:
         # 112) instead gets the flat capped bracket rate — one consistent
         # treatment for all special-rate tax.
         new_cap = rates.new_regime_surcharge_cap_percent if req.use_new_regime else None
-        slab_tax_at = lambda income: slab_tax_paise(income, slabs)  # noqa: E731
+        # The marginal-relief baseline is the SAME charge as the tax itself —
+        # the slab ladder normally and the flat top rate under §167B, where
+        # there is no nil band for the "tax at the threshold" to fall back on.
+        slab_tax_at = tax_on
         ordinary_surcharge = apply_surcharge_with_marginal_relief(
             taxable_income, ordinary_tax_after_rebate,
             rates.surcharge_brackets, new_cap, slab_tax_at,
@@ -1198,6 +1277,72 @@ class ITREngine:
             )
 
         return result
+
+    # ── A HUF, an AOP or a BOI on the slab path (TDS-INCOME-TAX-16) ────────────
+
+    def _screen_non_individual(self, req: ITRComputeRequest):
+        """(refusals, aop_basis) for an assessee that is not an individual but
+        is taxed on the slab path.
+
+        Every input that reaches only an individual is REFUSED when supplied,
+        the way `_compute_entity` refuses an individual's input on a firm: a
+        screen that sends an ₹80E figure and gets a tax back has been told the
+        deduction was allowed. The refusal quotes the section's own words, from
+        `relief_reach`, so a CA can check the claim against the Act rather than
+        take the software's word that it is not theirs.
+
+        A refusal here is a `validation_error` and NOTHING is computed, so a
+        HUF with an ₹80E claim gets no number at all and not a number that
+        quietly dropped the deduction.
+        """
+        kind = req.assessee_kind
+        cv = req.chapter_vi_a
+        s80d = req.s80d
+        claimed = (
+            ("salary_head", int(req.gross_salary_paise or 0) != 0),
+            ("hra_10_13a", bool(req.hra.hra_received_paise or req.hra.rent_paid_paise)),
+            ("s80ccd_1b", int(req.nps_80ccd1b_paise or 0) != 0),
+            ("s80ccd_2", int(req.employer_nps_80ccd2_paise or 0) != 0),
+            ("s80c", req.s80c.total_paise() > 0),
+            ("s80d", any((s80d.self_family_premium_paise, s80d.parents_premium_paise,
+                          s80d.self_family_preventive_paise, s80d.parents_preventive_paise,
+                          s80d.self_family_medical_paise, s80d.parents_medical_paise))),
+            ("s80tta", int(req.savings_interest_80tta_paise or 0) != 0),
+            ("s80e", cv.education_loan_interest_paise > 0),
+            ("s80ee", cv.housing_loan_extra_interest_paise > 0),
+            ("s80dd", bool(cv.has_disabled_dependant)),
+            ("s80ddb", cv.specified_disease_spend_paise > 0),
+            ("s80u", bool(cv.assessee_is_disabled)),
+            ("s80gg", cv.rent_paid_paise > 0),
+        )
+        refusals = [why_not(relief, kind) + " Remove the claim."
+                    for relief, present in claimed
+                    if present and not reaches(relief, kind)]
+
+        basis = None
+        if is_aop_or_boi(kind):
+            basis, refusal = aop_boi.resolve_basis(
+                shares_determinate=req.aop_shares_determinate,
+                any_member_over_exemption=req.aop_any_member_over_exemption,
+            )
+            if refusal:
+                refusals.append(refusal)
+            elif basis.basis == aop_boi.BASIS_MAXIMUM_MARGINAL_RATE and any((
+                    req.capital_gains_stcg_paise, req.capital_gains_ltcg_paise,
+                    req.capital_gains_ltcg_other_paise)):
+                # §111A, §112A and §112 charge their gains at their own rates and
+                # override a flat charge on the rest. Whether §167B's maximum
+                # marginal rate leaves them alone or absorbs them is not
+                # something this engine can show a source for, and the two
+                # readings differ by more than the whole tax on a listed-equity
+                # gain — so nothing is computed rather than choosing.
+                refusals.append(
+                    "Capital gains are charged at their own rates under §111A, "
+                    "§112A and §112, and whether §167B's maximum marginal rate "
+                    "displaces those rates for an association is not modelled "
+                    "here. Nothing is computed rather than choosing between "
+                    "the two readings.")
+        return refusals, basis
 
     # ── The entity charge (firm, LLP, domestic company) ───────────────────────
 
@@ -1443,9 +1588,11 @@ class ITREngine:
         WHO IT REACHES. All three provisos say "in the case of an individual
         or a Hindu undivided family, being a RESIDENT". A firm, an LLP and a
         company never arrive here — they take the entity-rate path long before
-        this — so the test that remains is `assessee_kind == "individual"` and
-        `is_resident`. A non-resident individual with Indian capital gains is
-        charged on the whole gain, which is what the provisos' own words do.
+        this — so the test that remains is `relief_reach`'s row for it (an
+        individual or a HUF) and `is_resident`. An AOP or a BOI is neither and
+        gets no absorption, which is what the provisos' own words do. A
+        non-resident individual with Indian capital gains is charged on the
+        whole gain, for the same reason.
 
         ALLOCATED HIGHEST RATE FIRST. The statute fixes no order between the
         three, so the allocation is the assessee's to choose and the engine
@@ -1458,7 +1605,9 @@ class ITREngine:
         charged = [max(0, int(base)) for _, base, _ in buckets]
         if not any(charged):
             return charged
-        if req.assessee_kind != "individual" or not req.is_resident:
+        # The three provisos reach "an individual or a Hindu undivided family,
+        # being a resident" — the HUF is theirs too, and an AOP or a BOI is not.
+        if not reaches("basic_exemption_absorption", req.assessee_kind) or not req.is_resident:
             return charged
 
         slabs = self._slabs_for(rates, req.use_new_regime,

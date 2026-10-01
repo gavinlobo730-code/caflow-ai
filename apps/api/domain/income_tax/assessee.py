@@ -21,6 +21,24 @@ THE ONE THAT IS NOT OBVIOUS
     of Chapter VI-A available. Treating it as a "business entity" and charging
     30% would be as wrong in the other direction as charging a company on slabs.
 
+A HUF, AN AOP AND A BOI ARE NOT INDIVIDUALS (TDS-INCOME-TAX-16)
+    `clients.entity_type` had no value for any of them, so each was recorded as
+    "Individual" and computed on the individual slabs WITH the §87A rebate, the
+    §16(ia) standard deduction and the senior-citizen slab. None of the three is
+    theirs: §87A reaches "an assessee, being an individual resident in India",
+    §16(ia) is a deduction from SALARY (a family and an association have no
+    employer), and the higher basic exemption at 60 and 80 is for "every
+    individual". Migration 453 lets the three be recorded; `domain/income_tax/relief_reach.py`
+    says who each relief reaches, by the section's own words, and the engine
+    asks it rather than testing a kind by name.
+
+    A HUF otherwise takes the individual's slab path and the §115BAC(1A)
+    regimes. An AOP or a BOI takes the slab path ONLY where §167B lets it
+    (`domain/income_tax/aop_boi.py`) and is otherwise charged on its whole total
+    income at the maximum marginal rate — which depends on two facts about its
+    members that no record here holds, so they are inputs to the computation and
+    an unstated one is REFUSED rather than assumed.
+
 WHAT IS REFUSED, AND WHY REFUSING IS THE ANSWER
     A TRUST is taxed under §§11-13 where registered under §12AB, and at the
     maximum marginal rate under §164 where it is not; a SOCIETY (a co-operative
@@ -35,13 +53,26 @@ All monetary values elsewhere are integer paise. Nothing here is money.
 """
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal, Optional, get_args
 
 from services.compliance_obligation_service import normalise_entity_type
 
-#: What the tax engines can charge. "individual" is the slab path in
-#: itr_engine; the other three go to entity_rates.compute_entity_tax.
-AssesseeKind = Literal["individual", "firm", "llp", "domestic_company"]
+#: What the tax engines can charge. "individual", "huf", "aop" and "boi" are
+#: the slab path in itr_engine (with the differences `relief_reach.RELIEF_REACH` records, and
+#: §167B's for the last two); the other three go to
+#: entity_rates.compute_entity_tax. The lower-case spellings are the ones
+#: `domain/income_tax/minimum_tax` already uses for the same assessees.
+AssesseeKind = Literal["individual", "huf", "aop", "boi",
+                       "firm", "llp", "domestic_company"]
+
+#: The kinds that take the slab path. Written once so no caller tests a kind by
+#: name and a fifth added later is a decision rather than a fall-through.
+SLAB_KINDS: tuple[str, ...] = ("individual", "huf", "aop", "boi")
+
+#: Every kind, DERIVED from the Literal so a request model that must say which
+#: it will accept cannot hold a second list — the router's check was a
+#: hand-typed tuple of four, which would have refused all three new kinds.
+ALL_ASSESSEE_KINDS: tuple[str, ...] = get_args(AssesseeKind)
 
 #: clients.entity_type (migration 001's CHECK, title-case with spaces) → the
 #: assessee. Keys are normalise_entity_type's output, so 'Private Limited',
@@ -64,6 +95,15 @@ _KIND_BY_ENTITY_TYPE: dict[str, AssesseeKind] = {
     # A proprietorship is the proprietor. See the module docstring.
     "proprietorship": "individual",
     "individual": "individual",
+    # Migration 453. The long spellings are recognised so that a client typed
+    # or imported as "Hindu Undivided Family" cannot fall to the refusal below
+    # and so look like an entity this software has no basis for.
+    "huf": "huf",
+    "hindu undivided family": "huf",
+    "aop": "aop",
+    "association of persons": "aop",
+    "boi": "boi",
+    "body of individuals": "boi",
 }
 
 #: Entity types the Act taxes on a basis this codebase does not model. The
@@ -114,6 +154,48 @@ def assessee_kind_for_entity_type(
 def is_entity(kind: AssesseeKind) -> bool:
     """Whether this assessee is charged at a flat entity rate rather than slabs."""
     return kind in ("firm", "llp", "domestic_company")
+
+
+#: The sentence a screen shows BEFORE anything is computed, for the three
+#: assessees whose basis is not the individual's. Served with the assessee kind
+#: so the screen holds no statute. The AOP/BOI note names §167B's two questions
+#: rather than a rate, because which rate applies is the CA's answer to them.
+BASIS_NOTE: dict[str, str] = {
+    "huf": ("Taxed on the slabs under either regime, like an individual, but "
+            "without the §87A rebate, the §16(ia) standard deduction or the "
+            "senior-citizen slab, none of which a Hindu undivided family gets."),
+    "aop": ("Charged under §167B: at the maximum marginal rate on the whole "
+            "income where the members' shares are indeterminate or a member's "
+            "own income is above the exemption limit, and on the slabs "
+            "otherwise — without the §87A rebate. Answer the two questions "
+            "below."),
+    "boi": ("Charged under §167B: at the maximum marginal rate on the whole "
+            "income where the members' shares are indeterminate or a member's "
+            "own income is above the exemption limit, and on the slabs "
+            "otherwise — without the §87A rebate. Answer the two questions "
+            "below."),
+}
+
+
+#: The ITR form a NEW filing starts on, by assessee — a STARTING POINT the CA
+#: can change in the picker, never a computed answer, and SERVED by
+#: `GET /api/income-tax/assessee-kind` so the filing screen holds a fallback
+#: and not a rule. The individual's is ITR-3 because a proprietorship (which is
+#: an individual) most often has business income here. A HUF starts on ITR-2:
+#: ITR-1 is for an individual alone, and the commoner HUF holds investments or
+#: property and has no business — one that does moves to ITR-3 in the picker.
+#: An AOP and a BOI file ITR-5 with the firms and LLPs. Form ELIGIBILITY is not
+#: enforced anywhere (any of the seven is accepted for any client); this is
+#: where a client's filing starts, not what it may file.
+DEFAULT_ITR_FORM: dict[str, str] = {
+    "individual": "ITR-3",
+    "huf": "ITR-2",
+    "aop": "ITR-5",
+    "boi": "ITR-5",
+    "firm": "ITR-5",
+    "llp": "ITR-5",
+    "domestic_company": "ITR-6",
+}
 
 
 #: Entity types the Act treats as necessarily carrying business or

@@ -21,8 +21,12 @@ from domain.income_tax.capital_gains_engine import (
     ASSESSEE_TYPES, ASSESSEE_UNSPECIFIED,
 )
 from domain.income_tax.assessee import (
-    AssesseeKind, assessee_kind_for_entity_type, implies_business_income,
+    ALL_ASSESSEE_KINDS, BASIS_NOTE, DEFAULT_ITR_FORM, SLAB_KINDS, AssesseeKind,
+    assessee_kind_for_entity_type, implies_business_income,
+    is_entity as _is_entity_kind,
 )
+from domain.income_tax.relief_reach import unavailable_for
+from domain.income_tax.aop_boi import is_aop_or_boi
 from domain.income_tax.chapter_vi_a import ChapterVIAClaims
 from domain.income_tax import self_assessment as sa_domain
 from services import self_assessment_service
@@ -228,6 +232,17 @@ class ComputeITRRequest(BaseModel):
     entity_type: Optional[str] = None
     assessee_kind: Optional[str] = None
 
+    # AOP and BOI only — §167B (TDS-INCOME-TAX-16). Whether the members' shares
+    # are determinate and known, and, where they are, whether any member's own
+    # total income is above the maximum amount not chargeable to tax. Neither is
+    # held against a client record (there is no member register and a member's
+    # income is on somebody else's return), so they are the CA's answers to THIS
+    # computation, and a null is refused for an AOP or a BOI rather than
+    # assumed: the two guesses charge the association on the slabs or at the top
+    # rate from the first rupee. Ignored for every other assessee.
+    aop_shares_determinate: Optional[bool] = None
+    aop_any_member_over_exemption: Optional[bool] = None
+
     # WAS THIS ASSESSEE RESIDENT IN INDIA THIS YEAR (§6)?
     #
     # Defaults True, which is what this endpoint has always assumed — §87A is
@@ -339,15 +354,17 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
             kind, refusal = assessee_kind_for_entity_type(req.entity_type)
             if kind is None:
                 raise HTTPException(status_code=422, detail=refusal)
-    elif kind not in ("individual", "firm", "llp", "domestic_company"):
+    elif kind not in ALL_ASSESSEE_KINDS:
         raise HTTPException(
             status_code=422,
             detail=(f"Unknown assessee kind {kind!r}. Expected one of "
-                    "individual, firm, llp, domestic_company."))
+                    f"{', '.join(ALL_ASSESSEE_KINDS)}."))
 
     engine_req = ITRComputeRequest(
         fy=req.fy,
         assessee_kind=kind,
+        aop_shares_determinate=req.aop_shares_determinate,
+        aop_any_member_over_exemption=req.aop_any_member_over_exemption,
         company_regime=req.company_regime,
         turnover_in_reference_year_paise=req.turnover_in_reference_year_paise,
         book_profit_paise=req.book_profit_paise,
@@ -443,6 +460,14 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
             # year being taxed.
             "turnover_reference_fy": result.turnover_reference_fy,
             "workings": result.entity_workings,
+            # Whether §87A was available to this assessee AT ALL — false for a
+            # HUF, an AOP, a BOI and every entity. `tax.rebate_87a_paise == 0`
+            # cannot say it: an individual above the threshold also gets nil.
+            "rebate_87a_applies": result.rebate_87a_applies,
+            # §167B, for an AOP or a BOI: "maximum_marginal_rate" or "slab",
+            # and what the basis leaves out. Empty for everyone else.
+            "basis": result.assessee_basis,
+            "caveats": result.assessee_caveats,
         },
         # §115JB / §115JC. `credit_paise` is the point: §115JAA and §115JD carry
         # the excess forward for fifteen assessment years, and charging the
@@ -624,8 +649,26 @@ def resolve_assessee_kind(
     return api_response(True, {
         "entity_type": entity_type,
         "kind": kind,
-        "is_entity": kind in ("firm", "llp", "domestic_company"),
+        "is_entity": kind is not None and _is_entity_kind(kind),
         "implies_business_income": implies_business_income(entity_type),
+        # The ITR form a NEW filing starts on, SERVED so the filing screen holds
+        # a fallback and not the rule — the Schedule III caption shape.
+        # `assessee.DEFAULT_ITR_FORM` is the authority; null where the entity
+        # type was refused.
+        "default_itr_form": DEFAULT_ITR_FORM.get(kind) if kind else None,
+        # An AOP or a BOI is charged under §167B on facts about its members the
+        # computation asks for (`aop_shares_determinate`,
+        # `aop_any_member_over_exemption`). Served so the screen offers those
+        # two questions only to the assessee they are asked of.
+        "asks_about_members": is_aop_or_boi(kind),
+        # The reliefs on the slab path this assessee does NOT get, by key, so
+        # the screen hides the boxes the compute call would refuse. Empty for an
+        # individual (who gets all of them) and for a firm, an LLP and a company,
+        # whose own branch already refuses an individual's inputs by name.
+        "unavailable_reliefs": unavailable_for(kind) if kind in SLAB_KINDS else [],
+        # What to tell the CA before anything is computed. Null for an assessee
+        # whose basis needs no note.
+        "basis_note": BASIS_NOTE.get(kind) if kind else None,
         "refusal": refusal,
     })
 
