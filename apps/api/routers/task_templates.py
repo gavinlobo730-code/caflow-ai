@@ -156,8 +156,10 @@ def instantiate_template(
             assignee = user_repo.find_by_id(body.assignee_id, firm_id=firm_id)
             if assignee:
                 notification_service.notify_task_assigned(task, assignee, current_user)
-        except Exception:
-            pass
+        except Exception as exc:
+            # The task was made; telling its assignee is best-effort, but a failure is reported.
+            from core.observability import capture_soft_failure
+            capture_soft_failure(exc, operation="task_templates.assigned_mail", firm_id=firm_id)
 
     if tpl.get("tags"):
         for tag in tpl["tags"]:

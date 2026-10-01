@@ -6,6 +6,7 @@ from repositories.user_repository import user_repo
 from repositories.notifications_repository import notifications_repo
 from repositories.task_extras_repository import task_extras_repo
 from core.ist_clock import ist_today
+from core.observability import capture_soft_failure
 
 
 class EscalationService:
@@ -113,8 +114,11 @@ class EscalationService:
                                     {**task, "assigned_to": new_assignee["id"],
                                      "assignee_id": new_assignee["id"], "firm_id": firm_id},
                                     new_assignee, None)
-                            except Exception:  # noqa: BLE001 - mail is best-effort
-                                pass
+                            except Exception as exc:  # noqa: BLE001 - mail is best-effort
+                                # Never the sweep's failure, and never silent either: a
+                                # reassignment nobody was told about is worth a report.
+                                capture_soft_failure(exc, operation="escalation.reassigned_mail",
+                                                     firm_id=firm_id, task_id=task.get("id"))
 
                             # Notify manager
                             manager = self._find_manager_for_task(firm_id, task)
@@ -207,8 +211,8 @@ class EscalationService:
                                 if i.get("kind") == "reassigned"}
             practice_mail_service.send_overdue_task_mails(
                 firm_id, [t for t in open_tasks if str(t.get("id")) not in just_handed_over])
-        except Exception:  # noqa: BLE001 - mail is best-effort
-            pass
+        except Exception as exc:  # noqa: BLE001 - mail is best-effort
+            capture_soft_failure(exc, operation="escalation.overdue_mail", firm_id=firm_id)
 
         return {
             "due_soon_escalations": due_soon_count,

@@ -1437,8 +1437,9 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
         try:
             from services import practice_mail_service
             practice_mail_service.send_deadline_mails(firm_id, mail_batch, today=today)
-        except Exception:  # pragma: no cover - mail is best-effort
-            pass
+        except Exception as exc:  # pragma: no cover - mail is best-effort
+            from core.observability import capture_soft_failure
+            capture_soft_failure(exc, operation="compliance.deadline_mails", firm_id=firm_id)
     return {"escalated": sum(counts.values()), **counts}
 
 
