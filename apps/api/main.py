@@ -525,6 +525,12 @@ app.include_router(shared_reports_router)
 from routers.report_exports import router as report_exports_router
 app.include_router(report_exports_router, dependencies=_CLIENT_GUARD)
 
+# accounting-22 — interest on an overdue customer balance: a figure and a PREPARED
+# draft, never posted or invoiced on its own. `client_id` is required on every
+# route, so the mount guard sees it.
+from routers.late_interest import router as late_interest_router
+app.include_router(late_interest_router, dependencies=_CLIENT_GUARD)
+
 
 # Beta hardening (Phase F) — validate configuration at boot so missing env vars are
 # visible immediately in the logs rather than surfacing as opaque runtime errors.

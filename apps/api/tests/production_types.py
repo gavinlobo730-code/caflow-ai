@@ -111,6 +111,11 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("bank_transactions", "tds_decision_resolved_by"): "migration 413",
     ("customers", "credit_limit_paise"): "migration 414",
     ("invoice_settings", "credit_limit_blocks"): "migration 414",
+    # accounting-22. `late_interest_charges` is a whole new table and needs no entry;
+    # these three are columns on an EXISTING table, which the snapshot predates.
+    ("customers", "late_interest_rate_bps"): "migration 461",
+    ("customers", "late_interest_grace_days"): "migration 461",
+    ("customers", "late_interest_from"): "migration 461",
     # public.capital_gain_reinvestments (385), public.stock_count_sessions and
     # public.stock_count_lines (387), public.rcm_documents (388),
     # public.bills_of_entry (389), public.client_gst_registrations (390) and

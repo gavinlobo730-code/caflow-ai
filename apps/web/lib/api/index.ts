@@ -3085,6 +3085,76 @@ export interface SalesCycleVocabulary {
   itc_04: { decided: boolean; readings: string[]; refusal: string };
 }
 
+/** accounting-22 — interest on an overdue customer balance. Shapes only: which invoices
+ *  are late, for how many days and what that comes to are the server's. */
+export interface LateInterestTerms {
+  customer_id: string;
+  customer_name: string | null;
+  /** Annual rate in basis points. `null` is "nobody has stated one", which is
+   *  not the same fact as 0 ("interest is waived"). */
+  rate_bps: number | null;
+  grace_days: number;
+  basis: "due_date" | "invoice_date";
+}
+
+export interface LateInterestDocument {
+  invoice_id: string;
+  invoice_no: string | null;
+  invoice_date?: string | null;
+  due_date?: string | null;
+  outstanding_paise: number;
+  status: string;
+  counted_from?: string | null;
+  start_note?: string | null;
+  days_late: number;
+  days_charged: number;
+  period_from?: string | null;
+  period_to?: string | null;
+  already_charged_through?: string | null;
+  interest_paise: number;
+  note?: string | null;
+}
+
+export interface LateInterestParty {
+  customer_id: string;
+  customer_name: string | null;
+  terms_set: boolean;
+  terms: { rate_bps: number; grace_days: number; basis: string } | null;
+  overdue_outstanding_paise: number;
+  interest_paise: number;
+  documents: LateInterestDocument[];
+}
+
+export interface LateInterestStatement {
+  convention: { statement: string; day_count: string; as_of: string };
+  statutory_reading: { section: string; grade: string; text: string };
+  caveats: string[];
+}
+
+export interface LateInterestPreview extends LateInterestStatement {
+  as_of: string;
+  parties: LateInterestParty[];
+  totals: {
+    interest_paise: number; parties_with_interest: number;
+    parties_without_terms: number; overdue_outstanding_paise: number;
+  };
+  gaps: string[];
+}
+
+export interface LateInterestDrafts extends LateInterestStatement {
+  as_of: string;
+  drafts: {
+    invoice_id: string; invoice_no: string | null; status: string;
+    total_paise: number | null; interest_paise: number; gst_rate_bps: number;
+    is_interstate: boolean; invoice_nos: string[];
+  }[];
+  not_drafted: {
+    invoice_id: string; invoice_no: string | null; interest_paise: number;
+    reason_code: string; reason: string;
+  }[];
+  failed: { reason: string; invoice_nos: string[] }[];
+}
+
 export interface PreInvoiceLine {
   description: string;
   hsn_sac?: string | null;
@@ -5976,6 +6046,33 @@ export const api = {
                params: ExportParams = {}) =>
       downloadFile(`/api/report-exports/${report}?${exportQuery(clientId, format, params)}`,
                    `${report}.${format}`),
+  },
+
+  /** accounting-22 — interest on an overdue customer balance. The preview reads and
+   *  writes nothing; `prepareDrafts` makes an ordinary DRAFT sales invoice
+   *  (posts no journal, issues nothing, emails nothing). Every figure is the
+   *  server's: a request carries a date and ids, never an amount. */
+  lateInterest: {
+    preview: (clientId: string, asOf?: string, customerId?: string) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (asOf) q.set("as_of", asOf);
+      if (customerId) q.set("customer_id", customerId);
+      return request<ApiResp<LateInterestPreview>>(`/api/late-interest/preview?${q}`);
+    },
+    terms: (clientId: string) =>
+      request<ApiResp<{ customers: LateInterestTerms[] }>>(
+        `/api/late-interest/terms?client_id=${encodeURIComponent(clientId)}`),
+    setTerms: (body: {
+      client_id: string; customer_id: string; rate_bps: number | null;
+      grace_days: number; basis: string;
+    }) =>
+      request<ApiResp<LateInterestTerms>>("/api/late-interest/terms",
+        { method: "PUT", body: JSON.stringify(body) }),
+    prepareDrafts: (body: {
+      client_id: string; customer_id: string; as_of_date?: string; invoice_ids?: string[];
+    }) =>
+      request<ApiResp<LateInterestDrafts>>("/api/late-interest/drafts",
+        { method: "POST", body: JSON.stringify(body) }),
   },
 
   /** THE supplier master. `public.suppliers` (migration 030) looked like a
