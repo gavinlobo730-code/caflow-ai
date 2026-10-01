@@ -314,6 +314,9 @@ export interface GSTR3BComputeResult {
    *  document names which it belongs to, so this return contains all of them.
    *  Null where the client holds one. Rendered by `Gstr3bFindings`. */
   registration_caveat?: string | null;
+  /** GST-07 — this build against the GSTR-1 that was filed. Absent from an
+   *  older backend, which is rendered as nothing rather than as a clean tie. */
+  gstr1_tie_out?: Gstr1TieOutBlock | null;
   /** WHAT THIS RETURN ACTUALLY COVERS (GST-11). A month for an ordinary
    *  registration; the whole QUARTER for a QRMP one (CGST Rule 61A), keyed on
    *  its first month. The frequency is a fact about the REGISTRATION and the
@@ -495,6 +498,62 @@ export interface UndeclarableRow {
   reason: string;
 }
 
+/** GST-07 — the GSTR-3B build tied out against the GSTR-1 that was FILED.
+ *
+ *  From the July 2025 tax period the portal fills Table 3.1 from the period's
+ *  GSTR-1 and locks it, so a difference between this build and that return is
+ *  one the CA cannot type away. `domain/gst/gstr1_3b_tie_out.py` decides every
+ *  figure and sentence here; this carries shapes only. `not_filed` is NOT a
+ *  zero — there is nothing to compare against yet — and so carries no rows. */
+export interface Gstr1TieOutFigure {
+  gstr1_filed: number;
+  books_3b: number;
+  /** books minus filed, signed paise. Positive: the build declares MORE. */
+  difference: number;
+}
+export interface Gstr1TieOutRow {
+  code: string;
+  label: string;
+  figures: Record<string, Gstr1TieOutFigure>;
+  state: "matched" | "differs";
+}
+export interface Gstr1TieOutDocuments {
+  count: number;
+  truncated: boolean;
+  documents: { doc_no?: string; kind?: string; declare_in?: string;
+               delta?: Record<string, number>; [k: string]: unknown }[];
+}
+export interface Gstr1TieOutCause {
+  kind: string;
+  label: string;
+  figures_paise?: Record<string, number>;
+  consequence?: string;
+  missing_from_return?: Gstr1TieOutDocuments;
+  missing_from_books?: Gstr1TieOutDocuments;
+  amount_changed?: Gstr1TieOutDocuments;
+  reclassified?: Gstr1TieOutDocuments;
+  b2cs_changed?: Gstr1TieOutDocuments;
+  documents_the_gstr1_could_not_carry?: { kind?: string; reference_no?: string; reason?: string }[];
+}
+export interface Gstr1TieOutBlock {
+  status: "ok" | "not_filed" | "payload_missing" | "unavailable";
+  period: string;
+  gstin: string;
+  message?: string;
+  draft_exists?: boolean;
+  tied?: boolean;
+  filed_at?: string | null;
+  arn?: string | null;
+  portal_locks_outward_tables?: boolean;
+  gstr3b_filed?: boolean | null;
+  rows?: Gstr1TieOutRow[];
+  causes?: Gstr1TieOutCause[];
+  route?: string[];
+  gaps?: string[];
+  held_out?: Record<string, number>;
+  verified?: boolean;
+}
+
 /** What the bank lines a CA marked as carrying GST put on this return (BANK-24). */
 export interface BankLineTotals {
   itc_paise?: number;
@@ -515,6 +574,7 @@ interface FromBooksGSTR3B {
   undeclarable_rows?: UndeclarableRow[];
   bank_line_caveats?: string[];
   registration_caveat?: string | null;
+  gstr1_tie_out?: Gstr1TieOutBlock | null;
   period_window?: ReturnPeriodWindow;
   months_without_gstr2b?: string[];
 }
@@ -863,6 +923,7 @@ export async function computeGSTR3B(
     undeclarable_rows: result.undeclarable_rows,
     bank_line_caveats: result.bank_line_caveats,
     registration_caveat: result.registration_caveat ?? null,
+    gstr1_tie_out: result.gstr1_tie_out ?? null,
     reconciliation: result.reconciliation,
     period_window: result.period_window,
     months_without_gstr2b: result.months_without_gstr2b,

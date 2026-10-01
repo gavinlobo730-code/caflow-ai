@@ -35,6 +35,9 @@ _logger = logging.getLogger("caflow.gst_exceptions")
 
 # Only a submitted return is frozen. Anything else is still being worked on.
 _SUBMITTED = "submitted"
+#: The same value, public — for the GSTR-3B tie-out, which asks the same
+#: question of the same row and must not restate the word.
+SUBMITTED = _SUBMITTED
 
 
 def _filed_return(db, firm_id: str, client_id: str, period: str,
@@ -58,6 +61,38 @@ def _filed_return(db, firm_id: str, client_id: str, period: str,
             .eq("gstin", gstin)
             .limit(1).execute().data) or []
     return rows[0] if rows else None
+
+
+def filed_gstr1(db, firm_id: str, client_id: str, period: str,
+                gstin: str) -> Optional[dict]:
+    """The stored GSTR-1 row for this client, period AND registration, whatever
+    its status — or None. Public so the GSTR-3B tie-out reads the same row, by
+    the same key, that the exception report does (GST-07); the caller decides
+    what a draft or a payload-less row means."""
+    return _filed_return(db, firm_id, client_id, period, gstin)
+
+
+def drift_since_filing(db, firm_id: str, client_id: str, period: str,
+                       gstin: str, filed_payload: dict,
+                       *, frequency: Optional[str] = None) -> tuple[dict, dict]:
+    """(the GSTR-1 the books would build now, its comparison with the filed one).
+
+    ONE implementation of "rebuild and diff", shared by the Amendments tab's
+    report and the GSTR-3B tie-out, so the two cannot disagree about what has
+    moved. The whole `gstr1_from_books` result comes back and not only its
+    payload, because the tie-out also needs the documents that build could not
+    carry (`payload_gaps`).
+
+    `frequency` is the registration's own and is OMITTED by the exception
+    report, exactly as before — which means a QRMP quarter's filed return is
+    compared there against ONE month of books. That is recorded rather than
+    changed here; the tie-out passes it.
+    """
+    from services.gst_return_service import gstr1_from_books
+    books_return = gstr1_from_books(
+        db, firm_id, client_id, period, gstin, frequency=frequency) or {}
+    return books_return, compare_payloads(filed_payload,
+                                          books_return.get("payload") or {})
 
 
 def gstr1_exceptions(db, firm_id: str, client_id: str, period: str,
@@ -118,11 +153,9 @@ def gstr1_exceptions(db, firm_id: str, client_id: str, period: str,
     # The books as they stand now, through the same builder that produced the
     # frozen payload — so a difference is a real difference and not two
     # different renderings of the same facts.
-    from services.gst_return_service import gstr1_from_books
     gstin = filed.get("gstin") or registration.gstin
-    books = (gstr1_from_books(db, firm_id, client_id, period, gstin) or {}).get("payload") or {}
-
-    report = compare_payloads(payload, books)
+    _books_return, report = drift_since_filing(
+        db, firm_id, client_id, period, gstin, payload)
     return {
         "status": "ok",
         "period": period,

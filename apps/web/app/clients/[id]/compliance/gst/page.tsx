@@ -18,7 +18,7 @@ import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
 import { Gstr1Amendments } from "@/components/gst/Gstr1Amendments";
 import { IffPanel } from "@/components/gst/IffPanel";
 import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
-import type { GLReconciliation, GSTR1AmendmentsBlock, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
+import type { GLReconciliation, GSTR1AmendmentsBlock, Gstr1TieOutBlock, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
 import type { ValidationError, PayloadGap } from "@/lib/data/gst";
 import { formatPaise } from "@/lib/money/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
@@ -1287,6 +1287,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                   bankLineCaveats={computeResult.bank_line_caveats as string[] | undefined}
                   undeclarableRows={computeResult.undeclarable_rows as UndeclarableRow[] | undefined}
                   registrationCaveat={computeResult.registration_caveat as string | null | undefined}
+                  gstr1TieOut={computeResult.gstr1_tie_out as Gstr1TieOutBlock | null | undefined}
                 />
                 {/* THE TABLES, not just the totals.
                     The GSTN offline utility is table by table, and a CA

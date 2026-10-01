@@ -29,6 +29,7 @@ import services.itc_register_service as itc_register_service
 import services.bill_of_entry_service as bill_of_entry_service
 import services.client_gst_turnover_service as client_gst_turnover_service
 import services.client_gst_registration_service as client_gst_registration_service
+import services.gstr3b_tie_out_service as gstr3b_tie_out_service
 from domain.gst.gstr3b_computer import (
     SalesTransaction, PurchaseTransaction, ITCReversal, GSTR2ARecord,
     ImportOfGoods,
@@ -2038,6 +2039,17 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         itc_sgst=result.itc_net_sgst,
     )
 
+    # A CLIENT WITH SEVERAL REGISTRATIONS (GST-05): asked once, because the
+    # return carries it AND the tie-out below repeats it among its gaps.
+    registration_caveat = client_gst_registration_service.documents_not_split_caveat(
+        db, firm_id, client_id, gstin)
+    # GST-07 — does the portal's Table 3.1, which it fills from the filed GSTR-1,
+    # say what this build says? Reports a difference with its cause and changes
+    # neither return. Never raises: see `gstr3b_tie_out_service`.
+    gstr1_tie_out = gstr3b_tie_out_service.build(
+        db, firm_id, client_id, gstin, window=window, result=result,
+        sales=sales, registration_caveat=registration_caveat)
+
     return {
         "period": period,
         # WHAT THIS RETURN ACTUALLY COVERS (GST-11). A monthly registration
@@ -2114,8 +2126,14 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # or None — ALWAYS PRESENT, because an absent key and a null key read
         # the same to a screen and are different states: null says the question
         # was asked and the answer was no.
-        "registration_caveat": client_gst_registration_service.documents_not_split_caveat(
-            db, firm_id, client_id, gstin),
+        "registration_caveat": registration_caveat,
+        # THE FILED GSTR-1, TIED OUT AGAINST THIS BUILD (GST-07). From July 2025
+        # the portal fills Table 3.1 from the period's GSTR-1 and locks it, so
+        # an invoice raised after that return was filed makes this 3B differ
+        # from the one the portal will show. `status` says which of "filed and
+        # compared", "not filed" (NOT a zero — there is nothing to compare
+        # against yet) and "could not be read" this is.
+        "gstr1_tie_out": gstr1_tie_out,
         # WHAT THE BANK LINES PUT ON THE RETURN, AND WHAT THEY CANNOT SUPPLY
         # (BANK-24). A charge the CA marked as carrying GST now reaches Table
         # 4(A)(5) and a receipt so marked reaches 3.1(a) — both were on the
