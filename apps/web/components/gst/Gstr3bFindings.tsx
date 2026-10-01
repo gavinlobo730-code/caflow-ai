@@ -21,6 +21,8 @@
  * `Gstr1Findings`.
  */
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { GapList } from "@/components/ui/callout";
+import { formatPaise } from "@/lib/money/format";
 import type {
   BankLineTotals, GLReconciliation, Gstr1TieOutBlock, Gstr1TieOutCause,
   Gstr1TieOutDocuments, Gstr1TieOutRow, LateFilingBlock, ReturnPeriodWindow,
@@ -230,8 +232,10 @@ export function Gstr3bUndeclarableRows({ rows = [] }: { rows?: UndeclarableRow[]
   );
 }
 
-function signedRupees(paise: number): string {
-  return (paise > 0 ? "+" : paise < 0 ? "−" : "") + rupees(Math.abs(paise));
+/** The sign alone. The figure is `formatPaise`'s, so the grouping and the unit
+ *  stay in the one formatter and this screen builds no money string of its own. */
+function signOf(paise: number): string {
+  return paise > 0 ? "+" : paise < 0 ? "−" : "";
 }
 
 const TIE_OUT_HEADS: [string, string][] = [
@@ -287,18 +291,21 @@ export function Gstr3bGstr1TieOut({ tieOut }: { tieOut?: Gstr1TieOutBlock | null
     .filter(Boolean).join(" · ");
   if (tieOut.tied) {
     return (
-      <div className="rounded-lg border border-state-ready-border bg-state-ready-surface p-3 text-sm space-y-1">
-        <p className="font-medium text-state-ready">
-          Tied to the filed GSTR-1{filedRef ? ` (${filedRef})` : ""}
-        </p>
-        <p className="text-2xs text-state-ready">{tieOut.message}</p>
-        {gaps.map((g, i) => (
-          <p key={i} className="text-2xs text-ps-label border-t border-state-ready-border pt-1">{g}</p>
-        ))}
+      <div className="space-y-2">
+        <div className="rounded-lg border border-state-ready-border bg-state-ready-surface p-3 text-sm space-y-1">
+          <p className="font-medium text-state-ready">
+            Tied to the filed GSTR-1{filedRef ? ` (${filedRef})` : ""}
+          </p>
+          <p className="text-2xs text-state-ready">{tieOut.message}</p>
+        </div>
+        {/* What the tie cannot say stays beside the green tick, in the shared
+            gap list, so a tie is never read as more than it was. */}
+        <GapList gaps={gaps} tone="note" />
       </div>
     );
   }
   return (
+    <div className="space-y-2">
     <div role="alert"
          className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3 text-sm space-y-2">
       <p className="font-medium text-state-attention">
@@ -331,7 +338,7 @@ export function Gstr3bGstr1TieOut({ tieOut }: { tieOut?: Gstr1TieOutBlock | null
                         <td className="py-0.5">{label}</td>
                         <td className="py-0.5 text-right font-mono">{rupees(f.gstr1_filed)}</td>
                         <td className="py-0.5 text-right font-mono">{rupees(f.books_3b)}</td>
-                        <td className="py-0.5 text-right font-mono">{signedRupees(f.difference)}</td>
+                        <td className="py-0.5 text-right font-mono">{signOf(f.difference)}{formatPaise(Math.abs(f.difference))}</td>
                       </tr>
                     );
                   })}
@@ -351,7 +358,10 @@ export function Gstr3bGstr1TieOut({ tieOut }: { tieOut?: Gstr1TieOutBlock | null
             {c.figures_paise && (
               <p className="text-2xs text-ps-label font-mono">
                 {TIE_OUT_HEADS.filter(([k]) => c.figures_paise?.[k])
-                  .map(([k, l]) => `${l} ${signedRupees(c.figures_paise?.[k] ?? 0)}`).join(" · ")}
+                  .map(([k, l]) => {
+                    const v = c.figures_paise?.[k] ?? 0;
+                    return `${l} ${signOf(v)}${formatPaise(Math.abs(v))}`;
+                  }).join(" · ")}
               </p>
             )}
             {c.consequence && <p className="text-2xs text-ps-label">{c.consequence}</p>}
@@ -381,9 +391,8 @@ export function Gstr3bGstr1TieOut({ tieOut }: { tieOut?: Gstr1TieOutBlock | null
           {route.map((s, i) => <p key={i} className="text-2xs text-ps-label">{s}</p>)}
         </div>
       )}
-      {gaps.map((g, i) => (
-        <p key={i} className="text-2xs text-ps-label border-t border-state-attention-border pt-1">{g}</p>
-      ))}
+    </div>
+    <GapList gaps={gaps} tone="attention" />
     </div>
   );
 }

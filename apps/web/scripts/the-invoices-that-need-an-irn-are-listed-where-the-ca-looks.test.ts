@@ -72,7 +72,7 @@ test("the panel decides nothing about the window", () => {
 
 test("the server's caveats and the prepare-only sentence are rendered", () => {
   const src = code(PANEL);
-  assert.match(src, /list\.caveats\.map/);
+  assert.match(src, /<StatutoryNotes caveats=\{list\.caveats\}/);
   assert.match(src, /does not reach the IRP/);
 });
 

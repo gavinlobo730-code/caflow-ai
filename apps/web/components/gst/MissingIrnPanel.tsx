@@ -27,6 +27,7 @@ import Link from "next/link";
 import { AlertTriangle, Clock, FileWarning } from "lucide-react";
 import { api, type IrnWorklist } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
+import { StatutoryNotes } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { documentTarget } from "@/lib/accounting/sourceDocument";
 import { irnStateText, windowText, windowTone } from "@/lib/gst/irnWorklist";
@@ -182,10 +183,11 @@ export function MissingIrnPanel({ clientId }: { clientId?: string | null }) {
           PracticeSync does not reach the IRP. Obtain the IRN there, then record it
           against the invoice on the e-Invoice screen.
         </p>
-        {list.caveats.map((c, i) => (
-          <p key={i} className="text-xs text-ps-hint">{c}</p>
-        ))}
       </div>
+      {/* The server's caveats, in the shared component: "read this once" is a
+          different thing from a gap's "go and record this", and one component
+          is what keeps the two inks apart. */}
+      <StatutoryNotes caveats={list.caveats} className="px-5 pb-3 pt-2 bg-ps-bg" />
     </section>
   );
 }
