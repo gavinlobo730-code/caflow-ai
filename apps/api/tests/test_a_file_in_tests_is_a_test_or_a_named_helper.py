@@ -95,6 +95,20 @@ HELPERS = {
     # fixture and one read back out of Postgres, and a second double would be
     # two fixtures agreeing with each other rather than with the database.
     "_hub_worklist_double.py",
+    # practice_management-02/-03. The columns a NEW migration declares, read out of
+    # the migration FILE, so a test for a new table cannot disagree with the SQL it
+    # is proving (a hand-copied REAL_COLUMNS list is how the two drift). Imported by
+    # `test_450_a_practices_own_mail_is_recorded_pg.py` and the notification-type guard.
+    "_columns_from_migration.py",
+    # market_and_trust-09. The claims ledger, in three parts that are imported by
+    # `test_every_capability_sentence_on_the_marketing_site_is_in_the_claims_ledger.py`
+    # and are not tests: the copy extractor (`_marketing_copy`: what the site SAYS, as
+    # sentences), the vocabulary (`_marketing_vocabulary`: which sentences promise
+    # something) and the ledger itself (`_marketing_claims`: each such sentence, the fact
+    # it asserts and the test that proves it). Data and rules, in files a reviewer reads.
+    "_marketing_claims.py",
+    "_marketing_copy.py",
+    "_marketing_vocabulary.py",
 }
 
 _EXITS = {"exit", "quit", "_exit"}
