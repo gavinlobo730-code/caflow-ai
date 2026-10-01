@@ -98,48 +98,52 @@ export function BulkGstr2bPanel() {
     if (running || files.length === 0) return;
     stopRef.current = false;
     setRunning(true);
-    const list: Row[] = files.map((f, i) => ({
-      id: i, name: f.name, state: "waiting", result: null,
-    }));
-    setRows(list);
+    // The flag comes down in a `finally`: a throw anywhere below must not leave
+    // the drop disabled until the page is reloaded.
+    try {
+      setRows(files.map((f, i) => ({
+        id: i, name: f.name, state: "waiting" as const, result: null,
+      })));
 
-    for (let i = 0; i < files.length; i++) {
-      if (stopRef.current) {
-        for (let j = i; j < files.length; j++) patch(j, { state: "skipped" });
-        break;
-      }
-      const file = files[i];
-      patch(i, { state: "reading" });
-      let result: Gstr2bBulkResult;
-      try {
-        let text: string;
+      for (let i = 0; i < files.length; i++) {
+        if (stopRef.current) {
+          for (let j = i; j < files.length; j++) patch(j, { state: "skipped" });
+          break;
+        }
+        const file = files[i];
+        patch(i, { state: "reading" });
+        let result: Gstr2bBulkResult;
         try {
-          text = await file.text();
-        } catch {
-          patch(i, { state: "done", result: unreadable(file.name, "That file could not be read.") });
-          continue;
+          let text: string;
+          try {
+            text = await file.text();
+          } catch {
+            patch(i, { state: "done", result: unreadable(file.name, "That file could not be read.") });
+            continue;
+          }
+          const read = readGstr2bText(text);
+          if (!read.ok) {
+            patch(i, { state: "done", result: unreadable(file.name, read.error) });
+            continue;
+          }
+          patch(i, { state: "reconciling" });
+          const resp = await api.gstWorkspace.reconcileGstr2bFiles([
+            { name: file.name, raw_data: read.raw },
+          ]);
+          const answer = resp.success
+            ? objectWithLists<Gstr2bBulkAnswer>(resp.data, "results") : null;
+          result = answer?.results[0]
+            ?? failed(file.name, resp.error ?? "The server gave no answer for this file.");
+        } catch (e) {
+          result = failed(file.name,
+            e instanceof Error ? e.message : "This file could not be reconciled.");
         }
-        const read = readGstr2bText(text);
-        if (!read.ok) {
-          patch(i, { state: "done", result: unreadable(file.name, read.error) });
-          continue;
-        }
-        patch(i, { state: "reconciling" });
-        const resp = await api.gstWorkspace.reconcileGstr2bFiles([
-          { name: file.name, raw_data: read.raw },
-        ]);
-        const answer = resp.success
-          ? objectWithLists<Gstr2bBulkAnswer>(resp.data, "results") : null;
-        result = answer?.results[0]
-          ?? failed(file.name, resp.error ?? "The server gave no answer for this file.");
-      } catch (e) {
-        result = failed(file.name,
-          e instanceof Error ? e.message : "This file could not be reconciled.");
+        patch(i, { state: "done", result });
       }
-      patch(i, { state: "done", result });
+    } finally {
+      setRunning(false);
+      if (fileRef.current) fileRef.current.value = "";
     }
-    setRunning(false);
-    if (fileRef.current) fileRef.current.value = "";
   }
 
   const done = rows.filter((r) => r.result);

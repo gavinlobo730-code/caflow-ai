@@ -83,6 +83,10 @@ test("one file's failure is one row and the rest carry on", () => {
   assert.match(PANEL, /\} catch \{\s*patch\(i, \{ state: "done", result: unreadable/);
 });
 
+test("the running flag comes down in a finally, so a throw cannot leave the drop disabled", () => {
+  assert.match(PANEL, /setRunning\(true\);[\s\S]*?try \{[\s\S]*?\} finally \{\s*setRunning\(false\);/);
+});
+
 test("stopping is honoured between files and the rows not started say so", () => {
   assert.match(PANEL, /if \(stopRef\.current\) \{/);
   assert.match(PANEL, /patch\(j, \{ state: "skipped" \}\)/);
