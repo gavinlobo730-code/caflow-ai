@@ -146,7 +146,10 @@ def process(db, *, firm_id: str, files: Sequence[dict],
         db, firm_id=firm_id,
         gstins=[p.gstin for _n, _r, p in parsed if p.docdata_seen])
 
-    names = _client_names(db, firm_id, [h.client_id for h in holders])
+    # Names only for clients the caller may see: a name that was never fetched
+    # cannot be put on a row by a later change.
+    names = _client_names(db, firm_id, [h.client_id for h in holders
+                                        if visible is None or h.client_id in visible])
     done: dict[tuple[str, str], str] = {}
     results: list[dict] = []
 
