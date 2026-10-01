@@ -82,6 +82,40 @@ def paise(value: Any) -> int:
 
 
 @dataclass(frozen=True)
+class RateLine:
+    """One rate line of a document — what `inv.items[]` carries per rate.
+
+    KEPT, though nothing stored holds it (gst-13). `gstr2a_records` has the
+    document's TOTALS only, so a draft bill built from a 2B row has to go back
+    to the file the CA uploaded for the rate each line was charged at: deriving
+    a rate from tax / taxable would turn two figures into a third that the
+    document never stated, and cannot tell a 5% line and an 18% line from one
+    line at 11.5%.
+    """
+    #: Basis points, or None where the line carries no `rt` or one that is not a
+    #: whole number of them — a rate nobody stated is not read as nil.
+    rate_bps: Optional[int]
+    taxable_paise: int
+    igst_paise: int
+    cgst_paise: int
+    sgst_paise: int
+    cess_paise: int
+
+
+def _rate_bps(value: Any) -> Optional[int]:
+    """The portal's `rt` (18, 18.0, 7.5, 0.25) as basis points, exactly."""
+    if value is None or value == "":
+        return None
+    try:
+        bps = Decimal(str(value)) * 100
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if bps != bps.to_integral_value() or bps < 0:
+        return None
+    return int(bps)
+
+
+@dataclass(frozen=True)
 class GSTR2BDocument:
     """One document out of GSTR-2B, in the shape gstr2a_records holds."""
     section: str                    # b2b / b2ba / cdnr / cdnra / impg / impgsez
@@ -104,6 +138,14 @@ class GSTR2BDocument:
     is_amendment: bool
     #: The document this one amends, where it is an amendment.
     amends_document_number: str = ""
+    #: The rate lines the totals above were summed from. Empty for an import,
+    #: which carries its figures on the row itself. NOT stored in
+    #: `gstr2a_records` — see `RateLine`.
+    rate_lines: tuple[RateLine, ...] = ()
+    #: 2B's own `rev` flag: the supplier declared this a reverse-charge supply.
+    #: Read so a draft bill is REFUSED for one rather than booked as an
+    #: ordinary purchase; not stored either.
+    reverse_charge: bool = False
 
     @property
     def total_tax_paise(self) -> int:
@@ -172,6 +214,21 @@ def _sum_items(items: Any) -> tuple[int, int, int, int, int]:
     return taxable, igst, cgst, sgst, cess
 
 
+def _rate_lines(items: Any, sign: int) -> tuple[RateLine, ...]:
+    out = []
+    for it in (items or []):
+        if not isinstance(it, dict):
+            continue
+        out.append(RateLine(
+            rate_bps=_rate_bps(it.get("rt")),
+            taxable_paise=sign * paise(it.get("txval")),
+            igst_paise=sign * paise(it.get("igst")),
+            cgst_paise=sign * paise(it.get("cgst")),
+            sgst_paise=sign * paise(it.get("sgst")),
+            cess_paise=sign * paise(it.get("cess"))))
+    return tuple(out)
+
+
 def _reason(code: str) -> str:
     return ITC_UNAVAILABLE_REASONS.get(code, "")
 
@@ -202,6 +259,8 @@ def _document(*, section: str, document_type: str, supplier_gstin: str,
         supplier_filed_on=_iso_date(header.get("supfildt")),
         is_amendment=is_amendment,
         amends_document_number=str(amends or "").strip(),
+        rate_lines=_rate_lines(items, sign),
+        reverse_charge=str(header.get("rev") or "").strip().upper() == "Y",
     )
 
 
