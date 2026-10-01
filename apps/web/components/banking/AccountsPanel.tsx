@@ -17,6 +17,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
 import { api, ApiRefusal, type BankAccountTypeInfo } from "@/lib/api";
+import { pdfPasswordAsk, type PdfPasswordAsk } from "@/lib/banking/pdfPassword";
 
 //: The five values migration 386 allows, for the redeploy window only.
 //: apps/api/domain/banking/account_kind.ACCOUNT_TYPES is the source and
@@ -717,6 +718,20 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
   const [closingRs, setClosingRs] = useState("");
   const [allowVision, setAllowVision] = useState(false);
 
+  // ── A locked PDF (ACC-23) ────────────────────────────────────────────────
+  // Banks email statements locked with a password the CA has to type. It is
+  // revealed by the server's refusal and never offered up front, the same shape
+  // as the totals acknowledgement above: a box that is always there is a box
+  // people fill in "just in case". `passwordAsk` is WHICH refusal it was — the
+  // two need different words, because telling someone who just typed a password
+  // that one is needed only gets it typed again.
+  //
+  // THE TYPED VALUE LIVES IN THIS STATE AND NOWHERE ELSE: it is appended to the
+  // multipart body of the request that needs it, never to a URL, never to
+  // storage, and it is dropped when the file changes and when the import lands.
+  const [passwordAsk, setPasswordAsk] = useState<PdfPasswordAsk | null>(null);
+  const [pdfPassword, setPdfPassword] = useState("");
+
   const account = accounts.find((a) => a.id === accountId);
   const isImage = /\.(jpe?g|png|webp)$/i.test(file?.name ?? "");
   const couldBeAScan = isImage || /\.pdf$/i.test(file?.name ?? "");
@@ -744,8 +759,10 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
     const f = e.target.files?.[0];
     if (f) {
       setFile(f); setError(null); setResult(null); resetMapping(); setAllowVision(false);
-      // A reason written about one statement must not follow a different file.
+      // A reason written about one statement must not follow a different file,
+      // and neither may the password of the last one.
       setTotalsRefusal(null); setAckReason("");
+      setPasswordAsk(null); setPdfPassword("");
     }
   }
 
@@ -753,7 +770,20 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
     const form = new FormData();
     if (file) form.append("file", file);
     form.append("client_id", clientId);
+    // In the BODY: a query string is written to every access log on the way.
+    if (pdfPassword) form.append("pdf_password", pdfPassword);
     return form;
+  }
+
+  /** If this failure was the server asking for the PDF's password, ask — and say
+   *  so. Returns true when it was, so the caller does not ALSO treat it as a
+   *  format problem and open the column mapper for a file that merely needs
+   *  unlocking. */
+  function askForPassword(err: unknown): boolean {
+    const ask = pdfPasswordAsk(err);
+    if (!ask) return false;
+    setPasswordAsk(ask);
+    return true;
   }
 
   /** Open the mapper: read the file's header row and pre-fill what we can. */
@@ -772,6 +802,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       setMapping({ ...EMPTY_MAPPING, ...(info.saved_mapping ?? info.proposed_mapping ?? {}) });
       setPreview(null);
     } catch (err) {
+      askForPassword(err);
       setError(err instanceof Error ? err.message : "Could not read the file.");
     } finally {
       setChecking(false);
@@ -789,6 +820,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       setPreview(objectWithLists<StatementPreview>(res.data, "rows"));
     } catch (err) {
       setPreview(null);
+      askForPassword(err);
       setError(err instanceof Error ? err.message : "Could not read the file with that mapping.");
     } finally {
       setChecking(false);
@@ -817,6 +849,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
         form.append("column_mapping", JSON.stringify(cleanMapping(mapping)));
         form.append("save_mapping", remember ? "true" : "false");
       }
+      if (pdfPassword) form.append("pdf_password", pdfPassword);
       // Integer paise, parsed by lib/money/rupeeInput — the one parser
       // (CLAUDE.md). Both or neither: one alone cannot check anything.
       if (openingPaise !== null && closingPaise !== null) {
@@ -832,6 +865,8 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
         success: boolean; data: ImportResult; error?: string;
       };
       if (!res.success) { setError(res.error ?? "Import failed."); setImporting(false); return; }
+      // It did its one job. Nothing about it outlives the request that used it.
+      setPdfPassword(""); setPasswordAsk(null);
       setResult(res.data);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Import failed";
@@ -840,6 +875,10 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       // has a way past, so show it rather than leaving the CA to edit the
       // bank's file.
       if (err instanceof ApiRefusal && err.code === "totals_mismatch") setTotalsRefusal(message);
+      // A locked PDF is asked for its password. It is checked BEFORE the format
+      // test below: the mapper cannot open a file that is locked either, and
+      // sending the CA there would be a second dead end.
+      if (askForPassword(err)) return;
       // The format errors are the ones the mapper exists for, so go straight
       // there rather than leaving the CA at a dead end with an explanation.
       if (!mapping && looksLikeAFormatProblem(message)) void startMapping();
@@ -941,6 +980,30 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 </button>
                 <p className="text-3xs text-ps-hint mt-1">The file is parsed on the server — HDFC / SBI / ICICI / Axis are auto-detected. Any other bank: use <span className="font-medium">Map columns</span> once and we&apos;ll remember it. Amounts stay exact.</p>
               </div>
+
+              {/* THE PDF'S PASSWORD, only once the server has asked for it. It is
+                  a password field that says it is NOT a login one — the browser
+                  must not offer to save it, and `new-password` is what stops it.
+                  Enter submits, so the retry is one keystroke. */}
+              {passwordAsk && (
+                <div>
+                  <label htmlFor="stmt-pdf-password" className="block text-xs font-medium text-ps-label mb-1">
+                    PDF password *
+                  </label>
+                  <input id="stmt-pdf-password" type="password" value={pdfPassword}
+                         autoComplete="new-password" spellCheck={false} autoFocus
+                         aria-invalid={passwordAsk === "incorrect"}
+                         onChange={(e) => setPdfPassword(e.target.value)}
+                         onKeyDown={(e) => { if (e.key === "Enter" && pdfPassword && !busy) void handleImport(); }}
+                         className={inputCls} />
+                  <p className="text-3xs text-ps-hint mt-1">
+                    {passwordAsk === "incorrect"
+                      ? "That one did not open it — check the bank's email and type it again."
+                      : "The bank locked this statement. It is often built from your customer ID or date of birth."}
+                    {" It is used once, to open this file, and is not stored."}
+                  </p>
+                </div>
+              )}
 
               {/* The two figures printed on the statement. The server checks
                   opening + credits - debits == closing before importing

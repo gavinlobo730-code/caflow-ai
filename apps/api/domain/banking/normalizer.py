@@ -79,6 +79,76 @@ class StatementParseError(ValueError):
     """Raised when a file cannot be parsed into transactions (malformed / unsupported)."""
 
 
+class PdfPasswordError(StatementParseError):
+    """A password-protected PDF could not be opened (ACC-23).
+
+    A SUBCLASS of StatementParseError, so every existing `except
+    StatementParseError` still turns it into a 422 and no caller has to learn a
+    new type to stay correct. What it adds is `code`, which is what lets a screen
+    ASK for the password instead of printing a sentence: the two cases have
+    different next steps (type one / type it again) and a screen must not have to
+    match the wording of a sentence to tell them apart — the same reason
+    `ApiRefusal` carries a code beside its text.
+
+    THE MESSAGE IS A CONSTANT AND NEVER CARRIES THE PASSWORD. It is built from
+    nothing the caller supplied, and the two subclasses below are the whole
+    vocabulary: an exception message is what reaches a log line, a 422 body and,
+    through `str(e)`, anything that formats one — so the password is kept out of
+    it by construction rather than by remembering not to interpolate it.
+    """
+    code: str = "pdf_password_error"
+
+
+class PdfPasswordRequired(PdfPasswordError):
+    code = "pdf_password_required"
+
+
+class PdfPasswordIncorrect(PdfPasswordError):
+    code = "pdf_password_incorrect"
+
+
+#: The two sentences. Constants, for the reason on PdfPasswordError. Neither
+#: contains the word "scan" — `routers/banking._read_statement_file` decides
+#: whether a failure is a candidate for the vision model by looking for it in
+#: the message, and a locked PDF is not a picture.
+_PDF_NEEDS_PASSWORD = (
+    "This PDF is password-protected. Enter the password the bank gave you for "
+    "it (often built from your customer ID or date of birth) and upload it "
+    "again. It is used once to open this file and is not kept.")
+_PDF_WRONG_PASSWORD = (
+    "That password did not open this PDF. Check it against the bank's email "
+    "and try again. It is used once to open this file and is not kept.")
+
+
+def password_refusal_for(exc: BaseException, password: Optional[str]
+                         ) -> Optional[PdfPasswordError]:
+    """The refusal to raise when the PDF library rejected this file for want of
+    the right password, or None when it rejected it for any other reason.
+
+    pdfplumber wraps whatever pdfminer raised in `PdfminerException`, so the
+    cause is its first argument; it is recognised by TYPE and never by message
+    text, which is the library's wording and not a contract. pdfminer is imported
+    here, not at module level: it is only importable where pdfplumber is, and
+    nothing else in this module may require it at import time.
+
+    Two outcomes, told apart by whether the caller GAVE a password: none given is
+    `PdfPasswordRequired`, one given that did not work is `PdfPasswordIncorrect`.
+    The second is not the first with the same wording, because a CA who typed a
+    password and is told one is needed will simply type it again unchanged.
+    """
+    from pdfminer.pdfdocument import PDFPasswordIncorrect
+    seen: set[int] = set()
+    cur: Optional[BaseException] = exc
+    while cur is not None and id(cur) not in seen:
+        if isinstance(cur, PDFPasswordIncorrect):
+            return (PdfPasswordIncorrect(_PDF_WRONG_PASSWORD) if password
+                    else PdfPasswordRequired(_PDF_NEEDS_PASSWORD))
+        seen.add(id(cur))
+        inner = cur.args[0] if cur.args and isinstance(cur.args[0], BaseException) else None
+        cur = inner or cur.__cause__ or cur.__context__
+    return None
+
+
 @dataclass(frozen=True)
 class NormalizedTxn:
     transaction_date: str          # ISO YYYY-MM-DD
@@ -704,7 +774,8 @@ def balance_agreement(txns: list[NormalizedTxn]) -> dict:
     }
 
 
-def inspect_statement(filename: str, content: bytes, *, sample_rows: int = 8) -> dict:
+def inspect_statement(filename: str, content: bytes, *, sample_rows: int = 8,
+                      pdf_password: Optional[str] = None) -> dict:
     """What the mapping screen needs: the header row, some real rows, and a start.
 
     Deliberately does NOT parse into transactions. The file is here precisely
@@ -726,7 +797,7 @@ def inspect_statement(filename: str, content: bytes, *, sample_rows: int = 8) ->
         # The mapping screen matters MORE for PDFs, not less: a PDF's columns
         # come from a layout rather than a labelled export, so detect_format is
         # likelier to miss and the CA likelier to need to say where things are.
-        rows = _pdf_rows(content)
+        rows = _pdf_rows(content, pdf_password)
     else:
         raise StatementParseError(
             "Unsupported file type — upload a .csv, .xlsx or .pdf bank statement.")
@@ -814,7 +885,7 @@ def parse_xlsx(content: bytes, mapping: Optional[dict] = None) -> list[Normalize
                    empty="Workbook has no data rows.").transactions
 
 
-def _pdf_rows(content: bytes) -> list[list[str]]:
+def _pdf_rows(content: bytes, password: Optional[str] = None) -> list[list[str]]:
     """Rows out of a TEXT-BASED PDF bank statement.
 
     WHY THIS EXISTS
@@ -879,6 +950,22 @@ def _pdf_rows(content: bytes) -> list[list[str]]:
         empty statement. Reading pixels is a vision model's job and is
         deliberately not done here.
 
+    A PASSWORD-PROTECTED PDF (ACC-23)
+        Banks commonly email statements locked with a password built from the
+        customer ID or date of birth, and this used to open the file with no
+        password at all — so such a file came back as "could not be read as a
+        PDF", which sends the CA to re-download a file that is perfectly good.
+        `password` is handed to pdfplumber for THIS ONE OPEN and goes nowhere
+        else: it is not stored, not logged (the failure path below logs the
+        exception's TYPE and never its text when a password was supplied), not
+        put in any message (the two refusals are constants) and never reaches a
+        model — a locked scan is rasterised by `vision.page_images`, which takes
+        the same password for the same single open and sends the model PNGs of
+        the pages, never the file.
+
+        A PDF locked only against copying or printing (an owner password and no
+        user password) opens with the empty one, so it never asks.
+
     AND WHAT BACKSTOPS IT
         domain/banking/tie_out.py. A PDF is a layout, not a data format, so this
         will meet a statement it reads imperfectly. The tie-out is what turns
@@ -894,7 +981,10 @@ def _pdf_rows(content: bytes) -> list[list[str]]:
 
     rows: list[list[str]] = []
     try:
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
+        # `or None`: an empty box is "no password", which pdfminer already reads as
+        # the empty string. NOT stripped — a password may legitimately begin or
+        # end with a space, and trimming it would turn a right one into a wrong one.
+        with pdfplumber.open(io.BytesIO(content), password=password or None) as pdf:
             pages = list(pdf.pages)
 
             ruled: list[list[list[str]]] = []
@@ -921,12 +1011,28 @@ def _pdf_rows(content: bytes) -> list[list[str]]:
     except StatementParseError:
         raise
     except Exception as e:  # noqa: BLE001 — the PDF library's own exceptions
+        # A locked file is not an unreadable one, and it is asked FIRST: the
+        # generic branch below tells the CA to download the file again, which is
+        # the wrong advice for a statement that downloaded perfectly. Nothing is
+        # logged here — there is nothing to diagnose, and the less this path
+        # writes the less it can ever write down.
+        locked = password_refusal_for(e, password)
+        if locked is not None:
+            raise locked from None
         # A truncated or non-PDF file reaches pdfminer as "No /Root object!",
         # which is not a StatementParseError and would leave the endpoint
         # returning 500 for a file the CA simply picked by mistake. Every other
         # unreadable-file case here is a 422 that says what to do, and this one
         # has to be as well.
-        _logger.warning("bank statement PDF unreadable: %s: %s", type(e).__name__, e)
+        #
+        # With a password in play only the exception's TYPE is logged. The
+        # library's text is its own and this module cannot vouch that none of it
+        # ever echoes an argument; the type is enough to tell a truncated file
+        # from a corrupt one.
+        if password:
+            _logger.warning("bank statement PDF unreadable: %s", type(e).__name__)
+        else:
+            _logger.warning("bank statement PDF unreadable: %s: %s", type(e).__name__, e)
         raise StatementParseError(
             "This file could not be read as a PDF. If it downloaded from net "
             "banking, try downloading it again; otherwise upload the CSV or "
@@ -1121,8 +1227,9 @@ _PDF_NO_TXNS = (
     "statement, and map the columns if this bank's layout is new.")
 
 
-def parse_pdf(content: bytes, mapping: Optional[dict] = None) -> list[NormalizedTxn]:
-    return _finish(_pdf_rows(content), mapping,
+def parse_pdf(content: bytes, mapping: Optional[dict] = None, *,
+              pdf_password: Optional[str] = None) -> list[NormalizedTxn]:
+    return _finish(_pdf_rows(content, pdf_password), mapping,
                    empty=_PDF_EMPTY, no_txns=_PDF_NO_TXNS).transactions
 
 
@@ -1136,8 +1243,12 @@ class ParsedStatement:
 
 
 def parse_statement_detailed(filename: str, content: bytes,
-                             mapping: Optional[dict] = None) -> ParsedStatement:
+                             mapping: Optional[dict] = None, *,
+                             pdf_password: Optional[str] = None) -> ParsedStatement:
     """Dispatch by extension, keeping the statement's own printed totals.
+
+    `pdf_password` opens a locked PDF for this one call (ACC-23, see `_pdf_rows`)
+    and is ignored for a CSV or a workbook, which have no password to read.
 
     `parse_statement` is this with the totals dropped. Callers that intend to
     IMPORT should use this one: the totals row is the evidence, already in the
@@ -1151,18 +1262,20 @@ def parse_statement_detailed(filename: str, content: bytes,
         return _finish(_xlsx_rows(content), mapping,
                        empty="Workbook has no data rows.")
     if name.endswith(".pdf"):
-        return _finish(_pdf_rows(content), mapping,
+        return _finish(_pdf_rows(content, pdf_password), mapping,
                        empty=_PDF_EMPTY, no_txns=_PDF_NO_TXNS)
     raise StatementParseError(
         "Unsupported file type — upload a .csv, .xlsx or .pdf bank statement.")
 
 
 def parse_statement(filename: str, content: bytes,
-                    mapping: Optional[dict] = None) -> list[NormalizedTxn]:
+                    mapping: Optional[dict] = None, *,
+                    pdf_password: Optional[str] = None) -> list[NormalizedTxn]:
     """Dispatch by extension. Raises StatementParseError on unsupported/malformed.
 
     `mapping` is an explicit column mapping (Tier 3.2), used INSTEAD of
     detect_format when the CA has told us where this bank's columns are. None
     keeps the original behaviour exactly.
     """
-    return parse_statement_detailed(filename, content, mapping).transactions
+    return parse_statement_detailed(
+        filename, content, mapping, pdf_password=pdf_password).transactions

@@ -60,7 +60,9 @@ import json
 import logging
 from typing import Callable, Optional, Protocol
 
-from .normalizer import NormalizedTxn, StatementParseError, _to_iso_date, _to_paise
+from .normalizer import (
+    NormalizedTxn, StatementParseError, _to_iso_date, _to_paise, password_refusal_for,
+)
 
 _logger = logging.getLogger("caflow.banking.vision")
 
@@ -102,18 +104,25 @@ Rules:
 """.strip()
 
 
-def page_images(content: bytes, *, resolution: int = _RESOLUTION) -> list[bytes]:
+def page_images(content: bytes, *, resolution: int = _RESOLUTION,
+                password: Optional[str] = None) -> list[bytes]:
     """Each page of a PDF as PNG bytes.
 
     Raises rather than returning a short list when the document is longer than
     MAX_PAGES — a truncated statement that then failed the tie-out would send
     the CA looking for a missing transaction that was never sent to the model.
+
+    `password` opens a locked PDF for this one rasterising (ACC-23) — a locked
+    SCAN reaches here after the text parse opened it with the same password and
+    found no text. What leaves for the model is the PNGs this returns: never the
+    PDF, and never the password, which pdfplumber hands to its renderer for the
+    one open and which is not kept, logged or put in a message.
     """
     import pdfplumber
 
     out: list[bytes] = []
     try:
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
+        with pdfplumber.open(io.BytesIO(content), password=password or None) as pdf:
             if len(pdf.pages) > MAX_PAGES:
                 raise StatementParseError(
                     f"This PDF has {len(pdf.pages)} pages, and at most {MAX_PAGES} "
@@ -126,7 +135,14 @@ def page_images(content: bytes, *, resolution: int = _RESOLUTION) -> list[bytes]
     except StatementParseError:
         raise
     except Exception as e:  # noqa: BLE001 — the PDF library's own exceptions
-        _logger.warning("could not rasterise statement PDF: %s: %s", type(e).__name__, e)
+        locked = password_refusal_for(e, password)
+        if locked is not None:
+            raise locked from None
+        # Only the TYPE where a password is in play — see normalizer._pdf_rows.
+        if password:
+            _logger.warning("could not rasterise statement PDF: %s", type(e).__name__)
+        else:
+            _logger.warning("could not rasterise statement PDF: %s: %s", type(e).__name__, e)
         raise StatementParseError(
             "This file could not be opened as a PDF. If it downloaded from net "
             "banking, try downloading it again.") from e

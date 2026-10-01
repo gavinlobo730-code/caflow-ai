@@ -4230,8 +4230,17 @@ export const api = {
       });
       // A 422 here is a real answer (an unmappable file, a contradictory
       // mapping) and its message is written for the CA, so surface the body
-      // rather than the status line.
-      if (!res.ok) throw new Error(await errorMessage(res));
+      // rather than the status line. It is thrown as an ApiRefusal — still an
+      // Error — so the server's CODE survives beside the sentence: a locked PDF
+      // is refused here with the password-required code and the dialog asks for
+      // the password on that, not on the wording (ACC-23). The body is read
+      // twice, through a clone, because `errorMessage` flattens for display and
+      // `refusalFrom` keeps the code.
+      if (!res.ok) {
+        const forCode = res.clone();
+        const message = await errorMessage(res);
+        throw new ApiRefusal(message, (await refusalFrom(forCode)).code);
+      }
       return res.json();
     },
     /** Read a statement's header row + first rows so the CA can map the columns. */
