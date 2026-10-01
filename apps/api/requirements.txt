@@ -18,7 +18,7 @@ apscheduler>=3.10.0
 tzdata>=2024.1
 reportlab>=4.0.0
 xhtml2pdf>=0.2.16
-openpyxl>=3.1.0
+openpyxl>=3.1.5
 pandas>=2.0.0
 pdfplumber>=0.10.0
 sentry-sdk[fastapi]==2.22.0
