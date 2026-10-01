@@ -2309,11 +2309,23 @@ class Phase2JournalService:
         # Idempotency fast path (firm-scoped): same firm+client+reference_no+entry_date
         # is already posted → return it. The UNIQUE index (migration 143) is the
         # authoritative backstop for the concurrent race this SELECT can't close (H2).
+        #
+        # THIS ASKS THE SAME QUESTION THE INDEX DOES, AND THE INDEX IS PARTIAL: it
+        # holds only `deleted_at IS NULL AND is_reversed = false` rows (migrations 143
+        # and 213), and `post_journal_atomic` filters `deleted_at IS NULL` when it
+        # resolves a unique violation to the winner (418). This pre-check carried the
+        # second predicate and not the first, so an entry the CA had DISCARDED
+        # (migrations 275/276 — its number is free) answered for the number: the
+        # kernel logged "Duplicate journal detected", returned the dead entry's id and
+        # wrote nothing, and a caller told its user the document was posted — the
+        # voucher import's summary, and the journal editor's success response.
+        # `tests/test_a_discarded_entrys_number_is_free_to_the_kernel.py` drives it.
         def _find_existing():
             return (db.table("journal_entries").select("id")
                     .eq("firm_id", firm_id).eq("client_id", client_id)
                     .eq("reference_no", reference_no).eq("entry_date", entry_date)
                     .eq("is_reversed", False)
+                    .is_("deleted_at", "null")
                     .limit(1).execute())
         if not _USE_MOCK and reference_no:
             try:
