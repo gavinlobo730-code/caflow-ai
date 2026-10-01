@@ -165,12 +165,96 @@ def test_a_later_period_for_the_same_invoice_is_a_second_claim(db):
 
 def test_deleting_the_draft_nulls_the_pointer_and_keeps_the_charge_row(db):
     """A charge STANDS only while its draft does — derived at read time — so a
-    hard-deleted draft must leave the row (with no draft) rather than erase it
-    or be blocked by it."""
+    hard-deleted draft must leave the row (with no draft) rather than erase the
+    record of what it was computed from, or be blocked by it. (The row KEEPS its
+    key afterwards: see the dead-claim tests below.)"""
     assert _charge(db).returncode == 0
     assert _psql(db, f"DELETE FROM client_sales_invoices WHERE id = '{DRAFT}';").returncode == 0
     assert _rows(db, "SELECT count(*) FROM late_interest_charges;") == ["1"]
     assert _rows(db, "SELECT interest_invoice_id IS NULL FROM late_interest_charges;") == ["t"]
+
+
+DRAFT_2 = "88888888-8888-8888-8888-888888888883"
+
+
+def _second_draft(dsn):
+    return _psql(dsn, f"""
+        INSERT INTO client_sales_invoices
+               (id, firm_id, client_id, customer_id, invoice_no, invoice_date,
+                due_date, total_paise, status)
+        VALUES ('{DRAFT_2}', '{FIRM}', '{CLIENT}', '{CUSTOMER}', 'DRAFT-2',
+                DATE '2026-10-01', NULL, 157808, 'draft');""")
+
+
+def test_a_cancelled_drafts_claim_still_holds_its_key_until_it_is_removed(db):
+    """WHY THE SERVICE RELEASES A DEAD CLAIM (accounting-22). The index covers
+    every row and cannot read a draft's status, so cancelling the draft leaves
+    its claim exactly where it was and a new claim on the same invoice up to the
+    same date is refused. `late_interest_service._release_stale_claims` deletes
+    the dead row by its own id; removing it is what frees the key, and removing
+    a DIFFERENT row (another period) does not."""
+    assert _second_draft(db).returncode == 0
+    assert _charge(db).returncode == 0
+    assert _psql(db, f"UPDATE client_sales_invoices SET status = 'cancelled' "
+                     f"WHERE id = '{DRAFT}';").returncode == 0
+    assert _charge(db, draft=DRAFT_2).returncode != 0, "the dead claim holds the key"
+    # An earlier period's claim is a different key and frees nothing.
+    assert _charge(db, p_from="2026-08-22", p_to="2026-09-21", days=30,
+                   interest=147945).returncode == 0
+    assert _psql(db, f"DELETE FROM late_interest_charges WHERE period_to = DATE '2026-09-21';"
+                 ).returncode == 0
+    assert _charge(db, draft=DRAFT_2).returncode != 0
+    assert _psql(db, f"DELETE FROM late_interest_charges WHERE period_to = DATE '2026-10-01' "
+                     f"AND interest_invoice_id = '{DRAFT}';").returncode == 0
+    assert _charge(db, draft=DRAFT_2).returncode == 0, "removed, the key is free"
+    assert _rows(db, "SELECT interest_invoice_id FROM late_interest_charges;") == [DRAFT_2]
+
+
+def test_a_hard_deleted_drafts_claim_holds_its_key_too(db):
+    """The same, for the half Postgres does for us: ON DELETE SET NULL keeps the
+    row, and a row with no pointer is still a row on the key."""
+    assert _second_draft(db).returncode == 0
+    assert _charge(db).returncode == 0
+    assert _psql(db, f"DELETE FROM client_sales_invoices WHERE id = '{DRAFT}';").returncode == 0
+    assert _rows(db, "SELECT interest_invoice_id IS NULL FROM late_interest_charges;") == ["t"]
+    assert _charge(db, draft=DRAFT_2).returncode != 0
+    assert _psql(db, "DELETE FROM late_interest_charges WHERE interest_invoice_id IS NULL;"
+                 ).returncode == 0
+    assert _charge(db, draft=DRAFT_2).returncode == 0
+
+
+def test_a_claim_that_stands_cannot_be_displaced_by_a_new_one(db):
+    """The index stays the arbiter of the race: a second claim on a key held by
+    a draft that stands is refused, which is what takes the second click's draft
+    back."""
+    assert _second_draft(db).returncode == 0
+    assert _charge(db).returncode == 0
+    assert _charge(db, draft=DRAFT_2).returncode != 0
+
+
+def test_a_group_of_claims_in_one_statement_is_all_or_nothing(db):
+    """The service writes a draft's claims in ONE statement: a collision on the
+    second must leave nothing of the first."""
+    other = "88888888-8888-8888-8888-888888888884"
+    assert _psql(db, f"""
+        INSERT INTO client_sales_invoices
+               (id, firm_id, client_id, customer_id, invoice_no, invoice_date,
+                due_date, total_paise, status)
+        VALUES ('{other}', '{FIRM}', '{CLIENT}', '{CUSTOMER}', 'INV/2',
+                DATE '2026-07-01', DATE '2026-08-22', 10000000, 'issued');""").returncode == 0
+    assert _second_draft(db).returncode == 0
+    assert _charge(db, invoice=other).returncode == 0
+    both = _psql(db, f"""
+        INSERT INTO late_interest_charges
+               (firm_id, client_id, customer_id, sales_invoice_id, interest_invoice_id,
+                period_from, period_to, days, outstanding_paise, rate_bps, interest_paise)
+        VALUES ('{FIRM}', '{CLIENT}', '{CUSTOMER}', '{OVERDUE}', '{DRAFT_2}',
+                DATE '2026-08-22', DATE '2026-10-01', 40, 10000000, 1800, 197260),
+               ('{FIRM}', '{CLIENT}', '{CUSTOMER}', '{other}', '{DRAFT_2}',
+                DATE '2026-08-22', DATE '2026-10-01', 40, 10000000, 1800, 197260);""")
+    assert both.returncode != 0
+    assert _rows(db, f"SELECT count(*) FROM late_interest_charges "
+                     f"WHERE sales_invoice_id = '{OVERDUE}';") == ["0"]
 
 
 def test_the_charge_goes_with_the_invoice_it_was_computed_on(db):

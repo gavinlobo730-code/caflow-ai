@@ -421,6 +421,220 @@ def test_cancelling_the_draft_releases_its_period_too(monkeypatch):
     assert doc["status"] == L.CHARGE and doc["days_charged"] == 40
 
 
+# ── A RELEASED PERIOD CAN BE TAKEN UP AGAIN, AGAINST THE REAL UNIQUE KEY ─────
+#
+# The preview treats a charge as standing only while its draft does, so a
+# cancelled or deleted draft makes the preview offer the same days again — and
+# the unique index on (sales_invoice_id, period_to) covers EVERY row, so the
+# dead draft's charge still occupied the key and the second prepare died with
+# "just drafted by another request" after deleting the draft it had just made.
+# The double used to ignore that index, so every test above passed. It enforces
+# it now (tests/e2e_harness `_UNIQUE`), and a test pins the tuple to the
+# migration.
+
+def _the_charges(db):
+    return db.rows("late_interest_charges")
+
+
+def _standing_drafts(db):
+    return [r for r in db.rows("client_sales_invoices") if r["status"] == "draft"]
+
+
+def test_a_cancelled_draft_s_period_can_be_prepared_again_for_the_same_date(monkeypatch):
+    """THE REPRODUCTION: prepare as of D, cancel the draft, preview as of D (it
+    offers the 40 days again), prepare again as of D."""
+    db = _book(monkeypatch)
+    _overdue(db, 1)
+    first = svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)["drafts"][0]
+    db.table("client_sales_invoices").update({"status": "cancelled"}).eq(
+        "id", first["invoice_id"]).execute()
+
+    doc = svc.preview(db, FIRM, CLIENT, AS_OF)["parties"][0]["documents"][0]
+    assert doc["status"] == L.CHARGE and doc["days_charged"] == 40
+
+    again = svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)
+    assert again["failed"] == [] and len(again["drafts"]) == 1
+    second = again["drafts"][0]
+    assert second["invoice_id"] != first["invoice_id"]
+    assert [d["id"] for d in _standing_drafts(db)] == [second["invoice_id"]], (
+        "the second click's draft is the one that stands, and it was not taken back")
+    # Exactly one claim is behind it, and it is the new draft's.
+    charge, = _the_charges(db)
+    assert charge["interest_invoice_id"] == second["invoice_id"]
+    assert (charge["period_from"], charge["period_to"], charge["days"]) == (
+        "2026-08-22", "2026-10-01", 40)
+    # And the days are charged once: a third click is the ordinary refusal.
+    with pytest.raises(HTTPException) as e:
+        svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)
+    assert e.value.status_code == 409 and "already covers" in e.value.detail
+
+
+def test_a_deleted_draft_s_period_can_be_prepared_again_for_the_same_date(monkeypatch):
+    """The hard-delete half: Postgres nulls the pointer and KEEPS the row, and
+    the row still holds the key."""
+    db = _book(monkeypatch)
+    _overdue(db, 1)
+    made = svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)["drafts"][0]
+    db.table("client_sales_invoice_lines").delete().eq(
+        "sales_invoice_id", made["invoice_id"]).execute()
+    db.table("client_sales_invoices").delete().eq("id", made["invoice_id"]).execute()
+    for r in _the_charges(db):
+        r["interest_invoice_id"] = None                 # ON DELETE SET NULL
+    assert len(_the_charges(db)) == 1, "the premise: the orphaned row is still there"
+
+    again = svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)
+    assert len(again["drafts"]) == 1 and again["failed"] == []
+    charge, = _the_charges(db)
+    assert charge["interest_invoice_id"] == again["drafts"][0]["invoice_id"]
+
+
+def test_a_soft_deleted_draft_s_period_can_be_prepared_again_too(monkeypatch):
+    db = _book(monkeypatch)
+    _overdue(db, 1)
+    made = svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)["drafts"][0]
+    db.table("client_sales_invoices").update({"deleted_at": "2026-10-01T09:00:00"}).eq(
+        "id", made["invoice_id"]).execute()
+    again = svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)
+    assert len(again["drafts"]) == 1 and again["failed"] == []
+    assert len(_the_charges(db)) == 1
+
+
+def test_only_the_claim_that_is_in_the_way_is_released(monkeypatch):
+    """A cancelled draft for an EARLIER date holds no key this prepare needs, so
+    its row is left alone: it is the record of what that draft was computed from."""
+    db = _book(monkeypatch)
+    _overdue(db, 1)
+    early = date(2026, 9, 21)
+    old = svc.prepare_drafts(db, FIRM, CLIENT, CUST, early, CALLER)["drafts"][0]
+    db.table("client_sales_invoices").update({"status": "cancelled"}).eq(
+        "id", old["invoice_id"]).execute()
+    svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)
+    by_through = {r["period_to"]: r for r in _the_charges(db)}
+    assert set(by_through) == {"2026-09-21", "2026-10-01"}
+    assert by_through["2026-09-21"]["interest_invoice_id"] == old["invoice_id"]
+
+
+def test_a_claim_that_still_stands_is_never_released(monkeypatch):
+    """Releasing is by the dead row's own id. Here a RIVAL request, having read
+    the same dead claim, releases it and wins the race between our read of it
+    and our delete: its draft is live and its claim is in on the very key. Our
+    request must lose, take back its own draft, and leave the rival's claim
+    exactly where it was — a release by KEY would have erased it, let our claim
+    in, and charged the same days twice."""
+    db = _book(monkeypatch)
+    inv = _overdue(db, 1)
+    dead = svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)["drafts"][0]
+    db.table("client_sales_invoices").update({"status": "cancelled"}).eq(
+        "id", dead["invoice_id"]).execute()
+    dead_charge, = _the_charges(db)
+
+    rival = {}
+    real_stale = svc._stale_claims
+
+    def rival_wins_after_we_have_read(*a, **k):
+        found = real_stale(*a, **k)
+        assert [r["id"] for r in found] == [dead_charge["id"]], "the premise"
+        # The rival released that same row and claimed the key.
+        db.table("late_interest_charges").delete().eq("id", dead_charge["id"]).execute()
+        rival_draft = db.seed("client_sales_invoices", {
+            "firm_id": FIRM, "client_id": CLIENT, "customer_id": CUST,
+            "invoice_no": "DRAFT-RIVAL", "status": "draft", "total_paise": 1})
+        rival.update(db.table("late_interest_charges").insert([{
+            "firm_id": FIRM, "client_id": CLIENT, "customer_id": CUST,
+            "sales_invoice_id": inv["id"], "interest_invoice_id": rival_draft["id"],
+            "period_from": "2026-08-22", "period_to": AS_OF.isoformat(), "days": 40,
+            "outstanding_paise": 8_000_000, "rate_bps": 1800, "grace_days": 0,
+            "day_count": "actual/365", "interest_paise": 157_808,
+        }]).execute().data[0])
+        return found
+
+    monkeypatch.setattr(svc, "_stale_claims", rival_wins_after_we_have_read)
+    with pytest.raises(HTTPException) as e:
+        svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)
+    assert e.value.status_code == 409 and "just drafted by another request" in e.value.detail
+    assert [r["id"] for r in _the_charges(db)] == [rival["id"]], "the rival's claim is intact"
+    assert not [r for r in _standing_drafts(db) if r["invoice_no"] != "DRAFT-RIVAL"], (
+        "our own draft, which has no claim behind it, was taken back")
+
+
+def test_a_claim_that_won_the_race_before_we_looked_is_not_released_either(monkeypatch):
+    """The other ordering: the rival's claim is already in, and standing, when we
+    go looking for dead ones. It is not dead, so it is not in the list."""
+    db = _book(monkeypatch)
+    inv = _overdue(db, 1)
+    dead = svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)["drafts"][0]
+    db.table("client_sales_invoices").update({"status": "cancelled"}).eq(
+        "id", dead["invoice_id"]).execute()
+    dead_charge, = _the_charges(db)
+    real_create, rival = si.create_invoice, {}
+
+    def rival_claims_while_we_draft(inv_in, actor):
+        resp = real_create(inv_in, actor)
+        db.table("late_interest_charges").delete().eq("id", dead_charge["id"]).execute()
+        rival_draft = db.seed("client_sales_invoices", {
+            "firm_id": FIRM, "client_id": CLIENT, "customer_id": CUST,
+            "invoice_no": "DRAFT-RIVAL", "status": "draft", "total_paise": 1})
+        rival.update(db.table("late_interest_charges").insert([{
+            "firm_id": FIRM, "client_id": CLIENT, "customer_id": CUST,
+            "sales_invoice_id": inv["id"], "interest_invoice_id": rival_draft["id"],
+            "period_from": "2026-08-22", "period_to": AS_OF.isoformat(), "days": 40,
+            "outstanding_paise": 8_000_000, "rate_bps": 1800, "grace_days": 0,
+            "day_count": "actual/365", "interest_paise": 157_808}]).execute().data[0])
+        return resp
+
+    monkeypatch.setattr(si, "create_invoice", rival_claims_while_we_draft)
+    with pytest.raises(HTTPException) as e:
+        svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)
+    assert e.value.status_code == 409
+    assert [r["id"] for r in _the_charges(db)] == [rival["id"]]
+    assert not [r for r in _standing_drafts(db) if r["invoice_no"] != "DRAFT-RIVAL"]
+
+
+def test_a_claim_written_for_a_group_is_all_or_nothing(monkeypatch):
+    """Two overdue invoices share one draft and are claimed in ONE statement. If
+    one of them is already claimed by a draft that stands, NEITHER is, and the
+    draft goes — never half a group recorded."""
+    db = _book(monkeypatch)
+    _overdue(db, 1)
+    _overdue(db, 2)
+    invoices = [r for r in db.rows("client_sales_invoices")]
+    rival_draft = db.seed("client_sales_invoices", {
+        "firm_id": FIRM, "client_id": CLIENT, "customer_id": CUST,
+        "invoice_no": "DRAFT-RIVAL", "status": "draft", "total_paise": 1})
+    real_create = si.create_invoice
+
+    def rival_claims_the_second_invoice(inv_in, actor):
+        resp = real_create(inv_in, actor)
+        db.table("late_interest_charges").insert([{
+            "firm_id": FIRM, "client_id": CLIENT, "customer_id": CUST,
+            "sales_invoice_id": invoices[1]["id"], "interest_invoice_id": rival_draft["id"],
+            "period_from": "2026-08-22", "period_to": AS_OF.isoformat(), "days": 40,
+            "outstanding_paise": 8_000_000, "rate_bps": 1800, "grace_days": 0,
+            "day_count": "actual/365", "interest_paise": 157_808}]).execute()
+        return resp
+
+    monkeypatch.setattr(si, "create_invoice", rival_claims_the_second_invoice)
+    with pytest.raises(HTTPException):
+        svc.prepare_drafts(db, FIRM, CLIENT, CUST, AS_OF, CALLER)
+    claimed = {r["sales_invoice_id"] for r in _the_charges(db)}
+    assert claimed == {invoices[1]["id"]}, "the first invoice was not half-claimed"
+
+
+def test_the_doubles_unique_key_is_the_migrations_index():
+    """The double enforces what the schema does, and the two are pinned here so
+    a change to either fails rather than drifts."""
+    from tests.e2e_harness import _UNIQUE
+    sql = (API / "migrations" / "461_interest_on_an_overdue_customer_balance.sql").read_text()
+    m = re.search(r"CREATE UNIQUE INDEX IF NOT EXISTS\s+(\w+)\s+ON\s+public\.late_interest_charges"
+                  r"\s*\(([^)]*)\)\s*(WHERE[^;]*)?;", sql)
+    assert m, "migration 461 no longer declares the unique index this test reads"
+    assert m.group(3) is None, (
+        "the index is partial now: teach the double the predicate, and say in the "
+        "service why a released claim no longer has to be removed")
+    columns = tuple(c.strip() for c in m.group(2).split(","))
+    assert _UNIQUE["late_interest_charges"] == [columns]
+
+
 def test_an_issued_interest_invoice_is_never_charged_interest_itself(monkeypatch):
     db = _book(monkeypatch)
     _overdue(db, 1)

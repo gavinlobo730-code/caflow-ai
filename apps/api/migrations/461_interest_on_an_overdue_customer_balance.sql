@@ -31,12 +31,24 @@
 --     covers, so the next preview starts where the last one stopped. A charge
 --     STANDS only while the draft it produced does (not deleted, not cancelled):
 --     that is derived at read time from the invoice's own status rather than
---     stored here, so deleting an unwanted draft releases the period with no
---     second write to forget.
+--     stored here, so the PREVIEW offers a deleted or cancelled draft's days
+--     again with no write to forget.
 --
 --     The unique index on (sales_invoice_id, period_to) is the concurrency
 --     backstop: two clicks on "Prepare draft" in the same instant cannot both
 --     claim the same invoice up to the same date.
+--
+--     A DEAD CLAIM STILL HOLDS ITS KEY, AND THE INDEX IS DELIBERATELY NOT PARTIAL.
+--     The index covers every row, and it cannot read a draft's status (that is
+--     on another table), so a cancelled draft's claim — which keeps its pointer
+--     — and a hard-deleted draft's claim — whose pointer is nulled and whose
+--     row is KEPT — both go on occupying the key. `late_interest_service.
+--     prepare_drafts` therefore removes the dead claim that is in the way, by
+--     its own id, between making the new draft and recording the new claim. A
+--     predicate on the pointer (`WHERE interest_invoice_id IS NOT NULL`) would
+--     free the hard-deleted case and not the cancelled one, which is two
+--     mechanisms for one rule; one place that knows what "stands" means is the
+--     service's `_charge_rows`.
 --
 -- NOTHING IS POSTED. A charge row is a memorandum of what a DRAFT was prepared
 -- for. The draft is an ordinary draft sales invoice created through the sales
@@ -95,7 +107,8 @@ CREATE TABLE IF NOT EXISTS public.late_interest_charges (
   -- The OVERDUE invoice the interest was computed on.
   sales_invoice_id      UUID        NOT NULL REFERENCES public.client_sales_invoices(id) ON DELETE CASCADE,
   -- The DRAFT invoice the interest was put on. NULL only if that draft was
-  -- hard-deleted, which releases the period (see the header).
+  -- hard-deleted, which releases the period for the preview; the row is kept
+  -- and holds its key until the same period is taken up again (see the header).
   interest_invoice_id   UUID        REFERENCES public.client_sales_invoices(id) ON DELETE SET NULL,
   -- Interest was charged for the days after period_from up to and including
   -- period_to: `days` of them. The next period starts the day after period_to.
@@ -123,8 +136,10 @@ COMMENT ON TABLE public.late_interest_charges IS
   'accounting-22. A memorandum of the interest a DRAFT sales invoice was prepared for: '
   'per overdue invoice, the period covered. Posts nothing. A charge stands only '
   'while the draft it produced does — derived at read time from that invoice''s '
-  'own status (services/late_interest_service.py), so deleting an unwanted draft '
-  'releases the period with no second write.';
+  'own status (services/late_interest_service.py), so a deleted or cancelled draft '
+  'makes the preview offer its days again. The unique index covers every row, so '
+  'the service removes the dead claim in the way when the same period is taken up '
+  'again.';
 
 -- One claim per overdue invoice up to a date: the concurrency backstop for two
 -- clicks on "Prepare draft" in the same instant.

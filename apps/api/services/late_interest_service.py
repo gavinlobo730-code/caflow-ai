@@ -29,6 +29,22 @@ WHAT A STANDING CHARGE IS
     releases it too. An interest invoice is also taken OUT of the base of every
     later preview, so interest is never charged on interest.
 
+    A RELEASED CLAIM STILL HOLDS ITS KEY UNTIL SOMEBODY TAKES THE PERIOD UP AGAIN.
+    "Releases" above is a statement about what the PREVIEW offers, and the unique
+    index on (sales_invoice_id, period_to) knows nothing about a draft's status:
+    it covers every row, so a cancelled draft's claim (which keeps its pointer)
+    and a hard-deleted draft's claim (migration 461's pointer is set to NULL and
+    the row KEPT) both go on occupying the key. A preview offered the same days
+    again, the CA clicked, the new claim collided with the dead one, and the
+    click answered "just drafted by another request" after taking back the draft
+    it had just made. So `prepare_drafts` REMOVES the dead claim that is in the
+    way (`_release_stale_claims`) between making the draft and recording its
+    claim: only a claim whose draft does not stand, only one holding exactly a
+    key this draft is about to claim, and by its own id — so a rival's claim that
+    stands is never touched and the index remains the arbiter of the race.
+    Every other dead claim is left where it is, as the record of what that draft
+    was computed from; the audit event of the draft that replaced one names it.
+
 WHAT A DRAFT IS
 
     `routers.sales_invoices.create_invoice` — the existing engine, the same call
@@ -136,13 +152,20 @@ def set_terms(db, firm_id: str, client_id: str, customer_id: str, *,
 
 # ── What is already charged ──────────────────────────────────────────────────
 
-def _standing_charges(db, firm_id: str, client_id: str) -> tuple[dict[str, date], set[str]]:
-    """({overdue invoice id: the as-at date its interest is charged through},
-    {interest invoice ids}) — counting only charges whose draft still stands."""
-    rows = fetch_all(lambda: (
-        db.table("late_interest_charges")
-        .select("id, sales_invoice_id, interest_invoice_id, period_to")
-        .eq("firm_id", firm_id).eq("client_id", client_id)), label="late_interest.charges")
+def _charge_rows(db, firm_id: str, client_id: str,
+                 invoice_ids: Optional[list[str]] = None) -> list[dict]:
+    """The client's charge rows (or those on `invoice_ids`), each stamped with
+    `standing`: whether the draft it produced still stands (not deleted, not
+    cancelled). THE ONE DEFINITION of that — what the preview counts as covered
+    and what a re-prepare may release both ask it, so they cannot disagree."""
+    def charges():
+        return (db.table("late_interest_charges")
+                .select("id, sales_invoice_id, interest_invoice_id, period_to, "
+                        "interest_paise")
+                .eq("firm_id", firm_id).eq("client_id", client_id))
+    rows = (fetch_all(charges, label="late_interest.charges") if invoice_ids is None
+            else fetch_all_in(charges, "sales_invoice_id", invoice_ids,
+                              label="late_interest.charges"))
     live_ids = {r["interest_invoice_id"] for r in rows if r.get("interest_invoice_id")}
     standing: set[str] = set()
     if live_ids:
@@ -152,10 +175,16 @@ def _standing_charges(db, firm_id: str, client_id: str) -> tuple[dict[str, date]
             "id", sorted(live_ids), label="late_interest.interest_invoices")
         standing = {s["id"] for s in states
                     if not s.get("deleted_at") and (s.get("status") or "") != "cancelled"}
+    return [{**r, "standing": r.get("interest_invoice_id") in standing} for r in rows]
+
+
+def _standing_charges(db, firm_id: str, client_id: str) -> tuple[dict[str, date], set[str]]:
+    """({overdue invoice id: the as-at date its interest is charged through},
+    {interest invoice ids}) — counting only charges whose draft still stands."""
     through: dict[str, date] = {}
     interest_invoices: set[str] = set()
-    for r in rows:
-        if r.get("interest_invoice_id") not in standing:
+    for r in _charge_rows(db, firm_id, client_id):
+        if not r["standing"]:
             continue
         d = L.as_date(r.get("period_to"))
         if d is None:
@@ -165,6 +194,37 @@ def _standing_charges(db, firm_id: str, client_id: str) -> tuple[dict[str, date]
             through[iid] = d
         interest_invoices.add(r["interest_invoice_id"])
     return through, interest_invoices
+
+
+def _stale_claims(db, firm_id: str, client_id: str, documents) -> list[dict]:
+    """The dead claims that hold a key one of `documents` is about to claim: a
+    row for the same overdue invoice up to the same date whose draft no longer
+    stands (cancelled, deleted, or its pointer cleared by a hard delete)."""
+    wanted = {(d.invoice_id, L.as_date(d.period_to)) for d in documents}
+    rows = _charge_rows(db, firm_id, client_id, [d.invoice_id for d in documents])
+    return [r for r in rows
+            if not r["standing"]
+            and (r["sales_invoice_id"], L.as_date(r.get("period_to"))) in wanted]
+
+
+def _release_stale_claims(db, firm_id: str, client_id: str, documents) -> list[dict]:
+    """Remove the dead claims `_stale_claims` finds, each BY ITS OWN ID.
+
+    By id and never by key: between the read and the delete a rival request may
+    have released the same row and written a claim of its own on that key, and a
+    delete by key would erase a claim that stands and let the same days be
+    charged twice. By id the worst a race can do is delete a row that is already
+    gone. Returns what was removed, for the audit event.
+    """
+    gone = []
+    for r in _stale_claims(db, firm_id, client_id, documents):
+        (db.table("late_interest_charges").delete()
+         .eq("id", r["id"]).eq("firm_id", firm_id).eq("client_id", client_id).execute())
+        gone.append({"charge_id": r["id"], "interest_invoice_id": r.get("interest_invoice_id"),
+                     "sales_invoice_id": r["sales_invoice_id"],
+                     "period_to": str(r.get("period_to"))[:10],
+                     "interest_paise": r.get("interest_paise")})
+    return gone
 
 
 # ── The preview ──────────────────────────────────────────────────────────────
@@ -388,6 +448,10 @@ def prepare_drafts(db, firm_id: str, client_id: str, customer_id: str, as_of: Op
             continue
         draft = resp["data"]
         try:
+            # A dead claim on one of these keys would make the insert below fail
+            # against the unique index (see the module header); a claim that
+            # still stands is never in this list.
+            released = _release_stale_claims(db, firm_id, client_id, group.documents)
             # Written INLINE with literal keys, in ONE statement: a payload built
             # in a variable hides every column name from
             # tests/test_backend_columns_exist_pg.py (which budgets exactly that),
@@ -422,7 +486,8 @@ def prepare_drafts(db, firm_id: str, client_id: str, customer_id: str, as_of: Op
             log_event(firm_id, "sales_invoice", draft["id"], "late_interest_draft",
                       actor_id=actor.get("auth_user_id"),
                       new_data={"as_of": as_of.isoformat(), "interest_paise": group.interest_paise,
-                                "overdue_invoices": [d.invoice_id for d in group.documents]},
+                                "overdue_invoices": [d.invoice_id for d in group.documents],
+                                "replaced_claims": released},
                       metadata={"source": "late_interest", "status": "draft"})
         except Exception:                                  # pragma: no cover
             pass
