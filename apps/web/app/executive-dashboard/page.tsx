@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  TrendingUp, Users, AlertTriangle, TrendingDown, Sparkles,
+  TrendingUp, AlertTriangle, TrendingDown, Sparkles,
   RefreshCw, DollarSign, BarChart2,
   ArrowUpRight, ArrowDownRight, ShieldAlert, Clock, Star, ListChecks,
 } from "lucide-react";

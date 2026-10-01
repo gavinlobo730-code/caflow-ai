@@ -87,7 +87,12 @@ MARKETING = _REPO / "apps" / "marketing"
 #: import template. Under the concatenation all five looked wired up.
 BUDGET: dict[str, int] = {
     "/api/workflows": 10, "/api/year-end": 10, "/api/banking": 8,
-    "/api/task-recurring": 9, "/api/tasks": 9, "/api/copilot": 8,
+    # /api/copilot 8 -> 6 on 01-10-2026 (ai-10): `POST /actions` and `GET
+    # /summaries` were DELETED, not wired — the first marked a row `executed`
+    # having executed nothing, the second filtered an in-memory fixture list.
+    # (`/recommendations` and its action route were reached by the Insights tab
+    # and were deleted with it: nothing ever generated a recommendation.)
+    "/api/task-recurring": 9, "/api/tasks": 9, "/api/copilot": 6,
     # /api/income-tax 6 -> 5 on 18-09-2026: POST /book-to-tax-bridge got its
     # first caller (FA-06). The engine and the endpoint had been complete for
     # months with two comments in apps/web and nothing calling either.
@@ -104,7 +109,9 @@ BUDGET: dict[str, int] = {
     # `api.aiInsights.generate` carried the method with no caller, so the
     # screen showed an empty list for every client for ever AND told the
     # CA the insights arrive "automatically", which nothing does.
-    "/api/memory": 7, "/api/relationships": 5, "/api/ai-insights": 4,
+    # 4 -> 3 on 01-10-2026 (ai-10): `GET /cross-client` was DELETED — it served
+    # the same hardcoded sample (a director called Rajesh Mehta) to every firm.
+    "/api/memory": 7, "/api/relationships": 5, "/api/ai-insights": 3,
     # /api/intelligence 6 -> 3 on 25-09-2026 (Phase 3a-5): all six had
     # `lib/api` methods and no screen caller. `/insights` reaches the
     # three client-facing reads — compliance risk, relationship health
@@ -246,7 +253,10 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # BUDGET, plus the three the tree had already shed since the last measurement;
 # then the AP allocate mirror, and the gateway webhook moving out of the
 # counted population entirely.
-TOTAL_BUDGET = 221
+# 221 -> 218 on 01-10-2026 (ai-10): three unreached AI routes DELETED as fake —
+# `POST /api/copilot/actions`, `GET /api/copilot/summaries` and
+# `GET /api/ai-insights/cross-client`.
+TOTAL_BUDGET = 218
 
 
 # ---------------------------------------------------------------------------

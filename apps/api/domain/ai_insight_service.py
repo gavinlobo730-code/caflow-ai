@@ -1,7 +1,15 @@
 """
-AI Insight Generation Service.
+Insight generation — RULE-BASED, and labelled as such (ai-10).
 Generates contextual insights from compliance records, tasks, documents, and risks.
 Insight categories: compliance, accounting, document, risk, performance
+
+NO MODEL READS ANY OF THIS. Every insight is a sentence assembled from a record
+(an overdue filing, a deadline inside seven days, a low health score, an old open
+document risk) with the figure interpolated — the screens say "rule-based" for
+that reason, and they do not carry the AI label. If a model is ever asked to word
+an insight, it goes through `domain/ai/narration` so it can add no figure of its
+own.
+
 Note: Uses MOCK_AI_INSIGHTS_V2 — separate from MOCK_AI_INSIGHTS in mock_data.py.
 Serves from /api/ai-insights (new router) — does not conflict with /api/insights.
 """
@@ -152,7 +160,7 @@ def generate_insights_for_client(client_id: str, firm_id: Optional[str] = None) 
     """Analyze client records and generate insights, persisting via repo."""
     from repositories.ai_insights_repository import ai_insights_repo
     from domain.compliance_record_service import compliance_record_service
-    from domain.document_intelligence_service import MOCK_DOCUMENT_RISKS
+    from domain.risk_engine import get_all_risks
     from repositories.client_repository import client_repo
 
     clients = client_repo.find_all(firm_id=firm_id)
@@ -219,14 +227,23 @@ def generate_insights_for_client(client_id: str, firm_id: Optional[str] = None) 
         })
         new_insights.append(insight)
 
+    # The client's OWN open document risks, read the way the Risks screen reads
+    # them (`risk_engine.get_all_risks`: the `document_risks` table in
+    # production). This used to iterate `MOCK_DOCUMENT_RISKS` — the in-memory
+    # fixture list — directly, so on a real database it compared a real client's
+    # UUID against fixture ids like "c-003" and could never fire, in a generator
+    # whose insights are presented as read off the client's records (ai-10).
+    # `source == "document"` keeps this to risks a document raised: the engine
+    # also DERIVES risks from the compliance records, which the loop above
+    # already turns into their own insights.
     old_risks = [
-        r for r in MOCK_DOCUMENT_RISKS
-        if r["client_id"] == client_id
-        and r["resolution_status"] == "open"
+        r for r in get_all_risks(firm_id=firm_id, client_id=client_id, status="open")
+        if r.get("source") == "document"
+        and r.get("created_at")
         # ist_today(), for the reason on `days_left` above: an open risk stops
         # ageing the moment the process stops restarting, so nothing ever
         # crosses seven days on a deployment that has been up a week.
-        and (ist_today() - date.fromisoformat(r["created_at"][:10])).days > 7
+        and (ist_today() - date.fromisoformat(str(r["created_at"])[:10])).days > 7
     ]
     if old_risks:
         insight = ai_insights_repo.create({
@@ -263,70 +280,6 @@ def acknowledge_insight(insight_id: str, firm_id: Optional[str] = None) -> dict 
 def dismiss_insight(insight_id: str, firm_id: Optional[str] = None) -> dict | None:
     from repositories.ai_insights_repository import ai_insights_repo
     return ai_insights_repo.update_status(insight_id, "dismissed", firm_id=firm_id)
-
-
-def get_cross_client_patterns(firm_id: Optional[str] = None) -> list[dict]:
-    """
-    Detect cross-client intelligence patterns: shared directors with compliance risk,
-    industry-wide issues, group-wide cash flow signals, and correlated deadline spikes.
-    Returns mock patterns when SUPABASE_URL is not set.
-    """
-    # In production this would query the DB for shared directors, related entities,
-    # and correlated compliance failures across clients in the same firm.
-    # For now return realistic mock patterns.
-    return [
-        {
-            "pattern_type": "shared_director_compliance_risk",
-            "title": "Director appears in multiple clients with compliance issues",
-            "description": (
-                "Rajesh Mehta is listed as director for 3 clients. "
-                "2 of those clients have overdue TDS returns (26Q). "
-                "This may indicate a group-wide cash flow issue affecting timely payment."
-            ),
-            "evidence": ["Mehta Consulting", "Mehta Infra Pvt Ltd", "RM Holdings"],
-            "affected_clients": ["c-003", "c-007", "c-011"],
-            "confidence": 72,
-            "severity": "high",
-            "recommended_action": (
-                "Schedule a group-level review with Rajesh Mehta to assess liquidity. "
-                "File overdue 26Q TDS returns immediately to stop interest under Section 201(1A) of IT Act."
-            ),
-        },
-        {
-            "pattern_type": "same_issue_multiple_clients",
-            "title": "GSTR-2B ITC mismatch appearing across 4 clients simultaneously",
-            "description": (
-                "4 clients all show ITC mismatch between GSTR-2B and purchase register this month. "
-                "Likely a common supplier (Priya Traders GSTIN 27AADCP...) not filing GSTR-1 on time, "
-                "which blocks ITC claims under CGST Act Section 16(2)(aa)."
-            ),
-            "evidence": ["Patel & Sons", "Sharma Enterprises", "Desai Traders", "Joshi Textiles"],
-            "affected_clients": ["c-002", "c-001", "c-004", "c-005"],
-            "confidence": 85,
-            "severity": "high",
-            "recommended_action": (
-                "Identify the common non-compliant supplier and escalate to all 4 clients. "
-                "Consider switching supplier or adjusting ITC claims pending supplier's GSTR-1."
-            ),
-        },
-        {
-            "pattern_type": "group_advance_tax_risk",
-            "title": "Advance tax instalment risk across Desai Group entities",
-            "description": (
-                "15 Jun 2025 advance tax deadline (15% instalment) is approaching. "
-                "2 Desai Group entities have no advance tax challan recorded yet. "
-                "Interest under Section 234C of IT Act 1961 will apply if missed."
-            ),
-            "evidence": ["Desai Traders", "Desai Real Estate LLP"],
-            "affected_clients": ["c-004", "c-009"],
-            "confidence": 68,
-            "severity": "medium",
-            "recommended_action": (
-                "Calculate advance tax for both entities and pay via Challan 280 before 15 Jun 2025. "
-                "Group payment can be coordinated to reduce CA effort."
-            ),
-        },
-    ]
 
 
 def get_insight_feed(

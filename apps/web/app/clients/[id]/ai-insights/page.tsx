@@ -109,7 +109,15 @@ export default function AiInsightsPage() {
           <div className="flex items-center justify-between gap-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <Sparkles size={15} className="text-gold" />
-              AI Insights
+              Insights
+              {/* RULE-BASED, and said so (ai-10): every row is a sentence the
+                  application assembled from a record — an overdue filing, a
+                  deadline inside a week, a low health score — and no AI model
+                  reads or writes any of it. The AI label belongs to the screens
+                  where one does. */}
+              <span className="text-3xs font-medium text-ps-hint border border-ps-border rounded-full px-2 py-0.5">
+                rule-based
+              </span>
             </CardTitle>
             {mayGenerate && (
               <button
@@ -139,13 +147,13 @@ export default function AiInsightsPage() {
             </div>
           ) : loadFailed ? (
             <div className="text-center py-12 space-y-2">
-              <p className="text-sm text-red-600 font-medium">Couldn&apos;t load AI insights — the request failed or timed out.</p>
+              <p className="text-sm text-red-600 font-medium">Couldn&apos;t load insights — the request failed or timed out.</p>
               <button disabled={loading} onClick={load} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
             </div>
           ) : insights.length === 0 ? (
             <div className="text-center py-12 space-y-2">
               <Sparkles className="w-8 h-8 text-ps-disabled mx-auto" />
-              <p className="text-sm text-ps-hint">No AI insights yet</p>
+              <p className="text-sm text-ps-hint">No insights yet</p>
               <p className="text-xs text-ps-hint max-w-sm mx-auto">
                 {mayGenerate
                   ? "Nothing generates these on its own — press Generate to read this client's books, compliance and activity and record what it finds."

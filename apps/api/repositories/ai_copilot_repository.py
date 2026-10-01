@@ -5,7 +5,7 @@ in-memory mock data so the dev server still works without credentials.
 
 Tables used:
     ai_conversations, ai_messages, ai_summaries,
-    ai_recommendations, ai_actions, ai_feedback
+    ai_recommendations, ai_feedback  (ai_actions has no writer since 2026-10-01)
 """
 from __future__ import annotations
 
@@ -510,72 +510,12 @@ class AICopilotRepository(BaseRepository):
         )
         return result.data[0] if result.data else None
 
-    # ── AI Actions ────────────────────────────────────────────────────────────
-
-    def create_ai_action(self, firm_id: str, data: dict) -> dict:
-        record = {
-            "id": _uid(),
-            "firm_id": firm_id,
-            "status": "pending",
-            "executed_by": None,
-            "executed_at": None,
-            "result_data": None,
-            "error_message": None,
-            "created_at": _now(),
-            **data,
-        }
-        if _USE_MOCK:
-            MOCK_AI_ACTIONS.append(record)
-            return record
-
-        result = _get_db().table("ai_actions").insert(record).execute()
-        return result.data[0]
-
-    def complete_ai_action(
-        self,
-        action_id: str,
-        result_data: dict,
-        user_id: Optional[str] = None,
-    ) -> Optional[dict]:
-        updates = {
-            "status": "executed",
-            "result_data": result_data,
-            "executed_by": user_id,
-            "executed_at": _now(),
-        }
-        if _USE_MOCK:
-            for a in MOCK_AI_ACTIONS:
-                if a["id"] == action_id:
-                    a.update(updates)
-                    return a
-            return None
-
-        result = (
-            _get_db()
-            .table("ai_actions")
-            .update(updates)
-            .eq("id", action_id)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-    def fail_ai_action(self, action_id: str, error_message: str) -> Optional[dict]:
-        updates = {"status": "failed", "error_message": error_message}
-        if _USE_MOCK:
-            for a in MOCK_AI_ACTIONS:
-                if a["id"] == action_id:
-                    a.update(updates)
-                    return a
-            return None
-
-        result = (
-            _get_db()
-            .table("ai_actions")
-            .update(updates)
-            .eq("id", action_id)
-            .execute()
-        )
-        return result.data[0] if result.data else None
+    # ── AI Actions — deleted (ai-10) ──────────────────────────────────────────
+    #
+    # `create_ai_action`, `complete_ai_action` and `fail_ai_action` served only
+    # `POST /api/copilot/actions`, which marked a row `executed` and executed
+    # nothing. The `ai_actions` table is untouched; a real action runner would
+    # write to it and would need a service that performs the action first.
 
     # ── Feedback ──────────────────────────────────────────────────────────────
 
@@ -743,5 +683,4 @@ MOCK_RECOMMENDATIONS: list[dict] = [
     },
 ]
 
-MOCK_AI_ACTIONS: list[dict] = []
 MOCK_FEEDBACK: list[dict] = []

@@ -8,7 +8,6 @@ from domain.ai_insight_service import (
     generate_insights_for_client,
     acknowledge_insight,
     dismiss_insight,
-    get_cross_client_patterns,
 )
 
 router = APIRouter(prefix="/api/ai-insights", tags=["ai-insights"])
@@ -46,33 +45,12 @@ def list_insights(
     return api_response(True, insights)
 
 
-@router.get("/cross-client")
-def cross_client_patterns(
-    current_user: dict = Depends(rbac("report", "read")),
-):
-    """
-    GET /api/ai-insights/cross-client
-    Returns cross-client intelligence patterns: shared directors with compliance risk,
-    same issue appearing across multiple clients, group-wide cash flow signals, etc.
-    Chapter 17 Product Bible — cross-client AI intelligence.
-
-    TENANT ISOLATION. This used to accept `?firm_id=` and prefer it over the
-    caller's own, so any authenticated user could read another **firm's**
-    cross-client intelligence by supplying its id — an endpoint whose whole
-    purpose is to aggregate across a firm's client base. That is a tenant
-    boundary, not a client-assignment one: different firms are different
-    customers. The parameter is gone rather than validated; cross-firm access
-    belongs to the platform-admin surface (routers/platform.py), not here.
-
-    NOT CLIENT-SCOPED (see EXEMPT in test_router_client_scope.py):
-    get_cross_client_patterns is a hardcoded stub — the same fixed sample
-    patterns for every firm regardless of real data (its own docstring:
-    "In production this would query the DB... For now return realistic mock
-    patterns."). There is no real client-scoped row here for an assignment
-    check to gate; the response names no real client at all.
-    """
-    patterns = get_cross_client_patterns(firm_id=current_user.get("firm_id"))
-    return api_response(True, {"patterns": patterns})
+# `GET /cross-client` WAS DELETED (ai-10). It returned `get_cross_client_patterns`,
+# a hardcoded list — a director called Rajesh Mehta, three client ids that exist in
+# no firm — identically for EVERY firm, under a docstring promising "cross-client
+# AI intelligence". No screen called it. The real cross-client signals are the
+# relationship module's PAN and entity matches (`/api/relationships/cross-client-
+# matches`), which are computed from the firm's own rows and have screens.
 
 
 @router.get("/feed")

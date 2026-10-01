@@ -285,23 +285,17 @@ async def copilot_chat(request: Request, body: CopilotRequest, current_user: dic
 
         answer: str = response.json()["choices"][0]["message"]["content"]
 
-        # Extract suggested actions from response
-        suggested_actions: list[str] = []
-        lower = answer.lower()
-        if "overdue" in lower:
-            suggested_actions.append("View overdue compliance")
-        if "risk" in lower:
-            suggested_actions.append("Open Risk Dashboard")
-        if "document" in lower:
-            suggested_actions.append("Review Documents")
-        if "task" in lower:
-            suggested_actions.append("View Tasks")
-        if "client" in lower:
-            suggested_actions.append("View Clients")
-
+        # `suggested_actions` WAS REMOVED (ai-10). It was a handful of labels —
+        # "View overdue compliance", "Open Risk Dashboard" — chosen by whether the
+        # words "overdue", "risk", "document", "task" or "client" appeared
+        # ANYWHERE in the model's answer, with no link behind any of them, so a
+        # reply that said "no clients are overdue" offered "View overdue
+        # compliance". Nothing in apps/web reads this route at all (it is the
+        # older of the two copilots; /copilot uses /api/copilot), so no screen
+        # ever showed them — but a keyword match dressed as the model's own
+        # suggestion is not something an API should serve.
         return api_response(True, {
             "answer": answer,
-            "suggested_actions": suggested_actions[:3],
             "context_used": body.context,
         })
 

@@ -210,7 +210,7 @@ export const SCREENS: Screen[] = [
   firm("/reports/cash-flow", "Cash flow", "Insights", ["as-3", "cash flow statement"]),
   firm("/ai-assistant", "AI assistant", "Insights", ["copilot", "ask", "chat"]),
   firm("/copilot", "Copilot", "Insights", ["ai", "assistant", "ask"]),
-  firm("/memory", "AI memory", "Insights", ["what it remembers"]),
+  firm("/memory", "Practice memory", "Insights", ["what it remembers", "ai memory", "signals"]),
 
   // ── Settings ──────────────────────────────────────────────────────────────
   firm("/settings", "Settings", "Settings", ["configuration", "preferences"]),
@@ -248,7 +248,7 @@ export const SCREENS: Screen[] = [
   client("tasks", "Tasks", "Client", ["to do", "checklist"]),
   client("instructions", "Instructions", "Client", ["standing instructions", "notes"]),
   client("health", "Health", "Client", ["score", "risk"]),
-  client("ai-insights", "AI insights", "Client", ["insights", "anomalies"]),
+  client("ai-insights", "Insights", "Client", ["insights", "anomalies", "ai insights", "rule-based"]),
   client("knowledge", "Knowledge", "Client", ["notes", "articles"]),
   client("lifecycle", "Lifecycle", "Client", ["stage", "onboarding status"]),
   client("portal", "Portal", "Client", ["client portal", "sharing"]),

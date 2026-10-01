@@ -4311,15 +4311,12 @@ export const api = {
     markAllRead: () => request("/api/notifications/read-all", { method: "PATCH" }),
     stats: () => request("/api/notifications/stats"),
   },
-  copilot: {
-    chat: (body: { message: string; conversation_history: unknown[]; context?: string }) =>
-      request("/api/ai-copilot/chat", { method: "POST", body: JSON.stringify(body) }),
-    // clientChat was removed with the endpoint it called. That endpoint posted a
-    // single client's name, GSTIN and PAN to Groq and now returns 410. The
-    // wrapper had no callers, which is exactly why it had to go rather than be
-    // left pointing at a dead route: an unused helper that still builds the URL
-    // is the thing someone wires a button to next.
-  },
+  // `copilot.chat` (POST /api/ai-copilot/chat) was removed with ai-10: no screen
+  // called it — /copilot uses `copilotV2` — and its only product was an answer
+  // plus a keyword-matched list of "suggested actions" with no link behind any of
+  // them. `clientChat` went before it: that endpoint posted a single client's
+  // name, GSTIN and PAN to Groq and now returns 410. An unused helper that still
+  // builds the URL is the thing someone wires a button to next.
   payroll: {
     /** PAY-23 — the annual statutory bonus register (Payment of Bonus Act
      *  1965). Who is owed, who is out and why, §19's due date and the
@@ -5245,12 +5242,11 @@ export const api = {
     workflowIntelligence: () => request("/api/copilot/intelligence/workflows"),
     relationshipIntelligence: () => request("/api/copilot/intelligence/relationships"),
     executiveDashboard: () => request("/api/copilot/executive-dashboard"),
-    listRecommendations: (params?: Record<string, string>) =>
-      request(`/api/copilot/recommendations${params ? "?" + new URLSearchParams(params) : ""}`),
-    actRecommendation: (id: string, body: unknown) =>
-      request(`/api/copilot/recommendations/${id}/action`, { method: "POST", body: JSON.stringify(body) }),
-    executeAction: (body: unknown) =>
-      request("/api/copilot/actions", { method: "POST", body: JSON.stringify(body) }),
+    // `listRecommendations`, `actRecommendation` and `executeAction` were removed
+    // with the three routes they called (ai-10): nothing generated a
+    // recommendation, and the action route marked itself `executed` without
+    // executing anything. An unused wrapper that still builds the URL is the
+    // thing someone wires a button to next.
   },
 
   // ── Amendment v1.1 (Batch 7) — Practice / Revenue Operations / Knowledge ──

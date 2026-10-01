@@ -210,6 +210,18 @@ class AICopilotService:
         grounded in current DB state.  Failures are silently swallowed so
         that a repo outage never breaks the chat flow.
         """
+        # A context this builder attaches NO data for is answered as the global
+        # one, and the model is told so (ai-10). "executive" and "relationship"
+        # were offered by the page and injected nothing, so a conversation opened
+        # there — conversations already stored under those names still exist —
+        # was answered from the three header lines below and no figure at all,
+        # by a model with no way to say it had none. Global is strictly more
+        # grounded, and the note stops the model implying a narrower view.
+        from models.ai_copilot import CONTEXTS_WITH_DATA
+        requested_context = context_type
+        if context_type not in CONTEXTS_WITH_DATA:
+            context_type = "global"
+
         lines = [
             f"FIRM: {firm_id}",
             # The Indian day, not the UTC one. Between 00:00 and 05:30 IST the
@@ -219,6 +231,13 @@ class AICopilotService:
             f"DATE: {ist_now().strftime('%d %B %Y')}",
             f"CONTEXT TYPE: {context_type}",
         ]
+        if requested_context != context_type:
+            lines.append(
+                f"CONTEXT NOTE: this conversation was opened in a "
+                f"'{requested_context}' context that carries no data of its own. "
+                f"The firm-wide figures below are the only ones attached; do not "
+                f"claim to know anything about executive or relationship matters "
+                f"beyond them.")
 
         try:
             if context_type in ("global", "client"):
@@ -748,7 +767,6 @@ Provide:
             "failing_workflows": failing[:5],
             "overdue_approvals": overdue_approvals[:5],
             "recurring_bottlenecks": [{"name": n} for n in bottleneck_names[:3]],
-            "recommendations": self._repo.list_recommendations(firm_id, rec_type="workflow")[:3],
             "ai_analysis": content,
             "generated_at": now.isoformat(),
         }
@@ -829,9 +847,6 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
                 {"type": "multi_entity_pan", "count": len(multi_entity_pans)}
             ] if multi_entity_pans else [],
             "high_risk_entities": [],
-            "recommendations": self._repo.list_recommendations(
-                firm_id, rec_type="relationship"
-            )[:3],
             "ai_analysis": content,
             "generated_at": now.isoformat(),
         }
@@ -1079,32 +1094,11 @@ Firm data as of {ist_now().strftime('%d %B %Y')}:
         )
         return dashboard_data
 
-    # ── Recommendations ────────────────────────────────────────────────────────
-
-    def list_recommendations(self, firm_id: str, **kwargs) -> list[dict]:
-        return self._repo.list_recommendations(firm_id, **kwargs)
-
-    def act_on_recommendation(
-        self,
-        firm_id: str,
-        rec_id: str,
-        action: str,
-        user_id: str,
-        snooze_days: Optional[int] = None,
-    ) -> Optional[dict]:
-        snooze_until = None
-        if action == "snooze" and snooze_days:
-            snooze_until = (
-                datetime.now(timezone.utc) + timedelta(days=snooze_days)
-            ).isoformat()
-            status = "snoozed"
-        elif action == "accept":
-            status = "accepted"
-        else:
-            status = "dismissed"
-        return self._repo.update_recommendation_status(
-            firm_id, rec_id, status, user_id, snooze_until
-        )
+    # The recommendation methods that stood here (`list_recommendations`,
+    # `act_on_recommendation`) were deleted with their routes (ai-10): nothing ever
+    # generated a recommendation, so they listed and acted on an always-empty
+    # table. The workflow and relationship payloads no longer carry a `recommendations`
+    # key for the same reason.
 
 
 ai_copilot_service = AICopilotService()
