@@ -11,6 +11,7 @@ from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access, effective_client_ids
+from middleware.rate_limit import ai_limit
 
 router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
 
@@ -43,6 +44,29 @@ def recommendations(current_user: dict = Depends(rbac("ai", "read"))):
     # this returns names its client, so it must be narrowed.
     return api_response(True, compute_recommendations(
         current_user["firm_id"], effective_client_ids(current_user)))
+
+
+@router.get("/digest")
+async def digest(current_user: dict = Depends(rbac("ai", "read")),
+                 _limit: None = Depends(ai_limit("intelligence"))):
+    """What needs attention today, across the caller's own clients (ai-25).
+
+    Every count is read off an existing check — the compliance-risk engine, the
+    overdue-task read, the nightly books check's stored findings — and equals what
+    that check reports. A model words the lines when something needs attention and
+    is discarded if it adds a figure; with no model the plain sentence is the
+    answer. `domain/practice/digest` is the rule and `services/digest_service`
+    fetches; this decides nothing.
+
+    `ai_limit` is declared AFTER `rbac()` so a permission refusal spends nothing.
+    Each section follows the access of the screen it summarises and a section the
+    caller may not see, or that could not be read, is named in `gaps`.
+    """
+    from services import digest_service
+    # None for a firm-wide role; a set of assigned ids otherwise. Every section
+    # names or counts clients, so every read inside is narrowed by this one value.
+    return api_response(True, await digest_service.todays_digest(
+        current_user, effective_client_ids(current_user)))
 
 
 @router.get("/workload-insights")

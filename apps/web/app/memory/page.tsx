@@ -539,8 +539,13 @@ export default function MemoryPage() {
             <Brain size={20} className="text-brand-light" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-brand">AI Memory Intelligence</h1>
-            <p className="text-sm text-slate-500">Semantic memory, pattern triggers, and anomaly detection</p>
+            <h1 className="text-xl font-bold text-brand">Practice Memory</h1>
+            {/* Rule-based, and said so (ai-10). These profiles are aggregates of
+                the firm's own records and the triggers and anomalies are
+                threshold rules over them; no AI model reads them and nothing
+                here feeds a prompt. "Semantic memory" described something that
+                does not exist. */}
+            <p className="text-sm text-slate-500">Client profiles, pattern triggers and anomaly checks — rule-based, computed from your own records</p>
           </div>
         </div>
         <div className="flex items-center gap-3">

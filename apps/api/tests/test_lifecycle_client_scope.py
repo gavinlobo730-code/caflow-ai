@@ -42,9 +42,12 @@ USER = {"id": "u1", "firm_id": FIRM, "role": "manager"}
 # Tenant isolation — the firm_id parameter is gone
 # ══════════════════════════════════════════════════════════════════════════════
 
+# `GET /api/ai-insights/cross-client` was the second endpoint here. It was DELETED
+# on 01-10-2026 (ai-10: it served one hardcoded sample to every firm), which ends
+# the leak by removing the route; `test_ai_surfaces_are_not_fake_or_dead.py`
+# asserts it stays gone, and its `firm_id` parameter cannot come back with it.
 @pytest.mark.parametrize("endpoint", [
     pytest.param(lc.list_active_onboardings, id="lifecycle/onboarding/checklist/active"),
-    pytest.param(ai.cross_client_patterns, id="ai-insights/cross-client"),
 ])
 def test_no_endpoint_still_accepts_a_firm_id_from_the_caller(endpoint):
     """Signature-level, deliberately: the fix is the ABSENCE of a parameter, and
@@ -70,12 +73,12 @@ def test_the_active_checklist_view_uses_the_callers_own_firm(monkeypatch):
     assert [w["workflow"]["id"] if "workflow" in w else w["id"] for w in out["data"]] == ["W1"]
 
 
-def test_cross_client_patterns_uses_the_callers_own_firm(monkeypatch):
-    seen = {}
-    monkeypatch.setattr(ai, "get_cross_client_patterns",
-                        lambda firm_id: seen.setdefault("firm_id", firm_id) or [])
-    ai.cross_client_patterns(current_user=USER)
-    assert seen == {"firm_id": FIRM}
+def test_the_cross_client_route_that_took_a_firm_id_is_gone():
+    """Its tenant-leak fix was the absence of a parameter; the route itself is
+    now deleted, so there is no signature left to inspect and nothing to call."""
+    assert not hasattr(ai, "cross_client_patterns")
+    assert not any(getattr(r, "path", "") == "/api/ai-insights/cross-client"
+                   for r in ai.router.routes)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

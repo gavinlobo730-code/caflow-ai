@@ -5,12 +5,20 @@ from typing import Any, Optional, List, Literal
 from pydantic import BaseModel, Field
 
 
-ContextType = Literal["global", "client", "compliance", "workflow", "executive", "relationship"]
+#: The contexts a conversation may be opened in — exactly the ones
+#: `AICopilotService._build_context` attaches firm data for (ai-10).
+#: "executive" and "relationship" were offered by the page and accepted here for
+#: as long as the copilot existed, and neither injected a single figure, so a CA
+#: who picked "Executive" was answered by a model that had been told nothing
+#: about their firm and could not say so. Refusing them at the door (a 422) is
+#: the honest end of that; `tests/test_ai_surfaces_are_not_fake_or_dead.py`
+#: asserts this tuple and `_build_context` agree.
+CONTEXTS_WITH_DATA = ("global", "client", "compliance", "workflow")
+ContextType = Literal["global", "client", "compliance", "workflow"]
 SummaryType = Literal["client", "compliance", "workflow", "executive", "relationship"]
 RecommendationType = Literal["risk", "opportunity", "compliance", "workflow", "relationship", "health"]
 RecommendationPriority = Literal["critical", "high", "medium", "low"]
 RecommendationStatus = Literal["pending", "accepted", "dismissed", "snoozed"]
-ActionType = Literal["create_task", "send_notification", "trigger_workflow", "create_alert", "update_status"]
 
 
 # ── Conversation models ───────────────────────────────────────────────────────
@@ -109,31 +117,9 @@ class RecommendationOut(BaseModel):
     updated_at: datetime
 
 
-class RecommendationActionIn(BaseModel):
-    action: Literal["accept", "dismiss", "snooze"]
-    snooze_days: Optional[int] = None  # required when action=snooze
-
-
-# ── AI Action models ──────────────────────────────────────────────────────────
-
-class AIActionIn(BaseModel):
-    action_type: ActionType
-    action_data: dict[str, Any] = Field(default_factory=dict)
-    recommendation_id: Optional[str] = None
-
-
-class AIActionOut(BaseModel):
-    id: str
-    firm_id: str
-    recommendation_id: Optional[str]
-    action_type: str
-    action_data: dict[str, Any]
-    status: str
-    executed_by: Optional[str]
-    executed_at: Optional[datetime]
-    result_data: Optional[dict[str, Any]]
-    error_message: Optional[str]
-    created_at: datetime
+# `RecommendationActionIn` and the whole "AI Action" model family (`ActionType`,
+# `AIActionIn`, `AIActionOut`) were deleted with the routes that took them (ai-10):
+# an action endpoint that marked itself `executed` without executing anything.
 
 
 # ── Intelligence response shapes ──────────────────────────────────────────────
