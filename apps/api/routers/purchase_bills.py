@@ -276,6 +276,46 @@ def probe_near_duplicates(
         return api_response(False, None, "Could not check for similar bills.")
 
 
+@router.get("/vendor-history")
+def vendor_history(
+    client_id: str = Query(..., description="CA client ID — required"),
+    vendor_id: str = Query(..., description="The supplier the bill is from"),
+    hsn: Optional[list[str]] = Query(
+        None, description="HSN/SAC codes of the lines on the bill being typed"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """What this supplier's earlier bills say about the one being typed (ai-23).
+
+    A proposal and nothing more: the expense account and the §17(5) treatment
+    the firm gave this supplier's lines before — per HSN/SAC, falling back to the
+    supplier as a whole — each with the evidence ("coded this way 3 of 3 times"),
+    and a notice where earlier bills were assessed under a TDS section the
+    supplier record no longer carries. Nothing is written and the editor applies
+    a suggestion only on a click. `domain/purchases/bill_history` is the rule and
+    `services/purchase_history_service` fetches; this decides nothing.
+
+    Declared BEFORE `/{bill_id}`, which would otherwise take "vendor-history" as
+    a bill id. A GET because it reads and writes nothing and carries no document
+    identifier — unlike `/near-duplicates`, which takes an invoice number.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        # Nothing to learn from. An empty answer would read as "checked, and
+        # there is no history", which is a stronger claim than mock mode can make.
+        return api_response(True, {"checked": False})
+    try:
+        from core.supabase_client import get_supabase
+        from services import purchase_history_service
+        return api_response(True, purchase_history_service.vendor_history(
+            get_supabase(), current_user["firm_id"], client_id, vendor_id, hsn or []))
+    except HTTPException:
+        raise
+    except Exception as e:                                      # noqa: BLE001
+        _logger.error("vendor_history: %s", e)
+        # A suggestion that could not be computed is silence, never a blocked bill.
+        return api_response(False, None, "Could not look up this supplier's earlier bills.")
+
+
 @router.post("/tds-preview")
 def preview_purchase_bill_tds(
     data: PurchaseBillIn,
