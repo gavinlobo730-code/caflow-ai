@@ -17,9 +17,11 @@ WHAT THIS IS
 
     1. The builders no longer ASK for an identifier (the prompts were edited).
     2. `redact` runs on every outbound message at the one place a chat request is
-       built — `domain/ai/groq_text.chat`, and the copilot router's own request —
-       and replaces anything shaped like a PAN or a GSTIN with a placeholder. A
-       prompt builder added next year that forgets the rule still cannot send one.
+       built — `domain/ai/groq_text.chat_detailed`, which is now the ONLY module that
+       sends text to Groq (the copilot router's and the statement narrator's own
+       requests were moved onto it, ai-04) — and replaces anything shaped like a PAN
+       or a GSTIN with a placeholder. A prompt builder added next year that forgets
+       the rule still cannot send one.
 
     It is deliberately a SHAPE test and not a lookup of this firm's clients. The
     shape is what a regulator would call an identifier; a known-client list would
@@ -37,9 +39,9 @@ WHAT IT DOES NOT DO
       design the finding describes and is NOT built here.
     * It is not applied to document extraction (routers/document_intelligence_*),
       where the document being read IS the payload: an invoice carries its
-      supplier's GSTIN and the extraction exists to read it. That path is named in
-      tests/test_no_model_call_site_sends_an_identifier.py rather than exempted by
-      silence.
+      supplier's GSTIN and the extraction exists to read it. Those callers pass
+      `redact=False` to the door, and tests/test_no_model_call_site_sends_an_identifier.py
+      lists every module that does, by name, rather than exempting by silence.
 """
 from __future__ import annotations
 

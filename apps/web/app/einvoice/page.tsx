@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Plus, Loader2, AlertTriangle, Zap } from "lucide-react";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { MissingIrnPanel } from "@/components/gst/MissingIrnPanel";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -155,6 +156,11 @@ export default function EInvoicePage() {
           DO NOT AUTO-SUBMIT.
         </p>
       </div>
+
+      {/* GST-20. Across the whole book until a client's records are loaded
+          below, then that client's — so the list of what still needs an IRN is
+          one click from where an IRN is recorded. */}
+      <MissingIrnPanel clientId={loadedFor} />
 
       <div className="flex gap-3 items-center">
         <input

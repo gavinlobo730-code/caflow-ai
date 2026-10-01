@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
+import { exportQuery, type ExportFormat, type ExportParams, type ExportReport } from "@/lib/export/reportExport";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1399,6 +1400,54 @@ export type ExpiringEwayBill = {
   gap: string | null;
 };
 
+/** GST-20 — an in-scope invoice with no live IRN. `domain/gst/irn_worklist.py`
+ *  decides every field and sentence; this carries shapes only. */
+export type IrnWorklistWindow = {
+  /** Five states and none stands in for another: an invoice of a client below
+   *  the IRP's turnover floor OWES an IRN and has NO clock. */
+  status: "within_window" | "last_day" | "past_window" | "no_reporting_limit" | "not_in_force";
+  days: number;
+  deadline: string | null;
+  days_left: number | null;
+  /** True where the turnover is unrecorded and the clock is shown as if it
+   *  applied — the strict reading, which the screen must say. */
+  assumed: boolean;
+  /** null is a THIRD state (turnover unrecorded), never "does not apply". */
+  applies: boolean | null;
+};
+
+export type IrnWorklistRow = {
+  invoice_id: string;
+  client_id: string;
+  client_name: string;
+  invoice_no: string;
+  invoice_date: string;
+  customer_name: string | null;
+  total_paise: number;
+  treatment: string;
+  irn_state: "none" | "record_prepared_not_generated" | "irn_cancelled";
+  why_in_scope: string;
+  turnover_unknown: boolean;
+  window: IrnWorklistWindow;
+};
+
+export type IrnWorklist = {
+  as_of?: string;
+  scope: "client" | "firm";
+  listed_since?: string;
+  invoices: IrnWorklistRow[];
+  counts: Record<string, number>;
+  truncated?: boolean;
+  /** Said once for the whole list: the [S]-grading of the window, which
+   *  turnover it is judged on, what is not covered, the exempted classes. */
+  caveats: string[];
+  /** Firm-wide: clients with no recorded turnover, NAMED rather than assessed. */
+  clients_not_assessed: { client_id: string; client_name: string; reason: string }[];
+  clients_below_threshold?: number;
+  client_status?: string | null;
+  verified?: boolean;
+};
+
 export type ExpiringEwayBills = {
   as_of: string;
   horizon_days: number;
@@ -2141,6 +2190,90 @@ export type OpeningReconciliation = {
   double_openings: DoubleOpening[];
 };
 
+/** One spreadsheet row on its way to the bulk import (accounting-05). Dates and the
+ *  party are TEXT — reading a date and matching a name are the server's rules. */
+export type OpeningDocumentImportRow = {
+  /** The number the person saw in the preview. */
+  row: number;
+  party: string;
+  party_gstin?: string | null;
+  document_no: string;
+  document_date: string;
+  due_date?: string | null;
+  /** Null where the cell is not an amount — the server refuses the row by number. */
+  outstanding_paise: number | null;
+  notes?: string | null;
+};
+
+/** What the server decided about one row. */
+export type OpeningDocumentImportVerdict = {
+  row: number;
+  document_no: string;
+  /** `would_create` only on a dry run. */
+  status: "new" | "would_create" | "already_recorded" | "rejected";
+  problems: string[];
+  party_name: string | null;
+  outstanding_paise: number;
+  id: string | null;
+};
+
+export type OpeningDocumentBulkResult = {
+  kind: "receivable" | "payable";
+  dry_run: boolean;
+  received: number;
+  created: number;
+  would_create: number;
+  already_recorded: number;
+  rejected: number;
+  created_paise: number;
+  would_create_paise: number;
+  rows: OpeningDocumentImportVerdict[];
+  /** Party by party, AFTER the import (projected on a dry run). */
+  reconciliation: OpeningReconciliationRow[];
+  unreconciled_parties: number;
+};
+
+/** One line of a voucher on its way to the voucher import (accounting-17). The date,
+ *  type and account are TEXT — the server reads them. An amount is paise: 0 for a
+ *  blank cell and null for one that is not an amount, so the row still arrives
+ *  and is refused by its number. */
+export type VoucherImportLeg = {
+  row: number;
+  voucher_no: string;
+  date: string;
+  voucher_type: string;
+  account: string;
+  debit_paise: number | null;
+  credit_paise: number | null;
+  narration?: string | null;
+  line_narration?: string | null;
+};
+
+export type VoucherImportVerdict = {
+  voucher_no: string;
+  rows: number[];
+  /** `would_create` only on a dry run. */
+  status: "new" | "would_create" | "already_recorded" | "rejected";
+  problems: string[];
+  entry_date: string | null;
+  entry_type: string | null;
+  total_paise: number;
+  id: string | null;
+};
+
+export type VoucherImportResult = {
+  status: "draft" | "posted";
+  dry_run: boolean;
+  vouchers: number;
+  created: number;
+  would_create: number;
+  already_recorded: number;
+  rejected: number;
+  created_paise: number;
+  would_create_paise: number;
+  results: VoucherImportVerdict[];
+};
+
 export type OpeningDocumentKinds = {
   kinds: { value: string; label: string; party: string; number: string }[];
   /** Why an opening bill contributes nothing to a section 194 FY aggregate. */
@@ -2180,6 +2313,12 @@ export type ClientGstRegistration = {
   /** Which s.10 rate a COMPOSITION registration pays. Meaningless otherwise;
    *  null means unrecorded rather than any particular rate (GST-25). */
   composition_category: string | null;
+  /** GST-17 / GST-05 — what a return built for THIS registration would have to
+   *  say: no invoice, bill or note records which registration it belongs to, so
+   *  choosing one does not split the documents. A sentence, or null where the
+   *  client holds one registration that files the ordinary pair. The server's
+   *  words — a picker shows them beside the choice and never composes its own. */
+  documents_not_split_caveat?: string | null;
 };
 
 /** One financial year's CGST s.2(6) aggregate turnover, as the CA recorded it. */
@@ -3131,6 +3270,188 @@ export interface SalesCycleVocabulary {
   itc_04: { decided: boolean; readings: string[]; refusal: string };
 }
 
+/** accounting-22 — interest on an overdue customer balance. Shapes only: which invoices
+ *  are late, for how many days and what that comes to are the server's. */
+export interface LateInterestTerms {
+  customer_id: string;
+  customer_name: string | null;
+  /** Annual rate in basis points. `null` is "nobody has stated one", which is
+   *  not the same fact as 0 ("interest is waived"). */
+  rate_bps: number | null;
+  grace_days: number;
+  basis: "due_date" | "invoice_date";
+}
+
+export interface LateInterestDocument {
+  invoice_id: string;
+  invoice_no: string | null;
+  invoice_date?: string | null;
+  due_date?: string | null;
+  outstanding_paise: number;
+  status: string;
+  counted_from?: string | null;
+  start_note?: string | null;
+  days_late: number;
+  days_charged: number;
+  period_from?: string | null;
+  period_to?: string | null;
+  already_charged_through?: string | null;
+  interest_paise: number;
+  note?: string | null;
+}
+
+export interface LateInterestParty {
+  customer_id: string;
+  customer_name: string | null;
+  terms_set: boolean;
+  terms: { rate_bps: number; grace_days: number; basis: string } | null;
+  overdue_outstanding_paise: number;
+  interest_paise: number;
+  documents: LateInterestDocument[];
+}
+
+export interface LateInterestStatement {
+  convention: { statement: string; day_count: string; as_of: string };
+  statutory_reading: { section: string; grade: string; text: string };
+  caveats: string[];
+}
+
+export interface LateInterestPreview extends LateInterestStatement {
+  as_of: string;
+  parties: LateInterestParty[];
+  totals: {
+    interest_paise: number; parties_with_interest: number;
+    parties_without_terms: number; overdue_outstanding_paise: number;
+  };
+  gaps: string[];
+}
+
+export interface LateInterestDrafts extends LateInterestStatement {
+  as_of: string;
+  drafts: {
+    invoice_id: string; invoice_no: string | null; status: string;
+    total_paise: number | null; interest_paise: number; gst_rate_bps: number;
+    is_interstate: boolean; invoice_nos: string[];
+  }[];
+  not_drafted: {
+    invoice_id: string; invoice_no: string | null; interest_paise: number;
+    reason_code: string; reason: string;
+  }[];
+  failed: { reason: string; invoice_nos: string[] }[];
+}
+
+/** accounting-21 — the post-dated cheque register. A MEMORANDUM: nothing here is in the
+ *  books until a due cheque is converted, and conversion is an ordinary receipt
+ *  or vendor payment made by the server. `state`, `is_due` and `is_stale` are the
+ *  server's answers, worked out against the firm's own (IST) day. */
+export type PostDatedChequeDirection = "received" | "issued";
+export type PostDatedChequeState = "not_due" | "due" | "converted" | "cancelled";
+
+export interface PostDatedCheque {
+  id: string;
+  direction: PostDatedChequeDirection;
+  customer_id: string | null;
+  vendor_id: string | null;
+  party_name: string | null;
+  cheque_no: string;
+  cheque_date: string;
+  amount_paise: number;
+  drawee_bank: string | null;
+  bank_account_id: string | null;
+  allocations: { sales_invoice_id?: string; purchase_bill_id?: string; allocated_paise: number }[];
+  status: "held" | "converted" | "cancelled";
+  state: PostDatedChequeState;
+  is_due: boolean;
+  is_stale: boolean;
+  stale_note: string | null;
+  stale_after: string | null;
+  notes: string | null;
+  converted_receipt_id: string | null;
+  converted_payment_id: string | null;
+  cancel_reason: string | null;
+  /** Always present; null where the posting would be attributable. */
+  posting_account_notice: string | null;
+}
+
+export interface PostDatedChequeRegister {
+  as_of: string;
+  cheques: PostDatedCheque[];
+  summary: Record<PostDatedChequeDirection,
+    Record<PostDatedChequeState, { count: number; amount_paise: number }>>;
+  notes: string[];
+  includes_finished: boolean;
+}
+
+export interface PostDatedChequeOptions {
+  parties: { id: string; name: string | null; gstin: string | null }[];
+  bank_accounts: { id: string; name: string }[];
+  documents: {
+    id: string; number: string | null; date: string | null; due_date: string | null;
+    outstanding_paise: number;
+  }[];
+}
+
+export interface PostDatedChequeConversion {
+  cheque: PostDatedCheque;
+  document: {
+    kind: "receipt" | "payment"; id: string; number: string | null; date: string;
+    amount_paise: number; journal_entry_id: string | null; unallocated_paise: number | null;
+    posting_account_notice: string | null;
+  };
+  stale_note: string | null;
+}
+
+export interface PostDatedChequeWrite {
+  cheque_no?: string;
+  cheque_date?: string;
+  amount_paise?: number;
+  drawee_bank?: string | null;
+  bank_account_id?: string | null;
+  notes?: string | null;
+  allocations?: { sales_invoice_id?: string; purchase_bill_id?: string; allocated_paise: number }[];
+}
+
+/** accounting-20 — price lists. A PRE-FILL source for an invoice line's rate and nothing
+ *  else: it changes no tax and posts nothing, and an invoice keeps whatever rate it
+ *  was given. The browser holds no pricing rule; `resolve` is the server's answer. */
+export interface PriceList {
+  id: string;
+  client_id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+}
+
+export interface PriceListItemRow {
+  id: string;
+  service_catalogue_id: string;
+  name: string | null;
+  hsn_sac: string | null;
+  unit: string | null;
+  is_active: boolean | null;
+  rate_paise: number;
+  /** The catalogue's own rate, beside the list's. null where the catalogue has none. */
+  catalogue_rate_paise: number | null;
+}
+
+export interface PriceListCustomerRow {
+  customer_id: string;
+  customer_name: string | null;
+  is_active: boolean;
+  price_list_id: string | null;
+  price_list_name: string | null;
+  price_list_archived: boolean;
+}
+
+/** Where a pre-filled rate came from. `none` carries a null rate, never 0. */
+export interface ResolvedRate {
+  rate_paise: number | null;
+  source: "price_list" | "catalogue" | "none";
+  price_list_id: string | null;
+  price_list_name: string | null;
+  note: string | null;
+}
+
 export interface PreInvoiceLine {
   description: string;
   hsn_sac?: string | null;
@@ -3212,6 +3533,131 @@ export interface ChallanParticulars {
   rule_55_5: { steps: string[]; gaps: string[] };
   itc_04: { decided: boolean; readings: string[]; refusal: string };
   ca_review_required: boolean;
+}
+
+/** GST-30 — FORM GST ITC-04 (Rule 45(3)), derived from the job-work challans.
+ *  Every figure and every sentence is the server's; quantities are TEXT with
+ *  three decimals and are never turned into a number here. */
+export interface Itc04Window {
+  cadence: string;
+  key: string;
+  label: string;
+  start: string;
+  end: string;
+  due_date: string;
+  table_4_rows?: number;
+  table_5a_rows?: number;
+}
+
+export interface Itc04Reading {
+  cadence: string;
+  label: string;
+  /** Always false: the cadence turns on a limit this product does not hold. */
+  chosen: boolean;
+  windows: Itc04Window[];
+}
+
+export interface Itc04JobWorker {
+  name: string | null;
+  gstin: string | null;
+  state_code: string | null;
+  identified: boolean;
+}
+
+export interface Itc04Gap { challan_no: string | null; kind: string; reason: string }
+
+export interface Itc04Table4Row {
+  challan_id: string;
+  challan_line_id: string;
+  job_worker: Itc04JobWorker;
+  challan_no: string | null;
+  challan_date: string;
+  type_of_goods: string | null;
+  description: string | null;
+  hsn_sac: string | null;
+  uqc: string | null;
+  quantity: string;
+  taxable_value_paise: number;
+  igst_rate: string;
+  cgst_rate: string;
+  sgst_rate: string;
+}
+
+export interface Itc04Table5aRow {
+  challan_id: string;
+  challan_line_id: string;
+  job_worker: Itc04JobWorker;
+  original_challan_no: string | null;
+  original_challan_date: string;
+  job_worker_challan_no: string | null;
+  job_worker_challan_date: string | null;
+  nature_of_job_work: string | null;
+  returned_on: string;
+  description: string | null;
+  uqc: string | null;
+  quantity: string;
+  lost_or_wasted_quantity: string;
+  derived_from_whole_challan_return: boolean;
+}
+
+export interface Itc04Balance {
+  challan_id: string;
+  challan_no: string | null;
+  challan_date: string;
+  job_worker: Itc04JobWorker;
+  goods_kind: string | null;
+  lines: {
+    challan_line_id: string;
+    description: string | null;
+    uqc: string | null;
+    sent: string;
+    returned: string;
+    lost_or_wasted: string;
+    outstanding: string;
+    taxable_value_at_stake_paise: number;
+  }[];
+  taxable_value_at_stake_paise: number;
+  clock: DeemedSupplyClock;
+}
+
+export interface Itc04Statement {
+  client_id: string;
+  financial_year: string;
+  as_of: string;
+  period: {
+    decided: boolean;
+    readings: string[];
+    refusal: string;
+    preceding_year_aato_paise: number | null;
+    verified: boolean;
+  };
+  readings: Itc04Reading[];
+  selected_window: Itc04Window | null;
+  table_4: { title: string; rows: Itc04Table4Row[]; count: number;
+             taxable_value_paise: number; gaps: Itc04Gap[] } | null;
+  table_5a: { title: string; rows: Itc04Table5aRow[]; count: number;
+              gaps: Itc04Gap[] } | null;
+  table_5b: { derived: boolean; reason: string };
+  table_5c: { derived: boolean; reason: string };
+  outstanding: Itc04Balance[];
+  gaps: string[];
+  nothing_is_filed: boolean;
+  verified: boolean;
+  ca_review_required: boolean;
+}
+
+/** One lot coming back from a job worker. Quantities go as numbers parsed by
+ *  `lib/money/rupeeInput.parseQuantity`, never by `parseFloat`. */
+export interface ChallanReturnBody {
+  client_id: string;
+  challan_line_id: string;
+  returned_on: string;
+  quantity_returned: number;
+  quantity_lost_or_wasted: number;
+  job_worker_challan_no?: string | null;
+  job_worker_challan_date?: string | null;
+  nature_of_job_work?: string | null;
+  notes?: string | null;
 }
 
 export interface OrderOpenLine {
@@ -3829,6 +4275,18 @@ export const api = {
     // journal drill-through) now calls getJournalEntry below with the
     // document's own journal_entry_id instead of searching a date window.
     createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
+    /** A spreadsheet of journals, payments, receipts and contras, posted voucher
+     *  by voucher through the one posting kernel (accounting-17). `status` is required
+     *  and has no default — `posted` goes on the books now, `draft` stays off
+     *  them. Send a few vouchers per call: each post is several round trips and
+     *  the browser gives up at 45 seconds without retrying. */
+    importVouchers: (body: {
+      client_id: string;
+      status: "draft" | "posted";
+      legs: VoucherImportLeg[];
+      dry_run?: boolean;
+    }) => request<ApiResp<VoucherImportResult>>("/api/accounting/vouchers/import",
+      { method: "POST", body: JSON.stringify(body) }),
     /* ACC-13, migration 418. Cost centres are a DIMENSION on a journal line —
        they change no figure, no total and no statutory output — so they live
        under their own prefix rather than on /api/accounting, which is the
@@ -4077,6 +4535,20 @@ export const api = {
         }),
     },
   },
+  einvoice: {
+    /** GST-20 — in-scope invoices that have no live IRN, oldest first, with the
+     *  IRP's reporting-window clock. Per client when `clientId` is given, else
+     *  across the caller's own clients. Reports only: no IRN is generated and no
+     *  portal is reached. */
+    missingIrn: (clientId?: string | null, since?: string | null) => {
+      const q = new URLSearchParams();
+      if (clientId) q.set("client_id", clientId);
+      if (since) q.set("since", since);
+      const qs = q.toString();
+      return request<ApiResp<IrnWorklist>>(
+        `/api/einvoice/missing-irn${qs ? `?${qs}` : ""}`);
+    },
+  },
   // Stock register + per-item ledger (migration 188). Read-only — all
   // movements are written as a side effect of issuing/receiving documents.
   ewayBill: {
@@ -4301,8 +4773,17 @@ export const api = {
       });
       // A 422 here is a real answer (an unmappable file, a contradictory
       // mapping) and its message is written for the CA, so surface the body
-      // rather than the status line.
-      if (!res.ok) throw new Error(await errorMessage(res));
+      // rather than the status line. It is thrown as an ApiRefusal — still an
+      // Error — so the server's CODE survives beside the sentence: a locked PDF
+      // is refused here with the password-required code and the dialog asks for
+      // the password on that, not on the wording (accounting-23). The body is read
+      // twice, through a clone, because `errorMessage` flattens for display and
+      // `refusalFrom` keeps the code.
+      if (!res.ok) {
+        const forCode = res.clone();
+        const message = await errorMessage(res);
+        throw new ApiRefusal(message, (await refusalFrom(forCode)).code);
+      }
       return res.json();
     },
     /** Read a statement's header row + first rows so the CA can map the columns. */
@@ -6082,6 +6563,124 @@ export const api = {
     },
   },
 
+  /**
+   * A live report as a server-made PDF or spreadsheet (accounting-16). The file is
+   * built in apps/api from the SAME report function the screen calls, headed by
+   * the practice and naming the client, so what is downloaded is what is on
+   * screen. A refusal (a ledger too long to print, a report that does not foot)
+   * arrives as a thrown `API error 422: {"detail": …}` — read it with
+   * `exportErrorMessage` from `lib/export/reportExport`.
+   */
+  reportExports: {
+    download: (report: ExportReport, format: ExportFormat, clientId: string,
+               params: ExportParams = {}) =>
+      downloadFile(`/api/report-exports/${report}?${exportQuery(clientId, format, params)}`,
+                   `${report}.${format}`),
+  },
+
+  /** accounting-22 — interest on an overdue customer balance. The preview reads and
+   *  writes nothing; `prepareDrafts` makes an ordinary DRAFT sales invoice
+   *  (posts no journal, issues nothing, emails nothing). Every figure is the
+   *  server's: a request carries a date and ids, never an amount. */
+  lateInterest: {
+    preview: (clientId: string, asOf?: string, customerId?: string) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (asOf) q.set("as_of", asOf);
+      if (customerId) q.set("customer_id", customerId);
+      return request<ApiResp<LateInterestPreview>>(`/api/late-interest/preview?${q}`);
+    },
+    terms: (clientId: string) =>
+      request<ApiResp<{ customers: LateInterestTerms[] }>>(
+        `/api/late-interest/terms?client_id=${encodeURIComponent(clientId)}`),
+    setTerms: (body: {
+      client_id: string; customer_id: string; rate_bps: number | null;
+      grace_days: number; basis: string;
+    }) =>
+      request<ApiResp<LateInterestTerms>>("/api/late-interest/terms",
+        { method: "PUT", body: JSON.stringify(body) }),
+    prepareDrafts: (body: {
+      client_id: string; customer_id: string; as_of_date?: string; invoice_ids?: string[];
+    }) =>
+      request<ApiResp<LateInterestDrafts>>("/api/late-interest/drafts",
+        { method: "POST", body: JSON.stringify(body) }),
+  },
+
+  /** accounting-20 — price lists. Every call keeps a list or a customer's pointer to one;
+   *  none of them touches an invoice. `resolve` is asked when a catalogue item is
+   *  picked and its answer lands in the rate box, where it stays editable. */
+  priceLists: {
+    list: (clientId: string, includeArchived = false) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (includeArchived) q.set("include_archived", "true");
+      return request<ApiResp<{ price_lists: PriceList[] }>>(`/api/price-lists?${q}`);
+    },
+    customers: (clientId: string) =>
+      request<ApiResp<{ customers: PriceListCustomerRow[] }>>(
+        `/api/price-lists/customers?client_id=${encodeURIComponent(clientId)}`),
+    resolve: (clientId: string, customerId: string, serviceCatalogueId: string) => {
+      const q = new URLSearchParams({
+        client_id: clientId, customer_id: customerId, service_catalogue_id: serviceCatalogueId });
+      return request<ApiResp<ResolvedRate>>(`/api/price-lists/resolve?${q}`);
+    },
+    items: (listId: string, clientId: string) =>
+      request<ApiResp<{ price_list: PriceList; items: PriceListItemRow[] }>>(
+        `/api/price-lists/${encodeURIComponent(listId)}/items?client_id=${encodeURIComponent(clientId)}`),
+    create: (clientId: string, name: string, description?: string) =>
+      request<ApiResp<PriceList>>("/api/price-lists", { method: "POST",
+        body: JSON.stringify({ client_id: clientId, name, description: description || null }) }),
+    update: (listId: string, clientId: string,
+             body: { name?: string; description?: string | null; is_active?: boolean }) =>
+      request<ApiResp<PriceList>>(`/api/price-lists/${encodeURIComponent(listId)}`, {
+        method: "PATCH", body: JSON.stringify({ ...body, client_id: clientId }) }),
+    setItem: (listId: string, serviceCatalogueId: string, clientId: string, ratePaise: number) =>
+      request<ApiResp<unknown>>(
+        `/api/price-lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(serviceCatalogueId)}`,
+        { method: "PUT", body: JSON.stringify({ client_id: clientId, rate_paise: ratePaise }) }),
+    removeItem: (listId: string, serviceCatalogueId: string, clientId: string) =>
+      request<ApiResp<unknown>>(
+        `/api/price-lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(serviceCatalogueId)}`
+        + `?client_id=${encodeURIComponent(clientId)}`, { method: "DELETE" }),
+    assign: (clientId: string, customerId: string, priceListId: string | null) =>
+      request<ApiResp<unknown>>("/api/price-lists/assign", { method: "PUT",
+        body: JSON.stringify({ client_id: clientId, customer_id: customerId, price_list_id: priceListId }) }),
+  },
+
+  /** accounting-21 — the post-dated cheque register. `create`, `update` and `cancel`
+   *  post nothing; `convert` is the one call that reaches the books, and the
+   *  server does it through the ordinary receipt or payment engine. The browser
+   *  never builds a receipt and never decides whether a cheque is due. */
+  postDatedCheques: {
+    list: (clientId: string, direction: PostDatedChequeDirection, includeFinished = false) => {
+      const q = new URLSearchParams({ client_id: clientId, direction });
+      if (includeFinished) q.set("include_finished", "true");
+      return request<ApiResp<PostDatedChequeRegister>>(`/api/post-dated-cheques?${q}`);
+    },
+    options: (clientId: string, direction: PostDatedChequeDirection, partyId?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, direction });
+      if (partyId) q.set("party_id", partyId);
+      return request<ApiResp<PostDatedChequeOptions>>(`/api/post-dated-cheques/options?${q}`);
+    },
+    create: (body: PostDatedChequeWrite & {
+      client_id: string; direction: PostDatedChequeDirection;
+      customer_id?: string; vendor_id?: string;
+      cheque_no: string; cheque_date: string; amount_paise: number;
+    }) =>
+      request<ApiResp<PostDatedCheque>>("/api/post-dated-cheques",
+        { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, clientId: string, body: PostDatedChequeWrite) =>
+      request<ApiResp<PostDatedCheque>>(`/api/post-dated-cheques/${encodeURIComponent(id)}`,
+        { method: "PATCH", body: JSON.stringify({ ...body, client_id: clientId }) }),
+    convert: (id: string, clientId: string, presentedOn?: string) =>
+      request<ApiResp<PostDatedChequeConversion>>(
+        `/api/post-dated-cheques/${encodeURIComponent(id)}/convert`,
+        { method: "POST", body: JSON.stringify({
+          client_id: clientId, ...(presentedOn ? { presented_on: presentedOn } : {}) }) }),
+    cancel: (id: string, clientId: string, reason?: string) =>
+      request<ApiResp<PostDatedCheque>>(
+        `/api/post-dated-cheques/${encodeURIComponent(id)}/cancel`,
+        { method: "POST", body: JSON.stringify({ client_id: clientId, reason: reason || null }) }),
+  },
+
   /** THE supplier master. `public.suppliers` (migration 030) looked like a
    *  second one and was written only by /accounting/suppliers; migration 378
    *  retired it. Every purchase path — bill creation, TDS withholding, AP
@@ -6454,6 +7053,18 @@ export const api = {
       request<ApiResp<DeliveryChallan>>(
         `/api/sales-cycle/challans/${id}?client_id=${encodeURIComponent(clientId)}`,
         { method: "PATCH", body: JSON.stringify(body) }),
+    /** GST-30 — FORM GST ITC-04 derived from the job-work challans entered.
+     *  With no `window`, every reading's windows are listed and none is chosen. */
+    itc04: (clientId: string, financialYear: string, window?: string | null) =>
+      request<ApiResp<Itc04Statement>>(
+        `/api/sales-cycle/itc-04?client_id=${encodeURIComponent(clientId)}`
+        + `&financial_year=${encodeURIComponent(financialYear)}`
+        + (window ? `&window=${encodeURIComponent(window)}` : "")),
+    /** One lot of goods coming back from a job worker, against its challan line. */
+    recordChallanReturn: (challanId: string, body: ChallanReturnBody) =>
+      request<ApiResp<{ id: string; challan_marked_received_back: boolean }>>(
+        `/api/sales-cycle/challans/${challanId}/returns`,
+        { method: "POST", body: JSON.stringify(body) }),
   },
 
   openingDocuments: {
@@ -6479,6 +7090,16 @@ export const api = {
         `/api/opening-documents/${id}?client_id=${encodeURIComponent(clientId)}`
         + `&kind=${encodeURIComponent(kind)}`,
         { method: "DELETE" }),
+    /** A spreadsheet of open invoices or bills, judged row by row (accounting-05).
+     *  Bad rows come back by number, good ones land, a re-upload records
+     *  nothing twice. `dryRun` judges and writes nothing. */
+    bulkImport: (body: {
+      client_id: string;
+      kind: "receivable" | "payable";
+      rows: OpeningDocumentImportRow[];
+      dry_run?: boolean;
+    }) => request<ApiResp<OpeningDocumentBulkResult>>("/api/opening-documents/bulk",
+      { method: "POST", body: JSON.stringify(body) }),
     /** Both sides at once — what the Opening Balances tab opens on. */
     reconciliation: (clientId: string) =>
       request<ApiResp<OpeningReconciliation>>(

@@ -80,7 +80,8 @@ def listing(db, firm_id: str, client_id: str) -> list[dict]:
     """Every registration this client holds, primary first."""
     client = _client(db, firm_id, client_id)
     out = []
-    for r in reg.all_registrations(client, _rows(db, firm_id, client_id)):
+    held_here = reg.all_registrations(client, _rows(db, firm_id, client_id))
+    for r in held_here:
         out.append({
             "id": r.id,
             "gstin": r.gstin,
@@ -107,6 +108,17 @@ def listing(db, firm_id: str, client_id: str) -> list[dict]:
             # The refusal is DATA, so a screen can grey the return out and say
             # which form this registration actually owes.
             "other_return_form": reg.OTHER_RETURN_FORMS.get(r.registration_type),
+            # WHAT BUILDING A RETURN FOR THIS REGISTRATION WOULD HAVE TO SAY
+            # (GST-17, GST-05). A registration picker invites a CA to choose
+            # which GSTIN to prepare, and no invoice, bill or note records which
+            # registration it belongs to — so the choice does not filter a
+            # thing. The sentence is carried HERE, where the choice is made,
+            # from the in-memory list already read (no further query), and is
+            # None where the client holds one registration that files the
+            # ordinary pair. `registrations.documents_not_split_caveat` is the
+            # one place it is worded; GST-16 retires it.
+            "documents_not_split_caveat": reg.documents_not_split_caveat(
+                held_here, r.gstin),
         })
     return out
 

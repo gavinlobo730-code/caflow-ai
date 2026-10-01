@@ -236,17 +236,28 @@ def test_the_stored_summary_still_knows_which_client_it_is_about(one_client, mon
 
 
 # ── the guard: every door that sends text to Groq ────────────────────────────
+#
+# THE GUARD WAS RESTATED WHEN THE GATEWAY LANDED (ai-04). It listed the files that
+# SENT to Groq — three redacting senders and two document readers — and failed a
+# file that appeared or vanished from the list. That was a guard on a spelling of
+# the rule: five modules each built a request, so five had to be named. The rule
+# is that a request is built in ONE place that redacts, and that the only callers
+# who may switch the redaction off are the ones for whom the DOCUMENT is the
+# payload. So the guard is now stated on those two facts:
+#
+#   1. one module sends text to Groq at all;
+#   2. `redact=False` appears at exactly the document readers, by name.
+
+import ast
 
 API = pathlib.Path(__file__).resolve().parents[1]
 
-#: Where text is sent to Groq, and why each is acceptable. The STRINGS are what a
-#: file must contain to be a sender, so a new sender has to be added here — with a
-#: reason — rather than appearing quietly.
+#: The ONE module that sends text to Groq, and why that is acceptable.
 REDACTING_SENDERS = {
-    "domain/ai/groq_text.py": "the one chat client; redacts in chat()",
-    "routers/ai_copilot.py": "builds its own request; redacts it by name",
-    "domain/financial_analysis_service.py": "builds its own request (figures only); redacts it by name",
+    "domain/ai/groq_text.py": "the one chat client; it redacts in chat_detailed() by default",
 }
+#: The modules that may call the door with `redact=False`. A new reader has to be
+#: added here with its reason, rather than appearing quietly.
 DOCUMENT_IS_THE_PAYLOAD = {
     "routers/document_intelligence_v1.py":
         "invoice extraction: the supplier's GSTIN is printed on the document being read",
@@ -255,29 +266,29 @@ DOCUMENT_IS_THE_PAYLOAD = {
 }
 
 
-def _senders() -> set[str]:
-    found = set()
+def _production_files():
     for path in API.rglob("*.py"):
         rel = path.relative_to(API).as_posix()
         if rel.startswith(("tests/", "migrations/", "scripts/")):
             continue
-        src = path.read_text()
+        yield rel, path.read_text()
+
+
+def _senders() -> set[str]:
+    found = set()
+    for rel, src in _production_files():
         if ("api.groq.com" in src or "from groq import Groq" in src):
             found.add(rel)
     return found
 
 
-def test_every_sender_to_groq_is_either_redacted_or_named_as_reading_a_document():
+def test_one_module_sends_text_to_groq_and_it_redacts():
     senders = _senders()
     assert senders, "the scan found nothing — it would pass vacuously"
-    unknown = senders - set(REDACTING_SENDERS) - set(DOCUMENT_IS_THE_PAYLOAD)
-    assert not unknown, (
-        f"{sorted(unknown)} send text to Groq. Route the request through "
-        f"domain/ai/groq_text.chat (which redacts), or redact_messages() it yourself, "
-        f"and add it to REDACTING_SENDERS; or, if the DOCUMENT is the payload, name it "
-        f"in DOCUMENT_IS_THE_PAYLOAD with the reason.")
-    stale = (set(REDACTING_SENDERS) | set(DOCUMENT_IS_THE_PAYLOAD)) - senders
-    assert not stale, f"{sorted(stale)} no longer send to Groq — remove the entry"
+    assert senders == set(REDACTING_SENDERS), (
+        f"{sorted(senders ^ set(REDACTING_SENDERS))} send text to Groq (or stopped). Route "
+        "the request through domain/ai/groq_text.chat — the one place a Groq request is "
+        "built, and the one place it is redacted.")
 
 
 @pytest.mark.parametrize("rel", sorted(REDACTING_SENDERS))
@@ -285,3 +296,55 @@ def test_a_redacting_sender_really_calls_the_redactor(rel):
     src = (API / rel).read_text()
     code = re.sub(r'""".*?"""', "", src, flags=re.S)
     assert re.search(r"\bredact_messages\(", code), f"{rel} is listed as redacting and does not"
+
+
+def test_the_door_redacts_unless_it_is_told_not_to():
+    import inspect
+    sig = inspect.signature(groq_text.chat_detailed)
+    assert sig.parameters["redact"].default is True, (
+        "the door must redact by DEFAULT: a caller that says nothing sends no identifier")
+
+
+def _calls_that_switch_redaction_off() -> set[str]:
+    """Every production file with a call carrying `redact=<anything but True>`."""
+    off = set()
+    for rel, src in _production_files():
+        if "redact" not in src:
+            continue
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for kw in node.keywords:
+                if kw.arg == "redact" and not (
+                        isinstance(kw.value, ast.Constant) and kw.value.value is True):
+                    off.add(rel)
+    return off
+
+
+def test_redaction_is_switched_off_only_where_the_document_is_the_payload():
+    off = _calls_that_switch_redaction_off()
+    assert off, "the scan found no document reader — it would pass vacuously"
+    unknown = off - set(DOCUMENT_IS_THE_PAYLOAD)
+    assert not unknown, (
+        f"{sorted(unknown)} call the AI door with redaction off. Redaction is off only "
+        f"where the DOCUMENT is the payload (an invoice or a notice being read); name the "
+        f"module in DOCUMENT_IS_THE_PAYLOAD with the reason, or redact.")
+    stale = set(DOCUMENT_IS_THE_PAYLOAD) - off
+    assert not stale, f"{sorted(stale)} no longer switch redaction off — remove the entry"
+
+
+def test_the_statement_analysis_is_redacted_on_the_wire(wire, monkeypatch):
+    """financial_analysis_service used to build its own request and redact it by
+    name; it goes through the door now, so the door's redaction is what is
+    asserted — on the wire, not in a copy."""
+    import domain.financial_analysis_service as fa
+    monkeypatch.setattr(fa, "_GROQ_API_KEY", "k")
+    asyncio.run(fa._call_groq([
+        {"role": "system", "content": "analyse"},
+        {"role": "user", "content": f"Client {GSTIN} / {PAN}: revenue Rs 1,00,000"}]))
+    text = _payload_text(wire[0])
+    assert GSTIN not in text and PAN not in text

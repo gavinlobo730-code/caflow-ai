@@ -41,6 +41,7 @@ import {
 } from "@/lib/purchases/vendorHistory";
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
+import { objectWithLists } from "@/lib/api/shape";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -105,6 +106,20 @@ interface ExtractionTotalsCheck {
   agrees: boolean;
   tolerance_paise: number;
   note: string | null;
+  /** Each failing check's own sentence, with its own amounts (header sum, lines
+   *  against the taxable value, tax at the lines' rates). Absent from a backend one
+   *  deploy behind, which is why the screen falls back to `note`. */
+  failures?: string[];
+}
+
+/** `supplier_check` from the same response (domain/extraction_checks.py): the
+ *  supplier GSTIN against its own check digit, and IGST against CGST+SGST for the
+ *  States involved. Reports; the screen never decides either. */
+interface ExtractionSupplierCheck {
+  /** `valid` is null where there was no GSTIN to test, and false only where the
+   *  check digit (or the shape) failed. */
+  gstin?: { checked: boolean; present: boolean; valid: boolean | null; problem: string | null };
+  failures?: { check: string; reason: string }[];
 }
 
 /** One bill the server believes this one may be a second copy of.
@@ -314,6 +329,7 @@ export function PurchaseBillEditor({
   // (PUR-21). Computed in apps/api — domain/extraction_totals.py — because the
   // tolerance is a rule about CGST s.170's round-off, not a display choice.
   const [aiTotals, setAiTotals] = useState<ExtractionTotalsCheck | null>(null);
+  const [aiSupplier, setAiSupplier] = useState<ExtractionSupplierCheck | null>(null);
   // Storage PATH of the uploaded invoice (not a browser-openable URL — the
   // "Documents" bucket is private) — set on any upload attempt, whether or
   // not AI extraction itself succeeds, so the original file is retained as
@@ -554,6 +570,47 @@ export function PurchaseBillEditor({
     setLines((prev) => [...prev, { ...EMPTY_LINE, _k: nextKey() }]);
   }
 
+  // ── Enter goes to the next line (accounting-08) ───────────────────────────────────
+  // A CA keying a bill of ten lines in Tally moves with the keyboard; this grid
+  // had no key handling at all, so every line was a trip to the mouse. Enter in
+  // one of the grid's PLAIN INPUTS (description, quantity, rate, the two cess
+  // cells) moves to the SAME cell on the next line — down the column, the way a
+  // spreadsheet does it — and on the last line adds one, but only when the line
+  // has something on it, so Enter on an untouched blank line is not a way to
+  // grow the bill.
+  //
+  // ONLY inputs that carry `data-cell` take part. The catalogue, HSN and account
+  // pickers keep Enter (it selects an option), selects and checkboxes keep it
+  // (it is how they are operated), and a delegated handler on the body is what
+  // lets every cell opt in with one attribute instead of seven handlers.
+  const gridRef = useRef<HTMLTableSectionElement>(null);
+  const [focusCell, setFocusCell] = useState<{ row: number; cell: string } | null>(null);
+  useEffect(() => {
+    if (!focusCell) return;
+    const rows = gridRef.current?.children;
+    const input = rows?.[focusCell.row]?.querySelector<HTMLInputElement>(
+      `[data-cell="${focusCell.cell}"]`);
+    input?.focus();
+    input?.select();
+    setFocusCell(null);
+  }, [focusCell]);
+
+  function onLineGridKeyDown(e: React.KeyboardEvent<HTMLTableSectionElement>) {
+    if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    const target = e.target as HTMLElement;
+    const cell = target instanceof HTMLInputElement ? target.dataset.cell : undefined;
+    if (!cell || !gridRef.current) return;
+    const rowEl = target.closest("tr");
+    const row = rowEl ? Array.prototype.indexOf.call(gridRef.current.children, rowEl) : -1;
+    if (row < 0) return;
+    e.preventDefault();
+    if (row < lines.length - 1) { setFocusCell({ row: row + 1, cell }); return; }
+    const last = lines[row];
+    if (!last || !(last.description.trim() || last.rate || last.hsn_sac || last.service_catalogue_id)) return;
+    addLine();
+    setFocusCell({ row: row + 1, cell });
+  }
+
   // Look up catalogue items sharing each extracted line's HSN/SAC (one
   // batched query, not one search per line) and either auto-link a single
   // confident match or attach the candidate list for the chip UI below.
@@ -597,6 +654,7 @@ export function PurchaseBillEditor({
     setExtracting(true);
     setAiExtracted(null);
     setAiTotals(null);
+    setAiSupplier(null);
     setError(null);
     try {
       const formData = new FormData();
@@ -615,7 +673,9 @@ export function PurchaseBillEditor({
       if (json.success && json.data?.extracted) {
         const ex = json.data.extracted as ExtractedInvoice;
         setAiExtracted(ex as unknown as Record<string, unknown>);
-        setAiTotals((json.data.totals_check as ExtractionTotalsCheck | undefined) ?? null);
+        setAiTotals(objectWithLists<ExtractionTotalsCheck>(json.data.totals_check, "failures"));
+        const supplier = objectWithLists<ExtractionSupplierCheck>(json.data.supplier_check, "failures");
+        setAiSupplier(supplier);
         if (ex.invoice_no) setBillNo(ex.invoice_no);
         if (ex.invoice_date) setBillDate(ex.invoice_date);
         // Match the extracted vendor — GSTIN first (exact, authoritative),
@@ -627,9 +687,19 @@ export function PurchaseBillEditor({
         // silently stayed empty even on a successful extraction.
         const gstin = ex.vendor_gstin?.trim().toUpperCase();
         const name = ex.vendor_name?.trim().toLowerCase();
-        const matched = (gstin && vendors.find((v) => v.gstin?.toUpperCase() === gstin))
-          ?? (name && vendors.find((v) => v.name.trim().toLowerCase() === name))
-          ?? null;
+        // A GSTIN is matched on only if the server did not find it WRONG (ai-02).
+        // The model is typing fifteen characters it has looked at, and the server
+        // tests them against the check digit; `valid === false` means this one
+        // failed, so it identifies no registration and the vendor is not chosen by
+        // it. `null` (nothing to test) and `true` both leave the match as it was.
+        const gstinTrusted = supplier?.gstin?.valid !== false;
+        const byGstin = gstin && gstinTrusted
+          ? vendors.find((v) => v.gstin?.toUpperCase() === gstin)
+          : undefined;
+        const byName = name
+          ? vendors.find((v) => v.name.trim().toLowerCase() === name)
+          : undefined;
+        const matched = byGstin ?? byName ?? null;
         if (matched) onVendorChange(matched.id);
         if (ex.line_items?.length) {
           // AI-01: nothing is invented here. A quantity, unit, rate or GST rate
@@ -937,7 +1007,23 @@ export function PurchaseBillEditor({
                     </div>
                   ))}
                 </div>
-                {aiTotals?.checked && !aiTotals.agrees && (
+                {/* Each failing check says its own thing with its own amounts
+                    (ai-02): the lines against the taxable value and the tax at the
+                    lines' rates are different findings from the header sum, and
+                    "off by" one figure cannot describe all three. A server one
+                    deploy behind sends no `failures`, and the header sentence
+                    below is what it always was. */}
+                {aiTotals && !aiTotals.agrees && (aiTotals.failures?.length ?? 0) > 0 && (
+                  <div className="space-y-1">
+                    {(aiTotals.failures ?? []).map((reason, i) => (
+                      <p key={i} className="flex items-start gap-1 text-3xs text-state-problem bg-state-problem-surface rounded px-1.5 py-1">
+                        <AlertTriangle size={11} className="mt-px flex-shrink-0" />
+                        <span>{reason}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {aiTotals?.checked && !aiTotals.agrees && (aiTotals.failures?.length ?? 0) === 0 && (
                   <p className="flex items-start gap-1 text-3xs text-state-problem bg-state-problem-surface rounded px-1.5 py-1">
                     <AlertTriangle size={11} className="mt-px flex-shrink-0" />
                     <span>
@@ -946,6 +1032,16 @@ export function PurchaseBillEditor({
                     </span>
                   </p>
                 )}
+                {/* The supplier, checked beside the figures (ai-02): a GSTIN whose
+                    check digit fails is a GSTIN the model misread, and IGST between
+                    two same-State registrations is a tax head it misread or a place
+                    of supply only the invoice can show. Both WARN. */}
+                {(aiSupplier?.failures ?? []).map((f) => (
+                  <p key={f.check} className="flex items-start gap-1 text-3xs text-state-problem bg-state-problem-surface rounded px-1.5 py-1">
+                    <AlertTriangle size={11} className="mt-px flex-shrink-0" />
+                    <span>{f.reason}</span>
+                  </p>
+                ))}
                 {aiTotals && !aiTotals.checked && (
                   <p className="text-3xs text-ps-hint">{aiTotals.note}</p>
                 )}
@@ -1206,7 +1302,7 @@ export function PurchaseBillEditor({
                   <th className="pb-2 w-6" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-border">
+              <tbody ref={gridRef} onKeyDown={onLineGridKeyDown} className="divide-y divide-ps-border">
                 {lines.map((line, idx) => {
                   const g = previewBillTotals([line], isInterstate);
                   const invalid = attempted && !isValidBillLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
@@ -1242,7 +1338,7 @@ export function PurchaseBillEditor({
                         )}
                       </td>
                       <td className="py-1.5 pr-2">
-                        <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" aria-label={`Line ${idx + 1} description`}
+                        <input data-cell="description" value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" aria-label={`Line ${idx + 1} description`}
                           className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-xs" />
                         {/* CGST ACT §17(5), UNDER THE DESCRIPTION AND NOT IN A
                             COLUMN OF ITS OWN. Eligible is the ordinary case, so
@@ -1329,7 +1425,7 @@ export function PurchaseBillEditor({
                         })()}
                       </td>
                       <td className="py-1.5 px-1">
-                        <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label={`Line ${idx + 1} quantity`}
+                        <input data-cell="qty" type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label={`Line ${idx + 1} quantity`}
                           placeholder={unreadOn(line, "quantity") ? "?" : undefined}
                           title={unreadOn(line, "quantity") ? NOT_STATED_TITLE : undefined}
                           className={`w-full px-2 py-1 border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs ${unreadOn(line, "quantity") ? UNREAD_CLASS : "border-ps-border"}`} />
@@ -1347,7 +1443,7 @@ export function PurchaseBillEditor({
                         </select>
                       </td>
                       <td className="py-1.5 px-1">
-                        <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })} placeholder={unreadOn(line, "rate") ? "?" : "0.00"} aria-label={`Line ${idx + 1} rate`}
+                        <input data-cell="rate" type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })} placeholder={unreadOn(line, "rate") ? "?" : "0.00"} aria-label={`Line ${idx + 1} rate`}
                           title={unreadOn(line, "rate") ? NOT_STATED_TITLE : undefined}
                           className={`w-full px-2 py-1 border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs ${unreadOn(line, "rate") ? UNREAD_CLASS : "border-ps-border"}`} />
                       </td>
@@ -1362,14 +1458,14 @@ export function PurchaseBillEditor({
                       {showCess && (
                         <>
                           <td className="py-1.5 px-1">
-                            <input type="number" min="0" step="0.01"
+                            <input data-cell="cessPercent" type="number" min="0" step="0.01"
                               value={line.cessPercent ?? ""}
                               onChange={(e) => setLine(idx, { cessPercent: e.target.value })}
                               placeholder="0" aria-label={`Line ${idx + 1} compensation cess percent`}
                               className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
                           </td>
                           <td className="py-1.5 px-1">
-                            <input type="number" min="0" step="0.01"
+                            <input data-cell="cessPerUnit" type="number" min="0" step="0.01"
                               value={line.cessPerUnit ?? ""}
                               onChange={(e) => setLine(idx, { cessPerUnit: e.target.value })}
                               placeholder="0.00" aria-label={`Line ${idx + 1} compensation cess per unit`}

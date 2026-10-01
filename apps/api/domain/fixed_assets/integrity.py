@@ -23,6 +23,9 @@ WHAT EACH CHECK MEANS, because none of them is self-evident from its name:
     no entry ever put it on the balance sheet. It arises when journal posting
     failed after the row was inserted: the router updates `journal_entry_id` in
     a SECOND statement, so a failure between the two leaves exactly this.
+    NOT raised for an asset brought over with its own accumulated depreciation
+    (`opening_position_date`, accounting-18): that one reaches the ledger through the
+    opening balances and was never meant to have an acquisition entry.
   * `bill_capitalised_more_than_once` — migration 343's unique index stops it
     now, but rows created before it are unprotected, and the same bill's cost
     then sits in Fixed Assets twice while its payable is recorded once.
@@ -58,7 +61,7 @@ COLUMNS = (
     "id, asset_code, asset_name, purchase_cost_paise, accumulated_depreciation_paise, "
     "salvage_value_paise, journal_entry_id, acquisition_mode, purchase_bill_id, "
     "is_disposed, asset_category, depreciation_method, wdv_rate_percent, "
-    "useful_life_years"
+    "useful_life_years, opening_position_date"
 )
 
 #: Every `kind` `register_findings` can produce. DECLARED here rather than
@@ -230,7 +233,14 @@ def register_findings(assets: Iterable[dict], live_bill_ids: set) -> list[dict]:
     by_bill: dict[str, list[dict]] = {}
 
     for a in assets:
-        if not a.get("journal_entry_id"):
+        # AN ASSET THAT ARRIVED WITH ITS OWN HISTORY HAS NO ACQUISITION JOURNAL BY
+        # DESIGN (accounting-18, migration 456): the ledger carries it through the
+        # opening balances and the register is the breakup of them, so reposting
+        # an acquisition — the only remedy this finding could offer — would count
+        # the cost twice. `opening_position_date` is the fact that says so, and an
+        # ABSENT key reads as an ordinary asset, the direction that cannot hide a
+        # real missing journal behind a narrow select.
+        if not a.get("journal_entry_id") and not a.get("opening_position_date"):
             findings.append({
                 "kind": "no_acquisition_journal",
                 "asset_code": a.get("asset_code"),

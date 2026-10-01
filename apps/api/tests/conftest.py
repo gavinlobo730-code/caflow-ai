@@ -40,6 +40,35 @@ def _ai_rate_limit_windows_start_empty():
     rate_limit.reset()
 
 
+@pytest.fixture(autouse=True)
+def ai_usage_events(monkeypatch):
+    """The AI gateway's pauses and usage rows, kept out of the suite.
+
+    A retry backs off by sleeping and every model attempt writes a usage row; in
+    a test the first would make a failing-provider fake cost seconds and the
+    second would try the database whenever a module sets SUPABASE_URL. So the
+    pauses are RECORDED instead of waited out (`ai_usage_events.sleeps`) and the
+    rows are COLLECTED instead of written (the fixture is the list of
+    `UsageEvent`s). A test of the policy itself reads both.
+    """
+    from domain.ai import gateway
+
+    class _Events(list):
+        sleeps: list
+
+    events = _Events()
+    events.sleeps = []
+
+    async def _sleep_async(seconds):
+        events.sleeps.append(seconds)
+
+    monkeypatch.setattr(gateway, "sleep_async", _sleep_async)
+    monkeypatch.setattr(gateway, "sleep_sync", lambda seconds: events.sleeps.append(seconds))
+    gateway.set_sink(events.append)
+    yield events
+    gateway.set_sink(None)
+
+
 @pytest.fixture
 def dev_header_auth(monkeypatch):
     """Opt in to the documented dev/test auth mode: X-User-Role / X-Firm-Id /

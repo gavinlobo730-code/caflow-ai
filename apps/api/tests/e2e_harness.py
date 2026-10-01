@@ -82,6 +82,12 @@ _GENERATED = {
 # firm's second client could never insert.
 _UNIQUE: dict[str, list[tuple[str, ...]]] = {
     "chart_of_accounts": [("firm_id", "account_code"), ("firm_id", "account_name")],
+    # Migration 461's uq_late_interest_charges_invoice_period_to. It covers EVERY
+    # row, so a charge whose draft was cancelled or deleted still occupies its
+    # key — the very thing `late_interest_service` has to release before the same
+    # period can be taken up again. A double that does not enforce it cannot see
+    # that (accounting-22), and a test pins this tuple to the migration.
+    "late_interest_charges": [("sales_invoice_id", "period_to")],
     **{table: [tuple(scope) + (field,)]
        for table, (field, scope) in _NUMBER_SERIES.items()},
 }
@@ -431,6 +437,7 @@ class _Query:
             payload = self._payload if isinstance(self._payload, list) else [self._payload]
             conflict = getattr(self, "_on_conflict", []) if self._op == "upsert" else []
             inserted = []
+            appended_before = len(rows)
             for p in payload:
                 r = dict(p)
                 if conflict and all(c in r for c in conflict):
@@ -446,7 +453,15 @@ class _Query:
                         continue
                 r.setdefault("id", str(uuid.uuid4()))
                 _apply_defaults(self.table, r)
-                _enforce_unique(self.table, rows, r)
+                try:
+                    _enforce_unique(self.table, rows, r)
+                except Exception:
+                    # ONE INSERT STATEMENT IS ALL-OR-NOTHING IN POSTGRES: a
+                    # multi-row insert that hits a unique index leaves none of
+                    # its rows behind, and a double that kept the first few
+                    # would let a test pass on a half-written claim.
+                    del rows[appended_before:]
+                    raise
                 rows.append(r)
                 inserted.append(r)
             _apply_generated(self.table, rows)

@@ -20,14 +20,21 @@ env-var override at all — not even the GROQ_TEXT_MODEL fallback pattern the
 other Groq callers use — so when that model was retired this path had no
 config remedy, only a code change. It now reads
 domain.ai.groq_text.text_model(), the one place that decision is made.
+
+⚠️ And until ai-04/ai-05 it built its OWN httpx request to Groq, swallowed every
+failure into `None`, capped the answer at 300 tokens and marked any reply that
+was not None `ai_generated` — so a reasoning model that spent the 300 on
+reasoning and sent back "" produced a blank summary labelled AI-written. It asks
+the one door (`groq_text.chat`) now, at low reasoning effort and a larger
+allowance, and the door refuses an empty reply as a failure; this module still
+checks for itself, because `ai_generated` is a claim about who wrote the text.
 """
 from __future__ import annotations
 
 import logging
 import os
 from typing import Optional
-from domain.ai.groq_text import text_model
-from domain.ai.redaction import redact_messages
+from domain.ai import groq_text
 from domain.money_text import rupees_paise
 
 _logger = logging.getLogger("caflow.financial_analysis")
@@ -124,34 +131,32 @@ def _deterministic_narrative(pl: dict, prev_pl: Optional[dict], ratios: dict) ->
     return " ".join(parts)
 
 
-async def _call_groq(messages: list[dict]) -> Optional[str]:
+async def _call_groq(messages: list[dict], *, firm_id: Optional[str] = None,
+                     user_id: Optional[str] = None) -> Optional[str]:
+    """The model's narrative, or None when there is no key or no usable answer.
+
+    The prompt is figures only, so redaction changes nothing today; the door
+    redacts every request it builds regardless (domain/ai/redaction), which is
+    why this module no longer builds one of its own."""
     if not _GROQ_API_KEY:
         return None
     try:
-        import httpx
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {_GROQ_API_KEY}", "Content-Type": "application/json"},
-                # The prompt is figures only, so this changes nothing today; it is
-                # here because this module builds its own request and every such
-                # request is redacted by name (domain/ai/redaction) — the
-                # guard in tests/test_no_model_call_site_sends_an_identifier.py
-                # lists every sender.
-                json={"model": text_model(), "messages": redact_messages(messages),
-                      "max_tokens": 300, "temperature": 0.3},
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
-    except Exception as exc:
+        text, _tokens = await groq_text.chat(
+            messages, api_key=_GROQ_API_KEY, max_tokens=groq_text.NARRATION_MAX_TOKENS,
+            temperature=0.3, reasoning_effort="low", feature="statement_analysis",
+            firm_id=firm_id, user_id=user_id)
+        return text
+    except groq_text.ProviderFailed as exc:
+        _logger.error("Groq API error (statement analysis): %s", exc.sentence)
+        return None
+    except Exception as exc:                                     # noqa: BLE001
         _logger.error("Groq API error (statement analysis): %s", exc)
         return None
 
 
 async def generate_statement_analysis(
     pl: dict, bs: dict, prev_pl: Optional[dict], financial_year: str, prev_financial_year: str,
+    *, firm_id: Optional[str] = None, user_id: Optional[str] = None,
 ) -> dict:
     ratios = compute_ratios(pl, bs)
 
@@ -179,9 +184,12 @@ async def generate_statement_analysis(
     narrative = await _call_groq([
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": prompt},
-    ])
-    ai_generated = narrative is not None
-    if narrative is None:
+    ], firm_id=firm_id, user_id=user_id)
+    # `ai_generated` says a MODEL WROTE this text. An empty or blank reply is not
+    # text anybody wrote, whatever else it is, so it is the plain narrative and
+    # the label says so (this tested only `is not None`).
+    ai_generated = bool(narrative and narrative.strip())
+    if not ai_generated:
         narrative = _deterministic_narrative(pl, prev_pl, ratios)
 
     return {"narrative": narrative.strip(), "ai_generated": ai_generated, "ratios": ratios}

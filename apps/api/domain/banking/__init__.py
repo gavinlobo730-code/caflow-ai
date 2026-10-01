@@ -10,6 +10,9 @@ from .normalizer import (
     parse_xlsx,
     detect_format,
     StatementParseError,
+    PdfPasswordError,
+    PdfPasswordRequired,
+    PdfPasswordIncorrect,
 )
 from .dedup import transaction_hash, file_hash
 from .categories import CATEGORIES, CATEGORY_SET, is_valid_category
@@ -54,7 +57,8 @@ from .candidate_search import (
 
 __all__ = [
     "NormalizedTxn", "parse_statement", "parse_csv", "parse_xlsx",
-    "detect_format", "StatementParseError", "transaction_hash", "file_hash",
+    "detect_format", "StatementParseError", "PdfPasswordError", "PdfPasswordRequired",
+    "PdfPasswordIncorrect", "transaction_hash", "file_hash",
     "CATEGORIES", "CATEGORY_SET", "is_valid_category",
     "suggest_category", "match_rule", "rule_matches", "RuleSuggestion",
     "ParsedNarration", "parse_narration", "party_matches", "normalise_party_name",

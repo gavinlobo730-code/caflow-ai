@@ -143,8 +143,22 @@ function NoticesSection({ clientId }: { clientId: string }) {
     }
   }
 
+  // Approving is what CREATES the response task and tells the partners (ai-16):
+  // an extracted notice is held for review and nothing is made from it until a CA
+  // approves it. So the answer is read — the server's sentence is shown when it
+  // refuses — rather than assumed, and the list reloads either way.
+  const [approveError, setApproveError] = useState<string | null>(null);
   async function approveNotice(id: string) {
-    await apiFetch(`/api/document-intelligence-v2/notices/${id}/approve`, { method: "POST" });
+    setApproveError(null);
+    try {
+      const res = await apiFetch(`/api/document-intelligence-v2/notices/${id}/approve`, { method: "POST" });
+      if (!res?.success) {
+        setApproveError(res?.error ?? "The notice could not be approved. No task was created.");
+      }
+    } catch (e) {
+      setApproveError(e instanceof Error && e.message
+        ? e.message : "The notice could not be approved. No task was created.");
+    }
     loadNotices();
   }
 
@@ -169,7 +183,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
       <CardContent className="space-y-3">
         {showExtract && (
           <div className="border rounded p-4 bg-ps-bg space-y-3">
-            <p className="text-xs font-medium text-state-attention">⚠ CA Review Required — AI extraction only. CA must approve before action.</p>
+            <p className="text-xs font-medium text-state-attention">⚠ CA Review Required — AI extraction only. The notice is held for review: no task is created and nobody is alerted until a CA approves it.</p>
             <textarea placeholder="Paste government notice text here…"
               value={noticeText} onChange={(e) => setNoticeText(e.target.value)}
               rows={6} className="w-full border rounded px-3 py-2 text-sm" />
@@ -193,6 +207,10 @@ function NoticesSection({ clientId }: { clientId: string }) {
         ) : notices.length === 0 ? (
           <p className="text-sm text-ps-hint text-center py-4">No government notices extracted yet.</p>
         ) : (
+          <>
+          {approveError && (
+            <p role="alert" className="text-xs text-state-problem">{approveError}</p>
+          )}
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="bg-ps-bg text-left text-xs">
@@ -220,16 +238,20 @@ function NoticesSection({ clientId }: { clientId: string }) {
                     {n.ca_approved ? (
                       <span className="text-xs text-state-ready">✓ Approved</span>
                     ) : (
-                      <button onClick={() => approveNotice(n.id as string)}
-                        className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">
-                        CA Approve
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-state-attention">Pending review</span>
+                        <button onClick={() => approveNotice(n.id as string)}
+                          className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">
+                          CA Approve
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </>
         )}
       </CardContent>
     </Card>

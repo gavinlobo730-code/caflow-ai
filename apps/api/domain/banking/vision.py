@@ -60,7 +60,11 @@ import json
 import logging
 from typing import Callable, Optional, Protocol
 
-from .normalizer import NormalizedTxn, StatementParseError, _to_iso_date, _to_paise
+from domain.ai.gateway import ProviderFailed
+
+from .normalizer import (
+    NormalizedTxn, StatementParseError, _to_iso_date, _to_paise, password_refusal_for,
+)
 
 _logger = logging.getLogger("caflow.banking.vision")
 
@@ -102,18 +106,25 @@ Rules:
 """.strip()
 
 
-def page_images(content: bytes, *, resolution: int = _RESOLUTION) -> list[bytes]:
+def page_images(content: bytes, *, resolution: int = _RESOLUTION,
+                password: Optional[str] = None) -> list[bytes]:
     """Each page of a PDF as PNG bytes.
 
     Raises rather than returning a short list when the document is longer than
     MAX_PAGES — a truncated statement that then failed the tie-out would send
     the CA looking for a missing transaction that was never sent to the model.
+
+    `password` opens a locked PDF for this one rasterising (accounting-23) — a locked
+    SCAN reaches here after the text parse opened it with the same password and
+    found no text. What leaves for the model is the PNGs this returns: never the
+    PDF, and never the password, which pdfplumber hands to its renderer for the
+    one open and which is not kept, logged or put in a message.
     """
     import pdfplumber
 
     out: list[bytes] = []
     try:
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
+        with pdfplumber.open(io.BytesIO(content), password=password or None) as pdf:
             if len(pdf.pages) > MAX_PAGES:
                 raise StatementParseError(
                     f"This PDF has {len(pdf.pages)} pages, and at most {MAX_PAGES} "
@@ -126,7 +137,14 @@ def page_images(content: bytes, *, resolution: int = _RESOLUTION) -> list[bytes]
     except StatementParseError:
         raise
     except Exception as e:  # noqa: BLE001 — the PDF library's own exceptions
-        _logger.warning("could not rasterise statement PDF: %s: %s", type(e).__name__, e)
+        locked = password_refusal_for(e, password)
+        if locked is not None:
+            raise locked from None
+        # Only the TYPE where a password is in play — see normalizer._pdf_rows.
+        if password:
+            _logger.warning("could not rasterise statement PDF: %s", type(e).__name__)
+        else:
+            _logger.warning("could not rasterise statement PDF: %s: %s", type(e).__name__, e)
         raise StatementParseError(
             "This file could not be opened as a PDF. If it downloaded from net "
             "banking, try downloading it again.") from e
@@ -251,7 +269,11 @@ def read_statement(
     for i, image in enumerate(images, 1):
         try:
             reply = call_model(image=image, mime=mime, prompt=PROMPT)
-        except StatementParseError:
+        except (StatementParseError, ProviderFailed):
+            # A provider that did not answer is NOT a statement that could not be
+            # read: the gateway has already retried and classified it, and the
+            # caller turns it into the sentence and the status that fit (a
+            # timeout is 504, not a 422 that reads as "your file is wrong").
             raise
         except Exception as e:  # noqa: BLE001 — the provider's own exceptions
             # Which vendor and model this uses is an internal detail and is not
@@ -340,6 +362,13 @@ def read_printed_totals(
 
     try:
         reply = call_model(image=image, mime=mime, prompt=TOTALS_PROMPT)
+    except ProviderFailed:
+        # A provider that is DOWN is not "this page prints no totals". The gateway
+        # has already retried and tried any fallback, so the page reads behind this
+        # probe would fail the same way — and swallowing it here made the refusal
+        # that followed ("this scan does not print its own totals") a false reason
+        # for an outage. The caller turns it into the classified sentence and status.
+        raise
     except Exception as e:  # noqa: BLE001 — the provider's own exceptions
         # NOT fatal. The totals are a bonus on this path; the balances remain,
         # and the caller refuses if neither is available. Failing the whole

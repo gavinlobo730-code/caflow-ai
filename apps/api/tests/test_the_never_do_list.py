@@ -74,6 +74,18 @@ NOT_A_PORTAL_CREDENTIAL: dict[str, str] = {
         "an AI usage COUNT (an integer), on the copilot's own log",
     "token_estimate":
         "the same, estimated before a call",
+    "prompt_tokens":
+        "ai_usage_events (migration 465) — a COUNT of the tokens a model call "
+        "read, as the provider reported it; an integer, not a credential",
+    "completion_tokens":
+        "ai_usage_events — a COUNT of the tokens the model wrote back; an "
+        "integer, not a credential",
+    "reasoning_tokens":
+        "ai_usage_events — a COUNT of the tokens a reasoning model spent "
+        "thinking, which the provider reports apart; an integer, not a credential",
+    "total_tokens":
+        "ai_usage_events — the provider's own total of the three counts above; "
+        "an integer, not a credential",
 }
 
 
@@ -182,23 +194,20 @@ OUTBOUND_IMPORTS = (
 #: next test checks against the government-host list.
 OUTBOUND_MODULES: dict[str, str] = {
     # ── the AI providers, both backend-only (CLAUDE.md) ──────────────────────
-    "routers/ai_copilot.py":
-        "Groq, for the copilot's chat completions (api.groq.com)",
-    # The assistant (routers/assistant.py) and the copilot's domain layer
-    # (domain/ai_copilot_service.py) both call through this one module now;
-    # neither imports an HTTP client of its own any more.
+    # ONE module per provider (ai-04). Every caller — the assistant, both
+    # copilots, the digest, the statement narrator, invoice and notice extraction
+    # and the statement reader — goes through one of these two, which is where the
+    # timeout, the retry, the fallback model and the usage record live. A third
+    # entry here is a third door, and tests/test_one_door_to_every_model.py fails
+    # it before this test is asked.
     "domain/ai/groq_text.py":
-        "Groq, the same endpoint (api.groq.com chat completions), for the "
-        "assistant and the copilot's domain layer",
-    "domain/financial_analysis_service.py":
-        "Groq, the same endpoint, for the narrative analysis",
-    "routers/document_intelligence_v1.py":
-        "Gemini via google.genai, for IMAGE invoice extraction only — "
-        "photographed and scanned bills. See CLAUDE.md on why two providers",
-    "routers/document_intelligence_v2.py":
-        "Groq via its own SDK, for the PDF/text invoice extraction path",
-    "services/statement_vision.py":
-        "Gemini via google.genai, for reading a scanned bank statement",
+        "Groq (api.groq.com chat completions) — the ONE door for every text model "
+        "call: the assistant, both copilots, the practice digest, the statement "
+        "narrator and the invoice and notice readers",
+    "domain/ai/gemini_vision.py":
+        "Gemini via google.genai — the ONE door for every picture a model reads: "
+        "photographed and scanned bills, and a scanned bank statement. See "
+        "CLAUDE.md on why two providers",
     # ── a hand-run tool, pointed at THIS product's own API ───────────────────
     "scripts/seed_demo_firm.py":
         "PracticeSync's own API, at a URL the operator passes on the command "

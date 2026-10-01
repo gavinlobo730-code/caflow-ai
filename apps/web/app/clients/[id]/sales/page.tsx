@@ -26,6 +26,9 @@ import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow, ReferenceResolver } from "@/components/CsvImportModal";
 import AllocateReceiptModal from "@/components/sales/AllocateReceiptModal";
 import SalesCycleTab from "@/components/sales/SalesCycleTab";
+import OverdueInterestPanel from "@/components/sales/OverdueInterestPanel";
+import PostDatedChequesPanel from "@/components/banking/PostDatedChequesPanel";
+import PriceListsPanel from "@/components/sales/PriceListsPanel";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { unallocatedOf } from "@/lib/sales/receiptAllocation";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
@@ -75,7 +78,7 @@ import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements";
+type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements" | "interest" | "post-dated-cheques";
 const TABS: { id: SalesTab; label: string }[] = [
   // SALES-21 — the cycle BEFORE the invoice. First, because that is the
   // order the documents are raised in.
@@ -87,6 +90,12 @@ const TABS: { id: SalesTab; label: string }[] = [
   { id: "credit-notes", label: "Credit Notes" },
   { id: "debit-notes", label: "Debit Notes" },
   { id: "statements", label: "Statements" },
+  // accounting-22 — what overdue customers owe in interest, as a worklist. Last: it
+  // reads the invoices and receipts above it and posts nothing.
+  { id: "interest", label: "Overdue Interest" },
+  // accounting-21 — cheques received, dated ahead. A memorandum: nothing is in the
+  // books until a due cheque is converted into a receipt.
+  { id: "post-dated-cheques", label: "Post-dated Cheques" },
 ];
 
 
@@ -340,6 +349,18 @@ export default function SalesPage() {
     setTab(target);
   }
 
+  // accounting-22 — a prepared interest draft opens on the Invoices tab, ringed, the
+  // way a ledger row's drill-through does: ?doc= is the one deep-link
+  // convention, and the default tab is left off the URL.
+  function openInvoice(invoiceId: string) {
+    const p = new URLSearchParams(window.location.search);
+    p.delete("tab");
+    p.set("doc", invoiceId);
+    window.history.replaceState(null, "", `${window.location.pathname}?${p.toString()}`);
+    setOpenDoc(invoiceId);
+    setTab("invoices");
+  }
+
   if (!clientId || clientId === "_placeholder") return <LoadingSkeleton />;
 
   return (
@@ -387,6 +408,12 @@ export default function SalesPage() {
         )}
         {tab === "statements" && (
           <Statements clientId={clientId} />
+        )}
+        {tab === "interest" && (
+          <OverdueInterestPanel clientId={clientId} onOpenInvoice={openInvoice} />
+        )}
+        {tab === "post-dated-cheques" && (
+          <PostDatedChequesPanel clientId={clientId} direction="received" />
         )}
       </div>
     </div>
@@ -3103,6 +3130,10 @@ function Customers({
           </button>
         </div>
       </div>
+
+      {/* accounting-20 — named price lists and each customer's default one: a PRE-FILL
+          source for the rate when an item is picked on a new invoice line. */}
+      <PriceListsPanel clientId={clientId} />
 
       {showImport && (
         <CsvImportModal
