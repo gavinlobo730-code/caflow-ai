@@ -32,6 +32,7 @@ import { MONTH_NAMES, buildMonthOptions, parsePeriodOption, periodBounds } from 
 import { useToast } from "@/components/ui/use-toast";
 import { api, type GstDueDates } from "@/lib/api";
 import { Callout } from "@/components/ui/callout";
+import { BulkGstr2bPanel } from "@/components/gst/BulkGstr2bPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -931,6 +932,9 @@ export default function GSTPage() {
           <p className="text-xs text-ps-hint mt-0.5">All periods</p>
         </div>
       </div>
+
+      {/* GSTR-2B for many clients — each file is routed by the GSTIN inside it (gst-10) */}
+      <BulkGstr2bPanel />
 
       {/* Filing Status — shared DataTable (search, filters, sort, pagination, export, prefs) */}
       <div className="space-y-2">

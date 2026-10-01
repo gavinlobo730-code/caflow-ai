@@ -35,11 +35,14 @@ WHAT IS DELIBERATELY NOT AUTOMATIC
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Sequence
 
+from core.db_paging import fetch_all
 from domain.accounting import opening_documents as _opening
 from domain.gst import draft_bill_from_2b, gstr2b_intake, itc_probable
+from domain.gst.gstr2b_routing import Holder, normalise as _normalise_gstin
 from domain.gst.gstr2b import GSTR2BFile, parse_gstr2b
 from domain.gst.itc_matching import (
     BookBill, PortalDocument, Reconciliation, defaulters, reconcile,
@@ -394,6 +397,109 @@ def read_kept_file(db, *, firm_id: str, client_id: str, period: str) -> Optional
             .order("uploaded_at", desc=True).limit(1).execute().data) or []
     raw = (rows[0] if rows else {}).get("raw_data")
     return raw if isinstance(raw, dict) else None
+
+
+def holders_of(db, *, firm_id: str, gstins: Sequence[str]) -> list[Holder]:
+    """Every (client, GSTIN) pair of THIS FIRM that holds one of `gstins` (gst-10).
+
+    A client's PRIMARY GSTIN is `clients.gstin` and its additional registrations
+    are `client_gst_registrations` rows (GST-20) — two tables, one answer, which
+    is why both are read and neither replaces the other. A soft-deleted client
+    or registration holds nothing.
+
+    FIRM-SCOPED in both reads: the service-role key bypasses RLS, so this filter
+    is the isolation control. It names the firm and no client — whose book the
+    caller may see is `domain/gst/gstr2b_routing.route`'s `visible` argument,
+    which is the caller's assignment scope and not a column.
+
+    Only the GSTINs asked about are fetched (`.in_`), so the read is
+    proportional to the files in the upload and not to the firm's client list.
+    """
+    wanted = sorted({_normalise_gstin(g) for g in gstins if _normalise_gstin(g)})
+    if not wanted:
+        return []
+    out: list[Holder] = []
+    for i in range(0, len(wanted), 100):
+        chunk = wanted[i:i + 100]
+        clients = fetch_all(
+            lambda: db.table("clients").select("id, gstin")
+            .eq("firm_id", firm_id).in_("gstin", chunk).is_("deleted_at", "null"),
+            key="id", label="2b holders: clients")
+        out.extend(Holder(str(c["id"]), _normalise_gstin(c.get("gstin")), True)
+                   for c in clients if c.get("id"))
+        regs = fetch_all(
+            lambda: db.table("client_gst_registrations")
+            .select("id, client_id, gstin")
+            .eq("firm_id", firm_id).in_("gstin", chunk).is_("deleted_at", "null"),
+            key="id", label="2b holders: registrations")
+        out.extend(Holder(str(r["client_id"]), _normalise_gstin(r.get("gstin")), False)
+                   for r in regs if r.get("client_id"))
+    return out
+
+
+def previous_reconciliation(db, *, firm_id: str, client_id: str,
+                            period: str) -> Optional[dict]:
+    """When this period was last reconciled, and from which download — or None.
+
+    Read BEFORE a replace, so an upload that is about to supersede an earlier
+    one can SAY so: a reconciliation is replaced whole, and a stale download
+    dropped into a folder of sixty must not silently overwrite a newer one.
+    """
+    rows = (db.table("gstr2b_reconciliations").select("reconciled_at, generated_on")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("return_period", period).limit(1).execute().data) or []
+    return rows[0] if rows else None
+
+
+def keep_upload(db, *, firm_id: str, client_id: str, period: str, raw: dict,
+                file_url: Optional[str], created_by: Optional[str],
+                result: dict) -> None:
+    """Keep the file the CA uploaded, whether or not it reconciled.
+
+    A file that would not parse is exactly the one a CA needs to be able to
+    point at, and a draft bill (gst-13) needs the file's rate lines. ONE writer,
+    for the single upload and the bulk one alike: two copies of this payload is
+    how the second door comes to keep a different row from the first.
+
+    `reconciliation_result` is the answer WITHOUT its per-document `matches`,
+    which would be a second copy of what `gstr2a_records` already holds.
+    """
+    db.table("gstr2b_uploads").insert({
+        "id": str(uuid.uuid4()),
+        "firm_id": firm_id,
+        "client_id": client_id,
+        "period": period,
+        "file_url": file_url,
+        "raw_data": raw,
+        "reconciliation_result": {k: v for k, v in result.items()
+                                  if k != "matches"},
+        "status": "reconciled" if result.get("persisted") else "parse_failed",
+        "created_by": created_by,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+    }).execute()
+
+
+def log_discrepancies(timeline, *, firm_id: str, client_id: str, period: str,
+                      summary: Optional[dict]) -> None:
+    """The timeline entry a reconciliation that found something leaves behind.
+
+    Shared by the single upload and the bulk one so the notice a CA reads on a
+    client's timeline is the same sentence whichever door the file came through.
+    `timeline` is the caller's own `timeline_service` — passed in rather than
+    imported so this module keeps no dependency on it.
+    """
+    summary = summary or {}
+    if not (summary.get("missing_in_2b_count") or summary.get("amount_mismatch_count")):
+        return
+    timeline.log_timeline_event(
+        client_id=client_id, firm_id=firm_id,
+        financial_year="", category="gst", event_type="gst_mismatch_detected",
+        title=(f"GSTR-2B for {period}: "
+               f"{summary.get('missing_in_2b_count', 0)} bills the supplier "
+               f"has not filed, {summary.get('amount_mismatch_count', 0)} "
+               f"amount mismatches"),
+        severity="warning",
+    )
 
 
 def read_reconciliation(db, *, firm_id: str, client_id: str, period: str) -> dict:

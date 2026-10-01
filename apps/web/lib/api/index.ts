@@ -2923,6 +2923,48 @@ export interface Gstr2bDraftBill {
   caveats: string[];
 }
 
+/**
+ * gst-10 — several clients' GSTR-2B files reconciled in one action, each routed
+ * to its client by the GSTIN inside it.
+ *
+ * One row per file, every key always present and null where it does not apply.
+ * The server decides the status and writes the reason; the screen shows both
+ * and decides nothing about whose a file is.
+ */
+export type Gstr2bBulkStatus =
+  | "reconciled" | "unmatched_gstin" | "ambiguous_gstin"
+  | "refused" | "unreadable" | "failed";
+
+export interface Gstr2bBulkResult {
+  name: string;
+  status: Gstr2bBulkStatus;
+  reason: string | null;
+  gstin: string;
+  period: string | null;
+  client_id: string | null;
+  client_name: string | null;
+  needs_attention: boolean;
+  summary: {
+    matched_count: number;
+    amount_mismatch_count: number;
+    missing_in_2b_count: number;
+    missing_in_books_count: number;
+    itc_at_risk_paise: number;
+    itc_blocked_by_2b_paise: number;
+    probable_match_count: number;
+  } | null;
+  problems: string[];
+  registration_caveat: string | null;
+  /** Set when this file REPLACED an earlier reconciliation of the same month. */
+  replaced_earlier: { reconciled_at: string | null; generated_on: string | null } | null;
+}
+
+export interface Gstr2bBulkAnswer {
+  results: Gstr2bBulkResult[];
+  totals: Record<Gstr2bBulkStatus, number>;
+  needs_attention: number;
+}
+
 /** SALES-21 — the sales cycle before the tax invoice. */
 export interface SalesCycleVocabulary {
   quote_kinds: { value: string; label: string }[];
@@ -6446,6 +6488,16 @@ export const api = {
       request<ApiResp<Record<string, unknown>>>(
         "/api/gst-workspace/itc/register/reclaim",
         { method: "POST", body: JSON.stringify(body) }),
+
+    /** gst-10 — reconcile GSTR-2B files for many clients, each routed to its
+     *  client by the GSTIN inside it. NO client and NO period is sent: the file
+     *  says whose it is and which month. At most five files a request — the
+     *  caller sends them in turn, because this module aborts a request at 45
+     *  seconds and never retries it. */
+    reconcileGstr2bFiles: (files: { name: string; raw_data: Record<string, unknown> }[]) =>
+      request<ApiResp<Gstr2bBulkAnswer>>(
+        "/api/gst-workspace/gstr2b/bulk",
+        { method: "POST", body: JSON.stringify({ files }) }),
 
     /** gst-13 — a DRAFT purchase bill from a GSTR-2B document the books have no
      *  bill for. Never receives, never posts, never claims credit; the server
