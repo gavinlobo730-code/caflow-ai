@@ -23,7 +23,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from domain.tds.section_rates import (
-    LATEST_VERIFIED_TDS_FY, TDSSectionRule, quarter_dates, tds_rates_for,
+    LATEST_VERIFIED_TDS_FY, THRESHOLD_CLASS_ORDINARY, TDSSectionRule,
+    class_thresholds_in_force, quarter_dates, tds_rates_for,
 )
 
 
@@ -218,6 +219,14 @@ class TDSResolution:
     #: 26Q's annexure has one rate column. See domain/tds/lower_deduction.py.
     certificate_rate_bps: Optional[int] = None
     certified_base_paise: int = 0
+    #: TDS-30. The threshold class that actually moved the limit, or None —
+    #: None both where no class was given and where one was given for a year
+    #: the raised limits do not reach, so a caller can tell what was applied
+    #: from what was asked.
+    threshold_class: Optional[str] = None
+    #: The single-payment limit this resolution was tested against, which is
+    #: the section's own unless a class replaced it.
+    threshold_paise: int = 0
 
 
 def has_pan(pan: Optional[str]) -> bool:
@@ -367,6 +376,7 @@ class TDSComputer:
         has_pan: bool = True,
         certified_base_paise: int = 0,
         certificate_rate_bps: Optional[int] = None,
+        threshold_class: Optional[str] = None,
     ) -> "TDSResolution":
         """Resolve TDS for a single purchase bill — the single source of TDS rules.
 
@@ -428,6 +438,19 @@ class TDSComputer:
           certificate_rate_bps:   the certified rate in basis points. 0 is real and
                                   common: §197(1) allows "no deduction of tax". None
                                   means no certificate, which is not the same as 0.
+          threshold_class:        TDS-30. WHICH of a section's limits this payee falls
+                                  under, for the one section that has more than one
+                                  — §194A(3)(i)'s ₹50,000 / ₹1,00,000 for a deposit
+                                  with a bank, co-operative bank or post office
+                                  against the ₹10,000 every other payer takes. None
+                                  and "ordinary" are the same answer, the section's
+                                  own limit, which is the LOWEST and so cannot
+                                  under-deduct. A class the section does not carry is
+                                  REFUSED, never ignored: a control that does nothing
+                                  reads as one that worked. And it is IGNORED for a
+                                  financial year the raised limits do not reach
+                                  (`class_thresholds_in_force`), which is the old
+                                  behaviour exactly.
         """
         section = (section or "").upper().strip()
         rates = tds_rates_for(fy)
@@ -436,16 +459,39 @@ class TDSComputer:
             raise ValueError(f"Unknown TDS section '{section}'")
         fy_total = fy_prior_taxable_paise + taxable_paise
 
-        applies = taxable_paise > rule.single_threshold_paise or (
-            rule.aggregate_threshold_paise is not None
-            and fy_total > rule.aggregate_threshold_paise
+        # §194A(3)(i)'s class limits (TDS-30). The class replaces BOTH limbs
+        # where the statute names one amount for both, which is why the
+        # aggregate is only replaced where the section HAS one.
+        single_threshold = rule.single_threshold_paise
+        aggregate_threshold = rule.aggregate_threshold_paise
+        applied_class: Optional[str] = None
+        if threshold_class is not None and threshold_class != THRESHOLD_CLASS_ORDINARY:
+            classes = rule.class_thresholds_paise or {}
+            if threshold_class not in classes:
+                carried = (", ".join(sorted(classes))
+                           if classes else "none — it has a single limit")
+                raise ValueError(
+                    f"Section {section} has no threshold class '{threshold_class}'. "
+                    f"The classes it carries: {carried}. A class recorded against a "
+                    f"section that does not have it would change nothing and read "
+                    f"as though it had, so it is refused.")
+            if class_thresholds_in_force(fy):
+                single_threshold = classes[threshold_class]
+                if aggregate_threshold is not None:
+                    aggregate_threshold = classes[threshold_class]
+                applied_class = threshold_class
+
+        applies = taxable_paise > single_threshold or (
+            aggregate_threshold is not None
+            and fy_total > aggregate_threshold
         )
         rate_bps = rule.company_rate_bps if is_company else rule.individual_rate_bps
         if not has_pan:
             rate_bps = max(rate_bps, rates.section_206aa_floor_rate_bps)
         rate = rate_bps / 100  # display only — computation stays in integer bps
         if not applies:
-            return TDSResolution(False, section, 0, rate, rate_bps, is_company, "below_threshold")
+            return TDSResolution(False, section, 0, rate, rate_bps, is_company, "below_threshold",
+                                 threshold_class=applied_class, threshold_paise=single_threshold)
 
         # The base is the FY AGGREGATE, not this bill. IT Act §194C(5) charges the
         # deduction where "the aggregate of the amounts of such sums credited or
@@ -462,7 +508,7 @@ class TDSComputer:
             # not ₹6,000. Clamped at zero: `applies` can be reached on the single
             # limb, which for a section with no aggregate is the same comparison,
             # but the clamp keeps the base non-negative under any future rule.
-            charge_base = max(0, fy_total - rule.single_threshold_paise)
+            charge_base = max(0, fy_total - single_threshold)
 
         # Integer paise, floor — never over-deduct (IT Act §145A). Rate-bounded, so
         # tds can never exceed the section rate on the charge base (audit L1). It
@@ -495,6 +541,8 @@ class TDSComputer:
             True, section, tds, rate, rate_bps, is_company, "applied",
             certificate_rate_bps=(certificate_rate_bps if certified > 0 else None),
             certified_base_paise=certified,
+            threshold_class=applied_class,
+            threshold_paise=single_threshold,
         )
 
     @staticmethod

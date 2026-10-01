@@ -2367,6 +2367,11 @@ export type Vendor = {
    *  the answer, so the self-invoice path NAMES an unrecorded vendor as a gap
    *  rather than assuming either way. */
   gst_registration_status?: string | null;
+  /** Migration 454 (TDS-30). Which s.194A(3)(i) limit this supplier's interest
+   *  is tested against — 'ordinary' | 'bank_deposit' | 'bank_deposit_senior'.
+   *  NULL is "nobody said" and takes the lowest limit, as every supplier did
+   *  before the column existed. */
+  interest_threshold_class?: string | null;
   is_active: boolean;
   created_at?: string;
 };
@@ -2387,6 +2392,10 @@ export type VendorWrite = {
   /** 'registered' | 'unregistered'. Omit to leave it as it is — a PATCH drops
    *  nulls, so this cannot be cleared back to unrecorded from here. */
   gst_registration_status?: string | null;
+  /** 'ordinary' | 'bank_deposit' | 'bank_deposit_senior', or omitted to leave
+   *  it. A PATCH drops a null, so a recorded class is taken back with the word
+   *  'ordinary', never by omission. */
+  interest_threshold_class?: string;
   is_active?: boolean;
 };
 

@@ -16,6 +16,7 @@ from domain.tds.residency import (NON_RESIDENT, RESIDENTIAL_STATUSES,
                                   deduction_section_refusal, section_refusal)
 from domain.tds.section_195_rates import (
     ALL_NATURES, NATURE_BUSINESS_PROFITS_NO_PE)
+from domain.tds.section_rates import threshold_class_problem
 
 
 def _normalise_residency(model) -> list[str]:
@@ -85,6 +86,20 @@ def _normalise_residency(model) -> list[str]:
                 + f" (got '{model.non_resident_payee_class}'). It decides which "
                   "Part II First Schedule surcharge ladder a s.195 withholding "
                   "takes, and the ladders differ by a wide margin.")
+
+    # s.194A(3)(i)'s limit class (TDS-30, migration 454). Normalised and
+    # validated HERE for the reason this function exists — a create path that
+    # accepts "Bank_Deposit" and an update path that rejects it lets the value
+    # in by one door and makes it uneditable through the other. Judged against
+    # the section only where both are in the request; the PATCH route asks the
+    # same question of the merged row (routers/vendors.update_vendor).
+    klass = getattr(model, "interest_threshold_class", None)
+    if klass is not None:
+        model.interest_threshold_class = str(klass).strip().lower() or None
+        problem = threshold_class_problem(
+            getattr(model, "tds_section", None), model.interest_threshold_class)
+        if problem:
+            errors.append(problem)
 
     if model.tax_identification_number is not None:
         # No format check: a TIN's shape is whatever the payee's own country
@@ -427,6 +442,13 @@ class VendorIn(BaseModel):
     tds_applicable: bool = False
     tds_section: Optional[str] = None
     tds_rate_bps: int = 0
+    # Which of s.194A(3)(i)'s limits this supplier's interest is tested against
+    # — ordinary (₹10,000) | bank_deposit (₹50,000) | bank_deposit_senior
+    # (₹1,00,000). NULL means nobody said and takes ₹10,000, the lowest, which
+    # is what every supplier did before migration 454. A payee's age alone is
+    # NOT an answer: the senior-citizen limit exists only where the PAYER is a
+    # bank, a co-operative bank or a post office. domain/tds/section_rates.py.
+    interest_threshold_class: Optional[str] = None
     # IT Act residential status of the PAYEE. NULL is a real third state —
     # "nobody has said" — and is treated as resident for computation while
     # being reported as a gap. It decides the charging section as well as the
@@ -538,6 +560,9 @@ class VendorUpdateIn(BaseModel):
     tds_applicable: Optional[bool] = None
     tds_section: Optional[str] = None
     tds_rate_bps: Optional[int] = None
+    # See VendorIn. A PATCH cannot set a column back to NULL
+    # (`model_dump(exclude_none=True)`), which is why 'ordinary' exists.
+    interest_threshold_class: Optional[str] = None
     residential_status: Optional[str] = None
     # CGST Act s.31(3)(f) asks whether the SUPPLIER is registered, because a
     # self-invoice is due only on a reverse-charge supply received from one who

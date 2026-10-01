@@ -316,6 +316,13 @@ export interface TDSSection {
    *  behaviour that existed before the flag. */
   vendor_eligible?: boolean;
   section_197_eligible?: boolean;
+  /** TDS-30. The limits a CA may record on a supplier for this section, as the
+   *  server serves them — empty for every section but 194A, whose ₹10,000 /
+   *  ₹50,000 / ₹1,00,000 hang on who pays and who is paid. Keys, labels and
+   *  amounts are all the server's: a screen that spelled "senior citizen" as
+   *  its own option would be offering ₹1,00,000 to a payee whose payer is not
+   *  a bank. Optional so a frontend ahead of the backend renders no picker. */
+  threshold_classes?: { key: string; label: string; threshold_paise: number }[];
 }
 
 export interface TDSAmountResult {
@@ -328,6 +335,10 @@ export interface TDSAmountResult {
   tds_applicable: boolean;
   applicable_rate_pct: number;
   tds_paise: number;
+  /** The class that moved the limit, or null — what was APPLIED, which is not
+   *  always what was asked (a class is ignored for a year before the raised
+   *  limits). `threshold_paise` is the limit the payment was tested against. */
+  threshold_class?: string | null;
 }
 
 /** IT Act Chapter XVII-B section list with current thresholds/rates — the
@@ -349,6 +360,9 @@ export async function computeTdsAmount(params: {
   payment_amount_paise: number;
   pan?: string | null;
   fy?: string;
+  /** s.194A(3)(i)'s limit class, when the supplier has one recorded — so the
+   *  calculator beside the picker answers what the bill will. */
+  threshold_class?: string | null;
 }): Promise<TDSAmountResult> {
   const resp = await authedFetch<TDSAmountResult>("/api/tds/compute-amount", {
     method: "POST",
