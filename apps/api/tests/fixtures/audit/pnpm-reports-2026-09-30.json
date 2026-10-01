@@ -1,0 +1,331 @@
+{
+ "taken": "30-09-2026",
+ "what_this_is": "The high and critical advisories `pnpm audit --prod --json` reported for each frontend lockfile on the day the baselines were committed, reduced to (id, package, version, severity). tests/test_dependencies_are_audited_and_watched.py asserts each baseline names every one of them that affects a version its lockfile still holds.",
+ "how_to_regenerate": "from the repo root, for APP in web marketing: (cd apps/$APP && pnpm audit --prod --json > /tmp/$APP.json); then python3 apps/api/scripts/ci/audit_gate.py --kind pnpm --report /tmp/$APP.json --baseline /dev/null --print-baseline lists what the baseline must hold; rewrite the matching `advisories` array below as {id, package, version, severity} for every finding at high or above.",
+ "apps": {
+  "web": {
+   "lockfile": "apps/web/pnpm-lock.yaml",
+   "baseline": ".github/audit-baseline/pnpm-web.txt",
+   "advisories": [
+    {
+     "id": "GHSA-3PQ3-5FJ3-CG6V",
+     "package": "axios",
+     "version": "1.16.1",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-542G-H47M-68V8",
+     "package": "axios",
+     "version": "1.16.1",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-C29M-XWM3-CM6R",
+     "package": "axios",
+     "version": "1.16.1",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-GCFJ-64VW-6MP9",
+     "package": "axios",
+     "version": "1.16.1",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-M8M8-QJ5V-23W3",
+     "package": "axios",
+     "version": "1.16.1",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-MGHH-PGCX-3JJJ",
+     "package": "axios",
+     "version": "1.16.1",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-X97P-JQ2G-JP4F",
+     "package": "axios",
+     "version": "1.16.1",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-3JXR-9VMJ-R5CP",
+     "package": "brace-expansion",
+     "version": "5.0.6",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-6J4F-FJ2G-MC7P",
+     "package": "brace-expansion",
+     "version": "5.0.6",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-MH99-V99M-4GVG",
+     "package": "brace-expansion",
+     "version": "5.0.6",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-QHR7-859C-M2P7",
+     "package": "brace-expansion",
+     "version": "5.0.6",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-RGW5-RVV9-X895",
+     "package": "brace-expansion",
+     "version": "5.0.6",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-73WF-GQ98-2V4G",
+     "package": "browserslist",
+     "version": "4.28.2",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-C83G-RGW3-J3CX",
+     "package": "browserslist",
+     "version": "4.28.2",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-4C8G-83QW-93J6",
+     "package": "fast-uri",
+     "version": "3.1.2",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-7P8R-X3MC-P8W7",
+     "package": "fast-uri",
+     "version": "3.1.2",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-F65P-4M7J-42XC",
+     "package": "fast-uri",
+     "version": "3.1.2",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-FPH4-WMHF-6FWF",
+     "package": "fast-uri",
+     "version": "3.1.2",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-JQFF-G426-HQXP",
+     "package": "fast-uri",
+     "version": "3.1.2",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-QW65-CVWX-89V3",
+     "package": "fast-uri",
+     "version": "3.1.2",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-V2HH-GCRM-F6HX",
+     "package": "fast-uri",
+     "version": "3.1.2",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-HMW2-7CC7-3QXX",
+     "package": "form-data",
+     "version": "4.0.5",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-28WG-GHJ8-5HJV",
+     "package": "nanoid",
+     "version": "3.3.12",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-2V37-7H3G-55P8",
+     "package": "nanoid",
+     "version": "3.3.12",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-2XP9-VWFH-VXW4",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "critical"
+    },
+    {
+     "id": "GHSA-36QX-FR4F-26G5",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-89XV-2M56-2M9X",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-8H8Q-6873-Q5FJ",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-C4J6-FC7J-M34R",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-H25M-26QC-WCJF",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-M99W-X7HQ-7VFJ",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-P293-QW3H-JR36",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "critical"
+    },
+    {
+     "id": "GHSA-P9J2-GV94-2WF4",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-Q4GF-8MX6-V5V3",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-6G55-P6WH-862Q",
+     "package": "postcss",
+     "version": "8.4.31",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-R28C-9Q8G-F849",
+     "package": "postcss",
+     "version": "8.4.31",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-R28C-9Q8G-F849",
+     "package": "postcss",
+     "version": "8.5.15",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-4R6H-8V6P-XVW6",
+     "package": "xlsx",
+     "version": "0.18.5",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-5PGG-2G8V-P4X9",
+     "package": "xlsx",
+     "version": "0.18.5",
+     "severity": "high"
+    }
+   ]
+  },
+  "marketing": {
+   "lockfile": "apps/marketing/pnpm-lock.yaml",
+   "baseline": ".github/audit-baseline/pnpm-marketing.txt",
+   "advisories": [
+    {
+     "id": "GHSA-2V37-7H3G-55P8",
+     "package": "nanoid",
+     "version": "3.3.16",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-2XP9-VWFH-VXW4",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "critical"
+    },
+    {
+     "id": "GHSA-36QX-FR4F-26G5",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-89XV-2M56-2M9X",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-8H8Q-6873-Q5FJ",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-C4J6-FC7J-M34R",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-H25M-26QC-WCJF",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-M99W-X7HQ-7VFJ",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-P293-QW3H-JR36",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "critical"
+    },
+    {
+     "id": "GHSA-P9J2-GV94-2WF4",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-Q4GF-8MX6-V5V3",
+     "package": "next",
+     "version": "14.2.35",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-6G55-P6WH-862Q",
+     "package": "postcss",
+     "version": "8.4.31",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-R28C-9Q8G-F849",
+     "package": "postcss",
+     "version": "8.4.31",
+     "severity": "high"
+    }
+   ]
+  }
+ }
+}

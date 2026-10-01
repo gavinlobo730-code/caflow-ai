@@ -27,7 +27,7 @@ import { walkPages } from "./generate-redirects.js";
 import { switchClientPath } from "../lib/workspace/clientPath.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROUTES = walkPages(path.join(__dirname, "..", "app")).map((s: string[]) => s.join("/"));
+const ROUTES: string[] = walkPages(path.join(__dirname, "..", "app")).map((s: string[]) => s.join("/"));
 const UNDER_CLIENT = ROUTES.filter((r) => r.startsWith("clients/:id/"));
 const FIRST_SEGMENTS = [...new Set(UNDER_CLIENT.map((r) => r.split("/")[2]))].sort();
 

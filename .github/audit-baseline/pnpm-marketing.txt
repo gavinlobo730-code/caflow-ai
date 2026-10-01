@@ -1,0 +1,30 @@
+# Known vulnerable PRODUCTION dependencies of apps/marketing, as locked on 2026-09-30.
+# Only high and critical are listed: that is all the gate counts (--min-severity high).
+# Regenerate: (cd apps/marketing && pnpm audit --prod --json > r.json); then
+#   python3 apps/api/scripts/ci/audit_gate.py --kind pnpm --report r.json --baseline /dev/null --print-baseline
+#
+# Every line below is an EXPOSURE THE PRODUCT CARRIES TODAY, written down so the audit gate
+# can tell a newly published advisory (or a newly pinned vulnerable version) from a standing
+# one. It is NOT a judgement that the advisory is harmless, and nothing here is "accepted risk"
+# in the sense of somebody having decided to live with it: the upgrades are engineering-03's.
+#
+# THIS FILE MAY ONLY SHRINK. When a dependency is upgraded, delete its lines; the gate prints
+# which lines have gone stale. Adding a line is a decision and belongs in a review with the
+# reason written beside it. apps/api/scripts/ci/audit_gate.py is the reader and explains why
+# the gate is a ratchet instead of "fail on anything".
+#
+# Format: one advisory id per line, then `# package version [severity] - title (fix: ...)`.
+
+GHSA-2V37-7H3G-55P8      # nanoid 3.3.16 [high] — nanoid: custom generators can loop indefinitely when size is zero (fix: >=3.3.18)
+GHSA-2XP9-VWFH-VXW4      # next 14.2.35 [critical] — Next.js: Unauthenticated Remote Code Execution in Image Optimization API when AVIF files a (fix: >=15.5.24)
+GHSA-36QX-FR4F-26G5      # next 14.2.35 [high] — Next.js has a Middleware / Proxy bypass in Pages Router applications using i18n (fix: >=15.5.16)
+GHSA-89XV-2M56-2M9X      # next 14.2.35 [high] — Next.js: Server-Side Request Forgery in Server Actions on custom servers (fix: >=15.5.21)
+GHSA-8H8Q-6873-Q5FJ      # next 14.2.35 [high] — Next.js Vulnerable to Denial of Service with Server Components (fix: >=15.5.16)
+GHSA-C4J6-FC7J-M34R      # next 14.2.35 [high] — Next.js vulnerable to server-side request forgery in applications using WebSocket upgrades (fix: >=15.5.16)
+GHSA-H25M-26QC-WCJF      # next 14.2.35 [high] — Next.js HTTP request deserialization can lead to DoS when using insecure React Server Comp (fix: >=15.0.8)
+GHSA-M99W-X7HQ-7VFJ      # next 14.2.35 [high] — Next.js: Denial of Service in App Router using Server Actions (fix: >=15.5.21)
+GHSA-P293-QW3H-JR36      # next 14.2.35 [critical] — Next.js: Unauthenticated Remote Code Execution on windows-hosted servers (fix: >=15.5.24)
+GHSA-P9J2-GV94-2WF4      # next 14.2.35 [high] — Next.js: Server-Side Request Forgery in rewrites via attacker-controlled destination hostn (fix: >=15.5.21)
+GHSA-Q4GF-8MX6-V5V3      # next 14.2.35 [high] — Next.js has a Denial of Service with Server Components (fix: >=15.5.15)
+GHSA-6G55-P6WH-862Q      # postcss 8.4.31 [high] — PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMapp (fix: >=8.5.12)
+GHSA-R28C-9Q8G-F849      # postcss 8.4.31 [high] — PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Ar (fix: >=8.5.18)

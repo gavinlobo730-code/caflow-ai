@@ -105,9 +105,11 @@ jobs:
           # gap to the next scheduled run (so the runs abut) and Render's
           # keep-alive window (so no gap opens inside one run either).
           for attempt in 1 2 3 4 5 6; do
-            # --max-time 90: a cold start on the free tier takes up to ~50s,
-            # so the FIRST request is expected to be slow. Failing it at the
-            # default timeout would report a healthy service as down.
+            # --max-time 90: a cold start on the free tier was MEASURED at
+            # 56.55s (apps/api/scripts/smoke_api.py, 2026-09-06), so the
+            # FIRST request is expected to be slow and 90s leaves 33s of
+            # margin. Failing it at the default timeout would report a
+            # healthy service as down.
             # `code=$(...)` takes curl's exit status, so `|| code=000` REPLACES
             # the value on failure. Piping `|| echo 000` inside the
             # substitution instead would append to whatever curl already

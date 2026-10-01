@@ -3,9 +3,10 @@ Boot-time schema-drift guard (task #244).
 
 Root cause this closes: application code and its Postgres migrations deploy
 on two INDEPENDENT tracks. Render redeploys the Docker image automatically on
-every push to main; nothing applies apps/api/migrations/*.sql to the live
-Supabase project automatically -- that has always been a separate, manual
-step. Migrations 233-241 sat committed and CI-validated (against a throwaway
+every push to main; until task #244 nothing applied apps/api/migrations/*.sql
+to the live Supabase project automatically -- that was a separate, manual
+step, and it is now the `deploy-migrations` job in backend-ci.yml (see below).
+Migrations 233-241 sat committed and CI-validated (against a throwaway
 Postgres, never the real one) but unapplied to production for up to 6 days,
 while the code that depended on them was already live -- every affected write
 silently failed behind a broad try/except and returned a generic error, with

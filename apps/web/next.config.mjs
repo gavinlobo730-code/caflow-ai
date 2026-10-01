@@ -24,6 +24,23 @@ const nextConfig = {
       (process.env.NODE_ENV === "production"
         ? "https://practicesync-api.onrender.com"
         : "http://localhost:8000"),
+
+    // Browser error reporting (ops-09; lib/monitoring). The DSN itself is NEXT_PUBLIC_SENTRY_DSN, set
+    // as a Cloudflare Pages build variable and INLINED like every NEXT_PUBLIC_ value — with none, the
+    // tracker never starts. These two are derived here because Cloudflare's own build variables are
+    // not NEXT_PUBLIC_ and so would never reach the browser: CF_PAGES_COMMIT_SHA is documented as the
+    // value to hand an error tracker, and CF_PAGES_BRANCH says production from a preview.
+    NEXT_PUBLIC_SENTRY_RELEASE:
+      process.env.NEXT_PUBLIC_SENTRY_RELEASE || process.env.CF_PAGES_COMMIT_SHA || "",
+    NEXT_PUBLIC_SENTRY_ENVIRONMENT:
+      process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ||
+      (process.env.CF_PAGES_BRANCH
+        ? process.env.CF_PAGES_BRANCH === "main"
+          ? "production"
+          : "preview"
+        : process.env.NODE_ENV === "production"
+          ? "production"
+          : "development"),
   },
 };
 

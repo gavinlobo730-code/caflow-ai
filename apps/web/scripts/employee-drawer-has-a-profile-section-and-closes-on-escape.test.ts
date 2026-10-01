@@ -89,7 +89,9 @@ test("ProfileSection saves through the same door AddEmployeeModal uses, with onl
 });
 
 test("typed junk in a percent or amount field refuses rather than saving as unchanged", () => {
-  const body = /function ProfileSection\([\s\S]*?\n\}\n/.exec(stripped())[0];
+  const m = /function ProfileSection\([\s\S]*?\n\}\n/.exec(stripped());
+  assert.ok(m, "ProfileSection not found");
+  const body = m[0];
   assert.match(body, /bpsFromPercentInput\(hraPercent\)/);
   assert.match(body, /bpsFromPercentInput\(daPercent\)/);
   assert.match(body, /paiseFromRupeeInput\(basic\)/);

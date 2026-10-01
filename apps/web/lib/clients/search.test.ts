@@ -38,7 +38,7 @@ test("BUG 001: searching a PAN does not crash when a client has NULL pan", () =>
     mk({ id: "has-pan", pan: "AABCU9603R", client_name: "Has PAN Co" }),
   ];
   // Pasting a PAN must not throw, and must match the client that has it.
-  let result;
+  let result: ReturnType<typeof filterClients> = [];
   assert.doesNotThrow(() => { result = filterClients(clients, "AABCU9603R"); });
   assert.deepEqual(result.map((c) => c.id), ["has-pan"]);
 });

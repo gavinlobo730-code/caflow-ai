@@ -100,7 +100,7 @@ const fixture = JSON.parse(
     new URL("../../../../shared/gst-parity-vectors.json", import.meta.url),
     "utf8",
   ),
-) as { vectors: Vector[]; documents: DocCase[]; discounts: DiscountCase[] };
+) as { vectors: Vector[]; documents: DocCase[]; discounts: DiscountCase[]; cess: unknown[] };
 
 test("fixture is present and non-trivial", () => {
   assert.ok(fixture.vectors.length >= 30, "parity vectors were trimmed");

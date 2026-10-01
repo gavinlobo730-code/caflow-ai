@@ -72,12 +72,12 @@ test("a resolving firm lookup is not treated as no firm", () => {
 // unconditionally whenever hasSession && onLogin && mfaPending === false)
 // fails 1 test.
 
-import { shouldBounceFromLogin } from "./guardDecision.ts";
+import { shouldBounceFromLogin, type LoginBounceState } from "./guardDecision.ts";
 
-const loginBounceBase = {
+const loginBounceBase: LoginBounceState = {
   hasSession: true, mfaPending: false, onLogin: true, isPortalRecovery: false,
-} as const;
-const bouncesFromLogin = (over: Partial<typeof loginBounceBase>) =>
+};
+const bouncesFromLogin = (over: Partial<LoginBounceState>) =>
   shouldBounceFromLogin({ ...loginBounceBase, ...over });
 
 test("a fully authenticated session sitting on /login is bounced to /", () => {
@@ -139,12 +139,12 @@ test("a decided role that is not allowed is refused", () => {
 //   | drop the onSignup term (bounce from anywhere)                | 1 |
 //   | drop the mfaPending === false term (bounce mid-challenge)    | 1 |
 
-import { shouldBounceFromSignup } from "./guardDecision.ts";
+import { shouldBounceFromSignup, type SignupBounceState } from "./guardDecision.ts";
 
-const signupBase = {
+const signupBase: SignupBounceState = {
   hasSession: true, mfaPending: false, hasFirm: true, onSignup: true,
-} as const;
-const bounces = (over: Partial<typeof signupBase>) =>
+};
+const bounces = (over: Partial<SignupBounceState>) =>
   shouldBounceFromSignup({ ...signupBase, ...over });
 
 test("a fully authenticated session with an existing firm is bounced from /signup", () => {

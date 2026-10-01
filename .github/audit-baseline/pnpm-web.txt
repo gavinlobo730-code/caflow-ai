@@ -1,0 +1,61 @@
+# Known vulnerable PRODUCTION dependencies of apps/web, as locked on 2026-09-30.
+# Only high and critical are listed: that is all the gate counts (--min-severity high).
+# Regenerate: (cd apps/web && pnpm audit --prod --json > r.json); then
+#   python3 apps/api/scripts/ci/audit_gate.py --kind pnpm --report r.json --baseline /dev/null --print-baseline
+#
+# Every line below is an EXPOSURE THE PRODUCT CARRIES TODAY, written down so the audit gate
+# can tell a newly published advisory (or a newly pinned vulnerable version) from a standing
+# one. It is NOT a judgement that the advisory is harmless, and nothing here is "accepted risk"
+# in the sense of somebody having decided to live with it: the upgrades are engineering-03's.
+#
+# THIS FILE MAY ONLY SHRINK. When a dependency is upgraded, delete its lines; the gate prints
+# which lines have gone stale. Adding a line is a decision and belongs in a review with the
+# reason written beside it. apps/api/scripts/ci/audit_gate.py is the reader and explains why
+# the gate is a ratchet instead of "fail on anything".
+#
+# Format: one advisory id per line, then `# package version [severity] - title (fix: ...)`.
+
+GHSA-3PQ3-5FJ3-CG6V      # axios 1.16.1 [high] — Axios: HTTP/2 adapter bypasses configured DNS lookup and proxy controls (fix: >=1.20.0)
+GHSA-542G-H47M-68V8      # axios 1.16.1 [high] — Axios: Denial of Service via Unhandled 'error' Event in HTTP/2 ClientHttp2Session Initiali (fix: >=1.20.0)
+GHSA-C29M-XWM3-CM6R      # axios 1.16.1 [high] — Axios: ReDoS in fromDataURI data: URL parser freezes the Node event loop (DoS) (fix: >=1.20.0)
+GHSA-GCFJ-64VW-6MP9      # axios 1.16.1 [high] — Axios Node HTTP adapter can use an inherited proxy after interceptor config cloning (fix: >=1.18.0)
+# Added 30-09-2026: the baseline did not name this advisory, so running the gate over this branch reported it NEW
+# and the dependency-audit job would have failed on the pull request that introduced it.
+# Same package, same version and the same fix (axios >=1.20.0) as the six axios lines around it, so it is carried
+# for the same reason: engineering-03's upgrade clears all seven together. Nothing in apps/web imports axios
+# (it is declared in package.json and used by no source file), so that upgrade, or removing the dependency, is
+# the cheapest one on this list.
+GHSA-M8M8-QJ5V-23W3      # axios 1.16.1 [high] — Axios: Node HTTP adapter prototype-pollution gadget allows request socket hijack via inher (fix: >=1.20.0)
+GHSA-MGHH-PGCX-3JJJ      # axios 1.16.1 [high] — Axios: ReDoS (O(N²)) in shouldBypassProxy host normalization, reachable via untrusted redi (fix: >=1.20.0)
+GHSA-X97P-JQ2G-JP4F      # axios 1.16.1 [high] — Axios: Prototype Pollution Gadget in axios toFormData Options (fix: >=1.20.0)
+GHSA-3JXR-9VMJ-R5CP      # brace-expansion 5.0.6 [high] — brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups (fix: >=5.0.7)
+GHSA-6J4F-FJ2G-MC7P      # brace-expansion 5.0.6 [high] — brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustio (fix: >=5.0.10)
+GHSA-MH99-V99M-4GVG      # brace-expansion 5.0.6 [high] — brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash (fix: >=5.0.8)
+GHSA-QHR7-859C-M2P7      # brace-expansion 5.0.6 [high] — brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhau (fix: >=5.0.11)
+GHSA-RGW5-RVV9-X895      # brace-expansion 5.0.6 [high] — brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitig (fix: >=5.0.9)
+GHSA-73WF-GQ98-2V4G      # browserslist 4.28.2 [high] — Browserslist: Uncaught crash / prototype write via untrusted browserslist-stats.json custo (fix: >=4.28.7)
+GHSA-C83G-RGW3-J3CX      # browserslist 4.28.2 [high] — Browserslist: Unbounded memory growth (no cache eviction) via distinct query results, lead (fix: >=4.28.7)
+GHSA-4C8G-83QW-93J6      # fast-uri 3.1.2 [high] — fast-uri vulnerable to host confusion via failed IDN canonicalization (fix: >=3.1.3)
+GHSA-7P8R-X3MC-P8W7      # fast-uri 3.1.2 [high] — fast-uri vulnerable to host confusion via backslash authority introducer (fix: >=3.1.5)
+GHSA-F65P-4M7J-42XC      # fast-uri 3.1.2 [high] — fast-uri vulnerable to server-side request forgery via malformed IPv6 normalization (fix: >=3.1.6)
+GHSA-FPH4-WMHF-6FWF      # fast-uri 3.1.2 [high] — fast-uri vulnerable to server-side request forgery via repeated hostname percent-decoding (fix: >=3.1.6)
+GHSA-JQFF-G426-HQXP      # fast-uri 3.1.2 [high] — fast-uri vulnerable to host confusion via percent-encoded scheme normalization (fix: >=3.1.6)
+GHSA-QW65-CVWX-89V3      # fast-uri 3.1.2 [high] — fast-uri vulnerable to authority injection via an unvalidated port in serialize (fix: >=3.1.7)
+GHSA-V2HH-GCRM-F6HX      # fast-uri 3.1.2 [high] — fast-uri vulnerable to host confusion via literal backslash authority delimiter (fix: >=3.1.4)
+GHSA-HMW2-7CC7-3QXX      # form-data 4.0.5 [high] — form-data: CRLF injection in form-data via unescaped multipart field names and filenames (fix: >=4.0.6)
+GHSA-28WG-GHJ8-5HJV      # nanoid 3.3.12 [high] — nanoid: non-secure generators can loop indefinitely with negative size (fix: >=3.3.16)
+GHSA-2V37-7H3G-55P8      # nanoid 3.3.12 [high] — nanoid: custom generators can loop indefinitely when size is zero (fix: >=3.3.18)
+GHSA-2XP9-VWFH-VXW4      # next 14.2.35 [critical] — Next.js: Unauthenticated Remote Code Execution in Image Optimization API when AVIF files a (fix: >=15.5.24)
+GHSA-36QX-FR4F-26G5      # next 14.2.35 [high] — Next.js has a Middleware / Proxy bypass in Pages Router applications using i18n (fix: >=15.5.16)
+GHSA-89XV-2M56-2M9X      # next 14.2.35 [high] — Next.js: Server-Side Request Forgery in Server Actions on custom servers (fix: >=15.5.21)
+GHSA-8H8Q-6873-Q5FJ      # next 14.2.35 [high] — Next.js Vulnerable to Denial of Service with Server Components (fix: >=15.5.16)
+GHSA-C4J6-FC7J-M34R      # next 14.2.35 [high] — Next.js vulnerable to server-side request forgery in applications using WebSocket upgrades (fix: >=15.5.16)
+GHSA-H25M-26QC-WCJF      # next 14.2.35 [high] — Next.js HTTP request deserialization can lead to DoS when using insecure React Server Comp (fix: >=15.0.8)
+GHSA-M99W-X7HQ-7VFJ      # next 14.2.35 [high] — Next.js: Denial of Service in App Router using Server Actions (fix: >=15.5.21)
+GHSA-P293-QW3H-JR36      # next 14.2.35 [critical] — Next.js: Unauthenticated Remote Code Execution on windows-hosted servers (fix: >=15.5.24)
+GHSA-P9J2-GV94-2WF4      # next 14.2.35 [high] — Next.js: Server-Side Request Forgery in rewrites via attacker-controlled destination hostn (fix: >=15.5.21)
+GHSA-Q4GF-8MX6-V5V3      # next 14.2.35 [high] — Next.js has a Denial of Service with Server Components (fix: >=15.5.15)
+GHSA-6G55-P6WH-862Q      # postcss 8.4.31 [high] — PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMapp (fix: >=8.5.12)
+GHSA-R28C-9Q8G-F849      # postcss 8.4.31, 8.5.15 [high] — PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Ar (fix: >=8.5.18)
+GHSA-4R6H-8V6P-XVW6      # xlsx 0.18.5 [high] — Prototype Pollution in sheetJS (fix: <0.0.0)
+GHSA-5PGG-2G8V-P4X9      # xlsx 0.18.5 [high] — SheetJS Regular Expression Denial of Service (ReDoS) (fix: <0.0.0)

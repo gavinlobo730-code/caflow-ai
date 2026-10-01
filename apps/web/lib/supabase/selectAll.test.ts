@@ -4,6 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { selectAll } from "./selectAll.ts";
+import type { PostgrestError } from "@supabase/supabase-js";
 
 /**
  * Build a fake Rangeable over a backing array that honours `.range(from,to)`
@@ -58,7 +59,7 @@ test("empty table returns [] after one request", async () => {
 
 test("propagates an error and returns the rows gathered before it", async () => {
   let page = 0;
-  const err = { message: "boom", details: "", hint: "", code: "500" };
+  const err = { message: "boom", details: "", hint: "", code: "500" } as PostgrestError;
   const { data, error } = await selectAll<number>(() => ({
     range: (from: number, to: number) => {
       page++;
@@ -80,7 +81,7 @@ test("stops starting new waves once a page fails", async () => {
   // failure in wave 2, paging must not reach the pages wave 3 would have asked
   // for. Without the early return this would run to MAX_PAGES.
   const requested: number[] = [];
-  const err = { message: "boom", details: "", hint: "", code: "500" };
+  const err = { message: "boom", details: "", hint: "", code: "500" } as PostgrestError;
   const { data, error } = await selectAll<number>(() => ({
     range: (from: number, to: number) => {
       requested.push(from);

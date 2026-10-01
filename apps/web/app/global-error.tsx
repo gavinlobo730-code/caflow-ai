@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
+import { reportClientError } from "@/lib/monitoring";
+
 /**
  * The last resort: a throw in the ROOT layout itself.
  *
@@ -20,6 +23,12 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // The layout that mounts MonitoringInit did not render, so nothing has started the tracker:
+  // `reportClientError` starts it itself and waits for it.
+  useEffect(() => {
+    reportClientError(error, "root layout");
+  }, [error]);
+
   return (
     <html lang="en">
       <body

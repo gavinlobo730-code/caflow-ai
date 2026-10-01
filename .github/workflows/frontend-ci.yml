@@ -17,10 +17,12 @@ on:
     branches: [main]
 
 # One run per branch. Pushing again to an open PR supersedes the previous run,
-# and without this the old one keeps going to completion — paying full price for
-# a result nobody will read. The account hit 100% of its 2,000 included Actions
-# minutes on 16 Aug 2026, and a busy PR branch re-running a ~6 minute real-
-# Postgres job for every intermediate push is a large part of why.
+# and without this the old one keeps going to completion for a result nobody
+# will read — a busy PR branch re-running a ~6 minute real-Postgres job for
+# every intermediate push, each leaving a stale verdict in the checks list.
+# This is about time and signal, not a minutes budget: the repository is public,
+# where GitHub-hosted runner minutes are free (wake-before-scheduler.yml says the
+# same).
 #
 # main is excluded from cancellation: those runs gate what is already merged, so
 # they must finish even when several merges land together.
@@ -105,6 +107,15 @@ jobs:
         if: needs.scope.outputs.web == 'true'
         working-directory: apps/web
         run: pnpm exec tsc --noEmit
+
+      # tsconfig.json excludes **/*.test.ts and the suite below runs on
+      # `node --experimental-strip-types`, which erases types without checking
+      # them — so nothing checked the tests themselves (engineering-17). Their
+      # own program, under the same strictness: see tsconfig.test.json.
+      - name: Type check the test files
+        if: needs.scope.outputs.web == 'true'
+        working-directory: apps/web
+        run: pnpm exec tsc -p tsconfig.test.json
 
       - name: Test
         if: needs.scope.outputs.web == 'true'
