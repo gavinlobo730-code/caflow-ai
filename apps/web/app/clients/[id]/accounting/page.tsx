@@ -13,6 +13,7 @@ import { AccountLookup } from "@/components/lookups/AccountLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
+import ReportExportButtons from "@/components/accounting/ReportExportButtons";
 import {
   api,
   type ReconciliationRun,
@@ -1469,6 +1470,14 @@ function LedgerDrillDown({
             Reset to FY {financialYear}
           </button>
           {loading && <RefreshCw size={13} className="animate-spin text-ps-hint mb-1.5" />}
+          {/* The WHOLE window, not the page on screen: the server reads it
+              through the same paged ledger function, a thousand lines at a
+              time, and refuses to print one that does not foot (accounting-16). */}
+          <div className="ml-auto pb-0.5">
+            <ReportExportButtons report="ledger" clientId={clientId} formats={["pdf", "xlsx"]}
+              params={{ account_id: accountId, start_date: startDate, end_date: endDate }}
+              disabled={!accountId || loading || !ledger || !hasActivity} />
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
@@ -1727,6 +1736,12 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
             <button onClick={() => updateBasis("cash")} className={`px-3 py-1 font-medium border-l border-ps-border transition-colors ${basis === "cash" ? "bg-brand-dark text-white" : "bg-white text-ps-label hover:bg-ps-bg"}`}>Cash</button>
           </div>
           <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          {/* The server builds this PDF from the same trial_balance call the
+              screen made, with the same window and basis (accounting-16). The
+              spreadsheet is the XLSX button on the Reports tab. */}
+          <ReportExportButtons report="trial-balance" clientId={clientId}
+            params={{ as_of_date: asOf, start_date: periodStart, basis }}
+            disabled={loading || !loaded || loadFailed} />
         </div>
       </div>
       {basis === "cash" && (
@@ -3221,6 +3236,12 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange, ledgerSpan }
           >
             <Download size={13} />
           </button>
+          {/* The whole window as ONE statement, from the same cash_flow_statement
+              call each column makes (accounting-16). A quarterly split on screen is
+              four columns of it; the file is the year they add up to. */}
+          <ReportExportButtons report="cash-flow" clientId={clientId} formats={["pdf", "xlsx"]}
+            params={{ start_date: overall.start, end_date: overall.end }}
+            disabled={rangeInverted || !withData.length} />
           <button onClick={() => window.print()} className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label" title="Print"><Printer size={13} /></button>
         </div>
       </div>

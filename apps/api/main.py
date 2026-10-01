@@ -519,6 +519,12 @@ app.include_router(branding_router)
 from routers.shared_reports import router as shared_reports_router
 app.include_router(shared_reports_router)
 
+# accounting-16 — the live reports as a server-made PDF / spreadsheet. Its own router:
+# it returns a FILE, not the {success, data, error} envelope /api/accounting
+# returns, and it calls the same report functions that router's screens do.
+from routers.report_exports import router as report_exports_router
+app.include_router(report_exports_router, dependencies=_CLIENT_GUARD)
+
 
 # Beta hardening (Phase F) — validate configuration at boot so missing env vars are
 # visible immediately in the logs rather than surfacing as opaque runtime errors.

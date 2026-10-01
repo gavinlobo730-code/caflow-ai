@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
+import { exportQuery, type ExportFormat, type ExportParams, type ExportReport } from "@/lib/export/reportExport";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -5960,6 +5961,21 @@ export const api = {
       if (asOf) q.set("as_of", asOf);
       return request<ApiResp<AgeingDetail<"bills">>>(`/api/vendors/ap-aging?${q}`);
     },
+  },
+
+  /**
+   * A live report as a server-made PDF or spreadsheet (accounting-16). The file is
+   * built in apps/api from the SAME report function the screen calls, headed by
+   * the practice and naming the client, so what is downloaded is what is on
+   * screen. A refusal (a ledger too long to print, a report that does not foot)
+   * arrives as a thrown `API error 422: {"detail": …}` — read it with
+   * `exportErrorMessage` from `lib/export/reportExport`.
+   */
+  reportExports: {
+    download: (report: ExportReport, format: ExportFormat, clientId: string,
+               params: ExportParams = {}) =>
+      downloadFile(`/api/report-exports/${report}?${exportQuery(clientId, format, params)}`,
+                   `${report}.${format}`),
   },
 
   /** THE supplier master. `public.suppliers` (migration 030) looked like a
