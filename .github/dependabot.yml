@@ -1,0 +1,82 @@
+# Weekly dependency update pull requests for everything this repository installs (engineering-05).
+#
+# WHAT IS WATCHED, AND WHY EACH ENTRY IS A SEPARATE LINE
+#     The repository is three applications and one set of workflows, each with its own manifest,
+#     so each gets its own entry. A `directory` that names nothing is not an error to Dependabot,
+#     it is a silent no-op, so apps/api/tests/test_dependencies_are_audited_and_watched.py asserts
+#     that every directory below exists and that every manifest in the tree is named here.
+#
+#       pip             apps/api         requirements.txt. NOTE: it holds ranges (`>=`) as well as
+#                                        pins and there is no lockfile, so what a build installs is
+#                                        whatever pip resolves that day; Dependabot bumps the pins,
+#                                        and the audit workflow checks the RESOLVED set.
+#       npm             apps/web         pnpm-lock.yaml. Dependabot's `npm` ecosystem covers pnpm.
+#       npm             apps/marketing   its own lockfile and its own Cloudflare project.
+#       github-actions  /                .github/workflows/*.yml
+#
+#     Not covered, on purpose: the Dockerfile's base image (not asked for here), and the gitleaks
+#     binary that secret-scan.yml downloads, which is neither a package nor an action — its
+#     version and checksum move together by hand, and the workflow says how.
+#
+# ONE PULL REQUEST A WEEK PER ECOSYSTEM FOR MINOR AND PATCH, A SEPARATE ONE PER MAJOR
+#     Grouping stops the update stream becoming a daily chore nobody does. A MAJOR version is
+#     deliberately left to arrive on its own, because it is the one that can break the build
+#     (Next 14 to 15, React 18 to 19) and deserves its own review.
+#
+# WHAT THIS DOES NOT DO
+#     It does not patch a vulnerability the week it is published: that is Dependabot SECURITY
+#     updates, a repository setting (Settings > Code security), not something a file can turn
+#     on. The audit workflow is the alarm; this is the routine maintenance that keeps the alarm
+#     quiet. Its pull requests run the two required checks like any other, and the frontend
+#     build needs no secrets (lib/supabase/client.ts falls back to a placeholder at build time).
+#
+# Times are IST (Asia/Kolkata), the firm's clock; Dependabot evaluates `time` in `timezone`.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+    groups:
+      web-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/apps/marketing"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+    groups:
+      marketing-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-and-patch:
+        update-types: ["minor", "patch"]

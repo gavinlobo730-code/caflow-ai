@@ -1,0 +1,15 @@
+# The image is built with `COPY . .` (Dockerfile), so whatever is in this directory goes into a
+# layer — and a layer is copied to a registry, shared and cached. A developer who has filled in
+# apps/api/.env to run `docker compose up` against a real Supabase project would otherwise bake the
+# SERVICE-ROLE key and every AI key into the image. Compose passes them at RUN time through
+# `env_file`, which is the only way they should arrive.
+#
+# `.env.*` also matches .env.example, which no running process reads.
+#
+# Render builds from a checkout, where the gitignored .env does not exist, so this changes nothing
+# there. tests/test_docker_compose_names_only_what_a_clean_clone_has.py holds it.
+.env
+.env.*
+__pycache__/
+*.pyc
+.pytest_cache/

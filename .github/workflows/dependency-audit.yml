@@ -1,0 +1,186 @@
+# Tells us when a library we depend on has a known security hole we did not already know about
+# (engineering-05).
+#
+# WHAT IT RUNS
+#     pip-audit over the set apps/api/requirements.txt RESOLVES to, and `pnpm audit --prod` over
+#     each frontend's lockfile, each judged by apps/api/scripts/ci/audit_gate.py against a
+#     reviewed baseline in .github/audit-baseline/. Read that script's header: it explains why
+#     this is a ratchet rather than "fail on anything".
+#
+#     In one paragraph: on 30-09-2026 the backend resolved to 87 packages with 30 advisories in
+#     5 of them, apps/web had 70 production advisories (2 critical) and apps/marketing 28. A step
+#     that failed on those would have been red from its first run and stayed red until the upgrades
+#     land, so the gate fails on an advisory that is NOT in the baseline, names what is, and says
+#     which baseline lines have gone stale. The baseline may only shrink.
+#
+# WHY pip-audit RESOLVES INSTEAD OF READING THE FILE
+#     requirements.txt holds ranges (`httpx>=0.27.0,<0.28.0`, `pydantic>=2.0.0`) and there is no
+#     lockfile, so `pip-audit --no-deps` refuses it ("not pinned to an exact version"). What a
+#     Render build installs is whatever pip resolves that day, and THAT is what has to be audited.
+#     It takes about twenty seconds. A new release can therefore change the answer with no commit,
+#     which is what the weekly schedule is for.
+#
+# WHEN IT RUNS
+#     - every pull request that changes a dependency manifest, the baseline, or this machinery
+#       (a `scope` job decides, inside, exactly as backend-ci.yml does — no `paths:` filter, so the
+#       check always reports);
+#     - every push to main;
+#     - weekly, because a NEW advisory against a dependency nobody touched is the point of the
+#       exercise and no pull request would ever surface it;
+#     - on demand.
+#
+# NOT A REQUIRED CHECK
+#     An advisory published this morning turns a scheduled run red with no change of ours. That is
+#     the alarm working, and it is also why this must not block an unrelated merge.
+#
+# A TOOL THAT DID NOT RUN IS NOT A CLEAN RESULT
+#     Each audit step ends `|| true` DELIBERATELY: pip-audit and pnpm exit non-zero when they find
+#     anything, and it is the gate — which reads the report they wrote — that decides. The gate
+#     exits 2, and the job fails, when the report is missing, is not JSON, or audited nothing.
+#
+# `pip-audit` IS PINNED HERE, not in requirements.txt: it is a CI tool, not a dependency of the
+#     product, and Dependabot does not watch an inline pip install. Bump it by hand.
+name: Dependency audit
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Mondays 03:30 UTC (09:00 IST).
+    - cron: "30 3 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: dependency-audit-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # The filter that would otherwise sit in `on:`. Computed here so every job below still RUNS and
+  # reports on a pull request that touches no manifest — it just does nothing.
+  scope:
+    name: scope — did a dependency manifest change?
+    runs-on: ubuntu-latest
+    outputs:
+      audit: ${{ steps.detect.outputs.audit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: detect
+        run: |
+          set -euo pipefail
+          # Everything except a pull request is audited unconditionally: a schedule exists to
+          # find advisories nobody's diff touched.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "audit=true" >> "$GITHUB_OUTPUT"
+            echo "Not a pull request — auditing."
+            exit 0
+          fi
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          # Cannot tell what changed -> audit. A wasted minute is cheaper than a skipped audit
+          # reporting success.
+          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "audit=true" >> "$GITHUB_OUTPUT"
+            echo "No usable base commit — auditing."
+            exit 0
+          fi
+          if git diff --name-only "$base" "$head" | grep -qE \
+            '^(apps/api/requirements\.txt|apps/(web|marketing)/(package\.json|pnpm-lock\.yaml)|\.github/audit-baseline/|apps/api/scripts/ci/audit_gate\.py|\.github/workflows/dependency-audit\.yml)'; then
+            echo "audit=true" >> "$GITHUB_OUTPUT"
+            echo "A dependency manifest, the baseline or the audit itself changed — auditing."
+          else
+            echo "audit=false" >> "$GITHUB_OUTPUT"
+            echo "No dependency manifest changed — these jobs will report green without running."
+          fi
+
+  python:
+    name: pip-audit — apps/api
+    runs-on: ubuntu-latest
+    needs: scope
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - if: needs.scope.outputs.audit == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pip-audit
+        if: needs.scope.outputs.audit == 'true'
+        run: pip install --no-cache-dir "pip-audit==2.10.1"
+
+      # Resolves requirements.txt into a throwaway environment and audits what came out. The
+      # report is written to a file because the gate, not this command, decides pass or fail.
+      - name: Audit the resolved backend dependencies
+        if: needs.scope.outputs.audit == 'true'
+        run: |
+          pip-audit -r apps/api/requirements.txt --progress-spinner off \
+            -f json -o "${RUNNER_TEMP}/pip-audit.json" || true
+
+      - name: Judge it against the baseline
+        if: needs.scope.outputs.audit == 'true'
+        run: |
+          python3 apps/api/scripts/ci/audit_gate.py --kind pip \
+            --report "${RUNNER_TEMP}/pip-audit.json" \
+            --baseline .github/audit-baseline/pip-api.txt \
+            --label apps/api
+
+      - name: No dependency manifest changed
+        if: needs.scope.outputs.audit != 'true'
+        run: echo "Nothing the audit reads changed — nothing to prove here."
+
+  javascript:
+    name: pnpm audit — apps/${{ matrix.app }}
+    runs-on: ubuntu-latest
+    needs: scope
+    timeout-minutes: 10
+    strategy:
+      # One app's result must not hide the other's.
+      fail-fast: false
+      matrix:
+        app: [web, marketing]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - if: needs.scope.outputs.audit == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+
+      - if: needs.scope.outputs.audit == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # `audit` reads the lockfile; it needs no install. --prod because a vulnerability in a build
+      # tool never reaches a browser or the server.
+      - name: Audit the locked production dependencies
+        if: needs.scope.outputs.audit == 'true'
+        working-directory: apps/${{ matrix.app }}
+        run: pnpm audit --prod --json > "${RUNNER_TEMP}/pnpm-audit.json" || true
+
+      - name: Judge it against the baseline
+        if: needs.scope.outputs.audit == 'true'
+        run: |
+          python3 apps/api/scripts/ci/audit_gate.py --kind pnpm \
+            --report "${RUNNER_TEMP}/pnpm-audit.json" \
+            --baseline .github/audit-baseline/pnpm-${{ matrix.app }}.txt \
+            --min-severity high \
+            --label apps/${{ matrix.app }}
+
+      - name: No dependency manifest changed
+        if: needs.scope.outputs.audit != 'true'
+        run: echo "Nothing the audit reads changed — nothing to prove here."

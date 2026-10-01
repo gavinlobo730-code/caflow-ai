@@ -58,7 +58,11 @@ def test_captures_exception_with_operation_fingerprint_and_context(monkeypatch):
     assert "note" not in scope.tags  # None-valued context is skipped, not stringified to "None"
 
 
-def test_logs_at_error_level_so_it_reaches_sentrys_default_logging_integration(monkeypatch, caplog):
+def test_logs_at_error_level_so_it_is_visible_in_renders_log_stream(monkeypatch, caplog):
+    # This used to say "so it reaches Sentry's default logging integration", and that was the defect
+    # (ops-10): the log record became the event that reached Sentry, untagged, and the tagged capture was
+    # dropped as its duplicate. The logger is ignored by Sentry now (core/observability.py); the line is
+    # for Render's log stream, where it is the only trace when Sentry is off.
     monkeypatch.setattr(sentry_sdk, "capture_exception", lambda exc: None)
     with caplog.at_level(logging.ERROR, logger="caflow.observability"):
         capture_posting_failure(ValueError("boom"), operation="post_inventory_receipt_journal_entry")

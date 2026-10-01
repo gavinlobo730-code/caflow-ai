@@ -1,0 +1,106 @@
+# Asks the LIVE product site whether every redirect rule in public/_redirects is
+# actually being served (ops-25).
+#
+# WHY IT EXISTS
+#     apps/web is a static export, so `/clients/<any id>/<section>/` exists only
+#     as a Cloudflare Pages rewrite to the pre-built `_placeholder` page.
+#     Cloudflare allows 100 dynamic rules, counts them by POSITION, and drops the
+#     rest WITHOUT A WORD. On 30-09-2026 it dropped 30 of them, every splat
+#     included, and every hard reload or shared link into a client page returned
+#     404 in production until #640 — while in-app navigation, which never asks
+#     the server, looked fine and `generate-redirects.test.ts` read "98 of 100".
+#     Every other check on this file is static. This one asks the site.
+#
+#     The budget now stands at 98 of 100, so ONE more dynamic route breaks it
+#     again, silently. The check catches that the day it happens, by request,
+#     instead of by a CA's bookmark.
+#
+# WHAT IT DOES
+#     apps/web/scripts/check-live-redirects.mjs derives one real URL per rule from
+#     public/_redirects (plus every real page a splat serves, in both shapes), GETs
+#     each from the live host, and fails on a redirect, a non-200, a body of the
+#     wrong type, or a 200 that is a DIFFERENT PAGE from the one the rule points
+#     at. A path no rule matches must 404: if it does not, every green means
+#     nothing, and that is a failure too. Read its header before changing it.
+#
+# WHEN IT RUNS
+#     - on a schedule, every six hours (cron is UTC) — this is the guarantee;
+#     - on demand, optionally against a preview deployment (see the input);
+#     - on `deployment_status`, the moment Cloudflare reports a product
+#       deployment live — the ordinary way a regression would arrive.
+#
+#     ⚠️ THE deployment_status TRIGGER IS UNVERIFIED. GitHub Actions could not be
+#     run where this was written, and whether Cloudflare's Pages integration
+#     posts deployment statuses with an `environment_url` could not be observed.
+#     The job is written so that it does NOTHING if the event is absent or shaped
+#     differently (the condition below is false, so the job is skipped, not
+#     failed), which means the worst case is that only the schedule runs. Do not
+#     delete the schedule believing the event covers it. Check the Actions tab
+#     after the first merge to main: if a run appears named for a deployment, the
+#     trigger works.
+#
+#     Only the PRODUCT's project is checked. `practicesync.pages.dev` is the
+#     marketing site, a different Cloudflare project with different routes, and
+#     its deployments also post statuses; they are filtered on the URL.
+#
+# NO `paths:` FILTER, AND NOT A REQUIRED CHECK
+#     A path-filtered workflow does not run when the filter misses, and this
+#     regression arrives with a change to nothing under apps/web/public (a page
+#     added elsewhere, or Cloudflare's own behaviour). It is deliberately not a
+#     required check either: it asks a third-party service that can be mid-deploy,
+#     which is the reason smoke.yml is not on pull requests. A failure here means
+#     "go and look", and the failing URLs are in the log and the run summary.
+#
+# NOTHING IS WRITTEN: GET requests to a public site, no secrets, no artefacts.
+name: Live redirects
+
+on:
+  schedule:
+    # 17 minutes past every sixth hour UTC: off the hour, where GitHub's load is.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: >-
+          Site to check, e.g. https://<hash>.caflow-ai.pages.dev for a preview
+          deployment. Leave blank for production (https://caflow-ai.pages.dev).
+          A preview is how to see this go red before merging a change that adds
+          dynamic routes.
+        required: false
+        type: string
+  deployment_status:
+
+# One at a time, and never cancel a run that is mid-way: a cancelled check is a
+# check that did not finish, and reads as neither green nor red.
+concurrency:
+  group: live-redirects
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: every redirect rule answers on the live site
+    runs-on: ubuntu-latest
+    # A failure retries each URL three times fifteen seconds apart; a total outage
+    # is about seven minutes of that with the URLs in parallel.
+    timeout-minutes: 15
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (github.event.deployment_status.state == 'success' &&
+       endsWith(github.event.deployment_status.environment_url, 'caflow-ai.pages.dev'))
+
+    steps:
+      # On `deployment_status` the default ref is the deployed commit, so the
+      # rules read below are the ones that deployment was built from.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Request every rule's URL on the live site
+        env:
+          # A dispatch input wins, then the deployment being reported (a preview
+          # or production), then production. On a scheduled run the first two are
+          # empty, so the schedule always watches the real site.
+          LIVE_BASE_URL: ${{ inputs.base_url || github.event.deployment_status.environment_url || 'https://caflow-ai.pages.dev' }}
+        run: node apps/web/scripts/check-live-redirects.mjs

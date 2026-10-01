@@ -6,7 +6,7 @@ import { previewRoundOffPaise, previewTotals } from "./gst.ts";
 import type { InvoiceLine } from "./gst.ts";
 
 const line = (rate: string, gst: number, qty = "1"): InvoiceLine => ({
-  description: "svc", hsn_sac: "", qty, rate, gst_rate: gst,
+  description: "svc", hsn_sac: "", qty, rate, gst_rate: gst, unit: "",
 });
 
 test("previewRoundOffPaise mirrors the backend nearest-rupee rule", () => {

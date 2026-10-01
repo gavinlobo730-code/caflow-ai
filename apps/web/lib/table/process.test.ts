@@ -40,7 +40,7 @@ const filters: FilterDef<Row>[] = [
 ];
 
 function state(over: Partial<TableState> = {}): TableState {
-  return { search: "", sort: null, filters: {}, page: 1, pageSize: 0, hiddenColumns: [], ...over };
+  return { search: "", sort: null, filters: {}, page: 1, pageSize: 0, hiddenColumns: [], columnWidths: {}, ...over };
 }
 
 test("search is case-insensitive substring across searchable columns only", () => {

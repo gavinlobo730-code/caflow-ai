@@ -10,11 +10,11 @@ quietly stops calling its engine, and it was switched off by the very PR that
 would do it.
 
 Widening that scope to `apps/web/` is the obvious fix and the wrong one. The
-full suite is ~7 minutes plus a ~6 minute real-Postgres job, and the account
-hit 100% of its 2,000 included Actions minutes on 16 Aug 2026 — the workflow's
-own concurrency comment records it. A module-by-module redesign is dozens of
-PRs with several pushes each; paying full price on every one spends the budget
-on tests that cannot fail, because nothing under `apps/api` changed.
+full suite is ~7 minutes plus a ~6 minute real-Postgres job. A module-by-module
+redesign is dozens of PRs with several pushes each; paying that wait on every
+one spends it on tests that cannot fail, because nothing under `apps/api`
+changed. (Minutes are not the constraint — the repository is public, where
+GitHub-hosted runner minutes are free — the wait is.)
 
 So CI runs only the modules that can actually SEE the change. This script names
 them, and it derives the list rather than holding one: a guard added later is
