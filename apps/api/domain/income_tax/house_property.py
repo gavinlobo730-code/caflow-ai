@@ -89,6 +89,7 @@ from datetime import date
 from typing import Optional
 
 from core.ist_clock import normalise_fy_label
+from domain.money_text import whole_rupees
 
 VERIFIED = False
 
@@ -418,7 +419,7 @@ def compute(properties: list[Property], *, fy: str,
             r.income_paise = -allowed
             if r.interest_disallowed_paise and not use_new_regime:
                 r.workings.append(
-                    f"₹{r.interest_disallowed_paise // 100:,} of interest is above "
+                    f"₹{whole_rupees(r.interest_disallowed_paise)} of interest is above "
                     "the cap and is not allowed.")
         else:
             expected = max(_scaled(p.municipal_value_paise, p.share_bps),

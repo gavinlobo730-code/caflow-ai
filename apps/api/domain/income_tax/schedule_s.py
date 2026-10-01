@@ -75,6 +75,7 @@ from typing import Optional
 
 from core.ist_clock import normalise_fy_label
 from domain.income_tax.statutory_rates import rates_for
+from domain.money_text import whole_rupees
 
 VERIFIED = False
 
@@ -319,15 +320,15 @@ def compute(employers: list[Employer], *, fy: str, use_new_regime: bool,
             if use_new_regime and not new_regime_ok:
                 r.workings.append(
                     f"{label} is not allowed under §115BAC(2): "
-                    f"₹{line.amount_paise // 100:,} is not deducted.")
+                    f"₹{whole_rupees(line.amount_paise)} is not deducted.")
             else:
                 r.exemptions_allowed_paise += line.amount_paise
         # An exemption cannot exceed the salary it exempts: a larger one is an
         # error in the keying, and deducting it would create a negative salary.
         if r.exemptions_allowed_paise > r.gross_salary_paise:
             out.gaps.append(
-                f"{emp.name}: the exemptions keyed (₹{r.exemptions_allowed_paise // 100:,}) "
-                f"exceed this employer's gross salary (₹{r.gross_salary_paise // 100:,}); "
+                f"{emp.name}: the exemptions keyed (₹{whole_rupees(r.exemptions_allowed_paise)}) "
+                f"exceed this employer's gross salary (₹{whole_rupees(r.gross_salary_paise)}); "
                 "they were limited to the gross. Check the figures against Form 16.")
             r.exemptions_allowed_paise = r.gross_salary_paise
         if use_new_regime:
