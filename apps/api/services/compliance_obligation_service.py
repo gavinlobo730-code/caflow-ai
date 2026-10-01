@@ -556,14 +556,16 @@ def normalise_entity_type(entity_type: Optional[str]) -> str:
     return re.sub(r"[\s_]+", " ", str(entity_type or "")).strip().lower()
 
 
-#: Every value migration 001's CHECK constraint allows on clients.entity_type.
-#: tests/test_compliance_itr_due_date.py reads the CHECK out of the migration
-#: and walks it against this tuple, so a value added to the schema cannot be
-#: left unclassified here — which is the failure this whole block exists to
-#: make impossible.
+#: Every value the CHECK constraint on clients.entity_type allows — migration
+#: 001's eight and the three migration 453 added (HUF, AOP, BOI).
+#: tests/test_compliance_itr_due_date.py reads the CHECK out of the migrations
+#: (the last one to define it, found by number) and walks it against this
+#: tuple, so a value added to the schema cannot be left unclassified here —
+#: which is the failure this whole block exists to make impossible.
 CLIENT_ENTITY_TYPES: tuple[str, ...] = (
     "Proprietorship", "Partnership", "LLP", "Private Limited",
     "Public Limited", "Trust", "Society", "Individual",
+    "HUF", "AOP", "BOI",
 )
 
 # Incorporated under the Companies Act 2013 — the assessees Explanation

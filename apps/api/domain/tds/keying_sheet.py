@@ -103,6 +103,14 @@ REMARK_CODE_NOT_HELD = (
     "in the RPU yourself for each such row."
 )
 
+PAYMENT_CODE_NOT_HELD = (
+    "{count} deductee row(s) (sections {sections}) have no s.393 payment code "
+    "filled in — the table is held only in part. The RPU needs one on every "
+    "row of a Form 138/140/144 statement, so read each from the current Rules "
+    "and key it yourself; the rows that DO carry one are marked in the column "
+    "beside the section."
+)
+
 UNMATCHED_DEDUCTEES = (
     "{count} deductee row(s) carry no matching challan (no BSR code or "
     "challan number recorded against them) and are listed separately below, "
@@ -182,6 +190,22 @@ def build(data: dict) -> dict[str, Any]:
         if d.get("is_lower_deduction") or d.get("non_deduction_reason"))
     if lower_or_nil:
         gaps.append(REMARK_CODE_NOT_HELD.format(count=lower_or_nil))
+
+    # TDS-31. A 2025-Act deductee row carries a numeric payment code, and the
+    # builders now fill in the ones the Protean specification answers. The rows
+    # they could not answer are NAMED here, with the sections, because the RPU
+    # asks for a code on every one of them and this sheet is what the CA keys
+    # from. Read off `payment_code_gap` and never off a missing `payment_code`:
+    # a statement saved before the field existed has neither key, and that is
+    # not a row with nothing held — a 1961-Act row has a null `payment_code` and
+    # NO gap, because nothing is asked of it.
+    uncoded = [d for d in deductees if d.get("payment_code_gap")]
+    if uncoded:
+        sections = sorted({str(d.get("section_1961") or d.get("section") or "").strip()
+                           for d in uncoded} - {""})
+        gaps.append(PAYMENT_CODE_NOT_HELD.format(
+            count=len(uncoded),
+            sections=", ".join(sections) if sections else "unnamed sections"))
 
     gaps.append(NO_FVU_FILE_IS_PRODUCED)
 

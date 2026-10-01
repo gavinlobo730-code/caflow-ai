@@ -239,6 +239,14 @@ def aggregate_so_far(
     )
 
 
+def _threshold_class_words(key: str) -> str:
+    """The class in a phrase a sentence can carry, from the registry's own
+    label rather than a second spelling of it."""
+    from domain.tds.section_rates import THRESHOLD_CLASS_LABELS
+    label = THRESHOLD_CLASS_LABELS.get(key, key)
+    return label.split(" (")[0][0].lower() + label.split(" (")[0][1:]
+
+
 @dataclass(frozen=True)
 class ResidentWithholding:
     """What the §194 series takes out of one bill or one advance."""
@@ -380,6 +388,10 @@ def resolve_resident_tds(
             has_pan=payee_has_pan,
             certified_base_paise=certified_base,
             certificate_rate_bps=(cert.rate_bps if cert is not None else None),
+            # §194A(3)(i)'s class (TDS-30), a fact recorded on the supplier and
+            # NULL on every supplier that existed before the column did — which
+            # is the section's own ₹10,000, exactly as it was.
+            threshold_class=(vendor.get("interest_threshold_class") or None),
         )
     except ValueError as ve:
         # The ENGINE's ValueError is the backstop, not the message. A vendor
@@ -403,12 +415,24 @@ def resolve_resident_tds(
         why = (f"Nothing withheld: §{tds_section} does not charge this "
                f"{event_noun}. The year's payments to this payee under this "
                f"section so far are ₹{whole_rupees((fy_prior + own_base))}.")
+        if _tds.threshold_class:
+            # Said on the document it affects. A supplier recorded as a bank
+            # deposit whose bill withholds nothing at ₹30,000 looks, from the
+            # figure alone, like the software ignoring the ₹10,000 limit.
+            why += (f" The limit applied is ₹{whole_rupees(_tds.threshold_paise)} "
+                    f"— the supplier is recorded as a "
+                    f"{_threshold_class_words(_tds.threshold_class)} "
+                    f"(§194A(3)(i)).")
     elif fy_prior > 0:
         why = (f"§{tds_section} at {_tds.rate_pct:g}% on the year's aggregate of "
                f"₹{whole_rupees((fy_prior + own_base))}, less ₹{whole_rupees(fy_prior_tds)} "
                f"already withheld on earlier bills and advances (§200).")
     else:
         why = f"§{tds_section} at {_tds.rate_pct:g}% on ₹{whole_rupees(own_base)}."
+    if _tds.applies and _tds.threshold_class:
+        why += (f" Tested against the ₹{whole_rupees(_tds.threshold_paise)} limit — "
+                f"the supplier is recorded as a "
+                f"{_threshold_class_words(_tds.threshold_class)} (§194A(3)(i)).")
     if adjusted:
         # Said on the document it affects. A bill that withholds nothing
         # because an advance already carried the tax looks, on its own, like a

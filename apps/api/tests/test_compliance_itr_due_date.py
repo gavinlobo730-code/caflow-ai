@@ -63,16 +63,30 @@ FYE = 2026
 # ── The comparison key cannot drift from the schema ──────────────────────────
 
 def _entity_types_from_the_check_constraint() -> list[str]:
-    """Read clients.entity_type's allowed values straight out of migration 001.
+    """Read clients.entity_type's allowed values out of the migrations.
 
     Parsed rather than restated, because a list written down twice is the bug
-    this whole file is about.
+    this whole file is about. It reads the LAST migration to define
+    `clients_entity_type_check`, found by number: migration 001 declared it
+    inline with eight values and migration 453 replaced it with eleven, so a
+    parser pinned to 001 would have gone on certifying a vocabulary the
+    database no longer has (CLAUDE.md, "CREATE OR REPLACE ... found by NUMBER").
     """
-    sql = (API_ROOT / "migrations" / "001_initial_schema.sql").read_text(encoding="utf-8")
-    m = re.search(r"entity_type TEXT NOT NULL CHECK \(entity_type IN \((.*?)\)\)",
-                  sql, re.S)
-    assert m, "could not find the entity_type CHECK constraint in migration 001"
-    return re.findall(r"'([^']+)'", m.group(1))
+    inline = re.compile(r"entity_type TEXT NOT NULL CHECK \(entity_type IN \((.*?)\)\)", re.S)
+    named = re.compile(
+        r"ADD CONSTRAINT clients_entity_type_check\s+CHECK \(entity_type IN \((.*?)\)\)", re.S)
+    latest = None
+    for path in sorted((API_ROOT / "migrations").glob("*.sql")):
+        head = path.name.split("_", 1)[0]
+        if not head.isdigit() or path.name.endswith("_rollback.sql"):
+            continue
+        sql = path.read_text(encoding="utf-8")
+        for pattern in (inline, named):
+            m = pattern.search(sql)
+            if m:
+                latest = m.group(1)
+    assert latest, "could not find the entity_type CHECK constraint in any migration"
+    return re.findall(r"'([^']+)'", latest)
 
 
 def test_the_check_constraints_values_are_the_ones_the_backend_knows():

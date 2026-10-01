@@ -112,6 +112,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("customers", "credit_limit_paise"): "migration 414",
     ("invoice_settings", "credit_limit_blocks"): "migration 414",
     ("tasks", "estimated_minutes"): "migration 452",
+    ("vendors", "interest_threshold_class"): "migration 454",
     # public.capital_gain_reinvestments (385), public.stock_count_sessions and
     # public.stock_count_lines (387), public.rcm_documents (388),
     # public.bills_of_entry (389), public.client_gst_registrations (390) and

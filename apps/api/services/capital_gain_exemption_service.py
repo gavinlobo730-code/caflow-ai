@@ -34,20 +34,22 @@ CLAIM_COLUMNS = (
 #: s.54B and s.54F. A proprietorship has no separate legal personality — the
 #: assessee is the proprietor — so it belongs with 'Individual'.
 #:
-#: ⚠️ 'HUF' IS NOT A VALUE THE CLIENT VOCABULARY HAS. Migration 001's CHECK
-#: allows Proprietorship, Partnership, LLP, Private Limited, Public Limited,
-#: Trust, Society and Individual, so an HUF client is recorded as one of those
-#: — in practice 'Individual'. Widening that CHECK is a migration and an owner
-#: decision; until then the mapping cannot distinguish them, which does not
-#: matter here because the two sit on the same side of every section in this
-#: family.
-_INDIVIDUAL_OR_HUF_ENTITY_TYPES = frozenset({"Individual", "Proprietorship"})
+#: 'HUF' IS A VALUE THE CLIENT VOCABULARY HAS SINCE MIGRATION 453
+#: (TDS-INCOME-TAX-16). Until then an HUF client was recorded as 'Individual',
+#: which this mapping could not tell apart and did not need to, because the two
+#: sit on the same side of every section in this family. It is listed by name
+#: now, so a HUF is answered as itself rather than by borrowing a neighbour's
+#: row. An AOP and a BOI are NOT an individual or a HUF — §54, §54B and §54F
+#: reach "an individual or a Hindu undivided family" and nobody else — and sit
+#: on the other side below.
+_INDIVIDUAL_OR_HUF_ENTITY_TYPES = frozenset({"Individual", "Proprietorship", "HUF"})
 #: Everything the CHECK allows that is definitely NOT one. Written as its own
-#: set rather than as "not in the first" so a value added to migration 001
-#: later reads as UNKNOWN and is refused, instead of being silently classified
-#: as a company by falling through.
+#: set rather than as "not in the first" so a value added to the CHECK later
+#: reads as UNKNOWN and is refused, instead of being silently classified as a
+#: company by falling through.
 _NOT_INDIVIDUAL_OR_HUF_ENTITY_TYPES = frozenset({
     "Partnership", "LLP", "Private Limited", "Public Limited", "Trust", "Society",
+    "AOP", "BOI",
 })
 
 

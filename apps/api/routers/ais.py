@@ -21,8 +21,8 @@ from pydantic import BaseModel, Field
 from core.authz import assert_client_access
 from core.permissions import rbac
 from models.common import api_response
-from models.fy import AYLabel, OptionalAYLabel
-from services import ais_service
+from models.fy import AYLabel, FYLabel, OptionalAYLabel
+from services import ais_computation_service, ais_service
 
 router = APIRouter(prefix="/api/ais", tags=["ais"])
 _logger = logging.getLogger("caflow.ais.router")
@@ -183,6 +183,58 @@ def delete_record(
             firm_id=current_user["firm_id"], record_id=record_id))
     except ais_service.AISRefused as e:
         raise _refusal(e)
+
+
+@router.get("/computation-lines")
+def computation_lines(
+    client_id: str,
+    financial_year: Annotated[FYLabel, Query()],
+    typed_gross_salary_paise: Optional[int] = Query(None, ge=0),
+    typed_other_income_paise: Optional[int] = Query(None, ge=0),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """The AIS lines the computation can take — salary, interest, dividend —
+    with their sources and the CA's accept or reject, and where a figure
+    already typed into a box differs from the statement (TDS-INCOME-TAX-10).
+
+    The two `typed_*` figures are what is ALREADY in the boxes; an absent one is
+    "not typed", which is not the same as zero. Nothing is applied here: an AIS
+    figure is what others reported, the screen fills only an EMPTY box, and a
+    differing typed figure is flagged and kept.
+    """
+    assert_client_access(current_user, client_id)
+    typed = {}
+    if typed_gross_salary_paise is not None:
+        typed["gross_salary_paise"] = typed_gross_salary_paise
+    if typed_other_income_paise is not None:
+        typed["other_income_paise"] = typed_other_income_paise
+    return api_response(True, ais_computation_service.suggestions(
+        firm_id=current_user["firm_id"], client_id=client_id,
+        fy=financial_year, typed=typed))
+
+
+class ComputationDecisionRequest(BaseModel):
+    client_id: str
+    financial_year: FYLabel
+    #: accepted | rejected | undecided (takes the decision back)
+    decision: str
+
+
+@router.put("/computation-lines/{line_key}/decision")
+def decide_computation_line(
+    line_key: str,
+    req: ComputationDecisionRequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Accept or reject one line, on the figure the CA is looking at."""
+    assert_client_access(current_user, req.client_id)
+    try:
+        return api_response(True, ais_computation_service.decide(
+            firm_id=current_user["firm_id"], client_id=req.client_id,
+            fy=req.financial_year, line_key=line_key, decision=req.decision,
+            user_id=current_user["id"]))
+    except ais_computation_service.DecisionRefused as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/meta")

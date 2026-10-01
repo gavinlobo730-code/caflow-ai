@@ -31,7 +31,7 @@ import { panProblem } from "@/lib/identifiers/pan";
 
 const CLIENT_IMPORT_COLUMNS = [
   { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
-  { key: "entity_type",  label: "Entity Type",    required: true,  hint: "Proprietorship | Partnership | LLP | Private Limited | Public Limited | Trust | Society | Individual" },
+  { key: "entity_type",  label: "Entity Type",    required: true,  hint: "Proprietorship | Partnership | LLP | Private Limited | Public Limited | Trust | Society | Individual | HUF | AOP | BOI" },
   { key: "pan",          label: "PAN",            required: true,  hint: "e.g. AABCU9603R — 10 chars" },
   { key: "gstin",        label: "GSTIN",          required: false, hint: "e.g. 27AABCU9603R1ZN — 15 chars" },
   { key: "mobile",       label: "Mobile",         required: false, hint: "e.g. 9876543210" },
@@ -108,7 +108,7 @@ const CLIENT_EXPORT_COLUMNS: { key: string; header: string; accessor: (row: Clie
   { key: "status",      header: "Status",      accessor: (c) => c.status },
 ];
 
-const VALID_ENTITY_TYPES = ["Proprietorship","Partnership","LLP","Private Limited","Public Limited","Trust","Society","Individual"];
+const VALID_ENTITY_TYPES = ["Proprietorship","Partnership","LLP","Private Limited","Public Limited","Trust","Society","Individual","HUF","AOP","BOI"];
 // PAN — IT Act §139A, through `lib/identifiers/pan.panProblem`, which
 // normalises the way `core/validators.validate_pan` does. This tested the
 // raw cell, so a spreadsheet column left in lower case failed every row.
@@ -120,6 +120,7 @@ const ENTITY_LABELS: Record<string, string> = {
   Proprietorship: "Prop.", Partnership: "Partner.", LLP: "LLP",
   "Private Limited": "Pvt Ltd", "Public Limited": "Pub Ltd",
   Trust: "Trust", Society: "Society", Individual: "Individual",
+  HUF: "HUF", AOP: "AOP", BOI: "BOI",
 };
 
 const FILTER_TABS: { id: ClientFilter; label: string }[] = [

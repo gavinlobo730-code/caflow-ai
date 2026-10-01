@@ -272,11 +272,41 @@ def test_the_example_env_placeholder_is_allowlisted_and_a_real_looking_token_is_
 
 
 def test_a_storage_label_is_allowlisted_on_its_own_line_and_nothing_wider():
-    (a,) = [x for x in ALLOWLISTS if x.get("regexTarget") == "line"]
+    (a,) = [x for x in ALLOWLISTS if x.get("regexTarget") == "line" and "persistKey" in x["description"]]
     pattern = re.compile(a["regexes"][0])
     assert pattern.search('<DataTable persistKey="bank.entries.v1" />')
     assert not pattern.search('api_key = "abcdef0123456789abcdef0123456789"')
     assert a["targetRules"] == ["generic-api-key"]
+
+
+def _option_list_allowlist() -> dict:
+    (a,) = [x for x in ALLOWLISTS
+            if x.get("regexTarget") == "line" and "option" in x["description"].lower() and "label" in x["description"]]
+    return a
+
+
+def test_a_ui_option_id_is_allowlisted_by_its_whole_shape_and_only_for_the_generic_rule():
+    """`{ key: "commuted_pension_10_10a", label: "..." }` is a dropdown choice (SalaryWorksheet), and the entropy rule
+    reads the id as a key. The allowlist must match that shape and nothing a credential looks like."""
+    a = _option_list_allowlist()
+    assert a["targetRules"] == ["generic-api-key"], "the vendor rules must still apply to the same line"
+    assert not a.get("paths"), "an option list is recognised by its shape, never by where the file is"
+    pattern = re.compile(a["regexes"][0])
+    for line in (
+        '  { key: "commuted_pension_10_10a", label: "Commuted pension — §10(10A)" },',
+        '{ key: "official_duty_allowance_10_14_i", label: "Allowance for expenses of official duty — §10(14)(i)" },',
+        '    { key: "gratuity_10_10", label: "Gratuity" }',
+    ):
+        assert pattern.search(line), line
+    for line in (
+        '  { key: "aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY", label: "x" },',                       # mixed case
+        '  { key: "0123456789abcdef0123456789abcdef01234567", label: "x" },',               # hexadecimal, no words
+        '  { key: "Sk_Live_4eC39HqLyjWDarjtT1zdp7dc", label: "x" },',                        # a vendor-like shape (upper case)
+        '  { key: "gratuity_10_10" },',                                                      # not followed by a label
+        'const config = { key: "commuted_pension_10_10a", other: "x" };',                    # not an option entry
+        'api_key = "abcdef0123456789abcdef0123456789"',
+    ):
+        assert not pattern.search(line), line
 
 
 def test_the_path_allowlists_match_a_relative_and_an_absolute_path():
@@ -416,6 +446,25 @@ def test_end_to_end_a_groq_key_is_caught_even_inside_a_test_file(tmp_path):
     repo, _ = _repo_with_commits(tmp_path, [{"apps/api/tests/test_x.py": f'KEY = "gsk_{"aB3" * 18}"\n'}])
     shutil.copy(CONFIG, repo / ".gitleaks.toml")
     assert _run_script(repo, {"EVENT_NAME": "schedule"}, Path(shutil.which("gitleaks"))).returncode == 1
+
+
+@needs_gitleaks
+def test_end_to_end_a_ui_option_id_passes_but_a_mixed_case_secret_in_the_same_shape_does_not(tmp_path):
+    """The allowlist exists because an option list tripped the entropy rule on its own pull request, and the commit
+    stays in the range whatever a later commit does. The control is the same line shape with a value that is a
+    credential and not a word: it must still be found."""
+    gitleaks = Path(shutil.which("gitleaks"))
+    ok, _ = _repo_with_commits(tmp_path / "ok", [{
+        "apps/web/components/tax/Options.tsx":
+            'const OPTIONS = [\n  { key: "commuted_pension_10_10a", label: "Commuted pension — §10(10A)" },\n];\n'}])
+    shutil.copy(CONFIG, ok / ".gitleaks.toml")
+    assert _run_script(ok, {"EVENT_NAME": "schedule"}, gitleaks).returncode == 0
+
+    control, _ = _repo_with_commits(tmp_path / "control", [{
+        "apps/web/components/tax/Options.tsx":
+            'const OPTIONS = [\n  { key: "Zk3Qm9Xv2Lp7Rt5Wy8Bn4Hc6Jd1Fs0Ag", label: "x" },\n];\n'}])
+    shutil.copy(CONFIG, control / ".gitleaks.toml")
+    assert _run_script(control, {"EVENT_NAME": "schedule"}, gitleaks).returncode == 1
 
 
 def _copy_tracked_tree(dest: Path) -> Path:

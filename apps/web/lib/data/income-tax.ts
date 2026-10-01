@@ -518,10 +518,52 @@ export interface AdvanceTaxInstallmentInput {
   challan_number?: string | null;
 }
 
+/** IT-21. One income §234C(1)'s proviso may excuse. `tax_paise` is the tax the
+ *  income ADDS to the year's tax due on the returned income — supplied, never
+ *  derived from an amount here, because it depends on the rest of the return. */
+export interface UnforeseenIncomeInput {
+  kind: string;
+  arose_on: string; // YYYY-MM-DD
+  tax_paise: number;
+  description?: string | null;
+}
+
+/** What the server did with one such income — the working a CA checks. */
+export interface UnforeseenIncomeLine {
+  kind: string;
+  arose_on: string;
+  tax_paise: number;
+  description: string;
+  /** False where the proviso's CONDITION is not met (the income's own tax was
+   *  not paid in the instalments that remain, or by 31 March), in which case
+   *  `reason` says why and the income is treated as foreseeable. */
+  relief: boolean;
+  settle_by: string;
+  paid_toward_paise: number;
+  reason: string;
+}
+
+/** A capital gains register transfer offered as a candidate. An ESTIMATE: the
+ *  register's tax is the statutory rate on the gain alone, with cess. */
+export interface UnforeseenIncomeCandidate {
+  source: string;
+  register_id: string | null;
+  kind: string;
+  arose_on: string;
+  description: string;
+  gain_paise: number;
+  tax_paise: number;
+  is_estimate: boolean;
+  rate_is_a_slab_estimate: boolean;
+}
+
 export interface ComputeAdvanceTaxRequest {
   fy: string;
   estimated_tax_paise: number;
   installments: AdvanceTaxInstallmentInput[];
+  /** §234C(1)'s proviso (IT-21). Omitted or empty is the answer this endpoint
+   *  always gave; a figure moves only for a caller that sends income here. */
+  unforeseen_income?: UnforeseenIncomeInput[];
   /** §211(1) proviso — a §44AD/§44ADA assessee pays the whole advance tax by
    *  15 March, so there is ONE instalment and §234C(1)(b) is the charging limb.
    *  Sent, never inferred: whether the presumptive scheme is opted into is the
@@ -540,6 +582,11 @@ export interface AdvanceTaxInstallmentResult {
   shortfall_paise: number;
   interest_months: number;
   interest_paise: number;
+  /** IT-21. The tax on income that arose AFTER this instalment's date and was
+   *  left out of what it is measured against, and the tax its percentages
+   *  were therefore taken of. Optional for a frontend ahead of the backend. */
+  unforeseen_excluded_paise?: number;
+  base_paise?: number;
 }
 
 export interface AdvanceTaxComputeResult {
@@ -553,6 +600,9 @@ export interface AdvanceTaxComputeResult {
   /** The statute the answer rests on, in one sentence, for the CA to check. */
   basis: string;
   installments: AdvanceTaxInstallmentResult[];
+  /** IT-21. One line per income handed to the proviso. Empty where none was. */
+  unforeseen_income?: UnforeseenIncomeLine[];
+  caveats?: string[];
 }
 
 export interface AdvanceTaxRecord {
@@ -580,6 +630,31 @@ export async function computeAdvanceTaxInterest(req: ComputeAdvanceTaxRequest): 
   const json = await res.json();
   if (!res.ok || !json.success) throw new Error(json.error ?? `Advance tax compute failed: ${res.statusText}`);
   return json.data as AdvanceTaxComputeResult;
+}
+
+/** The capital gains register's transfers in the year, offered as candidates for
+ *  §234C(1)'s proviso (IT-21). Reads only; a candidate nobody includes changes
+ *  no figure. */
+export async function listUnforeseenIncomeCandidates(
+  clientId: string, fy: string,
+): Promise<{
+  kinds: { key: string; label: string }[];
+  candidates: UnforeseenIncomeCandidate[];
+  caveats: string[];
+}> {
+  const params = new URLSearchParams({ client_id: clientId, fy });
+  const res = await fetch(`${API_BASE}/api/income-tax/advance-tax/unforeseen-income?${params}`,
+    { headers: await _authHeaders() });
+  const json = await res.json();
+  if (!res.ok || !json.success) {
+    throw new Error(json.error ?? `Failed to load the register's gains: ${res.statusText}`);
+  }
+  const data = (json.data ?? {}) as { kinds?: unknown; candidates?: unknown; caveats?: unknown };
+  return {
+    kinds: Array.isArray(data.kinds) ? (data.kinds as { key: string; label: string }[]) : [],
+    candidates: Array.isArray(data.candidates) ? (data.candidates as UnforeseenIncomeCandidate[]) : [],
+    caveats: Array.isArray(data.caveats) ? (data.caveats as string[]) : [],
+  };
 }
 
 /** One section's interest, as apps/api/routers/income_tax._section_interest_payload
@@ -797,6 +872,163 @@ export async function getITNotices(clientId: string): Promise<Record<string, unk
     .order("date_received", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as Record<string, unknown>[];
+}
+
+// ── The working papers that feed the computation ───────────────────────────
+// House property and salary (TDS-INCOME-TAX-14, -15) and the AIS lines
+// (TDS-INCOME-TAX-10). The rules are the server's: these functions carry the
+// CA's inputs out and the worked answer back, and decide nothing.
+
+export type WorksheetKind = "house_property" | "salary";
+
+/** One property's working, as `domain/income_tax/house_property` serves it. */
+export interface HousePropertyLine {
+  key: string; name: string; use: string; share_bps: number;
+  gross_annual_value_paise: number; municipal_tax_paise: number;
+  net_annual_value_paise: number; standard_deduction_paise: number;
+  interest_claimed_paise: number; interest_allowed_paise: number;
+  interest_disallowed_paise: number;
+  pre_construction_instalment_paise: number;
+  pre_construction_instalment_number: number | null;
+  income_paise: number; workings: string[]; gaps: string[];
+}
+export interface HousePropertyResult {
+  fy: string; use_new_regime: boolean;
+  properties: HousePropertyLine[];
+  /** The figure the computation's House Property box takes. Negative is a loss;
+   *  the computation applies §71(3A) / §115BAC(2) to it, not this worksheet. */
+  head_income_paise: number; is_loss: boolean;
+  gaps: string[]; caveats: string[]; not_modelled: string[]; verified: boolean;
+}
+
+/** One employer's block of Schedule S, as `domain/income_tax/schedule_s` serves it. */
+export interface SalaryEmployerBlock {
+  key: string; name: string; tan: string | null; is_previous_employer: boolean;
+  salary_17_1_paise: number; perquisites_17_2_paise: number;
+  esop_perquisite_paise: number; profits_in_lieu_17_3_paise: number;
+  gross_salary_paise: number; exemptions_allowed_paise: number;
+  professional_tax_allowed_paise: number; net_salary_paise: number;
+  workings: string[];
+}
+export interface SalaryResult {
+  fy: string; use_new_regime: boolean;
+  employers: SalaryEmployerBlock[];
+  gross_salary_paise: number; exemptions_allowed_paise: number;
+  hra_exemption_paise: number; professional_tax_paise: number;
+  standard_deduction_paise: number; income_chargeable_paise: number;
+  /** What the computation's own boxes take: the salary box and the HRA fields. */
+  engine_inputs: {
+    gross_salary_paise: number;
+    hra: { basic_salary_paise: number; hra_received_paise: number;
+           rent_paid_paise: number; is_metro: boolean };
+  };
+  gaps: string[]; caveats: string[]; not_modelled: string[]; verified: boolean;
+}
+
+export interface WorksheetResponse<R> {
+  kind: WorksheetKind; financial_year: string; saved: boolean;
+  updated_at: string | null; payload: Record<string, unknown>; result: R;
+}
+
+async function _worksheetCall<R>(
+  method: "GET" | "PUT", kind: WorksheetKind, clientId: string, fy: string,
+  useNewRegime: boolean, payload?: Record<string, unknown>,
+): Promise<WorksheetResponse<R>> {
+  const base = `${API_BASE}/api/income-tax/worksheets/${kind}`;
+  const res = method === "GET"
+    ? await fetch(`${base}?${new URLSearchParams({
+        client_id: clientId, financial_year: fy, use_new_regime: String(useNewRegime),
+      })}`, { headers: await _authHeaders() })
+    : await fetch(base, {
+        method: "PUT", headers: await _authHeaders(),
+        body: JSON.stringify({
+          client_id: clientId, financial_year: fy, use_new_regime: useNewRegime, payload,
+        }),
+      });
+  const json = await res.json();
+  if (!res.ok || !json.success) {
+    throw new Error(json.error ?? json.detail ?? `The worksheet could not be ${method === "GET" ? "read" : "saved"}: ${res.statusText}`);
+  }
+  return json.data as WorksheetResponse<R>;
+}
+
+/** The saved inputs (or an empty worksheet) with the result worked out for the
+ *  regime and year asked. */
+export function getWorksheet<R>(
+  kind: WorksheetKind, clientId: string, fy: string, useNewRegime: boolean,
+): Promise<WorksheetResponse<R>> {
+  return _worksheetCall<R>("GET", kind, clientId, fy, useNewRegime);
+}
+
+/** Keep the inputs — only if the server accepts them — and get the working back. */
+export function saveWorksheet<R>(
+  kind: WorksheetKind, clientId: string, fy: string, useNewRegime: boolean,
+  payload: Record<string, unknown>,
+): Promise<WorksheetResponse<R>> {
+  return _worksheetCall<R>("PUT", kind, clientId, fy, useNewRegime, payload);
+}
+
+/** One AIS line the computation can take. */
+export interface AisComputationLine {
+  line_key: string; bucket: string; target: string; target_label: string;
+  amount_paise: number; tds_paise: number;
+  sources: { payer: string; label: string; amount_paise: number; source: string }[];
+  /** suggested | accepted | rejected | accepted_stale | rejected_stale */
+  state: string; decided_at: string | null; decided_amount_paise: number | null;
+}
+export interface AisComputationTarget {
+  target: string; label: string;
+  /** What the statement says over every line not rejected; null where all were. */
+  ais_paise: number | null;
+  /** What an EMPTY box may be filled with: accepted lines on their current figure. */
+  accept_paise: number;
+  typed_paise: number | null; differs: boolean; difference_paise: number | null;
+}
+export interface AisComputationLines {
+  financial_year: string; assessment_year: string; has_statement: boolean;
+  upload: { id: string; file_name: string | null; created_at: string | null } | null;
+  lines: AisComputationLine[]; targets: AisComputationTarget[];
+  refused: { bucket: string; amount_paise: number; reason: string }[];
+  gaps: string[];
+}
+
+/** The statement's lines for this client's year, with the figures already typed
+ *  into the boxes compared against them. An absent figure is "not typed". */
+export async function getAisComputationLines(
+  clientId: string, fy: string,
+  typed: { gross_salary_paise?: number; other_income_paise?: number } = {},
+): Promise<AisComputationLines> {
+  const params = new URLSearchParams({ client_id: clientId, financial_year: fy });
+  if (typed.gross_salary_paise !== undefined) {
+    params.set("typed_gross_salary_paise", String(typed.gross_salary_paise));
+  }
+  if (typed.other_income_paise !== undefined) {
+    params.set("typed_other_income_paise", String(typed.other_income_paise));
+  }
+  const res = await fetch(`${API_BASE}/api/ais/computation-lines?${params}`,
+    { headers: await _authHeaders() });
+  const json = await res.json();
+  if (!res.ok || !json.success) {
+    throw new Error(json.error ?? json.detail ?? `Failed to load the AIS lines: ${res.statusText}`);
+  }
+  return json.data as AisComputationLines;
+}
+
+/** Accept, reject or take back one line, on the figure the CA is looking at. */
+export async function decideAisComputationLine(
+  clientId: string, fy: string, lineKey: string,
+  decision: "accepted" | "rejected" | "undecided",
+): Promise<AisComputationLine> {
+  const res = await fetch(
+    `${API_BASE}/api/ais/computation-lines/${encodeURIComponent(lineKey)}/decision`, {
+      method: "PUT", headers: await _authHeaders(),
+      body: JSON.stringify({ client_id: clientId, financial_year: fy, decision }),
+    });
+  const json = await res.json();
+  if (!res.ok || !json.success) {
+    throw new Error(json.error ?? json.detail ?? `The decision could not be recorded: ${res.statusText}`);
+  }
+  return json.data as AisComputationLine;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

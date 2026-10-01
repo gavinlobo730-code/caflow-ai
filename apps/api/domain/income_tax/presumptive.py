@@ -129,16 +129,24 @@ class PresumptiveResult:
 #: liability partnership as defined in §2(1)(n) of the LLP Act 2008.
 #: §44ADA(1): "an assessee, being an individual or a partnership firm other
 #: than a limited liability partnership ... who is a resident in India".
-#: Both therefore stop in the same place, and a company is outside both.
+#: They DIFFER by one assessee, and a company is outside both: §44AD names a
+#: Hindu undivided family and §44ADA(1) does not, because a family does not
+#: practise a profession.
 #:
-#: A HUF is eligible in law and is absent here because `clients.entity_type`
-#: has no value for one — this set is the intersection of the section and the
-#: kinds this product can hold, not a reading of the section.
+#: THE TWO USED TO SHARE ONE SET, and it did not matter while `clients.
+#: entity_type` had no value for a HUF — "a HUF is eligible in law and is absent
+#: here". Migration 453 added one (TDS-INCOME-TAX-16), so the split is a fact the
+#: engine has to hold: completing the shared set from §44AD alone would have
+#: offered §44ADA to a family. An AOP and a BOI are in neither.
+#:
+#: Each set is still the intersection of the section and the kinds this
+#: product can hold, not a reading of the section alone.
 #:
 #: §44AE IS DELIBERATELY NOT GATED. It reaches "an assessee who owns not more
 #: than ten goods carriages" — any person, a company included — so testing the
 #: kind there would refuse a transporter the section charges.
-ELIGIBLE_PRESUMPTIVE_ASSESSEES = frozenset({"individual", "firm"})
+ELIGIBLE_PRESUMPTIVE_ASSESSEES = frozenset({"individual", "huf", "firm"})   # §44AD
+ELIGIBLE_44ADA_ASSESSEES = frozenset({"individual", "firm"})                # §44ADA(1)
 
 
 def _assessee_bars(section: str, assessee_kind: Optional[str],
@@ -154,13 +162,21 @@ def _assessee_bars(section: str, assessee_kind: Optional[str],
     agency.
     """
     kind = (assessee_kind or "").strip().lower()
-    if kind and kind not in ELIGIBLE_PRESUMPTIVE_ASSESSEES:
+    is_44ada = section == "§44ADA"
+    eligible = ELIGIBLE_44ADA_ASSESSEES if is_44ada else ELIGIBLE_PRESUMPTIVE_ASSESSEES
+    if kind and kind not in eligible:
+        who = ("a resident individual or partnership firm" if is_44ada else
+               "a resident individual, Hindu undivided family or partnership firm")
         return (
-            f"{section} reaches a resident individual, Hindu undivided family or "
-            f"partnership firm. This client is recorded as {kind!r}, which the "
-            f"section excludes — an LLP by name (§2(1)(n) of the LLP Act 2008 in "
-            f"§44AD's Explanation (a) and in §44ADA(1)), a company because it is "
-            f"not among the persons either section names."
+            f"{section} reaches {who}. This client is recorded as {kind!r}, which "
+            f"the section excludes — an LLP by name (§2(1)(n) of the LLP Act 2008 "
+            f"in §44AD's Explanation (a) and in §44ADA(1)), a company or an "
+            f"association because it is not among the persons "
+            + ("either section names"
+               if not is_44ada else
+               "the section names, and a Hindu undivided family because §44ADA(1) "
+               "names an individual or a partnership firm and not a family")
+            + "."
         )
     if not is_resident:
         return (f"{section} reaches a RESIDENT assessee only, and this one is "

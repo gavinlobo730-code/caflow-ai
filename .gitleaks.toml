@@ -64,6 +64,13 @@ targetRules = ["generic-api-key"]
 regexTarget = "line"
 regexes = ['''persistKey\s*=\s*["'][A-Za-z0-9._-]+["']''']
 
+# ── a UI option's id is a label, not a credential ───────────────────────────────────────────────
+[[allowlists]]
+description = "An option list in a screen: `{ key: \"commuted_pension_10_10a\", label: \"Commuted pension\" }`. The `key` is the id of a dropdown choice (lower-case words joined by underscores) and the `label` after it is the sentence the person reads; the word `key` is all it shares with a credential. Matched by the WHOLE SHAPE on its own line (an object that opens with a snake_case `key` and goes straight on to a `label`), only for the noisy generic rule, so `jwt`, `groq-api-key`, `gcp-api-key` and every cloud-token rule still apply to the same line. A mixed-case or hexadecimal value in the same position does not match (a credential is not written in lower-case words), and neither does a `key` that is not followed by a `label`. It has to be here and not only fixed in the file because the commit that added the line stays in every pull request range and in the weekly full-history scan."
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = ['''^\s*\{\s*key:\s*"[a-z][a-z0-9]*(?:_[a-z0-9]+)+",\s*label:\s*"''']
+
 # ── test fixtures ───────────────────────────────────────────────────────────────────────────────
 [[allowlists]]
 description = "Ids, UUIDs and section codes in test fixtures trip the entropy rule. ONLY the generic rule is silenced here; the vendor rules still fire inside tests."

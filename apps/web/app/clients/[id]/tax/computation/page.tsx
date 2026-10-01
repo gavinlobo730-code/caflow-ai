@@ -1,6 +1,9 @@
 "use client";
 
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
+import AisComputationLinesPanel from "@/components/tax/AisComputationLines";
+import HousePropertyWorksheet from "@/components/tax/HousePropertyWorksheet";
+import SalaryWorksheet from "@/components/tax/SalaryWorksheet";
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Loader2, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Save } from "lucide-react";
 import { formatWhole } from "@/lib/money/format";
@@ -12,7 +15,7 @@ import { errorMessage } from "@/lib/api";
 import RegimeElectionPanel from "@/components/tax/RegimeElectionPanel";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
-import { objectWithLists } from "@/lib/api/shape";
+import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -154,6 +157,14 @@ interface ComputeResult {
      *  being taxed. */
     turnover_reference_fy: string | null;
     workings: string[];
+    /** False for a HUF, an AOP, a BOI and every entity — s.87A reaches only a
+     *  resident individual. Absent from an older backend, which reads as the
+     *  rebate line being shown as it always was. */
+    rebate_87a_applies?: boolean;
+    /** s.167B, for an AOP or a BOI: "maximum_marginal_rate" or "slab". */
+    basis?: string;
+    /** What the basis leaves out, named. */
+    caveats?: string[];
   };
   /** s.115JB (a company) / s.115JC (a firm or LLP). `credit_paise` is the
    *  point: s.115JAA and s.115JD carry the excess forward for fifteen
@@ -350,6 +361,23 @@ export default function TaxComputationPage() {
   // branch with no election, so only the Proprietorship case is reachable at
   // this panel today.
   const [entityImpliesBusinessIncome, setEntityImpliesBusinessIncome] = useState(false);
+  // A HUF, an AOP and a BOI take the slab path WITHOUT an individual's reliefs
+  // (TDS-INCOME-TAX-16). The server serves which reliefs this assessee does not
+  // get, by key, from the same assessee-kind call, so the boxes it would refuse
+  // are hidden rather than offered and answered with an error afterwards. This
+  // screen holds no section and no list: it asks whether a key is in the answer.
+  const [unavailableReliefs, setUnavailableReliefs] = useState<string[]>([]);
+  const offers = (relief: string) => !unavailableReliefs.includes(relief);
+  const [basisNote, setBasisNote] = useState<string | null>(null);
+  // §167B asks two things about an AOP or BOI's MEMBERS, which no record holds.
+  // Each is a tri-state — unanswered, yes, no — and an unanswered one is sent
+  // as null, which the server refuses for these two assessees rather than
+  // assuming (domain/income_tax/aop_boi.py).
+  const [asksAboutMembers, setAsksAboutMembers] = useState(false);
+  const [aopShares, setAopShares] = useState<"" | "yes" | "no">("");
+  const [aopMemberOver, setAopMemberOver] = useState<"" | "yes" | "no">("");
+  const triState = (v: "" | "yes" | "no"): boolean | null =>
+    v === "" ? null : v === "yes";
 
   // Computation inputs
   const [regime, setRegime] = useState("new");
@@ -636,6 +664,7 @@ export default function TaxComputationPage() {
     if (!entityType) {
       setAssesseeKind(null); setAssesseeRefusal(null);
       setEntityImpliesBusinessIncome(false);
+      setUnavailableReliefs([]); setBasisNote(null); setAsksAboutMembers(false);
       return;
     }
     (async () => {
@@ -646,6 +675,9 @@ export default function TaxComputationPage() {
         setAssesseeKind(r.data?.kind ?? null);
         setAssesseeRefusal(r.data?.refusal ?? null);
         setEntityImpliesBusinessIncome(Boolean(r.data?.implies_business_income));
+        setUnavailableReliefs(arrayOrEmpty<string>(r.data?.unavailable_reliefs));
+        setBasisNote(typeof r.data?.basis_note === "string" ? r.data.basis_note : null);
+        setAsksAboutMembers(Boolean(r.data?.asks_about_members));
       } catch {
         /* leave it unresolved; the compute call answers definitively anyway */
       }
@@ -856,6 +888,12 @@ export default function TaxComputationPage() {
           exempt_income_paise: toP(exemptIncome),
           is_senior_citizen: isSenior,
           is_very_senior_citizen: isVerySenior,
+          // s.167B's two questions, for an AOP or a BOI only. Null where
+          // unanswered — the server refuses that rather than assuming.
+          ...(asksAboutMembers ? {
+            aop_shares_determinate: triState(aopShares),
+            aop_any_member_over_exemption: triState(aopMemberOver),
+          } : {}),
           // 80C is collected as one figure rather than nine: the sub-limits
           // are all inside the same ₹1,50,000 ceiling, and asking a CA to
           // split a total they already know adds keystrokes without changing
@@ -1053,6 +1091,32 @@ export default function TaxComputationPage() {
   const toggle = (s: string) => setActiveSection(prev => prev === s ? null : s);
   const latestSnap = snapshots[0];
 
+  // What is typed in a box, in paise — undefined where it is blank or not an
+  // amount, which the AIS panel reads as "not typed" (and not as zero).
+  const typedAmount = (text: string): number | undefined => {
+    if (text.trim() === "") return undefined;
+    const p = paiseFromRupeeInput(text);
+    return p === null ? undefined : p;
+  };
+  // An AIS line accepted for a box. The panel calls this only for an EMPTY box;
+  // the mapping is a server key to a local box and holds no statute.
+  const applyAisLine = useCallback((target: string, paise: number) => {
+    if (target === "gross_salary_paise") setSalary(rupeeInputFromPaise(paise));
+    else if (target === "other_income_paise") setOtherIncome(rupeeInputFromPaise(paise));
+  }, []);
+  // Schedule S's answer, put in the boxes the computation already has: the one
+  // salary box (the figure the engine takes) and the HRA fields.
+  const useSalaryWorksheet = (e: {
+    gross_salary_paise: number;
+    hra: { basic_salary_paise: number; hra_received_paise: number; rent_paid_paise: number; is_metro: boolean };
+  }) => {
+    setSalary(rupeeInputFromPaise(e.gross_salary_paise));
+    setHraBasic(rupeeInputFromPaise(e.hra.basic_salary_paise));
+    setHraReceived(rupeeInputFromPaise(e.hra.hra_received_paise));
+    setHraRent(rupeeInputFromPaise(e.hra.rent_paid_paise));
+    setHraMetro(e.hra.is_metro);
+  };
+
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-4">
       {/* Header */}
@@ -1204,8 +1268,50 @@ export default function TaxComputationPage() {
               <p className="text-2xs text-ps-label">
                 Assessed as recorded on the client: <strong>{entityType}</strong>.
                 {isEntity && " Taxed at a flat rate from the first rupee — no slabs, no exemption limit and no §87A rebate."}
+                {basisNote && ` ${basisNote}`}
               </p>
             ) : null}
+
+            {/* §167B — an AOP or a BOI. Which basis it is charged on turns on
+                two facts about its MEMBERS that no record here holds, so they
+                are the CA's answers to this computation and an unanswered one
+                is refused by the server, not assumed. The screen collects the
+                two facts and decides nothing. */}
+            {asksAboutMembers && (
+              <div className="space-y-2 border border-ps-border rounded-lg p-3">
+                <p className="text-2xs font-semibold text-ps-body">
+                  Members of the association — §167B
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-3xs text-ps-label mb-1 block">
+                      Are the members&apos; shares determinate and known?
+                    </label>
+                    <select value={aopShares}
+                      onChange={e => setAopShares(e.target.value as "" | "yes" | "no")}
+                      className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
+                      <option value="">Not stated</option>
+                      <option value="yes">Yes — determinate and known</option>
+                      <option value="no">No — indeterminate or unknown</option>
+                    </select>
+                  </div>
+                  {aopShares === "yes" && (
+                    <div>
+                      <label className="text-3xs text-ps-label mb-1 block">
+                        Is any member&apos;s own total income above the exemption limit?
+                      </label>
+                      <select value={aopMemberOver}
+                        onChange={e => setAopMemberOver(e.target.value as "" | "yes" | "no")}
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
+                        <option value="">Not stated</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No — none is</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* IT-31 — the credit Form 26AS supports, beside the box the CA
                 used to retype it into. Rule 37BA(1) gives credit on the basis
@@ -1287,7 +1393,7 @@ export default function TaxComputationPage() {
 
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: "Gross Salary (₹)", value: salary, set: setSalary },
+                { label: "Gross Salary (₹)", value: salary, set: setSalary, relief: "salary_head" },
                 { label: "Business Income (₹)", value: businessIncome, set: setBusinessIncome },
                 { label: "Other Income (₹)", value: otherIncome, set: setOtherIncome },
                 { label: "TDS Deducted (₹)", value: tds,
@@ -1304,7 +1410,7 @@ export default function TaxComputationPage() {
                 { label: "LTCG — listed equity, §112A (₹)", value: ltcgEquity, set: setLtcgEquity },
                 { label: "LTCG — property, debt etc (₹)", value: ltcgOther, set: setLtcgOther },
                 { label: "Exempt Income (₹)", value: exemptIncome, set: setExemptIncome },
-              ].map(({ label, value, set, hint }) => (
+              ].filter(f => !f.relief || offers(f.relief)).map(({ label, value, set, hint }) => (
                 <div key={label}>
                   <label className="text-3xs text-ps-label mb-1 block">{label}</label>
                   <input
@@ -1489,6 +1595,7 @@ export default function TaxComputationPage() {
                     </span>
                   </span>
                 </label>
+                {offers("s80ccd_2") && (<>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-3xs text-ps-label mb-1 block">
@@ -1522,6 +1629,7 @@ export default function TaxComputationPage() {
                   Employed by the Central or a State Government
                   <span className="text-3xs text-ps-hint">(a higher §80CCD(2) ceiling)</span>
                 </label>
+                </>)}
               </div>
             )}
 
@@ -1540,11 +1648,14 @@ export default function TaxComputationPage() {
                 <div className="grid grid-cols-2 gap-3">
                   {[
                     { label: "Section 80C (₹)", value: s80cTotal, set: setS80cTotal,
-                      hint: "PPF, ELSS, LIC, principal, tuition — ceiling ₹1,50,000" },
-                    { label: "80D — self and family (₹)", value: s80dSelf, set: setS80dSelf },
-                    { label: "80D — parents (₹)", value: s80dParents, set: setS80dParents },
+                      hint: "PPF, ELSS, LIC, principal, tuition — ceiling ₹1,50,000",
+                      relief: "s80c" },
+                    { label: "80D — self and family (₹)", value: s80dSelf, set: setS80dSelf,
+                      relief: "s80d" },
+                    { label: "80D — parents (₹)", value: s80dParents, set: setS80dParents,
+                      relief: "s80d" },
                     { label: "80TTA — savings interest (₹)", value: savingsInterest80tta,
-                      set: setSavingsInterest80tta },
+                      set: setSavingsInterest80tta, relief: "s80tta" },
                     { label: "§24(b) — home loan interest (₹)", value: homeLoanInterest24b,
                       set: setHomeLoanInterest24b },
                     // IT-32 left this box for what the sections below do NOT
@@ -1554,7 +1665,7 @@ export default function TaxComputationPage() {
                     // somewhere to put it.
                     { label: "Other deductions (₹)", value: otherDeductions, set: setOtherDeductions,
                       hint: "Anything the sections below do not reach — added with no ceiling and no section" },
-                  ].map(({ label, value, set, hint }) => (
+                  ].filter(f => !f.relief || offers(f.relief)).map(({ label, value, set, hint }) => (
                     <div key={label}>
                       <label className="text-3xs text-ps-label mb-1 block">{label}</label>
                       <input type="text" inputMode="decimal" value={value}
@@ -1567,11 +1678,15 @@ export default function TaxComputationPage() {
                 </div>
                 <div className="flex flex-wrap gap-4">
                   {[
-                    { label: "80D: self/family is a senior citizen", v: s80dSelfSenior, set: setS80dSelfSenior },
-                    { label: "80D: parents are senior citizens", v: s80dParentsSenior, set: setS80dParentsSenior },
-                    { label: "Assessee is a senior citizen (60+)", v: isSenior, set: setIsSenior },
-                    { label: "Assessee is very senior (80+)", v: isVerySenior, set: setIsVerySenior },
-                  ].map(({ label, v, set }) => (
+                    { label: "80D: self/family is a senior citizen", v: s80dSelfSenior, set: setS80dSelfSenior,
+                      relief: "s80d" },
+                    { label: "80D: parents are senior citizens", v: s80dParentsSenior, set: setS80dParentsSenior,
+                      relief: "s80d" },
+                    { label: "Assessee is a senior citizen (60+)", v: isSenior, set: setIsSenior,
+                      relief: "senior_citizen_slab" },
+                    { label: "Assessee is very senior (80+)", v: isVerySenior, set: setIsVerySenior,
+                      relief: "senior_citizen_slab" },
+                  ].filter(f => !f.relief || offers(f.relief)).map(({ label, v, set }) => (
                     <label key={label} className="flex items-center gap-1.5 text-2xs text-ps-body">
                       <input type="checkbox" checked={v} onChange={e => set(e.target.checked)} />
                       {label}
@@ -1595,7 +1710,7 @@ export default function TaxComputationPage() {
                   </p>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
+                    <div hidden={!offers("s80e")}>
                       <label className="text-3xs text-ps-label mb-1 block">
                         §80E — education loan interest (₹)
                       </label>
@@ -1608,7 +1723,7 @@ export default function TaxComputationPage() {
                         years.
                       </p>
                     </div>
-                    <div>
+                    <div hidden={!offers("s80e")}>
                       <label className="text-3xs text-ps-label mb-1 block">
                         §80E — which of the eight years
                       </label>
@@ -1621,7 +1736,7 @@ export default function TaxComputationPage() {
                         nothing here counts the years.
                       </p>
                     </div>
-                    <div>
+                    <div hidden={!offers("s80ee")}>
                       <label className="text-3xs text-ps-label mb-1 block">
                         §80EE / §80EEA — additional housing interest (₹)
                       </label>
@@ -1633,7 +1748,7 @@ export default function TaxComputationPage() {
                         Over and above the §24(b) interest above.
                       </p>
                     </div>
-                    <div>
+                    <div hidden={!offers("s80ee")}>
                       <label className="text-3xs text-ps-label mb-1 block">
                         Loan sanctioned on
                       </label>
@@ -1646,7 +1761,7 @@ export default function TaxComputationPage() {
                         — without it nothing is allowed.
                       </p>
                     </div>
-                    <div>
+                    <div hidden={!offers("s80ddb")}>
                       <label className="text-3xs text-ps-label mb-1 block">
                         §80DDB — treatment of a specified disease (₹)
                       </label>
@@ -1655,7 +1770,7 @@ export default function TaxComputationPage() {
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
                     </div>
-                    <div>
+                    <div hidden={!offers("s80ddb")}>
                       <label className="text-3xs text-ps-label mb-1 block">
                         §80DDB — reimbursed by an insurer or employer (₹)
                       </label>
@@ -1667,7 +1782,7 @@ export default function TaxComputationPage() {
                         Subtracted from the spend before the ceiling, not after.
                       </p>
                     </div>
-                    <div>
+                    <div hidden={!offers("s80gg")}>
                       <label className="text-3xs text-ps-label mb-1 block">
                         §80GG — rent paid, where no HRA is received (₹)
                       </label>
@@ -1690,16 +1805,16 @@ export default function TaxComputationPage() {
                   <div className="flex flex-wrap gap-4">
                     {[
                       { label: "§80DD: a dependant has a certified disability",
-                        v: hasDisabledDependant, set: setHasDisabledDependant },
+                        v: hasDisabledDependant, set: setHasDisabledDependant, relief: "s80dd" },
                       { label: "§80DD: that disability is severe (80%+)",
-                        v: dependantDisabilitySevere, set: setDependantDisabilitySevere },
+                        v: dependantDisabilitySevere, set: setDependantDisabilitySevere, relief: "s80dd" },
                       { label: "§80U: the assessee has a certified disability",
-                        v: assesseeIsDisabled, set: setAssesseeIsDisabled },
+                        v: assesseeIsDisabled, set: setAssesseeIsDisabled, relief: "s80u" },
                       { label: "§80U: that disability is severe (80%+)",
-                        v: assesseeDisabilitySevere, set: setAssesseeDisabilitySevere },
+                        v: assesseeDisabilitySevere, set: setAssesseeDisabilitySevere, relief: "s80u" },
                       { label: "§80DDB: the patient is a senior citizen",
-                        v: patientIsSenior, set: setPatientIsSenior },
-                    ].map(({ label, v, set }) => (
+                        v: patientIsSenior, set: setPatientIsSenior, relief: "s80ddb" },
+                    ].filter(f => offers(f.relief)).map(({ label, v, set }) => (
                       <label key={label} className="flex items-center gap-1.5 text-2xs text-ps-body">
                         <input type="checkbox" checked={v} onChange={e => set(e.target.checked)} />
                         {label}
@@ -1717,7 +1832,7 @@ export default function TaxComputationPage() {
                     the §80C ceiling. Separate from the employer's contribution
                     above: different sub-section, different limit, and only
                     this one is withdrawn by §115BAC(2). */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className={offers("s80ccd_1b") ? "grid grid-cols-2 gap-3" : "hidden"}>
                   <div>
                     <label className="text-3xs text-ps-label mb-1 block">
                       §80CCD(1B) — own NPS (₹)
@@ -1738,7 +1853,7 @@ export default function TaxComputationPage() {
                     server computes it. This is the largest relief the screen
                     was not collecting: an old-regime salaried client paying
                     rent had it omitted entirely. */}
-                <div className="space-y-2">
+                <div className={offers("hra_10_13a") ? "space-y-2" : "hidden"}>
                   <p className="text-2xs font-semibold text-ps-body">
                     House rent allowance — §10(13A)
                   </p>
@@ -1938,7 +2053,18 @@ export default function TaxComputationPage() {
                       "Rebate 87A" line reading ₹0 to a company implies a relief
                       it was never eligible for; the rate it WAS charged at is
                       the useful figure in its place. */}
-                  {computeResult.assessee && computeResult.assessee.kind !== "individual" ? (
+                  {computeResult.assessee && computeResult.assessee.rebate_87a_applies === false
+                    && computeResult.assessee.rate_percent === 0 ? (
+                    // A HUF, or an AOP or BOI on the slabs: no flat rate to show
+                    // and no rebate to show either — §87A never reached them.
+                    // The server says so (`rebate_87a_applies`); a "Rebate 87A
+                    // ₹0" line here would imply a relief that was claimed and
+                    // refused.
+                    <div>
+                      <p className="text-ps-hint">Rebate 87A</p>
+                      <p className="font-medium">Not available</p>
+                    </div>
+                  ) : computeResult.assessee && computeResult.assessee.kind !== "individual" ? (
                     <div>
                       <p className="text-ps-hint">Rate charged</p>
                       <p className="font-medium">
@@ -1993,6 +2119,15 @@ export default function TaxComputationPage() {
                     ))}
                   </div>
                 ) : null}
+                {/* What §167B's basis leaves out, named: an AOP or BOI answer
+                    that does not say so reads as complete. */}
+                {arrayOrEmpty<string>(computeResult.assessee?.caveats).length > 0 && (
+                  <Callout tone="note">
+                    {arrayOrEmpty<string>(computeResult.assessee?.caveats).map((c, i) => (
+                      <p key={i}>{c}</p>
+                    ))}
+                  </Callout>
+                )}
                 {/* IT-08's own working, which used to stop inside the engine.
                     Only the rows that carry a figure are listed: three zero
                     rows on a return with no capital gains is noise, and the
@@ -2101,6 +2236,51 @@ export default function TaxComputationPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* THE WORKING PAPERS THAT FEED THE BOXES ABOVE (TDS-INCOME-TAX-10, -14,
+          -15). Salary, house property and other income were each ONE typed
+          figure that was really the result of a working done on paper first.
+          Each panel here asks the server, keeps the CA's inputs, and offers its
+          answer to the box the computation already reads — on the CA's click,
+          and never over a figure they typed. Nothing here is computed in the
+          browser. */}
+      <div className="bg-white border border-ps-border rounded-xl overflow-hidden">
+        <button
+          onClick={() => toggle("worksheets")}
+          className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-ps-bg text-left"
+        >
+          <p className="text-xs font-semibold text-ps-body">
+            Working papers — AIS, house property{offers("salary_head") && !isEntity ? ", salary" : ""}
+          </p>
+          {activeSection === "worksheets" ? <ChevronUp size={14} className="text-ps-hint" /> : <ChevronDown size={14} className="text-ps-hint" />}
+        </button>
+        {activeSection === "worksheets" && fy && clientId && clientId !== "_placeholder" && (
+          <div className="px-5 pb-5 border-t border-ps-border pt-4 space-y-6">
+            <div className="space-y-2">
+              <p className="text-2xs font-semibold text-ps-body">What the Annual Information Statement says</p>
+              <AisComputationLinesPanel
+                clientId={clientId} fy={fy}
+                typedGrossSalary={typedAmount(salary)}
+                typedOtherIncome={typedAmount(otherIncome)}
+                onApply={applyAisLine} />
+            </div>
+            <div className="space-y-2 border-t border-ps-border pt-4">
+              <p className="text-2xs font-semibold text-ps-body">Income from house property</p>
+              <HousePropertyWorksheet
+                clientId={clientId} fy={fy} useNewRegime={regime === "new"}
+                onUse={p => setHousePropertyIncome(rupeeInputFromPaise(p))} />
+            </div>
+            {offers("salary_head") && !isEntity && (
+              <div className="space-y-2 border-t border-ps-border pt-4">
+                <p className="text-2xs font-semibold text-ps-body">Salary — Schedule S</p>
+                <SalaryWorksheet
+                  clientId={clientId} fy={fy} useNewRegime={regime === "new"}
+                  onUse={useSalaryWorksheet} />
               </div>
             )}
           </div>

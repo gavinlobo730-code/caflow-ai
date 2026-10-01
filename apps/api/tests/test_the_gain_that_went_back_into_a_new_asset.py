@@ -511,6 +511,11 @@ def test_the_caveat_is_not_emitted_where_no_section_apportions():
     ("Private Limited", False),
     ("LLP", False),
     ("Trust", False),
+    # Migration 453 (TDS-INCOME-TAX-16): a HUF is answered as itself, and an
+    # association is NOT an individual or a HUF.
+    ("HUF", True),
+    ("AOP", False),
+    ("BOI", False),
     # A value migration 001's CHECK does not have reads as UNKNOWN, never as a
     # company — a new entity type must refuse rather than fall through.
     ("Cooperative Society", None),

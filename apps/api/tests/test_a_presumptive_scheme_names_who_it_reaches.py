@@ -35,7 +35,8 @@ from pydantic import ValidationError
 
 import routers.income_tax as it
 from domain.income_tax.presumptive import (
-    ELIGIBLE_PRESUMPTIVE_ASSESSEES, compute_44ad, compute_44ada, compute_44ae,
+    ELIGIBLE_44ADA_ASSESSEES, ELIGIBLE_PRESUMPTIVE_ASSESSEES,
+    compute_44ad, compute_44ada, compute_44ae,
 )
 from domain.income_tax.presumptive import GoodsCarriage
 
@@ -50,7 +51,7 @@ def _44ad(**kw):
 
 # ── who the sections reach ────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("kind", ["individual", "firm"])
+@pytest.mark.parametrize("kind", ["individual", "firm", "huf"])
 def test_the_assessees_the_section_names_are_eligible(kind):
     r = _44ad(assessee_kind=kind)
     assert r.eligible is True
@@ -89,10 +90,31 @@ def test_44ae_is_not_gated_on_the_assessee():
     assert "assessee_kind" not in it.Compute44AERequest.model_fields
 
 
-def test_the_eligible_set_is_the_intersection_and_says_so():
-    """A HUF is eligible in law and absent here because clients.entity_type has
-    no value for one. Pinned so nobody 'completes' the set from the section."""
-    assert ELIGIBLE_PRESUMPTIVE_ASSESSEES == frozenset({"individual", "firm"})
+def test_the_eligible_sets_are_the_intersection_and_say_so():
+    """§44AD names a HUF and §44ADA(1) does not. This used to read "a HUF is
+    eligible in law and absent here because clients.entity_type has no value
+    for one"; migration 453 gave it one (TDS-INCOME-TAX-16), so the set was
+    completed — and completed PER SECTION, because completing the one shared
+    set from §44AD would have offered §44ADA to a family. Pinned so nobody
+    merges them again."""
+    assert ELIGIBLE_PRESUMPTIVE_ASSESSEES == frozenset({"individual", "huf", "firm"})
+    assert ELIGIBLE_44ADA_ASSESSEES == frozenset({"individual", "firm"})
+
+
+def test_a_huf_may_use_44ad_and_is_refused_44ada_by_name():
+    ad = _44ad(assessee_kind="huf")
+    assert ad.eligible is True
+    ada = compute_44ada(fy=FY, gross_receipts_paise=40_00_000_00, assessee_kind="huf")
+    assert ada.eligible is False
+    assert any("§44ADA reaches" in x and "'huf'" in x and "family" in x
+               for x in ada.reasons), ada.reasons
+
+
+@pytest.mark.parametrize("kind", ["aop", "boi"])
+def test_an_association_is_refused_both_sections(kind):
+    assert _44ad(assessee_kind=kind).eligible is False
+    assert compute_44ada(fy=FY, gross_receipts_paise=40_00_000_00,
+                         assessee_kind=kind).eligible is False
 
 
 # ── what stays a caveat ───────────────────────────────────────────────────────

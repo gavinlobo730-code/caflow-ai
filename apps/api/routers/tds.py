@@ -118,6 +118,11 @@ class TDSAmountRequest(BaseModel):
     # already uses (routers/purchase_bills.py), so a caller with a payee's
     # PAN on file never has to duplicate that rule itself.
     pan: Optional[str] = None
+    # §194A(3)(i)'s limit class (TDS-30) — ordinary | bank_deposit |
+    # bank_deposit_senior. Omitted, the section's own limit applies, which for
+    # §194A is the lowest and so cannot under-deduct. Refused (422) for a
+    # section that does not carry it, rather than ignored.
+    threshold_class: Optional[str] = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -310,10 +315,15 @@ def compute_tds_amount(req: TDSAmountRequest, user: dict = Depends(rbac("tds", "
     """
     is_company = is_company_pan(req.pan) if req.pan is not None else req.is_company
     has_pan_on_file = pan_on_file(req.pan) if req.pan is not None else req.has_pan
+    from domain.tds.section_rates import threshold_class_problem
+    klass = (req.threshold_class or "").strip().lower() or None
+    class_problem = threshold_class_problem(req.section, klass)
+    if class_problem:
+        raise HTTPException(status_code=422, detail=class_problem)
     try:
         resolution = computer.resolve_tds(
             req.section, req.payment_amount_paise, is_company=is_company, fy=req.fy,
-            has_pan=has_pan_on_file)
+            has_pan=has_pan_on_file, threshold_class=klass)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Unknown TDS section: {req.section}")
 
@@ -326,8 +336,14 @@ def compute_tds_amount(req: TDSAmountRequest, user: dict = Depends(rbac("tds", "
             "fy": rates.fy,
             "rates_verified": rates.verified,
             "payment_amount_paise": req.payment_amount_paise,
-            "threshold_paise": rule.single_threshold_paise,
-            "aggregate_threshold_paise": rule.aggregate_threshold_paise,
+            # What the payment was TESTED against: the section's own limit, or
+            # the class's where one applied (TDS-30).
+            "threshold_paise": resolution.threshold_paise,
+            "threshold_class": resolution.threshold_class,
+            "aggregate_threshold_paise": (
+                resolution.threshold_paise
+                if resolution.threshold_class and rule.aggregate_threshold_paise is not None
+                else rule.aggregate_threshold_paise),
             "tds_applicable": resolution.applies,
             "applicable_rate_pct": resolution.rate_pct,
             "tds_paise": resolution.tds_paise,
@@ -342,7 +358,7 @@ def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds
     (defaults to the current FY)."""
     from domain.tds.lower_deduction import SECTIONS_197
     from domain.tds.residency import deduction_section_refusal
-    from domain.tds.section_rates import parent_of
+    from domain.tds.section_rates import parent_of, threshold_classes_for
     rates = tds_rates_for(fy)
     sections = [
         {
@@ -388,6 +404,11 @@ def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds
             # by the screen keeping its own exclusion list — which is how the
             # Schedule III caption list drifted in both directions at once.
             "vendor_eligible": deduction_section_refusal(sec) is None,
+            # WHICH LIMIT a CA may record on a supplier for this section
+            # (TDS-30). Empty for every section but 194A, whose ₹10,000 / ₹50,000
+            # / ₹1,00,000 hang on who pays and who is paid. Served so no screen
+            # spells a limit or a label of its own.
+            "threshold_classes": threshold_classes_for(sec, fy),
         }
         for sec, rule in rates.sections.items()
     ]
