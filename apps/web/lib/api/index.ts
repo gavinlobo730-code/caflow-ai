@@ -5046,6 +5046,13 @@ export const api = {
       request<ApiResp<FirmProfile>>("/api/firms/profile",
         { method: "PATCH", body: JSON.stringify(body) }),
   },
+  // The FIRM's first-run checklist (market_and_trust-16), not a client's onboarding
+  // workflow (that is `onboarding` below). `data.first_run` is built server-side from the
+  // firm's own rows; read it with `readFirstRun` (lib/onboarding/firstRun.ts), because
+  // `data` is `unknown` here on purpose.
+  firstRun: {
+    status: () => request<ApiResp<unknown>>("/api/onboarding/status"),
+  },
   onboarding: {
     /** Start a 10-step Product Bible Ch. 7 onboarding checklist for a client. */
     start: (body: { client_id: string; entity_type?: string; notes?: string }) =>
