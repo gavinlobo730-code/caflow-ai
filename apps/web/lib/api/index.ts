@@ -1399,6 +1399,54 @@ export type ExpiringEwayBill = {
   gap: string | null;
 };
 
+/** GST-20 — an in-scope invoice with no live IRN. `domain/gst/irn_worklist.py`
+ *  decides every field and sentence; this carries shapes only. */
+export type IrnWorklistWindow = {
+  /** Five states and none stands in for another: an invoice of a client below
+   *  the IRP's turnover floor OWES an IRN and has NO clock. */
+  status: "within_window" | "last_day" | "past_window" | "no_reporting_limit" | "not_in_force";
+  days: number;
+  deadline: string | null;
+  days_left: number | null;
+  /** True where the turnover is unrecorded and the clock is shown as if it
+   *  applied — the strict reading, which the screen must say. */
+  assumed: boolean;
+  /** null is a THIRD state (turnover unrecorded), never "does not apply". */
+  applies: boolean | null;
+};
+
+export type IrnWorklistRow = {
+  invoice_id: string;
+  client_id: string;
+  client_name: string;
+  invoice_no: string;
+  invoice_date: string;
+  customer_name: string | null;
+  total_paise: number;
+  treatment: string;
+  irn_state: "none" | "record_prepared_not_generated" | "irn_cancelled";
+  why_in_scope: string;
+  turnover_unknown: boolean;
+  window: IrnWorklistWindow;
+};
+
+export type IrnWorklist = {
+  as_of?: string;
+  scope: "client" | "firm";
+  listed_since?: string;
+  invoices: IrnWorklistRow[];
+  counts: Record<string, number>;
+  truncated?: boolean;
+  /** Said once for the whole list: the [S]-grading of the window, which
+   *  turnover it is judged on, what is not covered, the exempted classes. */
+  caveats: string[];
+  /** Firm-wide: clients with no recorded turnover, NAMED rather than assessed. */
+  clients_not_assessed: { client_id: string; client_name: string; reason: string }[];
+  clients_below_threshold?: number;
+  client_status?: string | null;
+  verified?: boolean;
+};
+
 export type ExpiringEwayBills = {
   as_of: string;
   horizon_days: number;
@@ -4081,6 +4129,20 @@ export const api = {
         request(`/api/fx-revaluation/run?client_id=${encodeURIComponent(clientId)}`, {
           method: "POST", body: JSON.stringify(body),
         }),
+    },
+  },
+  einvoice: {
+    /** GST-20 — in-scope invoices that have no live IRN, oldest first, with the
+     *  IRP's reporting-window clock. Per client when `clientId` is given, else
+     *  across the caller's own clients. Reports only: no IRN is generated and no
+     *  portal is reached. */
+    missingIrn: (clientId?: string | null, since?: string | null) => {
+      const q = new URLSearchParams();
+      if (clientId) q.set("client_id", clientId);
+      if (since) q.set("since", since);
+      const qs = q.toString();
+      return request<ApiResp<IrnWorklist>>(
+        `/api/einvoice/missing-irn${qs ? `?${qs}` : ""}`);
     },
   },
   // Stock register + per-item ledger (migration 188). Read-only — all
