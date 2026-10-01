@@ -10,7 +10,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getTeamWorkload } from "@/lib/data/analytics";
-import type { TeamWorkload, WorkloadMember } from "@/lib/types";
+import { getClients } from "@/lib/data/clients";
+import { OpenWorkPanel } from "@/components/team/OpenWorkPanel";
+import type { Client, TeamWorkload, WorkloadMember } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
 import Link from "next/link";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
@@ -159,6 +161,18 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
           {fmtHours(member.minutes_logged_this_week)} logged of {member.weekly_capacity_hours}h weekly capacity
           · max {member.max_concurrent_tasks} tasks
         </p>
+        {/* What their open work is EXPECTED to take, where anybody estimated it —
+            the recorded minutes are the server's total and the tasks that carry
+            none are counted beside it, never averaged over. */}
+        {(member.estimated_open_minutes ?? 0) > 0 || (member.open_tasks_without_estimate ?? 0) > 0 ? (
+          <p className="text-2xs text-ps-label">
+            {(member.estimated_open_minutes ?? 0) > 0
+              ? `${fmtHours(member.estimated_open_minutes ?? 0)} of open work estimated`
+              : "No estimates recorded on open work"}
+            {(member.open_tasks_without_estimate ?? 0) > 0 && (member.estimated_open_minutes ?? 0) > 0
+              ? ` · ${member.open_tasks_without_estimate} tasks with none` : ""}
+          </p>
+        ) : null}
 
         <div className="grid grid-cols-4 gap-2 text-center">
           <div>
@@ -190,9 +204,9 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
  * sweep-team-hub-04 (`domain/practice/capacity_risk.overdue_tasks` /
  * `.overdue_compliance` — the two always sum to `overdue_items`). Declared
  * here rather than in `lib/api` so this file's own type doesn't have to wait
- * on that module: Work Allocation shows tasks and never a filing, so the
- * headline below needs to say how much of "already overdue" it could ever
- * show a CA there.
+ * on that module: the open-work lists on this page show tasks and never a
+ * filing, so the headline below needs to say how much of "already overdue" it
+ * could ever show a CA there.
  */
 type CapacityRiskWithOverdueSplit = CapacityRiskPayload & {
   overdue_tasks: number;
@@ -259,11 +273,11 @@ function CapacityRiskPanel() {
             {risk.overdue_items > 0 && (
               <p className="text-xs text-state-problem mt-0.5">
                 {/* sweep-team-hub-04: this used to be one combined figure, and
-                    Work Allocation only ever shows the task half of it — a
+                    the open-work lists only ever show the task half of it — a
                     filing has no assignee and no row there. Split so each
-                    number links to the screen that can actually show it. */}
+                    number links to the place that can actually show it. */}
                 {risk.overdue_tasks > 0 && (
-                  <Link href="/team/work-allocation" className="underline hover:no-underline">
+                  <Link href="#open-tasks" className="underline hover:no-underline">
                     {risk.overdue_tasks} {risk.overdue_tasks === 1 ? "task" : "tasks"}
                   </Link>
                 )}
@@ -351,6 +365,9 @@ export default function WorkloadPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingMember, setEditingMember] = useState<WorkloadMember | null>(null);
+  // Only names for the task lists below; a failure to load them costs the lists
+  // their client names and nothing else.
+  const [clients, setClients] = useState<Client[]>([]);
   // ⚠️ ONLY THE UNASSIGNED BACKLOG IS RENDERED, AND THAT IS DELIBERATE.
   // `GET /api/intelligence/workload-insights` had no caller anywhere, and
   // `compute_workload_insights` emits three kinds: `overload`, `idle` and
@@ -377,6 +394,14 @@ export default function WorkloadPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    let live = true;
+    getClients()
+      .then((list) => { if (live) setClients(arrayOrEmpty<Client>(list)); })
+      .catch(() => { /* task rows simply show no client name */ });
+    return () => { live = false; };
+  }, []);
 
   // Fetched apart from the workload itself: an insights endpoint that is slow,
   // refused or down must not cost the page its member cards, which are the
@@ -414,10 +439,10 @@ export default function WorkloadPage() {
 
       {unassigned && (
         <Link
-          // sweep-team-hub-04: Work Allocation used to have no "Unassigned"
-          // group at all, so this link landed on a page where the backlog it
-          // names was invisible. It now scrolls straight to that section.
-          href="/team/work-allocation#unassigned-tasks"
+          // The backlog it names is the "Unassigned" section further down THIS
+          // page: Work Allocation, which used to hold it, is merged in here
+          // (practice_management-24) and its URL redirects.
+          href="#unassigned-tasks"
           className="flex items-center justify-between gap-3 rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3 hover:border-state-attention transition-colors"
         >
           <span className="flex items-center gap-2 text-sm text-state-attention">
@@ -543,6 +568,16 @@ export default function WorkloadPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Who has which open task, and the work nobody has — with the reassign
+              flow. This is the retired Work Allocation screen, on this page's own
+              figures: one capacity model, not a count divided by a role constant. */}
+          <OpenWorkPanel
+            members={arrayOrEmpty<WorkloadMember>(workload.members)}
+            unassigned={workload.unassigned}
+            clients={clients}
+            onChanged={load}
+          />
         </>
       ) : null}
 

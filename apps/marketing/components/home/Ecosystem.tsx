@@ -70,7 +70,7 @@ const MODULES: Module[] = [
     points: [
       "Trial balance, P&L, balance sheet and cash flow",
       "Schedule III mapping, with both MCA ageing schedules",
-      "Corrections are append-only reversals, so the audit trail always foots",
+      "Corrections to posted documents are append-only reversals, so the audit trail always foots",
       "Every rupee in integer paise — never floating point",
     ],
   },

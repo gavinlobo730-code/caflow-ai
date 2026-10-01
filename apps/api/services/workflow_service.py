@@ -121,6 +121,14 @@ def get_template_by_compliance_type(compliance_type: str) -> dict | None:
     return next((t for t in WORKFLOW_TEMPLATES if t["compliance_type"] == compliance_type), None)
 
 
+def _step_estimate(step: dict) -> dict:
+    """`{"estimated_minutes": n}` for a step that says how long it takes, else `{}`
+    — a step with no figure contributes no key, never a 0."""
+    from domain.practice import task_estimate
+    minutes = task_estimate.minutes_from_hours(step.get("estimated_hours"))
+    return {} if minutes is None else {"estimated_minutes": minutes}
+
+
 def instantiate_workflow_tasks(
     template_id: str,
     client_id: str,
@@ -147,5 +155,9 @@ def instantiate_workflow_tasks(
             "completed_at": None,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
+            # Every step of the six starter workflows records how long it takes;
+            # the task keeps that figure itself rather than leaving the forecast to
+            # find it through the step id.
+            **_step_estimate(step),
         })
     return tasks

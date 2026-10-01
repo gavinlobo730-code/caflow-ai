@@ -36,6 +36,7 @@ from models.invoices import SalesInvoiceIn, SalesInvoiceLineIn
 from services.internal_client_service import get_internal_client_id
 from services.numbering import draft_placeholder_invoice_no
 from core.ist_clock import ist_today
+from domain.billing import time_rate
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.billing")
@@ -419,50 +420,80 @@ MOCK_COST_RATES: dict = {}   # mock-mode staff cost rates {user_id: paise}
 def unbilled_value_paise(minutes: Optional[int], billable_rate_paise: Optional[int],
                          hourly_rate_paise: Optional[int]) -> int:
     """Billable value of a time entry in integer paise (minutes x rate / 60).
-    Prefers billable_rate_paise; falls back to the legacy hourly_rate_paise."""
-    rate = billable_rate_paise if billable_rate_paise else (hourly_rate_paise or 0)
-    return (int(minutes or 0) * int(rate)) // 60
+    Prefers billable_rate_paise; falls back to the legacy hourly_rate_paise.
+
+    An entry with NEITHER is worth 0 HERE and that is this function's old
+    contract, kept for its callers — it is NOT how the unbilled-work total reads
+    one any more: `domain/billing/time_rate.fold_unbilled` lists such an entry as
+    "no rate" instead of adding a zero, because "nobody said what it is worth"
+    is not "it is worth nothing"."""
+    rate = billable_rate_paise if billable_rate_paise is not None else hourly_rate_paise
+    return time_rate.value_paise(minutes, rate) or 0
 
 
 def group_unbilled(entries: list[dict]) -> dict:
     """Group billable, not-yet-billed time entries by client and by work item.
-    Pure: filters is_billable AND billed_invoice_id IS NULL. No cost, no margin."""
-    by_client: dict = {}
-    by_work_item: dict = {}
-    total_value = 0
-    total_minutes = 0
-    for e in entries:
-        if not e.get("is_billable") or e.get("billed_invoice_id"):
-            continue
-        minutes = int(e.get("duration_minutes") or 0)
-        if minutes <= 0:
-            continue
-        value = unbilled_value_paise(minutes, e.get("billable_rate_paise"), e.get("hourly_rate_paise"))
-        cid = e.get("client_id") or "unassigned"
-        wid = e.get("task_id") or "unassigned"
-        for bucket, key in ((by_client, cid), (by_work_item, wid)):
-            slot = bucket.setdefault(key, {"minutes": 0, "value_paise": 0, "count": 0})
-            slot["minutes"] += minutes
-            slot["value_paise"] += value
-            slot["count"] += 1
-        total_value += value
-        total_minutes += minutes
-    return {"by_client": by_client, "by_work_item": by_work_item,
-            "total_value_paise": total_value, "total_minutes": total_minutes}
+    Pure: filters is_billable AND billed_invoice_id IS NULL. No cost, no margin.
+
+    The same assembler the database path uses (`fold_unbilled`), so the in-memory
+    answer and the SQL function's cannot be two answers: work with no rate is the
+    `no_rate` section and adds nothing to any value."""
+    answer = time_rate.fold_unbilled(time_rate.group_unbilled_entries(entries))
+    answer["no_rate"]["entries"] = [
+        {k: e.get(k) for k in ("id", "user_id", "client_id", "task_id", "description",
+                               "started_at", "duration_minutes", "engagement_id")}
+        for e in entries
+        if (g := time_rate.entry_group(e)) is not None and not g["priced"]
+    ][:time_rate.NO_RATE_LIST_LIMIT]
+    return answer
 
 
 def unbilled_work(firm_id: str, client_id: Optional[str] = None) -> dict:
-    """Unbilled-work view: billable, not-yet-billed time entries grouped by
-    client/work item with their billable value (integer paise)."""
+    """Unbilled-work view: billable, not-yet-billed time grouped by client and
+    work item with its billable value (integer paise), and — apart — the time that
+    has no rate.
+
+    THE TOTAL IS AGGREGATED WHERE THE ROWS ARE (`public.unbilled_time_summary`,
+    migration 451). This used to read every unbilled entry with `.select("*")`:
+    proportional to the work and capped silently at ~1000 rows, so a busy firm's
+    total came back short by whatever the cap removed, with no error.
+    """
     if _USE_MOCK:
-        entries: list[dict] = []   # time-entry repo is DB-only; mock returns empty
-    else:
-        q = (_db().table("time_entries").select("*")
-             .eq("firm_id", firm_id).eq("is_billable", True).is_("billed_invoice_id", None))
+        return group_unbilled([])
+    db = _db()
+    params: dict = {"p_firm_id": firm_id}
+    if client_id:
+        params["p_client_id"] = client_id
+    groups = db.rpc("unbilled_time_summary", params).execute().data or []
+    answer = time_rate.fold_unbilled(groups)
+    if answer["no_rate"]["count"]:
+        q = (db.table("time_entries")
+             .select("id, user_id, client_id, task_id, description, started_at, "
+                     "duration_minutes, engagement_id")
+             .eq("firm_id", firm_id).eq("is_billable", True)
+             .is_("billed_invoice_id", "null")
+             .is_("billable_rate_paise", "null").is_("hourly_rate_paise", "null")
+             .gt("duration_minutes", 0)
+             .order("started_at", desc=True).limit(time_rate.NO_RATE_LIST_LIMIT))
         if client_id:
             q = q.eq("client_id", client_id)
         entries = q.execute().data or []
-    return group_unbilled(entries)
+        names = _staff_names(firm_id, {e.get("user_id") for e in entries})
+        answer["no_rate"]["entries"] = [
+            {**e, "user_name": names.get(str(e.get("user_id")))} for e in entries]
+    return answer
+
+
+def _staff_names(firm_id: str, user_ids: set) -> dict:
+    """id -> name for the people on a short list. Service role: under the
+    caller's own JWT `users` shows them only themselves."""
+    wanted = sorted({str(u) for u in user_ids if u})
+    if not wanted:
+        return {}
+    from core.supabase_client import get_service_supabase
+    rows = (get_service_supabase().table("users").select("id, full_name, email")
+            .eq("firm_id", firm_id).in_("id", wanted).execute().data) or []
+    return {str(r["id"]): r.get("full_name") or r.get("email") for r in rows}
 
 
 def list_staff_cost_rates(firm_id: str) -> list[dict]:

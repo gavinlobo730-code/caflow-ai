@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Bell, CheckCheck, Archive, Loader2,
   Clock, AlertTriangle, Info,
-  ExternalLink,
+  ExternalLink, Mail,
 } from "lucide-react";
+import { EmailPreferencesPanel } from "@/components/notifications/EmailPreferencesPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -67,6 +68,8 @@ export default function NotificationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<FilterTab>("all");
   const [markingAll, setMarkingAll] = useState(false);
+  // practice_management-03: which of the practice's mail this person gets.
+  const [showEmailSettings, setShowEmailSettings] = useState(false);
 
   // The all/unread/archived tab is a SERVER-side filter (drives the API query);
   // the type filter and text search run client-side inside the DataTable.
@@ -277,7 +280,18 @@ export default function NotificationsPage() {
             )}
           </div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 text-xs"
+          aria-expanded={showEmailSettings}
+          onClick={() => setShowEmailSettings(v => !v)}
+        >
+          <Mail size={13} /> Email settings
+        </Button>
       </div>
+
+      {showEmailSettings && <EmailPreferencesPanel />}
 
       {error && <Callout tone="problem">{error}</Callout>}
 

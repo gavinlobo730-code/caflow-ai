@@ -106,7 +106,7 @@ const FAQS = [
   },
   {
     q: "Does PracticeSync file returns for me?",
-    a: "No — and it is worth being precise about this. PracticeSync computes the return from your books and produces a file that is ready to submit. You upload and sign it on the government portal yourself, then record it back here, which is what locks the period. The software never transmits anything to a portal, for GST, ITR, TDS or MCA.",
+    a: "No — and it is worth being precise about this. PracticeSync computes the return from your books. For GSTR-1 and GSTR-3B it produces the JSON file you upload; for the income-tax return and the TDS statements it lays the figures out for you to key into the government's own utility. You upload and sign it on the government portal yourself, then record it back here, which is what locks the period. The software never transmits anything to a portal, for GST, ITR, TDS or MCA.",
   },
   {
     q: "Can I change plans later?",

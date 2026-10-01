@@ -91,7 +91,7 @@ const TRUST = [
   {
     icon: <FileText size={18} />,
     title: "A ledger that cannot be quietly rewritten",
-    body: "A posted entry is never deleted or edited in place. A correction is an append-only reversal, and every deletion writes the whole entry and its lines to the audit log in the same transaction.",
+    body: "A posted entry that came from a document — an invoice, a bill, a receipt — is never deleted or edited in place; a correction is an append-only reversal. A manual journal can be edited or discarded only while its period is open, and every deletion writes the whole entry and its lines to the audit log in the same transaction.",
   },
   {
     icon: <Landmark size={18} />,

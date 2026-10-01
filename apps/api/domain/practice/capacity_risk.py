@@ -13,12 +13,12 @@ land in it together, and that it is four weeks away rather than four months.
 
 THE HARD PART IS WHAT NOT TO INVENT, and there are two of them.
 
-  * **HOURS.** `tasks` carries NO effort estimate — only `workflow_steps` and
-    `task_templates` do (migrations 002 and 063), so a task generated from a
-    workflow step has one and a hand-created or recurring one does not. The
+  * **HOURS.** A task's effort is `tasks.estimated_minutes` (migration 452),
+    copied at creation from the template or workflow step it was made from —
+    and a task made by hand, or from a template nobody estimated, has none. The
     obvious move is to impute an average and total it; that produces a
     confident hours figure whose accuracy is a property of how many tasks
-    happen to come from workflows, which the CA cannot see. So hours are
+    happen to carry an estimate, which the CA cannot see. So hours are
     reported ONLY where they are recorded, the tasks with none are COUNTED
     beside them, and nothing is averaged.
   * **CAPACITY.** `user_capacity.max_concurrent_tasks` is a limit on how many
@@ -70,8 +70,10 @@ NOT_FORECAST: tuple[str, ...] = (
     "Work that has not been created yet. A GSTR-3B obligation exists in the "
     "calendar only once something generates it, so a quarter that looks empty "
     "at the far end is usually a calendar that has not been rolled forward.",
-    "How long anything takes, except where a workflow step recorded an "
-    "estimate. Nothing is averaged across the tasks that carry none.",
+    "How long anything takes, except where the task itself carries an "
+    "estimate (copied from its template or workflow step when it was made). "
+    "Nothing is averaged across the tasks that carry none, and a filing that is "
+    "not worked as a task has none at all.",
     "Who is available. Leave, notice periods and a new joiner's ramp-up are "
     "facts no table here holds, so the team figures are a headcount and a "
     "configured week, not an availability forecast.",

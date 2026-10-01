@@ -20,7 +20,7 @@ const OPTIONS = [
     title: "Chartered Accountant",
     tag: "Firm workspace",
     desc: "All modules — compliance, accounting, payroll, clients and practice analytics.",
-    points: ["For CAs, partners & firm staff", "Email, password & 2-factor sign-in"],
+    points: ["For CAs, partners & firm staff", "Email & password sign-in, with two-factor for Partners and Managers"],
     href: appLinks.firmLogin,
     primary: true,
   },

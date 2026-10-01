@@ -21,6 +21,7 @@
  */
 import { api } from "@/lib/api";
 import type { ApiResp, ObligationFilingResult } from "@/lib/api";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
 
@@ -36,6 +37,10 @@ export interface ComplianceEntry {
   arn_number?: string;
   notes?: string;
   risk_score?: number;
+  /** What the server calls this obligation for this period — "GSTR-3B Jun 2026",
+   *  "Tax Audit FY 2025-26". Written by the engine that generated the row, so a
+   *  screen that names an obligation reads this and keeps no table of its own. */
+  period_label?: string;
 }
 
 interface RawObligation {
@@ -51,6 +56,7 @@ interface RawObligation {
   acknowledgement_no?: string | null;
   notes?: string | null;
   risk_score?: number;
+  period_label?: string | null;
 }
 
 const STATUS_TO_FILING_STATUS: Record<string, string> = {
@@ -91,7 +97,39 @@ function toEntry(raw: RawObligation): ComplianceEntry {
     arn_number: raw.acknowledgement_no ?? undefined,
     notes: raw.notes ?? undefined,
     risk_score: raw.risk_score,
+    period_label: raw.period_label ?? undefined,
   };
+}
+
+/** The obligation calendar as the server buckets it. */
+export interface ObligationCalendar {
+  upcoming: ComplianceEntry[];
+  overdue: ComplianceEntry[];
+  completed: ComplianceEntry[];
+}
+
+/**
+ * The obligations DUE inside a window, plus every overdue one, from
+ * `GET /api/compliance/obligations/calendar` — assignment-scoped and with every
+ * due date computed by `services/compliance_engine`, QRMP and all. A month grid
+ * asks for its month, so what crosses the wire is the answer and not every
+ * obligation the firm has ever generated.
+ *
+ * A payload that is not the expected shape is NO DATA, not a crash
+ * (`lib/api/shape`): each bucket is a list or it is empty. A refusal THROWS, so
+ * the caller can tell a quiet month from a failed fetch.
+ */
+export async function getObligationCalendar(
+  params: { dateFrom: string; dateTo: string; clientId?: string },
+): Promise<ObligationCalendar> {
+  const res = await api.complianceOps.calendar({
+    date_from: params.dateFrom, date_to: params.dateTo,
+    ...(params.clientId ? { client_id: params.clientId } : {}),
+  });
+  if (!res?.success) throw new Error(res?.error ?? "The calendar could not be loaded.");
+  const d = objectOrNull<Record<string, unknown>>(res.data) ?? {};
+  const rows = (v: unknown) => arrayOrEmpty<RawObligation>(v).map(toEntry);
+  return { upcoming: rows(d.upcoming), overdue: rows(d.overdue), completed: rows(d.completed) };
 }
 
 /** Fetches compliance obligations (assignment-scoped server-side), optionally

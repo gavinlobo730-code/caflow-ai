@@ -2,7 +2,7 @@
 Firm onboarding endpoints.
 POST /api/onboarding/firm       — create firm + first Partner user (JWT-authenticated)
 POST /api/onboarding/invite     — invite user to firm (Partner/Manager only)
-GET  /api/onboarding/status     — onboarding completeness check (Partner/Manager only)
+GET  /api/onboarding/status     — onboarding completeness + the first-run checklist (Partner/Manager only)
 """
 import re
 import secrets
@@ -200,7 +200,14 @@ def invite_user(
 def onboarding_status(
     current_user: dict = Depends(rbac("firm", "read")),
 ):
-    """Return onboarding completeness for the authenticated user's firm."""
+    """Onboarding completeness for the authenticated user's firm, and the FIRST-RUN
+    CHECKLIST the dashboard renders (market_and_trust-16).
+
+    `first_run` is `domain/onboarding/first_run.build` over the firm's own rows: a step is
+    done when the data says so, nothing is stored, and so every Partner who signs in sees
+    the same ticks. `checks`/`score`/`total` are the older summary, kept for any reader and
+    now DERIVED FROM THE SAME FACTS as the checklist, so the two cannot disagree about
+    whether a client has been added or a colleague invited."""
     firm_id = current_user["firm_id"]
     db = get_service_supabase()
 
@@ -208,15 +215,16 @@ def onboarding_status(
     if not firm:
         raise HTTPException(status_code=404, detail="Firm not found")
 
-    users = db.table("users").select("id").eq("firm_id", firm_id).execute().data or []
-    # Guardrail G2: the internal practice client does not count as an onboarded client.
-    clients = db.table("clients").select("id").eq("firm_id", firm_id).eq("is_internal", False).execute().data or []
+    from services import first_run_service
+    first_run = first_run_service.first_run(firm_id)
+    done = {s["id"]: s["done"] is True for s in first_run["steps"]}
 
     checks = {
         "firm_created": True,
         "gstin_configured": bool(firm_identity.gstin_of(firm)),
-        "team_members_added": len(users) > 1,
-        "first_client_added": len(clients) > 0,
+        "team_members_added": done["invite_colleague"],
+        "first_client_added": done["first_client"],
     }
     score = sum(checks.values())
-    return api_response(True, {"checks": checks, "score": score, "total": len(checks)})
+    return api_response(True, {"checks": checks, "score": score, "total": len(checks),
+                               "first_run": first_run})

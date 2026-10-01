@@ -32,7 +32,13 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
         status: Optional[str] = None,
         compliance_type: Optional[str] = None,
         exclude_statuses: Optional[list[str]] = None,
+        due_from: Optional[str] = None,
+        due_to: Optional[str] = None,
     ) -> list[dict]:
+        """`due_from` / `due_to` (ISO dates, both inclusive) bound the read by due
+        date, so a screen that shows one month asks for one month and what crosses
+        the wire is proportional to the answer, not to every year the firm has
+        ever generated. Absent means unbounded — every earlier caller."""
         if _USE_MOCK:
             # Mirrors the real branch's unconditional `.is_("deleted_at",
             # "null")` — a soft-deleted row (compliance_obligation_service's
@@ -50,6 +56,10 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
                 records = [r for r in records if r["compliance_type"] == compliance_type]
             if exclude_statuses:
                 records = [r for r in records if r.get("status") not in exclude_statuses]
+            if due_from:
+                records = [r for r in records if str(r.get("due_date") or "")[:10] >= due_from]
+            if due_to:
+                records = [r for r in records if str(r.get("due_date") or "")[:10] <= due_to]
             return records
 
         def make_query():
@@ -64,6 +74,10 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
                 q = q.eq("compliance_type", compliance_type)
             if exclude_statuses:
                 q = q.not_.in_("status", exclude_statuses)
+            if due_from:
+                q = q.gte("due_date", due_from)
+            if due_to:
+                q = q.lte("due_date", due_to)
             return q
 
         # PostgREST caps an unpaged read at ~1000 rows with no signal that it

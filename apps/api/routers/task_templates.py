@@ -4,6 +4,7 @@ from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access
+from domain.practice import task_estimate
 from repositories.task_template_repository import task_template_repo
 
 router = APIRouter(prefix="/api/task-templates", tags=["task-templates"])
@@ -130,11 +131,35 @@ def instantiate_template(
         "created_at": now,
         "updated_at": now,
     }
+    # The template says how long the work takes (whole hours); the task carries it
+    # in minutes from the moment it is made, so the forecast reads this task's own
+    # figure and a later edit to the template does not re-estimate it. A template
+    # with no estimate adds no key at all — never a 0.
+    estimate = task_estimate.minutes_from_hours(tpl.get("estimated_hours"))
+    if estimate is not None:
+        task_data["estimated_minutes"] = estimate
     result = db.table("tasks").insert(task_data).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to create task")
 
     task = result.data[0]
+
+    # A task handed to somebody is an assignment however it was made, and the
+    # other two doors (POST /api/tasks and PATCH) tell the assignee — in the app
+    # and by mail (practice_management-03). This one told nobody. The assignee
+    # is resolved through the firm-scoped repository, so a request cannot name
+    # another firm's user and have a mail sent to them.
+    if body.assignee_id:
+        try:
+            from repositories.user_repository import user_repo
+            from services.notification_service import notification_service
+            assignee = user_repo.find_by_id(body.assignee_id, firm_id=firm_id)
+            if assignee:
+                notification_service.notify_task_assigned(task, assignee, current_user)
+        except Exception as exc:
+            # The task was made; telling its assignee is best-effort, but a failure is reported.
+            from core.observability import capture_soft_failure
+            capture_soft_failure(exc, operation="task_templates.assigned_mail", firm_id=firm_id)
 
     if tpl.get("tags"):
         for tag in tpl["tags"]:

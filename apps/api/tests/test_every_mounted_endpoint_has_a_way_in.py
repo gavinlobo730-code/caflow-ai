@@ -102,7 +102,12 @@ BUDGET: dict[str, int] = {
     # now have a caller; the one left is POST /{id}/generate-obligations, which
     # is `compliance:write` and belongs on a compliance screen rather than on
     # the fee-billing one.
-    "/api/billing": 7, "/api/engagements": 1, "/api/income-tax": 5,
+    # /api/billing 7 -> 6 on 01-10-2026 (practice_management-11): `unbilled-work`
+    # had a `lib/api` method and no screen for as long as it existed; the Time
+    # screen's "Unbilled work" tab is its first caller, and its two new siblings
+    # (`staff-billable-rates`, GET and PUT) are wired by the "Billing rates" tab in
+    # the same commit rather than added to the budget.
+    "/api/billing": 6, "/api/engagements": 1, "/api/income-tax": 5,
     # /api/ai-insights 6 -> 4 on 25-09-2026 (Phase 3a-6): the client AI
     # Insights screen read `ai_insights` over PostgREST and nothing could
     # write it — `generate_insights_for_client` is written and tested and
@@ -129,14 +134,24 @@ BUDGET: dict[str, int] = {
     # and tested, with no screen at all — the plan's own "you already own
     # more analysis than the product shows". `/practice/profitability`
     # reaches both.
+    # /api/portal 5 -> 3 on 01-10-2026 (practice_management-02): the staff
+    # client-portal screen wrote `document_requests` straight over PostgREST
+    # because `POST /api/portal/document-requests` failed on every call (it
+    # named a column the table lacked, repaired by migration 450). It goes
+    # through the API now, so that door is reached, and the new unread count and
+    # mark-read endpoints are reached from the same screen.
     "/api/analytics": 3, "/api/automation": 5, "/api/gst-portal": 5,
-    "/api/itr": 5, "/api/lifecycle": 5, "/api/portal": 5,
+    "/api/itr": 5, "/api/lifecycle": 5, "/api/portal": 3,
     # /api/risks 5 -> 3 on 24-09-2026: `app/risks/page.tsx` derived its
     # whole register in the browser from six PostgREST reads and called no
     # endpoint on this prefix at all. It asks GET /register now, and the
     # ratchet credits what that screen reaches.
     "/api/risks": 3,
-    "/api/sales-invoices": 5, "/api/compliance": 4,
+    # /api/compliance 4 -> 3 on 01-10-2026 (practice_management-17):
+    # `GET /obligations/calendar` had a `lib/api` method and no screen — the
+    # firm Calendar built its deadlines in the browser instead. It is that
+    # screen's one read now.
+    "/api/sales-invoices": 5, "/api/compliance": 3,
     # /api/health 4 -> 2 on 25-09-2026 (Phase 3a-4). `DELETE /overrides/{id}`
     # had NO caller at all, so an override recorded without an end date could
     # never be withdrawn; and both health screens read `health_overrides`
@@ -163,7 +178,7 @@ BUDGET: dict[str, int] = {
     "/api/reminders": 3, "/api/tds": 3, "/api/accounting": 1,
     "/api/assignments": 2, "/api/customers": 2, "/api/form-26as": 2,
     "/api/identity": 2, "/api/insights": 2, "/api/notifications": 2,
-    "/api/onboarding": 2, "/api/public": 2, "/api/sales-cycle": 2,
+    "/api/onboarding": 1, "/api/public": 2, "/api/sales-cycle": 2,
     "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 1,
     "/api/approvals": 1, "/api/customer-statements": 1,
     "/api/document-intelligence-v2": 1, "/api/documents": 1,

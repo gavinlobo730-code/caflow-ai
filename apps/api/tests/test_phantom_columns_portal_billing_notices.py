@@ -72,9 +72,12 @@ def portal_client(monkeypatch):
 # ── portal: document requests ────────────────────────────────────────────────
 
 def test_document_requests_endpoint_does_not_ask_for_due_date(portal_client):
-    """`due_date` is not a column on document_requests. PostgREST rejects the
-    whole select at parse time, and nothing catches it here — this endpoint
-    returned 500 on every call."""
+    """`due_date` was NOT a column on document_requests when this was written.
+    PostgREST rejects the whole select at parse time, and nothing catches it
+    here — this endpoint returned 500 on every call. Migration 450 added the
+    column (the POST door declared it all along), so the double's REAL_COLUMNS
+    now holds it, and the test keeps its job: any OTHER name missing from that
+    set still fails here."""
     db = SchemaCheckedDB({"document_requests": [{
         "id": "r1", "firm_id": FIRM, "client_id": CLIENT, "title": "Bank statement",
         "description": None, "is_urgent": True, "status": "pending",

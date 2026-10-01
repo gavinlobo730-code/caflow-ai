@@ -30,7 +30,7 @@ const OLD_TOOLS = [
 
 const NEW_SPINE = [
   { label: "Clients", detail: "every entity, one record" },
-  { label: "Documents", detail: "collected in the portal, read by AI" },
+  { label: "Documents", detail: "kept against each client, read by AI" },
   { label: "Books", detail: "one ledger, one posting path" },
   { label: "Compliance", detail: "returns computed from those books" },
   { label: "Review & file", detail: "a CA signs off; you file on the portal" },

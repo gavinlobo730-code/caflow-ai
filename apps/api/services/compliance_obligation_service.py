@@ -34,7 +34,10 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.compliance_ops")
 
 # Engagement statuses whose obligations are actively generated/tracked.
-_ACTIVE_ENGAGEMENT_STATUSES = ("Active", "In Progress", "Review")
+# ONE definition, shared with `domain/billing/time_rate` — "the client's active
+# engagement" decides which override a recorded hour bills under, and two sets
+# would make it mean two things in one product.
+from domain.billing.time_rate import ACTIVE_ENGAGEMENT_STATUSES as _ACTIVE_ENGAGEMENT_STATUSES
 _OPEN_OBLIGATION = lambda s: s not in ("Filed", "Completed")  # noqa: E731
 
 # GSTR1/GSTR3B/PMT06 are the three obligation types whose PERIOD SHAPE depends
@@ -1321,9 +1324,14 @@ def transition(firm_id: str, record_id: str, new_status: str, actor: Optional[di
     return compliance_record_service.update_record(record_id, data, firm_id=firm_id, actor=actor)
 
 
-def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) -> None:
+def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) -> set:
     """Internal-only escalation: client timeline + audit, plus a best-effort
-    in-app notification to preparer/reviewer/approver. NEVER emails the client."""
+    in-app notification to preparer/reviewer/approver. NEVER emails the client.
+
+    Returns the ids of the staff it addressed, so `escalate` can mail the same
+    people once per sweep (practice_management-03) rather than once per
+    obligation: the mail is the SAME event as the in-app notification and goes
+    to exactly the same recipients."""
     severity = "critical" if tier in ("overdue", "due_1") else "warning"
     label = {"overdue": "OVERDUE", "due_1": "due tomorrow",
              "due_3": "due in 3 days", "due_7": "due in 7 days"}.get(tier, tier)
@@ -1352,10 +1360,10 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) 
     except Exception:  # pragma: no cover
         pass
     # Best-effort in-app notifications (internal). Guarded — never fatal.
+    recipients: set = {r for r in (rec.get("preparer_id"), rec.get("reviewer_id"),
+                                   rec.get("approver_id"), rec.get("assigned_to")) if r}
     try:
         from repositories.notifications_repository import notifications_repo
-        recipients = {r for r in (rec.get("preparer_id"), rec.get("reviewer_id"),
-                                  rec.get("approver_id"), rec.get("assigned_to")) if r}
         for uid in recipients:
             notifications_repo.create({
                 "firm_id": firm_id, "user_id": uid, "type": "compliance_due",
@@ -1368,6 +1376,7 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) 
             })
     except Exception:  # pragma: no cover - notifications are best-effort
         pass
+    return recipients
 
 
 def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] = None,
@@ -1381,6 +1390,7 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
     today = today or ist_today()
     today_s = today.isoformat()
     counts = {"due_7": 0, "due_3": 0, "due_1": 0, "overdue": 0}
+    mail_batch: dict[str, list[dict]] = {}
     # Pushed server-side: escalate() only ever acts on open obligations, so
     # there's no reason to also fetch every Filed/Completed row just to
     # discard it in Python.
@@ -1410,9 +1420,26 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
         if tier == "overdue" and last_tier == "overdue" and last_on:
             if (today - ce_date(last_on)).days < 7:
                 continue
-        _notify_internal(firm_id, r, tier, actor)
+        for uid in _notify_internal(firm_id, r, tier, actor):
+            mail_batch.setdefault(str(uid), []).append({
+                "record_id": r.get("id"), "tier": tier,
+                "client_id": r.get("client_id"), "due_date": due,
+                "label": r.get("period_label") or r.get("obligation_type"),
+            })
         compliance_records_repo.update(r["id"], {"last_escalated_tier": tier, "last_escalated_on": today_s})
         counts[tier] += 1
+    # ONE mail per recipient for the whole sweep, after the loop. A practice with
+    # sixty clients has sixty GSTR-3Bs reach the 7-day tier on the same morning;
+    # a mail each is how a deadline reminder earns a filter rule. Never fatal and
+    # never part of the answer: the shape returned below is pinned by tests and
+    # by the scheduler's run log, and what was mailed is in practice_email_log.
+    if mail_batch:
+        try:
+            from services import practice_mail_service
+            practice_mail_service.send_deadline_mails(firm_id, mail_batch, today=today)
+        except Exception as exc:  # pragma: no cover - mail is best-effort
+            from core.observability import capture_soft_failure
+            capture_soft_failure(exc, operation="compliance.deadline_mails", firm_id=firm_id)
     return {"escalated": sum(counts.values()), **counts}
 
 
@@ -1498,12 +1525,41 @@ def _dashboard_names(firm_id: str, client_ids: set, user_ids: set) -> tuple[dict
     return clients, staff
 
 
-def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date] = None) -> dict:
+_DONE_STATUSES = ("Filed", "Completed")
+
+
+def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date] = None,
+             date_from: Optional[date] = None, date_to: Optional[date] = None) -> dict:
     """Calendar projection over the canonical obligations (compliance_records).
-    compliance_calendar remains; this is the read view, not a second source of truth."""
+    compliance_calendar remains; this is the read view, not a second source of truth.
+
+    WITH A WINDOW (`date_from`, `date_to`, both inclusive) the read is bounded by
+    due date: a month grid asks for a month, so what crosses the wire is the
+    answer and not every obligation the firm has ever generated. THE OVERDUE
+    BUCKET IS NEVER WINDOWED — an obligation that is overdue is overdue whichever
+    month the screen happens to be showing, and hiding the ones outside it would
+    make navigating to another month read as "nothing is late", which is the false
+    calm this screen exists to prevent. So with a window the overdue bucket is
+    read on its own: every unfiled obligation due before today. Upcoming and
+    completed are the window's.
+    """
     today = today or ist_today()
     today_s = today.isoformat()
-    records = _records_for(firm_id, client_id)
+    if date_from is None and date_to is None:
+        records = _records_for(firm_id, client_id)
+    else:
+        from domain.compliance_record_service import compliance_record_service
+        in_window = compliance_record_service.list_records(
+            firm_id=firm_id, client_id=client_id,
+            due_from=date_from.isoformat() if date_from else None,
+            due_to=date_to.isoformat() if date_to else None)
+        late = compliance_record_service.list_records(
+            firm_id=firm_id, client_id=client_id, exclude_statuses=list(_DONE_STATUSES),
+            due_to=(today - timedelta(days=1)).isoformat())
+        by_id = {str(r.get("id")): r for r in in_window}
+        for r in late:
+            by_id.setdefault(str(r.get("id")), r)
+        records = list(by_id.values())
     upcoming, overdue, completed = [], [], []
     for r in records:
         due = str(r.get("due_date", ""))[:10]

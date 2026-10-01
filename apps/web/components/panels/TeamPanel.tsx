@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserCheck, LayoutGrid, Link2, ShieldCheck, History, Gauge } from "lucide-react";
+import { UserCheck, Link2, ShieldCheck, History, Gauge } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
 import { usePermissions } from "@/lib/auth/AuthContext";
 
@@ -37,7 +37,6 @@ const TEAM_ITEMS: Array<{
   { href: "/approvals", label: "Approvals", icon: ShieldCheck, requires: ["approval", "read"] },
   // identity.login_history → rbac("team", "read")
   { href: "/team/login-history", label: "Login History", icon: History, requires: ["team", "read"] },
-  { href: "/team/work-allocation", label: "Work Allocation", icon: LayoutGrid },
   // workload.get_team_workload → rbac("workload", "read"). It was in NEITHER
   // this panel nor any landing page — one of exactly two named screens in the
   // product reachable only by typing its name into ⌘K.
