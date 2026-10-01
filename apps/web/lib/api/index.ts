@@ -342,6 +342,32 @@ export interface RecommendationsPayload {
   low?: number;
 }
 
+/** `GET /api/intelligence/digest` — what needs attention today across the
+ *  caller's own clients (ai-25). Every `count` is read off an existing check;
+ *  `summary` is a model's wording of them or the plain sentence, and
+ *  `summary_source` says which. `count` is null where nobody looked
+ *  (`status: "unknown"`), which is not zero. */
+export interface PracticeDigestPayload {
+  as_of: string;
+  generated_at: string;
+  scoped: boolean;
+  summary: string;
+  summary_source: "model" | "rule-based";
+  model_used: string | null;
+  basis: string;
+  gaps: string[];
+  items: {
+    key: string;
+    label: string;
+    status: "attention" | "clear" | "unknown";
+    count: number | null;
+    headline: string;
+    source: string;
+    clients: { client_id: string; client_name: string; count: number }[];
+    clients_total: number;
+  }[];
+}
+
 export interface HubWorklistPayload {
   tile: string;
   label: string;
@@ -4984,6 +5010,10 @@ export const api = {
       request<ApiResp<RelationshipHealthPayload>>("/api/intelligence/relationship-health"),
     recommendations: () =>
       request<ApiResp<RecommendationsPayload>>("/api/intelligence/recommendations"),
+    /** The morning digest: counts from the existing checks, worded by a model
+     *  only when something needs attention, plain text otherwise. */
+    digest: () =>
+      request<ApiResp<PracticeDigestPayload>>("/api/intelligence/digest"),
     /** The capacity engine's own judgements. Typed rather than `unknown`
      *  because one of them — the unassigned backlog — is the only thing on it
      *  that no other screen can say. */

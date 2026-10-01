@@ -124,6 +124,7 @@ MODEL_MARKERS = (
     ".get_client_intelligence(", ".get_compliance_intelligence(",
     ".get_workflow_intelligence(", ".get_relationship_intelligence(",
     ".get_executive_dashboard(", "GROQ_API_URL", "_read_statement_file(",
+    "digest_service.todays_digest(",
 )
 
 #: Routes limited INSIDE the handler rather than by a dependency, with where.

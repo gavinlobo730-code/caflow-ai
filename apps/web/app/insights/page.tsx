@@ -13,6 +13,7 @@ import { objectWithLists } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/services/formatting";
 import { cn } from "@/lib/utils";
 import { recommendationHref, recommendationLabel } from "@/lib/insights/recommendationActions";
+import { DigestPanel } from "@/components/insights/DigestPanel";
 
 /**
  * Insights — Phase 3a-5, and the destination D1's `insights` tile has been
@@ -164,6 +165,10 @@ export default function InsightsPage() {
           <RefreshCw size={13} />
         </button>
       </div>
+
+      {/* ai-25. Its own reads and its own failure states: a digest that cannot
+          load must not blank the three tables below, and the reverse. */}
+      <DigestPanel />
 
       {loading && <p className="text-xs text-ps-hint">Loading…</p>}
 
