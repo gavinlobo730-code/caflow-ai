@@ -39,7 +39,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from domain.accounting import opening_documents as _opening
-from domain.gst import gstr2b_intake
+from domain.gst import gstr2b_intake, itc_probable
 from domain.gst.gstr2b import GSTR2BFile, parse_gstr2b
 from domain.gst.itc_matching import (
     BookBill, PortalDocument, Reconciliation, defaulters, reconcile,
@@ -244,6 +244,7 @@ def reconcile_2b(db, *, firm_id: str, client_id: str, period: str,
             "summary": None,
             "matches": [],
             "defaulters": [],
+            "probable_matches": [],
         }
 
     # A 2B THAT PARSED AND CARRIES NO DOCUMENTS IS AN ANSWER, and it is recorded.
@@ -285,6 +286,15 @@ def reconcile_2b(db, *, firm_id: str, client_id: str, period: str,
                     rows=rows, parsed=parsed, book_bill_count=len(bills),
                     problems=problems)
 
+    # PROBABLE MATCHES ARE READ OFF THE RESULT AND NEVER BACK INTO IT (gst-12).
+    # `reconcile` has already decided and `_record_rows` has already written:
+    # the bill is `missing_in_2b`, the document is unmatched, and
+    # `purchase_bill_id` is empty — so §16(2)(aa)'s per-document pass goes on
+    # withholding the credit. What follows only TELLS the CA the two rows may be
+    # one invoice; it is computed after the write on purpose, so nothing it
+    # concludes can reach a stored row.
+    probable = itc_probable.suggest(rec)
+
     return {
         "period": period,
         "gstin": parsed.gstin,
@@ -298,6 +308,7 @@ def reconcile_2b(db, *, firm_id: str, client_id: str, period: str,
         "summary": rec.summary(),
         "matches": [_match_json(m) for m in rec.matches],
         "defaulters": defaulters(rec),
+        "probable_matches": [p.to_json() for p in probable],
     }
 
 

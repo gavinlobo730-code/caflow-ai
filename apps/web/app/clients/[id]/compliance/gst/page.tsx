@@ -23,7 +23,9 @@ import { formatPaise } from "@/lib/money/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
+import type { ProbableMatch2B } from "@/lib/api";
 import { readGstr2bText } from "@/lib/gst/gstr2bFile";
+import { Probable2BMatches } from "@/components/gst/Probable2BMatches";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1627,6 +1629,8 @@ interface Recon2BResult {
   matches: Recon2BMatch[];
   defaulters: { supplier_gstin: string; unfiled_count: number;
                 itc_at_risk_paise: number; bill_ids: string[] }[];
+  /** gst-12 — suggestions only; they change no verdict and no credit. */
+  probable_matches: ProbableMatch2B[];
 }
 
 const RECON_2B_BUCKETS: { status: string; label: string; hint: string; tone: string }[] = [
@@ -1734,7 +1738,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
         method: "POST",
         body: JSON.stringify({ client_id: clientId, raw_data: raw }),
       });
-      if (resp.success) setResult(objectWithLists<Recon2BResult>(resp.data, "defaulters", "problems"));
+      if (resp.success) setResult(objectWithLists<Recon2BResult>(resp.data, "defaulters", "problems", "probable_matches"));
       else setError(resp.error ?? "Upload failed");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -1948,6 +1952,8 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
               </tbody>
             </table>
           </div>
+
+          <Probable2BMatches clientId={clientId} matches={result.probable_matches ?? []} />
 
           {(result.defaulters?.length ?? 0) > 0 && (
             <div>

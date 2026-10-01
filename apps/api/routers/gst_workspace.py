@@ -1004,6 +1004,7 @@ def upload_gstr2b(
                 "persisted": False,
                 "portal_document_count": len(parsed.documents),
                 "summary": None, "matches": [], "defaulters": [],
+                "probable_matches": [],
             })
 
         from core.supabase_client import get_supabase

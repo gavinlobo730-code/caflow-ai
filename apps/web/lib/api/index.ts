@@ -2868,6 +2868,37 @@ export type GSTStatusUpdate = {
   filed_date?: string;
 };
 
+/**
+ * gst-12 — a PROBABLE pair the 2B reconciliation could not tie together.
+ *
+ * A suggestion and never a link: `changes_credit` is always false, the bill
+ * stays `missing_in_2b` and its credit stays withheld until the CA corrects the
+ * document and runs the reconciliation again. The screen shows the sentences
+ * the server wrote and decides nothing about which pairs are probable.
+ */
+export interface ProbableMatch2B {
+  grade: "strong" | "possible";
+  kind: "supplier_gstin_differs" | "document_number_differs" | "amount_and_date_only";
+  evidence: string[];
+  action: string;
+  changes_credit: false;
+  bill_id: string;
+  bill_no: string;
+  bill_date: string | null;
+  bill_supplier_gstin: string;
+  book_taxable_paise: number;
+  book_tax_paise: number;
+  document_section: string;
+  document_type: string;
+  document_number: string;
+  document_date: string | null;
+  document_supplier_gstin: string;
+  document_supplier_name: string;
+  portal_taxable_paise: number;
+  portal_tax_paise: number;
+  itc_available: string;
+}
+
 /** SALES-21 — the sales cycle before the tax invoice. */
 export interface SalesCycleVocabulary {
   quote_kinds: { value: string; label: string }[];
