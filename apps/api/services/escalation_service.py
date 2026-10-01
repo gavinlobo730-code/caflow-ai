@@ -6,14 +6,20 @@ from repositories.user_repository import user_repo
 from repositories.notifications_repository import notifications_repo
 from repositories.task_extras_repository import task_extras_repo
 from core.ist_clock import ist_today
+from core.observability import capture_soft_failure
 
 
 class EscalationService:
     """Service for managing task escalations based on configurable rules."""
 
-    def escalate_due_soon_tasks(self, firm_id: str) -> int:
+    def escalate_due_soon_tasks(self, firm_id: str, mail_items: Optional[list] = None) -> int:
         """
         Find tasks due soon and create notifications based on escalation rules.
+
+        `mail_items`, when given, collects what each recipient is to be MAILED
+        about so `run_all_escalations` can send one mail per person for the
+        whole sweep (practice_management-03); the notification above it is
+        unchanged.
 
         Returns:
             Count of escalated tasks
@@ -43,15 +49,23 @@ class EscalationService:
                 )
 
                 if notification:
+                    if mail_items is not None:
+                        mail_items.append({
+                            "recipient_id": notification.get("user_id"),
+                            "kind": "due_soon", "task": task,
+                            "days_threshold": rule.get("days_threshold"),
+                        })
                     # Log to task_escalations table
                     self._log_task_escalation(task["id"], rule["id"], "due_soon")
                     escalated_count += 1
 
         return escalated_count
 
-    def escalate_overdue_tasks(self, firm_id: str) -> int:
+    def escalate_overdue_tasks(self, firm_id: str, mail_items: Optional[list] = None) -> int:
         """
         Find overdue tasks and execute escalation actions (reassignment, notifications).
+
+        `mail_items` is the same collector `escalate_due_soon_tasks` fills.
 
         Returns:
             Count of escalated tasks
@@ -89,8 +103,31 @@ class EscalationService:
                                 new_value={"assigned_to": new_assignee["id"]},
                             )
 
+                            # The person the task was just handed to is MAILED too:
+                            # a system reassignment is still an assignment, and
+                            # this is the one door where nobody was told at all
+                            # (no in-app notification exists for them either —
+                            # left as it is). No actor: the engine did it.
+                            try:
+                                from services import practice_mail_service
+                                practice_mail_service.task_assigned(
+                                    {**task, "assigned_to": new_assignee["id"],
+                                     "assignee_id": new_assignee["id"], "firm_id": firm_id},
+                                    new_assignee, None)
+                            except Exception as exc:  # noqa: BLE001 - mail is best-effort
+                                # Never the sweep's failure, and never silent either: a
+                                # reassignment nobody was told about is worth a report.
+                                capture_soft_failure(exc, operation="escalation.reassigned_mail",
+                                                     firm_id=firm_id, task_id=task.get("id"))
+
                             # Notify manager
                             manager = self._find_manager_for_task(firm_id, task)
+                            if manager and mail_items is not None:
+                                mail_items.append({
+                                    "recipient_id": manager["id"], "kind": "reassigned",
+                                    "task": {**task, "assigned_to": new_assignee["id"],
+                                             "assignee_id": new_assignee["id"]},
+                                })
                             if manager:
                                 notifications_repo.create({
                                     "firm_id": firm_id,
@@ -114,6 +151,10 @@ class EscalationService:
                 elif rule_type == "manager_notify":
                     # Notify manager about overdue task
                     manager = self._find_manager_for_task(firm_id, task)
+                    if manager and mail_items is not None:
+                        mail_items.append({
+                            "recipient_id": manager["id"], "kind": "overdue", "task": task,
+                        })
                     if manager:
                         notifications_repo.create({
                             "firm_id": firm_id,
@@ -146,8 +187,32 @@ class EscalationService:
         Returns:
             Dict with counts of escalated tasks by type
         """
-        due_soon_count = self.escalate_due_soon_tasks(firm_id)
-        overdue_count = self.escalate_overdue_tasks(firm_id)
+        mail_items: list = []
+        due_soon_count = self.escalate_due_soon_tasks(firm_id, mail_items)
+        overdue_count = self.escalate_overdue_tasks(firm_id, mail_items)
+
+        # THE MAILS (practice_management-03). One per manager for what the
+        # escalation rules sent them, and one per ASSIGNEE for their own overdue
+        # tasks — weekly after the first, never daily. Both are idempotent
+        # against practice_email_log, which matters here more than anywhere:
+        # POST /api/tasks/trigger-escalations runs this with no once-a-day flag,
+        # and the in-app notifications above are NOT deduplicated, so a second
+        # run sent a second notification and (unguarded) would have sent a
+        # second mail. Mail never fails the sweep, and the shape returned is
+        # unchanged.
+        try:
+            from services import practice_mail_service
+            practice_mail_service.send_escalation_mails(firm_id, mail_items)
+            open_tasks = task_repo.find_all(firm_id=firm_id, status=None)
+            # A task this very sweep reassigned already told its new owner it was
+            # theirs; saying "and it is overdue" in the same minute is two mails
+            # about one thing.
+            just_handed_over = {str(i["task"]["id"]) for i in mail_items
+                                if i.get("kind") == "reassigned"}
+            practice_mail_service.send_overdue_task_mails(
+                firm_id, [t for t in open_tasks if str(t.get("id")) not in just_handed_over])
+        except Exception as exc:  # noqa: BLE001 - mail is best-effort
+            capture_soft_failure(exc, operation="escalation.overdue_mail", firm_id=firm_id)
 
         return {
             "due_soon_escalations": due_soon_count,

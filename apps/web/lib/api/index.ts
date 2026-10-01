@@ -65,6 +65,44 @@ export type FirmProfile = {
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+/** One kind of practice mail a person can switch on or off
+ *  (`GET /api/notifications/email-preferences`). The vocabulary and the
+ *  defaults are the server's (`domain/practice_notices`) and this screen
+ *  holds neither. `is_default` is false only where the person chose. */
+export interface EmailPreferenceEvent {
+  event_type: string;
+  label: string;
+  description: string;
+  email_enabled: boolean;
+  is_default: boolean;
+  default_email: boolean;
+}
+
+export interface EmailLogRow {
+  id: string;
+  event_type: string;
+  ref_type: string | null;
+  ref_id: string | null;
+  tier: string | null;
+  sent_for_date: string;
+  status: "sent" | "failed";
+  created_at: string;
+}
+
+/** What a portal screen is told about the CLIENT's own notice: created and
+ *  "the client knows" are two facts (`services/portal_notice_service`). */
+export interface ClientNotice {
+  contacts: number;
+  emailed: number;
+  reason: string | null;
+}
+
+/** A client's unread messages, per client (`GET /api/portal/unread`). */
+export interface PortalUnreadSummary {
+  unread_total: number;
+  clients: { client_id: string; client_name: string | null; unread: number; latest_at: string | null }[];
+}
+
 /** `GET /api/security/posture` — booleans, counts and fixed sentences. Every
  *  field but the two lists is a scalar; the lists are named in
  *  `objectWithLists` at the setter. */
@@ -3280,6 +3318,21 @@ export interface FeeEngagement {
   end_date?: string | null;
   status: FeeEngagementStatus;
   notes?: string | null;
+  /** The billing-rate OVERRIDE for time recorded against this engagement
+   *  (practice_management-11), in paise. null is "none" — and 0 is a stated
+   *  rate ("these hours bill at nothing"), which is a different thing. */
+  billable_rate_paise?: number | null;
+}
+
+/** One person's billing rate, as `GET /api/billing/staff-billable-rates` serves
+ *  it. `default_billable_rate_paise: null` means nobody has said what an hour of
+ *  this person bills at — NOT that it bills at nothing. */
+export interface StaffBillableRate {
+  user_id: string;
+  full_name: string | null;
+  role?: string | null;
+  is_active?: boolean;
+  default_billable_rate_paise: number | null;
 }
 
 /** What `POST /{id}/transition` will accept from each status, mirroring
@@ -3475,6 +3528,15 @@ export const api = {
       request<ApiResp<{ engagement: FeeEngagement }>>(`/api/engagements/${id}`, {
         method: "PATCH", body: JSON.stringify(body),
       }),
+    // The billing-rate OVERRIDE for time recorded against this engagement
+    // (practice_management-11). Its own door because PATCH drops every null, so
+    // an override set once could never be taken off again; `null` clears it and
+    // 0 is a stated rate.
+    setBillableRate: (id: string, billableRatePaise: number | null) =>
+      request<ApiResp<{ engagement_id: string; billable_rate_paise: number | null }>>(
+        `/api/engagements/${id}/billable-rate`, {
+          method: "PUT", body: JSON.stringify({ billable_rate_paise: billableRatePaise }),
+        }),
     // The state machine's own door. `status` must be one the server allows
     // FROM the current one — it answers 422 naming the permitted set rather
     // than writing whatever it is sent, which is why the screen offers the
@@ -4444,8 +4506,18 @@ export const api = {
     dashboard: () => request("/api/compliance/dashboard"),
     obligations: (params?: Record<string, string>) =>
       request(`/api/compliance/obligations${params ? "?" + new URLSearchParams(params) : ""}`),
-    calendar: (clientId?: string) =>
-      request(`/api/compliance/obligations/calendar${clientId ? `?client_id=${clientId}` : ""}`),
+    // The obligations bucketed upcoming / overdue / completed. `date_from` and
+    // `date_to` (YYYY-MM-DD, both or neither) bound upcoming and completed by due
+    // date so a month grid asks for a month; the overdue bucket is never bounded,
+    // because an obligation is overdue whichever month the screen shows.
+    calendar: (params?: { client_id?: string; date_from?: string; date_to?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.client_id) q.set("client_id", params.client_id);
+      if (params?.date_from) q.set("date_from", params.date_from);
+      if (params?.date_to) q.set("date_to", params.date_to);
+      const qs = q.toString();
+      return request<ApiResp<unknown>>(`/api/compliance/obligations/calendar${qs ? `?${qs}` : ""}`);
+    },
     generate: (params?: Record<string, string>) =>
       request(`/api/compliance/obligations/generate${params ? "?" + new URLSearchParams(params) : ""}`, { method: "POST" }),
     assign: (id: string, body: { preparer_id?: string; reviewer_id?: string; approver_id?: string }) =>
@@ -4510,6 +4582,17 @@ export const api = {
     markRead: (id: string) => request(`/api/notifications/${id}/read`, { method: "PATCH" }),
     markAllRead: () => request("/api/notifications/read-all", { method: "PATCH" }),
     stats: () => request("/api/notifications/stats"),
+    /** Which of the practice's own mail THIS person gets, event by event, and
+     *  whether they chose it or it is the event's default. */
+    emailPreferences: () =>
+      request<ApiResp<{ events: EmailPreferenceEvent[] }>>("/api/notifications/email-preferences"),
+    setEmailPreference: (event_type: string, email_enabled: boolean) =>
+      request<ApiResp<{ events: EmailPreferenceEvent[] }>>("/api/notifications/email-preferences", {
+        method: "PUT", body: JSON.stringify({ event_type, email_enabled }),
+      }),
+    /** The mails the product sent THIS person: "why did I not get it?". */
+    emailLog: (limit = 50) =>
+      request<ApiResp<{ sent: EmailLogRow[] }>>(`/api/notifications/email-log?limit=${limit}`),
   },
   // `copilot.chat` (POST /api/ai-copilot/chat) was removed with ai-10: no screen
   // called it — /copilot uses `copilotV2` — and its only product was an answer
@@ -5136,6 +5219,13 @@ export const api = {
       request<ApiResp<FirmProfile>>("/api/firms/profile",
         { method: "PATCH", body: JSON.stringify(body) }),
   },
+  // The FIRM's first-run checklist (market_and_trust-16), not a client's onboarding
+  // workflow (that is `onboarding` below). `data.first_run` is built server-side from the
+  // firm's own rows; read it with `readFirstRun` (lib/onboarding/firstRun.ts), because
+  // `data` is `unknown` here on purpose.
+  firstRun: {
+    status: () => request<ApiResp<unknown>>("/api/onboarding/status"),
+  },
   onboarding: {
     /** Start a 10-step Product Bible Ch. 7 onboarding checklist for a client. */
     start: (body: { client_id: string; entity_type?: string; notes?: string }) =>
@@ -5292,6 +5382,13 @@ export const api = {
       request(`/api/portal/document-requests/${id}/complete`, { method: "PUT" }),
     getMessages: (firmId: string, clientId: string) =>
       request(`/api/portal/messages?firm_id=${firmId}&client_id=${clientId}`),
+    /** Firm-wide: how many client messages nobody at the firm has opened. */
+    unreadMessages: () => request<ApiResp<PortalUnreadSummary>>("/api/portal/unread"),
+    /** The firm has opened this client's thread. */
+    markThreadRead: (clientId: string) =>
+      request<ApiResp<{ marked_read: number }>>("/api/portal/messages/read", {
+        method: "POST", body: JSON.stringify({ client_id: clientId }),
+      }),
     sendMessage: (data: {
       firm_id: string;
       client_id: string;
@@ -5594,8 +5691,22 @@ export const api = {
     // 18-09-2026, when both were found to send nothing (migration 405).
     flagOverdueForFollowup: () =>
       request("/api/billing/collections/flag-followups", { method: "POST" }),
+    // Billable, not-yet-billed time: what is worth money, and — apart — the time
+    // that has NO rate (`no_rate`), which is never counted as zero. Read it with
+    // `readUnbilledWork` (lib/time/unbilledWork), not as a bare payload.
     unbilledWork: (clientId?: string) =>
-      request(`/api/billing/unbilled-work${clientId ? `?client_id=${clientId}` : ""}`),
+      request<ApiResp<unknown>>(
+        `/api/billing/unbilled-work${clientId ? `?client_id=${clientId}` : ""}`),
+    // What an hour of each PERSON bills at (practice_management-11) — not
+    // `cost_rate_paise`, which is what the hour costs the firm. null clears it.
+    listBillableRates: () =>
+      request<ApiResp<{ staff: StaffBillableRate[] }>>("/api/billing/staff-billable-rates"),
+    setBillableRate: (userId: string, defaultBillableRatePaise: number | null) =>
+      request<ApiResp<{ user_id: string; default_billable_rate_paise: number | null }>>(
+        `/api/billing/staff-billable-rates/${userId}`, {
+          method: "PUT",
+          body: JSON.stringify({ default_billable_rate_paise: defaultBillableRatePaise }),
+        }),
     listCostRates: () => request("/api/billing/staff-cost-rates"),
     setCostRate: (userId: string, costRatePaise: number | null) =>
       request(`/api/billing/staff-cost-rates/${userId}`, {

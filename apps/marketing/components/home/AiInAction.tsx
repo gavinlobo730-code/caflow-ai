@@ -151,9 +151,9 @@ export function AiInAction() {
       <div className="mt-12 rounded-2xl border border-gold/30 bg-gold/[0.06] p-6 md:p-8">
         <p className="text-[15px] leading-relaxed text-brand-dark md:text-[16px]">
           <span className="font-semibold">And then it stops.</span> Nothing in that chain
-          files anything. PracticeSync computes the return, reconciles it and hands you a
-          file that is ready to submit — a Chartered Accountant uploads and signs it on the
-          government portal, and records it back here. The software never transmits a
+          files anything. PracticeSync computes the return, reconciles it and hands you the
+          GST file to upload or the figures to key in — a Chartered Accountant signs and
+          files it on the government portal, and records it back here. The software never transmits a
           return, for any tax, ever.
         </p>
       </div>

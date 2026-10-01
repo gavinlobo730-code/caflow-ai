@@ -4,8 +4,7 @@ import { useState, useEffect } from "react";
 import {
   Users, Clock, AlertTriangle, FileCheck,
   Calendar, Sparkles, CheckCircle2,
-  ChevronRight, X, UserPlus,
-  Upload, BookOpen, ArrowRight,
+  ChevronRight, X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -17,45 +16,7 @@ import { toLocalISO, todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { api } from "@/lib/api";
 import { mapComplianceKpis } from "@/lib/dashboard/complianceKpis";
 import { Hub } from "@/components/hub/Hub";
-
-// ─── Welcome next-steps shown after onboarding completes ─────────────────────
-const NEXT_STEPS = [
-  {
-    icon: Users,
-    title: "Add Your First Client",
-    desc: "Set up a client to start managing compliance and billing.",
-    href: "/clients",
-    color: "bg-blue-500/20 text-blue-100",
-  },
-  {
-    icon: UserPlus,
-    title: "Invite Team Members",
-    desc: "Add staff and assign roles to collaborate on client work.",
-    href: "/team",
-    color: "bg-indigo-500/20 text-indigo-100",
-  },
-  {
-    icon: Upload,
-    title: "Import Existing Data",
-    desc: "Import bank statements, trial balance, or client lists.",
-    href: "/migration",
-    color: "bg-violet-500/20 text-violet-100",
-  },
-  {
-    icon: Calendar,
-    title: "Review Compliance Calendar",
-    desc: "See upcoming GST, TDS, and ITR deadlines.",
-    href: "/deadlines",
-    color: "bg-amber-500/20 text-amber-100",
-  },
-  {
-    icon: BookOpen,
-    title: "Review Chart of Accounts",
-    desc: "View your auto-generated CoA, grouped by category.",
-    href: "/accounting/account-groups",
-    color: "bg-emerald-500/20 text-emerald-100",
-  },
-];
+import { FirstRunChecklist } from "@/components/onboarding/FirstRunChecklist";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -203,17 +164,18 @@ export default function DashboardContent() {
   // of presenting stale zeros as truth. reloadKey re-runs the effect on Retry.
   const [loadFailed, setLoadFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [showWelcome, setShowWelcome] = useState(false);
 
   const today = new Date();
   const upcomingDeadlines = getUpcomingDeadlines(today);
 
-  // Detect ?welcome=1 set by the onboarding completion redirect and clear it.
+  // The onboarding completion redirect still lands here with ?welcome=1. It used to switch
+  // on a welcome card that appeared once and was gone for good; the first-run checklist
+  // below replaces it and shows on its own account, so the param means nothing now and is
+  // only cleared from the address bar.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("welcome") === "1") {
-      setShowWelcome(true);
       params.delete("welcome");
       const clean = params.toString() ? `?${params}` : window.location.pathname;
       window.history.replaceState({}, "", clean);
@@ -325,48 +287,12 @@ export default function DashboardContent() {
         </div>
       )}
 
-      {/* ── Welcome card (shown once after onboarding completes) ─────── */}
-      {showWelcome && (
-        <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-700 p-6 text-white shadow-lg">
-          <button
-            onClick={() => setShowWelcome(false)}
-            className="absolute top-4 right-4 text-white/60 hover:text-white transition-colors"
-            aria-label="Dismiss"
-          >
-            <X size={18} />
-          </button>
-
-          <div className="mb-1">
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-white/15 text-white px-2.5 py-1 rounded-full">
-              <CheckCircle2 size={11} /> Workspace ready
-            </span>
-          </div>
-          <h2 className="text-xl font-bold mt-3">Welcome to PracticeSync</h2>
-          <p className="text-sm text-blue-100 mt-1 max-w-lg">
-            Your workspace has been created successfully — a standard Chart of Accounts, compliance calendar, and document folders are all set up. Here&apos;s what to do next.
-          </p>
-
-          <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {NEXT_STEPS.map((step) => {
-              const Icon = step.icon;
-              return (
-                <Link key={step.href} href={step.href}>
-                  <div className="group flex flex-col gap-2 bg-white/10 hover:bg-white/20 transition-colors rounded-xl p-3.5 cursor-pointer h-full">
-                    <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", step.color)}>
-                      <Icon size={15} />
-                    </div>
-                    <p className="text-sm font-semibold text-white leading-tight">{step.title}</p>
-                    <p className="text-2xs text-blue-200 leading-snug flex-1">{step.desc}</p>
-                    <div className="flex items-center gap-1 text-2xs text-white/70 group-hover:text-white/90 transition-colors mt-auto pt-1">
-                      Go <ArrowRight size={10} />
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* ── First-run checklist (market_and_trust-16) ───────────────────────
+          Replaces the welcome card that appeared once. The server computes every tick
+          from the firm's own rows and says whether to show it at all; for anybody it
+          is not for (not a Partner or Manager, or a firm that has done all four) it
+          renders nothing. */}
+      <FirstRunChecklist />
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">

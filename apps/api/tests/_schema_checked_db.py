@@ -59,6 +59,8 @@ REAL_COLUMNS: dict[str, set[str]] = {
         "id", "firm_id", "client_id", "requested_by", "title", "description",
         "is_urgent", "status", "fulfilled_at", "storage_path", "file_name",
         "created_at",
+        # Migration 450: POST /api/portal/document-requests declared it all along.
+        "due_date",
     },
     "entities": {
         "id", "firm_id", "entity_type", "full_name", "pan", "gstin", "email",
@@ -119,6 +121,8 @@ REAL_CHECK_VALUES: dict[tuple[str, str], set[str]] = {
         "task_assigned", "risk_detected", "document_processed", "compliance_due",
         "ai_recommendation", "status_changed", "task_reassigned", "due_soon",
         "overdue", "task_overdue", "recurring_generated", "workflow",
+        # Migration 450.
+        "portal_message",
     },
     ("portal_messages", "sender_type"): {"ca", "client"},
     ("users", "role"): {"Partner", "Manager", "Executive", "Reviewer", "Client"},

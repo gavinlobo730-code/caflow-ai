@@ -25,7 +25,7 @@ const MODULES = [
   {
     eyebrow: "Compliance",
     title: "Every return computed from the books, and every deadline tracked",
-    desc: "GST, Income Tax, TDS and MCA — from working papers to a file-ready return — with a due-date tracker that watches the whole financial year for you.",
+    desc: "GST, Income Tax, TDS and MCA — from working papers to a prepared return — with a due-date tracker that watches the whole financial year for you.",
     points: [
       "GST returns — GSTR-1 (due the 11th), GSTR-3B (due the 20th) and the GSTR-9 annual return (due 31 December), computed from your ledgers",
       "GSTR-2B reconciliation — which bills your supplier has not filed, and how much input credit to hold back",
@@ -46,7 +46,7 @@ const MODULES = [
       "Schedule III mapping for statutory financial statements, with both ageing notes",
       "Fixed-asset register with Schedule II depreciation",
       "MSME dues tracker, for the §43B(h) disclosure",
-      "Corrections are append-only reversals, so the audit trail always foots",
+      "Corrections to posted documents are append-only reversals, so the audit trail always foots",
     ],
   },
   {
@@ -238,7 +238,7 @@ export default function ProductsPage() {
           eyebrow="Security & trust"
           theme="light"
           lines={[{ text: "Your clients' data —" }, { text: "and your sign-off — protected.", italic: true }]}
-          subtitle="PracticeSync is built around how Indian CA firms actually work: sensitive data stays in the country, access is controlled, everything is logged, and no filing ever leaves your hands without your confirmation."
+          subtitle="PracticeSync is built around how Indian CA firms actually work: the database is in Mumbai, access is by role and by client assignment, every change to a client, invoice, bill, receipt or ledger entry is written to an audit log, and no filing ever leaves your hands without your confirmation."
         />
 
         <div className="mt-12 grid gap-x-12 gap-y-8 sm:grid-cols-2">

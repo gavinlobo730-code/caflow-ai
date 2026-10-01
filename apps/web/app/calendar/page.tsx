@@ -1,498 +1,330 @@
 "use client";
 
 /**
- * Compliance Calendar — monthly view of all Indian tax filing deadlines
- * CGST Act Section 37: GSTR-1 filing obligation
- * CGST Act Section 39: GSTR-3B filing obligation
- * CGST Act Section 44: GSTR-9 annual return
- * IT Act Section 208: Advance Tax obligation
- * IT Act Section 200: TDS return filing
- * Companies Act 2013 Section 137: AOC-4 filing
- * Companies Act 2013 Section 92: MGT-7 filing
+ * Compliance Calendar — the month's obligations, across the clients the caller
+ * may see (practice_management-17).
+ *
+ * EVERY DATE ON THIS SCREEN IS THE SERVER'S. It reads
+ * `GET /api/compliance/obligations/calendar`: the same `compliance_records` the
+ * Deadlines screen and a client's Compliance tab track, each with a due date
+ * computed by `services/compliance_engine` — the 22nd or 24th for a QRMP client's
+ * GSTR-3B, the state-group rule, an extension a notification granted — and each
+ * with a status that survives a reload. This file states no due date, computes
+ * none and holds no table of them.
+ *
+ * It used to. It built fourteen deadlines in the browser (the 11th and the 20th
+ * for EVERY client, advance-tax dates, TDS returns, AOC-4 and MGT-7 a day off the
+ * engine), attached every one to ALL clients, and kept its done tick in component
+ * state — so a tick was gone on refresh and recorded nowhere, and a QRMP client
+ * was shown a date that was not theirs. `scripts/a-statutory-due-date-is-never-a-
+ * literal.test.ts` listed it as a KNOWN DEFECT.
+ *
+ * ONE CHIP PER (DUE DATE, OBLIGATION, PERIOD), NOT ONE PER CLIENT: a hundred
+ * clients' GSTR-3B fall on the same day and a hundred chips are unreadable. A chip
+ * says how many clients it covers and how many are done; the day panel lists them,
+ * each with its own tick. A tick goes through the SAME prompt as the Deadlines
+ * screen (`MarkFiledModal`), which asks for the date the return was filed on the
+ * portal — recording a GSTR-1 or GSTR-3B as filed locks that period, and the lock
+ * quotes the date. Nothing is filed by this screen: it records what the CA has
+ * already done on the portal. CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
+ *
+ * THE MCA ANNUAL FORMS COME FROM THE MCA WORKSPACE, NOT FROM THE OBLIGATION ROWS.
+ * AOC-4 and MGT-7 are counted from each company's own AGM date, which that
+ * endpoint reads (`mca_companies.last_agm_date`) and NAMES a company without,
+ * where the generated rows fall back to the latest date the Act allows an AGM —
+ * a date nobody chose. They carry nothing to tick here (the filing is recorded
+ * in the company's own MCA workspace), and a company with no AGM date recorded is
+ * named in the notice at the top rather than given a plausible one.
  */
 
-import { useState, useEffect, useCallback } from "react";
-import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
-import { api } from "@/lib/api";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import Link from "next/link";
 import {
-  ChevronLeft,
-  ChevronRight,
-  Calendar,
-  CheckCircle,
-  Circle,
+  ChevronLeft, ChevronRight, Calendar, CheckCircle, Circle, AlertTriangle,
 } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
+import { getClients } from "@/lib/data/clients";
+import {
+  getObligationCalendar, markFiled as markObligationFiled,
+} from "@/lib/data/compliance";
+import type { ComplianceEntry, ObligationCalendar } from "@/lib/data/compliance";
+import {
+  categoryOf, groupObligations, groupsOnDay, overdueGroups, upcomingGroups,
+} from "@/lib/compliance/calendarGroups";
+import type { CalendarCategory, ObligationGroup } from "@/lib/compliance/calendarGroups";
+import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
+import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
+import { useToast } from "@/components/ui/use-toast";
 import type { Client } from "@/lib/types";
-import { todayLocalISO, toLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
-
-// ─── TYPES ────────────────────────────────────────────────────────────────────
-
-type DeadlineCategory = "GST" | "IncomeTax" | "TDS" | "MCA" | "Other";
-
-interface Deadline {
-  id: string;
-  date: Date;
-  label: string;       // e.g. "GSTR-1", "Advance Tax"
-  category: DeadlineCategory;
-  description: string;
-  clientIds: string[]; // which clients this applies to (empty = firm-wide)
-  done: boolean;
-}
+import { todayLocalISO, toLocalISO, fromLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { formatDate } from "@/lib/services/formatting";
 
 // ─── COLOUR SCHEME ────────────────────────────────────────────────────────────
 
-const CATEGORY_STYLES: Record<DeadlineCategory, { chip: string; dot: string; badge: string }> = {
-  GST:        { chip: "bg-state-problem-surface text-state-problem border-state-problem-border",     dot: "bg-red-500",    badge: "bg-red-500" },
-  IncomeTax:  { chip: "bg-blue-100 text-blue-700 border-blue-200",  dot: "bg-blue-500",   badge: "bg-blue-500" },
-  TDS:        { chip: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-500", badge: "bg-orange-500" },
-  MCA:        { chip: "bg-purple-100 text-purple-700 border-purple-200", dot: "bg-purple-500", badge: "bg-purple-500" },
-  Other:      { chip: "bg-green-100 text-green-700 border-green-200",  dot: "bg-green-500",  badge: "bg-green-500" },
+const CATEGORY_STYLES: Record<CalendarCategory, { chip: string; badge: string }> = {
+  GST:       { chip: "bg-state-problem-surface text-state-problem border-state-problem-border", badge: "bg-red-500" },
+  IncomeTax: { chip: "bg-blue-100 text-blue-700 border-blue-200", badge: "bg-blue-500" },
+  TDS:       { chip: "bg-orange-100 text-orange-700 border-orange-200", badge: "bg-orange-500" },
+  MCA:       { chip: "bg-purple-100 text-purple-700 border-purple-200", badge: "bg-purple-500" },
+  Payroll:   { chip: "bg-teal-100 text-teal-700 border-teal-200", badge: "bg-teal-500" },
+  Other:     { chip: "bg-green-100 text-green-700 border-green-200", badge: "bg-green-500" },
 };
 
-const CATEGORY_LABELS: Record<DeadlineCategory, string> = {
-  GST: "GST",
-  IncomeTax: "Income Tax",
-  TDS: "TDS",
-  MCA: "MCA",
-  Other: "Other",
+const CATEGORY_LABELS: Record<CalendarCategory, string> = {
+  GST: "GST", IncomeTax: "Income Tax", TDS: "TDS", MCA: "MCA", Payroll: "Payroll deposits", Other: "Other",
 };
-
-// ─── DEADLINE GENERATION ──────────────────────────────────────────────────────
-
-/**
- * Generate all statutory deadlines for months [baseYear/baseMonth .. baseYear/baseMonth+3].
- * Dates are based on the Indian tax calendar — no client filtering here.
- *
- * CGST Act / IT Act references in each block.
- */
-function generateDeadlines(clientIds: string[]): Deadline[] {
-  const today = new Date();
-  const deadlines: Deadline[] = [];
-
-  // We generate for current month + next 3 months (4 months total)
-  for (let offset = 0; offset < 4; offset++) {
-    const refDate = new Date(today.getFullYear(), today.getMonth() + offset, 1);
-    const y = refDate.getFullYear();
-    const m = refDate.getMonth(); // 0-based
-
-    // ── GSTR-1: 11th of every month — CGST Act Section 37
-    deadlines.push({
-      id: `gstr1-${y}-${m}`,
-      date: new Date(y, m, 11),
-      label: "GSTR-1",
-      category: "GST",
-      description: "CGST Act Section 37 — outward supplies return due 11th of following month",
-      clientIds,
-      done: false,
-    });
-
-    // ── GSTR-3B: 20th of every month — CGST Act Section 39
-    deadlines.push({
-      id: `gstr3b-${y}-${m}`,
-      date: new Date(y, m, 20),
-      label: "GSTR-3B",
-      category: "GST",
-      description: "CGST Act Section 39 — monthly summary return due 20th of following month",
-      clientIds,
-      done: false,
-    });
-
-    // ── GSTR-9: 31 Dec — CGST Act Section 44
-    if (m === 11) { // December
-      deadlines.push({
-        id: `gstr9-${y}`,
-        date: new Date(y, 11, 31),
-        label: "GSTR-9",
-        category: "GST",
-        description: "CGST Act Section 44 — annual return for FY ending March",
-        clientIds,
-        done: false,
-      });
-    }
-
-    // ── Advance Tax — IT Act Section 208 / 211
-    // 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
-    if (m === 5) { // June
-      deadlines.push({
-        id: `adv-tax-jun-${y}`,
-        date: new Date(y, 5, 15),
-        label: "Advance Tax (15%)",
-        category: "IncomeTax",
-        description: "IT Act Section 211 — 1st instalment: 15% of advance tax by 15 Jun",
-        clientIds,
-        done: false,
-      });
-    }
-    if (m === 8) { // September
-      deadlines.push({
-        id: `adv-tax-sep-${y}`,
-        date: new Date(y, 8, 15),
-        label: "Advance Tax (45%)",
-        category: "IncomeTax",
-        description: "IT Act Section 211 — 2nd instalment: cumulative 45% by 15 Sep",
-        clientIds,
-        done: false,
-      });
-    }
-    if (m === 11) { // December
-      deadlines.push({
-        id: `adv-tax-dec-${y}`,
-        date: new Date(y, 11, 15),
-        label: "Advance Tax (75%)",
-        category: "IncomeTax",
-        description: "IT Act Section 211 — 3rd instalment: cumulative 75% by 15 Dec",
-        clientIds,
-        done: false,
-      });
-    }
-    if (m === 2) { // March
-      deadlines.push({
-        id: `adv-tax-mar-${y}`,
-        date: new Date(y, 2, 15),
-        label: "Advance Tax (100%)",
-        category: "IncomeTax",
-        description: "IT Act Section 211 — 4th instalment: 100% by 15 Mar",
-        clientIds,
-        done: false,
-      });
-    }
-
-    // ── TDS Returns (24Q/26Q) — IT Act Section 200(3)
-    // Q1 (Apr–Jun) → due 31 Jul
-    if (m === 6) { // July
-      deadlines.push({
-        id: `tds-q1-${y}`,
-        date: new Date(y, 6, 31),
-        label: "TDS Return Q1 (26Q)",
-        category: "TDS",
-        description: "IT Act Section 200(3) — Q1 (Apr–Jun) TDS return due 31 Jul",
-        clientIds,
-        done: false,
-      });
-    }
-    // Q2 (Jul–Sep) → due 31 Oct
-    if (m === 9) { // October
-      deadlines.push({
-        id: `tds-q2-${y}`,
-        date: new Date(y, 9, 31),
-        label: "TDS Return Q2 (26Q)",
-        category: "TDS",
-        description: "IT Act Section 200(3) — Q2 (Jul–Sep) TDS return due 31 Oct",
-        clientIds,
-        done: false,
-      });
-    }
-    // Q3 (Oct–Dec) → due 31 Jan
-    if (m === 0) { // January
-      deadlines.push({
-        id: `tds-q3-${y}`,
-        date: new Date(y, 0, 31),
-        label: "TDS Return Q3 (26Q)",
-        category: "TDS",
-        description: "IT Act Section 200(3) — Q3 (Oct–Dec) TDS return due 31 Jan",
-        clientIds,
-        done: false,
-      });
-    }
-    // Q4 (Jan–Mar) → due 31 May
-    if (m === 4) { // May
-      deadlines.push({
-        id: `tds-q4-${y}`,
-        date: new Date(y, 4, 31),
-        label: "TDS Return Q4 (26Q)",
-        category: "TDS",
-        description: "IT Act Section 200(3) — Q4 (Jan–Mar) TDS return due 31 May",
-        clientIds,
-        done: false,
-      });
-    }
-
-    // ── MCA Deadlines (Companies Act 2013)
-    // DIR-3 KYC: 30 Sep every year
-    if (m === 8) { // September
-      deadlines.push({
-        id: `dir3kyc-${y}`,
-        date: new Date(y, 8, 30),
-        label: "DIR-3 KYC",
-        category: "MCA",
-        description: "Companies Act 2013 Rule 12A — Director KYC due 30 Sep",
-        clientIds,
-        done: false,
-      });
-    }
-    // ADT-1, AOC-4 and MGT-7 are NOT generated here, and that is the fix.
-    //
-    // They used to be, on an AGM assumed to be 30 September for every client,
-    // with the offsets counted inclusively — so AOC-4 showed 29 October where
-    // Companies Act s.137 gives 30, and MGT-7 showed 28 November where s.92
-    // gives 29. A day early is merely wrong; the invented AGM was wrong for
-    // every company whose meeting was not on 30 September, and a CA reading
-    // this calendar could not tell a computed row from an assumed one.
-    //
-    // mca_companies.last_agm_date has held the real date since migration 038.
-    // These three now come from GET /api/mca-workspace/calendar/firm, which counts from
-    // it and NAMES a company that has none rather than defaulting one.
-  }
-
-  return deadlines;
-}
-
-// ─── CALENDAR HELPERS ─────────────────────────────────────────────────────────
-
-function daysInMonth(year: number, month: number): number {
-  return new Date(year, month + 1, 0).getDate();
-}
-
-function firstDayOfMonth(year: number, month: number): number {
-  return new Date(year, month, 1).getDay(); // 0=Sun
-}
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
-
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function isSameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
+/** How far ahead the "Upcoming" panel looks. A panel, not a statutory figure. */
+const UPCOMING_WINDOW_DAYS = 45;
+
+function pad(n: number): string { return String(n).padStart(2, "0"); }
+function isoOf(y: number, m: number, d: number): string { return `${y}-${pad(m + 1)}-${pad(d)}`; }
+function monthBounds(y: number, m: number): { from: string; to: string } {
+  return { from: toLocalISO(new Date(y, m, 1)), to: toLocalISO(new Date(y, m + 1, 0)) };
+}
+function addDaysISO(iso: string, days: number): string {
+  const d = fromLocalISO(iso) ?? new Date();
+  d.setDate(d.getDate() + days);
+  return toLocalISO(d);
 }
 
-// ─── COMPONENTS ───────────────────────────────────────────────────────────────
-
-interface DeadlineChipProps {
-  deadline: Deadline;
-  clientMap: Map<string, Client>;
-  compact?: boolean;
-  onToggle: (id: string) => void;
-}
-
-function DeadlineChip({ deadline, clientMap, compact = false, onToggle }: DeadlineChipProps) {
-  const style = CATEGORY_STYLES[deadline.category];
-  const clientCount = deadline.clientIds.length;
-
-  let clientLabel = "";
-  if (clientCount === 1) {
-    clientLabel = clientMap.get(deadline.clientIds[0])?.client_name ?? "";
-  } else if (clientCount > 1) {
-    clientLabel = `${clientCount} clients`;
-  }
-
-  return (
-    <div
-      className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-3xs font-medium cursor-pointer select-none transition-opacity
-        ${style.chip} ${deadline.done ? "opacity-50 line-through" : ""}`}
-      onClick={() => onToggle(deadline.id)}
-      title={deadline.description}
-    >
-      {deadline.done
-        ? <CheckCircle className="w-3 h-3 shrink-0" />
-        : <Circle className="w-3 h-3 shrink-0" />
-      }
-      <span className="truncate">{deadline.label}</span>
-      {!compact && clientLabel && (
-        <span className="opacity-70 truncate">· {clientLabel}</span>
-      )}
-    </div>
-  );
+/** An MCA annual form, counted from the company's own AGM (not an obligation row). */
+interface McaDeadline {
+  client_id: string; company_name: string; form_type: string; due_date: string; description: string;
 }
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
-  // Anchored at local midnight (not a live instant) so a same-day deadline
-  // isn't excluded the moment any time has passed since midnight — see
-  // upcomingDeadlines below.
-  const today = new Date(todayLocalISO() + "T00:00:00");
+  const todayISO = todayLocalISO();
+  const todayDate = fromLocalISO(todayISO) ?? new Date();
+  const { toast } = useToast();
 
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [viewYear, setViewYear] = useState(todayDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(todayDate.getMonth());
   const [clients, setClients] = useState<Client[]>([]);
-  const [deadlines, setDeadlines] = useState<Deadline[]>([]);
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [clientId, setClientId] = useState("");
+  const [month, setMonth] = useState<ObligationCalendar | null>(null);
+  const [ahead, setAhead] = useState<ObligationCalendar | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Load clients from Supabase
-  useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true);
-        const sb = getSupabaseClient();
-        const { data, error } = await sb
-          .from("clients")
-          .select("*")
-          .is("deleted_at", null)
-          .order("client_name");
-        if (error) throw new Error(error.message);
-        setClients((data ?? []) as Client[]);
-      } catch {
-        // Silently degrade — deadlines still show without client names
-        setClients([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
-
+  const [mca, setMca] = useState<McaDeadline[]>([]);
   const [agmGaps, setAgmGaps] = useState<{ company_name: string }[]>([]);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
-  // Regenerate deadlines when clients load.
-  //
-  // The rule-based ones (GST, TDS, ITR, DIR-3 KYC) fall out of the calendar
-  // date alone. The three MCA annual forms do NOT — they are counted from each
-  // company's own AGM — so they are fetched rather than guessed.
+  const [marking, setMarking] = useState<{ entry: ComplianceEntry; label: string } | null>(null);
+  const [filingBusy, setFilingBusy] = useState(false);
+  const [filingError, setFilingError] = useState<string | null>(null);
+
+  // A response for a month the person has already navigated away from must not
+  // overwrite the one they are looking at.
+  const latest = useRef(0);
+
+  const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c.client_name])), [clients]);
+
   useEffect(() => {
     let live = true;
-    const clientIds = clients.map(c => c.id);
-    const base = generateDeadlines(clientIds);
-    setDeadlines(base);
+    getClients()
+      .then((list) => { if (live) setClients(arrayOrEmpty<Client>(list)); })
+      .catch(() => { /* the calendar still shows; rows just lack a client name */ });
+    return () => { live = false; };
+  }, []);
 
+  useEffect(() => {
+    let live = true;
     (async () => {
       try {
         const res = await api.mca.firmCalendar() as {
           success: boolean;
-          data?: {
-            deadlines: { client_id: string; company_name: string; form_type: string;
-                         due_date: string; description: string }[];
-            without_agm_date: { company_name: string }[];
-          };
+          data?: { deadlines?: unknown; without_agm_date?: unknown };
         };
-        if (!live || !res.success || !res.data) return;
-        setAgmGaps(res.data.without_agm_date ?? []);
-        setDeadlines([
-          ...base,
-          // A SPREAD of undefined throws — `[...undefined]` is a TypeError,
-          // not an empty list. The line above already writes `?? []` for
-          // `without_agm_date` and this one was left raw.
-          ...arrayOrEmpty<NonNullable<typeof res.data>["deadlines"][number]>(
-            objectOrNull<{ deadlines?: unknown }>(res.data)?.deadlines,
-          ).map(d => ({
-            // Per COMPANY, not per year: two companies with different AGMs have
-            // different AOC-4 dates, and one row keyed by year would collapse them.
-            id: `mca-${d.form_type}-${d.client_id}-${d.due_date}`,
-            date: new Date(d.due_date + "T00:00:00"),
-            label: d.form_type,
-            category: "MCA" as const,
-            description: `${d.company_name} — ${d.description}`,
-            clientIds: [d.client_id],
-            done: false,
-          })),
-        ]);
+        if (!live || !res?.success) return;
+        const d = objectOrNull<{ deadlines?: unknown; without_agm_date?: unknown }>(res.data);
+        setMca(arrayOrEmpty<McaDeadline>(d?.deadlines));
+        setAgmGaps(arrayOrEmpty<{ company_name: string }>(d?.without_agm_date));
       } catch {
-        // The rule-based deadlines still stand; the MCA ones are simply absent,
-        // which is the honest degradation — better than the assumed dates this
-        // replaced.
+        // The obligations still stand; the MCA forms are simply absent, which is the
+        // honest degradation — better than dates nobody computed.
       }
     })();
     return () => { live = false; };
-  }, [clients]);
-
-  const clientMap = new Map(clients.map(c => [c.id, c]));
-
-  const toggleDone = useCallback((id: string) => {
-    setDeadlines(prev => prev.map(d => d.id === id ? { ...d, done: !d.done } : d));
   }, []);
 
-  // Navigation
+  const loadMonth = useCallback(async () => {
+    const mine = ++latest.current;
+    setLoading(true);
+    try {
+      const { from, to } = monthBounds(viewYear, viewMonth);
+      const cal = await getObligationCalendar({ dateFrom: from, dateTo: to, clientId: clientId || undefined });
+      if (mine !== latest.current) return;
+      setMonth(cal);
+      setError(null);
+    } catch (e: unknown) {
+      if (mine !== latest.current) return;
+      // A failed read is NOT an empty month, and the screen says which it is.
+      setMonth(null);
+      setError(e instanceof Error ? e.message : "The calendar could not be loaded.");
+    } finally {
+      if (mine === latest.current) setLoading(false);
+    }
+  }, [viewYear, viewMonth, clientId]);
+
+  const loadAhead = useCallback(async () => {
+    try {
+      const cal = await getObligationCalendar({
+        dateFrom: todayISO, dateTo: addDaysISO(todayISO, UPCOMING_WINDOW_DAYS),
+        clientId: clientId || undefined,
+      });
+      setAhead(cal);
+    } catch {
+      setAhead(null); // the side panels simply do not appear; the month grid says why
+    }
+  }, [todayISO, clientId]);
+
+  useEffect(() => { void loadMonth(); }, [loadMonth]);
+  useEffect(() => { void loadAhead(); }, [loadAhead]);
+
+  // ── what the screen shows ──────────────────────────────────────────────────
+
+  // The obligation rows, with the MCA annual forms taken out: the generated rows
+  // carry a date counted from an AGM nobody recorded, and the MCA workspace's own
+  // rows (below) count from the real one.
+  const recordRows = (cal: ObligationCalendar | null): ComplianceEntry[] =>
+    cal ? [...cal.upcoming, ...cal.overdue, ...cal.completed]
+      .filter((e) => categoryOf(e.compliance_type) !== "MCA") : [];
+
+  const mcaItems = (from: string, to: string) => mca
+    .filter((d) => (!clientId || d.client_id === clientId) && d.due_date >= from && d.due_date <= to)
+    .map((d) => ({
+      client_id: d.client_id, company_name: d.company_name, description: d.description,
+      due_date: d.due_date, label: d.form_type,
+    }));
+
+  const { from: monthFrom, to: monthTo } = monthBounds(viewYear, viewMonth);
+  const monthGroups: ObligationGroup[] = useMemo(
+    () => groupObligations(
+      recordRows(month).filter((e) => e.due_date >= monthFrom && e.due_date <= monthTo),
+      todayISO, mcaItems(monthFrom, monthTo)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [month, mca, clientId, monthFrom, monthTo, todayISO]);
+
+  const aheadGroups: ObligationGroup[] = useMemo(
+    () => groupObligations(recordRows(ahead), todayISO,
+      mcaItems("0000-01-01", addDaysISO(todayISO, UPCOMING_WINDOW_DAYS))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ahead, mca, clientId, todayISO]);
+
+  const upcoming = upcomingGroups(aheadGroups, todayISO, 10);
+  const late = overdueGroups(aheadGroups);
+  const lateCount = late.reduce((n, g) => n + g.overdue, 0);
+
+  const totalDays = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const startDow = new Date(viewYear, viewMonth, 1).getDay();
+  const cells: Array<number | null> = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= totalDays; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const selectedGroups = selectedDay ? groupsOnDay(monthGroups, selectedDay) : [];
+
   function prevMonth() {
-    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
-    else setViewMonth(m => m - 1);
+    if (viewMonth === 0) { setViewYear((y) => y - 1); setViewMonth(11); } else setViewMonth((m) => m - 1);
   }
   function nextMonth() {
-    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
-    else setViewMonth(m => m + 1);
+    if (viewMonth === 11) { setViewYear((y) => y + 1); setViewMonth(0); } else setViewMonth((m) => m + 1);
   }
   function goToday() {
-    setViewYear(today.getFullYear());
-    setViewMonth(today.getMonth());
-    setSelectedDay(today);
+    setViewYear(todayDate.getFullYear());
+    setViewMonth(todayDate.getMonth());
+    setSelectedDay(todayISO);
   }
 
-  // Build calendar grid
-  const totalDays = daysInMonth(viewYear, viewMonth);
-  const startDow = firstDayOfMonth(viewYear, viewMonth); // 0=Sun
-
-  // Deadlines indexed by day-of-month for current view
-  function deadlinesForDay(day: number): Deadline[] {
-    return deadlines.filter(d =>
-      d.date.getFullYear() === viewYear &&
-      d.date.getMonth() === viewMonth &&
-      d.date.getDate() === day
-    );
+  async function confirmFiled(v: { filedDate: string; arn: string }) {
+    if (!marking) return;
+    setFilingBusy(true);
+    setFilingError(null);
+    try {
+      const result = await markObligationFiled(marking.entry.id, {
+        arn: v.arn || undefined, filedDate: v.filedDate,
+      });
+      // What the server did about the period — a tick that closed nothing must
+      // not read like one that closed the month.
+      const outcome = describeFilingOutcome(result, marking.label);
+      toast({ title: outcome.title, description: outcome.description });
+      setMarking(null);
+      // Re-read rather than patch in place: the tick is shown because the server
+      // holds it, and a reload shows the same.
+      await Promise.all([loadMonth(), loadAhead()]);
+    } catch (e: unknown) {
+      setFilingError(e instanceof Error ? e.message : "Couldn't mark this filed.");
+    } finally {
+      setFilingBusy(false);
+    }
   }
 
-  // Deadlines for selected day panel
-  const selectedDayDeadlines = selectedDay
-    ? deadlines.filter(d => isSameDay(d.date, selectedDay))
-    : [];
-
-  // Upcoming 10 deadlines from today
-  const upcomingDeadlines = deadlines
-    .filter(d => d.date >= today && !d.done)
-    .sort((a, b) => a.date.getTime() - b.date.getTime())
-    .slice(0, 10);
-
-  // Build grid cells: leading empty + day cells
-  const gridCells: Array<{ day: number | null }> = [];
-  for (let i = 0; i < startDow; i++) gridCells.push({ day: null });
-  for (let d = 1; d <= totalDays; d++) gridCells.push({ day: d });
-  // Pad to complete last row
-  while (gridCells.length % 7 !== 0) gridCells.push({ day: null });
+  const nameOf = (id: string) => clientMap.get(id) ?? "Unknown client";
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* A company with no AGM date recorded has no ADT-1, AOC-4 or MGT-7 on
-          this calendar, and silence there looks exactly like "nothing due".
-          Named, for the same reason a payroll run names its statutory gaps. */}
+      {/* A company with no AGM date recorded has no AOC-4 or MGT-7 here, and
+          silence looks exactly like "nothing due". Named, for the same reason a
+          payroll run names its statutory gaps. */}
       {agmGaps.length > 0 && (
         <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
           <p className="text-xs font-medium text-amber-800">
-            {agmGaps.length} compan{agmGaps.length === 1 ? "y has" : "ies have"} no AGM
-            date recorded, so their ADT-1, AOC-4 and MGT-7 deadlines are not shown
+            {agmGaps.length} compan{agmGaps.length === 1 ? "y has" : "ies have"} no AGM date
+            recorded, so their AOC-4 and MGT-7 are not shown
           </p>
           <p className="text-xs text-state-attention mt-0.5">
-            All three are counted from the AGM, so there is no date to compute —
-            record it on the client&apos;s MCA tab.{" "}
-            {agmGaps.map(g => g.company_name).filter(Boolean).join(", ")}
+            Both are counted from the AGM, so there is no date to show — record it on the
+            client&apos;s MCA tab.{" "}
+            {agmGaps.map((g) => g.company_name).filter(Boolean).join(", ")}
           </p>
         </div>
       )}
 
+      {error && (
+        <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-3 text-sm text-state-problem">
+          {error} Nothing below is a statement that no deadline falls in this month.
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-semibold text-ps-ink">Compliance Calendar</h1>
           <p className="text-sm text-ps-label mt-0.5">
-            Indian tax & regulatory deadlines across all clients
+            Each client&apos;s own obligations, on the dates the compliance engine computed for them
           </p>
         </div>
 
-        {/* Month navigation */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={goToday}
-            className="px-3 py-1.5 text-sm border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg"
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            aria-label="Client"
+            value={clientId}
+            onChange={(e) => { setClientId(e.target.value); setSelectedDay(null); }}
+            className="border border-ps-border rounded-lg px-3 py-1.5 text-sm text-ps-body focus:outline-none focus:ring-2 focus:ring-brand/30"
           >
+            <option value="">All my clients</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
+          </select>
+          <button onClick={goToday} className="px-3 py-1.5 text-sm border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">
             Today
           </button>
-          <button
-            onClick={prevMonth}
-            className="p-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg"
-            aria-label="Previous month"
-          >
+          <button onClick={prevMonth} className="p-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg" aria-label="Previous month">
             <ChevronLeft className="w-4 h-4" />
           </button>
           <span className="text-sm font-semibold text-ps-ink w-36 text-center">
             {MONTH_NAMES[viewMonth]} {viewYear}
           </span>
-          <button
-            onClick={nextMonth}
-            className="p-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg"
-            aria-label="Next month"
-          >
+          <button onClick={nextMonth} className="p-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg" aria-label="Next month">
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
@@ -500,68 +332,59 @@ export default function CalendarPage() {
 
       {/* Legend */}
       <div className="flex flex-wrap gap-3">
-        {(Object.keys(CATEGORY_STYLES) as DeadlineCategory[]).map(cat => (
+        {(Object.keys(CATEGORY_STYLES) as CalendarCategory[]).map((cat) => (
           <div key={cat} className="flex items-center gap-1.5">
             <span className={`w-2.5 h-2.5 rounded-full ${CATEGORY_STYLES[cat].badge}`} />
             <span className="text-xs text-ps-label">{CATEGORY_LABELS[cat]}</span>
           </div>
         ))}
-        {loading && <span className="text-xs text-ps-hint ml-2">Loading clients…</span>}
+        {loading && <span className="text-xs text-ps-hint ml-2">Loading…</span>}
       </div>
 
-      {/* Main layout: Calendar + Side panel */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-6">
-
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-6">
         {/* Calendar grid */}
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-          {/* Day headers */}
           <div className="grid grid-cols-7 border-b border-ps-border">
-            {DAY_LABELS.map(d => (
-              <div key={d} className="py-2 text-center text-xs font-medium text-ps-hint">
-                {d}
-              </div>
+            {DAY_LABELS.map((d) => (
+              <div key={d} className="py-2 text-center text-xs font-medium text-ps-hint">{d}</div>
             ))}
           </div>
-
-          {/* Day cells */}
           <div className="grid grid-cols-7">
-            {gridCells.map((cell, idx) => {
-              if (cell.day === null) {
+            {cells.map((day, idx) => {
+              if (day === null) {
                 return <div key={`empty-${idx}`} className="min-h-[90px] border-b border-r border-ps-border bg-ps-bg/30" />;
               }
-
-              const cellDate = new Date(viewYear, viewMonth, cell.day);
-              const isToday = isSameDay(cellDate, today);
-              const isSelected = selectedDay ? isSameDay(cellDate, selectedDay) : false;
-              const chips = deadlinesForDay(cell.day);
-
+              const iso = isoOf(viewYear, viewMonth, day);
+              const chips = groupsOnDay(monthGroups, iso);
+              const isSelected = selectedDay === iso;
               return (
                 <div
-                  key={cell.day}
-                  onClick={() => setSelectedDay(isSelected ? null : cellDate)}
+                  key={iso}
+                  onClick={() => setSelectedDay(isSelected ? null : iso)}
                   className={`min-h-[90px] border-b border-r border-ps-border p-1.5 cursor-pointer transition-colors
                     ${isSelected ? "bg-blue-50" : "hover:bg-ps-bg/60"}`}
                 >
-                  {/* Day number */}
                   <div className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium mb-1
-                    ${isToday ? "bg-brand text-white" : "text-ps-body"}`}>
-                    {cell.day}
+                    ${iso === todayISO ? "bg-brand text-white" : "text-ps-body"}`}>
+                    {day}
                   </div>
-
-                  {/* Deadline chips — show max 3, then "+N more" */}
                   <div className="space-y-0.5">
-                    {chips.slice(0, 3).map(dl => (
-                      <DeadlineChip
-                        key={dl.id}
-                        deadline={dl}
-                        clientMap={clientMap}
-                        compact
-                        onToggle={toggleDone}
-                      />
-                    ))}
-                    {chips.length > 3 && (
-                      <div className="text-3xs text-ps-hint pl-1">+{chips.length - 3} more</div>
-                    )}
+                    {chips.slice(0, 3).map((g) => {
+                      const allDone = g.open === 0;
+                      return (
+                        <div
+                          key={g.key}
+                          title={`${g.label} — ${g.filed} of ${g.total} filed`}
+                          className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-3xs font-medium select-none
+                            ${CATEGORY_STYLES[g.category].chip} ${allDone ? "opacity-50" : ""}`}
+                        >
+                          {allDone ? <CheckCircle className="w-3 h-3 shrink-0" /> : <Circle className="w-3 h-3 shrink-0" />}
+                          <span className="truncate">{g.label}</span>
+                          <span className="opacity-70 shrink-0">· {g.total}</span>
+                        </div>
+                      );
+                    })}
+                    {chips.length > 3 && <div className="text-3xs text-ps-hint pl-1">+{chips.length - 3} more</div>}
                   </div>
                 </div>
               );
@@ -569,97 +392,128 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Right side panel */}
+        {/* Right side */}
         <div className="space-y-4">
-
-          {/* Selected day panel */}
           {selectedDay && (
             <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
               <div className="px-4 py-3 border-b border-ps-border flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-blue-600" />
-                <h2 className="text-sm font-semibold text-ps-ink">
-                  {selectedDay.getDate()} {MONTH_NAMES[selectedDay.getMonth()]} {selectedDay.getFullYear()}
-                </h2>
+                <h2 className="text-sm font-semibold text-ps-ink">{formatDate(selectedDay)}</h2>
               </div>
-              {selectedDayDeadlines.length === 0 ? (
-                <p className="px-4 py-6 text-xs text-ps-hint text-center">No deadlines this day</p>
+              {selectedGroups.length === 0 ? (
+                <p className="px-4 py-6 text-xs text-ps-hint text-center">
+                  {error ? "This day could not be loaded." : "Nothing falls due this day."}
+                </p>
               ) : (
-                <div className="divide-y divide-ps-border">
-                  {selectedDayDeadlines.map(dl => {
-                    const style = CATEGORY_STYLES[dl.category];
-                    const clientCount = dl.clientIds.length;
-                    const clientLabel = clientCount === 1
-                      ? clientMap.get(dl.clientIds[0])?.client_name ?? ""
-                      : clientCount > 1 ? `${clientCount} clients` : "Firm-wide";
-
-                    return (
-                      <div key={dl.id} className="px-4 py-3 flex items-start gap-3">
-                        <button
-                          onClick={() => toggleDone(dl.id)}
-                          className={`mt-0.5 shrink-0 ${dl.done ? "text-green-500" : "text-ps-disabled hover:text-ps-label"}`}
-                          aria-label={dl.done ? "Mark pending" : "Mark done"}
-                        >
-                          {dl.done
-                            ? <CheckCircle className="w-4 h-4" />
-                            : <Circle className="w-4 h-4" />
-                          }
-                        </button>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-3xs px-1.5 py-0.5 rounded border font-medium ${style.chip}`}>
-                              {CATEGORY_LABELS[dl.category]}
-                            </span>
-                            <span className={`text-sm font-medium ${dl.done ? "line-through text-ps-hint" : "text-ps-ink"}`}>
-                              {dl.label}
-                            </span>
-                          </div>
-                          <p className="text-xs text-ps-label mt-0.5">{dl.description}</p>
-                          {clientLabel && (
-                            <p className="text-3xs text-ps-hint mt-0.5">{clientLabel}</p>
-                          )}
-                        </div>
+                <div className="divide-y divide-ps-border max-h-[32rem] overflow-y-auto">
+                  {selectedGroups.map((g) => (
+                    <div key={g.key} className="px-4 py-3 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-3xs px-1.5 py-0.5 rounded border font-medium ${CATEGORY_STYLES[g.category].chip}`}>
+                          {CATEGORY_LABELS[g.category]}
+                        </span>
+                        <span className="text-sm font-medium text-ps-ink">{g.label}</span>
+                        <span className="text-3xs text-ps-hint">
+                          {g.filed} of {g.total} filed{g.not_applicable > 0 ? ` · ${g.not_applicable} not applicable` : ""}
+                        </span>
                       </div>
-                    );
-                  })}
+                      <ul className="space-y-1">
+                        {g.entries.map((e) => {
+                          const done = e.filing_status === "filed";
+                          const na = e.filing_status === "na";
+                          const late = !done && !na && e.due_date < todayISO;
+                          return (
+                            <li key={e.id} className="flex items-center gap-2 text-xs">
+                              {done ? (
+                                <CheckCircle className="w-4 h-4 text-green-500 shrink-0" aria-label="Filed" />
+                              ) : na ? (
+                                <span className="w-4 h-4 shrink-0 text-center text-ps-hint" aria-label="Not applicable">–</span>
+                              ) : (
+                                <button
+                                  onClick={() => { setFilingError(null); setMarking({ entry: e, label: `${nameOf(e.client_id)} — ${g.label}` }); }}
+                                  className="shrink-0 text-ps-disabled hover:text-ps-label"
+                                  aria-label={`Record ${nameOf(e.client_id)} as filed`}
+                                >
+                                  <Circle className="w-4 h-4" />
+                                </button>
+                              )}
+                              <span className="flex-1 min-w-0 truncate text-ps-body">{nameOf(e.client_id)}</span>
+                              <span className={`shrink-0 text-3xs ${late ? "text-state-problem font-semibold" : "text-ps-hint"}`}>
+                                {done
+                                  ? `Filed${e.filed_date ? ` ${formatDate(e.filed_date)}` : ""}${e.arn_number ? ` · ${e.arn_number}` : ""}`
+                                  : na ? "Not applicable" : late ? "Overdue" : "Pending"}
+                              </span>
+                            </li>
+                          );
+                        })}
+                        {g.external.map((x) => (
+                          <li key={`${x.client_id}-${x.company_name}`} className="text-xs text-ps-body">
+                            <span className="font-medium">{x.company_name}</span>
+                            <p className="text-3xs text-ps-hint">
+                              {x.description} — counted from the company&apos;s own AGM date; the filing is recorded
+                              in its MCA workspace.
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           )}
 
-          {/* Upcoming deadlines */}
+          {/* Overdue — never windowed, so another month cannot hide it */}
+          {lateCount > 0 && (
+            <div className="bg-white rounded-xl border border-state-problem-border overflow-hidden">
+              <div className="px-4 py-3 border-b border-ps-border flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-state-problem" />
+                <h2 className="text-sm font-semibold text-ps-ink">Overdue ({lateCount})</h2>
+              </div>
+              <div className="divide-y divide-ps-border">
+                {late.slice(0, 6).map((g) => (
+                  <div key={g.key} className="px-4 py-2.5 flex items-center gap-3">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${CATEGORY_STYLES[g.category].badge}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-ps-ink truncate">{g.label}</p>
+                      <p className="text-3xs text-ps-hint">{formatDate(g.due_date)} · {g.overdue} of {g.total} not filed</p>
+                    </div>
+                  </div>
+                ))}
+                <div className="px-4 py-2.5">
+                  <Link href="/deadlines" className="text-xs text-brand-dark hover:underline">
+                    {late.length > 6 ? `All ${late.length} overdue obligations on Deadlines →` : "Open them on Deadlines →"}
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Upcoming */}
           <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
             <div className="px-4 py-3 border-b border-ps-border">
-              <h2 className="text-sm font-semibold text-ps-ink">Upcoming Deadlines</h2>
-              <p className="text-xs text-ps-hint mt-0.5">Next 10 pending</p>
+              <h2 className="text-sm font-semibold text-ps-ink">Upcoming</h2>
+              <p className="text-xs text-ps-hint mt-0.5">Next {upcoming.length || 10} with something still to do</p>
             </div>
-            {upcomingDeadlines.length === 0 ? (
-              <p className="px-4 py-6 text-xs text-ps-hint text-center">All caught up!</p>
+            {ahead === null ? (
+              <p className="px-4 py-6 text-xs text-ps-hint text-center">Could not be loaded.</p>
+            ) : upcoming.length === 0 ? (
+              <p className="px-4 py-6 text-xs text-ps-hint text-center">Nothing is waiting in the next {UPCOMING_WINDOW_DAYS} days.</p>
             ) : (
               <div className="divide-y divide-ps-border">
-                {upcomingDeadlines.map(dl => {
-                  const style = CATEGORY_STYLES[dl.category];
-                  const daysAway = daysBetweenLocalISO(toLocalISO(today), toLocalISO(dl.date)) ?? 0;
-                  const urgentClass = daysAway <= 3 ? "text-red-600 font-semibold" : daysAway <= 7 ? "text-amber-600" : "text-ps-hint";
-
+                {upcoming.map((g) => {
+                  const away = daysBetweenLocalISO(todayISO, g.due_date) ?? 0;
+                  const urgent = away <= 3 ? "text-red-600 font-semibold" : away <= 7 ? "text-amber-600" : "text-ps-hint";
                   return (
-                    <div key={dl.id} className="px-4 py-3 flex items-center gap-3">
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${style.badge}`} />
+                    <div key={g.key} className="px-4 py-2.5 flex items-center gap-3">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${CATEGORY_STYLES[g.category].badge}`} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-ps-ink truncate">{dl.label}</p>
-                        <p className="text-3xs text-ps-hint">
-                          {dl.date.getDate()} {MONTH_NAMES[dl.date.getMonth()]}
-                        </p>
+                        <p className="text-xs font-medium text-ps-ink truncate">{g.label}</p>
+                        <p className="text-3xs text-ps-hint">{formatDate(g.due_date)} · {g.open} of {g.total} to do</p>
                       </div>
-                      <span className={`text-3xs shrink-0 ${urgentClass}`}>
-                        {daysAway === 0 ? "Today" : daysAway === 1 ? "Tomorrow" : `${daysAway}d`}
+                      <span className={`text-3xs shrink-0 ${urgent}`}>
+                        {away === 0 ? "Today" : away === 1 ? "Tomorrow" : `${away}d`}
                       </span>
-                      <button
-                        onClick={() => toggleDone(dl.id)}
-                        className="text-ps-disabled hover:text-ps-label shrink-0"
-                        aria-label="Mark done"
-                      >
-                        <Circle className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   );
                 })}
@@ -668,6 +522,17 @@ export default function CalendarPage() {
           </div>
         </div>
       </div>
+
+      {marking && (
+        <MarkFiledModal
+          intro={marking.label}
+          initialArn={marking.entry.arn_number ?? ""}
+          busy={filingBusy}
+          error={filingError}
+          onConfirm={confirmFiled}
+          onClose={() => { setMarking(null); setFilingError(null); }}
+        />
+      )}
     </div>
   );
 }

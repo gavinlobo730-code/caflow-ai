@@ -256,12 +256,18 @@ class ComplianceRecordService:
         client_id: Optional[str] = None,
         status: Optional[str] = None,
         compliance_type: Optional[str] = None,
+        exclude_statuses: Optional[list[str]] = None,
+        due_from: Optional[str] = None,
+        due_to: Optional[str] = None,
     ) -> list[dict]:
         records = compliance_records_repo.find_all(
             firm_id=firm_id,
             client_id=client_id,
             status=status,
             compliance_type=compliance_type,
+            exclude_statuses=exclude_statuses,
+            due_from=due_from,
+            due_to=due_to,
         )
         return [{**r, "risk_score": _compute_risk_score(r)} for r in records]
 

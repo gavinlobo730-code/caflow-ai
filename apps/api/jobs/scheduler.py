@@ -3,12 +3,15 @@ In-process daily scheduler for Phase 1.2 automation.
 
 Runs (per firm, once per day):
   1. Recurring task generation (assignment rules applied inside the service)
-  2. Escalation rules (due-soon + overdue)
+  2. Escalation rules (due-soon + overdue), and the staff MAILS that go with them:
+     one per manager for what escalated to them, one per assignee for their own
+     overdue tasks (practice_management-03)
   3. Invoice overdue transitions (Issued -> Overdue)
   4. Collections — AR overdue sweep + internal reminder logging (no email)
   5. Recurring invoices (DRAFT generation)
   6. Compliance obligation generation (idempotent; rolls forward near FY end)
-  7. Compliance escalations (internal due-soon/overdue notifications)
+  7. Compliance escalations (internal due-soon/overdue notifications, and one
+     mail per recipient for the sweep — to STAFF only, never to a client)
 
 Idempotency:
   - recurring generation is idempotent per-day inside the service
@@ -340,8 +343,9 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
             firm_result["compliance_generation"] = {"skipped": "already ran today"}
 
         # 7. Compliance escalations (Phase 4.4) — notify the internal team about
-        #    obligations due in 7/3/1 days or overdue. Internal only (never emails
-        #    clients); idempotent per (obligation, tier, day). No filing.
+        #    obligations due in 7/3/1 days or overdue. Internal only (the mail goes to
+        #    the preparer/reviewer/approver and never to a client); idempotent per
+        #    (obligation, tier, day) and again per sent mail. No filing.
         if force or not _already_ran_today("compliance_escalations", fid):
             t0 = _now_iso()
             try:

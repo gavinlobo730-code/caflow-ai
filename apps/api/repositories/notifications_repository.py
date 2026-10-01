@@ -62,7 +62,11 @@ class NotificationsRepository(BaseRepository[dict]):
         result = query.execute()
         return result.count or 0
 
-    def create(self, data: dict) -> dict:
+    def create(self, data: dict, *, db=None) -> dict:
+        """`db` is for the caller that is NOT the recipient's own session: a
+        portal client's JWT cannot write a staff member's notification
+        (migration 084's recipient scope), so `portal_notice_service` passes the
+        service-role handle. Left out, behaviour is exactly what it was."""
         if _USE_MOCK:
             nid = f"notif-{str(uuid.uuid4())[:8]}"
             notif = {
@@ -77,7 +81,7 @@ class NotificationsRepository(BaseRepository[dict]):
 
         payload = {k: v for k, v in data.items() if v is not None}
         payload["created_at"] = self.now_iso()
-        result = _get_db().table("notifications").insert(payload).execute()
+        result = (db or _get_db()).table("notifications").insert(payload).execute()
         return result.data[0]
 
     def mark_read(self, notification_id: str, firm_id: Optional[str] = None,

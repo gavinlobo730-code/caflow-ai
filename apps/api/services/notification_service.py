@@ -8,6 +8,18 @@ from repositories.user_repository import user_repo
 from repositories.client_repository import client_repo
 
 
+def _mail_new_assignee(task: dict, assignee: dict, assigned_by: Optional[dict]) -> None:
+    """One mail to a task's new assignee. Never raises and never blocks the
+    assignment — `practice_mail_service.task_assigned` owns the rules (the
+    person's own preference, a self-assignment, the record of the send)."""
+    try:
+        from services import practice_mail_service
+        practice_mail_service.task_assigned(task, assignee, assigned_by)
+    except Exception:                                           # noqa: BLE001
+        import logging
+        logging.getLogger("caflow").warning("task-assigned mail failed", exc_info=True)
+
+
 class NotificationService:
     """Helper class to manage task lifecycle notifications."""
 
@@ -18,6 +30,7 @@ class NotificationService:
         Type: 'task_assigned'
         Severity: 'info'
         """
+        notification = None
         try:
             client = client_repo.find_by_id(task.get("client_id"))
             client_name = client.get("client_name", "Unknown Client") if client else "Unknown Client"
@@ -38,18 +51,26 @@ class NotificationService:
                 "is_read": False,
                 "is_archived": False,
             })
-            return notification
         except Exception as e:
             import logging
             logging.getLogger("caflow").error(f"Failed to create task_assigned notification: {e}")
-            return None
+        # The mail is the SAME event as the in-app notification and is attempted
+        # whether or not that write worked, so a failed notification does not
+        # also silence the one channel the assignee reads away from the screen
+        # (practice_management-03). `task_assigned` never raises.
+        _mail_new_assignee(task, assignee_user, created_by_user)
+        return notification
 
     @staticmethod
-    def notify_task_reassigned(task: dict, old_assignee: dict, new_assignee: dict, reason: str) -> list[dict]:
+    def notify_task_reassigned(task: dict, old_assignee: dict, new_assignee: dict, reason: str,
+                               reassigned_by: Optional[dict] = None) -> list[dict]:
         """
         Create notifications when task is reassigned.
         Two notifications: one to old assignee (reassigned away), one to new assignee (reassigned to).
         Severity: 'info'
+
+        The NEW assignee is also mailed — to them a reassignment is an assignment
+        (practice_management-03) — unless they are the person who did it.
         """
         notifications = []
         try:
@@ -109,6 +130,10 @@ class NotificationService:
             import logging
             logging.getLogger("caflow").error(f"Failed to create task_reassigned notifications: {e}")
             return []
+        finally:
+            # Attempted whether or not the in-app notifications above worked —
+            # see notify_task_assigned.
+            _mail_new_assignee(task, new_assignee, reassigned_by)
 
     @staticmethod
     def notify_due_soon(task: dict, assignee_user: dict) -> Optional[dict]:

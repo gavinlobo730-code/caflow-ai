@@ -1,6 +1,6 @@
 "use client";
 
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { readRateInput } from "@/lib/time/rateInput";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Play, Square, Plus, Trash2, Clock, AlertCircle,
@@ -24,13 +24,28 @@ import { getClients } from "@/lib/data/clients";
 import type { TimeEntry, Client } from "@/lib/types";
 import { formatDate as fmt } from "@/lib/services/formatting";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { formatPaise } from "@/lib/money/format";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { EngagementPicker } from "@/components/time/EngagementPicker";
+import { UnbilledWorkPanel } from "@/components/time/UnbilledWorkPanel";
+import { BillingRatesPanel } from "@/components/time/BillingRatesPanel";
 
 function fmtTime(iso: string) {
   const d = new Date(iso);
   return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
 
+type Tab = "mine" | "unbilled" | "rates";
+
 export default function TimeTrackingPage() {
+  const { can } = usePermissions();
+  // The unbilled-work total and the billing rates are fee economics: Partner-only
+  // on the server (`billing:read` / `billing:write`), and the tabs are offered only
+  // to somebody the server will answer. The server is what refuses; this is courtesy.
+  const canSeeBilling = can("billing", "read");
+  const canEditRates = can("billing", "write");
+  const [tab, setTab] = useState<Tab>("mine");
+  const [rateNotice, setRateNotice] = useState<string | null>(null);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +60,7 @@ export default function TimeTrackingPage() {
   // Start timer form
   const [showStart, setShowStart] = useState(false);
   const [startClientId, setStartClientId] = useState("");
+  const [startEngagementId, setStartEngagementId] = useState("");
   const [startDescription, setStartDescription] = useState("");
   const [startBillable, setStartBillable] = useState(true);
   const [starting, setStarting] = useState(false);
@@ -52,6 +68,7 @@ export default function TimeTrackingPage() {
   // Manual entry form
   const [showManual, setShowManual] = useState(false);
   const [manualClientId, setManualClientId] = useState("");
+  const [manualEngagementId, setManualEngagementId] = useState("");
   const [manualDescription, setManualDescription] = useState("");
   const [manualStarted, setManualStarted] = useState("");
   const [manualEnded, setManualEnded] = useState("");
@@ -126,8 +143,9 @@ export default function TimeTrackingPage() {
   const handleStartTimer = async () => {
     setStarting(true);
     try {
-      const entry = await startTimer({
+      const { entry, rate } = await startTimer({
         client_id: startClientId || undefined,
+        engagement_id: startEngagementId || undefined,
         description: startDescription || undefined,
         is_billable: startBillable,
       });
@@ -137,6 +155,10 @@ export default function TimeTrackingPage() {
       setShowStart(false);
       setStartDescription("");
       setStartClientId("");
+      setStartEngagementId("");
+      // The server's own sentence about the rate (why no engagement was chosen,
+      // that the time will be listed as "no rate") — shown, never reworded.
+      setRateNotice(rate && rate.notes.length ? rate.notes.join(" ") : null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to start timer");
     } finally {
@@ -147,7 +169,8 @@ export default function TimeTrackingPage() {
   const handleStopTimer = async () => {
     if (!runningEntry) return;
     try {
-      await stopTimer(runningEntry.id);
+      const { rate } = await stopTimer(runningEntry.id);
+      if (rate && rate.source === null && rate.notes.length) setRateNotice(rate.notes.join(" "));
       setIsRunning(false);
       setRunningEntry(null);
       setElapsed(0);
@@ -161,24 +184,29 @@ export default function TimeTrackingPage() {
     if (!manualStarted || !manualEnded) return;
     // An hourly rate is billed against every hour on the entry, so reading it
     // as ₹1 instead of ₹2,500 under-bills the client by the whole engagement.
-    const hourlyRate = manualHourlyRate ? paiseFromRupeeInput(manualHourlyRate) : null;
-    if (manualHourlyRate && hourlyRate === null) {
-      setError("Hourly rate must be an amount in rupees, e.g. 2500 or 2500.50 "
-                     + "— without commas.");
+    // A BLANK box is "no rate typed" — the server then uses the engagement's, or
+    // the person's — and is not ₹0, which `readRateInput` keeps apart.
+    const typedRate = readRateInput(manualHourlyRate);
+    if (typedRate.kind === "invalid") {
+      setError(typedRate.message);
       return;
     }
+    const hourlyRate = typedRate.kind === "rate" ? typedRate.paise : undefined;
     setManualSaving(true);
     try {
-      await createManualEntry({
+      const { rate } = await createManualEntry({
         client_id: manualClientId || undefined,
+        engagement_id: manualEngagementId || undefined,
         description: manualDescription || undefined,
         started_at: manualStarted,
         ended_at: manualEnded,
         is_billable: manualBillable,
-        hourly_rate_paise: hourlyRate ?? undefined,
+        hourly_rate_paise: hourlyRate,
       });
+      setRateNotice(rate && rate.notes.length ? rate.notes.join(" ") : null);
       setShowManual(false);
       setManualClientId("");
+      setManualEngagementId("");
       setManualDescription("");
       setManualStarted("");
       setManualEnded("");
@@ -246,6 +274,35 @@ export default function TimeTrackingPage() {
         </div>
       )}
 
+      {rateNotice && (
+        <div role="status" className="flex items-center gap-2 text-sm text-ps-body bg-ps-bg border rounded-lg px-4 py-3">
+          <IndianRupee size={14} /> {rateNotice}
+          <button onClick={() => setRateNotice(null)} className="ml-auto" aria-label="Dismiss"><X size={14} /></button>
+        </div>
+      )}
+
+      {canSeeBilling && (
+        <div role="tablist" className="flex gap-1 border-b">
+          {([["mine", "Time"], ["unbilled", "Unbilled work"], ["rates", "Billing rates"]] as [Tab, string][]).map(([id, label]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+                tab === id ? "border-brand text-blue-600" : "border-transparent text-ps-label hover:text-ps-body"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {canSeeBilling && tab === "unbilled" && <UnbilledWorkPanel clients={clients} canEdit={canEditRates} />}
+      {canSeeBilling && tab === "rates" && <BillingRatesPanel clients={clients} canEdit={canEditRates} />}
+
+      {(tab === "mine" || !canSeeBilling) && (<>
       {/* Live Timer */}
       {isRunning && runningEntry && (
         <Card className="border-green-200 bg-green-50">
@@ -390,11 +447,18 @@ export default function TimeTrackingPage() {
                       <p className="text-sm font-semibold text-gray-800">
                         {e.duration_minutes ? formatDuration(e.duration_minutes) : "—"}
                       </p>
-                      {e.is_billable && e.hourly_rate_paise && e.duration_minutes && (
-                        <p className="text-2xs text-ps-label flex items-center justify-end gap-0.5">
-                          <IndianRupee size={9} />
-                          {Math.round((e.hourly_rate_paise * e.duration_minutes) / 6000).toLocaleString("en-IN")}
-                        </p>
+                      {/* What the SERVER says this time is worth. It used to be multiplied
+                          here from `hourly_rate_paise`, which no timer-started entry
+                          carried, so the figure was simply absent — and an entry with no
+                          rate looked the same as one worth nothing. */}
+                      {e.is_billable && e.ended_at && (
+                        e.value_paise === null || e.value_paise === undefined ? (
+                          <p className="text-2xs text-state-problem">No rate</p>
+                        ) : (
+                          <p className="text-2xs text-ps-label flex items-center justify-end gap-0.5">
+                            {formatPaise(e.value_paise)}
+                          </p>
+                        )
                       )}
                     </div>
                     <button
@@ -410,6 +474,8 @@ export default function TimeTrackingPage() {
           )}
         </CardContent>
       </Card>
+
+      </>)}
 
       {/* Start Timer Dialog */}
       {showStart && (
@@ -433,6 +499,12 @@ export default function TimeTrackingPage() {
                   {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
                 </select>
               </div>
+              <EngagementPicker
+                id="start-engagement"
+                clientId={startClientId}
+                value={startEngagementId}
+                onChange={setStartEngagementId}
+              />
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Description</label>
                 <input
@@ -491,6 +563,12 @@ export default function TimeTrackingPage() {
                   {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
                 </select>
               </div>
+              <EngagementPicker
+                id="manual-engagement"
+                clientId={manualClientId}
+                value={manualEngagementId}
+                onChange={setManualEngagementId}
+              />
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Description</label>
                 <input
@@ -541,6 +619,7 @@ export default function TimeTrackingPage() {
                       onChange={e => setManualHourlyRate(e.target.value)}
                       className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                       placeholder="Rate ₹/hr"
+                      title="Leave empty to use the engagement's rate, or your own"
                     />
                   </div>
                 )}

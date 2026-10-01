@@ -254,4 +254,11 @@ def portal_post_message(body: PortalMessageBody,
     row = portal_data_service.post_message(
         portal["firm_id"], portal["client_id"],
         body.body.strip(), portal.get("name"))
+    # practice_management-02: the message is saved, so what follows can never
+    # fail it. The staff assigned to this client (the firm's Partners where
+    # nobody is) get an in-app notification and a mail; the words themselves
+    # are never mailed.
+    from services import portal_notice_service
+    portal_notice_service.client_wrote(
+        portal["firm_id"], portal["client_id"], row, portal.get("name"))
     return api_response(True, {"message": row})

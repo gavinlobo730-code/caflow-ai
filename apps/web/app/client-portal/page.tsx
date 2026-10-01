@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   ExternalLink, Copy, CheckCircle, FileText, MessageSquare, Receipt,
   Plus, Trash2, Download, Upload, FolderOpen, AlertTriangle, BarChart3,
@@ -14,6 +14,8 @@ import { getTransactions } from "@/lib/data/transactions";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import type { ClientNotice, PortalUnreadSummary } from "@/lib/api";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import type { Transaction } from "@/lib/data/transactions";
@@ -49,6 +51,17 @@ interface DocumentRequest {
   status: string;
   fulfilled_at: string | null;
   created_at: string;
+  due_date?: string | null;
+}
+
+/** One sentence for "it was saved" AND "the client was / was not told" — two
+ *  facts, and the CA is entitled to both. The words are the server's. */
+function describeNotice(saved: string, n: ClientNotice | undefined): { tone: "ok" | "warn"; text: string } {
+  if (!n) return { tone: "ok", text: `${saved}.` };
+  if (n.emailed > 0) {
+    return { tone: "ok", text: `${saved}. The client was emailed (${n.emailed} contact${n.emailed === 1 ? "" : "s"}).` };
+  }
+  return { tone: "warn", text: `${saved}, but the client was not emailed. ${n.reason ?? ""}`.trim() };
 }
 
 // Mirrors client_documents as it actually is. Migration 023 defines this table
@@ -83,6 +96,7 @@ interface NewRequestForm {
   title: string;
   description: string;
   is_urgent: boolean;
+  due_date: string;
 }
 
 interface PortalMessage {
@@ -91,6 +105,8 @@ interface PortalMessage {
   client_id: string;
   text: string;
   from_ca: boolean;
+  /** Whether the FIRM has opened it. Meaningful for a message the client sent. */
+  is_read?: boolean;
   created_at: string;
 }
 
@@ -137,7 +153,7 @@ export default function ClientPortalPage() {
   // document requests yet."
   const [requestsFailed, setRequestsFailed] = useState(false);
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
-  const [newRequest, setNewRequest] = useState<NewRequestForm>({ title: "", description: "", is_urgent: false });
+  const [newRequest, setNewRequest] = useState<NewRequestForm>({ title: "", description: "", is_urgent: false, due_date: "" });
   const [savingRequest, setSavingRequest] = useState(false);
 
   // Shared documents state
@@ -162,6 +178,12 @@ export default function ClientPortalPage() {
   // once, and the second could act on what the first was still changing.
   const actionInFlight = savingRequest || sendingMessage;
 
+  // practice_management-02: the firm-wide count of client messages nobody at the
+  // firm has opened, and what the server said about telling the CLIENT. Both are
+  // the server's answers; this screen computes neither.
+  const [unread, setUnread] = useState<PortalUnreadSummary | null>(null);
+  const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
+
   // Dues state
   const [apiDues, setApiDues] = useState<ApiDue[]>([]);
   const [duesLoading, setDuesLoading] = useState(false);
@@ -178,6 +200,36 @@ export default function ClientPortalPage() {
       .catch(() => { setClients([]); setClientsFailed(true); })
       .finally(() => setClientsLoading(false));
   }, []);
+
+  // The in-app notification for a client's message links here with
+  // `?client=<id>&tab=messages`. Read inside an effect: this is a static
+  // export, so nothing may touch `window` during render. An unknown tab is
+  // ignored and an unknown client simply selects nothing.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const tab = q.get("tab");
+    if (tab && PORTAL_TABS.some((t) => t.id === tab)) setActiveTab(tab as PortalTab);
+    const client = q.get("client");
+    if (client) setSelectedClientId(client);
+  }, []);
+
+  const loadUnread = useCallback(async () => {
+    try {
+      const res = await api.portal.unreadMessages();
+      if (!res.success) throw new Error(res.error ?? "unread");
+      const body = objectOrNull<{ unread_total?: number; clients?: unknown }>(res.data);
+      setUnread({
+        unread_total: Number(body?.unread_total ?? 0),
+        clients: arrayOrEmpty<PortalUnreadSummary["clients"][number]>(body?.clients),
+      });
+    } catch {
+      // The count is a convenience over a screen that still works; a failed
+      // read must not look like "nobody has written", so it shows nothing.
+      setUnread(null);
+    }
+  }, []);
+
+  useEffect(() => { loadUnread(); }, [loadUnread]);
 
   // Load client data when a client is selected
   useEffect(() => {
@@ -218,7 +270,7 @@ export default function ClientPortalPage() {
       const sb = getSupabaseClient();
       const { data, error } = await sb
         .from("document_requests")
-        .select("id, title, description, is_urgent, status, fulfilled_at, created_at")
+        .select("id, title, description, is_urgent, status, fulfilled_at, created_at, due_date")
         .eq("client_id", clientId)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -265,6 +317,25 @@ export default function ClientPortalPage() {
     }
   }
 
+  // Opening a client's thread IS reading it: the messages the client sent are
+  // marked read on the server and the firm-wide count is asked again. Only once
+  // they have loaded, and only when there is something unread, so an empty
+  // thread makes no write.
+  useEffect(() => {
+    if (activeTab !== "messages" || !selectedClientId || messagesLoading || messagesFailed) return;
+    if (!portalMessages.some((m) => !m.from_ca && m.is_read === false)) return;
+    let live = true;
+    (async () => {
+      try {
+        const res = await api.portal.markThreadRead(selectedClientId);
+        if (!live || !res.success) return;
+        setPortalMessages((prev) => prev.map((m) => (m.from_ca ? m : { ...m, is_read: true })));
+        loadUnread();
+      } catch { /* the thread stays unread, which is the honest answer */ }
+    })();
+    return () => { live = false; };
+  }, [activeTab, selectedClientId, messagesLoading, messagesFailed, portalMessages, loadUnread]);
+
   async function loadPortalMessages(clientId: string) {
     setMessagesLoading(true);
     try {
@@ -308,12 +379,13 @@ export default function ClientPortalPage() {
     setSendingMessage(true);
     try {
       const firmId = await getFirmId();
-      await api.portal.sendMessage({
+      const sent = await api.portal.sendMessage({
         firm_id: firmId,
         client_id: selectedClientId,
         text: newMessageText.trim(),
         from_ca: true,
-      });
+      }) as { success?: boolean; data?: { client_notice?: ClientNotice } };
+      setNotice(describeNotice("Message sent", sent?.data?.client_notice));
       setNewMessageText("");
       await loadPortalMessages(selectedClientId);
     } catch (e) {
@@ -327,17 +399,24 @@ export default function ClientPortalPage() {
     if (!newRequest.title.trim() || !selectedClientId) return;
     setSavingRequest(true);
     try {
+      // THROUGH THE API, NOT STRAIGHT OVER POSTGREST. The screen used to insert
+      // `document_requests` itself, so rbac() never ran and the server could
+      // never tell the client — which is the point of this call (practice_
+      // management-02). It did that because the API door named a column the
+      // table lacked and failed on every call; migration 450 repaired it.
       const firmId = await getFirmId();
-      const sb = getSupabaseClient();
-      await sb.from("document_requests").insert({
+      const res = await api.portal.createDocumentRequest({
         firm_id: firmId,
         client_id: selectedClientId,
         title: newRequest.title.trim(),
-        description: newRequest.description.trim() || null,
+        description: newRequest.description.trim() || undefined,
+        due_date: newRequest.due_date || undefined,
         is_urgent: newRequest.is_urgent,
-      });
+      }) as { success?: boolean; error?: string | null; data?: { client_notice?: ClientNotice } };
+      if (!res?.success) throw new Error(res?.error ?? "Failed to create request");
+      setNotice(describeNotice("Request created", res.data?.client_notice));
       setShowNewRequestModal(false);
-      setNewRequest({ title: "", description: "", is_urgent: false });
+      setNewRequest({ title: "", description: "", is_urgent: false, due_date: "" });
       await loadDocRequests(selectedClientId);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to create request");
@@ -464,6 +543,36 @@ export default function ClientPortalPage() {
         )}
       </div>
 
+      {notice && (
+        <div role="status"
+          className={`flex items-start justify-between gap-3 rounded-lg border px-4 py-2.5 text-sm ${
+            notice.tone === "ok"
+              ? "bg-state-ready-surface border-state-ready-border text-state-ready"
+              : "bg-state-attention-surface border-state-attention-border text-state-attention"}`}>
+          <span>{notice.text}</span>
+          <button onClick={() => setNotice(null)} className="text-xs underline shrink-0">Dismiss</button>
+        </div>
+      )}
+
+      {/* The firm-wide unread count: who has written, without opening each
+          client's tab. Each name opens that client's thread. */}
+      {unread && unread.unread_total > 0 && (
+        <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3">
+          <p className="text-sm font-medium text-state-attention">
+            {unread.unread_total} unread client message{unread.unread_total === 1 ? "" : "s"}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {unread.clients.map((c) => (
+              <button key={c.client_id}
+                onClick={() => { setSelectedClientId(c.client_id); setActiveTab("messages"); }}
+                className="rounded-full border border-state-attention-border bg-white px-3 py-1 text-xs text-ps-ink hover:bg-ps-bg">
+                {c.client_name ?? "A client"} ({c.unread})
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Client selector */}
       <Card>
         <CardContent className="pt-5 pb-4">
@@ -553,6 +662,12 @@ export default function ClientPortalPage() {
               >
                 <tab.icon size={14} />
                 {tab.label}
+                {tab.id === "messages" && (() => {
+                  const mine = unread?.clients.find((c) => c.client_id === selectedClientId)?.unread ?? 0;
+                  return mine > 0 ? (
+                    <span className="ml-1 rounded-full bg-brand px-1.5 text-3xs font-semibold text-white">{mine}</span>
+                  ) : null;
+                })()}
               </button>
             ))}
           </div>
@@ -609,7 +724,10 @@ export default function ClientPortalPage() {
                               {req.description && (
                                 <p className="text-xs text-ps-label mt-0.5">{req.description}</p>
                               )}
-                              <p className="text-xs text-ps-hint mt-1">{formatDate(req.created_at)}</p>
+                              <p className="text-xs text-ps-hint mt-1">
+                                {formatDate(req.created_at)}
+                                {req.due_date ? ` · needed by ${formatDate(req.due_date)}` : ""}
+                              </p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               {req.is_urgent && (
@@ -1020,6 +1138,15 @@ export default function ClientPortalPage() {
                   rows={3}
                 />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-ps-label mb-1">Needed by</label>
+                <input
+                  type="date"
+                  value={newRequest.due_date}
+                  onChange={(e) => setNewRequest((p) => ({ ...p, due_date: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
+                />
+              </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -1035,7 +1162,7 @@ export default function ClientPortalPage() {
               <button
                 onClick={() => {
                   setShowNewRequestModal(false);
-                  setNewRequest({ title: "", description: "", is_urgent: false });
+                  setNewRequest({ title: "", description: "", is_urgent: false, due_date: "" });
                 }}
                 className="px-4 py-2 text-sm text-ps-label border border-ps-border rounded-lg hover:bg-ps-bg"
               >
