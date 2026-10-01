@@ -278,6 +278,131 @@ def dashboard(firm_id: str, date_from: Optional[str] = None, date_to: Optional[s
     }
 
 
+# The window the collection-days figure is measured over. A rolling year, not the
+# financial year: a firm in April has no settled invoices of its own year yet and
+# the figure would read "unknown" for the month a partner most wants it.
+COLLECTION_WINDOW_DAYS = 365
+
+
+def fee_ledger_provisioned(firm_id: str) -> bool:
+    """Whether this firm HAS a fee ledger to measure.
+
+    `firms.internal_client_id` is NULL for an unprovisioned firm (migration 074
+    calls it a contemplated state), and `_open_invoices` answers `[]` for one.
+    That is "there is no ledger", which a dashboard must not render as "nobody
+    owes the practice anything". Mock mode has no internal client at all and
+    `MOCK_SALES_INVOICES` IS the fee ledger there, so it counts as provisioned —
+    the same two-facts-one-None distinction `_open_invoices` records.
+    """
+    if _USE_MOCK:
+        return True
+    return bool(get_internal_client_id(firm_id))
+
+
+def average_days_to_collect(firm_id: str, today: Optional[date] = None,
+                            window_days: int = COLLECTION_WINDOW_DAYS) -> dict:
+    """How long the practice's own fee invoices took to be paid, from receipts.
+
+    `domain/billing/collection_days` is the rule (paise-weighted, per
+    allocation, `None` where nothing settled). This fetches its input, bounded
+    to the receipts dated inside the window — the answer is one number, so the
+    read is proportional to a year of the practice's own receipts rather than to
+    its whole history, and each step is paged (`fetch_all`) or chunked
+    (`fetch_all_in`) because PostgREST truncates a response at ~1000 rows
+    without saying so.
+
+    FIRM-LEVEL, NOT CLIENT-SCOPED, like every other function in this module: the
+    fee ledger is the practice's own and the router that serves it is
+    Partner-only (G1). A caller who is not a Partner must not be handed it; the
+    executive dashboard withholds it for them rather than narrowing it.
+    """
+    from core.db_paging import fetch_all, fetch_all_in
+    from domain.billing.collection_days import average_days_to_collect as rule
+
+    today = today or _today()
+    since = (today - timedelta(days=window_days)).isoformat()
+    internal_id = get_internal_client_id(firm_id)
+
+    if _USE_MOCK:
+        from services.receipt_service import MOCK_RECEIPTS, MOCK_RECEIPT_ALLOCATIONS
+        from routers.sales_invoices import MOCK_SALES_INVOICES
+        receipts = {r["id"]: r for r in MOCK_RECEIPTS
+                    if r.get("firm_id") == firm_id
+                    and (internal_id is None or r.get("client_id") == internal_id)
+                    and str(r.get("receipt_date", ""))[:10] >= since}
+        invoices = {i["id"]: i for i in MOCK_SALES_INVOICES if i.get("firm_id") == firm_id}
+        allocs = [a for a in MOCK_RECEIPT_ALLOCATIONS if a.get("receipt_id") in receipts]
+    else:
+        if not internal_id:
+            # No fee ledger: nothing to measure. An unscoped receipts read here
+            # would average EVERY client's receipts into the practice's figure.
+            return {**rule([]).as_dict(), "window_days": window_days}
+        db = _db()
+        receipts = {r["id"]: r for r in fetch_all(
+            lambda: (db.table("receipts").select("id,receipt_date")
+                     .eq("firm_id", firm_id).eq("client_id", internal_id)
+                     .gte("receipt_date", since)),
+            label="collections.receipts")}
+        # receipt_allocations carries no firm_id of its own (migration 050): it
+        # is scoped through the receipts above, which are firm- AND client-
+        # filtered, so no allocation of another firm's can be named here.
+        allocs = fetch_all_in(
+            lambda: (db.table("receipt_allocations")
+                     .select("id,receipt_id,sales_invoice_id,allocated_paise,is_voided")),
+            "receipt_id", list(receipts), label="collections.allocations")
+        invoices = {i["id"]: i for i in fetch_all_in(
+            lambda: (db.table("client_sales_invoices").select("id,invoice_date")
+                     .eq("firm_id", firm_id)),
+            "id", sorted({a["sales_invoice_id"] for a in allocs
+                          if a.get("sales_invoice_id")}),
+            label="collections.invoices")}
+
+    rows = [{
+        "allocated_paise": a.get("allocated_paise"),
+        "is_voided": a.get("is_voided"),
+        "receipt_date": (receipts.get(a.get("receipt_id")) or {}).get("receipt_date"),
+        "invoice_date": (invoices.get(a.get("sales_invoice_id")) or {}).get("invoice_date"),
+    } for a in allocs]
+    return {**rule(rows).as_dict(), "window_days": window_days}
+
+
+def executive_snapshot(firm_id: str, today: Optional[date] = None) -> dict:
+    """The practice's own receivables position, for the Executive Dashboard.
+
+    Composed from the two functions above and nothing else — `ar_aging` is
+    already the Collections screen's own figure, so the dashboard's "outstanding
+    invoices" and that screen's "total receivable" are one number by
+    construction, not two that agree today.
+
+    `available` False is the honest answer for a firm with no fee ledger. The
+    dashboard used to render that as `outstanding_invoices: 0`.
+    """
+    if not fee_ledger_provisioned(firm_id):
+        return {
+            "available": False,
+            "reason": ("This practice has no fee ledger yet — its own client has "
+                       "not been provisioned, so there are no fee invoices to "
+                       "total."),
+        }
+    aging = ar_aging(firm_id, today)
+    collected = average_days_to_collect(firm_id, today)
+    return {
+        "available": True,
+        "reason": None,
+        "outstanding_invoices": sum(b["count"] for b in aging["buckets"].values()),
+        "outstanding_amount_paise": aging["total_outstanding_paise"],
+        "overdue_invoices": aging["overdue_count"],
+        "overdue_amount_paise": aging["overdue_paise"],
+        "avg_collection_days": collected["days"],
+        "collection_basis": {
+            "window_days": collected["window_days"],
+            "allocations": collected["allocations"],
+            "skipped": collected["skipped"],
+            "settled_paise": collected["settled_paise"],
+        },
+    }
+
+
 def flag_overdue_for_internal_followup(firm_id: str, today: Optional[date] = None) -> dict:
     """FLAG overdue fee invoices for the practice's own attention. SENDS NOTHING.
 
