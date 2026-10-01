@@ -508,3 +508,47 @@ passing silently.
 `max(filename)` in `schema_migrations` at the moment of capture.
 `ADDED_AFTER_THE_SNAPSHOT` is back to the migrations this branch has not
 merged yet.
+
+
+# Schema fixture refreshed 1 October 2026 (23:33 IST), after migration 470
+
+`ADDED_AFTER_THE_SNAPSHOT` in `tests/production_types.py` had grown to 49 entries
+over twenty-two migrations (382-461) — nine over the cap its own guard sets
+(`test_the_post_snapshot_list_stays_short_and_names_its_migrations`), which is
+what forced a refresh rather than another entry. Production had by then applied
+through `470_only_a_partner_may_write_a_manual_exchange_rate.sql`.
+
+Only `production_schema_2026-09-03.json` and its `.meta.json` were refreshed; the
+**guards fixture was deliberately left at 381**. Its own test measures staleness
+by what the in-flight exclusion SHIELDS (at most eight of production's own
+tables), not by how far behind the mark is, and it passes; refreshing it is a
+separate capture on its own cycle.
+
+Same constraint as the earlier refreshes (no libpq route, only the SQL console)
+and the same proof, with one change worth knowing: the checksum is taken with
+`ORDER BY table_name COLLATE "C", column_name COLLATE "C"` on production's side,
+so it does not depend on the database's default collation (under en_US an
+underscore sorts differently from Python's code-point order and the two would
+not agree):
+
+1. production's per-table `(column count, md5)` was compared with the same
+   fingerprint computed from the old file — 47 new tables, 23 changed ones and
+   none removed;
+2. those 70 tables (1,456 columns) were re-read in full, in five slices, and
+   REPLACED wholesale, so a column dropped from one of them would disappear here
+   too;
+3. every one of the 331 tables in the rebuilt file was compared with production's
+   own fingerprint (no mismatch, none extra), and the whole file was hashed.
+
+Both sides `9bc498d0c90ca0ff8a946641eebb58b2`, over **5,108 columns in 331
+tables**. The query, run in production:
+
+    SELECT md5(string_agg(
+             table_name||'|'||column_name||'|'||data_type||'|'||is_nullable
+             ||'|'||COALESCE(column_default,''),
+             E'\n' ORDER BY table_name COLLATE "C", column_name COLLATE "C"))
+    FROM information_schema.columns WHERE table_schema = 'public';
+
+Every entry at or below the new mark was deleted from `ADDED_AFTER_THE_SNAPSHOT`;
+what remains is migration 474's ten `gstr3b_returns` columns, which is genuinely
+in flight.

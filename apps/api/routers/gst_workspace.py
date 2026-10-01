@@ -26,7 +26,7 @@ from core.validators import validate_gstin
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services import gst_2b_bulk_service, gst_2b_reconciliation_service
-from domain.gst import gstr2b_intake
+from domain.gst import credit_ledger, gstr2b_intake, return_period
 from domain.gst.gstr2b import parse_gstr2b, paise as gstr2b_paise
 from services.period_validation_service import period_validation_service
 from services.compliance_engine import (
@@ -152,6 +152,13 @@ class SaveGSTR3BRequest(BaseModel):
     # falls back to net_tax_paise, which is what was recorded before.
     rcm_cash_paise: int = Field(default=0)
     cash_payable_paise: int = Field(default=0)
+    # The `credit_ledger` block /from-books served (gst-06): the opening balance
+    # of the electronic credit ledger this return was set off against, and what
+    # it LEFT. Carried back unchanged and turned into columns by
+    # `domain.gst.credit_ledger.statement_columns` — the next return opens with
+    # this return's closing. None means "not stated" and leaves whatever a
+    # saved return already records untouched; it is never read as a nil ledger.
+    credit_ledger: Optional[dict] = None
 
 
 class UpdateStatusRequest(BaseModel):
@@ -660,6 +667,33 @@ def save_gstr3b(
             "status": "draft",
             "created_at": datetime.utcnow().isoformat(),
         }
+
+        # THE CREDIT LEDGER THIS RETURN OPENED WITH AND LEFT (gst-06). Stored so
+        # the NEXT return's opening can be this one's closing. Refused where the
+        # statement is not whole, or where its closing date is not the end of the
+        # window this return covers — the chain looks the previous return up by
+        # that exact date, so a wrong one would orphan or mis-chain every return
+        # after it.
+        if body.credit_ledger is not None:
+            try:
+                record.update(credit_ledger.statement_columns(body.credit_ledger))
+            except credit_ledger.CreditLedgerError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+            if not _USE_MOCK:
+                from core.supabase_client import get_supabase
+                from services import client_gst_registration_service as _regs
+                _reg = _regs.resolve(get_supabase(), firm_id, body.client_id, gstin)
+                try:
+                    _window = return_period.resolve(body.period, _reg.filing_frequency)
+                except ValueError as e:
+                    raise HTTPException(status_code=422, detail=str(e))
+                if record["credit_closing_as_of"] != _window.end:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"The credit-ledger statement is dated "
+                               f"{record['credit_closing_as_of']}, but the return for "
+                               f"{_window.key} ends on {_window.end}. Compute the return "
+                               "again and save that.")
 
         # One return per (client, period) — the table says so (UNIQUE, migration
         # 036), and so does the law: there is one GSTR-3B for a month. So a second
@@ -2293,10 +2327,24 @@ def recompute_gstr3b(return_id: str,
     # every one against the real schema; `.update(patch)` with a Name hides all
     # nine, so a column renamed underneath this would fail in production. Same
     # lesson as the dynamic table name a few lines up, and as _customer_names.
+    # The credit ledger this return now opens with and leaves (gst-06). Recomputing
+    # re-reads the opening, so the closing the NEXT return chains from has to move
+    # with it — leaving the old figures would chain a stale balance forward.
+    _credit = credit_ledger.statement_columns(fresh.get("credit_ledger"))
     get_supabase().table("gstr3b_returns").update({
         "tax_liability_paise": int(fresh.get("tax_liability_paise") or 0),
         "itc_claimed_paise": int(fresh.get("itc_claimed_paise") or 0),
         "net_tax_paise": int(fresh.get("net_tax_paise") or 0),
+        "credit_opening_igst_paise": _credit["credit_opening_igst_paise"],
+        "credit_opening_cgst_paise": _credit["credit_opening_cgst_paise"],
+        "credit_opening_sgst_paise": _credit["credit_opening_sgst_paise"],
+        "credit_opening_cess_paise": _credit["credit_opening_cess_paise"],
+        "credit_closing_igst_paise": _credit["credit_closing_igst_paise"],
+        "credit_closing_cgst_paise": _credit["credit_closing_cgst_paise"],
+        "credit_closing_sgst_paise": _credit["credit_closing_sgst_paise"],
+        "credit_closing_cess_paise": _credit["credit_closing_cess_paise"],
+        "credit_closing_as_of": _credit["credit_closing_as_of"],
+        "credit_opening_source": _credit["credit_opening_source"],
         "payload_json": fresh.get("payload"),
         "summary_json": fresh.get("working"),
         "updated_at": datetime.utcnow().isoformat(),

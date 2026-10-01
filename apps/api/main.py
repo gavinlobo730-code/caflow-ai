@@ -547,6 +547,12 @@ app.include_router(post_dated_cheques_router, dependencies=_CLIENT_GUARD)
 from routers.price_lists import router as price_lists_router
 app.include_router(price_lists_router, dependencies=_CLIENT_GUARD)
 
+# gst-06 — the electronic credit ledger's opening balance, keyed from the portal. An
+# INPUT to the GSTR-3B set-off (domain/gst/credit_ledger): it posts and files nothing.
+# `client_id` is required on every route, so the mount guard sees it.
+from routers.gst_credit_ledger import router as gst_credit_ledger_router
+app.include_router(gst_credit_ledger_router, dependencies=_CLIENT_GUARD)
+
 
 # Beta hardening (Phase F) — validate configuration at boot so missing env vars are
 # visible immediately in the logs rather than surfacing as opaque runtime errors.

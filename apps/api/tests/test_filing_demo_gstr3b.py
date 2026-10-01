@@ -279,11 +279,25 @@ def test_table_6_sets_off_4c_and_never_4a():
         "the credit shown as paying the tax is 4(A), the GROSS figure — "
         "§49(4) does not allow credit reversed in this return to pay it")
 
-    # And the column is labelled as 4(C), so nobody reading the screen has to
-    # infer which figure it is.
+    # And the column is labelled as the ledger's credit — opening balance plus
+    # 4(C) — so nobody reading the screen has to infer which figure it is. With
+    # no opening recorded (this fixture's row has none) it IS 4(C), as above.
     assert _stage(out, "Table 6.1")["columns"] == [
-        "Head", "Liability (3.1(a))", "Credit available (4C)",
+        "Head", "Liability (3.1(a))", "Credit available (opening + 4C)",
         "Paid through ITC", "Paid in cash"]
+
+
+def test_table_6_1_shows_the_ledgers_opening_balance_as_credit_the_head_could_spend():
+    """gst-06: a head the ledger paid from its BROUGHT-FORWARD balance must not
+    render as "paid through ITC" more than the credit shown. The saved return
+    records the opening it was set off against, and the credit column adds it."""
+    opening = 7_00_000_00
+    db = _db(credit_opening_igst_paise=opening, credit_opening_cgst_paise=0,
+             credit_opening_sgst_paise=0, credit_opening_cess_paise=0)
+    rows = {r[0]["text"]: r for r in _stage(_build(db), "Table 6.1")["rows"]}
+    assert rows["IGST"][2]["paise"] == NET_IGST + opening
+    assert rows["CGST"][2]["paise"] == NET_CGST, "only the head that had an opening moves"
+    assert "electronic credit ledger already held" in _stage(_build(db), "Table 6.1")["note"]
 
 
 def test_the_payment_note_states_the_rule_and_cites_the_section():

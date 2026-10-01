@@ -206,13 +206,31 @@ def test_a_firm_with_no_fee_ledger_says_so_instead_of_reporting_nil(monkeypatch)
 
 # ── an unknown is not 75 ─────────────────────────────────────────────────────
 
+def _numbers(node):
+    """Every int or float leaf in a nested answer (a bool is not a number)."""
+    if isinstance(node, bool):
+        return []
+    if isinstance(node, (int, float)):
+        return [node]
+    if isinstance(node, dict):
+        return [n for v in node.values() for n in _numbers(v)]
+    if isinstance(node, (list, tuple)):
+        return [n for v in node for n in _numbers(v)]
+    return []
+
+
 def test_an_empty_firm_has_no_score_rather_than_75(monkeypatch):
     svc, _ = _world(monkeypatch)
     out = _dash(svc)
     assert out["firm_health_summary"]["overall_score"] is None
     assert out["firm_health_summary"]["compliance_coverage"] is None
     assert out["analysed_client_count"] == 0
-    assert "75" not in json.dumps(out)
+    # No NUMBER anywhere in the answer is 75. This used to assert the substring "75"
+    # was absent from the serialised answer, which also carries a generated-at
+    # timestamp, so it failed whenever the microseconds happened to contain it — a
+    # flake on a required check. The defect it guards is a figure standing in for
+    # an unknown, so it asks about values, not about characters.
+    assert 75 not in _numbers(out)
 
 
 def test_a_client_with_no_score_is_unscored_not_healthy(monkeypatch):

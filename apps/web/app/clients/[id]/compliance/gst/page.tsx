@@ -18,6 +18,7 @@ import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
 import { Gstr1Amendments } from "@/components/gst/Gstr1Amendments";
 import { IffPanel } from "@/components/gst/IffPanel";
 import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
+import { Gstr3bCreditLedger } from "@/components/gst/Gstr3bCreditLedger";
 import { RegistrationPicker, useRegistrationChoice } from "@/components/gst/RegistrationPicker";
 import { withRegistration } from "@/lib/gst/registrationChoice";
 import type { GLReconciliation, GSTR1AmendmentsBlock, Gstr1TieOutBlock, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
@@ -26,7 +27,7 @@ import { formatPaise } from "@/lib/money/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
-import type { ProbableMatch2B } from "@/lib/api";
+import type { CreditLedgerBlock, ProbableMatch2B } from "@/lib/api";
 import { readGstr2bText } from "@/lib/gst/gstr2bFile";
 import { Probable2BMatches } from "@/components/gst/Probable2BMatches";
 import { CreateDraftBillFrom2B } from "@/components/gst/CreateDraftBillFrom2B";
@@ -1128,10 +1129,13 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
         // written from cash_payable_paise — it is what was actually paid.
         rcm_cash_paise: d.rcm_cash_paise,
         cash_payable_paise: d.cash_payable_paise,
-        // The carry-forward is NOT sent as its own field: SaveGSTR3BRequest has
-        // no such parameter, and Pydantic would drop it without complaint —
-        // a value that looks saved and is not. It rides in summary_json, which
-        // is `working` and now carries working.itc_utilisation.
+        // The carry-forward total rides in summary_json (`working`), which
+        // carries working.itc_utilisation. The credit ledger's opening and
+        // closing BY HEAD are sent as the block the server served, because the
+        // next return opens with this one's closing and that needs columns the
+        // save turns it into (gst-06). Dropped silently by Pydantic if the
+        // request model did not declare it — it does.
+        credit_ledger: d.credit_ledger,
       }),
     });
     setSavingComputed(false);
@@ -1300,10 +1304,21 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 </div>
                 {cf > 0 && (
                   <p className="text-xs text-ps-label">
-                    Input credit exceeded this period&apos;s liability, so there is no tax to
-                    pay from the credit ledger and {rupees(cf)} carries into the next return.
+                    The credit held in the ledger exceeded this period&apos;s liability, so
+                    there is no tax to pay from it and {rupees(cf)} carries into the next return.
                   </p>
                 )}
+                {/* The electronic credit ledger this return opened with and
+                    leaves (gst-06). The opening is spent FIRST (CGST Act
+                    s.49(4)); where nobody has recorded one the server says the
+                    set-off assumed nil, and the CA can key what the portal shows. */}
+                <Gstr3bCreditLedger
+                  clientId={clientId}
+                  period={computeResult.period as string}
+                  gstin={computeResult.gstin as string | undefined}
+                  ledger={computeResult.credit_ledger as CreditLedgerBlock | undefined}
+                  onChanged={computeFromBooks}
+                />
                 {/* THE THREE PARTS OF THE RETURN'S FACE THAT ARE NOT FIGURES.
                     Table 5.1 (what being late costs, GST-21), what the bank
                     lines you marked as carrying GST put on this return
