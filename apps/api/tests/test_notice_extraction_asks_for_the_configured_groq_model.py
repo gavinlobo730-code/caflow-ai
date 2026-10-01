@@ -9,71 +9,81 @@ WHAT WAS WRONG
     extraction and left notice extraction asking for the old name — which the
     endpoint can only report as its generic 502.
 
-WHAT IS ASSERTED — by calling the code with a stand-in Groq client
+WHAT IS ASSERTED — by calling the code with a stand-in Groq
     * the model sent is the one the environment names;
-    * with nothing set, it is v1's default, so the two paths cannot disagree.
+    * with nothing set, it is the one shared default every Groq caller uses, so
+      the paths cannot disagree.
+
+HOW THIS IS DRIVEN NOW (ai-04)
+    The notice reader used to import the `groq` SDK and the test stubbed that
+    package. It goes through `domain/ai/groq_text.chat_sync` now — the one door —
+    so the stand-in is an `httpx.MockTransport` behind the door's own client, and
+    the rule asserted is unchanged.
 """
 from __future__ import annotations
 
-import importlib.util
-import sys
-import types
-from pathlib import Path
+import json
 
+import httpx
 import pytest
 
-_MODULE = Path(__file__).resolve().parents[1] / "routers" / "document_intelligence_v2.py"
+import routers.document_intelligence_v1 as v1
+import routers.document_intelligence_v2 as v2
+from domain.ai import groq_text
 
+_RealAsyncClient = httpx.AsyncClient
 
-def _fresh_copy(monkeypatch, env_value):
-    """A private copy of the router module, imported under the given
-    environment. A copy rather than importlib.reload, so the router object the
-    app already mounted is left alone for every other test."""
-    if env_value is None:
-        monkeypatch.delenv("GROQ_TEXT_MODEL", raising=False)
-    else:
-        monkeypatch.setenv("GROQ_TEXT_MODEL", env_value)
-    spec = importlib.util.spec_from_file_location("_dv2_copy_for_model_test", _MODULE)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+_NOTICE = json.dumps({"authority": "GSTN", "notice_type": "gst_scrutiny",
+                      "reference_no": None, "issue_date": None,
+                      "response_due_date": None, "description": "d"})
 
 
 @pytest.fixture
 def groq_calls(monkeypatch):
-    """Stand in for the `groq` package and record every completion request."""
+    """A stand-in Groq behind the door's own HTTP client; records each request."""
     calls: list[dict] = []
 
-    class _Completions:
-        def create(self, **kwargs):
-            calls.append(kwargs)
-            msg = types.SimpleNamespace(content='{"authority": "GSTN"}')
-            return types.SimpleNamespace(
-                choices=[types.SimpleNamespace(message=msg)])
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": _NOTICE}, "finish_reason": "stop"}],
+            "usage": {"total_tokens": 9}})
 
-    class _Groq:
-        def __init__(self, api_key=None):
-            self.chat = types.SimpleNamespace(completions=_Completions())
+    transport = httpx.MockTransport(handler)
 
-    monkeypatch.setitem(sys.modules, "groq", types.SimpleNamespace(Groq=_Groq))
+    def _client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return _RealAsyncClient(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", _client)
+    monkeypatch.delenv("GROQ_TEXT_MODEL", raising=False)
+    monkeypatch.delenv("GROQ_TEXT_MODEL_FALLBACK", raising=False)
     return calls
 
 
 def test_the_model_sent_is_the_one_the_environment_names(monkeypatch, groq_calls):
-    mod = _fresh_copy(monkeypatch, "llama-4-something-newer")
-    assert mod._extract_with_groq("DRC-01 notice text") == {"authority": "GSTN"}
+    monkeypatch.setenv("GROQ_TEXT_MODEL", "llama-4-something-newer")
+    out = v2._extract_with_groq("DRC-01 notice text")
+    assert out["authority"] == "GSTN"
     assert groq_calls[-1]["model"] == "llama-4-something-newer"
 
 
-def test_with_nothing_set_it_is_the_same_default_invoice_extraction_uses(
-        monkeypatch, groq_calls):
-    from domain.ai.groq_text import DEFAULT_TEXT_MODEL
+def test_with_nothing_set_it_is_the_same_default_invoice_extraction_uses(groq_calls):
+    v2._extract_with_groq("DRC-01 notice text")
+    notice_model = groq_calls[-1]["model"]
 
-    mod = _fresh_copy(monkeypatch, None)
-    mod._extract_with_groq("DRC-01 notice text")
+    # Invoice extraction, through the same door, asks for the same model.
+    groq_calls.clear()
+    try:
+        v1._groq_extract_text("Tax invoice text")
+    except Exception:                                           # noqa: BLE001
+        pass  # the stand-in answers with a notice; only the MODEL is under test
+    assert groq_calls, "invoice extraction made no request"
+    assert groq_calls[-1]["model"] == notice_model == groq_text.DEFAULT_TEXT_MODEL
 
-    v1_spec = importlib.util.spec_from_file_location(
-        "_dv1_copy_for_model_test", _MODULE.with_name("document_intelligence_v1.py"))
-    v1 = importlib.util.module_from_spec(v1_spec)
-    v1_spec.loader.exec_module(v1)
-    assert groq_calls[-1]["model"] == v1._GROQ_TEXT_MODEL == DEFAULT_TEXT_MODEL
+
+def test_neither_router_keeps_a_model_name_of_its_own():
+    """The names are decided in domain/ai and read at call time; a module-level
+    snapshot at import is how a changed environment stops being honoured."""
+    for mod in (v1, v2):
+        assert not hasattr(mod, "_GROQ_TEXT_MODEL"), mod.__name__

@@ -201,7 +201,8 @@ def reset_narration_cache() -> None:
     _NARRATIONS.clear()
 
 
-async def narrate(firm_id: str, items: list[dict], today: date) -> Optional[tuple[str, str]]:
+async def narrate(firm_id: str, items: list[dict], today: date, *,
+                  user_id: Optional[str] = None) -> Optional[tuple[str, str]]:
     """A model's wording of THESE items as (text, model), or None.
 
     None when there is nothing to word (no section needs attention), no key, the
@@ -221,7 +222,10 @@ async def narrate(firm_id: str, items: list[dict], today: date) -> Optional[tupl
         return cached
 
     try:
-        text, _tokens = await groq_text.chat(messages, api_key=api_key, max_tokens=220)
+        text, _tokens = await groq_text.chat(
+            messages, api_key=api_key, max_tokens=groq_text.NARRATION_MAX_TOKENS,
+            reasoning_effort="low", feature="practice_digest", firm_id=firm_id,
+            user_id=user_id)
     except groq_text.ProviderFailed as exc:
         _logger.warning("digest: no model narration (%s)", exc.sentence)
         return None
@@ -238,7 +242,7 @@ async def narrate(firm_id: str, items: list[dict], today: date) -> Optional[tupl
             "digest: the model's wording carried figures the engines did not compute (%s) "
             "— the plain sentence is shown", narration.ungrounded_numbers(text, allowed))
         return None
-    model = groq_text.text_model()
+    model = groq_text.answered_by()
     _cache_put(key, text, model)
     return text, model
 
@@ -255,7 +259,8 @@ async def todays_digest(current_user: dict, allowed_client_ids: Optional[set], *
     gathered = await run_in_threadpool(gather, current_user, allowed_client_ids, today)
     items = digest.ordered(gathered["items"])
 
-    worded = await narrate(current_user["firm_id"], items, today)
+    worded = await narrate(current_user["firm_id"], items, today,
+                           user_id=current_user.get("id"))
     return {
         "as_of": today.isoformat(),
         "generated_at": ist_now().isoformat(),

@@ -48,15 +48,51 @@ WHAT HAPPENED NEXT (29-09-2026)
     `[S]`-graded: this environment's egress proxy still refuses a direct
     fetch of Groq's own docs page, so it rests on a search engine's summary
     of Groq's announcement, not a firsthand read of the primary source.
+
+WHAT THE GATEWAY ADDED (ai-04, ai-05)
+    This module is the one place a Groq request is built, and it is now the only
+    module that talks to Groq at all: the invoice and notice extractors (vendor
+    SDK, no timeout, a generic 502), the firm copilot route and the statement
+    narrator (their own httpx requests) all call `chat` / `chat_sync`. What sits
+    around the request is `domain/ai/gateway` — a bounded retry with backoff on
+    429 and 5xx, an ordered fallback list (`GROQ_TEXT_MODEL_FALLBACK`), the
+    classified sentence for every failure, and a usage row per attempt.
+
+    The default model is a REASONING model, and reasoning tokens are drawn from
+    the same response budget as the answer. Three consequences are handled here
+    rather than at each caller:
+
+      * `reasoning_effort` and a `json_schema` response format are sent ONLY to
+        model families Groq documents them for (`[S]`-graded: egress is refused
+        in this environment, so it rests on a search summary of Groq's docs), and
+        if Groq rejects either anyway the call goes again WITHOUT it. They are
+        hints. Correctness stays with the caller's own validation, which is why
+        a model that ignores them is caught by the same check;
+      * an EMPTY reply — or a null `content`, which is what a model that only
+        reasoned returns — is a FAILURE (`ProviderFailed`, kind `empty_reply`),
+        never a value. Before this an assistant answer could come back as "" with
+        success true, and the statement narrator marked an empty string
+        `ai_generated`;
+      * a reply that ends on the response budget with text in it is returned and
+        recorded as `truncated`, so the budget can be tuned from evidence.
+
+    A fallback model changes WHO WROTE an answer, so `answered_by()` says which
+    model answered the last call in this context and the places that store a
+    model label read it instead of `text_model()`.
 """
 from __future__ import annotations
 
+import asyncio
+import contextvars
 import logging
 import os
+from dataclasses import dataclass
 from typing import Any, Optional
 
 import httpx
 
+from domain.ai import gateway
+from domain.ai.gateway import JsonSchema, ProviderFailed  # noqa: F401 — re-exported
 from domain.ai.redaction import redact_messages
 
 _logger = logging.getLogger("caflow.ai.groq")
@@ -80,8 +116,35 @@ GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_TEXT_MODEL = "openai/gpt-oss-120b"
 DEFAULT_TIMEOUT_S = 30.0
 
-_MODEL_GONE = {"model_not_found", "model_decommissioned", "model_deprecated"}
-_TOO_LONG = {"context_length_exceeded", "request_too_large"}
+# The response budgets, named once. They are RAISED from the 1024 / 512 / 300
+# the extractors, the notice reader and the narrator carried: on a reasoning
+# model the reasoning is drawn from the same allowance as the answer, and an
+# invoice with twenty lines is more than a thousand tokens of JSON before any
+# reasoning at all. `[S]`: whether Groq counts the requested allowance toward
+# its tokens-per-minute estimate could not be read here, so these are generous
+# rather than maximal, and the usage record carries `reasoning_tokens` so they
+# can be tuned from what the model actually spends.
+EXTRACTION_MAX_TOKENS = 4096
+NOTICE_MAX_TOKENS = 2048
+NARRATION_MAX_TOKENS = 1200
+ASSISTANT_MAX_TOKENS = 2048
+
+#: Model families Groq documents `reasoning_effort` for, and the values it takes
+#: there (low, medium, high). `[S]`. A model outside this list is sent nothing:
+#: a different family reads the same parameter differently or rejects it.
+_REASONING_EFFORT_FAMILIES = ("openai/gpt-oss",)
+_REASONING_EFFORTS = ("low", "medium", "high")
+#: Model families Groq documents `json_schema` structured outputs for. `[S]`.
+_JSON_SCHEMA_FAMILIES = ("openai/gpt-oss",)
+
+#: The words in a 400 that mean "it is the OPTIONAL parameter you sent".
+_HINT_WORDS = ("response_format", "json_schema", "reasoning_effort", "structured output")
+
+# Which model answered the last call made in this context. A ContextVar and not
+# a return value because `chat` already returns the `(text, tokens)` pair six
+# callers and their test doubles are written against.
+_answered_by: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "groq_answered_by", default=None)
 
 
 def text_model() -> str:
@@ -90,96 +153,152 @@ def text_model() -> str:
     return (os.environ.get("GROQ_TEXT_MODEL") or "").strip() or DEFAULT_TEXT_MODEL
 
 
-class ProviderFailed(Exception):
-    """Groq did not give an answer. `sentence` is written for the person who
-    asked; `http_status` is what the API should answer with (502 when the
-    provider refused, 504 when it did not answer in time)."""
-
-    def __init__(self, sentence: str, *, http_status: int = 502,
-                 provider_status: Optional[int] = None,
-                 provider_code: Optional[str] = None) -> None:
-        super().__init__(sentence)
-        self.sentence = sentence
-        self.http_status = http_status
-        self.provider_status = provider_status
-        self.provider_code = provider_code
+def fallback_models() -> list[str]:
+    """The models tried, in order, when `text_model()` fails. Empty unless
+    GROQ_TEXT_MODEL_FALLBACK names some — there is no built-in one."""
+    return gateway.models_in(os.environ.get("GROQ_TEXT_MODEL_FALLBACK"))
 
 
-def _error_parts(body: Any) -> tuple[Optional[str], str]:
-    """(code, message) out of an OpenAI-compatible error body, never raising."""
-    try:
-        err = body.get("error") if isinstance(body, dict) else None
-        if isinstance(err, dict):
-            code = err.get("code") or err.get("type")
-            return (str(code) if code else None), str(err.get("message") or "").strip()
-        if isinstance(err, str):
-            return None, err.strip()
-    except Exception:                                            # noqa: BLE001
-        pass
-    return None, ""
+def model_chain() -> list[str]:
+    return gateway.model_chain(text_model(), "GROQ_TEXT_MODEL_FALLBACK")
+
+
+def answered_by() -> str:
+    """The model that wrote the last answer in this context, else the one
+    configured now. What a stored row's `model_used` label is read from, so a
+    reply a fallback wrote is not recorded under the primary's name."""
+    return _answered_by.get() or text_model()
+
+
+def supports_reasoning_effort(model: str) -> bool:
+    return any(model.startswith(f) for f in _REASONING_EFFORT_FAMILIES)
+
+
+def supports_json_schema(model: str) -> bool:
+    return any(model.startswith(f) for f in _JSON_SCHEMA_FAMILIES)
 
 
 def failure_sentence(status: int, body: Any, model: str) -> tuple[str, Optional[str]]:
-    """What to tell the person who asked, given Groq's status and body.
-
-    Split by what the reader can DO about it, because "please try again" is
-    right for a rate limit and useless for a revoked key — and those two used
-    to get the same words."""
-    code, message = _error_parts(body)
-    low = f"{code or ''} {message}".lower()
-
-    if status == 401 or code == "invalid_api_key":
-        # The provider's message is deliberately not echoed: some providers
-        # quote part of the key back in it.
-        return ("The AI provider (Groq) rejected this server's API key "
-                f"(HTTP {status}). GROQ_API_KEY on the server is invalid or has "
-                "been revoked and must be replaced — retrying will not help."), code
-    if code in _MODEL_GONE or status == 404 or "decommission" in low or "does not exist" in low:
-        return (f"The AI provider (Groq) no longer serves the model '{model}' "
-                f"({code or f'HTTP {status}'}). Set GROQ_TEXT_MODEL on the server "
-                "to a model Groq currently offers — retrying will not help."
-                + (f" Groq said: {message[:300]}" if message else "")), code
-    if status == 429 or code == "rate_limit_exceeded":
-        return ("The AI provider (Groq) is rate-limiting this account right now. "
-                "Wait a minute and ask again."), code
-    if status == 413 or code in _TOO_LONG:
-        return ("This question and the conversation before it are too long for "
-                "the AI model. Start a new chat and ask again."), code
-    if status >= 500 or status == 498:
-        return (f"The AI provider (Groq) is unavailable right now (HTTP {status}). "
-                "Try again in a few minutes."), code
-    return (f"The AI provider (Groq) refused the request (HTTP {status}"
-            + (f", {code}" if code else "") + ")."
-            + (f" Groq said: {message[:300]}" if message else "")), code
+    """What to tell the person who asked, given Groq's status and body."""
+    return gateway.failure_sentence(gateway.GROQ, status, body, model)
 
 
-async def chat(
+@dataclass(frozen=True)
+class Reply:
+    """A model's answer and who gave it."""
+    text: str
+    total_tokens: int
+    model: str
+    finish_reason: Optional[str] = None
+    fallback_used: bool = False
+    call_id: str = ""
+
+
+def build_request(
+    model: str,
     messages: list[dict],
     *,
-    api_key: str,
     max_tokens: int,
     temperature: Optional[float] = None,
-    timeout: float = DEFAULT_TIMEOUT_S,
-    transport: Optional[httpx.AsyncBaseTransport] = None,
-) -> tuple[str, int]:
-    """Ask Groq's text model. Returns (reply, total_tokens).
+    reasoning_effort: Optional[str] = None,
+    response_schema: Optional[JsonSchema] = None,
+    hints: bool = True,
+) -> tuple[dict, bool]:
+    """THE Groq request, built in one place. Returns (payload, hints_were_sent).
 
-    Raises ProviderFailed — never returns a stand-in answer. A route that has
-    no answer must say so; presenting canned text as the model's reply is what
-    hid this failure on the copilot.
-
-    `transport` exists for tests, which exercise THIS code against a stand-in
-    Groq rather than a copy of it.
-    """
-    model = text_model()
-    # Redacted HERE, at the one place a chat request is built, so a prompt
-    # builder that forgets the rule still cannot send a PAN or a GSTIN
-    # (domain/ai/redaction). The caller's own list is untouched.
-    payload: dict[str, Any] = {"model": model, "messages": redact_messages(messages),
-                               "max_tokens": max_tokens}
+    `messages` arrive already redacted (or deliberately not — `chat`'s `redact`
+    flag). The two hints go only to a model family Groq documents them for, and
+    only while `hints` is True, which is how a call goes again without them."""
+    payload: dict[str, Any] = {"model": model, "messages": messages, "max_tokens": max_tokens}
     if temperature is not None:
         payload["temperature"] = temperature
+    sent = False
+    if hints:
+        if reasoning_effort in _REASONING_EFFORTS and supports_reasoning_effort(model):
+            payload["reasoning_effort"] = reasoning_effort
+            sent = True
+        if response_schema is not None and supports_json_schema(model):
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": response_schema.name, "strict": True,
+                                "schema": response_schema.schema},
+            }
+            sent = True
+    return payload, sent
 
+
+def _retry_after(response: httpx.Response) -> Optional[float]:
+    try:
+        raw = response.headers.get("retry-after")
+        return float(raw) if raw not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _body_of(response: httpx.Response) -> Any:
+    try:
+        return response.json()
+    except ValueError:
+        return response.text
+
+
+def _hint_rejected(status: int, body: Any) -> bool:
+    if status not in (400, 422):
+        return False
+    code, message = gateway.error_parts(body)
+    param = ""
+    try:
+        err = body.get("error") if isinstance(body, dict) else None
+        param = str(err.get("param") or "") if isinstance(err, dict) else ""
+    except Exception:                                            # noqa: BLE001
+        pass
+    text = f"{code or ''} {message} {param}".lower()
+    return any(w in text for w in _HINT_WORDS)
+
+
+def _usage_of(data: Any) -> tuple[Optional[int], Optional[int], Optional[int], int]:
+    """(prompt, completion, reasoning, total) tokens, each None where absent."""
+    u = data.get("usage") if isinstance(data, dict) else None
+    u = u if isinstance(u, dict) else {}
+    details = u.get("completion_tokens_details")
+    reasoning = details.get("reasoning_tokens") if isinstance(details, dict) else None
+    return (u.get("prompt_tokens"), u.get("completion_tokens"), reasoning,
+            int(u.get("total_tokens", 0) or 0))
+
+
+def _read_reply(response: httpx.Response, model: str, call_id: str,
+                fallback_used: bool) -> tuple[Optional[Reply], Optional[ProviderFailed], tuple]:
+    """A 200 answer as a Reply, or the failure it is."""
+    try:
+        data = response.json()
+        choice = data["choices"][0]
+        content = choice["message"]["content"]
+    except Exception:                                            # noqa: BLE001
+        _logger.error("Groq answered 200 in an unreadable shape (model=%s): %.800s",
+                      model, response.text)
+        return None, gateway.unreadable_failure(gateway.GROQ), (None, None, None, 0)
+    tokens = _usage_of(data)
+    if content is None or (isinstance(content, str) and not content.strip()):
+        # A reasoning model that spent its allowance thinking sends nothing (or
+        # null) as the content. That is a failed answer, not an empty one.
+        _logger.error("Groq answered with no text (model=%s, finish_reason=%s, "
+                      "reasoning_tokens=%s)", model, choice.get("finish_reason"), tokens[2])
+        return None, gateway.empty_failure(gateway.GROQ), tokens
+    if not isinstance(content, str):
+        _logger.error("Groq answered 200 with non-text content (model=%s): %.800s",
+                      model, response.text)
+        return None, gateway.unreadable_failure(gateway.GROQ), tokens
+    return Reply(text=content, total_tokens=tokens[3], model=model,
+                 finish_reason=choice.get("finish_reason"), fallback_used=fallback_used,
+                 call_id=call_id), None, tokens
+
+
+async def _one_attempt(
+    model: str, payload: dict, hints_sent: bool, *, api_key: str, timeout: float,
+    transport: Optional[httpx.AsyncBaseTransport], call_id: str, fallback_used: bool,
+) -> tuple[Optional[Reply], Optional[ProviderFailed], tuple, Optional[int], Optional[float]]:
+    """One request to one model: (reply, failure, tokens, http_status, retry_after).
+    Exactly one of reply and failure is set."""
     try:
         async with httpx.AsyncClient(timeout=timeout, transport=transport) as client:
             response = await client.post(
@@ -190,39 +309,168 @@ async def chat(
             )
     except httpx.TimeoutException as exc:
         _logger.error("Groq did not answer within %ss (model=%s): %r", timeout, model, exc)
-        raise ProviderFailed(
-            f"The AI provider (Groq) did not answer within {int(timeout)} seconds. "
-            "Try again; a shorter question may help.", http_status=504) from exc
+        return None, gateway.timeout_failure(gateway.GROQ, timeout), (None, None, None, 0), None, None
     except httpx.HTTPError as exc:
         _logger.error("Could not reach Groq (model=%s): %r", model, exc)
-        raise ProviderFailed(
-            "This server could not reach the AI provider (Groq). Try again in a "
-            "few minutes.", http_status=502) from exc
+        return None, gateway.network_failure(gateway.GROQ), (None, None, None, 0), None, None
 
     if response.status_code != 200:
-        try:
-            body: Any = response.json()
-        except ValueError:
-            body = response.text
+        body = _body_of(response)
         # LOGGED before anything else: this is the evidence the old 502 threw
         # away. Groq's error body carries a code and a message, not the key.
         _logger.error("Groq refused: HTTP %s model=%s body=%.800s",
                       response.status_code, model, body)
-        sentence, code = failure_sentence(response.status_code, body, model)
-        raise ProviderFailed(sentence, http_status=502,
-                             provider_status=response.status_code, provider_code=code)
+        if hints_sent and _hint_rejected(response.status_code, body):
+            rejected = ProviderFailed("an optional request parameter was rejected",
+                                      kind=gateway.PARAM_REJECTED,
+                                      provider_status=response.status_code)
+            return None, rejected, (None, None, None, 0), response.status_code, None
+        failure = gateway.failure_from_status(gateway.GROQ, response.status_code, body, model)
+        return (None, failure, (None, None, None, 0), response.status_code,
+                _retry_after(response))
 
+    reply, failure, tokens = _read_reply(response, model, call_id, fallback_used)
+    return reply, failure, tokens, response.status_code, None
+
+
+async def chat_detailed(
+    messages: list[dict],
+    *,
+    api_key: str,
+    max_tokens: int,
+    temperature: Optional[float] = None,
+    timeout: float = DEFAULT_TIMEOUT_S,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+    feature: str = "unspecified",
+    firm_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    redact: bool = True,
+    reasoning_effort: Optional[str] = None,
+    response_schema: Optional[JsonSchema] = None,
+) -> Reply:
+    """Ask Groq's text model, under the gateway's policy. Raises ProviderFailed —
+    never returns a stand-in answer, and never an EMPTY one.
+
+    `redact=False` is for document extraction ONLY, where the supplier's GSTIN is
+    printed on the invoice being read. It is spelled at the call site so that a
+    guard (tests/test_no_model_call_site_sends_an_identifier) can list every
+    module that does it, by name, with the reason.
+    """
+    # Redacted HERE, once, at the one place a chat request is built, so a prompt
+    # builder that forgets the rule still cannot send a PAN or a GSTIN
+    # (domain/ai/redaction). The caller's own list is untouched.
+    sendable = redact_messages(messages) if redact else [dict(m) for m in messages]
+    chain = model_chain()
+    call_id = gateway.new_call_id()
+    deadline = gateway.clock() + gateway.TOTAL_BUDGET_S
+    hints = True
+    attempt_no = 0
+    primary_failure: Optional[ProviderFailed] = None
+    failure: Optional[ProviderFailed] = None
+    out_of_time = False
+
+    for index, model in enumerate(chain):
+        tries = 0
+        while True:
+            remaining = deadline - gateway.clock()
+            if remaining < gateway.MIN_ATTEMPT_S:
+                out_of_time = True
+                break
+            tries += 1
+            attempt_no += 1
+            payload, hints_sent = build_request(
+                model, sendable, max_tokens=max_tokens, temperature=temperature,
+                reasoning_effort=reasoning_effort, response_schema=response_schema,
+                hints=hints)
+            started = gateway.clock()
+            reply, failure, tokens, http_status, retry_after = await _one_attempt(
+                model, payload, hints_sent, api_key=api_key,
+                timeout=min(timeout, remaining), transport=transport,
+                call_id=call_id, fallback_used=index > 0)
+            latency_ms = int((gateway.clock() - started) * 1000)
+
+            if reply is not None:
+                outcome = gateway.TRUNCATED if reply.finish_reason == "length" else gateway.OK
+                gateway.record(gateway.UsageEvent(
+                    firm_id=firm_id, user_id=user_id, feature=feature, provider="groq",
+                    model=model, call_id=call_id, attempt=attempt_no, outcome=outcome,
+                    latency_ms=latency_ms, fallback_used=index > 0, http_status=http_status,
+                    prompt_tokens=tokens[0], completion_tokens=tokens[1],
+                    reasoning_tokens=tokens[2], total_tokens=tokens[3] or None))
+                if outcome == gateway.TRUNCATED:
+                    _logger.warning("Groq reply ended on the response budget (model=%s, "
+                                    "max_tokens=%s, feature=%s)", model, max_tokens, feature)
+                _answered_by.set(model)
+                return reply
+
+            assert failure is not None
+            gateway.record(gateway.UsageEvent(
+                firm_id=firm_id, user_id=user_id, feature=feature, provider="groq",
+                model=model, call_id=call_id, attempt=attempt_no, outcome=failure.kind,
+                latency_ms=latency_ms, fallback_used=index > 0, http_status=http_status,
+                provider_code=failure.provider_code,
+                prompt_tokens=tokens[0], completion_tokens=tokens[1],
+                reasoning_tokens=tokens[2], total_tokens=tokens[3] or None))
+
+            if failure.kind == gateway.PARAM_REJECTED:
+                # The optional parameter is what Groq objected to. Go again on the
+                # same model without it; this is not a failed try of the model.
+                _logger.warning("Groq rejected an optional parameter (model=%s) — asking "
+                                "again without reasoning_effort / response_format", model)
+                hints = False
+                tries -= 1
+                continue
+
+            step = gateway.decide(failure.kind, tries)
+            if step == gateway.STOP:
+                raise failure
+            if step == gateway.RETRY:
+                delay = gateway.backoff_delay(tries, retry_after)
+                if delay is not None and deadline - gateway.clock() > delay + gateway.MIN_ATTEMPT_S:
+                    await gateway.sleep_async(delay)
+                    continue
+            break  # the next model
+
+        if index == 0:
+            primary_failure = failure
+        if out_of_time:
+            break
+
+    # Every model failed. The sentence is the PRIMARY model's: that is the one the
+    # operator configured, and a retired primary is a standing fault whose remedy
+    # (set GROQ_TEXT_MODEL) matters more than a fallback's transient one.
+    final = primary_failure or failure
+    if final is None:
+        # The budget was gone before a single attempt could be made.
+        final = gateway.timeout_failure(gateway.GROQ, gateway.TOTAL_BUDGET_S)
+    raise final
+
+
+async def chat(messages: list[dict], **kwargs: Any) -> tuple[str, int]:
+    """Ask Groq's text model. Returns (reply, total_tokens). See `chat_detailed`
+    for the arguments; this is the shape the assistant, the copilot and the
+    digest were written against.
+
+    `transport` exists for tests, which exercise THIS code against a stand-in
+    Groq rather than a copy of it.
+    """
+    reply = await chat_detailed(messages, **kwargs)
+    return reply.text, reply.total_tokens
+
+
+def chat_sync(messages: list[dict], **kwargs: Any) -> Reply:
+    """The same door for code that is already synchronous.
+
+    The invoice and notice extractors are plain `def` routes (Starlette runs them
+    in a threadpool, which is right: they read an upload, ask storage and parse a
+    PDF), so they cannot `await`. This runs the ONE implementation on a private
+    event loop rather than keeping a second synchronous copy of the retry policy
+    — two copies are two policies that agree until one is changed.
+
+    Must not be called from a thread that already has a running event loop."""
     try:
-        data = response.json()
-        content = data["choices"][0]["message"]["content"]
-        if not isinstance(content, str):
-            raise TypeError(type(content).__name__)
-    except Exception as exc:                                     # noqa: BLE001
-        _logger.error("Groq answered 200 in an unreadable shape (model=%s): %.800s",
-                      model, response.text)
-        raise ProviderFailed(
-            "The AI provider (Groq) answered in a shape this server could not "
-            "read. Please report it.", http_status=502) from exc
-
-    tokens = (data.get("usage") or {}).get("total_tokens", 0) or 0
-    return content, int(tokens)
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(chat_detailed(messages, **kwargs))
+    raise RuntimeError("groq_text.chat_sync was called from inside a running event "
+                       "loop; await groq_text.chat instead")

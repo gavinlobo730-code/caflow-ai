@@ -114,8 +114,11 @@ def test_the_assistant_asks_for_the_model_groq_text_model_names(groq, client, mo
 
 def test_with_nothing_configured_every_groq_text_caller_asks_for_one_default(groq, client):
     _ask(client)
-    import routers.document_intelligence_v1 as v1
-    assert groq.sent[-1]["model"] == groq_text.DEFAULT_TEXT_MODEL == v1._GROQ_TEXT_MODEL
+    # The invoice and notice readers used to keep their own import-time snapshot of
+    # this name (`_GROQ_TEXT_MODEL`) and had to be asserted equal to it; they ask
+    # the one door now, and that every caller sends the same default is asserted
+    # in tests/test_notice_extraction_asks_for_the_configured_groq_model.py.
+    assert groq.sent[-1]["model"] == groq_text.DEFAULT_TEXT_MODEL == groq_text.text_model()
 
 
 # ── What a refusal says ──────────────────────────────────────────────────────

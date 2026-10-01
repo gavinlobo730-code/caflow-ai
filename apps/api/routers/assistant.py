@@ -2,9 +2,10 @@ import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from models.common import api_response
+from models.ai_chat import ChatTurn, MAX_QUESTION_CHARS, most_recent
 from core.permissions import rbac
 from domain.ai import groq_text
 from middleware.rate_limit import ai_limit
@@ -302,14 +303,22 @@ def split_source(full_answer: str) -> tuple[str, str]:
     return body.strip(), "Source: " + citation.strip()
 
 
-class Message(BaseModel):
-    role: str
-    content: str
+#: A turn the browser sends back. `role` is `user` or `assistant` and nothing
+#: else, and `content` is capped (models/ai_chat, ai-16): this used to be
+#: `role: str`, so a posted `system` message reached the model as the product's own.
+Message = ChatTurn
 
 
 class AssistantRequest(BaseModel):
-    question: str
+    question: str = Field(max_length=MAX_QUESTION_CHARS)
     conversation_history: Optional[List[Message]] = []
+
+    @field_validator("conversation_history")
+    @classmethod
+    def _keep_the_recent_turns(cls, v):
+        # Trimmed, not refused: a long conversation is ordinary. Every turn has
+        # already been checked for role and length by the time this runs.
+        return most_recent(v) if v else v
     #: The client the question is about, or None for a general one.
     #:
     #: ⚠️ THIS FIELD WAS DELETED ONCE AND THE CONDITION FOR BRINGING IT BACK
@@ -413,7 +422,10 @@ async def assistant(request: AssistantRequest, current_user: dict = Depends(rbac
     # said and hands back a sentence saying what is wrong and whether retrying
     # can help; /ai-assistant renders the `detail` as given.
     try:
-        full_answer, _tokens = await groq_text.chat(messages, api_key=api_key, max_tokens=1024)
+        full_answer, _tokens = await groq_text.chat(
+            messages, api_key=api_key, max_tokens=groq_text.ASSISTANT_MAX_TOKENS,
+            feature="assistant", firm_id=current_user.get("firm_id"),
+            user_id=current_user.get("id"))
     except groq_text.ProviderFailed as exc:
         raise HTTPException(status_code=exc.http_status, detail=exc.sentence) from exc
 
