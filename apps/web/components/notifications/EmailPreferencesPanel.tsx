@@ -26,8 +26,18 @@ import type { EmailLogRow, EmailPreferenceEvent } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
 
+/** `true` or `false` only when the server said so; anything else is "not told". */
+function readMailEnabled(data: unknown): boolean | null {
+  const v = objectOrNull<{ mail_enabled?: unknown }>(data)?.mail_enabled;
+  return typeof v === "boolean" ? v : null;
+}
+
 export function EmailPreferencesPanel() {
   const [events, setEvents] = useState<EmailPreferenceEvent[]>([]);
+  // Whether this deployment sends the practice's own mail at all. `null` is "the
+  // server did not say" (a backend older than this field) and is NEVER rendered
+  // as off: only an explicit `false` shows the notice.
+  const [mailEnabled, setMailEnabled] = useState<boolean | null>(null);
   // The mails the product actually sent this person: "why did I not get it?" is
   // answered by a row being there or not.
   const [sent, setSent] = useState<EmailLogRow[]>([]);
@@ -43,6 +53,7 @@ export function EmailPreferencesPanel() {
       if (!res.success) throw new Error(res.error ?? "Could not load your email settings");
       setEvents(arrayOrEmpty<EmailPreferenceEvent>(
         objectOrNull<{ events?: unknown }>(res.data)?.events));
+      setMailEnabled(readMailEnabled(res.data));
       // The record is a convenience beside the switches: its failure must not
       // blank them, and must not read as "nothing was sent".
       api.notifications.emailLog(10)
@@ -67,6 +78,7 @@ export function EmailPreferencesPanel() {
       if (!res.success) throw new Error(res.error ?? "Could not save that");
       setEvents(arrayOrEmpty<EmailPreferenceEvent>(
         objectOrNull<{ events?: unknown }>(res.data)?.events));
+      setMailEnabled(readMailEnabled(res.data));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save that");
     } finally {
@@ -84,6 +96,12 @@ export function EmailPreferencesPanel() {
         These switch the email only. The notification in the app is always there.
       </p>
       {error && <Callout tone="problem">{error}</Callout>}
+      {!loading && mailEnabled === false && (
+        <Callout tone="attention" title="Email is switched off for this deployment">
+          Nothing below will be emailed yet. Your choices are saved and apply once the practice
+          switches email on; the notifications in the app are not affected.
+        </Callout>
+      )}
       {loading ? (
         <p className="flex items-center gap-2 text-xs text-ps-hint"><Loader2 className="animate-spin" size={12} /> Loading…</p>
       ) : (

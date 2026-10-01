@@ -773,3 +773,163 @@ def test_the_row_a_send_is_recorded_as_is_the_same_in_mock_and_against_a_databas
     assert captured == [[in_memory]], (
         "the in-memory row and the row inserted against a database must be identical")
     mail.reset_mock_stores()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# THE FIRM-WIDE SWITCH — nothing leaves unless PRACTICE_MAIL_ENABLED says so
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# The practice's own mail began as a feature with no off switch but each
+# person's own preferences, and a practice that has just loaded demo data under
+# real addresses cannot tell, before it happens, who a daily digest will reach.
+# The switch is OFF unless explicitly on (unset is off), is read at call time,
+# and sits at the ONE door every one of these mails goes through
+# (`practice_mail_service.deliver`), so a sixth kind of mail added later is
+# covered by the line that covers the first five.
+#
+# The suite runs with it on (an autouse fixture in conftest); each test below
+# deletes it inside the test body, which runs after that fixture.
+
+@pytest.fixture
+def switched_off(monkeypatch):
+    monkeypatch.delenv("PRACTICE_MAIL_ENABLED", raising=False)
+
+
+@pytest.mark.parametrize("value, expected", [
+    ("", False), ("false", False), ("0", False), ("no", False), ("off", False),
+    ("tru", False), ("enabled", False), ("y", False), ("2", False),
+    ("true", True), ("TRUE", True), (" 1 ", True), ("yes", True), ("On", True),
+])
+def test_only_an_explicit_yes_switches_the_practices_mail_on(monkeypatch, value, expected):
+    monkeypatch.setenv("PRACTICE_MAIL_ENABLED", value)
+    assert mail.mail_enabled() is expected
+
+
+def test_an_absent_variable_is_off(switched_off):
+    assert mail.mail_enabled() is False
+
+
+def test_the_door_sends_nothing_and_records_nothing_while_it_is_off(world, switched_off):
+    calls: list = []
+    status = mail.deliver(FIRM, "task_assigned", PREPARER, [mail.Ref("task", "t-1")],
+                          lambda refs: calls.append(refs) or True)
+    assert status == "skipped_switched_off"
+    assert calls == [], "the provider call must not be made"
+    assert mail.MOCK_LOG == [], "the log is the record of SENDS, and nothing was sent"
+
+
+def test_switching_it_on_sends_through_the_same_door(world, monkeypatch):
+    monkeypatch.setenv("PRACTICE_MAIL_ENABLED", "true")
+    calls: list = []
+    status = mail.deliver(FIRM, "task_assigned", PREPARER, [mail.Ref("task", "t-1")],
+                          lambda refs: calls.append(refs) or True)
+    assert status == "sent" and len(calls) == 1 and len(mail.MOCK_LOG) == 1
+
+
+def test_a_clients_message_still_notifies_the_staff_in_the_app_but_mails_nobody(
+        world, wire, portal_db, switched_off):
+    res = _portal_client().post("/api/portal/self/messages", json={"body": "Hello"})
+    assert res.status_code == 200, res.text
+    assert [n["user_id"] for n in _mine("portal_message")] == [PREPARER["id"]], (
+        "the in-app notification is not mail and is never switched off")
+    assert wire == [] and mail.MOCK_LOG == []
+
+
+def test_a_document_request_says_email_is_off_and_not_that_it_failed_or_that_nobody_is_there(
+        world, wire, requests_db, switched_off):
+    res = _staff_client(PARTNER, portal_router).post("/api/portal/document-requests", json={
+        "client_id": CLIENT, "title": "April bank statement", "due_date": "2026-10-20"})
+    assert res.status_code == 200, res.text
+    notice = res.json()["data"]["client_notice"]
+    assert notice["emailed"] == 0 and notice["contacts"] == 1
+    assert "switched off" in notice["reason"], notice
+    assert "could not be delivered" not in notice["reason"], (
+        "the CA must not be told a mail failed when it was never attempted")
+    assert len(requests_db.rows["document_requests"]) == 1, "the request itself is still saved"
+    assert wire == []
+
+
+def test_a_document_request_for_a_client_with_nobody_to_mail_still_names_the_switch(
+        world, wire, requests_db, switched_off):
+    portal_access.MOCK_PORTAL_CONTACTS.clear()
+    notice = _staff_client(PARTNER, portal_router).post("/api/portal/document-requests", json={
+        "client_id": CLIENT, "title": "Ledger"}).json()["data"]["client_notice"]
+    assert notice["emailed"] == 0 and "switched off" in notice["reason"], (
+        "the switch is the fact that does not change when a contact is invited")
+
+
+def test_a_message_from_the_practice_mails_no_contact_while_it_is_off(world, wire, switched_off):
+    import services.portal_notice_service as notice
+    out = notice.ca_message_posted(FIRM, CLIENT)
+    assert out["emailed"] == 0 and "switched off" in out["reason"]
+    assert wire == [] and mail.MOCK_LOG == []
+
+
+def test_assigning_a_task_still_makes_the_notification_but_sends_no_mail(
+        world, wire, switched_off):
+    import services.notification_service as ns
+    ns.notification_service.notify_task_assigned(TASK, PREPARER, MANAGER)
+    assert [n["user_id"] for n in _mine("task_assigned")] == [PREPARER["id"]]
+    assert wire == [] and mail.MOCK_LOG == []
+
+
+def test_the_daily_sweeps_send_nothing_and_still_make_their_notifications_and_keep_their_shape(
+        world, wire, switched_off):
+    _obligation("GSTR-3B September 2026", "2026-10-20")
+    result = ob.escalate(FIRM, today=date(2026, 10, 13), actor={"auth_user_id": "a"})
+    assert result == {"escalated": 1, "due_7": 1, "due_3": 0, "due_1": 0, "overdue": 0}, (
+        "the answer's shape is pinned by the scheduler's run log and does not change with the switch")
+    assert wire == [] and mail.MOCK_LOG == []
+    overdue = {**TASK, "id": "t-9", "due_date": "2026-10-01", "assigned_to": PREPARER["id"]}
+    assert mail.send_overdue_task_mails(FIRM, [overdue], today=date(2026, 10, 14)) in ({}, {"skipped_switched_off": 1})
+    assert wire == []
+
+
+def test_the_preferences_screen_is_told_whether_the_mail_can_arrive(world, switched_off, monkeypatch):
+    c = _staff_client(PREPARER, notifications_router)
+    off = c.get("/api/notifications/email-preferences").json()["data"]
+    assert off["mail_enabled"] is False
+    assert off["events"], "the person's choices are still served and still saved"
+    put = c.put("/api/notifications/email-preferences",
+                json={"event_type": "task_overdue", "email_enabled": False}).json()["data"]
+    assert put["mail_enabled"] is False
+    monkeypatch.setenv("PRACTICE_MAIL_ENABLED", "true")
+    assert c.get("/api/notifications/email-preferences").json()["data"]["mail_enabled"] is True
+
+
+def test_every_practice_mail_is_sent_from_a_callback_handed_to_the_one_door():
+    """THE RULE, not a list of today's mails: in the two modules that send the practice's own mail, a call to an
+    `email_service.send_*` function sits inside a callback (a lambda or a nested function) that is passed to `deliver`.
+    A direct call in a function body is a mail the firm-wide switch does not cover."""
+    import ast
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "services"
+    offenders: list[str] = []
+    seen = 0
+    for name in ("practice_mail_service.py", "portal_notice_service.py"):
+        tree = ast.parse((root / name).read_text(encoding="utf-8"))
+        parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+
+        def inside_callback(node) -> bool:
+            """A lambda, or a function nested inside another function: a callback, not the sender's own body."""
+            functions = 0
+            cur = parents.get(node)
+            while cur is not None:
+                if isinstance(cur, ast.Lambda):
+                    return True
+                if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    functions += 1
+                cur = parents.get(cur)
+            return functions >= 2
+
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name) and node.func.value.id == "email_service"
+                    and node.func.attr.startswith("send_")):
+                seen += 1
+                if not inside_callback(node):
+                    offenders.append(f"{name}:{node.lineno} email_service.{node.func.attr}")
+    assert seen >= 8, f"the scan found only {seen} sends; it has stopped looking at the right modules"
+    assert offenders == [], (
+        "a practice mail sent outside a callback given to `deliver` is not covered by the firm-wide switch: "
+        + ", ".join(offenders))

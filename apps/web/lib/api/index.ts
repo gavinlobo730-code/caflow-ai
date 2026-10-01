@@ -4594,9 +4594,9 @@ export const api = {
     /** Which of the practice's own mail THIS person gets, event by event, and
      *  whether they chose it or it is the event's default. */
     emailPreferences: () =>
-      request<ApiResp<{ events: EmailPreferenceEvent[] }>>("/api/notifications/email-preferences"),
+      request<ApiResp<{ events: EmailPreferenceEvent[]; mail_enabled?: boolean }>>("/api/notifications/email-preferences"),
     setEmailPreference: (event_type: string, email_enabled: boolean) =>
-      request<ApiResp<{ events: EmailPreferenceEvent[] }>>("/api/notifications/email-preferences", {
+      request<ApiResp<{ events: EmailPreferenceEvent[]; mail_enabled?: boolean }>>("/api/notifications/email-preferences", {
         method: "PUT", body: JSON.stringify({ event_type, email_enabled }),
       }),
     /** The mails the product sent THIS person: "why did I not get it?". */

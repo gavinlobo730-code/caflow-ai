@@ -94,6 +94,13 @@ def _notify_contacts(firm_id: str, client_id: str, event_type: str, ref: Ref, se
     entitled to the second.
     """
     contacts = _active_contacts(firm_id, client_id)
+    if not mail.mail_enabled():
+        # The switch is the reason, whether or not there is anyone to mail: it
+        # is the fact that does not change when a contact is invited, and the
+        # sentence below would send the CA to invite one for nothing.
+        return {"contacts": len(contacts), "emailed": 0,
+                "reason": "Email notices are switched off for this deployment, so nobody was "
+                          "emailed. The request is saved and visible on the client's portal."}
     if not contacts:
         return {"contacts": 0, "emailed": 0,
                 "reason": "The client has no active portal contact, so nobody was emailed. "

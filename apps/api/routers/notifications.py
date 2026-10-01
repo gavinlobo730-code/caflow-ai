@@ -39,8 +39,13 @@ def get_email_preferences(current_user: dict = Depends(rbac("notification", "rea
     Always the caller's own: there is no user id to pass, so there is nothing to
     tamper with, and a Partner does not edit a colleague's mail."""
     from services import practice_mail_service
-    return api_response(True, {"events": practice_mail_service.effective_preferences(
-        current_user["firm_id"], _me(current_user))})
+    return api_response(True, {
+        "events": practice_mail_service.effective_preferences(
+            current_user["firm_id"], _me(current_user)),
+        # Whether the deployment sends this mail at all, so the screen never lets
+        # a person tick "email me" for mail that cannot arrive.
+        "mail_enabled": practice_mail_service.mail_enabled(),
+    })
 
 
 @router.put("/email-preferences")
@@ -55,8 +60,10 @@ def set_email_preference(body: EmailPreferenceIn,
             current_user["firm_id"], me, body.event_type, body.email_enabled)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    return api_response(True, {"events": practice_mail_service.effective_preferences(
-        current_user["firm_id"], me)})
+    return api_response(True, {
+        "events": practice_mail_service.effective_preferences(current_user["firm_id"], me),
+        "mail_enabled": practice_mail_service.mail_enabled(),
+    })
 
 
 @router.get("/email-log")

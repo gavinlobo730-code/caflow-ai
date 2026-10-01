@@ -58,6 +58,29 @@ MOCK_LOG: list[dict] = []
 _IN_CHUNK = 150
 _DONE_TASK_STATUSES = frozenset({"completed", "cancelled"})
 
+#: The values that switch the practice's own mail ON. Anything else, including
+#: the variable being absent, an empty string, "false" and a typo, is OFF.
+_SWITCH_ON = frozenset({"1", "true", "yes", "on"})
+
+
+def mail_enabled() -> bool:
+    """Whether this deployment sends the practice's own mail at all.
+
+    `PRACTICE_MAIL_ENABLED` is OFF unless it is explicitly one of 1, true, yes
+    or on (case and surrounding spaces ignored). It is read at CALL time, so
+    changing it needs no code and a test can flip it. It is the one firm-wide
+    switch over everything this module and `portal_notice_service` send: a
+    notice to staff about a task or a deadline, an escalation, and a mail to a
+    client's portal contact about a document request or a message. Off is what
+    the product did before that mail existed (an assignment made an in-app
+    notification and nothing more), so switching it off removes a behaviour and
+    does not break one.
+
+    It does NOT touch the in-app notifications, which are always created, nor
+    the sign-in, invite and engagement mail, which are other things.
+    """
+    return os.environ.get("PRACTICE_MAIL_ENABLED", "").strip().lower() in _SWITCH_ON
+
 
 def reset_mock_stores() -> None:  # test helper
     MOCK_PREFERENCES.clear()
@@ -207,8 +230,16 @@ def deliver(firm_id: str, event_type: str, recipient: dict, refs: list[Ref],
     `send` receives the refs that are still to be said — after deduplication —
     and returns whether the provider accepted the mail. Returns one of
     `sent`, `failed`, `duplicate`, `skipped_no_address`, `skipped_inactive`,
-    `skipped_preference`. NEVER RAISES.
+    `skipped_preference` or `skipped_switched_off`. NEVER RAISES.
+
+    THE FIRM-WIDE SWITCH IS ASKED FIRST, before an address, a preference or the
+    log: with it off nothing is sent, nothing is recorded (the log is the record
+    of SENDS) and `send` is never called. Every mail this module and
+    `portal_notice_service` send goes through here, which is what makes one
+    check enough.
     """
+    if not mail_enabled():
+        return "skipped_switched_off"
     try:
         day = day or ist_today()
         email = str(recipient.get("email") or "").strip()
