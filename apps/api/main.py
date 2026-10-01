@@ -523,6 +523,30 @@ app.include_router(branding_router)
 from routers.shared_reports import router as shared_reports_router
 app.include_router(shared_reports_router)
 
+# accounting-16 — the live reports as a server-made PDF / spreadsheet. Its own router:
+# it returns a FILE, not the {success, data, error} envelope /api/accounting
+# returns, and it calls the same report functions that router's screens do.
+from routers.report_exports import router as report_exports_router
+app.include_router(report_exports_router, dependencies=_CLIENT_GUARD)
+
+# accounting-22 — interest on an overdue customer balance: a figure and a PREPARED
+# draft, never posted or invoiced on its own. `client_id` is required on every
+# route, so the mount guard sees it.
+from routers.late_interest import router as late_interest_router
+app.include_router(late_interest_router, dependencies=_CLIENT_GUARD)
+
+# accounting-21 — the post-dated cheque register. A MEMORANDUM that posts nothing until
+# a due cheque is converted, and then only through the receipt / vendor-payment
+# engines. `client_id` is required on every route.
+from routers.post_dated_cheques import router as post_dated_cheques_router
+app.include_router(post_dated_cheques_router, dependencies=_CLIENT_GUARD)
+
+# accounting-20 — price lists and a default list per customer. A PRE-FILL source for an
+# invoice line's rate: it changes no tax and posts nothing, and the invoice keeps
+# whatever rate it was given. `client_id` is required on every route.
+from routers.price_lists import router as price_lists_router
+app.include_router(price_lists_router, dependencies=_CLIENT_GUARD)
+
 
 # Beta hardening (Phase F) — validate configuration at boot so missing env vars are
 # visible immediately in the logs rather than surfacing as opaque runtime errors.

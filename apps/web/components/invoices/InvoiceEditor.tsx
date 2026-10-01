@@ -27,7 +27,8 @@ import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
 import { computeLineGst, discountPaise, gstRateBpsFromPercent,
          quantityFromInput, splitLineGst } from "@/lib/money/gstLine";
 import { lineCess } from "@/lib/money/cessLine";
-import { bpsFromPercentInput, paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { bpsFromPercentInput, paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
+import { api } from "@/lib/api";
 import {
   PAYMENT_TERM_PRESETS, CUSTOM_TERM, termLabelForDays, daysForTermLabel,
 } from "@/lib/sales/paymentTerms";
@@ -156,6 +157,9 @@ export function InvoiceEditor({
     : [{ ...EMPTY_LINE, _k: 0 }];
 
   const [customerId, setCustomerId] = useState(existing?.customer_id ?? duplicateSeed?.customer_id ?? "");
+  // accounting-20 — the server's sentence about where the last picked line's rate came
+  // from, shown only when the customer is on a price list.
+  const [priceNotice, setPriceNotice] = useState<string | null>(null);
   // SUGGESTED FROM THE FIRM'S OWN SERIES, AND STILL EDITABLE (SALES-12).
   // GET /api/sales-invoices/next-number reads invoice_settings (migration 126)
   // — prefix, financial year, padding, starting number — and returns the next
@@ -538,6 +542,7 @@ export function InvoiceEditor({
   // ── Field handlers (identical semantics to the legacy form) ───────────────────
   function onCustomerChange(id: string) {
     setCustomerId(id);
+    setPriceNotice(null);
     if (isEdit) return;
     const cust = customers.find((c) => c.id === id);
     if (!cust) return;
@@ -608,8 +613,39 @@ export function InvoiceEditor({
   // HSN/SAC, GST, unit, rate — description stays editable afterwards). The
   // values are copied, not linked, so a later edit/archive of the preset
   // can't change a past invoice.
+  //
+  // accounting-20 — and for a customer on a PRICE LIST the rate box is then offered the
+  // list's rate for that item. The server answers (`resolve`: the list, the
+  // catalogue, or neither, and why); this only places the answer, and ONLY on a
+  // line that is still the one just picked with its rate still the catalogue
+  // pre-fill. A rate the CA has typed in the meantime is never overwritten by a
+  // slower answer, a failed answer leaves the catalogue rate in place, and the
+  // invoice keeps whatever rate the line ends up with — a price list changes no
+  // tax and the save path never asks for one.
   function onPickProduct(idx: number, item: ServiceCatalogueItem) {
-    setLine(idx, { ...serviceToLine(item), product: item, serviceCatalogueId: item.id });
+    const prefill = serviceToLine(item);
+    const key = lines[idx]?._k;
+    setLine(idx, { ...prefill, product: item, serviceCatalogueId: item.id });
+    setPriceNotice(null);
+    if (!customerId || isLocked || key === undefined) return;
+    void (async () => {
+      try {
+        const r = await api.priceLists.resolve(clientId, customerId, item.id);
+        const got = r.success ? r.data : null;
+        if (!got) return;
+        if (got.source === "price_list" && got.rate_paise != null) {
+          setLines((prev) => prev.map((l) =>
+            l._k === key && l.serviceCatalogueId === item.id && l.rate === prefill.rate
+              ? { ...l, rate: rupeeInputFromPaise(got.rate_paise as number) }
+              : l));
+        }
+        // Said whenever a list was involved: the Dealer rate applied, or the
+        // reason the catalogue rate stands in for it.
+        setPriceNotice(got.price_list_id && got.note ? got.note : null);
+      } catch {
+        /* the catalogue rate is already in the box; nothing to undo */
+      }
+    })();
   }
   // QuickBooks-style "Add line": appends a blank row whose FIRST field is the
   // Product/Service selector (not a free-text description) — the previous
@@ -1466,6 +1502,9 @@ export function InvoiceEditor({
             </button>
           )}
           {fieldErr(validation.errors.lines)}
+          {priceNotice && !isLocked && (
+            <p className="mt-2 text-xs text-ps-label" role="status">{priceNotice}</p>
+          )}
         </section>
 
         {/* Notes */}

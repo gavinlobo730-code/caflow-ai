@@ -17,6 +17,7 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { objectOrNull } from "@/lib/api/shape";
 import { Callout, GapList } from "@/components/ui/callout";
 import { DataTable } from "@/components/ui/data-table";
+import ReportExportButtons from "@/components/accounting/ReportExportButtons";
 import type { Column } from "@/lib/table/types";
 /**
  * Trade Receivables and Trade Payables ageing schedules — the notes to the
@@ -488,6 +489,16 @@ export default function ClientAgeingSchedulePage() {
 
           {(tab === "receivables" || tab === "payables") && (
             <>
+              {/* A PDF of the very ageing the tables below show (accounting-16): the
+                  server calls the same report function this tab loaded, so the
+                  file and the screen cannot differ. These are the OPERATIONAL
+                  buckets; the statutory note is the first tab. */}
+              <div className="flex justify-end">
+                <ReportExportButtons
+                  report={tab === "receivables" ? "ar-ageing" : "ap-ageing"}
+                  clientId={clientId} params={{ as_of: asOf }}
+                  disabled={(tab === "receivables" ? invoices : bills) === null} />
+              </div>
               <AdvancesPanel
                 kind={tab}
                 section={tab === "receivables" ? arAdvances : apAdvances}

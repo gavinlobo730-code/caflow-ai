@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
+import { exportQuery, type ExportFormat, type ExportParams, type ExportReport } from "@/lib/export/reportExport";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -3215,6 +3216,188 @@ export interface SalesCycleVocabulary {
   itc_04: { decided: boolean; readings: string[]; refusal: string };
 }
 
+/** accounting-22 — interest on an overdue customer balance. Shapes only: which invoices
+ *  are late, for how many days and what that comes to are the server's. */
+export interface LateInterestTerms {
+  customer_id: string;
+  customer_name: string | null;
+  /** Annual rate in basis points. `null` is "nobody has stated one", which is
+   *  not the same fact as 0 ("interest is waived"). */
+  rate_bps: number | null;
+  grace_days: number;
+  basis: "due_date" | "invoice_date";
+}
+
+export interface LateInterestDocument {
+  invoice_id: string;
+  invoice_no: string | null;
+  invoice_date?: string | null;
+  due_date?: string | null;
+  outstanding_paise: number;
+  status: string;
+  counted_from?: string | null;
+  start_note?: string | null;
+  days_late: number;
+  days_charged: number;
+  period_from?: string | null;
+  period_to?: string | null;
+  already_charged_through?: string | null;
+  interest_paise: number;
+  note?: string | null;
+}
+
+export interface LateInterestParty {
+  customer_id: string;
+  customer_name: string | null;
+  terms_set: boolean;
+  terms: { rate_bps: number; grace_days: number; basis: string } | null;
+  overdue_outstanding_paise: number;
+  interest_paise: number;
+  documents: LateInterestDocument[];
+}
+
+export interface LateInterestStatement {
+  convention: { statement: string; day_count: string; as_of: string };
+  statutory_reading: { section: string; grade: string; text: string };
+  caveats: string[];
+}
+
+export interface LateInterestPreview extends LateInterestStatement {
+  as_of: string;
+  parties: LateInterestParty[];
+  totals: {
+    interest_paise: number; parties_with_interest: number;
+    parties_without_terms: number; overdue_outstanding_paise: number;
+  };
+  gaps: string[];
+}
+
+export interface LateInterestDrafts extends LateInterestStatement {
+  as_of: string;
+  drafts: {
+    invoice_id: string; invoice_no: string | null; status: string;
+    total_paise: number | null; interest_paise: number; gst_rate_bps: number;
+    is_interstate: boolean; invoice_nos: string[];
+  }[];
+  not_drafted: {
+    invoice_id: string; invoice_no: string | null; interest_paise: number;
+    reason_code: string; reason: string;
+  }[];
+  failed: { reason: string; invoice_nos: string[] }[];
+}
+
+/** accounting-21 — the post-dated cheque register. A MEMORANDUM: nothing here is in the
+ *  books until a due cheque is converted, and conversion is an ordinary receipt
+ *  or vendor payment made by the server. `state`, `is_due` and `is_stale` are the
+ *  server's answers, worked out against the firm's own (IST) day. */
+export type PostDatedChequeDirection = "received" | "issued";
+export type PostDatedChequeState = "not_due" | "due" | "converted" | "cancelled";
+
+export interface PostDatedCheque {
+  id: string;
+  direction: PostDatedChequeDirection;
+  customer_id: string | null;
+  vendor_id: string | null;
+  party_name: string | null;
+  cheque_no: string;
+  cheque_date: string;
+  amount_paise: number;
+  drawee_bank: string | null;
+  bank_account_id: string | null;
+  allocations: { sales_invoice_id?: string; purchase_bill_id?: string; allocated_paise: number }[];
+  status: "held" | "converted" | "cancelled";
+  state: PostDatedChequeState;
+  is_due: boolean;
+  is_stale: boolean;
+  stale_note: string | null;
+  stale_after: string | null;
+  notes: string | null;
+  converted_receipt_id: string | null;
+  converted_payment_id: string | null;
+  cancel_reason: string | null;
+  /** Always present; null where the posting would be attributable. */
+  posting_account_notice: string | null;
+}
+
+export interface PostDatedChequeRegister {
+  as_of: string;
+  cheques: PostDatedCheque[];
+  summary: Record<PostDatedChequeDirection,
+    Record<PostDatedChequeState, { count: number; amount_paise: number }>>;
+  notes: string[];
+  includes_finished: boolean;
+}
+
+export interface PostDatedChequeOptions {
+  parties: { id: string; name: string | null; gstin: string | null }[];
+  bank_accounts: { id: string; name: string }[];
+  documents: {
+    id: string; number: string | null; date: string | null; due_date: string | null;
+    outstanding_paise: number;
+  }[];
+}
+
+export interface PostDatedChequeConversion {
+  cheque: PostDatedCheque;
+  document: {
+    kind: "receipt" | "payment"; id: string; number: string | null; date: string;
+    amount_paise: number; journal_entry_id: string | null; unallocated_paise: number | null;
+    posting_account_notice: string | null;
+  };
+  stale_note: string | null;
+}
+
+export interface PostDatedChequeWrite {
+  cheque_no?: string;
+  cheque_date?: string;
+  amount_paise?: number;
+  drawee_bank?: string | null;
+  bank_account_id?: string | null;
+  notes?: string | null;
+  allocations?: { sales_invoice_id?: string; purchase_bill_id?: string; allocated_paise: number }[];
+}
+
+/** accounting-20 — price lists. A PRE-FILL source for an invoice line's rate and nothing
+ *  else: it changes no tax and posts nothing, and an invoice keeps whatever rate it
+ *  was given. The browser holds no pricing rule; `resolve` is the server's answer. */
+export interface PriceList {
+  id: string;
+  client_id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+}
+
+export interface PriceListItemRow {
+  id: string;
+  service_catalogue_id: string;
+  name: string | null;
+  hsn_sac: string | null;
+  unit: string | null;
+  is_active: boolean | null;
+  rate_paise: number;
+  /** The catalogue's own rate, beside the list's. null where the catalogue has none. */
+  catalogue_rate_paise: number | null;
+}
+
+export interface PriceListCustomerRow {
+  customer_id: string;
+  customer_name: string | null;
+  is_active: boolean;
+  price_list_id: string | null;
+  price_list_name: string | null;
+  price_list_archived: boolean;
+}
+
+/** Where a pre-filled rate came from. `none` carries a null rate, never 0. */
+export interface ResolvedRate {
+  rate_paise: number | null;
+  source: "price_list" | "catalogue" | "none";
+  price_list_id: string | null;
+  price_list_name: string | null;
+  note: string | null;
+}
+
 export interface PreInvoiceLine {
   description: string;
   hsn_sac?: string | null;
@@ -6185,6 +6368,124 @@ export const api = {
       if (asOf) q.set("as_of", asOf);
       return request<ApiResp<AgeingDetail<"bills">>>(`/api/vendors/ap-aging?${q}`);
     },
+  },
+
+  /**
+   * A live report as a server-made PDF or spreadsheet (accounting-16). The file is
+   * built in apps/api from the SAME report function the screen calls, headed by
+   * the practice and naming the client, so what is downloaded is what is on
+   * screen. A refusal (a ledger too long to print, a report that does not foot)
+   * arrives as a thrown `API error 422: {"detail": …}` — read it with
+   * `exportErrorMessage` from `lib/export/reportExport`.
+   */
+  reportExports: {
+    download: (report: ExportReport, format: ExportFormat, clientId: string,
+               params: ExportParams = {}) =>
+      downloadFile(`/api/report-exports/${report}?${exportQuery(clientId, format, params)}`,
+                   `${report}.${format}`),
+  },
+
+  /** accounting-22 — interest on an overdue customer balance. The preview reads and
+   *  writes nothing; `prepareDrafts` makes an ordinary DRAFT sales invoice
+   *  (posts no journal, issues nothing, emails nothing). Every figure is the
+   *  server's: a request carries a date and ids, never an amount. */
+  lateInterest: {
+    preview: (clientId: string, asOf?: string, customerId?: string) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (asOf) q.set("as_of", asOf);
+      if (customerId) q.set("customer_id", customerId);
+      return request<ApiResp<LateInterestPreview>>(`/api/late-interest/preview?${q}`);
+    },
+    terms: (clientId: string) =>
+      request<ApiResp<{ customers: LateInterestTerms[] }>>(
+        `/api/late-interest/terms?client_id=${encodeURIComponent(clientId)}`),
+    setTerms: (body: {
+      client_id: string; customer_id: string; rate_bps: number | null;
+      grace_days: number; basis: string;
+    }) =>
+      request<ApiResp<LateInterestTerms>>("/api/late-interest/terms",
+        { method: "PUT", body: JSON.stringify(body) }),
+    prepareDrafts: (body: {
+      client_id: string; customer_id: string; as_of_date?: string; invoice_ids?: string[];
+    }) =>
+      request<ApiResp<LateInterestDrafts>>("/api/late-interest/drafts",
+        { method: "POST", body: JSON.stringify(body) }),
+  },
+
+  /** accounting-20 — price lists. Every call keeps a list or a customer's pointer to one;
+   *  none of them touches an invoice. `resolve` is asked when a catalogue item is
+   *  picked and its answer lands in the rate box, where it stays editable. */
+  priceLists: {
+    list: (clientId: string, includeArchived = false) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (includeArchived) q.set("include_archived", "true");
+      return request<ApiResp<{ price_lists: PriceList[] }>>(`/api/price-lists?${q}`);
+    },
+    customers: (clientId: string) =>
+      request<ApiResp<{ customers: PriceListCustomerRow[] }>>(
+        `/api/price-lists/customers?client_id=${encodeURIComponent(clientId)}`),
+    resolve: (clientId: string, customerId: string, serviceCatalogueId: string) => {
+      const q = new URLSearchParams({
+        client_id: clientId, customer_id: customerId, service_catalogue_id: serviceCatalogueId });
+      return request<ApiResp<ResolvedRate>>(`/api/price-lists/resolve?${q}`);
+    },
+    items: (listId: string, clientId: string) =>
+      request<ApiResp<{ price_list: PriceList; items: PriceListItemRow[] }>>(
+        `/api/price-lists/${encodeURIComponent(listId)}/items?client_id=${encodeURIComponent(clientId)}`),
+    create: (clientId: string, name: string, description?: string) =>
+      request<ApiResp<PriceList>>("/api/price-lists", { method: "POST",
+        body: JSON.stringify({ client_id: clientId, name, description: description || null }) }),
+    update: (listId: string, clientId: string,
+             body: { name?: string; description?: string | null; is_active?: boolean }) =>
+      request<ApiResp<PriceList>>(`/api/price-lists/${encodeURIComponent(listId)}`, {
+        method: "PATCH", body: JSON.stringify({ ...body, client_id: clientId }) }),
+    setItem: (listId: string, serviceCatalogueId: string, clientId: string, ratePaise: number) =>
+      request<ApiResp<unknown>>(
+        `/api/price-lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(serviceCatalogueId)}`,
+        { method: "PUT", body: JSON.stringify({ client_id: clientId, rate_paise: ratePaise }) }),
+    removeItem: (listId: string, serviceCatalogueId: string, clientId: string) =>
+      request<ApiResp<unknown>>(
+        `/api/price-lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(serviceCatalogueId)}`
+        + `?client_id=${encodeURIComponent(clientId)}`, { method: "DELETE" }),
+    assign: (clientId: string, customerId: string, priceListId: string | null) =>
+      request<ApiResp<unknown>>("/api/price-lists/assign", { method: "PUT",
+        body: JSON.stringify({ client_id: clientId, customer_id: customerId, price_list_id: priceListId }) }),
+  },
+
+  /** accounting-21 — the post-dated cheque register. `create`, `update` and `cancel`
+   *  post nothing; `convert` is the one call that reaches the books, and the
+   *  server does it through the ordinary receipt or payment engine. The browser
+   *  never builds a receipt and never decides whether a cheque is due. */
+  postDatedCheques: {
+    list: (clientId: string, direction: PostDatedChequeDirection, includeFinished = false) => {
+      const q = new URLSearchParams({ client_id: clientId, direction });
+      if (includeFinished) q.set("include_finished", "true");
+      return request<ApiResp<PostDatedChequeRegister>>(`/api/post-dated-cheques?${q}`);
+    },
+    options: (clientId: string, direction: PostDatedChequeDirection, partyId?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, direction });
+      if (partyId) q.set("party_id", partyId);
+      return request<ApiResp<PostDatedChequeOptions>>(`/api/post-dated-cheques/options?${q}`);
+    },
+    create: (body: PostDatedChequeWrite & {
+      client_id: string; direction: PostDatedChequeDirection;
+      customer_id?: string; vendor_id?: string;
+      cheque_no: string; cheque_date: string; amount_paise: number;
+    }) =>
+      request<ApiResp<PostDatedCheque>>("/api/post-dated-cheques",
+        { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, clientId: string, body: PostDatedChequeWrite) =>
+      request<ApiResp<PostDatedCheque>>(`/api/post-dated-cheques/${encodeURIComponent(id)}`,
+        { method: "PATCH", body: JSON.stringify({ ...body, client_id: clientId }) }),
+    convert: (id: string, clientId: string, presentedOn?: string) =>
+      request<ApiResp<PostDatedChequeConversion>>(
+        `/api/post-dated-cheques/${encodeURIComponent(id)}/convert`,
+        { method: "POST", body: JSON.stringify({
+          client_id: clientId, ...(presentedOn ? { presented_on: presentedOn } : {}) }) }),
+    cancel: (id: string, clientId: string, reason?: string) =>
+      request<ApiResp<PostDatedCheque>>(
+        `/api/post-dated-cheques/${encodeURIComponent(id)}/cancel`,
+        { method: "POST", body: JSON.stringify({ client_id: clientId, reason: reason || null }) }),
   },
 
   /** THE supplier master. `public.suppliers` (migration 030) looked like a
