@@ -443,6 +443,25 @@ schema: **Partner-only**, and the screen says plainly that a rate is shared
 across the platform. If a typo ever does move another firm's books, the answer
 is an audit trail on the write, not a per-firm copy of a public fact.
 
+**30-09-2026 (security_privacy-19, migration 470): "Partner-only" is now true of
+the TABLE and not only of the URL.** Migration 439 let `authenticated` write
+`fx_rates` with `WITH CHECK (true)`, on the reasoning that the route is
+Partner-only — but the browser speaks PostgREST directly, so an Executive, a
+portal client, an employee or another firm's Partner could overwrite the closing
+rate a firm's year-end revaluation reads. The write policies now ask the SAME
+question the route does (`my_permission('settings', 'write', 'Partner')`) and
+admit only `source = 'manual'`; a provider's row is the backend's. **The
+decision above is unchanged and is still yours:** the audit finding proposed a
+`firm_id` on the table so one firm's manual rate could never replace another's,
+and that is the answer to "if a typo ever does move another firm's books" that
+this entry rejected in favour of an audit trail. With the policy tightened the
+exposure is one Partner of one firm, deliberately typing a rate other firms
+resolve through — not a stranger. If you want the per-firm shape (a nullable
+`firm_id`, provider rows read-only to tenants, the manual provider reading the
+firm's own row first), it is a real piece of work across the table, the PUT
+endpoint, the provider and the revaluation, and it changes what a document
+booked last year would resolve to.
+
 ## A duplicate supplier: warn, never merge  *(was §G, PUR-32)*  **— BUILT 17-09-2026**
 
 `domain/party_duplicates.py` is the rule and it is on BOTH create doors —
