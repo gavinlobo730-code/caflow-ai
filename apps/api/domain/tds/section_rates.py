@@ -371,9 +371,6 @@ _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     "194J(B)": TDSSectionRule(
         50_000_00, 1000, 1000, parent_section="194J",
         aggregate_threshold_paise=50_000_00),
-    "194J(B)": TDSSectionRule(
-        50_000_00, 1000, 1000, parent_section="194J",
-        aggregate_threshold_paise=50_000_00),
     # Compulsory acquisition compensation — ₹2,50,000 → ₹5,00,000 (FA 2025).
     # Proviso: "where the amount of such payment or, as the case may be, the
     # AGGREGATE AMOUNT of such payments to a resident during the financial year

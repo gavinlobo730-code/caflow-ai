@@ -27,7 +27,8 @@ import Link from "next/link";
 import {
   IndianRupee, Calendar, AlertCircle, Plus, X, FileText, Award, Upload, ArrowRight,
 } from "lucide-react";
-import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import CsvImportModal from "@/components/LazyCsvImportModal";
+import type { ImportRow } from "@/components/CsvImportModal";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 

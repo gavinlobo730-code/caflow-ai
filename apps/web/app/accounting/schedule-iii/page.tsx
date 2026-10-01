@@ -9,7 +9,11 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Printer, AlertTriangle, Download } from "lucide-react";
-import * as XLSX from "xlsx";
+// xlsx is fetched by the export click below and is NOT imported here: a static
+// `import * as XLSX from "xlsx"` put SheetJS (135 KB gzip) in this page's first
+// load for a button most visits never press. Namespace object, never `.default`
+// (scripts/a-dynamic-xlsx-import-has-no-default.test.ts); the rule that no file
+// imports it statically is scripts/the-spreadsheet-library-is-not-in-the-first-load.test.ts.
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatementSkeleton } from "@/components/ui/skeleton";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -427,8 +431,15 @@ export default function ScheduleIIIPage() {
           <Printer size={15} /> Print
         </button>
         <button
-          onClick={() => {
+          onClick={async () => {
             if (!data) return;
+            let XLSX: typeof import("xlsx");
+            try {
+              XLSX = await import("xlsx");
+            } catch {
+              setError("Could not load the Excel writer. Check your connection and try again.");
+              return;
+            }
             // The export carries the comparative column too. A workbook a CA
             // hands to an auditor with one column is the same defect as a
             // one-column statement on screen — Schedule III General

@@ -8,6 +8,7 @@ Data is passed in from frontend (which reads Supabase directly).
 """
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Optional
 
@@ -37,6 +38,7 @@ from domain.gst.validator import GSTValidator, InvoiceToValidate
 from services import gst_return_service
 
 router = APIRouter(prefix="/api/gst", tags=["gst"])
+_logger = logging.getLogger("caflow.gst")
 
 # ── Client-assignment scope (M2) ──────────────────────────────────────────────
 # This router imported no authz. Only `FromBooksRequest` carries a client_id,
@@ -422,6 +424,62 @@ class FromBooksRequest(BaseModel):
         return return_period.normalise_frequency(v)
 
 
+class GSTR1FromBooksRequest(FromBooksRequest):
+    """`FromBooksRequest` plus the one switch only GSTR-1 has (gst-33).
+
+    A separate class rather than a field on the shared one: GSTR-3B has no
+    amendment tables, and a parameter that does nothing on one of its two
+    endpoints is one a caller sets and trusts.
+    """
+    #: THE MAIN BUILD CARRIES THE AMENDMENTS THIS PERIOD OWES, BY DEFAULT.
+    #: CGST Act §37: a filed GSTR-1 can never be revised, so a correction to an
+    #: earlier period is declared in a LATER return's amendment tables — and the
+    #: corrections used to live in a SECOND file (`/gstr1/with-amendments`, an
+    #: Amendments-tab download), so a CA had to know to upload that one instead
+    #: of the one the GSTR-1 screen built. False builds the return without them
+    #: and says so in `amendments.included`; the screens show the count either
+    #: way. The flag costs nothing to set and is the way out if the amendments
+    #: cannot be worked out — see `_with_outstanding_amendments`.
+    include_amendments: bool = True
+
+
+def _with_outstanding_amendments(db, firm_id: str, client_id: str, period: str,
+                                 base: dict) -> tuple[dict, dict]:
+    """(payload with the outstanding amendments folded in, the block describing them).
+
+    ONE IMPLEMENTATION for `/gstr1/from-books` and `/gstr1/with-amendments`, so
+    the default build and the file the Amendments tab downloads cannot differ.
+
+    THE PERIOD THE RETURN WAS ACTUALLY BUILT FOR, not the month asked for
+    (GST-11). A QRMP quarter is keyed on its first month, and which earlier
+    corrections are still inside the s.37(3) window is measured against THAT
+    period — asking with a month two later would carry amendments this return
+    does not declare.
+
+    Out-of-time corrections are already excluded upstream — outstanding_
+    amendments only collects entries for a period whose §37(3) window is still
+    open — so nothing here can declare an amendment that the law no longer
+    allows. Amounts the CA must decide on (a document cancelled after filing),
+    invoices that were never declared at all, and corrections an earlier return
+    has ALREADY declared stay OUT of the payload and come back in the block,
+    because none of them is an amendment to make now.
+    """
+    from services.gst_amendment_service import apply_amendments, outstanding_amendments
+    outstanding = outstanding_amendments(db, firm_id, client_id,
+                                         base.get("period") or period)
+    return apply_amendments(base["payload"], outstanding), {
+        "included": True,
+        "sections": sorted((outstanding.get("sections") or {}).keys()),
+        "counts": outstanding.get("counts") or {},
+        "source_periods": outstanding.get("source_periods") or [],
+        "expired": outstanding.get("expired") or [],
+        "needs_decision": outstanding.get("needs_decision") or [],
+        "carry_forward": outstanding.get("carry_forward") or [],
+        "closing_soon": outstanding.get("closing_soon") or [],
+        "already_declared": outstanding.get("already_declared") or [],
+    }
+
+
 def _client_registration(db, firm_id: str, client_id: str,
                          gstin: Optional[str] = None):
     """Which GST registration this request is for, firm-scoped.
@@ -521,11 +579,26 @@ def gstr3b_detail_endpoint(
 
 
 @router.post("/gstr1/from-books")
-def gstr1_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depends(rbac("gst", "compute"))):
+def gstr1_from_books_endpoint(req: GSTR1FromBooksRequest, current_user: dict = Depends(rbac("gst", "compute"))):
     """Build GSTR-1 ENTIRELY from posted sales invoices + issued credit notes and
     reconcile the net output tax to the General Ledger (audit H8).
 
-    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    ONE FILE TO UPLOAD (gst-33). The amendment tables this period owes — 9A for
+    invoices, 9C for notes, 10 for B2C-others, CGST Act §37 — are folded into
+    `payload` by default, with `amendments` saying what was added and the same
+    counts `/gstr1/with-amendments` returns. Before this the corrections lived
+    in a second file and a CA had to know to upload that one for the month.
+    `include_amendments=false` builds the return without them; the totals,
+    `summary` and `reconciliation` are the period's OWN either way, because
+    amendments are separate tables and not part of this period's supplies.
+
+    IF THE AMENDMENTS CANNOT BE WORKED OUT THE BUILD FAILS, NAMING THE SWITCH.
+    Falling back to the plain return would hand a CA a file that looks complete
+    and is not, which is worse than an error; `include_amendments=false` is the
+    deliberate way to ask for the return without them.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This produces a file; uploading
+    # it to gst.gov.in remains a deliberate human act.
     """
     # Before the database is touched at all, let alone the client's ledger.
     assert_client_access(current_user, req.client_id)
@@ -544,7 +617,24 @@ def gstr1_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depend
             frequency=req.filing_frequency or reg.filing_frequency)
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
-    return api_response(True, data)
+
+    if not req.include_amendments:
+        # Nothing is computed for an excluded build: it must keep working when
+        # the amendment walk cannot, and `included: false` is the whole claim.
+        return api_response(True, {**data, "amendments": {"included": False}})
+
+    try:
+        payload, block = _with_outstanding_amendments(
+            db, firm_id, req.client_id, req.period, data)
+    except Exception:                                           # noqa: BLE001
+        _logger.exception("gstr1 from-books: outstanding amendments failed for "
+                          "client %s period %s", req.client_id, req.period)
+        raise HTTPException(status_code=500, detail=(
+            "The amendments this GSTR-1 has to carry could not be worked out, "
+            "so the return was NOT built — a file that silently left them out "
+            "would look complete. Build it again with amendments switched off "
+            "to get the return without them, and check the Amendments tab."))
+    return api_response(True, {**data, "payload": payload, "amendments": block})
 
 
 @router.post("/gstr1/with-amendments")
@@ -579,7 +669,6 @@ def gstr1_with_amendments_endpoint(req: FromBooksRequest, current_user: dict = D
     errs = _validator.validate_gstin(gstin) + _validator.validate_period(req.period)
     if errs:
         raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
-    from services.gst_amendment_service import apply_amendments, outstanding_amendments
     try:
         base = gst_return_service.gstr1_from_books(
             db, firm_id, req.client_id, req.period, gstin,
@@ -587,25 +676,14 @@ def gstr1_with_amendments_endpoint(req: FromBooksRequest, current_user: dict = D
             frequency=req.filing_frequency or reg.filing_frequency)
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
-    # THE PERIOD THE RETURN WAS ACTUALLY BUILT FOR, not the month asked for
-    # (GST-11). A QRMP quarter is keyed on its first month, and which earlier
-    # corrections are still inside the s.37(3) window is measured against THAT
-    # period — asking with a month two later would carry amendments this return
-    # does not declare.
-    outstanding = outstanding_amendments(db, firm_id, req.client_id,
-                                         base.get("period") or req.period)
+    # The same fold `/gstr1/from-books` now does by default (gst-33), through
+    # the one helper — see `_with_outstanding_amendments` for the period rule.
+    payload, block = _with_outstanding_amendments(
+        db, firm_id, req.client_id, req.period, base)
     return api_response(True, {
         **base,
-        "payload": apply_amendments(base["payload"], outstanding),
-        "amendments": {
-            "sections": sorted((outstanding.get("sections") or {}).keys()),
-            "counts": outstanding.get("counts") or {},
-            "source_periods": outstanding.get("source_periods") or [],
-            "expired": outstanding.get("expired") or [],
-            "needs_decision": outstanding.get("needs_decision") or [],
-            "carry_forward": outstanding.get("carry_forward") or [],
-            "closing_soon": outstanding.get("closing_soon") or [],
-        },
+        "payload": payload,
+        "amendments": block,
         "ca_review_required": True,   # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     })
 

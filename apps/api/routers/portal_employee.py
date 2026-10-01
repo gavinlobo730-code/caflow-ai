@@ -29,6 +29,17 @@ THERE IS DELIBERATELY NO /me
     (`tests/test_every_mounted_endpoint_has_a_way_in.py`) named it on the first
     run: an endpoint no screen calls cannot be used by anybody.
 
+THE PAYSLIP PDF IS THE SECOND DOOR, AND IT NAMES A DOCUMENT, NEVER A PERSON
+    `GET /payslips/{slip_id}/pdf` (payroll-01). The portal's Download button used
+    to call the STAFF route, which needs a `users` row an employee does not have
+    and answered 403 to every employee for every slip. The caller has to say
+    WHICH of their payslips, so `slip_id` is a parameter — but it is resolved
+    only WITHIN the principal's own released slips
+    (`services/employee_payslip_service`), so a colleague's slip, a draft's and a
+    made-up id are one and the same 404. Nothing that identifies a person —
+    employee, client, firm — is a parameter, which is what the signature guard
+    asserts.
+
 NOTHING HERE COMPUTES
     `compute_tds_projection` is the payroll module's own function and this
     router calls it. A second implementation of a withholding figure is exactly
@@ -83,3 +94,74 @@ def employee_tds_projection(
         # clients. That is a 403 about the caller, not a 404 about a request.
         raise HTTPException(status_code=403, detail="Not an employee portal user.")
     return api_response(True, data)
+
+
+@router.get("/payslips/{slip_id}/pdf")
+def employee_payslip_pdf(
+    slip_id: str,
+    employee: dict = Depends(get_current_portal_employee),
+):
+    """The caller's OWN payslip as a PDF (payroll-01).
+
+    THE PORTAL'S DOWNLOAD BUTTON USED TO CALL THE STAFF ROUTE, which is
+    `rbac("payroll", "read")` and needs a `users` row an employee does not have,
+    so it answered 403 to every employee for every slip. This is the employee's
+    door onto the same renderer.
+
+    WHICH slip is the one thing the caller chooses, and it is resolved only
+    WITHIN their own rows: `services.employee_payslip_service.own_released_slip`
+    asks for the slip by id AND by the principal's employee id, inside the run's
+    firm and client, and only once the run is released. A colleague's slip, a
+    slip that does not exist and a slip in a draft run all come back as the same
+    404 — a different answer for "exists but is not yours" would tell an
+    employee whether somebody else's payslip id is real. There is no
+    employee_id, client_id or firm_id on this route; they come from the
+    principal.
+
+    Read-only, and it renders nothing itself: `get_payslip_pdf` is the one
+    payslip renderer, called by the staff route too.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    from fastapi.responses import Response
+
+    from routers.payroll import _db
+    from services.employee_payslip_service import PayslipNotFound, own_released_slip
+    from services.payslip_pdf_service import get_payslip_pdf
+
+    not_found = HTTPException(status_code=404, detail="Payslip not found.")
+    db = _db()
+    if not db:
+        raise HTTPException(status_code=503,
+                            detail="Payslip PDF unavailable in mock mode")
+    try:
+        own_released_slip(db, employee, slip_id)
+    except PayslipNotFound:
+        raise not_found
+
+    try:
+        pdf_bytes, filename = get_payslip_pdf(slip_id, employee["firm_id"])
+    except PermissionError:
+        # Ownership was proven above, so the renderer's own firm check failing
+        # means the two disagree about whose slip this is. Nothing is handed
+        # over, and it says the same thing every other refusal says.
+        raise not_found
+    except ValueError:
+        # The renderer refuses a run that carries no client (PAY-03 — the slip
+        # would be headed with the CA firm's name). That is the EMPLOYER's to
+        # fix and is worded for the CA on the staff route; an employee is told
+        # it cannot be produced and who can put it right.
+        raise HTTPException(status_code=409, detail=(
+            "This payslip cannot be produced right now. Please ask your "
+            "employer to check it."))
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            # A payslip carries a PAN and bank details: nothing between the
+            # server and the employee's disk should keep a copy.
+            "Cache-Control": "private, no-store",
+        },
+    )

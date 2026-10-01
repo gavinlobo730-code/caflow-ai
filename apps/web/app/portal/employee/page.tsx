@@ -126,7 +126,10 @@ export default function EmployeePortalPage() {
     setDownloadingSlipId(slip.id);
     try {
       const period = `${slip.year}-${String(slip.month).padStart(2, "0")}`;
-      await api.payroll.downloadPayslip(slip.id, `payslip-${period}.pdf`);
+      // The EMPLOYEE's door, not api.payroll.downloadPayslip: that one is the
+      // staff route, gated on a `users` row this principal does not have, and
+      // answered 403 to every employee for every slip (payroll-01).
+      await api.portalSelf.employeePayslipPdf(slip.id, `payslip-${period}.pdf`);
     } catch (e) {
       console.error("downloadPayslip:", e);
       setToast("Failed to download payslip. Please try again.");

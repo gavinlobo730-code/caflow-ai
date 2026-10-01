@@ -204,7 +204,7 @@ export default function PortalActivatePage() {
                     autoFocus type={showPw ? "text" : "password"} required value={pw}
                     onChange={(e) => setPw(e.target.value)} autoComplete="new-password"
                     placeholder={`At least ${MIN_LENGTH} characters`}
-                    className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 pr-11 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                    className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 pr-11 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                   />
                   <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide password" : "Show password"}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
@@ -218,7 +218,7 @@ export default function PortalActivatePage() {
                   type={showPw ? "text" : "password"} required value={pw2}
                   onChange={(e) => setPw2(e.target.value)} autoComplete="new-password"
                   placeholder="Re-enter your password"
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                 />
               </div>
 
@@ -260,7 +260,7 @@ export default function PortalActivatePage() {
                   autoFocus inputMode="numeric" value={reauthOtp} maxLength={8}
                   onChange={(e) => setReauthOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
                   placeholder="123456"
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                 />
               </div>
               {reauthError && (

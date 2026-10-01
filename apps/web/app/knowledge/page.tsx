@@ -98,7 +98,7 @@ function KnowledgeInner() {
       </div>
 
       <div className="flex items-center gap-2 mb-4">
-        <div className="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
+        <div className="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus-within:ring-2 focus-within:ring-brand">
           <Search size={14} className="text-gray-400" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()}
             placeholder="Search articles…" className="flex-1 text-sm outline-none" />

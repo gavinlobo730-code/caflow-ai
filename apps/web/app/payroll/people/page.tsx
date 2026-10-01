@@ -26,7 +26,8 @@ import Link from "next/link";
 import {
   Users, Plus, X, AlertCircle, Upload, Pencil, Ban, Trash2, RotateCcw,
   ArrowLeft, ShieldAlert, } from "lucide-react";
-import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import CsvImportModal from "@/components/LazyCsvImportModal";
+import type { ImportRow } from "@/components/CsvImportModal";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { Column, FilterDef, BulkAction } from "@/lib/table/types";
 import { formatPaise } from "@/lib/services/formatting";

@@ -32,7 +32,7 @@ from typing import Optional
 
 from core.ist_clock import IST, ist_today
 from domain.gst.amendment_proposal import propose
-from domain.gst.amendments import group_amendments, merge_into_payload
+from domain.gst.amendments import SECTION_TABLE, group_amendments, merge_into_payload
 from domain.gst.correction_window import fy_label, is_actionable, window_for
 from services.gst_exception_service import gstr1_exceptions
 
@@ -148,6 +148,106 @@ def _earlier_filed_periods(db, firm_id: str, client_id: str, period: str) -> lis
     return sorted(set(periods), key=_sort_key)
 
 
+# ── What an earlier return has ALREADY declared (gst-33) ─────────────────────
+#
+# `outstanding_amendments` diffs each earlier filed return's FROZEN payload
+# against the books as they stand now. The frozen payload never changes — that
+# is what "a filed GSTR-1 can never be revised" means — so a correction declared
+# in July's return leaves June's frozen payload exactly as different from the
+# books as it was before. Nothing noticed that July had already declared it, so
+# August proposed the same amendment again, and so would September, for as long
+# as June's §37(3) window stayed open.
+#
+# That was tolerable while the merged file was something a CA asked for by name.
+# Once the main build carries the amendments by default it would have re-declared
+# the same correction in every month's upload, so the question "has a later
+# filed return already said this?" is asked here, where the proposals are made.
+#
+# THE TEST IS THE ENTRY ITSELF. An amendment re-declares the WHOLE entry with its
+# corrected figures, so an identical (section, group, node) in a later SUBMITTED
+# return is the same statement made twice — and a correction the books have
+# since moved on from is a DIFFERENT node, which is still proposed.
+
+#: Amendment section -> (the key its buckets group on, the key holding the nodes).
+#: The inverse of `domain.gst.amendments.group_amendments`; a test pins the two.
+_NESTED_SECTIONS = {
+    "b2ba": ("ctin", "inv"),
+    "cdnra": ("ctin", "nt"),
+    "b2cla": ("pos", "inv"),
+    "expa": ("exp_typ", "inv"),
+}
+_FLAT_SECTIONS = ("cdnura", "b2csa")
+
+
+def declared_entries(payload: Optional[dict]) -> list[dict]:
+    """Every amendment entry a stored GSTR-1 payload declares, as the same
+    {section, group, node} triples `group_amendments` was built from."""
+    out: list[dict] = []
+    for section, rows in (payload or {}).items():
+        if section in _FLAT_SECTIONS:
+            for node in rows or []:
+                out.append({"section": section, "group": "", "node": node})
+        elif section in _NESTED_SECTIONS:
+            group_key, list_key = _NESTED_SECTIONS[section]
+            for bucket in rows or []:
+                for node in (bucket or {}).get(list_key) or []:
+                    out.append({"section": section,
+                                "group": (bucket or {}).get(group_key) or "",
+                                "node": node})
+    return out
+
+
+def _submitted_amendment_declarations(db, firm_id: str, client_id: str) -> list[tuple[str, list[dict]]]:
+    """[(period, entries it declared)] for every SUBMITTED return that declares
+    any. A saved-but-unfiled return declares nothing: until it is filed the
+    correction has not been made, and suppressing it would hide it."""
+    rows = (db.table("gstr1_returns").select("period, status, payload_json")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("status", _SUBMITTED)
+            .limit(PAGE).execute().data) or []
+    declared = []
+    for r in rows:
+        payload = r.get("payload_json")
+        if not r.get("period") or not isinstance(payload, dict):
+            continue
+        entries = declared_entries(payload)
+        if entries:
+            declared.append((r["period"], entries))
+    return declared
+
+
+def split_already_declared(entries: list[dict], source: str, target: str,
+                           declared: list[tuple[str, list[dict]]]) -> tuple[list[dict], list[dict]]:
+    """(entries still to declare, entries an earlier return already declared).
+
+    Only a return filed AFTER the source period and BEFORE the target counts:
+    a return before the source cannot be amending a correction that did not yet
+    exist, and the target itself is the return being prepared.
+    """
+    lo, hi = _sort_key(source), _sort_key(target)
+    between = [(p, es) for p, es in declared if lo < _sort_key(p) < hi]
+    fresh: list[dict] = []
+    already: list[dict] = []
+    for entry in entries:
+        node = entry.get("node")
+        group = entry.get("group") or ""
+        hit = next((p for p, es in between
+                    if any(d["section"] == entry.get("section") and d["group"] == group
+                           and d["node"] == node for d in es)), None)
+        if hit is None:
+            fresh.append(entry)
+        else:
+            already.append({
+                "section": entry.get("section"),
+                "table": SECTION_TABLE.get(entry.get("section"), ""),
+                "from_period": source,
+                "declared_in": hit,
+                "original_ref": (node.get("oinum") or node.get("ont_num")
+                                 or node.get("omon") or ""),
+            })
+    return fresh, already
+
+
 def outstanding_amendments(
     db, firm_id: str, client_id: str, period: str, *,
     as_of: Optional[date] = None,
@@ -180,6 +280,10 @@ def outstanding_amendments(
     needs_decision: list[dict] = []
     expired: list[dict] = []
     closing_soon: list[dict] = []
+    already_declared: list[dict] = []
+    # Read once, and only if some period actually has a correction to propose —
+    # a client with no drift pays nothing for this.
+    declared: Optional[list] = None
 
     for source in _earlier_filed_periods(db, firm_id, client_id, period):
         report = gstr1_exceptions(db, firm_id, client_id, source)
@@ -207,7 +311,15 @@ def outstanding_amendments(
             closing_soon.append({"period": source, "window": window,
                                  "counts": proposal["counts"]})
 
-        entries.extend(proposal["entries"])
+        # What a LATER filed return has already said is not said again. Only
+        # the ENTRIES are filtered: a carry-forward or a decision is not an
+        # amendment and is reported as before.
+        if declared is None:
+            declared = _submitted_amendment_declarations(db, firm_id, client_id)
+        fresh, already = split_already_declared(
+            proposal["entries"], source, period, declared)
+        entries.extend(fresh)
+        already_declared.extend(already)
         for item in proposal["carry_forward"]:
             carry_forward.append({**item, "from_period": source, "window": window})
         for item in proposal["needs_decision"]:
@@ -225,6 +337,10 @@ def outstanding_amendments(
         "sections": sections,
         "carry_forward": carry_forward,
         "needs_decision": needs_decision,
+        # Corrections a LATER filed return has already declared, left out of
+        # `sections` and named here so nothing is hidden: "why is this not in
+        # the file" has an answer on the screen.
+        "already_declared": already_declared,
         # Periods whose §37(3) / §16(4) window has already closed. They carry
         # real drift that can no longer be declared — the output tax stays
         # understated or the credit is simply lost. Nothing here can fix them;
@@ -237,6 +353,7 @@ def outstanding_amendments(
             "amendments": len(entries),
             "carry_forward": len(carry_forward),
             "needs_decision": len(needs_decision),
+            "already_declared": len(already_declared),
             "source_periods": len(proposals),
             "expired_periods": len(expired),
             "closing_soon_periods": len(closing_soon),

@@ -193,7 +193,10 @@ def load_account_holder(db, firm_id: str, client_id: str) -> dict:
     question, not a letterhead.
     """
     row = (db.table("clients")
-           .select("id,client_name,legal_name,trade_name,gstin,pan")
+           # `email` is the CLIENT's contact address: the covering mail's
+           # Reply-To (practice_management-04), so a customer's question about
+           # their statement reaches the supplier who issued it.
+           .select("id,client_name,legal_name,trade_name,gstin,pan,email")
            .eq("id", client_id).eq("firm_id", firm_id)
            .maybe_single().execute())
     holder = getattr(row, "data", None) or {}

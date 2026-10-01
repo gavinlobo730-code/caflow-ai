@@ -39,6 +39,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from domain.accounting import opening_documents as _opening
+from domain.gst import gstr2b_intake
 from domain.gst.gstr2b import GSTR2BFile, parse_gstr2b
 from domain.gst.itc_matching import (
     BookBill, PortalDocument, Reconciliation, defaulters, reconcile,
@@ -251,16 +252,25 @@ def reconcile_2b(db, *, firm_id: str, client_id: str, period: str,
     # consequential thing this reconciliation can discover. Treating it as "not
     # reconciled", which is what the first version did by returning early here,
     # left Rule 36(4) uncapped and let the return claim the whole book ITC.
+    # A FILE FOR ANOTHER MONTH IS REFUSED, NOT WARNED ABOUT (gst-09). This used to
+    # append "almost certainly not what you meant" to `problems` and carry on —
+    # writing the file's documents under the TYPED period, which replaced that
+    # month's reconciliation with another month's documents matched against the
+    # wrong month's bills. `gstr2b_intake` is the rule; the router asks it first
+    # (with the client's registrations, which only the router can fetch) and this
+    # asks it again, because this is the function that WRITES and a check on one
+    # door only is one caller from being no check at all. Whose GSTIN the file
+    # carries is deliberately NOT asked here: it needs the client's
+    # registrations, and the router has them.
+    intake = gstr2b_intake.assess(parsed, typed_period=period)
+    if intake.refusals:
+        raise ValueError(" ".join(intake.refusals))
+
     bills = read_book_bills(db, firm_id, client_id, period)
     rec = reconcile(bills, _portal_documents(parsed))
     rows = _record_rows(firm_id, client_id, period, parsed, rec)
 
     problems = list(parsed.problems)
-    if parsed.return_period and parsed.return_period != period:
-        problems.append(
-            f"This file is GSTR-2B for {parsed.return_period} and you are "
-            f"reconciling {period}. The documents below were matched against "
-            f"{period}'s bills, which is almost certainly not what you meant.")
 
     # Replace, do not accumulate. A CA re-uploads when the first download was
     # for the wrong month, and two runs of the same 2B must not double the

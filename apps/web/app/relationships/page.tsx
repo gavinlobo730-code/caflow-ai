@@ -165,7 +165,7 @@ function EntityFormModal({
             <input
               value={form.full_name}
               onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+              className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
               placeholder="Individual or entity name"
             />
           </div>
@@ -189,7 +189,7 @@ function EntityFormModal({
               <input
                 value={form.pan}
                 onChange={(e) => setForm((f) => ({ ...f, pan: e.target.value.toUpperCase() }))}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                 placeholder="AAAAA9999A"
                 maxLength={10}
               />
@@ -199,7 +199,7 @@ function EntityFormModal({
               <input
                 value={form.gstin}
                 onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint font-mono focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                 placeholder="22AAAAA0000A1ZC"
                 maxLength={15}
               />
@@ -212,7 +212,7 @@ function EntityFormModal({
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                 placeholder="contact@example.com"
               />
             </div>
@@ -222,7 +222,7 @@ function EntityFormModal({
                 type="tel"
                 value={form.phone}
                 onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
+                className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 placeholder:text-ps-hint focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand"
                 placeholder="+91 98765 43210"
               />
             </div>

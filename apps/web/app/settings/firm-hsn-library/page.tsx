@@ -18,7 +18,8 @@ import { api, type ApiResp } from "@/lib/api/index";
 import {
   FirmHsnLibraryQuickAddModal, type FirmHsnLibraryRow,
 } from "@/components/lookups/FirmHsnLibraryQuickAddModal";
-import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import CsvImportModal from "@/components/LazyCsvImportModal";
+import type { ImportRow } from "@/components/CsvImportModal";
 import { FIRM_HSN_LIBRARY_IMPORT_COLUMNS, buildFirmHsnCodes } from "@/lib/imports/firmHsnLibrary";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";

@@ -5136,6 +5136,17 @@ export const api = {
       request<ApiResp<{ token_hash: string; verification_type: string }>>(
         "/api/portal/employee/activation-session",
         { method: "POST", body: JSON.stringify({ token }) }),
+    // The EMPLOYEE's own payslip (payroll-01). The portal's Download button used
+    // to call api.payroll.downloadPayslip — the STAFF route, `rbac("payroll",
+    // "read")`, which needs a `users` row an employee does not have, so it was
+    // a 403 for every employee and every slip. This is the employee's door onto
+    // the same renderer. Only the slip is named: who is asking comes from the
+    // session, and the server resolves the slip within that employee's own
+    // released payslips (a colleague's, a draft run's or a made-up id are all
+    // the same 404).
+    employeePayslipPdf: (slipId: string, fallbackFilename = `payslip-${slipId}.pdf`) =>
+      downloadFile(`/api/portal/employee/payslips/${encodeURIComponent(slipId)}/pdf`,
+                   fallbackFilename),
     // me/dashboard select the active client explicitly via X-Portal-Client-Id when
     // the identity belongs to more than one client (no implicit switching).
     me: (clientId?: string) =>

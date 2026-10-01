@@ -480,12 +480,25 @@ def test_an_unparseable_file_persists_NOTHING():
     assert result["problems"]
 
 
-def test_a_file_for_the_wrong_period_says_so():
-    """The commonest real mistake, and the one an empty result used to hide."""
+def test_a_file_for_the_wrong_period_is_refused_and_persists_nothing():
+    """The commonest real mistake, and the one an empty result used to hide.
+
+    It used to be WARNED about and then written anyway, under the typed period:
+    April's documents replaced May's reconciliation and were matched against
+    May's bills. A sentence beside a wrong figure is not a fix, so the service
+    (the function that writes) refuses, and nothing is deleted or inserted —
+    the month's existing reconciliation stays exactly as it was (gst-09)."""
+    import pytest
+
     store = _store()
-    result = _reconcile(store, _file(b2b=[_b2b("INV-1", 1000.0, cgst=90.0, sgst=90.0)]),
-                        period="052025")
-    assert any("042025" in p and "052025" in p for p in result["problems"])
+    store["gstr2a_records"] = [{"firm_id": FIRM, "client_id": CLIENT,
+                                "return_period": "052025", "id": "kept"}]
+    with pytest.raises(ValueError) as refused:
+        _reconcile(store, _file(b2b=[_b2b("INV-1", 1000.0, cgst=90.0, sgst=90.0)]),
+                   period="052025")
+    assert "042025" in str(refused.value) and "052025" in str(refused.value)
+    assert [r["id"] for r in store["gstr2a_records"]] == ["kept"], (
+        "the refusal came AFTER the delete — May's reconciliation is gone")
 
 
 def test_the_defaulter_list_reaches_the_caller():

@@ -13,7 +13,8 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { supabase, getSupabaseClient } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { openedAt } from "@/lib/accounting/sourceDocument";
-import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import CsvImportModal from "@/components/LazyCsvImportModal";
+import type { ImportRow } from "@/components/CsvImportModal";
 import { EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
@@ -541,6 +542,23 @@ function RunsTab({ clientId, firmId, openDoc }:
   // an empty slip table — both look identical to genuinely having no data.
   const [loadFailed, setLoadFailed] = useState(false);
   const [slipsFailed, setSlipsFailed] = useState(false);
+  // One payslip as a PDF, for the CA. The staff route
+  // GET /api/payroll/salary-slips/{id}/pdf used to be called only by the
+  // EMPLOYEE portal, which could never pass it (payroll-01), so once that
+  // button moved to the employee's own door this table is where staff reach it.
+  const [slipPdfBusy, setSlipPdfBusy] = useState<string | null>(null);
+  const [slipPdfError, setSlipPdfError] = useState<string | null>(null);
+  async function downloadSlipPdf(slipId: string) {
+    setSlipPdfBusy(slipId);
+    setSlipPdfError(null);
+    try {
+      await api.payroll.downloadPayslip(slipId);
+    } catch (e) {
+      setSlipPdfError(e instanceof Error ? e.message : "Could not download the payslip.");
+    } finally {
+      setSlipPdfBusy(null);
+    }
+  }
   const [createError, setCreateError] = useState<string | null>(null);
   /** Sentences the server composed about what this run could NOT establish —
    *  attendance nobody entered, a state PT slab we do not model. Rendered
@@ -969,10 +987,13 @@ function RunsTab({ clientId, firmId, openDoc }:
                         </p>
                       </div>
                     )}
+                    {slipPdfError && (
+                      <p className="text-2xs text-state-problem font-medium mb-2" role="alert">{slipPdfError}</p>
+                    )}
                     <table className="w-full text-2xs">
                       <thead>
                         <tr className="border-b border-ps-border">
-                          {["Employee", "Gross", "PF (Emp)", "ESI (Emp)", "PT", "TDS", "Net"].map(h => (
+                          {["Employee", "Gross", "PF (Emp)", "ESI (Emp)", "PT", "TDS", "Net", "Payslip"].map(h => (
                             <th key={h} className="py-1.5 px-2 text-left text-3xs font-semibold text-ps-hint">{h}</th>
                           ))}
                         </tr>
@@ -993,6 +1014,16 @@ function RunsTab({ clientId, firmId, openDoc }:
                             <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.pt_paise)}</td>
                             <td className="py-1.5 px-2 font-mono text-amber-600">{fmt(s.tds_paise)}</td>
                             <td className="py-1.5 px-2 font-mono font-semibold text-emerald-600">{fmt(s.net_paise)}</td>
+                            <td className="py-1.5 px-2">
+                              <button
+                                onClick={() => downloadSlipPdf(s.id)}
+                                disabled={slipPdfBusy === s.id}
+                                title="Download this employee's payslip as a PDF"
+                                className="flex items-center gap-1 text-2xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                              >
+                                <Download size={11} /> {slipPdfBusy === s.id ? "…" : "PDF"}
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1009,6 +1040,7 @@ function RunsTab({ clientId, firmId, openDoc }:
                           <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(slips.reduce((sum, s) => sum + s.pt_paise, 0))}</td>
                           <td className="py-1.5 px-2 font-mono text-amber-600">{fmt(slips.reduce((sum, s) => sum + s.tds_paise, 0))}</td>
                           <td className="py-1.5 px-2 font-mono text-emerald-600">{fmt(r.total_net_paise)}</td>
+                          <td className="py-1.5 px-2" />
                         </tr>
                       </tfoot>
                     </table>

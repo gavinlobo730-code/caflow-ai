@@ -3,7 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Pencil, Check, X, Download } from "lucide-react";
-import * as XLSX from "xlsx";
+// xlsx is fetched by the export click below and is NOT imported here: a static
+// `import * as XLSX from "xlsx"` put SheetJS (135 KB gzip) in this page's first
+// load for a button most visits never press. Namespace object, never `.default`
+// (scripts/a-dynamic-xlsx-import-has-no-default.test.ts); the rule that no file
+// imports it statically is scripts/the-spreadsheet-library-is-not-in-the-first-load.test.ts.
 import { Card, CardContent } from "@/components/ui/card";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
@@ -170,7 +174,14 @@ export default function BudgetPage() {
     return ((Math.abs(actual - budget) / Math.abs(budget)) * 100).toFixed(1) + "%";
   }
 
-  function exportXlsx() {
+  async function exportXlsx() {
+    let XLSX: typeof import("xlsx");
+    try {
+      XLSX = await import("xlsx");
+    } catch {
+      setError("Could not load the Excel writer. Check your connection and try again.");
+      return;
+    }
     // A budget nobody has set is an EMPTY cell, not a zero — `moneyCell(null)`
     // — because a variance against an unset budget is not a variance.
     const money = ["Budget (₹)", ...quarterLabels.map(q => `${q} Actual (₹)`),
@@ -391,7 +402,7 @@ function BudgetTable({
                             if (e.key === "Enter") onConfirmEdit(row.account_id);
                             if (e.key === "Escape") onCancelEdit();
                           }}
-                          className="w-28 px-2 py-1 text-xs border border-blue-400 rounded focus:outline-none text-right"
+                          className="w-28 px-2 py-1 text-xs border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-brand text-right"
                           placeholder="₹ amount"
                         />
                         <button

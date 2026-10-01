@@ -1,6 +1,7 @@
 "use client";
 
 import { WorkspaceTopBar } from "@/components/shell/WorkspaceTopBar";
+import { MAIN_CONTENT_ID } from "@/components/shell/SkipToContent";
 
 /**
  * The firm-level shell: a bar across the top, and the page below it at full
@@ -26,7 +27,10 @@ export function WorkspaceShell({
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-ps-bg">
       <WorkspaceTopBar onOpenSearch={onOpenSearch} />
-      <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
+      {/* The skip link's target. `tabIndex={-1}` so a jump to it moves focus
+          here, `outline-none` because it is a landmark and not a control —
+          both explained at SkipToContent. */}
+      <main id={MAIN_CONTENT_ID} tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto outline-none">{children}</main>
     </div>
   );
 }

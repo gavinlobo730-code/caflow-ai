@@ -22,7 +22,8 @@ import { Skeleton, TableSkeleton, TransactionListSkeleton } from "@/components/u
 import type { Column, FilterDef } from "@/lib/table/types";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
-import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
+import CsvImportModal from "@/components/LazyCsvImportModal";
+import type { ImportRow, ReferenceResolver } from "@/components/CsvImportModal";
 import AllocateReceiptModal from "@/components/sales/AllocateReceiptModal";
 import SalesCycleTab from "@/components/sales/SalesCycleTab";
 import { openedAt } from "@/lib/accounting/sourceDocument";

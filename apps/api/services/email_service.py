@@ -3,7 +3,9 @@ Email delivery via Resend API.
 All transactional emails for task lifecycle, invoice, compliance, and onboarding events.
 """
 import os
+import re
 import logging
+from email.utils import parseaddr
 from typing import Optional
 
 from domain.branding import email_template
@@ -12,6 +14,81 @@ from domain.money_text import rupees_paise
 _logger = logging.getLogger("caflow.email")
 _RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 _FROM_EMAIL = os.environ.get("EMAIL_FROM", "PracticeSync AI <noreply@caflow.ai>")
+
+
+# ── Who a mail is FROM and where a reply GOES (practice_management-04) ────────
+#
+# Every send path used one sender, `PracticeSync AI <noreply@caflow.ai>`, and no
+# path set a Reply-To — so a client answering an engagement letter wrote to an
+# address nobody reads. Two things fix that, and they are separate:
+#
+#   * the DISPLAY NAME says whose mail this is. The ADDRESS stays the verified
+#     sending address: a per-firm sending domain with DKIM needs DNS access on
+#     each firm's side and is a later step, not something code can do.
+#   * the REPLY-TO says where the answer goes.
+#
+# WHOSE NAME AND WHOSE ADDRESS IS DECIDED BY WHO THE SENDER IS, not by who
+# pressed the button. An engagement letter is the PRACTICE writing to its own
+# client, so both are the practice's. An invoice, a statement and a payment
+# reminder are the practice sending on a CLIENT's behalf to the CLIENT's
+# customer (SALES-13): the supplier is the client, the practice is not a party to
+# the debt, and a customer who hits Reply on "Invoice INV/001 from Acme Traders"
+# and finds a chartered accountant in the To line has been told who their
+# supplier's accountant is. Those three take the CLIENT's name and the CLIENT's
+# contact address, and where the client has no address on record they set NO
+# Reply-To — the status quo — rather than pointing the answer at the wrong party.
+# Callers pass both explicitly; this module never decides whose they are.
+
+# Characters that would break or spoof a header: controls, angle brackets and
+# quotes (which end the name), backslash, the list separators — and `@`, because a
+# display name containing an address ("victim@bank.test <noreply@...>") is shown
+# by many mail clients as the sender, which is display-name spoofing. The name is
+# typed by practice staff, so this is a backstop and not an accusation.
+_UNSAFE_IN_DISPLAY_NAME = re.compile(r'[\x00-\x1f\x7f<>"\\,;@]')
+_MAX_DISPLAY_NAME = 78
+
+
+def _sender_address() -> str:
+    """The bare address of EMAIL_FROM — the one thing a display name never changes."""
+    address = parseaddr(_FROM_EMAIL)[1]
+    return address or _FROM_EMAIL
+
+
+def from_header(sender_name: Optional[str] = None) -> str:
+    """The `from` field: EMAIL_FROM itself, or its address under `sender_name`.
+
+    No name, or one that is empty once made safe, is the configured sender
+    exactly as before — a mail is never sent "from" a blank.
+    """
+    name = re.sub(r"\s+", " ", _UNSAFE_IN_DISPLAY_NAME.sub(" ", sender_name or "")).strip()
+    if not name:
+        return _FROM_EMAIL
+    return f"{name[:_MAX_DISPLAY_NAME].rstrip()} <{_sender_address()}>"
+
+
+def reply_to_header(address: Optional[str]) -> Optional[str]:
+    """One usable address, or None. An unusable one is DROPPED, never sent:
+    a malformed Reply-To can make the provider refuse the whole mail."""
+    if not address or not str(address).strip():
+        return None
+    try:
+        from email_validator import validate_email
+        checked = validate_email(str(address).strip(), check_deliverability=False)
+        return getattr(checked, "normalized", None) or getattr(checked, "email", None)
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
+def _envelope(to: str, subject: str, html: str,
+              sender_name: Optional[str], reply_to: Optional[str]) -> dict:
+    """The Resend JSON shared by both transports, so a header added to one
+    cannot be missing from the other."""
+    payload: dict = {"from": from_header(sender_name), "to": [to],
+                     "subject": subject, "html": html}
+    cleaned = reply_to_header(reply_to)
+    if cleaned:
+        payload["reply_to"] = cleaned
+    return payload
 
 # Single, non-technical message shown to end users for ANY email-delivery failure.
 # The true cause (missing/invalid API key, unverified sending domain, provider
@@ -51,12 +128,18 @@ def _log_provider_error(resp, to: str, subject: str) -> None:
     )
 
 
-def _send(to: str, subject: str, html: str) -> bool:
+def _send(to: str, subject: str, html: str, *,
+          sender_name: Optional[str] = None,
+          reply_to: Optional[str] = None) -> bool:
     """
     Send email via Resend. Returns True on success, False on failure (non-fatal).
 
     Every failure is logged in full server-side; callers must surface only a
     generic, non-technical message to end users (see GENERIC_SEND_FAILURE_MESSAGE).
+
+    `sender_name` and `reply_to` are optional and default to the configured
+    sender with no Reply-To, which is what every internal notification (task
+    assigned, escalation, firm invite) still sends.
     """
     if not _RESEND_API_KEY:
         _logger.warning(
@@ -69,7 +152,7 @@ def _send(to: str, subject: str, html: str) -> bool:
         resp = httpx.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {_RESEND_API_KEY}", "Content-Type": "application/json"},
-            json={"from": _FROM_EMAIL, "to": [to], "subject": subject, "html": html},
+            json=_envelope(to, subject, html, sender_name, reply_to),
             timeout=10,
         )
         if resp.status_code in (200, 201):
@@ -243,6 +326,9 @@ def _send_with_attachment(
     html: str,
     attachment_bytes: bytes,
     attachment_filename: str,
+    *,
+    sender_name: Optional[str] = None,
+    reply_to: Optional[str] = None,
 ) -> tuple[bool, Optional[str]]:
     """
     Send an email with a binary attachment via Resend.
@@ -257,18 +343,13 @@ def _send_with_attachment(
         return False, None
     try:
         import httpx
-        payload = {
-            "from": _FROM_EMAIL,
-            "to": [to],
-            "subject": subject,
-            "html": html,
-            "attachments": [
-                {
-                    "filename": attachment_filename,
-                    "content": base64.b64encode(attachment_bytes).decode(),
-                }
-            ],
-        }
+        payload = _envelope(to, subject, html, sender_name, reply_to)
+        payload["attachments"] = [
+            {
+                "filename": attachment_filename,
+                "content": base64.b64encode(attachment_bytes).decode(),
+            }
+        ]
         resp = httpx.post(
             "https://api.resend.com/emails",
             headers={
@@ -311,6 +392,9 @@ def send_invoice_to_customer(
     total_paise: int,
     pdf_bytes: bytes,
     pdf_filename: str,
+    *,
+    sender_name: Optional[str] = None,
+    reply_to: Optional[str] = None,
 ) -> tuple[bool, Optional[str]]:
     """
     Send a GST tax invoice PDF to a customer by email via Resend.
@@ -320,6 +404,12 @@ def send_invoice_to_customer(
     this mail goes from the client to the client's customer — the same boundary
     `build_sales_invoice_pdf` holds for `branding` and `layout`. A client
     wanting their own wording needs their own store, which is a migration.
+
+    `sender_name` and `reply_to` are the CLIENT's (the supplier's) display name
+    and contact address, for the same reason: a customer replying to this mail
+    is asking the SUPPLIER about the invoice. Pass neither where the client has
+    no name or address on record — the mail then goes exactly as it always has,
+    and never under the practice's.
     """
     subject = f"Invoice {invoice_no} from {firm_name}"
     amount_str = _fmt_rupees(total_paise)
@@ -337,7 +427,8 @@ def send_invoice_to_customer(
     <p>Thank you for your business.</p>
     <p>Regards,<br/><strong>{firm_name}</strong></p>
     """
-    return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename)
+    return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename,
+                                 sender_name=sender_name, reply_to=reply_to)
 
 
 def send_payment_reminder_to_customer(
@@ -355,6 +446,9 @@ def send_payment_reminder_to_customer(
     reminder_number: int,
     pdf_bytes: Optional[bytes] = None,
     pdf_filename: Optional[str] = None,
+    *,
+    sender_name: Optional[str] = None,
+    reply_to: Optional[str] = None,
 ) -> tuple[bool, Optional[str]]:
     """
     Customer-facing overdue payment reminder (Phase 4.2). Tone escalates with the
@@ -364,7 +458,8 @@ def send_payment_reminder_to_customer(
     This is a COLLECTIONS communication only — it posts no journal and changes no
     accounting figure.
 
-    NO FIRM TEMPLATE, for the same reason as the invoice mail above.
+    NO FIRM TEMPLATE, for the same reason as the invoice mail above — and
+    `sender_name` / `reply_to` are the CLIENT's, for the same reason too.
     """
     amount_str = _fmt_rupees(max(outstanding_paise, 0))
     if reminder_number <= 1:
@@ -393,8 +488,9 @@ def send_payment_reminder_to_customer(
     <p>Regards,<br/><strong>{firm_name}</strong></p>
     """
     if pdf_bytes and pdf_filename:
-        return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename)
-    return (_send(to, subject, html), None)
+        return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename,
+                                     sender_name=sender_name, reply_to=reply_to)
+    return (_send(to, subject, html, sender_name=sender_name, reply_to=reply_to), None)
 
 
 def send_engagement_letter(
@@ -408,9 +504,18 @@ def send_engagement_letter(
     pdf_filename: Optional[str] = None,
     sign_url: Optional[str] = None,
     firm_id: Optional[str] = None,
+    *,
+    sender_name: Optional[str] = None,
+    reply_to: Optional[str] = None,
 ) -> tuple[bool, Optional[str]]:
     """
     Email an engagement letter to the prospective client.
+
+    `sender_name` and `reply_to` are the PRACTICE's display name and contact
+    address (practice_management-04): the practice is the sender here, so a
+    client who answers the letter writes to the firm and not to a no-reply
+    address. Both are optional — without them the mail goes from the configured
+    sender with no Reply-To, which is what it always did.
 
     The rendered letter is shown inline in the email body; when a PDF is supplied
     it is also attached for the client's records (CGST Act Section 31 — written
@@ -478,8 +583,9 @@ def send_engagement_letter(
         html = intro_html + "<hr/>" + (letter_html or "") + closing
 
     if pdf_bytes and pdf_filename:
-        return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename)
-    return (_send(to, subject, html), None)
+        return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename,
+                                     sender_name=sender_name, reply_to=reply_to)
+    return (_send(to, subject, html, sender_name=sender_name, reply_to=reply_to), None)
 
 
 def send_statement_to_customer(
@@ -496,10 +602,17 @@ def send_statement_to_customer(
     closing_balance_paise: int,
     pdf_bytes: bytes,
     pdf_filename: str,
+    *,
+    sender_name: Optional[str] = None,
+    reply_to: Optional[str] = None,
 ) -> tuple[bool, Optional[str]]:
     """
     Email a customer statement of account PDF via Resend (Phase 4.1).
     Returns (success, provider_message_id). Reuses _send_with_attachment.
+
+    `sender_name` / `reply_to` are the CLIENT's, as on the invoice mail: the
+    customer owes the client, and a question about the statement is the
+    client's to answer.
     """
     subject = f"Statement of Account from {firm_name}"
     html = f"""
@@ -514,4 +627,5 @@ def send_statement_to_customer(
     If you have any queries, please contact us.</p>
     <p>Regards,<br/><strong>{firm_name}</strong></p>
     """
-    return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename)
+    return _send_with_attachment(to, subject, html, pdf_bytes, pdf_filename,
+                                 sender_name=sender_name, reply_to=reply_to)

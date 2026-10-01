@@ -405,7 +405,26 @@ def _customer_for(db, firm_id: str, customer_id: Optional[str]) -> dict:
         return {}
 
 
-def _client_supplier_name(db, firm_id: str, client_id) -> str:
+def _client_supplier(db, firm_id: str, client_id) -> dict:
+    """The CLIENT row a mail to their customer is written from — name and contact.
+
+    ONE read serves the name in the body and the From display name and Reply-To
+    on the header (practice_management-04), because a reminder sweep sends many
+    of these and every extra read is a Singapore-to-Mumbai round trip. A missing
+    client, or a read that fails, is an empty dict: the mail then carries the
+    neutral word and the default sender, never the practice's.
+    """
+    if not db or not client_id:
+        return {}
+    try:
+        return (db.table("clients").select("legal_name, client_name, email")
+                .eq("id", client_id).eq("firm_id", firm_id)
+                .maybe_single().execute()).data or {}
+    except Exception:                       # noqa: BLE001 — see the docstring
+        return {}
+
+
+def _client_supplier_name(db, firm_id: str, client_id, supplier: Optional[dict] = None) -> str:
     """The name the CLIENT supplies under, for a mail to their customer.
 
     `legal_name` first, then `client_name` — the preference
@@ -413,15 +432,11 @@ def _client_supplier_name(db, firm_id: str, client_id) -> str:
     invoice this reminder attaches, so the covering mail agrees with the
     document. A failure falls back to a neutral word rather than to the
     practice's name: no name at all is better than the wrong party's.
+
+    `supplier` is the row `_client_supplier` already read, when the caller has
+    one, so the name and the Reply-To do not cost two reads.
     """
-    if not db or not client_id:
-        return "Your supplier"
-    try:
-        row = (db.table("clients").select("legal_name, client_name")
-               .eq("id", client_id).eq("firm_id", firm_id)
-               .maybe_single().execute()).data or {}
-    except Exception:                       # noqa: BLE001 — see the docstring
-        return "Your supplier"
+    row = supplier if supplier is not None else _client_supplier(db, firm_id, client_id)
     return row.get("legal_name") or row.get("client_name") or "Your supplier"
 
 
@@ -462,14 +477,23 @@ def _dispatch_invoice_reminder(db, firm_id: str, inv: dict, customer: dict,
     # practice on a mail to the client's own customer misstates who is owed.
     # `_client_supplier_name` applies the same `legal_name` preference the PDF
     # this mail attaches already uses.
-    firm_name = _client_supplier_name(db, firm_id, inv.get("client_id"))
+    #
+    # The same client row gives the From display name and the Reply-To
+    # (practice_management-04): a customer answering a reminder is talking to
+    # the SUPPLIER. The display name is applied only where the client HAS a
+    # name — the neutral "Your supplier" is body text, never a header — and a
+    # client with no address on record sets no Reply-To at all.
+    supplier = _client_supplier(db, firm_id, inv.get("client_id"))
+    firm_name = _client_supplier_name(db, firm_id, inv.get("client_id"), supplier=supplier)
     success, provider = send_payment_reminder_to_customer(
         to=to_email, customer_name=(customer or {}).get("name") or "Customer",
         firm_name=firm_name, invoice_no=inv.get("invoice_no", ""),
         invoice_date=str(inv.get("invoice_date", ""))[:10],
         due_date=str(inv["due_date"])[:10] if inv.get("due_date") else None,
         outstanding_paise=m["outstanding_paise"], reminder_number=reminder_number,
-        pdf_bytes=pdf_bytes, pdf_filename=pdf_name)
+        pdf_bytes=pdf_bytes, pdf_filename=pdf_name,
+        sender_name=supplier.get("legal_name") or supplier.get("client_name"),
+        reply_to=supplier.get("email"))
 
     now_iso = datetime.now(timezone.utc).isoformat()
     if delivery_id:

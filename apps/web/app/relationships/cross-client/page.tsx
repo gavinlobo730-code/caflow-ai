@@ -131,7 +131,7 @@ export default function CrossClientMatchesPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
-            className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-brand"
+            className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 placeholder:text-ps-hint focus:outline-none focus:border-brand"
             placeholder="Search entity name…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}

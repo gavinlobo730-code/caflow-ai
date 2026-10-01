@@ -16,7 +16,8 @@ import {
 } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { filterClients } from "@/lib/clients/search";
-import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import CsvImportModal from "@/components/LazyCsvImportModal";
+import type { ImportRow } from "@/components/CsvImportModal";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { getSupabaseClient } from "@/lib/supabase/client";

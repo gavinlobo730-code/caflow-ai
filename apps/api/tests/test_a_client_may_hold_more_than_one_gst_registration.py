@@ -339,8 +339,11 @@ def test_the_compute_paths_take_a_gstin_and_default_to_the_primary():
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef):
             continue
+        # ANY from-books request, not one class's spelling: GSTR-1's endpoint
+        # takes `GSTR1FromBooksRequest` (a subclass carrying its amendments
+        # switch, gst-33) and is exactly as bound by this rule as the other two.
         takes_from_books = any(
-            isinstance(a.annotation, ast.Name) and a.annotation.id == "FromBooksRequest"
+            isinstance(a.annotation, ast.Name) and a.annotation.id.endswith("FromBooksRequest")
             for a in node.args.args if a.annotation is not None)
         if not takes_from_books:
             continue

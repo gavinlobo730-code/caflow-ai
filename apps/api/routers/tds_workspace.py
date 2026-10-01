@@ -82,6 +82,33 @@ def _visible_or_none(current_user: dict, rec: Optional[dict]) -> Optional[dict]:
     return rec
 
 
+def _could_not(exc: Exception, action: str):
+    """The answer for a handler whose body raised something nobody anticipated.
+
+    WHAT THIS REPLACES
+        `return api_response(False, None, str(e))` at twelve sites. For a
+        PostgREST failure `str(e)` is the error DICT — table, column, constraint
+        and hint — handed to a CA inside an HTTP 200, which is database text
+        nobody asked to publish and nothing they can act on. Only some of the
+        twelve logged the cause at all.
+
+    WHAT IT DOES
+        Logs the exception with its traceback (every site, now) and answers with
+        a sentence naming the ACTION. A database refusal a CA can act on — a
+        duplicate, a value the schema forbids — is worded by
+        `core.exceptions.unhandled_failure`, the same speaker `create_return`
+        already uses and `main.py` applies to every uncaught exception, which
+        stays silent (returns None) for anything it has no honest sentence for.
+        There is deliberately no second wording table here.
+    """
+    _logger.error("caflow.tds_workspace: could not %s", action, exc_info=exc)
+    from core.exceptions import unhandled_failure
+    spoken = unhandled_failure(exc)
+    return api_response(False, None, spoken[1] if spoken else (
+        f"Could not {action}. The cause has been logged; please try again, "
+        f"and report it if it keeps failing."))
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _tds_return_due_date(quarter: str, fy: str) -> str:
@@ -397,7 +424,7 @@ def tds_dashboard(
         })
     except Exception as e:
         _logger.exception("tds_dashboard error")
-        return api_response(False, None, str(e))
+        return _could_not(e, "load the TDS dashboard")
 
 
 @router.get("/deductions")
@@ -427,7 +454,7 @@ def list_deductions(
 
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return _could_not(e, "list the TDS deductions")
 
 
 # ── Deductions a CA types in ─────────────────────────────────────────────────
@@ -846,7 +873,7 @@ def deposit_due(
         raise
     except Exception as e:
         _logger.exception("caflow.tds.deposit_due failed")
-        return api_response(False, None, str(e))
+        return _could_not(e, "build the TDS deposit worksheet")
 
 
 @router.get("/challans")
@@ -881,7 +908,7 @@ def list_challans(
             rows = q.range(offset, offset + limit - 1).execute().data or []
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return _could_not(e, "list the TDS challans")
 
 
 @router.post("/challans")
@@ -935,7 +962,7 @@ def create_challan(
             "financial_year": body.financial_year,
             "quarter": body.quarter,
             "status": "deposited",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
         if _USE_MOCK:
@@ -956,7 +983,7 @@ def create_challan(
     except HTTPException:
         raise
     except Exception as e:
-        return api_response(False, None, str(e))
+        return _could_not(e, "record the TDS challan")
 
 
 @router.get("/challans/{challan_id}")
@@ -975,7 +1002,7 @@ def get_challan(challan_id: str, current_user: dict = Depends(rbac("tds", "read"
             return api_response(False, None, "Not found")
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return _could_not(e, "read the TDS challan")
 
 
 @router.get("/returns")
@@ -1008,7 +1035,7 @@ def list_returns(
                 r.get("return_type") or "", r.get("financial_year") or "")
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return _could_not(e, "list the TDS returns")
 
 
 #: The statement KIND each stored routing key is, so a sentence about a return
@@ -1241,7 +1268,7 @@ def create_return(
             # disagree about which quarter this is.
             "quarter_end": _tds_quarter_end(body.quarter, body.financial_year),
             "due_date": _tds_return_due_date(body.quarter, body.financial_year),
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         # tds_returns has no deductee_details column (migration 037) — fvu_json
         # is the real holder for deductee-level detail. Only set it when the
@@ -1372,7 +1399,7 @@ def update_return_status(
                     + " and ".join(problems) + ". Resubmit with "
                     "acknowledge_incomplete=true to record it anyway.")
 
-        now_iso = datetime.utcnow().isoformat()
+        now_iso = datetime.now(timezone.utc).isoformat()
         update_payload: dict = {"status": body.status}
         if body.status == "ca_approved":
             update_payload["ca_approved_by"] = current_user.get("id")
@@ -1402,7 +1429,7 @@ def update_return_status(
             )
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return _could_not(e, "update the TDS return status")
 
 
 @router.get("/certificates")
@@ -1431,7 +1458,7 @@ def list_certificates(
                 for r in rows]
         return api_response(True, rows)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return _could_not(e, "list the TDS certificates")
 
 
 @router.post("/certificates")
@@ -1479,7 +1506,7 @@ def create_certificate(
             "tds_deducted_paise": body.tds_amount_paise,
             "section": body.section,
             "status": "pending",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         # THE FORM'S NAME IN ITS OWN PERIOD, derived rather than stored — the
         # same posture the register takes with return_type. From 01-04-2026
@@ -1502,7 +1529,7 @@ def create_certificate(
     except HTTPException:
         raise
     except Exception as e:
-        return api_response(False, None, str(e))
+        return _could_not(e, "record the TDS certificate")
 
 
 def _register_rows_for_fy(firm_id: str, client_id: str, fy: str) -> list[dict]:
@@ -1715,7 +1742,7 @@ def upload_form26as(
             "status": "reconciled",
             "created_by": current_user.get("id"),
             "uploaded_by": current_user.get("id"),
-            "uploaded_at": datetime.utcnow().isoformat(),
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
             # Shared table, different feature (migration 291). Without this the
             # row lands in the 26AS page's Upload History as a spinner that
             # never resolves — parse_status defaults to 'pending' and this path
@@ -1735,7 +1762,7 @@ def upload_form26as(
     except HTTPException:
         raise
     except Exception as e:
-        return api_response(False, None, str(e))
+        return _could_not(e, "reconcile the Form 26AS upload")
 
 
 @router.get("/form26as/{upload_id}")
@@ -1754,4 +1781,4 @@ def get_form26as(upload_id: str, current_user: dict = Depends(rbac("tds", "read"
             return api_response(False, None, "Not found")
         return api_response(True, rec)
     except Exception as e:
-        return api_response(False, None, str(e))
+        return _could_not(e, "read the Form 26AS reconciliation")

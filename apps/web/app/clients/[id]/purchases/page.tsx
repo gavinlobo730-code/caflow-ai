@@ -38,7 +38,8 @@ import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { Combobox } from "@/components/ui/combobox";
-import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
+import CsvImportModal from "@/components/LazyCsvImportModal";
+import type { ImportRow, ReferenceResolver } from "@/components/CsvImportModal";
 import {
   buildVendors, VENDOR_IMPORT_COLUMNS, buildPurchaseBills, PURCHASE_BILL_IMPORT_COLUMNS,
   buildPurchaseDebitNotes, PURCHASE_DEBIT_NOTE_IMPORT_COLUMNS,
