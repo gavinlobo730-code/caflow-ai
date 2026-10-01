@@ -174,6 +174,17 @@ services:
       - key: ENABLE_SCHEDULER
         value: "true"
 
+      # --- The practice's own mail -------------------------------------------
+      # OFF unless this is set to true (or 1, yes, on) IN THE DASHBOARD. It is the
+      # one firm-wide switch over the mail PracticeSync sends on its own: the
+      # daily task, deadline and escalation notices to staff, an assignment, a
+      # client's portal message, and a document request or a message from the
+      # accountant to a client's portal contact. Unset is OFF, which is what the
+      # product did before that mail existed; in-app notifications are unaffected.
+      # It is `sync: false` so a blueprint sync never switches it on by itself.
+      - key: PRACTICE_MAIL_ENABLED
+        sync: false
+
       # --- Demo -------------------------------------------------------------
       # ON — reversed from the original default by the owner (2026-08-29).
       #

@@ -22,6 +22,14 @@ def _passbook_off_by_default(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _practice_mail_is_on_for_the_suite(monkeypatch):
+    """Production leaves PRACTICE_MAIL_ENABLED unset, which is OFF. The mail tests
+    exercise the mail itself, so they run with it on; the tests of the switch
+    delete the variable inside the test body, which runs after this fixture."""
+    monkeypatch.setenv("PRACTICE_MAIL_ENABLED", "true")
+
+
+@pytest.fixture(autouse=True)
 def _ai_rate_limit_windows_start_empty():
     """The limiter's windows are process-wide. Without this, the dozen tests that
     upload an invoice for the same firm id would exhaust the extraction bucket

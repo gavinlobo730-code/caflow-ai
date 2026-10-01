@@ -202,15 +202,18 @@ class EscalationService:
         # unchanged.
         try:
             from services import practice_mail_service
-            practice_mail_service.send_escalation_mails(firm_id, mail_items)
-            open_tasks = task_repo.find_all(firm_id=firm_id, status=None)
-            # A task this very sweep reassigned already told its new owner it was
-            # theirs; saying "and it is overdue" in the same minute is two mails
-            # about one thing.
-            just_handed_over = {str(i["task"]["id"]) for i in mail_items
-                                if i.get("kind") == "reassigned"}
-            practice_mail_service.send_overdue_task_mails(
-                firm_id, [t for t in open_tasks if str(t.get("id")) not in just_handed_over])
+            # While the firm-wide switch is off nothing below can send, and the
+            # second half reads every open task in the firm to find that out.
+            if practice_mail_service.mail_enabled():
+                practice_mail_service.send_escalation_mails(firm_id, mail_items)
+                open_tasks = task_repo.find_all(firm_id=firm_id, status=None)
+                # A task this very sweep reassigned already told its new owner it was
+                # theirs; saying "and it is overdue" in the same minute is two mails
+                # about one thing.
+                just_handed_over = {str(i["task"]["id"]) for i in mail_items
+                                    if i.get("kind") == "reassigned"}
+                practice_mail_service.send_overdue_task_mails(
+                    firm_id, [t for t in open_tasks if str(t.get("id")) not in just_handed_over])
         except Exception as exc:  # noqa: BLE001 - mail is best-effort
             capture_soft_failure(exc, operation="escalation.overdue_mail", firm_id=firm_id)
 
