@@ -38,6 +38,19 @@ export interface TDSDeductee {
    *  this field. Optional only because a payload saved before TDS-17 has no
    *  such key. */
   section_1961?: string;
+  /** TDS-31. The s.393 payment code this row carries on a Form 138/140/144
+   *  statement (Income-tax Act 2025, from FY 2026-27), where the Protean
+   *  specification answers it. Null on a 1961-Act statement — which asks for
+   *  none — and on a row the table does not answer, and `payment_code_gap`
+   *  says which of the two. Optional only because a payload saved before the
+   *  field existed has no such key, and that is NOT a row with nothing held. */
+  payment_code?: string | null;
+  /** WHY a 2025-Act row has no code, in the server's words. Null both where a
+   *  code is held and where the period asks for none. */
+  payment_code_gap?: string | null;
+  /** A code held on a STATED DEFAULT (s.192's 1002 assumes a non-government
+   *  deductor). Shown beside the code, not hidden behind it. */
+  payment_code_assumption?: string | null;
   nature_of_payment: string;
   payment_date: string;
   payment_amount_paise: number;

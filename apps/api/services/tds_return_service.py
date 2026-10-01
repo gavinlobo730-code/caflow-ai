@@ -63,6 +63,7 @@ from __future__ import annotations
 import logging
 
 from domain.tds import vocabulary as _vocabulary
+from domain.tds import deductee_payment_code as _deductee_payment_code
 
 from core.ist_clock import month_end_date
 from domain.tds import challan_mapping
@@ -331,6 +332,34 @@ def _section_labels(fy: str, sections) -> tuple[dict[str, str], list[str]]:
     return labels, gaps
 
 
+def _payment_codes(fy: str, deductees) -> tuple[list[dict], list[str]]:
+    """The s.393 payment code for each deductee row, and what the statement
+    must say about the rows that have none (TDS-31).
+
+    ONE ANSWER PER ROW, in row order, as the three keys the emission dict
+    carries: `payment_code`, `payment_code_gap` and `payment_code_assumption`.
+    ALWAYS PRESENT AND NULL WHERE NOTHING APPLIES — a 1961-Act period carries
+    no payment code at all, and an absent key and a null key read the same to
+    a screen and are different bugs (`journal_source`'s discipline): null is
+    "this period asks for none", absent would be "this build did not say".
+
+    `d.section` is the STORED routing key and is what the code is asked of,
+    never the label the row is printed under — s.393(1) has no reverse, so a
+    code keyed on the label could not tell 194C from 194J. The deductee's PAN
+    travels with it because s.194C's two rows split on the contractor's class.
+    See `domain/tds/deductee_payment_code.py`.
+    """
+    answers = [_deductee_payment_code.for_line(fy, d.section,
+                                               deductee_pan=d.deductee_pan)
+               for d in deductees]
+    per_row = [{"payment_code": a.code,
+                "payment_code_gap": a.gap,
+                "payment_code_assumption": a.assumption} for a in answers]
+    notes = _deductee_payment_code.statement_notes(
+        [(d.section, a) for d, a in zip(deductees, answers)])
+    return per_row, notes
+
+
 def _accumulate_note_totals(rows, bucket: dict) -> None:
     """Sum the ISSUED, undeleted notes' taxable value per bill.
 
@@ -526,6 +555,9 @@ def tds_26q_from_books(
         deductees=deductees, challans=[dict(c) for c in challans],
     )
     _sec_labels, _sec_gaps = _section_labels(fy, [d.section for d in deductees])
+    # TDS-31: the numeric payment code each row of a 2025-Act statement
+    # carries, asked of the rows the PAYLOAD holds (26Q drops §192 rows).
+    _pay_rows, _pay_notes = _payment_codes(fy, payload.deductees)
 
     tds_payable_id = _find_account_by_exact_name(db, firm_id, client_id, "TDS Payable")
     journal_ids = [e["journal_entry_id"] for e in events if e.get("journal_entry_id")]
@@ -540,7 +572,8 @@ def tds_26q_from_books(
         "form": _vocabulary.statement_form(_vocabulary.RESIDENT_NON_SALARY, fy_label=fy),
         "act": _vocabulary.vocabulary_for(fy).act_name,
         "statutory_gaps": ([g.note for g in _vocabulary.vocabulary_for(fy).gaps()]
-                           + _sec_gaps + _credit_moved_gaps(db, firm_id, events)),
+                           + _pay_notes + _sec_gaps
+                           + _credit_moved_gaps(db, firm_id, events)),
         "source": "posted_purchase_bills_and_advances",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
@@ -560,6 +593,10 @@ def tds_26q_from_books(
                 # routing key beside it — see _section_labels (TDS-17).
                 "section": _sec_labels.get(d.section, d.section),
                 "section_1961": d.section,
+                # TDS-31: the s.393 payment code (Form 138/140/144 rows),
+                # `payment_code` / `payment_code_gap` / `payment_code_assumption`
+                # — always present, null where a 1961-Act period asks for none.
+                **_pc,
                 "nature_of_payment": d.nature_of_payment,
                 "payment_date": d.payment_date, "payment_amount_paise": d.payment_amount_paise,
                 "tds_rate_pct": d.tds_rate_pct, "tds_deducted_paise": d.tds_deducted_paise,
@@ -573,7 +610,7 @@ def tds_26q_from_books(
                 "is_lower_deduction": d.is_lower_deduction,
                 "lower_deduction_cert": d.lower_deduction_cert,
             }
-            for d in payload.deductees
+            for d, _pc in zip(payload.deductees, _pay_rows)
         ],
         "challans": payload.challans,
         # WHAT THE CHALLAN MAPPING COULD NOT SETTLE. Not a validation error —
@@ -749,6 +786,9 @@ def tds_27q_from_books(
         deductees=deductees, challans=[dict(c) for c in challans],
     )
     _sec_labels, _sec_gaps = _section_labels(fy, [d.section for d in deductees])
+    # TDS-31: the numeric payment code each row of a 2025-Act statement
+    # carries, asked of the rows the PAYLOAD holds (26Q drops §192 rows).
+    _pay_rows, _pay_notes = _payment_codes(fy, payload.deductees)
 
     # THE SAME CONTROL ACCOUNT AS 26Q, and that is not an oversight. §195 tax
     # credits "TDS Payable" like every §194-series deduction — one liability,
@@ -770,7 +810,8 @@ def tds_27q_from_books(
         "form": _vocabulary.statement_form(_vocabulary.NON_RESIDENT, fy_label=fy),
         "act": _vocabulary.vocabulary_for(fy).act_name,
         "statutory_gaps": ([g.note for g in _vocabulary.vocabulary_for(fy).gaps()]
-                           + _sec_gaps + _credit_moved_gaps(db, firm_id, events)),
+                           + _pay_notes + _sec_gaps
+                           + _credit_moved_gaps(db, firm_id, events)),
         "source": "posted_purchase_bills_and_advances",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
@@ -793,6 +834,10 @@ def tds_27q_from_books(
                 # routing key beside it — see _section_labels (TDS-17).
                 "section": _sec_labels.get(d.section, d.section),
                 "section_1961": d.section,
+                # TDS-31: the s.393 payment code (Form 138/140/144 rows),
+                # `payment_code` / `payment_code_gap` / `payment_code_assumption`
+                # — always present, null where a 1961-Act period asks for none.
+                **_pc,
                 "nature_of_payment": d.nature_of_payment,
                 "payment_date": d.payment_date, "payment_amount_paise": d.payment_amount_paise,
                 "tds_rate_pct": d.tds_rate_pct, "tds_deducted_paise": d.tds_deducted_paise,
@@ -803,7 +848,7 @@ def tds_27q_from_books(
                 "surcharge_paise": d.surcharge_paise, "cess_paise": d.cess_paise,
                 "non_deduction_reason": d.non_deduction_reason,
             }
-            for d in payload.deductees
+            for d, _pc in zip(payload.deductees, _pay_rows)
         ],
         "challans": payload.challans,
         "challan_gaps": mapping.gaps,
@@ -906,6 +951,9 @@ def tds_24q_from_books(
         deductees=deductees, challans=[dict(c) for c in challans],
     )
     _sec_labels, _sec_gaps = _section_labels(fy, [d.section for d in deductees])
+    # TDS-31: the numeric payment code each row of a 2025-Act statement
+    # carries, asked of the rows the PAYLOAD holds (26Q drops §192 rows).
+    _pay_rows, _pay_notes = _payment_codes(fy, payload.deductees)
 
     tds_salary_id = _find_account_by_exact_name(db, firm_id, client_id, "TDS Payable - Salary")
     journal_ids = [r["journal_entry_id"] for r in runs if r.get("journal_entry_id")]
@@ -925,6 +973,7 @@ def tds_24q_from_books(
         # they are the people most likely to ask about it.
         "challan_gaps": mapping.gaps,
         "statutory_gaps": ([g.note for g in _vocabulary.vocabulary_for(fy).gaps()]
+                           + _pay_notes
                            # NOT _credit_moved_gaps: 24Q is SALARY (§192), built
                            # from payroll runs. A purchase note cannot reach it,
                            # and this builder has no bill events to ask about.
@@ -948,13 +997,17 @@ def tds_24q_from_books(
                 # routing key beside it — see _section_labels (TDS-17).
                 "section": _sec_labels.get(d.section, d.section),
                 "section_1961": d.section,
+                # TDS-31: the s.393 payment code (Form 138/140/144 rows),
+                # `payment_code` / `payment_code_gap` / `payment_code_assumption`
+                # — always present, null where a 1961-Act period asks for none.
+                **_pc,
                 "nature_of_payment": d.nature_of_payment,
                 "payment_date": d.payment_date, "payment_amount_paise": d.payment_amount_paise,
                 "tds_rate_pct": d.tds_rate_pct, "tds_deducted_paise": d.tds_deducted_paise,
                 "tds_deposited_paise": d.tds_deposited_paise, "challan_no": d.challan_no,
                 "bsr_code": d.bsr_code, "challan_date": d.challan_date,
             }
-            for d in payload.deductees
+            for d, _pc in zip(payload.deductees, _pay_rows)
         ],
         "challans": payload.challans,
         "validation_errors": payload.validation_errors,
