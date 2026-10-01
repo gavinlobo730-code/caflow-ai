@@ -264,7 +264,9 @@ export function PurchaseCreditNoteEditor({
       if (json.success && json.data?.document_url) {
         setDocumentUrl(json.data.document_url as string);
       } else {
-        setError(json.error || "Attachment upload failed.");
+        // A refusal at the door (too large, not an allowed kind) is an HTTP status
+        // with FastAPI's `{detail}` body, not this API's {success,error} envelope.
+        setError(json.error || (typeof json.detail === "string" ? json.detail : null) || "Attachment upload failed.");
       }
     } catch {
       setError("Attachment upload failed.");

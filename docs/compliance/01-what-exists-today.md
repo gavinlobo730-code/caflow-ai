@@ -54,6 +54,30 @@ Six services. **None of them is a government system**, and none of them files
 anything. `ITR_SOFTWARE_PROVIDER_ID` is also declared, and is the exception that
 proves the rule — see §5.
 
+**Sentry is a sub-processor, and this table is where that is recorded** (SECURITY-
+PRIVACY-36). What leaves today is the API's error events, from `apps/api/main.py`
+when `SENTRY_DSN` is set: `send_default_pii=False`, `traces_sample_rate` 0 unless
+`SENTRY_TRACES_SAMPLE_RATE` says otherwise. **The browser SDK is wired in code and
+starts only where `NEXT_PUBLIC_SENTRY_DSN` was built in** (`apps/web/lib/monitoring/`,
+started from the root layout); with no DSN nothing starts and nothing leaves the
+browser. What it may send is fixed to what a practice's screens warrant: errors
+only, scrubbed by shape before sending (`scrub.ts`), no default PII, no tracing
+and **no session replay at all** — a recording of a payroll or bank screen is a
+decision for the owner, not a default, and enabling it means naming the routes
+that must be blocked. That is pinned by
+`apps/web/scripts/the-browser-reports-crashes-without-recording-screens.test.ts`,
+so that turning replay on is a decision and not a regression.
+**The region is NOT recorded here, and that is a human step**: Sentry hosts a
+project in the US or the EU, chosen when the organisation is created, and it is
+visible in the DSN's host (`…ingest.us.sentry.io` or `…ingest.de.sentry.io`) and
+in the organisation settings. Neither is readable from this repository. Nobody
+should write a region in from memory — it decides whether an error event
+containing a client's identifiers (an exception message can carry a GSTIN, a PAN
+or a party name) leaves India, and `06-data-protection-dpdp.md` §5 already names
+Render (Singapore), Groq and Gemini on that footing (Rule 15: permitted by
+default today, a policy risk to monitor). Sentry belongs on the same list once
+somebody has read the region off the DSN.
+
 ## 3. What the product produces
 
 Each row is a real artifact a CA can download or read, computed from the ledger.

@@ -34,7 +34,17 @@ _CONFIG = [
 
 def validate_config() -> dict:
     """Check configuration presence at startup; log a single clear report. Returns a
-    summary dict {missing_required, missing_optional} for tests/health checks."""
+    summary dict {missing_required, missing_optional, security} for tests/health
+    checks.
+
+    `security` is `core.security_posture.validate_security_posture()`: what the
+    process resolved for the two switches that decide whether RLS and MFA are in
+    force (USE_USER_JWT, REQUIRE_MFA), logged at ERROR where production has one
+    off. It lives beside the presence check because the same failure is behind
+    both — a setting that only exists in a dashboard — but it is a separate
+    question: a KEY being present says nothing about a SWITCH being on. It is
+    reported in the readiness payload and never in /health, so a deploy is not
+    failed by a setting."""
     missing_required, missing_optional = [], []
     for name, required, _note in _CONFIG:
         if not os.environ.get(name):
@@ -50,4 +60,11 @@ def validate_config() -> dict:
             "are disabled.", ", ".join(missing_optional))
     if not missing_required and not missing_optional:
         _logger.info("CONFIG: all expected configuration present.")
-    return {"missing_required": missing_required, "missing_optional": missing_optional}
+
+    from core.security_posture import validate_security_posture
+    security = validate_security_posture()
+    return {
+        "missing_required": missing_required,
+        "missing_optional": missing_optional,
+        "security": security,
+    }

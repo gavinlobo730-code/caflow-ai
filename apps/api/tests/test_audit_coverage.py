@@ -172,7 +172,7 @@ class TestDocumentAuditCoverage:
              patch("routers.documents.document_repo", fake_doc_repo):
             upload_document(
                 file=_FakeUpload(),
-                document_type="PAN",
+                document_type="OTHER",
                 client_id="client-1",
                 current_user=USER_MANAGER,
             )

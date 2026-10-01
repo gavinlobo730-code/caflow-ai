@@ -28,7 +28,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from core.authz import can_access_client
 from core.observability import capture_soft_failure
 from core.permissions import rbac
-from domain.reporting.shared_report import BUCKET, ShareRefused, plan_share
+from core.uploads import looks_like, read_limited
+from domain.reporting.shared_report import BUCKET, MAX_BYTES, ShareRefused, plan_share
 from models.common import api_response
 from models.fy import FYLabel
 from services.audit_service import log_event
@@ -70,7 +71,12 @@ def share_report_to_portal(
     if not can_access_client(current_user, client_id):
         raise HTTPException(status_code=404, detail="Client not found")
 
-    content = file.file.read()
+    # Bounded: at most MAX_BYTES + 1 are ever read. plan_share checks the size
+    # too, but only AFTER the whole file was in memory — a 500 MB body was read
+    # and then refused. (SECURITY-PRIVACY-20.)
+    content = read_limited(
+        file, MAX_BYTES,
+        message=f"the workbook is larger than the {MAX_BYTES // (1024 * 1024)} MB limit")
     try:
         plan = plan_share(
             client_id=client_id,
@@ -81,6 +87,11 @@ def share_report_to_portal(
         )
     except ShareRefused as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # plan_share trusts the declared type and the name; the bytes are what a
+    # client's portal will be handed, so they have to be a workbook too.
+    if not looks_like("xlsx", content):
+        raise HTTPException(
+            status_code=422, detail="only an .xlsx workbook can be shared to the portal")
 
     # The mock branch's answer, and the shape the live INSERT below writes.
     # They are deliberately two literals — see the note on the insert.

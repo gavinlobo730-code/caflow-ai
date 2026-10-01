@@ -27,6 +27,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from core.client_ip import client_ip, forwarded_for_evidence
 from models.common import api_response
 # Reuse the canonical helpers so the public path shares the same audit-event and
 # forward-only lead-advance behaviour as the staff path.
@@ -164,11 +165,17 @@ def _firm_name(db, firm_id) -> str:
 
 
 def _client_ip(request: Request) -> Optional[str]:
-    # Render/Cloudflare sit in front of the API, so prefer the forwarded client IP.
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else None
+    """The address recorded beside the signature, as the last proxy we trust saw it.
+
+    SECURITY-PRIVACY-25. This used to be X-Forwarded-For's first entry, which is
+    the one the SIGNER (or anyone holding the link) writes, so the evidence stored
+    next to an e-signature was whatever they chose to type. `core.client_ip`
+    counts from the right, where our own proxies wrote; the raw chain is kept on
+    the signing event as `forwarded_for` (see `sign_letter`) so the real client
+    can still be reconstructed if the hop count turns out to be wrong for this
+    host.
+    """
+    return client_ip(request)
 
 
 def _actor(eng: dict) -> dict:
@@ -237,9 +244,13 @@ def sign_letter(token: str, body: SignBody, request: Request):
         return api_response(False, None, "Could not record your signature. Please try again.")
     eng.update(update)
 
+    # `forwarded_for` is the chain AS RECEIVED and is UNVERIFIED — the left of it
+    # is whatever the caller wrote. It is here so a human can reconstruct the real
+    # client if TRUSTED_PROXY_HOPS is wrong for this host; `ip` is the decision.
     _log_engagement_event(db, eng["id"], eng["firm_id"], "signed", None,
                           {"signed_by_name": update["signed_by_name"],
-                           "ip": update["signed_ip"], "channel": "public_link"})
+                           "ip": update["signed_ip"], "channel": "public_link",
+                           "forwarded_for": forwarded_for_evidence(request)})
     # Forward-only lead advance (never raises). The signer is the linked lead.
     _advance_lead(eng.get("lead_id"), eng["firm_id"], "Engagement Signed", _actor(eng))
     try:

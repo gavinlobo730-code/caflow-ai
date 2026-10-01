@@ -17,10 +17,17 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from models.common import api_response
+from core.client_ip import client_ip
 from core.permissions import rbac
 from services import payment_service
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
+
+#: A gateway's webhook is a few kilobytes of JSON. This route is public and its
+#: body is parsed BEFORE the signature is checked (the providers read the event
+#: type and id out of it), so an unbounded body is an unauthenticated way to make
+#: the process parse and hold whatever it is sent. Well above any real delivery.
+MAX_WEBHOOK_BODY_BYTES = 256 * 1024
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.payments")
@@ -89,8 +96,10 @@ def payment_history(invoice_id: str = Query(...), current_user: dict = Depends(r
 @router.post("/webhook/{provider}")
 async def payment_webhook(provider: str, request: Request):
     """Gateway webhook. Signature-verified, replay-protected and idempotent inside
-    payment_service. A bad signature is recorded and rejected with 400; a verified
-    capture settles via the existing receipt engine exactly once.
+    payment_service. A bad signature is rejected with 400 and leaves a log line, a
+    counter and (at most a capped sample of) an event row — never an audit_log
+    row; past 100 of them a minute from one address it is 429. A verified capture
+    settles via the existing receipt engine exactly once.
 
     THE ONE ROUTE THAT MUST STAY `async def`. A sync route cannot reach the raw
     request body, and the signature is computed over the exact bytes the gateway
@@ -101,11 +110,22 @@ async def payment_webhook(provider: str, request: Request):
     on this worker while a gateway is being talked to.
     """
     db = _require_db()
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > MAX_WEBHOOK_BODY_BYTES:
+        raise HTTPException(status_code=413, detail="Webhook body too large.")
     raw = await request.body()
+    if len(raw) > MAX_WEBHOOK_BODY_BYTES:          # chunked: no Content-Length to go on
+        raise HTTPException(status_code=413, detail="Webhook body too large.")
     headers = {k.lower(): v for k, v in request.headers.items()}
     result = await run_in_threadpool(
-        payment_service.process_webhook, db, provider, headers, raw)
+        payment_service.process_webhook, db, provider, headers, raw, client_ip(request))
     if not result.get("ok"):
+        if result.get("reason") == "rate_limited":
+            # Unsigned requests from one address beyond the window. The gateway
+            # never sees this: a signed delivery is not counted (see
+            # payment_service._refuse_unsigned).
+            raise HTTPException(status_code=429, detail="Too many requests.",
+                                headers={"Retry-After": str(payment_service.UNSIGNED_WINDOW_SECONDS)})
         # Invalid signature (or unprocessable) — do not leak detail.
         raise HTTPException(status_code=400, detail="Webhook rejected.")
     return api_response(True, result)

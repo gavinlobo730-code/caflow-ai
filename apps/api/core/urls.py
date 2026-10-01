@@ -122,3 +122,25 @@ def default_allowed_origins() -> str:
         "http://localhost:3000,http://localhost:3001,"
         f"{frontend_base()},{marketing_base()}"
     )
+
+
+def parse_origins(raw: str) -> list[str]:
+    """A CORS allow-list value as a list of origins.
+
+    Handles comma-separated values, accidental newlines, surrounding quotes,
+    and trailing slashes that would cause silent origin mismatches. Moved here
+    from main.py so the boot report (core/security_posture.py) counts the list
+    with the SAME parse the middleware is built from — two parsers would let
+    "4 origins configured" and "3 origins allowed" both be true.
+    """
+    origins = []
+    for part in raw.replace("\n", ",").replace(";", ",").split(","):
+        o = part.strip().strip('"').strip("'").rstrip("/")
+        if o:
+            origins.append(o)
+    return origins
+
+
+def allowed_origins() -> list[str]:
+    """The origins CORSMiddleware is given: ALLOWED_ORIGINS, else the defaults."""
+    return parse_origins(os.environ.get("ALLOWED_ORIGINS") or default_allowed_origins())

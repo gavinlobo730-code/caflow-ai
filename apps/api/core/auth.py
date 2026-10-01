@@ -6,6 +6,7 @@ Extracts user identity and resolves firm_id from the users table.
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import Header, HTTPException, status, Depends
 import jwt
@@ -197,6 +198,90 @@ def _get_jwks_client() -> PyJWKClient:
     return _jwks_client
 
 
+#: SECURITY-PRIVACY-21. What a token must prove BEYOND "the project's key signed
+#: it". Supabase signs several kinds of token with the same keys — a signed-in
+#: user's access token (aud "authenticated"), the anon and service_role API keys
+#: (no aud, no sub, iss "supabase") and any future audience the project mints —
+#: and `verify_aud=False` with no issuer check accepted every one that carried a
+#: `sub`. The impact was bounded only by portal and employee tokens having no
+#: users row; it was never a designed control.
+_JWT_AUDIENCE = "authenticated"
+#: `sub` is what everything downstream keys on; `exp` is what makes a stolen token
+#: stop working; `iat` is what the session-revocation comparison below reads, and
+#: a token without one used to skip that comparison altogether.
+_JWT_REQUIRED_CLAIMS = ["exp", "sub", "iat"]
+_JWT_ALGORITHMS = ["ES256", "RS256", "HS256"]
+
+
+def expected_jwt_issuer() -> str:
+    """The `iss` a token must carry: this project's own auth endpoint.
+
+    GoTrue signs `{API_EXTERNAL_URL}/auth/v1`, which for a hosted project is
+    `{SUPABASE_URL}/auth/v1` — the same URL `_get_jwks_client` fetches the keys
+    from, so the two cannot disagree about which project is being trusted.
+
+    SUPABASE_JWT_ISSUER overrides it, for a project served from a custom domain
+    where the two differ. It is an escape hatch and not a way to loosen the
+    check: one exact string is still required. Unset is the normal case.
+    """
+    override = os.environ.get("SUPABASE_JWT_ISSUER", "").strip().rstrip("/")
+    if override:
+        return override
+    supabase_url = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+    if not supabase_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Server configuration error: SUPABASE_URL not set",
+        )
+    return f"{supabase_url}/auth/v1"
+
+
+def decode_supabase_jwt(token: str) -> dict:
+    """Verify a Supabase access token and return its claims.
+
+    THE ONE PLACE A TOKEN IS DECODED. `get_current_user` and `get_jwt_user` each
+    carried their own `jwt.decode(..., options={"verify_aud": False})`, so a
+    check added to one would have left the other — the door reached by a caller
+    with no users row yet, which is also where every portal principal comes
+    through — exactly as open as before.
+
+    Verifies, beyond the signature and `exp`: the audience is "authenticated",
+    the issuer is this project's, and `exp`, `sub` and `iat` are present. Every
+    failure is a `jwt.InvalidTokenError` (an absent claim is
+    `MissingRequiredClaimError`, a subclass), so callers keep one `except`.
+    """
+    # PyJWKClient fetches the public key matching the token's kid header, then
+    # verifies the signature using the algorithm declared in the token. This
+    # handles ES256 (ECC P-256), RS256, and HS256 without hardcoding.
+    signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+    return jwt.decode(
+        token,
+        signing_key.key,
+        algorithms=_JWT_ALGORITHMS,
+        audience=_JWT_AUDIENCE,
+        issuer=expected_jwt_issuer(),
+        options={"require": _JWT_REQUIRED_CLAIMS},
+    )
+
+
+def _instant_epoch(value) -> float:
+    """A stored timestamp as POSIX seconds. Raises on anything it cannot read.
+
+    A naive value is read as UTC rather than as the host's local time, which
+    `datetime.timestamp()` would otherwise assume. PostgREST always sends an
+    offset for a timestamptz, so this only matters for a value that arrived some
+    other way — and there it is the reading that cannot move a session's
+    revocation by the host's UTC offset.
+    """
+    if isinstance(value, datetime):
+        moment = value
+    else:
+        moment = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.timestamp()
+
+
 def get_current_user(
     authorization: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),
@@ -237,16 +322,7 @@ def get_current_user(
     token = authorization.removeprefix("Bearer ").strip()
 
     try:
-        # PyJWKClient fetches the public key matching the token's kid header,
-        # then verifies the signature using the algorithm declared in the token.
-        # This handles ES256 (ECC P-256), RS256, and HS256 without hardcoding.
-        signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
-        payload = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["ES256", "RS256", "HS256"],
-            options={"verify_aud": False},
-        )
+        payload = decode_supabase_jwt(token)
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
     except jwt.InvalidTokenError as e:
@@ -290,23 +366,35 @@ def get_current_user(
     # M6 — Session revocation / forced logout: reject any token issued before the
     # account's sessions_revoked_at instant (set by suspend / force-logout / global
     # logout). Compares the JWT 'iat' (issued-at) against the stored timestamp.
+    #
+    # FAILS CLOSED (SECURITY-PRIVACY-21). This used to `except Exception: pass`
+    # around the comparison, on the reasoning that "an unparseable timestamp must
+    # never hard-fail auth" — so a sessions_revoked_at nobody could read let a
+    # token through that the account's own owner had revoked, and silently: the
+    # one request that should have been refused answered 200. A revocation is a
+    # security decision somebody made; a value the code cannot read is not
+    # evidence it was withdrawn. The comparison is also no longer skipped for a
+    # token with no `iat` (now a required claim, but `iat: 0` is falsy and a test
+    # double can omit it): if a revocation exists and the token cannot show when
+    # it was issued, it cannot show it was issued after.
     revoked_at = user_data.get("sessions_revoked_at")
-    token_iat = payload.get("iat")
-    if revoked_at and token_iat:
+    if revoked_at:
         try:
-            from datetime import datetime, timezone
-            revoked_epoch = datetime.fromisoformat(
-                str(revoked_at).replace("Z", "+00:00")
-            ).timestamp()
-            if float(token_iat) < revoked_epoch:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Session revoked. Please sign in again.",
-                )
-        except HTTPException:
-            raise
-        except Exception:
-            pass  # unparseable timestamp must never hard-fail auth
+            revoked_epoch = _instant_epoch(revoked_at)
+            issued_before_revocation = float(payload["iat"]) < revoked_epoch
+        except Exception:                                    # noqa: BLE001
+            _logger.error(
+                "sessions_revoked_at for user %s could not be compared with the "
+                "token's iat; refusing the request", auth_user_id, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Your session could not be verified. Please sign in again.",
+            )
+        if issued_before_revocation:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session revoked. Please sign in again.",
+            )
 
     # M1 — default to least-privileged staff role (not silently Executive) when a
     # row somehow has no role; never silently grant elevated access.
@@ -354,10 +442,7 @@ def get_jwt_user(authorization: Optional[str] = Header(default=None)) -> dict:
 
     token = authorization.removeprefix("Bearer ").strip()
     try:
-        signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
-        payload = jwt.decode(token, signing_key.key,
-                             algorithms=["ES256", "RS256", "HS256"],
-                             options={"verify_aud": False})
+        payload = decode_supabase_jwt(token)
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
     except jwt.InvalidTokenError as e:
