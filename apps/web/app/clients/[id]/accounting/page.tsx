@@ -36,6 +36,7 @@ import { toast } from "@/components/ui/use-toast";
 import { todayLocalISO } from "@/lib/dateMath";
 import { formatIstLabelled } from "@/lib/dates/formatIst";
 import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
+import { VoucherImportButton } from "@/components/accounting/VoucherImport";
 import { PartyBreakdown } from "@/components/accounting/PartyBreakdown";
 import { CostCentresTab } from "@/components/accounting/CostCentresTab";
 import { StatementAnalysisPanel } from "@/components/accounting/StatementAnalysisPanel";
@@ -1214,12 +1215,18 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
               entry belongs on the Journal tab, where the list afterwards is the
               list you can act on. */}
           {!dayBook && (
-            <button
-              onClick={() => router.push(journalEditorHref(clientId, "new"))}
-              className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark flex items-center gap-1"
-            >
-              <Plus size={12} /> New Journal Entry
-            </button>
+            <>
+              {/* A spreadsheet of journals, payments, receipts and contras
+                  (ACC-17). Posts through the same kernel as the editor. */}
+              <VoucherImportButton clientId={clientId} onImported={loadEntries}
+                onSummary={(description) => toast({ title: "Voucher import", description })} />
+              <button
+                onClick={() => router.push(journalEditorHref(clientId, "new"))}
+                className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark flex items-center gap-1"
+              >
+                <Plus size={12} /> New Journal Entry
+              </button>
+            </>
           )}
         </div>
       </div>

@@ -2146,6 +2146,47 @@ export type OpeningDocumentBulkResult = {
   unreconciled_parties: number;
 };
 
+/** One line of a voucher on its way to the voucher import (ACC-17). The date,
+ *  type and account are TEXT — the server reads them. An amount is paise: 0 for a
+ *  blank cell and null for one that is not an amount, so the row still arrives
+ *  and is refused by its number. */
+export type VoucherImportLeg = {
+  row: number;
+  voucher_no: string;
+  date: string;
+  voucher_type: string;
+  account: string;
+  debit_paise: number | null;
+  credit_paise: number | null;
+  narration?: string | null;
+  line_narration?: string | null;
+};
+
+export type VoucherImportVerdict = {
+  voucher_no: string;
+  rows: number[];
+  /** `would_create` only on a dry run. */
+  status: "new" | "would_create" | "already_recorded" | "rejected";
+  problems: string[];
+  entry_date: string | null;
+  entry_type: string | null;
+  total_paise: number;
+  id: string | null;
+};
+
+export type VoucherImportResult = {
+  status: "draft" | "posted";
+  dry_run: boolean;
+  vouchers: number;
+  created: number;
+  would_create: number;
+  already_recorded: number;
+  rejected: number;
+  created_paise: number;
+  would_create_paise: number;
+  results: VoucherImportVerdict[];
+};
+
 export type OpeningDocumentKinds = {
   kinds: { value: string; label: string; party: string; number: string }[];
   /** Why an opening bill contributes nothing to a section 194 FY aggregate. */
@@ -3801,6 +3842,18 @@ export const api = {
     // journal drill-through) now calls getJournalEntry below with the
     // document's own journal_entry_id instead of searching a date window.
     createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
+    /** A spreadsheet of journals, payments, receipts and contras, posted voucher
+     *  by voucher through the one posting kernel (ACC-17). `status` is required
+     *  and has no default — `posted` goes on the books now, `draft` stays off
+     *  them. Send a few vouchers per call: each post is several round trips and
+     *  the browser gives up at 45 seconds without retrying. */
+    importVouchers: (body: {
+      client_id: string;
+      status: "draft" | "posted";
+      legs: VoucherImportLeg[];
+      dry_run?: boolean;
+    }) => request<ApiResp<VoucherImportResult>>("/api/accounting/vouchers/import",
+      { method: "POST", body: JSON.stringify(body) }),
     /* ACC-13, migration 418. Cost centres are a DIMENSION on a journal line —
        they change no figure, no total and no statutory output — so they live
        under their own prefix rather than on /api/accounting, which is the
