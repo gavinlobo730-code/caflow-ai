@@ -209,6 +209,7 @@ export default function JournalEntryPageClient() {
     <div className="p-6 space-y-4">
       <JournalEditor
         accounts={accounts ?? []}
+        clientId={clientId}
         existing={isNew ? null : entry}
         saving={saving}
         serverError={saveError}

@@ -43,6 +43,11 @@ export function AccountLookup(props: {
   ariaLabel?: string;
   className?: string;
   placeholder?: string;
+  /** Offers a "Create" row for a name nobody has recorded yet, and hands the
+   *  typed text to the caller to open its own creation dialog — the shape
+   *  HsnLookup uses. Absent, the picker offers no way to add (accounting-08). */
+  onCreate?: (label: string) => void | Promise<void>;
+  createLabel?: (q: string) => string;
 }) {
   const { accounts, idField = "id", ...rest } = props;
   const getId = (a: AccountLike) => (idField === "code" ? codeOf(a) : a.id ?? codeOf(a));

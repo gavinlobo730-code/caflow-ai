@@ -15,6 +15,7 @@ the only source the create form's defaults come from.
 # just locked.
 from core.ist_clock import ist_today, month_end_date
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from typing import Annotated, Optional
 from datetime import datetime, timezone, date
 from decimal import Decimal, ROUND_HALF_UP
@@ -117,14 +118,10 @@ schedule_ii_departure = fa_integrity.schedule_ii_departure
 _wdv_with_no_stopping_point = fa_integrity.wdv_with_no_stopping_point
 
 
-def _no_statutory_basis(category: str, method: str) -> str:
-    needed = "a WDV rate" if method == "WDV" else "a useful life"
-    return (
-        f"Schedule II prescribes no useful life for '{category}', so there is no rate to "
-        f"default to — record {needed} for this asset. Intangible assets are amortised "
-        f"under AS 26 / Ind AS 38 (Schedule II Part A), which is a judgement the CA makes, "
-        f"not a figure this table can supply."
-    )
+# The sentence moved to the domain with the table it is about (accounting-18): the
+# register-opening import refuses a category with no basis in the SAME words
+# `create_asset` does, and it should not import a router to say them.
+_no_statutory_basis = schedule_ii.no_statutory_basis
 
 
 _PERIOD_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
@@ -711,6 +708,112 @@ def create_asset(
         f"{asset_code}: {data.asset_name} added — ₹{whole_rupees(capitalised_cost)}", "info")
 
     return api_response(True, asset)
+
+
+class OpeningAssetRowIn(BaseModel):
+    """One spreadsheet row of an opening register, as typed (accounting-18).
+
+    Dates, text and the two rate-like cells are TEXT: reading them is
+    `domain/fixed_assets/opening_register`'s rule, and a browser that did it would
+    be a second implementation. Money is paise, None where the cell was not an
+    amount — the row still arrives and is refused BY NUMBER. `row` is the number
+    the person saw in the preview.
+    """
+    row: int
+    asset_code: Optional[str] = None
+    asset_name: Optional[str] = None
+    asset_category: Optional[str] = None
+    purchase_date: Optional[str] = None
+    put_to_use_date: Optional[str] = None
+    cost_paise: Optional[int] = None
+    accumulated_depreciation_paise: Optional[int] = None
+    salvage_value_paise: Optional[int] = 0
+    depreciation_method: Optional[str] = None
+    useful_life_years: Optional[str] = None
+    wdv_rate_percent: Optional[str] = None
+    it_block_key: Optional[str] = None
+    location: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class OpeningRegisterIn(BaseModel):
+    client_id: str
+    #: REQUIRED, no default: the date every accumulated depreciation in the file is
+    #: stated as at. A default of "last 31 March" would be a guess about a fact
+    #: only the file's author holds, and it decides which month the next
+    #: depreciation run starts at.
+    as_at: str
+    rows: list[OpeningAssetRowIn]
+    #: Judge every row and write nothing.
+    dry_run: bool = False
+
+
+@router.post("/opening-register")
+def import_opening_register(
+    data: OpeningRegisterIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Bring a migrated client's assets over WITH the depreciation each already
+    carries (accounting-18).
+
+    Every row is judged before any is written, each bad row comes back under its
+    number with ALL its problems, the good rows still land, and uploading the same
+    file again records nothing twice. `domain/fixed_assets/opening_register`
+    carries the argument; this decides nothing.
+
+    POSTS NO JOURNAL. The ledger's Fixed Assets and Accumulated Depreciation
+    balances arrive through the opening balances or an imported trial balance; the
+    asset is their breakup, and says so on every answer. It writes through the
+    service client for the reason `_db` records, behind `rbac()` and
+    `assert_client_access`.
+    """
+    assert_client_access(current_user, data.client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {
+            "as_at": data.as_at, "dry_run": data.dry_run, "received": len(data.rows),
+            "created": 0, "would_create": 0, "already_recorded": 0, "rejected": 0,
+            "cost_paise": 0, "accumulated_paise": 0, "net_paise": 0,
+            "by_category": [], "gaps": [], "next_depreciation_month": None,
+            "ledger_note": "", "rows": []})
+    from domain.fixed_assets import opening_register as reg
+    from services import opening_register_service
+    out = opening_register_service.import_register(
+        db, current_user["firm_id"], data.client_id, as_at=data.as_at,
+        rows=[reg.ImportRow(**r.model_dump()) for r in data.rows],
+        dry_run=data.dry_run)
+
+    if not data.dry_run and out["created"]:
+        # The service-role write skips the table's audit triggers (migration 111),
+        # so the import is its own audit line — one for the file, with the codes
+        # that went in — and a failed audit write is never reported as a failed
+        # import: the assets are on the register.
+        try:
+            log_event(
+                current_user["firm_id"], "fixed_asset", data.client_id,
+                "opening_register_import",
+                actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"),
+                new_data={"as_at": out["as_at"], "received": out["received"],
+                          "created": out["created"],
+                          "already_recorded": out["already_recorded"],
+                          "rejected": out["rejected"],
+                          "cost_paise": out["cost_paise"],
+                          "accumulated_paise": out["accumulated_paise"],
+                          "asset_codes": [r["asset_code"] for r in out["rows"]
+                                          if r["status"] == reg.NEW]})
+            timeline_service.log(
+                data.client_id, "accounting", "Opening Register Imported",
+                f"{out['created']} assets brought over as at {out['as_at']} — cost "
+                f"₹{whole_rupees(out['cost_paise'])}, accumulated depreciation "
+                f"₹{whole_rupees(out['accumulated_paise'])}. Nothing was posted to the ledger.",
+                "info")
+        except Exception as exc:  # noqa: BLE001 — never fail a completed import on its audit
+            from core.observability import capture_posting_failure
+            capture_posting_failure(
+                exc, operation="opening_register_import.audit",
+                firm_id=current_user.get("firm_id"), client_id=data.client_id)
+    return api_response(True, out)
 
 
 def _post_one_month(db, asset: dict, period: str, firm_id: str) -> dict:
@@ -1434,6 +1537,25 @@ def correct_asset(
     tier_b = set(changes) & _TIER_B_FIELDS
     tier_c = set(changes) & _TIER_C_FIELDS
 
+    # AN ASSET BROUGHT OVER WITH ITS OWN HISTORY HAS NO ACQUISITION JOURNAL TO
+    # REVERSE AND REPOST (accounting-18, migration 456), which is the whole of what a
+    # Tier B correction IS. Reaching the code below would post a fresh acquisition
+    # for an asset the opening balances already carry — the cost counted twice — so
+    # it is refused here, with the way round, rather than falling into the
+    # "reverse a month at a time" sentence below, which tells a CA to undo
+    # depreciation that was never posted here.
+    if tier_b and asset.get("opening_position_date"):
+        raise HTTPException(
+            status_code=422,
+            detail=(f"This asset was brought over as an opening balance, stated as at "
+                    f"{str(asset['opening_position_date'])[:10]}. Its cost, category and "
+                    f"purchase date are what the opening balances carry, and there is no "
+                    f"acquisition journal to reverse and repost. To restate it, delete it — "
+                    f"allowed while nothing has been depreciated since that date — and "
+                    f"upload the register again with the right figures. Its name, "
+                    f"location, notes, §32 block and put-to-use date, and its life, rate, "
+                    f"method and salvage value under the usual rules, can still be corrected."))
+
     # The period the asset SITS in has to be open before anything moves, and
     # where the date itself moves, so does the period it moves INTO. Both, the
     # way edit_posted_journal checks both (migration 266). This is
@@ -1605,7 +1727,15 @@ def delete_asset(
     firm_id, client_id = current_user["firm_id"], asset["client_id"]
 
     posted_month = _month_label(asset.get("depreciation_posted_through"))
-    if posted_month:
+    # AN OPENING ASSET'S "POSTED THROUGH" IS ITS POSITION, NOT A CHARGE (accounting-18).
+    # Its depreciation_posted_through starts at the date it was stated as at, so
+    # the test below would refuse every one of them for ever — and a register
+    # imported with the wrong figures could never be corrected, which is the one
+    # remedy the correction path points at. It is deletable exactly while nothing
+    # has been depreciated SINCE: the month posted-through is still the position's.
+    untouched_opening = (bool(asset.get("opening_position_date"))
+                         and posted_month == _month_label(asset["opening_position_date"]))
+    if posted_month and not untouched_opening:
         raise HTTPException(
             status_code=422,
             detail=(f"Depreciation is posted through {posted_month} on this asset. "
@@ -1618,7 +1748,12 @@ def delete_asset(
             detail="This asset has been disposed. A disposal is a transaction, not a "
                    "mistake to remove — reverse the disposal journal instead.")
 
-    period_lock_service.assert_open(db, firm_id, client_id, asset.get("purchase_date"))
+    # Removing an untouched opening asset moves nothing in the ledger — no
+    # acquisition was posted for it — so there is no period for it to move in, and
+    # a purchase date years inside a closed year must not make a wrong import
+    # permanent. Every other asset keeps the check: its deletion reverses a journal.
+    if not untouched_opening:
+        period_lock_service.assert_open(db, firm_id, client_id, asset.get("purchase_date"))
 
     if asset.get("journal_entry_id"):
         _reverse_tolerating_already_reversed(
@@ -1642,7 +1777,10 @@ def delete_asset(
     }).eq("id", asset_id).eq("firm_id", firm_id).execute()
 
     timeline_service.log(client_id, "accounting", "Asset Deleted",
-        f"{asset.get('asset_code')}: {asset.get('asset_name')} — acquisition reversed",
+        f"{asset.get('asset_code')}: {asset.get('asset_name')} — "
+        + ("removed from the register; it was an opening asset, so nothing was posted "
+           "for it and nothing is reversed" if untouched_opening
+           else "acquisition reversed"),
         "warning")
 
     return api_response(True, {"asset_id": asset_id, "deleted": True,
@@ -1735,6 +1873,16 @@ def reverse_depreciation(
                    .eq("reference_no", prev_ref).eq("is_reversed", False)
                    .limit(1).execute().data) or [None])[0]
     new_posted_through = _period_end_date(previous) if prev_entry else None
+    # THE FIRST MONTH AFTER AN OPENING POSITION ROLLS BACK TO THAT POSITION, NOT TO
+    # "NEVER DEPRECIATED" (accounting-18). The month before it has no journal — the
+    # position was STATED, not posted — so the lookup above finds nothing and would
+    # clear the mark. A cleared mark sends the next run to the PURCHASE month and
+    # charges the asset's whole history again on top of the accumulated depreciation
+    # it was brought over with.
+    opening_position = asset.get("opening_position_date")
+    if (new_posted_through is None and opening_position
+            and previous <= _month_label(opening_position)):
+        new_posted_through = str(opening_position)[:10]
 
     new_accum = max(0, int(asset.get("accumulated_depreciation_paise") or 0) - charge)
     update = {

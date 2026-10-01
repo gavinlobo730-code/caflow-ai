@@ -5,7 +5,7 @@ import os
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 from datetime import datetime, timezone
 from models.common import api_response
 from models.accounting import AccountIn, AccountUpdateIn, JournalEntryIn, JournalEntryUpdateIn, JournalReversalIn
@@ -536,6 +536,95 @@ def import_trial_balance_endpoint(
         raise HTTPException(status_code=422, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+
+class VoucherLegIn(BaseModel):
+    """One spreadsheet line of a voucher, as typed (accounting-17).
+
+    The date, the voucher type and the account are TEXT: reading them is the
+    server's rule (`domain/spreadsheet_cells`, `domain/accounting/voucher_import`)
+    and a browser that did it would be a second implementation. An amount is
+    paise, 0 where the cell was blank and None where it held something that is
+    not an amount, so the row still arrives and is refused BY NUMBER. `row` is the
+    number the person saw in the preview.
+    """
+    row: int
+    voucher_no: str = ""
+    date: str = ""
+    voucher_type: str = ""
+    account: str = ""
+    debit_paise: Optional[int] = 0
+    credit_paise: Optional[int] = 0
+    narration: Optional[str] = None
+    line_narration: Optional[str] = None
+
+
+class VoucherImportIn(BaseModel):
+    client_id: str
+    #: REQUIRED, no default: `posted` puts the vouchers on the books now and
+    #: `draft` leaves them off-books for review. An import that did either by
+    #: omission is the shape `run_status` on the payroll bank advice refuses.
+    status: Literal["draft", "posted"]
+    legs: list[VoucherLegIn]
+    #: Judge every voucher and post nothing.
+    dry_run: bool = False
+
+
+@router.post("/vouchers/import")
+def import_vouchers_endpoint(
+    data: VoucherImportIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Bring a spreadsheet of journals, payments, receipts and contras into the
+    books, voucher by voucher (accounting-17).
+
+    Every voucher is judged before any is posted; each bad voucher comes back
+    under its number with ALL its problems; the good ones post through
+    `manual_journal_service.create` — the ONE posting kernel, so the balance
+    assertion, the period locks and the `(client, reference_no, entry_date)`
+    dedupe apply as on the editor — and uploading the same file again posts
+    nothing twice. `domain/accounting/voucher_import` carries the argument; this
+    decides nothing, and it posts nothing a person could not have typed.
+    """
+    assert_client_access(current_user, data.client_id)
+    from domain.accounting import voucher_import as vi
+    legs = [vi.Leg(**l.model_dump()) for l in data.legs]
+    db = _prod_db()
+    if db is None:
+        # No database: the same SHAPE as the real answer, claiming nothing was
+        # posted (there is nowhere to post it).
+        return api_response(True, {
+            "status": data.status, "dry_run": data.dry_run, "vouchers": 0,
+            "created": 0, "would_create": 0, "already_recorded": 0, "rejected": 0,
+            "created_paise": 0, "would_create_paise": 0, "results": []})
+    from services import voucher_import_service
+    try:
+        out = voucher_import_service.import_vouchers(
+            db, current_user["firm_id"], data.client_id, legs=legs,
+            status=data.status,
+            # created_by FKs to public.users.id (internal), not the Supabase auth id.
+            actor_id=current_user.get("id"), dry_run=data.dry_run)
+    except HTTPException:
+        raise
+    # Audit deliberately OUTSIDE the work above, and one line for the import: the
+    # table triggers record every entry and its lines, and a failed audit write
+    # must never be reported as a failed post (the vouchers are on the books).
+    if not data.dry_run and out["created"]:
+        try:
+            log_event(current_user["firm_id"], "journal_entry", data.client_id,
+                      "voucher_import",
+                      actor_id=current_user.get("auth_user_id"),
+                      actor_email=current_user.get("email"),
+                      new_data={"status": data.status, "vouchers": out["vouchers"],
+                                "created": out["created"],
+                                "already_recorded": out["already_recorded"],
+                                "rejected": out["rejected"],
+                                "created_paise": out["created_paise"]})
+        except Exception as exc:  # noqa: BLE001 — never fail a completed post on its audit
+            capture_posting_failure(
+                exc, operation="import_vouchers.audit",
+                firm_id=current_user.get("firm_id"), client_id=data.client_id)
+    return api_response(True, out)
 
 
 class YearLockIn(BaseModel):

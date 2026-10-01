@@ -16,7 +16,7 @@ import logging
 from fastapi import (APIRouter, Depends, HTTPException, Path, Query, UploadFile,
                      File, Form)
 from fastapi.responses import Response
-from typing import Optional
+from typing import Annotated, Optional
 
 from models.common import api_response
 from services import bank_erasure
@@ -68,7 +68,7 @@ from services.bank_transfer_service import bank_transfer_service
 from services.bank_batch_service import bank_batch_service
 from services.bank_candidate_search_service import bank_candidate_search_service
 from services.bank_entry_service import bank_entry_service, REDRAFT_CHUNK
-from domain.banking import file_hash, StatementParseError
+from domain.banking import file_hash, StatementParseError, PdfPasswordError
 from domain.banking.normalizer import parse_statement_detailed
 from domain.banking.tie_out import statement_check, totals_agreement
 from domain.banking import account_kind
@@ -780,9 +780,26 @@ _IMAGE_MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                ".png": "image/png", ".webp": "image/webp"}
 
 
+def _statement_refusal(e: StatementParseError) -> HTTPException:
+    """The 422 for a file that could not be read.
+
+    A refusal ABOUT THE PASSWORD carries its `code` beside the sentence, in the
+    `{message, code}` shape the totals refusal already uses, so the import dialog
+    can ask for the password (or ask again) without matching on wording. Every
+    other parse failure stays the plain string it always was. The message is a
+    constant — see normalizer.PdfPasswordError — so nothing the caller typed is
+    ever echoed back.
+    """
+    if isinstance(e, PdfPasswordError):
+        return HTTPException(status_code=422,
+                             detail={"message": str(e), "code": e.code})
+    return HTTPException(status_code=422, detail=str(e))
+
+
 def _read_statement_file(filename: str, content: bytes, mapping, *,
                          allow_vision: bool, has_balances: bool,
-                         rate_key: Optional[tuple] = None):
+                         rate_key: Optional[tuple] = None,
+                         pdf_password: Optional[str] = None):
     """(transactions, source_format, used_vision, printed_totals) for an upload.
 
     `printed_totals` is the "Grand Total" row the bank printed on the statement,
@@ -821,13 +838,17 @@ def _read_statement_file(filename: str, content: bytes, mapping, *,
 
     if not is_image:
         try:
-            parsed = parse_statement_detailed(filename or "", content, mapping)
+            parsed = parse_statement_detailed(filename or "", content, mapping,
+                                              pdf_password=pdf_password)
             fmt = "pdf" if name.endswith(".pdf") else "xlsx" if name.endswith(".xlsx") else "csv"
             return parsed.transactions, fmt, False, parsed.printed_totals
         except StatementParseError as e:
             # Only a PDF with no readable text is a candidate for the model. A
-            # malformed CSV is a malformed CSV and a picture will not help.
-            if not (name.endswith(".pdf") and "scanned" in str(e).lower()):
+            # malformed CSV is a malformed CSV and a picture will not help — and
+            # neither will a locked PDF: it is refused for its PASSWORD, which no
+            # model can supply and which must never be sent to one.
+            if isinstance(e, PdfPasswordError) or not (
+                    name.endswith(".pdf") and "scanned" in str(e).lower()):
                 raise
             if not allow_vision:
                 raise StatementParseError(
@@ -854,7 +875,8 @@ def _read_statement_file(filename: str, content: bytes, mapping, *,
     # can be up to twenty images a call, the dearest thing this product sends.
     if rate_key is not None:
         rate_limit.enforce("vision", *rate_key)
-    images = [content] if is_image else vision.page_images(content)
+    images = ([content] if is_image
+              else vision.page_images(content, password=pdf_password))
     mime = _IMAGE_MIME.get(ext, "image/png")
 
     # The last page, on its own, before anything else is read: that is where a
@@ -908,6 +930,15 @@ def upload_statement(
     closing_balance_paise: Optional[int] = Form(None),
     allow_vision: bool = Form(False),
     acknowledge_totals_mismatch: Optional[str] = Form(None),
+    # The password of a LOCKED PDF (accounting-23). A FORM field and never a query
+    # parameter: a query string is written to every access log between the
+    # browser and this process, a multipart body is not. It is passed to the one
+    # open of this file and nowhere else — not stored, not logged, not in any
+    # message, not sent to a model. See normalizer.PdfPasswordError.
+    # `Annotated[..., Form()] = None` and NOT `Form(None)`: a route called as a
+    # function (the suites do) gets a `Form(None)` default as the Form OBJECT —
+    # truthy, and not a password — which the PDF library then tried to use as one.
+    pdf_password: Annotated[Optional[str], Form()] = None,
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Upload a CSV/XLSX/PDF bank statement, or a scan of one. Parsing + normalization + dedup happen
@@ -983,7 +1014,8 @@ def upload_statement(
         mapping_source = "supplied"
     elif db and bank_account_id:
         try:
-            headers = inspect_statement(file.filename or "", content)["headers"]
+            headers = inspect_statement(file.filename or "", content,
+                                        pdf_password=pdf_password)["headers"]
             saved = column_mappings.find_mapping(
                 db, current_user["firm_id"], bank_account_id, header_fingerprint(headers))
         except StatementParseError:
@@ -1003,9 +1035,10 @@ def upload_statement(
         txns, fmt, used_vision, printed = _read_statement_file(
             file.filename or "", content, mapping,
             allow_vision=allow_vision, has_balances=has_balances,
-            rate_key=(current_user.get("firm_id") or "", current_user.get("id")))
+            rate_key=(current_user.get("firm_id") or "", current_user.get("id")),
+            pdf_password=pdf_password)
     except StatementParseError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise _statement_refusal(e)
 
     # ── BANK-21: a card statement states its balances the other way up ──────
     # A card statement's "total amount due" is a positive figure where the
@@ -1119,7 +1152,8 @@ def upload_statement(
     # layout that does not work, and apply it silently to the next upload.
     if save_mapping and mapping and bank_account_id:
         try:
-            headers = inspect_statement(file.filename or "", content)["headers"]
+            headers = inspect_statement(file.filename or "", content,
+                                        pdf_password=pdf_password)["headers"]
             column_mappings.save_mapping(
                 db, current_user["firm_id"], client_id, bank_account_id,
                 headers, mapping,
@@ -1179,6 +1213,7 @@ def inspect_statement_file(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     bank_account_id: Optional[str] = Form(None),
+    pdf_password: Annotated[Optional[str], Form()] = None,      # accounting-23 — see upload_statement
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Show a statement's header row and first rows so a CA can map the columns.
@@ -1199,9 +1234,9 @@ def inspect_statement_file(
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
     try:
-        info = inspect_statement(file.filename or "", content)
+        info = inspect_statement(file.filename or "", content, pdf_password=pdf_password)
     except StatementParseError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise _statement_refusal(e)
 
     db = _db()
     saved = (column_mappings.find_mapping(db, current_user["firm_id"], bank_account_id,
@@ -1219,6 +1254,7 @@ def preview_statement_with_mapping(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     column_mapping: str = Form(...),
+    pdf_password: Annotated[Optional[str], Form()] = None,      # accounting-23 — see upload_statement
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Parse with the CA's mapping and show what it produces — WITHOUT importing.
@@ -1243,12 +1279,13 @@ def preview_statement_with_mapping(
         raise HTTPException(status_code=422,
                             detail="column_mapping must be a JSON object of column positions.")
     try:
-        info = inspect_statement(file.filename or "", content)
+        info = inspect_statement(file.filename or "", content, pdf_password=pdf_password)
         validate_mapping(mapping, len(info["headers"]))
-        parsed = parse_statement_detailed(file.filename or "", content, mapping)
+        parsed = parse_statement_detailed(file.filename or "", content, mapping,
+                                          pdf_password=pdf_password)
         txns = parsed.transactions
     except StatementParseError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise _statement_refusal(e)
 
     return api_response(True, {
         "headers": info["headers"],

@@ -2141,6 +2141,90 @@ export type OpeningReconciliation = {
   double_openings: DoubleOpening[];
 };
 
+/** One spreadsheet row on its way to the bulk import (accounting-05). Dates and the
+ *  party are TEXT — reading a date and matching a name are the server's rules. */
+export type OpeningDocumentImportRow = {
+  /** The number the person saw in the preview. */
+  row: number;
+  party: string;
+  party_gstin?: string | null;
+  document_no: string;
+  document_date: string;
+  due_date?: string | null;
+  /** Null where the cell is not an amount — the server refuses the row by number. */
+  outstanding_paise: number | null;
+  notes?: string | null;
+};
+
+/** What the server decided about one row. */
+export type OpeningDocumentImportVerdict = {
+  row: number;
+  document_no: string;
+  /** `would_create` only on a dry run. */
+  status: "new" | "would_create" | "already_recorded" | "rejected";
+  problems: string[];
+  party_name: string | null;
+  outstanding_paise: number;
+  id: string | null;
+};
+
+export type OpeningDocumentBulkResult = {
+  kind: "receivable" | "payable";
+  dry_run: boolean;
+  received: number;
+  created: number;
+  would_create: number;
+  already_recorded: number;
+  rejected: number;
+  created_paise: number;
+  would_create_paise: number;
+  rows: OpeningDocumentImportVerdict[];
+  /** Party by party, AFTER the import (projected on a dry run). */
+  reconciliation: OpeningReconciliationRow[];
+  unreconciled_parties: number;
+};
+
+/** One line of a voucher on its way to the voucher import (accounting-17). The date,
+ *  type and account are TEXT — the server reads them. An amount is paise: 0 for a
+ *  blank cell and null for one that is not an amount, so the row still arrives
+ *  and is refused by its number. */
+export type VoucherImportLeg = {
+  row: number;
+  voucher_no: string;
+  date: string;
+  voucher_type: string;
+  account: string;
+  debit_paise: number | null;
+  credit_paise: number | null;
+  narration?: string | null;
+  line_narration?: string | null;
+};
+
+export type VoucherImportVerdict = {
+  voucher_no: string;
+  rows: number[];
+  /** `would_create` only on a dry run. */
+  status: "new" | "would_create" | "already_recorded" | "rejected";
+  problems: string[];
+  entry_date: string | null;
+  entry_type: string | null;
+  total_paise: number;
+  id: string | null;
+};
+
+export type VoucherImportResult = {
+  status: "draft" | "posted";
+  dry_run: boolean;
+  vouchers: number;
+  created: number;
+  would_create: number;
+  already_recorded: number;
+  rejected: number;
+  created_paise: number;
+  would_create_paise: number;
+  results: VoucherImportVerdict[];
+};
+
 export type OpeningDocumentKinds = {
   kinds: { value: string; label: string; party: string; number: string }[];
   /** Why an opening bill contributes nothing to a section 194 FY aggregate. */
@@ -3829,6 +3913,18 @@ export const api = {
     // journal drill-through) now calls getJournalEntry below with the
     // document's own journal_entry_id instead of searching a date window.
     createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
+    /** A spreadsheet of journals, payments, receipts and contras, posted voucher
+     *  by voucher through the one posting kernel (accounting-17). `status` is required
+     *  and has no default — `posted` goes on the books now, `draft` stays off
+     *  them. Send a few vouchers per call: each post is several round trips and
+     *  the browser gives up at 45 seconds without retrying. */
+    importVouchers: (body: {
+      client_id: string;
+      status: "draft" | "posted";
+      legs: VoucherImportLeg[];
+      dry_run?: boolean;
+    }) => request<ApiResp<VoucherImportResult>>("/api/accounting/vouchers/import",
+      { method: "POST", body: JSON.stringify(body) }),
     /* ACC-13, migration 418. Cost centres are a DIMENSION on a journal line —
        they change no figure, no total and no statutory output — so they live
        under their own prefix rather than on /api/accounting, which is the
@@ -4301,8 +4397,17 @@ export const api = {
       });
       // A 422 here is a real answer (an unmappable file, a contradictory
       // mapping) and its message is written for the CA, so surface the body
-      // rather than the status line.
-      if (!res.ok) throw new Error(await errorMessage(res));
+      // rather than the status line. It is thrown as an ApiRefusal — still an
+      // Error — so the server's CODE survives beside the sentence: a locked PDF
+      // is refused here with the password-required code and the dialog asks for
+      // the password on that, not on the wording (accounting-23). The body is read
+      // twice, through a clone, because `errorMessage` flattens for display and
+      // `refusalFrom` keeps the code.
+      if (!res.ok) {
+        const forCode = res.clone();
+        const message = await errorMessage(res);
+        throw new ApiRefusal(message, (await refusalFrom(forCode)).code);
+      }
       return res.json();
     },
     /** Read a statement's header row + first rows so the CA can map the columns. */
@@ -6479,6 +6584,16 @@ export const api = {
         `/api/opening-documents/${id}?client_id=${encodeURIComponent(clientId)}`
         + `&kind=${encodeURIComponent(kind)}`,
         { method: "DELETE" }),
+    /** A spreadsheet of open invoices or bills, judged row by row (accounting-05).
+     *  Bad rows come back by number, good ones land, a re-upload records
+     *  nothing twice. `dryRun` judges and writes nothing. */
+    bulkImport: (body: {
+      client_id: string;
+      kind: "receivable" | "payable";
+      rows: OpeningDocumentImportRow[];
+      dry_run?: boolean;
+    }) => request<ApiResp<OpeningDocumentBulkResult>>("/api/opening-documents/bulk",
+      { method: "POST", body: JSON.stringify(body) }),
     /** Both sides at once — what the Opening Balances tab opens on. */
     reconciliation: (clientId: string) =>
       request<ApiResp<OpeningReconciliation>>(

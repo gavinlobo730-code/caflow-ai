@@ -36,6 +36,7 @@ import { toast } from "@/components/ui/use-toast";
 import { todayLocalISO } from "@/lib/dateMath";
 import { formatIstLabelled } from "@/lib/dates/formatIst";
 import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
+import { VoucherImportButton } from "@/components/accounting/VoucherImport";
 import { PartyBreakdown } from "@/components/accounting/PartyBreakdown";
 import { CostCentresTab } from "@/components/accounting/CostCentresTab";
 import { StatementAnalysisPanel } from "@/components/accounting/StatementAnalysisPanel";
@@ -1213,6 +1214,14 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
           {/* No New Journal Entry here. The day book is a REPORT; writing an
               entry belongs on the Journal tab, where the list afterwards is the
               list you can act on. */}
+          {/* A spreadsheet of journals, payments, receipts and contras
+              (accounting-17). Posts through the same kernel as the editor, and
+              is its OWN branch beside New Journal Entry's rather than wrapping
+              it — the day-book guard reads that button's own condition. */}
+          {!dayBook && (
+            <VoucherImportButton clientId={clientId} onImported={loadEntries}
+              onSummary={(description) => toast({ title: "Voucher import", description })} />
+          )}
           {!dayBook && (
             <button
               onClick={() => router.push(journalEditorHref(clientId, "new"))}

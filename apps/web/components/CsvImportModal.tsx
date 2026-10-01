@@ -88,16 +88,29 @@ export interface ReferenceResolver {
   renderCreate: (name: string, onDone: () => void) => React.ReactNode;
 }
 
+/** What the modal knows about the rows it hands over, beside the rows. */
+export interface ImportMeta {
+  /** For each row passed, the number the preview showed beside it. The modal
+   *  hands over only the rows that passed ITS checks, so a row's position in
+   *  the array is not its number in the file — an importer that reports a
+   *  problem "on row 3" has to be able to say the row the person can find. */
+  rowNumbers: number[];
+}
+
 interface Props {
   title: string;
   columns: CsvColumn[];
   templateFilename: string;
-  onImport: (rows: ImportRow[]) => Promise<ImportResult>;
+  onImport: (rows: ImportRow[], meta?: ImportMeta) => Promise<ImportResult>;
   onClose: () => void;
   /** Optional extra validation per row, returns error strings */
   validateRow?: (row: ImportRow) => string[];
   /** Optional "resolve missing references" step — see ReferenceResolver. */
   resolvers?: ReferenceResolver[];
+  /** The heading over the "already there" list in the done step. The default
+   *  speaks of a customer list because that is the importer that wrote it; an
+   *  importer of something else says what it skipped. */
+  skippedHeading?: string;
 }
 
 /** Distinct, non-blank values per resolver's column that fail isKnown, in
@@ -175,7 +188,7 @@ function parseCsv(text: string, columns: CsvColumn[]): ParsedRow[] {
   return rows;
 }
 
-export default function CsvImportModal({ title, columns, templateFilename, onImport, onClose, validateRow, resolvers }: Props) {
+export default function CsvImportModal({ title, columns, templateFilename, onImport, onClose, validateRow, resolvers, skippedHeading }: Props) {
   const [step, setStep] = useState<"upload" | "resolve" | "preview" | "importing" | "done">("upload");
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -329,11 +342,12 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
   }
 
   async function handleImport() {
-    const validRows = rows.filter(r => r.errors.length === 0).map(r => r.data);
+    const valid = rows.filter(r => r.errors.length === 0);
+    const validRows = valid.map(r => r.data);
     if (validRows.length === 0) return;
     setStep("importing");
     try {
-      const res = await onImport(validRows);
+      const res = await onImport(validRows, { rowNumbers: valid.map(r => r.index) });
       setResult(res);
     } catch (e) {
       // A thrown network/timeout/server error must still land the modal on
@@ -580,7 +594,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
               {result.skippedDetail && result.skippedDetail.length > 0 && (
                 <div className="bg-state-attention-surface border border-amber-100 rounded-xl px-4 py-3 space-y-1 max-h-40 overflow-y-auto">
                   <p className="text-xs font-semibold text-state-attention mb-1">
-                    Skipped (already in your customer list — no duplicates created):
+                    {skippedHeading ?? "Skipped (already in your customer list — no duplicates created):"}
                   </p>
                   {result.skippedDetail.map((s, i) => (
                     <p key={i} className="text-xs text-state-attention">{s}</p>
