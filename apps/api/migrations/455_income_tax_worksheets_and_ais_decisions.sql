@@ -43,13 +43,31 @@
 --   are REFUSED a prefill by the service for their own reasons, and a decision
 --   recorded against one would be a control that does nothing.
 --
--- ISOLATION, IN THE SHAPE 352 ESTABLISHED
+-- ISOLATION, IN THE SHAPE 352 ESTABLISHED, PLUS THE ASSIGNMENT SCOPE
 --   firm-scoped policy plus RESTRICTIVE role guards at the Executive tier:
 --   preparing a working is preparation work, and the same tier writes the AIS
---   and 26AS reconciliations. Delete is Manager. Neither table is read by the
---   browser directly — every read goes through apps/api, where rbac() and
---   assert_client_access run — so the assignment-scope policy 084 gave the
---   older client tables is not added: it would protect a path nothing uses.
+--   and 26AS reconciliations. Delete is Manager.
+--
+--   AND A RESTRICTIVE <table>_assignment_scope POLICY, which an earlier draft of
+--   this header argued away ("every read goes through apps/api ... it would
+--   protect a path nothing uses"). That argument was wrong. The tables hold a
+--   client's salary, rent and interest, `authenticated` holds full CRUD on them
+--   (the GRANT below, and Supabase's default privileges would hand it over
+--   anyway), and PostgREST does not ask which tables a screen happens to read:
+--   a Manager assigned to client A, with the anon key and their own JWT, could
+--   read client B's working papers and an Executive could insert, change or
+--   (Manager) delete them. The API path IS assignment-scoped (assert_client_access)
+--   and the policy makes the direct path agree with it — on that path RLS is the
+--   only control. Migration 084's one-shot loop has never run again (see 370), so
+--   a table is firm-wide unless the migration that creates it says otherwise;
+--   every client_id table created since 370 says so, and so does this one, in
+--   the shape 389 and 407 use: RESTRICTIVE (it can only REMOVE access), FOR ALL
+--   (a policy on SELECT alone would leave the writes open) and
+--   can_access_client(client_id::text), which lets a Partner through and asks
+--   everyone else for an assignment row. Held from the migration text by
+--   tests/test_a_client_table_a_migration_creates_is_assignment_scoped.py and
+--   from the database by test_income_tax_worksheets_and_ais_decisions_pg.py,
+--   which connects as `authenticated` and tries the statements.
 --
 -- ADDITIVE AND IDEMPOTENT. Two new tables, no existing row touched.
 
@@ -122,6 +140,16 @@ BEGIN
       'CREATE POLICY %I ON public.%I FOR ALL TO authenticated '
       'USING (firm_id = public.get_my_firm_id()) '
       'WITH CHECK (firm_id = public.get_my_firm_id())', 'firm_' || t, t);
+
+    -- The assignment scope. Both halves are named, USING for what a caller may
+    -- read, change or delete and WITH CHECK for what they may write: without
+    -- the second, an Executive assigned to A could INSERT a row naming B.
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_assignment_scope', t);
+    EXECUTE format(
+      'CREATE POLICY %I ON public.%I AS RESTRICTIVE FOR ALL TO authenticated '
+      'USING (public.can_access_client(client_id::text)) '
+      'WITH CHECK (public.can_access_client(client_id::text))',
+      t || '_assignment_scope', t);
 
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_role_insert', t);
     EXECUTE format(

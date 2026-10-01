@@ -23,6 +23,20 @@ WHAT IS ASSERTED
       * RLS is switched on and the role-aware RESTRICTIVE policies exist, in the
         shape migration 352 set. Whether a Reviewer is in fact refused rests on
         `my_role_at_least`, which migration 260 owns and its own tests prove.
+      * ASSIGNMENT SCOPE, BEHAVIOURALLY. A Manager or Executive assigned to client
+        A cannot read, insert, update or delete client B's rows — connected as
+        `authenticated` with their own JWT, which is the PostgREST path the
+        browser's anon key opens and where RLS is the only control. 455 first
+        shipped without the scope policy on the argument that nothing reads these
+        tables from a screen; the working papers hold a client's salary, rent
+        and interest, and PostgREST does not ask which tables a screen uses.
+
+THE TRAP THIS IS BUILT AROUND
+    A denied INSERT raises. A denied UPDATE or DELETE does NOT — PostgreSQL
+    silently skips rows failing the USING clause, so the statement "succeeds"
+    having changed nothing. Every UPDATE/DELETE case below asserts the ROW COUNT,
+    and pairs it with the same statement against the assigned client's row, so a
+    zero cannot be a statement that matched nothing for some other reason.
 """
 from __future__ import annotations
 
@@ -181,7 +195,8 @@ def test_rls_is_on_and_every_policy_the_migration_names_exists(db):
         assert on.stdout.strip() == "t", f"RLS is off on {t}"
         pols = set(_psql(db, f"SELECT policyname FROM pg_policies WHERE tablename = '{t}';",
                          tuples=True).stdout.split())
-        assert pols == {f"firm_{t}", f"{t}_role_insert", f"{t}_role_update", f"{t}_role_delete"}
+        assert pols == {f"firm_{t}", f"{t}_assignment_scope",
+                        f"{t}_role_insert", f"{t}_role_update", f"{t}_role_delete"}
 
 
 def test_the_role_guards_are_restrictive_so_they_narrow_and_never_grant(db):
@@ -191,3 +206,163 @@ def test_the_role_guards_are_restrictive_so_they_narrow_and_never_grant(db):
              WHERE tablename = '{t}' AND policyname LIKE '%_role_%' ORDER BY 1;""", tuples=True)
         for line in got.stdout.strip().splitlines():
             assert line.endswith("RESTRICTIVE"), line
+
+
+# ── assignment scope, against the real policies ───────────────────────────
+
+CLIENT_B = "c4550000-0000-0000-0000-000000000002"
+UID = {
+    "Partner":    "a4550000-0000-0000-0000-000000000001",
+    "Manager":    "a4550000-0000-0000-0000-000000000002",
+    "Executive":  "a4550000-0000-0000-0000-000000000003",
+    # A Manager with NO assignment row at all: assigned to nothing, so the
+    # scope must show them no client's rows rather than every client's.
+    "Unassigned": "a4550000-0000-0000-0000-000000000004",
+}
+
+_INSERT_FOR = {
+    # A different year / line from the seeded row, so a refusal can only be the
+    # policy and never the unique key.
+    "income_tax_worksheets": lambda c: (
+        "INSERT INTO income_tax_worksheets "
+        "(firm_id, client_id, financial_year, worksheet_kind) "
+        f"VALUES ('{FIRM}', '{c}', '2024-25', 'house_property');"),
+    "ais_computation_decisions": lambda c: (
+        "INSERT INTO ais_computation_decisions "
+        "(firm_id, client_id, assessment_year, line_key, decision, amount_paise) "
+        f"VALUES ('{FIRM}', '{c}', '2027-28', 'interest', 'accepted', 100);"),
+}
+_UPDATE_FOR = {
+    "income_tax_worksheets": lambda c: (
+        "UPDATE income_tax_worksheets SET payload_json = '{\"x\": 1}'::jsonb "
+        f"WHERE client_id = '{c}'"),
+    "ais_computation_decisions": lambda c: (
+        "UPDATE ais_computation_decisions SET decision = 'rejected' "
+        f"WHERE client_id = '{c}'"),
+}
+
+
+def _signed_in_as(role: str) -> str:
+    # SET LOCAL ROLE authenticated matters: the tables are owned by the
+    # migration user, and an owner bypasses RLS entirely, so every assertion
+    # below would pass whatever the policies said.
+    return (f"BEGIN; SET LOCAL ROLE authenticated; "
+            f"SET LOCAL request.jwt.claims = '{{\"sub\":\"{UID[role]}\"}}'; ")
+
+
+def _as(dsn: str, role: str, sql: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-c",
+         f"{_signed_in_as(role)}{sql} ROLLBACK;"],
+        capture_output=True, text=True)
+
+
+def _scalar(dsn: str, role: str, sql: str) -> int:
+    r = subprocess.run(
+        ["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-tA", "-c",
+         f"{_signed_in_as(role)}{sql}; ROLLBACK;"],
+        capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return int([ln for ln in r.stdout.strip().splitlines() if ln.strip()][-1])
+
+
+def _rows_changed(dsn: str, role: str, statement: str) -> int:
+    return _scalar(dsn, role, f"WITH t AS ({statement} RETURNING 1) SELECT count(*) FROM t")
+
+
+def _denied(r: subprocess.CompletedProcess) -> bool:
+    return r.returncode != 0 and "row-level security" in r.stderr
+
+
+@pytest.fixture()
+def scoped(db):
+    """Two clients of one firm, a Partner, a Manager and an Executive assigned to
+    client A only, and a Manager assigned to nothing — with one row of each kind
+    already on BOTH clients, so a read has something to wrongly return."""
+    stmts = [
+        "INSERT INTO auth.users (id, email) VALUES "
+        + ", ".join(f"('{u}', '{r}@t.com')" for r, u in UID.items()) + ";",
+        "INSERT INTO users (id, firm_id, auth_user_id, full_name, email, role) VALUES "
+        + ", ".join(f"('{UID[r]}', '{FIRM}', '{UID[r]}', '{r}', '{r}@t.com', '{role}')"
+                    for r, role in (("Partner", "Partner"), ("Manager", "Manager"),
+                                    ("Executive", "Executive"), ("Unassigned", "Manager")))
+        + ";",
+        f"INSERT INTO clients (id, firm_id, client_name, entity_type) "
+        f"VALUES ('{CLIENT_B}', '{FIRM}', 'B Co', 'Individual');",
+        # Assigned to A (the CLIENT constant) and NOT to B. Without these rows
+        # the firm-wide policy alone decides, and "assigned to nothing" and
+        # "assigned to A" would be indistinguishable.
+        "INSERT INTO user_client_assignments (user_id, client_id, firm_id) VALUES "
+        f"('{UID['Manager']}', '{CLIENT}', '{FIRM}'), "
+        f"('{UID['Executive']}', '{CLIENT}', '{FIRM}');",
+    ]
+    for c in (CLIENT, CLIENT_B):
+        stmts.append(
+            "INSERT INTO income_tax_worksheets (firm_id, client_id, financial_year, "
+            f"worksheet_kind) VALUES ('{FIRM}', '{c}', '2025-26', 'salary');")
+        stmts.append(
+            "INSERT INTO ais_computation_decisions (firm_id, client_id, assessment_year, "
+            f"line_key, decision, amount_paise) VALUES ('{FIRM}', '{c}', '2026-27', 'salary', "
+            "'accepted', 100);")
+    for sql in stmts:
+        r = _psql(db, sql)
+        assert r.returncode == 0, f"{sql[:70]}... -> {r.stderr}"
+    return db
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_a_manager_assigned_to_one_client_reads_that_clients_rows_and_not_anothers(scoped, table):
+    assert _scalar(scoped, "Manager", f"SELECT count(*) FROM {table} WHERE client_id = '{CLIENT}'") == 1
+    assert _scalar(scoped, "Manager", f"SELECT count(*) FROM {table} WHERE client_id = '{CLIENT_B}'") == 0
+    # ...and the unfiltered read, which is the one a PostgREST caller issues.
+    assert _scalar(scoped, "Manager", f"SELECT count(*) FROM {table}") == 1
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_a_manager_assigned_to_nothing_reads_no_client_rows(scoped, table):
+    assert _scalar(scoped, "Unassigned", f"SELECT count(*) FROM {table}") == 0
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_a_partner_reads_every_clients_rows(scoped, table):
+    """Partner is firm-wide by design (`_FIRMWIDE_ROLES`), and also the control
+    that the two reads above came back empty because of the SCOPE and not
+    because the seeded rows were never visible to anybody."""
+    assert _scalar(scoped, "Partner", f"SELECT count(*) FROM {table}") == 2
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_an_executive_cannot_insert_for_a_client_they_are_not_assigned_to(scoped, table):
+    refused = _as(scoped, "Executive", _INSERT_FOR[table](CLIENT_B))
+    assert _denied(refused), refused.stderr
+    # Same statement against the assigned client is accepted, so the refusal
+    # above is the assignment rule and not a key, a CHECK or the role guard.
+    allowed = _as(scoped, "Executive", _INSERT_FOR[table](CLIENT))
+    assert allowed.returncode == 0, allowed.stderr
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_an_executive_update_of_an_unassigned_clients_row_changes_nothing(scoped, table):
+    """THE ROW COUNT IS THE ASSERTION: a denied UPDATE raises nothing."""
+    assert _rows_changed(scoped, "Executive", _UPDATE_FOR[table](CLIENT_B)) == 0
+    assert _rows_changed(scoped, "Executive", _UPDATE_FOR[table](CLIENT)) == 1
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_a_manager_delete_of_an_unassigned_clients_row_removes_nothing(scoped, table):
+    assert _rows_changed(scoped, "Manager", f"DELETE FROM {table} WHERE client_id = '{CLIENT_B}'") == 0
+    assert _rows_changed(scoped, "Manager", f"DELETE FROM {table} WHERE client_id = '{CLIENT}'") == 1
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_the_assignment_policy_is_restrictive_for_all_and_asks_the_helper(db, table):
+    got = _psql(db, f"""
+        SELECT permissive, cmd, qual, with_check FROM pg_policies
+         WHERE tablename = '{table}' AND policyname = '{table}_assignment_scope';""",
+        tuples=True).stdout.strip()
+    assert got, f"{table} has no {table}_assignment_scope policy"
+    permissive, cmd, qual, with_check = got.split("|", 3)
+    # PERMISSIVE would OR with the firm policy and widen access; a policy on
+    # SELECT alone would leave INSERT, UPDATE and DELETE open.
+    assert permissive == "RESTRICTIVE" and cmd == "ALL", got
+    assert "can_access_client" in qual and "can_access_client" in with_check, got
