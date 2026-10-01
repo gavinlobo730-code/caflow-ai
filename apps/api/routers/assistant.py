@@ -180,17 +180,18 @@ GST COMPLIANCE (CGST Act) — statutory due dates:
 - GSTR-2B auto-populated by the 14th of the following month
 """
 
-_PROMPT_TDS_AFTER = """
+_PROMPT_TDS_SALARY = """
 - Section 192 salary: applicable slab rates
-- Sections 194I and 194J each have TWO LIMBS with different rates, and the \
-engine carries only the higher one of each. On 194I the rate above is for land, \
-building, furniture or fittings; letting of plant, machinery or equipment is \
-charged lower. On 194J the rate above is for professional fees; fees for \
-technical services are charged lower. This software does not hold either \
-concessional rate — two places in the codebase state the 194I one differently \
-and neither is verified — so do NOT quote a figure for them. Say which limb the \
-question is about, say the app will compute at the higher rate shown above, and \
-say that over-deducts if the concessional limb applies.
+"""
+
+# The two-limb paragraph is GENERATED (`statutory_brief.two_limb_block`) and no
+# longer typed. It said "this software does not hold either concessional rate ...
+# do NOT quote a figure" after TDS-22 (25-09-2026) put the confirmed 2% for
+# 194I(a) and 194J(a) in `section_rates` — a typed statement of what the engine
+# does not hold, contradicting the engine, which is the drift this module's
+# header records.
+
+_PROMPT_TDS_AFTER = """
 - 24Q/26Q returns: 31 July (Q1), 31 October (Q2), 31 January (Q3), 31 May (Q4). \
 Q4 is 31 May, NOT 30 April — it is the one quarter that does not follow the \
 "end of the month after quarter end" pattern.
@@ -255,6 +256,8 @@ def build_system_prompt(today=None) -> str:
         + "\n\n"
         + _tds_heading(fy) + "\n"
         + _tds_lines(fy)
+        + _PROMPT_TDS_SALARY
+        + "- " + brief.two_limb_block(fy) + "\n"
         + _PROMPT_TDS_AFTER
     )
 

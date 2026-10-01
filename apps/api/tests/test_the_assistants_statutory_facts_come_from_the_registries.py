@@ -333,3 +333,63 @@ def test_no_registration_threshold_figure_is_stated_as_fact():
 ])
 def test_lakh_label(paise, label):
     assert sb.lakh_label(paise) == label
+
+
+# ── the two-limb paragraph: generated, because the typed one went stale ──────
+
+_LIMB_SECTIONS = [("194I", "A"), ("194I", "B"), ("194J", "A"), ("194J", "B")]
+
+
+@pytest.mark.parametrize("section,letter", _LIMB_SECTIONS)
+def test_each_limbs_rate_in_the_prompt_is_the_registrys(section, letter):
+    """TDS-22 (25-09-2026) put the confirmed 2% for 194I(a) and 194J(a) in the
+    registry; the prompt went on telling the model the application held neither."""
+    fy = clock.ist_fy_label()
+    rule = section_rates.tds_rates_for(fy).sections[f"{section}({letter})"]
+    assert rule.rate_gap is None, "premise: the registry holds this limb's own rate"
+    assert f"{section}({letter.lower()}) " in _prompt()
+    line = next(ln for ln in _prompt().splitlines() if ln.startswith("- Sections 194I and 194J"))
+    assert f"{rule.individual_rate_bps / 100:g}%" in line
+
+
+def test_the_prompt_no_longer_says_the_concessional_rates_are_not_held():
+    p = _prompt()
+    assert "does not hold either concessional rate" not in p
+    assert "do NOT quote a figure for them" not in p
+    assert "two places in the codebase state" not in p
+
+
+def test_the_lower_limbs_are_stated_as_the_two_per_cent_the_registry_holds():
+    line = next(ln for ln in _prompt().splitlines() if ln.startswith("- Sections 194I and 194J"))
+    assert "194I(a) rent of plant, machinery or equipment: 2%" in line
+    assert "194J(a) fees for technical services: 2%" in line
+    assert "194I(b) rent of land, building, furniture or fittings: 10%" in line
+
+
+def test_a_rate_changed_in_the_registry_reaches_the_prompt_with_no_other_edit(monkeypatch):
+    real = section_rates.tds_rates_for
+
+    def moved(fy=None):
+        rates = real(fy)
+        sections = dict(rates.sections)
+        sections["194J(A)"] = replace(sections["194J(A)"],
+                                      individual_rate_bps=300, company_rate_bps=300)
+        return replace(rates, sections=sections)
+
+    monkeypatch.setattr(section_rates, "tds_rates_for", moved)
+    assert "194J(a) fees for technical services: 3%" in sb.two_limb_block(clock.ist_fy_label())
+
+
+def test_a_limb_whose_own_rate_is_not_held_is_said_to_be_unheld_and_given_no_figure(monkeypatch):
+    real = section_rates.tds_rates_for
+
+    def withdrawn(fy=None):
+        rates = real(fy)
+        sections = dict(rates.sections)
+        sections["194I(A)"] = replace(sections["194I(A)"], rate_gap="not read")
+        return replace(rates, sections=sections)
+
+    monkeypatch.setattr(section_rates, "tds_rates_for", withdrawn)
+    text = sb.two_limb_block(clock.ist_fy_label())
+    assert "194I(a) rent of plant, machinery or equipment: rate not held by this application" in text
+    assert "194I(a) rent of plant, machinery or equipment: 2%" not in text

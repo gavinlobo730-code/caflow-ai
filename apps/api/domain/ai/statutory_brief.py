@@ -360,6 +360,57 @@ def registration_threshold_block() -> str:
         "figure as current, and tell the CA to confirm the limit for the client's State.")
 
 
+# The four limbs `section_rates` holds, each beside what it charges. The wording of
+# WHAT a limb covers is the registry's own (its `rate_gap` sentences on the bare
+# sections); the RATE is read from the registry and never typed.
+_LIMBS = (
+    ("194I", "A", "rent of plant, machinery or equipment"),
+    ("194I", "B", "rent of land, building, furniture or fittings"),
+    ("194J", "A", "fees for technical services"),
+    ("194J", "B", "professional fees, royalty or a s.28(va) sum"),
+)
+
+
+def two_limb_block(fy: str) -> str:
+    """What the prompt says about sections 194I and 194J having two rates — from
+    the registry, for the year named.
+
+    It used to be typed, and it said the application "does not hold either
+    concessional rate ... do NOT quote a figure" after TDS-22 (25-09-2026) put the
+    confirmed 2% for 194I(a) and 194J(a) in `section_rates`: a typed statement of
+    what the engine does NOT hold, contradicting an engine that does. A limb whose
+    rule carries a `rate_gap` (its own rate is not held) is said to be unheld
+    rather than given a figure, so withdrawing a rate from the registry changes the
+    prompt with no other edit.
+    """
+    from domain.tds.section_rates import tds_rates_for
+
+    rules = tds_rates_for(fy).sections
+
+    def one(section: str, letter: str, what: str) -> str:
+        r = rules.get(f"{section}({letter})")
+        label = f"{section}({letter.lower()}) {what}"
+        if r is None or getattr(r, "rate_gap", None):
+            return f"{label}: rate not held by this application"
+        if r.individual_rate_bps == r.company_rate_bps:
+            return f"{label}: {r.individual_rate_bps / 100:g}%"
+        return (f"{label}: {r.individual_rate_bps / 100:g}% individual/HUF, "
+                f"{r.company_rate_bps / 100:g}% others")
+
+    limbs = "; ".join(one(*limb) for limb in _LIMBS)
+    return (
+        f"Sections 194I and 194J each have TWO LIMBS with different rates — {limbs}. "
+        "A payment recorded under the BARE section, with no limb chosen, withholds at "
+        "the higher rate in the list above, which over-deducts if the lower limb "
+        "applies (the excess is the payee's to reclaim, whereas under-deducting "
+        "disallows the whole expenditure under s.40(a)(ia)). Say which limb the "
+        "question is about and give that limb's rate, and say the limb should be "
+        "recorded instead of the bare section so the engine applies it directly. A "
+        "payee whose business is only operating a call centre is charged the lower "
+        "rate under a separate proviso that this application does not model."
+    )
+
+
 def rates_status_line(today: Optional[date] = None) -> str:
     """One line on which year's income-tax and TDS rates the application has
     verified and what it holds for the current one — for a prompt that carries no
