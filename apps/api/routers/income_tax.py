@@ -32,6 +32,7 @@ from services import capital_gain_exemption_service as cgx
 from domain.income_tax.advance_tax_interest_engine import (
     compute_234a_interest, compute_234b_interest, compute_234c_interest,
     installment_schedule, installment_rules, InstallmentPayment, INSTALLMENT_RULES,
+    UnforeseenIncome,
 )
 from domain.income_tax.itr_json import build_itr_payload, itr_field_placements
 from domain.income_tax.loss_set_off import BroughtForwardLoss, KNOWN_LOSS_TYPES
@@ -1301,10 +1302,42 @@ class AdvanceTaxInstallmentInput(BaseModel):
         return v
 
 
+class UnforeseenIncomeInput(BaseModel):
+    """One income §234C(1)'s proviso may excuse (IT-21), as the screen holds it.
+
+    `tax_paise` is the tax the income ADDS to the year's tax due on the returned
+    income. It is supplied and never derived from an amount here, because it
+    depends on the rest of the return — the §112A exemption is annual, the basic
+    exemption absorbs into special-rate gains and the surcharge turns on the
+    total. `GET /advance-tax/unforeseen-income` offers the capital gains
+    register's rows as a starting point and says what that figure leaves out.
+    """
+    kind: str
+    arose_on: date
+    tax_paise: int = Field(ge=0)
+    description: Optional[str] = Field(default=None, max_length=200)
+
+    @field_validator("kind")
+    @classmethod
+    def a_kind_the_proviso_names(cls, v: str) -> str:
+        from domain.income_tax.advance_tax_interest_engine import UNFORESEEN_KINDS
+        k = str(v or "").strip().lower()
+        if k not in UNFORESEEN_KINDS:
+            raise ValueError(
+                f"kind must be one of {', '.join(UNFORESEEN_KINDS)} — §234C(1)'s proviso "
+                f"names capital gains, winnings under §2(24)(ix) and dividend income, "
+                f"and 'casual income' in the loose sense is none of them.")
+        return k
+
+
 class ComputeAdvanceTaxRequest(BaseModel):
     fy: FYLabel
     estimated_tax_paise: int = Field(ge=0)
     installments: list[AdvanceTaxInstallmentInput] = Field(default_factory=list)
+    #: §234C(1)'s proviso for income that arose after an instalment fell due
+    #: (IT-21). Empty is the engine's behaviour before it was applied, so a
+    #: caller that sends nothing gets exactly the figures it always got.
+    unforeseen_income: list[UnforeseenIncomeInput] = Field(default_factory=list, max_length=50)
     #: §211(1) proviso — a §44AD/§44ADA assessee pays the whole advance tax by
     #: 15 March, so there is ONE instalment and §234C(1)(b) is the charging
     #: limb. Supplied rather than inferred: whether §44AD or §44ADA is opted
@@ -1322,12 +1355,23 @@ class ComputeAdvanceTaxRequest(BaseModel):
 
 
 def _at_response(estimated_tax_paise: int, req_installments: list[AdvanceTaxInstallmentInput],
-                 fy: str, *, is_presumptive_44ad_44ada: bool = False) -> dict:
-    result = compute_234c_interest(
-        fy, estimated_tax_paise,
-        [InstallmentPayment(i.installment_number, i.paid_amount_paise, i.paid_date) for i in req_installments],
-        is_presumptive_44ad_44ada=is_presumptive_44ad_44ada,
-    )
+                 fy: str, *, is_presumptive_44ad_44ada: bool = False,
+                 unforeseen_income: Optional[list[UnforeseenIncomeInput]] = None) -> dict:
+    try:
+        result = compute_234c_interest(
+            fy, estimated_tax_paise,
+            [InstallmentPayment(i.installment_number, i.paid_amount_paise, i.paid_date) for i in req_installments],
+            is_presumptive_44ad_44ada=is_presumptive_44ad_44ada,
+            unforeseen=[UnforeseenIncome(kind=u.kind, arose_on=u.arose_on,
+                                         tax_paise=u.tax_paise,
+                                         description=u.description or "")
+                        for u in (unforeseen_income or [])],
+        )
+    except ValueError as exc:
+        # An income outside the year, or a kind the proviso does not name, is a
+        # refusal the CA reads — never a clamp, because a misdated gain moves
+        # the whole answer.
+        raise HTTPException(status_code=422, detail=str(exc))
     return {
         "fy": fy,
         "estimated_tax_paise": estimated_tax_paise,
@@ -1352,9 +1396,30 @@ def _at_response(estimated_tax_paise: int, req_installments: list[AdvanceTaxInst
                 "shortfall_paise": i.shortfall_paise,
                 "interest_months": i.interest_months,
                 "interest_paise": i.interest_paise,
+                # IT-21. What this instalment left out because it arose later,
+                # and the tax its percentages were therefore taken of.
+                "unforeseen_excluded_paise": i.unforeseen_excluded_paise,
+                "base_paise": i.base_paise,
             }
             for i in result.installments
         ],
+        # IT-21. One line per income handed to the proviso: whether it was
+        # excused and, where not, why — the working a CA checks. Always present,
+        # empty where nothing was supplied.
+        "unforeseen_income": [
+            {
+                "kind": ln.kind,
+                "arose_on": ln.arose_on.isoformat(),
+                "tax_paise": ln.tax_paise,
+                "description": ln.description,
+                "relief": ln.relief,
+                "settle_by": ln.settle_by.isoformat(),
+                "paid_toward_paise": ln.paid_toward_paise,
+                "reason": ln.reason,
+            }
+            for ln in result.unforeseen_lines
+        ],
+        "caveats": list(result.caveats),
     }
 
 
@@ -1374,7 +1439,94 @@ def compute_advance_tax_interest(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
     return api_response(True, _at_response(
         req.estimated_tax_paise, req.installments, req.fy,
-        is_presumptive_44ad_44ada=req.is_presumptive_44ad_44ada))
+        is_presumptive_44ad_44ada=req.is_presumptive_44ad_44ada,
+        unforeseen_income=req.unforeseen_income))
+
+
+@router.get("/advance-tax/unforeseen-income")
+def advance_tax_unforeseen_income(
+    client_id: str = Query(...),
+    fy: Annotated[FYLabel, Query()] = ...,
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """The capital gains register's transfers in this financial year, offered as
+    candidates for §234C(1)'s proviso (IT-21). Reads and writes nothing else.
+
+    A CANDIDATE, NEVER AN ANSWER. Whether a gain is "income that arose after an
+    instalment fell due" is decided by its date, which the register holds, and
+    what it ADDS to the year's tax is a figure from the computation. The tax
+    offered here is the register's own — the statutory rate on the gain alone,
+    with cess — and it leaves out the surcharge, the ₹1,25,000 §112A exemption
+    (which is annual and cannot be assigned to one transfer) and the basic
+    exemption the slab income did not use. So it is an estimate and is marked
+    one, the CA replaces it with the computation's figure where they have it,
+    and a candidate nobody includes affects nothing: prepare-only, with an
+    accept and a reject on every line.
+
+    Only transfers that produced a GAIN with tax on it are offered. A loss, or a
+    gain wholly inside an exemption, adds no tax and has nothing to excuse.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    assert_client_access(current_user, client_id)
+    from core.ist_clock import fy_bounds
+    from domain.income_tax.statutory_rates import cess_paise, rates_for
+
+    caveats = [
+        "The tax shown is the statutory rate on each gain alone, plus cess. It "
+        "leaves out surcharge, the annual ₹1,25,000 §112A exemption and any "
+        "basic exemption the slab income did not use, so it is an ESTIMATE — "
+        "replace it with the figure from the computation where you have one.",
+    ]
+    from domain.income_tax.advance_tax_interest_engine import (
+        UNFORESEEN_KIND_LABELS, UNFORESEEN_KINDS)
+    # SERVED, so the screen spells neither the three kinds the proviso names nor
+    # the words for them. `kinds` rides on every answer, mock mode included.
+    kinds = [{"key": k, "label": UNFORESEEN_KIND_LABELS[k]} for k in UNFORESEEN_KINDS]
+    db = _db()
+    if not db:
+        return api_response(True, {"fy": fy, "kinds": kinds, "candidates": [],
+                                   "caveats": caveats})
+
+    start, end = fy_bounds(fy)
+    rows = (db.table("capital_gains").select("*")
+            .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+            .gte("sale_date", start).lte("sale_date", end)
+            .order("sale_date").execute().data) or []
+    rates = rates_for(fy)
+    out = []
+    for r in rows:
+        try:
+            res = compute_capital_gains(
+                r["asset_type"], date.fromisoformat(str(r["purchase_date"])[:10]),
+                date.fromisoformat(str(r["sale_date"])[:10]),
+                int(r.get("purchase_cost_paise") or 0), int(r.get("sale_value_paise") or 0),
+                int(r.get("improvement_cost_paise") or 0),
+                is_listed_security=r.get("is_listed_security"),
+                fmv_31_01_2018_paise=r.get("fmv_31_01_2018_paise"),
+            )
+        except (ValueError, KeyError, TypeError):
+            # A register row the engine cannot recompute is left out and not
+            # guessed at; the register screen is where it is repaired.
+            continue
+        if res.gain_paise <= 0 or res.tax_liability_paise <= 0:
+            continue
+        tax = res.tax_liability_paise
+        out.append({
+            "source": "capital_gains_register",
+            "register_id": r.get("id"),
+            "kind": "capital_gain",
+            "arose_on": str(r["sale_date"])[:10],
+            "description": str(r.get("asset_description") or "")[:200],
+            "gain_paise": res.gain_paise,
+            "tax_paise": tax + cess_paise(tax, rates),
+            "is_estimate": True,
+            "rate_is_a_slab_estimate": res.is_slab_rate_estimate,
+        })
+    if any(c["rate_is_a_slab_estimate"] for c in out):
+        caveats.append(
+            "At least one gain is taxed at the assessee's own slab rate, which "
+            "the register cannot know; it is shown at a flat stand-in.")
+    return api_response(True, {"fy": fy, "kinds": kinds, "candidates": out,
+                               "caveats": caveats})
 
 
 # ── §234A and §234B — the two the CA could not reach (IT-13) ─────────────────

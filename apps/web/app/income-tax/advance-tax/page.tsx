@@ -30,6 +30,7 @@ import {
   computeAdvanceTaxInterest, computeSection234ABInterest,
   listAdvanceTaxPayments, saveAdvanceTaxPayments,
   type AdvanceTaxComputeResult, type AdvanceTaxInstallmentInput,
+  type UnforeseenIncomeInput,
   type Section234ABResult, type SectionInterestResult,
   getSelfAssessmentPosition, createSelfAssessmentChallan, deleteSelfAssessmentChallan,
   type SelfAssessmentPosition,
@@ -39,6 +40,7 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, StatutoryNotes } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
+import { UnforeseenIncomePanel, type UnforeseenRow } from "@/components/tax/UnforeseenIncomePanel";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
@@ -66,6 +68,10 @@ export default function AdvanceTaxPage() {
   const [clientId, setClientId] = useState("");
   const [fy, setFy] = useState(FY_OPTIONS[0]);
   const [estimatedTaxRs, setEstimatedTaxRs] = useState("");
+  // IT-21. Income put forward for §234C(1)'s proviso, held as typed. Never
+  // persisted with the instalments: it is a working for the interest figure and
+  // the server answers from what is sent.
+  const [unforeseenRows, setUnforeseenRows] = useState<UnforeseenRow[]>([]);
   const [editPaidRs, setEditPaidRs] = useState<Record<number, string>>({});
   const [editPaidDate, setEditPaidDate] = useState<Record<number, string>>({});
   const [editChallan, setEditChallan] = useState<Record<number, string>>({});
@@ -176,6 +182,27 @@ export default function AdvanceTaxPage() {
   const paidPaiseOf = (n: number | string) => paiseFromRupeeInput(editPaidRs[n as never] || "0");
   const badPaidInstalment = [1, 2, 3, 4].find((n) => paidPaiseOf(n) === null);
 
+  // IT-21. A row with nothing in it is ignored; one with a date and no amount, or
+  // an amount that is not one, STOPS the calculation and says so — the same
+  // refusal to compute on a coerced zero, here because a tax read as nil would
+  // switch the proviso's relief off without a word.
+  const unforeseenParsed = unforeseenRows
+    .filter(r => r.arose_on || r.tax_rs.trim())
+    .map(r => ({ r, tax: paiseFromRupeeInput(r.tax_rs || "0") }));
+  const badUnforeseen = unforeseenParsed.find(({ r, tax }) => !r.arose_on || tax === null);
+  const unforeseenIncome: UnforeseenIncomeInput[] = badUnforeseen
+    ? []
+    : unforeseenParsed.map(({ r, tax }) => ({
+        kind: r.kind, arose_on: r.arose_on, tax_paise: tax as number,
+        description: r.description.trim() || null,
+      }));
+  const unforeseenKey = JSON.stringify(unforeseenIncome);
+  const unforeseenProblem = badUnforeseen
+    ? (!badUnforeseen.r.arose_on
+        ? "Every income needs the date it arose."
+        : "The tax on an income must be an amount in rupees, e.g. 109375 — without commas.")
+    : null;
+
   // Server-side compute, debounced 400ms (matches the capital-gains
   // calculator's pattern) so every keystroke doesn't fire a request.
   useEffect(() => {
@@ -186,6 +213,11 @@ export default function AdvanceTaxPage() {
       setResult(null);
       setComputeError(`Instalment ${badPaidInstalment}: enter the amount paid in `
                       + "rupees, e.g. 125000 — without commas.");
+      return;
+    }
+    if (unforeseenProblem) {
+      setResult(null);
+      setComputeError(unforeseenProblem);
       return;
     }
     if (estimatedTaxPaise <= 0) {
@@ -203,13 +235,14 @@ export default function AdvanceTaxPage() {
       computeAdvanceTaxInterest({
         fy, estimated_tax_paise: estimatedTaxPaise, installments,
         is_presumptive_44ad_44ada: presumptive,
+        unforeseen_income: unforeseenIncome,
       })
         .then(r => { setResult(r); setComputeError(null); })
         .catch(e => { setResult(null); setComputeError(e instanceof Error ? e.message : "Failed to compute"); });
     }, 400);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fy, estimatedTaxPaise, editPaidRs, editPaidDate, editChallan, presumptive]);
+  }, [fy, estimatedTaxPaise, editPaidRs, editPaidDate, editChallan, presumptive, unforeseenKey, unforeseenProblem]);
 
   // §234A / §234B. Same debounce and the same refusal to compute on a coerced
   // zero: a TDS credit read as nil manufactures a §234B shortfall on tax the
@@ -528,7 +561,15 @@ export default function AdvanceTaxPage() {
                       <td className="px-3 py-3 text-sm text-right tabular-nums">
                         {requiredPercent === null ? "—" : `${requiredPercent}%`}
                       </td>
-                      <td className="px-3 py-3 text-sm text-right tabular-nums font-medium">{formatPaise(requiredPaise)}</td>
+                      <td className="px-3 py-3 text-sm text-right tabular-nums font-medium">
+                        {formatPaise(requiredPaise)}
+                        {(inst?.unforeseen_excluded_paise ?? 0) > 0 && (
+                          <span className="block text-3xs font-normal text-ps-hint"
+                                title="Income that arose after this date and met the §234C(1) proviso's condition is left out of what this instalment is measured against.">
+                            excl. {formatPaise(inst?.unforeseen_excluded_paise ?? 0)} arising later
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-3">
                         <input type="number" min="0" step="0.01"
                           value={editPaidRs[n] ?? ""}
@@ -559,6 +600,25 @@ export default function AdvanceTaxPage() {
             </table>
           </div>
         )}
+      </Card>
+
+      {/* §234C(1)'s proviso for income nobody could have foreseen (IT-21). The
+          screen collects and renders; the engine decides, condition included. */}
+      <Card>
+        <CardContent className="pt-4 space-y-3">
+          <h2 className="text-sm font-semibold text-ps-ink">
+            Income that arose after an instalment date — §234C(1) proviso
+          </h2>
+          <UnforeseenIncomePanel
+            clientId={clientId}
+            fy={fy}
+            rows={unforeseenRows}
+            onChange={setUnforeseenRows}
+            lines={result?.unforeseen_income}
+            caveats={result?.caveats}
+            problem={unforeseenProblem}
+          />
+        </CardContent>
       </Card>
 
       {/* §234A and §234B — the server has computed these all along (IT-13). */}

@@ -518,10 +518,52 @@ export interface AdvanceTaxInstallmentInput {
   challan_number?: string | null;
 }
 
+/** IT-21. One income §234C(1)'s proviso may excuse. `tax_paise` is the tax the
+ *  income ADDS to the year's tax due on the returned income — supplied, never
+ *  derived from an amount here, because it depends on the rest of the return. */
+export interface UnforeseenIncomeInput {
+  kind: string;
+  arose_on: string; // YYYY-MM-DD
+  tax_paise: number;
+  description?: string | null;
+}
+
+/** What the server did with one such income — the working a CA checks. */
+export interface UnforeseenIncomeLine {
+  kind: string;
+  arose_on: string;
+  tax_paise: number;
+  description: string;
+  /** False where the proviso's CONDITION is not met (the income's own tax was
+   *  not paid in the instalments that remain, or by 31 March), in which case
+   *  `reason` says why and the income is treated as foreseeable. */
+  relief: boolean;
+  settle_by: string;
+  paid_toward_paise: number;
+  reason: string;
+}
+
+/** A capital gains register transfer offered as a candidate. An ESTIMATE: the
+ *  register's tax is the statutory rate on the gain alone, with cess. */
+export interface UnforeseenIncomeCandidate {
+  source: string;
+  register_id: string | null;
+  kind: string;
+  arose_on: string;
+  description: string;
+  gain_paise: number;
+  tax_paise: number;
+  is_estimate: boolean;
+  rate_is_a_slab_estimate: boolean;
+}
+
 export interface ComputeAdvanceTaxRequest {
   fy: string;
   estimated_tax_paise: number;
   installments: AdvanceTaxInstallmentInput[];
+  /** §234C(1)'s proviso (IT-21). Omitted or empty is the answer this endpoint
+   *  always gave; a figure moves only for a caller that sends income here. */
+  unforeseen_income?: UnforeseenIncomeInput[];
   /** §211(1) proviso — a §44AD/§44ADA assessee pays the whole advance tax by
    *  15 March, so there is ONE instalment and §234C(1)(b) is the charging limb.
    *  Sent, never inferred: whether the presumptive scheme is opted into is the
@@ -540,6 +582,11 @@ export interface AdvanceTaxInstallmentResult {
   shortfall_paise: number;
   interest_months: number;
   interest_paise: number;
+  /** IT-21. The tax on income that arose AFTER this instalment's date and was
+   *  left out of what it is measured against, and the tax its percentages
+   *  were therefore taken of. Optional for a frontend ahead of the backend. */
+  unforeseen_excluded_paise?: number;
+  base_paise?: number;
 }
 
 export interface AdvanceTaxComputeResult {
@@ -553,6 +600,9 @@ export interface AdvanceTaxComputeResult {
   /** The statute the answer rests on, in one sentence, for the CA to check. */
   basis: string;
   installments: AdvanceTaxInstallmentResult[];
+  /** IT-21. One line per income handed to the proviso. Empty where none was. */
+  unforeseen_income?: UnforeseenIncomeLine[];
+  caveats?: string[];
 }
 
 export interface AdvanceTaxRecord {
@@ -580,6 +630,31 @@ export async function computeAdvanceTaxInterest(req: ComputeAdvanceTaxRequest): 
   const json = await res.json();
   if (!res.ok || !json.success) throw new Error(json.error ?? `Advance tax compute failed: ${res.statusText}`);
   return json.data as AdvanceTaxComputeResult;
+}
+
+/** The capital gains register's transfers in the year, offered as candidates for
+ *  §234C(1)'s proviso (IT-21). Reads only; a candidate nobody includes changes
+ *  no figure. */
+export async function listUnforeseenIncomeCandidates(
+  clientId: string, fy: string,
+): Promise<{
+  kinds: { key: string; label: string }[];
+  candidates: UnforeseenIncomeCandidate[];
+  caveats: string[];
+}> {
+  const params = new URLSearchParams({ client_id: clientId, fy });
+  const res = await fetch(`${API_BASE}/api/income-tax/advance-tax/unforeseen-income?${params}`,
+    { headers: await _authHeaders() });
+  const json = await res.json();
+  if (!res.ok || !json.success) {
+    throw new Error(json.error ?? `Failed to load the register's gains: ${res.statusText}`);
+  }
+  const data = (json.data ?? {}) as { kinds?: unknown; candidates?: unknown; caveats?: unknown };
+  return {
+    kinds: Array.isArray(data.kinds) ? (data.kinds as { key: string; label: string }[]) : [],
+    candidates: Array.isArray(data.candidates) ? (data.candidates as UnforeseenIncomeCandidate[]) : [],
+    caveats: Array.isArray(data.caveats) ? (data.caveats as string[]) : [],
+  };
 }
 
 /** One section's interest, as apps/api/routers/income_tax._section_interest_payload
