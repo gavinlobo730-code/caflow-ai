@@ -3806,6 +3806,53 @@ export const ENGAGEMENT_TRANSITIONS: Record<FeeEngagementStatus, FeeEngagementSt
   "Inactive": ["Active"],
 };
 
+/** gst-06 — the electronic credit ledger's opening balance for one GSTR-3B window.
+ *  Every figure and every sentence is the server's (`domain/gst/credit_ledger.py`):
+ *  which source won, whether the balance was KNOWN, and what it says when it was not.
+ *  `known: false` is an ASSUMED nil, never a reading of one. */
+export interface CreditBalanceFigures {
+  igst_paise: number; cgst_paise: number; sgst_paise: number; cess_paise: number;
+  total_paise: number;
+}
+export type CreditOpeningSource =
+  "recorded" | "previous_return" | "not_recorded" | "unreadable";
+export interface CreditOpening {
+  source: CreditOpeningSource;
+  /** The source in the server's own words — the browser holds no vocabulary. */
+  label: string;
+  known: boolean;
+  window_start: string;
+  balance: CreditBalanceFigures;
+  chain: { balance: CreditBalanceFigures; period: string; status: string;
+           as_of: string; is_filed: boolean } | null;
+  recorded: { balance: CreditBalanceFigures; note: string | null;
+              recorded_at: string | null } | null;
+  recorded_minus_chain: Record<string, number> | null;
+  sentences: string[];
+}
+/** The block `POST /api/gst/gstr3b/from-books` carries as `credit_ledger`. */
+export interface CreditLedgerBlock {
+  opening: CreditOpening;
+  closing: CreditBalanceFigures;
+  closing_as_of: string;
+  note: string;
+}
+export interface CreditLedgerOpeningAnswer {
+  gstin: string;
+  window: { key: string; frequency: string; start: string; end: string;
+            months: string[]; label: string };
+  opening: CreditOpening;
+  return_is_filed?: boolean;
+  removed?: boolean;
+}
+export interface CreditLedgerOpeningWrite {
+  client_id: string;
+  period: string;
+  gstin?: string;
+  igst_paise: number; cgst_paise: number; sgst_paise: number; cess_paise: number;
+  note?: string;
+}
+
 export const api = {
   /** The firm's own reading of the DTAA rates it withholds under, per country
    *  and nature of income. Ships empty and is never seeded: India has
@@ -6679,6 +6726,27 @@ export const api = {
       request<ApiResp<PostDatedCheque>>(
         `/api/post-dated-cheques/${encodeURIComponent(id)}/cancel`,
         { method: "POST", body: JSON.stringify({ client_id: clientId, reason: reason || null }) }),
+  },
+
+  /** gst-06 — the opening balance of the electronic credit ledger, keyed from the
+   *  portal. It is an INPUT to the GSTR-3B set-off: nothing is posted or filed. */
+  gstCreditLedger: {
+    opening: (clientId: string, period: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, period });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<CreditLedgerOpeningAnswer>>(
+        `/api/gst-workspace/credit-ledger/opening?${q}`);
+    },
+    setOpening: (body: CreditLedgerOpeningWrite) =>
+      request<ApiResp<CreditLedgerOpeningAnswer>>(
+        "/api/gst-workspace/credit-ledger/opening",
+        { method: "PUT", body: JSON.stringify(body) }),
+    clearOpening: (clientId: string, period: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, period });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<CreditLedgerOpeningAnswer>>(
+        `/api/gst-workspace/credit-ledger/opening?${q}`, { method: "DELETE" });
+    },
   },
 
   /** THE supplier master. `public.suppliers` (migration 030) looked like a

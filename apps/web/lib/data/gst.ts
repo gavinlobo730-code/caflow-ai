@@ -24,6 +24,7 @@
  */
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import type { CreditLedgerBlock } from "@/lib/api";
 import { getFirmId } from "./getFirmId";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -328,6 +329,11 @@ export interface GSTR3BComputeResult {
    *  ceiling has to say which month is missing rather than read as the
    *  supplier's fault. */
   months_without_gstr2b?: string[];
+  /** gst-06 — what the electronic credit ledger opened with and what this return
+   *  leaves in it, per head. Absent from an older backend, which is rendered as
+   *  nothing rather than as a ledger nobody consulted. Stored on the saved row
+   *  so the NEXT return's opening can be this one's closing. */
+  credit_ledger?: CreditLedgerBlock;
 }
 
 /** One GSTR-1 or GSTR-3B period, as the server resolved it. */
@@ -577,6 +583,7 @@ interface FromBooksGSTR3B {
   gstr1_tie_out?: Gstr1TieOutBlock | null;
   period_window?: ReturnPeriodWindow;
   months_without_gstr2b?: string[];
+  credit_ledger?: CreditLedgerBlock;
 }
 
 export interface ClassifyResult {
@@ -933,6 +940,7 @@ export async function computeGSTR3B(
     reconciliation: result.reconciliation,
     period_window: result.period_window,
     months_without_gstr2b: result.months_without_gstr2b,
+    credit_ledger: result.credit_ledger,
   };
 
   // `result.period`, NEVER the month that was asked for (GST-11). A QRMP
@@ -1038,6 +1046,24 @@ export async function saveGSTR3BReturn(
     // credit simply ran out.
     rcm_cash_paise: w.net_payable.rcm_cash_paise,
     cash_payable_paise: w.net_payable.challan_total_paise,
+    // gst-06 — the electronic credit ledger this return opened with and left,
+    // per head, stored so the NEXT return's opening is this one's closing
+    // (`credit_closing_as_of` is the exact key it looks the chain up by).
+    // Written out key by key for the reason the payload above is: a literal
+    // payload is the only kind tests/test_frontend_columns_exist_pg can check.
+    // `undefined` drops the key, so a backend that sent no block leaves
+    // whatever the row already records — never a stored zero. Every figure is
+    // the server's; nothing is computed here.
+    credit_opening_igst_paise: result.credit_ledger?.opening.balance.igst_paise,
+    credit_opening_cgst_paise: result.credit_ledger?.opening.balance.cgst_paise,
+    credit_opening_sgst_paise: result.credit_ledger?.opening.balance.sgst_paise,
+    credit_opening_cess_paise: result.credit_ledger?.opening.balance.cess_paise,
+    credit_closing_igst_paise: result.credit_ledger?.closing.igst_paise,
+    credit_closing_cgst_paise: result.credit_ledger?.closing.cgst_paise,
+    credit_closing_sgst_paise: result.credit_ledger?.closing.sgst_paise,
+    credit_closing_cess_paise: result.credit_ledger?.closing.cess_paise,
+    credit_closing_as_of: result.credit_ledger?.closing_as_of,
+    credit_opening_source: result.credit_ledger?.opening.source,
     payload_json: result.payload,
     validation_errors: result.validation_warnings,
     status: "draft",

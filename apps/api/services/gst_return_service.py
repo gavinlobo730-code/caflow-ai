@@ -30,6 +30,8 @@ import services.bill_of_entry_service as bill_of_entry_service
 import services.client_gst_turnover_service as client_gst_turnover_service
 import services.client_gst_registration_service as client_gst_registration_service
 import services.gstr3b_tie_out_service as gstr3b_tie_out_service
+import services.gst_credit_ledger_service as gst_credit_ledger_service
+import domain.gst.credit_ledger as credit_ledger
 from domain.gst.gstr3b_computer import (
     SalesTransaction, PurchaseTransaction, ITCReversal, GSTR2ARecord,
     ImportOfGoods,
@@ -1956,10 +1958,20 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         for b in bill_of_entry_service.for_period(db, firm_id, client_id, start, end)
     ]
 
+    # THE ELECTRONIC CREDIT LEDGER IS A RUNNING BALANCE (gst-06). What it held
+    # when this window opened is spent with this return's own credit — CGST Act
+    # s.49(4) — so the set-off runs against it, and the credit it leaves is the
+    # next return's opening. Read per REGISTRATION (the ledger is per GSTIN) and
+    # never raises: a balance that could not be read is reported as such and the
+    # arithmetic assumes nil, the one direction that cannot leave tax unpaid.
+    opening_credit = gst_credit_ledger_service.opening_for(
+        db, firm_id, client_id, gstin, start)
+
     result = compute_gstr3b(sales, purchases, gstr2a, reversals, reclaims,
                             have_2b=have_2b, advances=advances,
                             imports_of_goods=imports_of_goods,
-                            two_b_by_document=two_b_by_document)
+                            two_b_by_document=two_b_by_document,
+                            opening_credit=opening_credit.balance)
 
     # ── Reconcile the return to the posted General Ledger ─────────────────────
     gl = _gl_gst_movements(db, firm_id, client_id, start, end)
@@ -2095,6 +2107,19 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # is the client's money. Computed in apps/api like every other
         # statutory figure — the screen renders it and derives nothing.
         "itc_carried_forward_paise": result.itc_carried_forward_paise,
+        # THE LEDGER THIS RETURN OPENED WITH AND LEFT (gst-06): per head, where
+        # the opening came from and whether it was KNOWN, and the closing the
+        # next return chains from. ALWAYS PRESENT — an absent key and a null
+        # one read the same to a screen, and "the ledger was not consulted" is
+        # not the same answer as "nothing was in it". `itc_carried_forward_paise`
+        # above is this block's closing total, kept as its own figure because
+        # two screens already read it.
+        "credit_ledger": credit_ledger.ledger_block(
+            opening_credit,
+            closing=credit_ledger.CreditBalance(
+                result.closing_igst, result.closing_cgst,
+                result.closing_sgst, result.closing_cess),
+            window_end=end),
         "payload": result.as_gstn_payload(gstin, period, filed_on=filed_on),
         # WHAT BEING LATE COSTS (GST-21). Absent until a filing date is given —
         # a return being prepared has none, and computing interest against

@@ -70,67 +70,28 @@ _NUMERIC_RE = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
 # Keep this SHORT. A long list means the snapshot needs refreshing, not that the
 # list needs another entry.
 ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
-    # Migrations 374-381 were all HERE until the pair of fixtures was refreshed
-    # to production's mark of 381 on the evening of 13 September 2026 — the
-    # SECOND refresh that day, and this list is why: nineteen entries over six
-    # migrations, and the other half of the ratchet
-    # (test_guards_match_production_pg's ten-migration limit) had already
-    # fired. Both fixtures now match production row for row (schema md5
-    # e764f1bd44aa5cafe1c2e4eaa1fd8dda over 4,237 columns in 284 tables;
-    # guards md5 111977fa54589d4f31096fd92a2223ee over 2,356 rows), so the
-    # only entries left are the migrations this branch has not merged yet.
-    ("bank_transactions", "gst_rate_bps"): "migration 382",
-    ("bank_transactions", "gst_is_interstate"): "migration 382",
-    ("fixed_assets", "disposal_is_supply"): "migration 383",
-    ("fixed_assets", "disposal_gst_rate_bps"): "migration 383",
-    ("fixed_assets", "disposal_is_interstate"): "migration 383",
-    ("journal_lines", "line_order"): "migration 384",
-    ("capital_gains", "transferred_asset_nature"): "migration 385",
-    ("vendors", "gst_registration_status"): "migration 388",
-    ("client_sales_invoices", "is_opening"): "migration 391",
-    ("purchase_bills", "is_opening"): "migration 391",
-    ("clients", "inventory_costing_method"): "migration 394",
-    ("inventory_stock_ledger", "costing_method"): "migration 394",
-    ("clients", "landed_cost_basis"): "migration 396",
-    ("purchase_bills", "landed_cost_basis"): "migration 396",
-    ("inventory_stock_ledger", "godown_id"): "migration 398",
-    ("inventory_stock_ledger", "batch_id"): "migration 398",
-    ("capital_gains", "is_listed_security"): "migration 402",
-    ("capital_gains", "fmv_31_01_2018_paise"): "migration 402",
-    ("clients", "section_32_1_iia_business"): "migration 406",
-    ("fixed_assets", "additional_depreciation_eligible"): "migration 406",
-    ("service_catalogue", "alternate_unit"): "migration 409",
-    ("service_catalogue", "units_per_alternate"): "migration 409",
-    ("service_catalogue", "reorder_level_units"): "migration 409",
-    ("payroll_it_declaration_items", "proof_attachments"): "migration 410",
-    ("client_sales_invoice_lines", "is_service"): "migration 411",
-    ("bank_matching_rules", "flags_tds_decision"): "migration 413",
-    ("bank_transactions", "draft_flags_tds_decision"): "migration 413",
-    ("bank_transactions", "tds_decision_needed"): "migration 413",
-    ("bank_transactions", "tds_decision_resolved_at"): "migration 413",
-    ("bank_transactions", "tds_decision_resolved_by"): "migration 413",
-    ("customers", "credit_limit_paise"): "migration 414",
-    ("invoice_settings", "credit_limit_blocks"): "migration 414",
-    ("tasks", "estimated_minutes"): "migration 452",
-    ("vendors", "interest_threshold_class"): "migration 454",
-    ("fixed_assets", "opening_position_date"): "migration 456",
-    # accounting-20 / accounting-22. `price_lists`, `price_list_items` and `late_interest_charges`
-    # are whole new tables and need no entry; these four are columns on an
-    # EXISTING table, which the snapshot predates.
-    ("customers", "price_list_id"): "migration 459",
-    ("customers", "late_interest_rate_bps"): "migration 461",
-    ("customers", "late_interest_grace_days"): "migration 461",
-    ("customers", "late_interest_from"): "migration 461",
-    # public.capital_gain_reinvestments (385), public.stock_count_sessions and
-    # public.stock_count_lines (387), public.rcm_documents (388),
-    # public.bills_of_entry (389), public.client_gst_registrations (390) and
-    # the sales/purchase pre-document tables (392, 393),
-    # public.purchase_bill_landed_costs (396),
-    # public.capital_work_in_progress and public.cwip_additions (397),
-    # and public.godowns and public.inventory_batches (398),
-    # and public.self_assessment_challans (407)
-    # are WHOLE new tables
-    # and need no entry: a table the snapshot predates is skipped.
+    # Everything for migrations 382-461 was HERE until the pair of fixtures was
+    # refreshed to production's mark of 470 on 1 October 2026 — forty-nine
+    # entries over twenty-two migrations, nine over the cap its own guard sets,
+    # which is what forced the refresh rather than another entry. The schema
+    # fixture now matches production row for row (md5
+    # 9bc498d0c90ca0ff8a946641eebb58b2 over 5,108 columns in 331 tables, both
+    # sides ordered by C collation), so the only entries left are the migrations
+    # this branch has not merged yet.
+    #
+    # gst-06. The ten columns a saved GSTR-3B records about the electronic credit
+    # ledger it opened with and left. `gst_credit_ledger_openings` is a whole new
+    # table and needs no entry.
+    ("gstr3b_returns", "credit_opening_igst_paise"): "migration 474",
+    ("gstr3b_returns", "credit_opening_cgst_paise"): "migration 474",
+    ("gstr3b_returns", "credit_opening_sgst_paise"): "migration 474",
+    ("gstr3b_returns", "credit_opening_cess_paise"): "migration 474",
+    ("gstr3b_returns", "credit_closing_igst_paise"): "migration 474",
+    ("gstr3b_returns", "credit_closing_cgst_paise"): "migration 474",
+    ("gstr3b_returns", "credit_closing_sgst_paise"): "migration 474",
+    ("gstr3b_returns", "credit_closing_cess_paise"): "migration 474",
+    ("gstr3b_returns", "credit_closing_as_of"): "migration 474",
+    ("gstr3b_returns", "credit_opening_source"): "migration 474",
 }
 
 

@@ -1967,6 +1967,75 @@ guard that states the rule rather than a spelling of it:
   LUT or bond (§16(3)(a)). `domain/gst/gstr3b_computer.py` is the authority for
   all three, and the callers carry them — a figure the computer gets right and
   no screen shows is not a fixed bug.
+- **THE SET-OFF RUNS AGAINST THE LEDGER'S BALANCE, NOT JUST THIS RETURN'S 4(C)**
+  (gst-06, migration 474). `compute_gstr3b` spent Table 4(C) of ONE return and
+  nothing else, and the electronic credit ledger is a RUNNING balance: credit
+  an earlier return left unspent is still in it, and §49(4) lets the whole of
+  it pay output tax. Apex's April 2026 closed holding Rs 36,54,961.65 of IGST
+  credit and the next month, with Rs 1,00,000 of output tax, showed Rs
+  1,00,000 payable in CASH — which under Rule 88B(1) is also the base late
+  interest is charged on. `domain/gst/credit_ledger.py` is the authority,
+  `services/gst_credit_ledger_service.py` the reads and the one write,
+  `routers/gst_credit_ledger.py` the door, and
+  `components/gst/Gstr3bCreditLedger.tsx` renders the server's block.
+  **THE OPENING HAS THREE SOURCES AND ONE ORDER**: a balance a CA KEYED from the
+  portal for this exact window (`gst_credit_ledger_openings`) wins; else the
+  closing of the return whose `credit_closing_as_of` is the day BEFORE this
+  window starts; else it is NOT KNOWN. The chain is an EXACT date match and
+  never "the latest earlier period", so a registration that moves between
+  monthly and quarterly filing cannot skip or repeat a month and a missing
+  month is not silently chained across. **A recorded figure beats the chain
+  because the portal is what a return is paid from and the chain is only an
+  estimate of it** (a refund, an ITC-02 transfer or a return filed elsewhere
+  all move the real ledger and none reaches a return saved here); where they
+  differ the difference is REPORTED per head, never absorbed.
+  **NOT KNOWN IS TREATED AS NIL FOR THE ARITHMETIC AND SAYS SO, IN ITS OWN
+  WORDS.** Assuming an empty ledger can only OVER-state the cash a client pays
+  (the credit they hold is simply unused and carries), while assuming credit
+  that is not there would leave tax unpaid with interest running — so the
+  balance is zero, `known` is false, and a sentence travels with it, rendered
+  in the attention palette and not as an ordinary zero. `unreadable` (the read
+  failed) is a FOURTH state from `not_recorded` (nobody has said) because one
+  sends a CA to key a balance and the other to compute again; `opening_for`
+  never raises, so a failed read cannot stop a return being prepared and
+  cannot read as a clean nil. **A chained opening from a return that is saved
+  but not marked filed is provisional and says so**, because the portal's
+  ledger moves only when a return is FILED.
+  **THE POOL, NOT TABLE 4**: each head's pool is 4(C) plus the opening, and the
+  §49(5) order runs over it unchanged (IGST credit first under Rule 88A,
+  whichever return it came from). 4(C), the payload's `itc_net` and every
+  declared table are NOT touched — adding last month's credit to this month's
+  form would declare credit twice. Cess credit pays cess only, and
+  reverse-charge tax is still cash whatever the opening. `itc_available_paise`
+  is now opening plus 4(C) and `itc_carried_forward_paise` equals the sum of the
+  per-head `closing_*`, asserted for every opening in a matrix; with no opening
+  every figure is what it was before. Rule 88B interest is charged on the cash
+  figure and that is the one that fell, so a late return the opening covered in
+  full owes none.
+  **THE GSTR-3B IS SAVED BY FOUR DOORS AND THE CHAIN NEEDS ALL OF THEM**: the
+  API's save and its recompute (both store the ten `credit_*` columns; recompute
+  rewrites them, or a recomputed draft would chain the balance it had BEFORE),
+  the firm-level screen's `saveGSTR3BReturn` (straight over PostgREST, so
+  `rbac()` and the API never run and the columns are named in its literal
+  payload) and the client page (which sends the served `credit_ledger` block and
+  would otherwise have it dropped by Pydantic without a word). A save that
+  states no statement leaves what the row records, and is never written as a nil
+  ledger; a statement that is not whole, or dated other than the window's end, is
+  a 422 — a wrong date would orphan or mis-chain every return after it. NULL in
+  all ten columns (every return saved before 474) means nobody recorded it and is
+  never chained, with NO backfill: a closing depends on an opening nobody stated.
+  **Keying is refused for a window whose GSTR-3B is already filed** (the filed
+  return recorded the opening it was computed with; a correction belongs in the
+  NEXT window's opening); deleting a keyed balance hands the window back to the
+  chain and does NOT mean the ledger was nil (key a nil balance for that). The
+  table's writes are service-role only and `authenticated` reads under the
+  RESTRICTIVE assignment policy. **Deliberately NOT done**: nothing reads the
+  portal (the ledger is a portal figure and this product cannot see it — every
+  number is keyed by a person or carried from a return computed here); the
+  cash ledger and its balance are not modelled; the opening is not split by
+  registration documents (GST-16's caveat still applies to which documents a
+  return holds); and no existing return is back-filled, so a client's first
+  return after this lands opens with a keyed balance or says it assumed nil.
 - **A RULE 37 REVERSAL CARRIES §50(1) INTEREST, AND THE CLOCK IS NO LONGER IN
   THE RULE** (GST-28). Rule 37(1) with the second proviso to §16(2) requires
   credit on a bill 180 days unpaid to be paid back "along with interest payable

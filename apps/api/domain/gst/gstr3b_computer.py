@@ -15,6 +15,7 @@ from datetime import date
 from typing import Optional, Sequence
 
 from domain.gst import rule_36_4
+from domain.gst.credit_ledger import CreditBalance
 
 # GSTR-3B is declared and paid in WHOLE rupees (CGST Act §170) — not the 2-decimal
 # rupees GSTR-1 uses. Conversion lives in the shared GST money module.
@@ -585,6 +586,34 @@ class GSTR3BResult:
     net_sgst: int = 0
     net_cess: int = 0
 
+    # ── The credit ledger's own balance, either side of this return (gst-06) ─
+    # Table 6 is set off against what the electronic credit ledger HOLDS, which
+    # is this return's 4(C) PLUS whatever the ledger opened with — a running
+    # balance, per head. `opening_*` is that balance as the caller resolved it
+    # (domain/gst/credit_ledger: recorded, carried from the previous return, or
+    # an assumed nil that says so) and `closing_*` is what the set-off below
+    # LEFT in each head, which is the next return's opening. Both default to
+    # nil, so a caller that knows nothing of the ledger computes exactly what
+    # it always did.
+    opening_igst: int = 0
+    opening_cgst: int = 0
+    opening_sgst: int = 0
+    opening_cess: int = 0
+    closing_igst: int = 0
+    closing_cgst: int = 0
+    closing_sgst: int = 0
+    closing_cess: int = 0
+
+    @property
+    def opening_credit_paise(self) -> int:
+        return (self.opening_igst + self.opening_cgst
+                + self.opening_sgst + self.opening_cess)
+
+    @property
+    def closing_credit_paise(self) -> int:
+        return (self.closing_igst + self.closing_cgst
+                + self.closing_sgst + self.closing_cess)
+
     # ── The liability the set-off is run against ─────────────────────────────
     # Derived, so Table 6 and the credit-utilisation figures below can never be
     # run against two different liabilities.
@@ -694,9 +723,15 @@ class GSTR3BResult:
     #   beside the first and printed next to it, is exactly the kind of pair
     #   that disagrees six months later.
     #
-    # NOT the electronic credit ledger balance. That is a portal figure and
-    # carries every earlier period's closing balance; this is the credit this
-    # ONE return leaves behind.
+    # THE LEDGER'S OWN OPENING BALANCE IS NOW AN INPUT (gst-06). This used to say
+    # "NOT the electronic credit ledger balance ... this is the credit this ONE
+    # return leaves behind", which was true and was the defect: the set-off ran
+    # against 4(C) alone, so credit an earlier return left unspent was invisible
+    # to the next one and a client holding lakhs paid cash. `opening_*` carries
+    # the ledger's balance in (resolved by domain/gst/credit_ledger and stated
+    # honestly where it is unknown) and `closing_*` is what is left, per head.
+    # It is still not the PORTAL's balance — nothing here can read the portal —
+    # but it is the balance this return computes the set-off from and hands on.
 
     @property
     def itc_consumed_paise(self) -> int:
@@ -712,9 +747,17 @@ class GSTR3BResult:
 
     @property
     def itc_available_paise(self) -> int:
-        """Table 4(C) across all heads — credit this return may actually spend."""
+        """Credit this return may actually spend: Table 4(C) across all heads
+        PLUS whatever the electronic credit ledger opened with (gst-06).
+
+        With no opening balance — which is every caller that predates the
+        ledger, and every client whose opening is not recorded — this is
+        exactly 4(C), as it always was. The opening is added because CGST Act
+        s.49(4) lets the whole of the ledger pay output tax, not only the
+        credit this return availed."""
         return (self.itc_net_igst + self.itc_net_cgst
-                + self.itc_net_sgst + self.itc_net_cess)
+                + self.itc_net_sgst + self.itc_net_cess
+                + self.opening_credit_paise)
 
     @property
     def itc_carried_forward_paise(self) -> int:
@@ -1014,6 +1057,7 @@ def compute_gstr3b(
     advances: Optional[AdvanceTaxOnReceipts] = None,
     imports_of_goods: Sequence[ImportOfGoods] = (),
     two_b_by_document: Optional[dict] = None,
+    opening_credit: "Optional[CreditBalance]" = None,
 ) -> GSTR3BResult:
     """Compute GSTR-3B figures from transaction data.
 
@@ -1029,6 +1073,11 @@ def compute_gstr3b(
             what GSTR-1 declares on advances, which 3.1(a) has to pay. None,
             the default, is a client with no Table 11 at all, which is most of
             them (Notification 66/2017-CT). See AdvanceTaxOnReceipts.
+        opening_credit: What the electronic credit ledger held per head when this
+            return's window opened (gst-06) — spent FIRST, with this return's own
+            4(C), under the s.49(5) order. None, the default, is a nil opening,
+            which is what every caller predating the ledger meant. The caller
+            owns saying whether nil was KNOWN (domain/gst/credit_ledger).
 
     Returns:
         GSTR3BResult with all table values computed in paise.
@@ -1375,8 +1424,24 @@ def compute_gstr3b(
     # and state credit sat unusable in the ledger. Nothing about it looked
     # wrong: the liability was right, the credit was right, only the bridge
     # between them was absent.
-    avail_igst, avail_cgst, avail_sgst = (
-        result.itc_net_igst, result.itc_net_cgst, result.itc_net_sgst)
+    #
+    # THE POOL IS THE LEDGER, NOT JUST THIS RETURN'S 4(C) (gst-06). §49(4)
+    # lets "the amount available in the electronic credit ledger" pay output
+    # tax, and that is a running balance: what an earlier return left unspent
+    # is still in it. So each head's pool is this return's 4(C) plus the
+    # opening balance, and the §49(5) order below runs over the pool unchanged
+    # — IGST first, under Rule 88A, whichever return it came from. 4(C)
+    # itself is NOT touched: Table 4 declares what THIS return availed, and
+    # adding an opening balance to it would put last month's credit on this
+    # month's form.
+    opening = opening_credit or CreditBalance()
+    result.opening_igst = opening.igst_paise
+    result.opening_cgst = opening.cgst_paise
+    result.opening_sgst = opening.sgst_paise
+    result.opening_cess = opening.cess_paise
+    avail_igst = result.itc_net_igst + opening.igst_paise
+    avail_cgst = result.itc_net_cgst + opening.cgst_paise
+    avail_sgst = result.itc_net_sgst + opening.sgst_paise
     liab_igst = result.liability_igst
     liab_cgst = result.liability_cgst
     liab_sgst = result.liability_sgst
@@ -1435,10 +1500,17 @@ def compute_gstr3b(
     result.net_igst = liab_igst
     result.net_cgst = liab_cgst
     result.net_sgst = liab_sgst
+    # What each head's pool has left once the four steps have run — the
+    # ledger's closing balance, and the next return's opening.
+    result.closing_igst = avail_igst
+    result.closing_cgst = avail_cgst
+    result.closing_sgst = avail_sgst
 
     # Compensation cess credit is usable only against compensation cess —
     # GST (Compensation to States) Act §11(2), which applies §49 to the cess
     # "as if it were tax", head for head. No cross-utilisation either way.
-    result.net_cess = max(0, result.liability_cess - result.itc_net_cess)
+    pool_cess = result.itc_net_cess + opening.cess_paise
+    result.net_cess = max(0, result.liability_cess - pool_cess)
+    result.closing_cess = max(0, pool_cess - result.liability_cess)
 
     return result

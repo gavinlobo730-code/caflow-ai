@@ -426,7 +426,15 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
             # the liability column understates and `paid_by_itc` below floors
             # to a figure the portal would not show.
             head_liability += _p(outward, "zero_rated_igst_paise")
-        credit_available = _p(itc, f"net_{head}_paise")   # 4(C) — never 4(A)
+        # 4(C) — never 4(A) — PLUS what the electronic credit ledger opened the
+        # period with (gst-06). The saved return records the opening it was set
+        # off against, so a head the ledger paid from its brought-forward balance
+        # does not render as "paid through ITC" more than the credit shown.
+        # Nil where the return was saved before that was recorded, or where
+        # nobody had stated an opening (the set-off then assumed nil, which is
+        # exactly what the column holds).
+        credit_available = (_p(itc, f"net_{head}_paise")
+                            + _p(rec, f"credit_opening_{head}_paise"))
         cash = _p(net_payable, f"{head}_paise")
         # What the credit actually discharged, as the difference between the
         # liability and what Table 6 leaves payable. Floored at zero so a
@@ -466,7 +474,10 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
 
     payment_note = (
         "The portal's PROCEED TO PAYMENT screen. The credit set off here is "
-        "Table 4(C) — what is left AFTER the 4(B) reversals — and never 4(A): "
+        "Table 4(C) — what is left AFTER the 4(B) reversals — and never 4(A), "
+        "PLUS whatever the electronic credit ledger already held when the "
+        "period opened (credit an earlier return left unspent is still in the "
+        "ledger and pays output tax before any cash is due): "
         "CGST Act §49(4) permits payment only out of credit available in the "
         "electronic credit ledger, and credit reversed in this same return is "
         "not available. Cross-utilisation: §49(5)(a) requires IGST credit to "
@@ -488,7 +499,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     stages.append(common.table_stage(
         "Table 6.1 — Payment of tax",
         payment_note,
-        ["Head", "Liability (3.1(a))", "Credit available (4C)",
+        ["Head", "Liability (3.1(a))", "Credit available (opening + 4C)",
          "Paid through ITC", "Paid in cash"],
         pay_rows,
         footer=[{"text": "Total"}, {"paise": total_liability},

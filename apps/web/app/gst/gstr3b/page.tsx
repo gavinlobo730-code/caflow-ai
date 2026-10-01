@@ -32,6 +32,7 @@ import {
 import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
+import { Gstr3bCreditLedger } from "@/components/gst/Gstr3bCreditLedger";
 import { RegistrationPicker, useRegistrationChoice } from "@/components/gst/RegistrationPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
@@ -894,7 +895,7 @@ export default function GSTR3BPage() {
                 Rs 36,54,961.65 of unused credit. */}
             <div className="px-5 py-3 border-t border-ps-border bg-[#FCFDFE] grid grid-cols-3 gap-3 text-center">
               {[
-                { label: "Credit available (4C)", value: w.itc_utilisation.available_paise },
+                { label: "Credit available (opening + 4C)", value: w.itc_utilisation.available_paise },
                 { label: "Set off against tax", value: w.itc_utilisation.consumed_paise },
                 { label: "Carried forward", value: w.itc_utilisation.carried_forward_paise,
                   accent: w.itc_utilisation.carried_forward_paise > 0 ? "text-emerald-700" : "" },
@@ -907,8 +908,9 @@ export default function GSTR3BPage() {
             </div>
             {w.itc_utilisation.carried_forward_paise > 0 && (
               <p className="px-5 pb-3 text-xs text-ps-label">
-                Credit exceeded this period&apos;s liability, so nothing is payable and
-                the balance carries into the next return. It is not a refund.
+                The credit held in the ledger exceeded this period&apos;s liability, so
+                nothing is payable and the balance carries into the next return. It is
+                not a refund.
               </p>
             )}
           </section>
@@ -1290,6 +1292,15 @@ export default function GSTR3BPage() {
               the two GSTR-3B screens disagreed about how much of the return
               they show. One component, both screens. */}
           <div className="space-y-3">
+            {/* The electronic credit ledger this return opened with and leaves
+                (gst-06). Every figure and sentence is the server's. */}
+            <Gstr3bCreditLedger
+              clientId={clientId}
+              period={result.period}
+              gstin={result.gstin}
+              ledger={result.credit_ledger}
+              onChanged={handleCompute}
+            />
             <Gstr3bFindings
               periodWindow={result.period_window}
               monthsWithout2b={result.months_without_gstr2b}
