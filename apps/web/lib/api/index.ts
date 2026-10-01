@@ -4594,7 +4594,7 @@ export const api = {
     emailLog: (limit = 50) =>
       request<ApiResp<{ sent: EmailLogRow[] }>>(`/api/notifications/email-log?limit=${limit}`),
   },
-  // `copilot.chat` (POST /api/ai-copilot/chat) was removed with ai-10: no screen
+  // `copilot.chat` (the chat route of the ai-copilot router) was removed with ai-10: no screen
   // called it — /copilot uses `copilotV2` — and its only product was an answer
   // plus a keyword-matched list of "suggested actions" with no link behind any of
   // them. `clientChat` went before it: that endpoint posted a single client's
