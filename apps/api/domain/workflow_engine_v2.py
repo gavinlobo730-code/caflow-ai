@@ -578,7 +578,7 @@ class WorkflowEngineV2:
             priority = params.get("priority", "medium")
             if priority not in self._TASK_PRIORITIES:
                 priority = "medium"
-            task = task_repo.create({
+            task_fields = {
                 "firm_id": firm_id,
                 "client_id": client_id,
                 "title": params.get("title", "Workflow Task"),
@@ -588,7 +588,16 @@ class WorkflowEngineV2:
                 "priority": priority,
                 "due_date": params.get("due_date"),
                 "completed_at": None,
-            })
+            }
+            # A step that says how long its task takes — `estimated_minutes`, or
+            # `estimated_hours` as the starter workflows write it — hands that to
+            # the task it makes. An unusable figure is dropped, never stored as 0.
+            from domain.practice import task_estimate
+            estimate = (task_estimate.clean_minutes(params.get("estimated_minutes"))
+                        or task_estimate.minutes_from_hours(params.get("estimated_hours")))
+            if estimate is not None:
+                task_fields["estimated_minutes"] = estimate
+            task = task_repo.create(task_fields)
             _logger.info("WF: created task %s ('%s') for firm %s",
                          task["id"], task["title"], firm_id)
             return {"task_id": task["id"], "title": task["title"]}

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
@@ -11,6 +11,7 @@ from repositories.client_repository import client_repo
 from services.task_service import is_valid_transition, group_tasks_by_status
 from services.activity_service import log_activity
 from services.audit_service import log_event
+from domain.practice import task_estimate
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -26,6 +27,14 @@ class TaskCreate(BaseModel):
     due_date: Optional[str] = None
     workflow_id: Optional[str] = None
     workflow_step_id: Optional[str] = None
+    # How long this is expected to take, in whole minutes (> 0). Absent is "nobody
+    # has estimated it" and is never stored as 0 (`domain/practice/task_estimate`).
+    estimated_minutes: Optional[int] = None
+
+    @field_validator("estimated_minutes", mode="before")
+    @classmethod
+    def _check_estimate(cls, v):
+        return task_estimate.check_minutes(v)
 
 
 class TaskUpdate(BaseModel):
@@ -35,6 +44,14 @@ class TaskUpdate(BaseModel):
     priority: Optional[str] = None
     assigned_to: Optional[str] = None
     due_date: Optional[str] = None
+    # Changed here, not cleared: like every field of this PATCH, an absent value
+    # means "leave it", so an estimate can be corrected but not taken off again.
+    estimated_minutes: Optional[int] = None
+
+    @field_validator("estimated_minutes", mode="before")
+    @classmethod
+    def _check_estimate(cls, v):
+        return task_estimate.check_minutes(v)
 
 
 @router.get("/summary/dashboard")
@@ -87,8 +104,14 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
         if not assignee or assignee.get("firm_id") != current_user.get("firm_id"):
             raise HTTPException(status_code=422, detail="Assignee not found in this firm")
     now = datetime.now(timezone.utc).isoformat()
+    fields = body.model_dump()
+    if fields.get("estimated_minutes") is None:
+        # An absent estimate is an absent KEY, not a NULL one: this is the hot path
+        # for every task made by hand, and naming a column the table does not have
+        # yet (the window between a deploy and migration 452) would refuse them all.
+        fields.pop("estimated_minutes", None)
     task = task_repo.create({
-        **body.model_dump(),
+        **fields,
         "firm_id": current_user.get("firm_id"),
         "completed_at": None,
         "created_at": now,
@@ -185,6 +208,15 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
             )
         if updates["status"] == "completed":
             updates["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+    if "assigned_to" in updates:
+        # `tasks` carries the assignee TWICE (`assigned_to` and `assignee_id`,
+        # migrations 063 / 113 / 232, both pointing at users since 424) and the two
+        # readers pick differently: `/api/workload` reads `assignee_id` FIRST. A
+        # reassignment that wrote only `assigned_to` left the old person holding the
+        # task in the workload figures for any task that had been made with both —
+        # which every task made from a template or a recurring configuration is.
+        updates["assignee_id"] = updates["assigned_to"]
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     updated = task_repo.update(task_id, updates)

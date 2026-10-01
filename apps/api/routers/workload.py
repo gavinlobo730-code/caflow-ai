@@ -4,6 +4,7 @@ from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import filter_by_client
+from domain.practice import task_estimate
 from repositories.capacity_repository import capacity_repo, DEFAULT_WEEKLY_HOURS, DEFAULT_MAX_TASKS
 from services import capacity_risk_service
 
@@ -11,6 +12,28 @@ from datetime import date, timedelta
 from core.ist_clock import ist_today
 
 router = APIRouter(prefix="/api/workload", tags=["workload"])
+
+#: How many of a person's open tasks ride on their card, and how many unassigned
+#: ones ride on the page. The COUNTS are always the whole truth; the lists are
+#: what a person can act on from one screen, so the payload is proportional to
+#: the answer and not to the size of the firm's task history.
+OPEN_TASKS_SHOWN_PER_MEMBER = 8
+UNASSIGNED_TASKS_SHOWN = 50
+
+_OPEN_TASK_FIELDS = ("id", "title", "client_id", "due_date", "priority", "status",
+                     "estimated_minutes")
+
+
+def _open_task_row(t: dict) -> dict:
+    """The part of an open task a person allocating work needs to see."""
+    return {k: t.get(k) for k in _OPEN_TASK_FIELDS}
+
+
+def _by_urgency(tasks: list[dict]) -> list[dict]:
+    """Earliest due first, undated last, id as the tie-break so the same list
+    comes back in the same order on every read."""
+    return sorted(tasks, key=lambda t: (t.get("due_date") is None,
+                                        t.get("due_date") or "", str(t.get("id") or "")))
 
 
 def _get_db():
@@ -127,7 +150,12 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
     # to the caller's assigned book — every figure below (active/overdue/
     # due-this-week/utilisation, per named colleague) is otherwise computed
     # over every client in the firm. tasks.client_id is NOT NULL (migration 002).
-    tasks_result = db.table("tasks").select("id, assigned_to, assignee_id, status, due_date, priority, client_id").eq("firm_id", firm_id).neq("status", "completed").execute()
+    # `title` and `estimated_minutes` are selected so the SAME read that counts
+    # each person's open work can say what it is and how long it is expected to
+    # take — the screen that used to answer "who is loaded" from a task count and
+    # a per-role constant is retired (practice_management-24), and this is the one
+    # model it is merged into.
+    tasks_result = db.table("tasks").select("id, title, assigned_to, assignee_id, status, due_date, priority, client_id, estimated_minutes").eq("firm_id", firm_id).neq("status", "completed").execute()
     tasks = filter_by_client(current_user, tasks_result.data or [])
 
     # Single query for recently completed (this month)
@@ -167,6 +195,11 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
         due_week = sum(1 for t in utasks if t.get("due_date") and today <= t["due_date"] <= week_end)
         completed_month = user_completed.get(uid, 0)
 
+        # What this person's open work is EXPECTED to take, where anybody said:
+        # the recorded minutes are totalled and the tasks that carry none are
+        # counted beside them, never averaged over (`domain/practice/task_estimate`).
+        expected = task_estimate.summarise(t.get("estimated_minutes") for t in utasks)
+
         cap = capacity_map.get(uid, {})
         weekly_hours = cap.get("weekly_capacity_hours", DEFAULT_WEEKLY_HOURS)
         max_tasks = cap.get("max_concurrent_tasks", DEFAULT_MAX_TASKS)
@@ -194,6 +227,10 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
             "weekly_capacity_hours": weekly_hours,
             "max_concurrent_tasks": max_tasks,
             "minutes_logged_this_week": logged_min,
+            "estimated_open_minutes": expected.minutes,
+            "open_tasks_without_estimate": expected.without_estimate,
+            "open_tasks": [_open_task_row(t) for t in
+                           _by_urgency(utasks)[:OPEN_TASKS_SHOWN_PER_MEMBER]],
             "utilisation_pct": utilisation,
             "is_overloaded": is_overloaded,
             "is_underutilised": is_underutilised,
@@ -203,6 +240,14 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
             overloaded.append(member)
         if member["is_underutilised"]:
             underutilised.append(member)
+
+    # The population no member card shows: an open task with nobody on it. It is
+    # in no person's count and no utilisation figure, so it is the work most
+    # likely to go missing — and it is what the retired Work Allocation screen
+    # was the only place to see.
+    unassigned_tasks = [t for t in tasks if not get_uid(t)]
+    unassigned_expected = task_estimate.summarise(
+        t.get("estimated_minutes") for t in unassigned_tasks)
 
     total_active = sum(m["active_tasks"] for m in members)
     total_overdue = sum(m["overdue_tasks"] for m in members)
@@ -217,6 +262,13 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
         "overloaded_count": len(overloaded),
         "underutilised_count": len(underutilised),
         "avg_utilisation_pct": avg_util,
+        "unassigned": {
+            "count": len(unassigned_tasks),
+            "estimated_minutes": unassigned_expected.minutes,
+            "without_estimate": unassigned_expected.without_estimate,
+            "tasks": [_open_task_row(t) for t in
+                      _by_urgency(unassigned_tasks)[:UNASSIGNED_TASKS_SHOWN]],
+        },
     })
 
 

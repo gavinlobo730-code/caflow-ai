@@ -66,7 +66,8 @@ UNREACHED_COMPUTED_ANSWERS: dict[str, str] = {
         "Same as /analytics/clients. `/practice/profitability` and `/insights` "
         "are the live firm-level answers.",
     "/api/analytics/team":
-        "Same again; `/team/workload` and `/team/work-allocation` are live.",
+        "Same again; `/team/workload` is the live one (`/team/work-allocation` was "
+        "merged into it and is a redirect).",
     "/api/banking/statements/column-mappings":
         "Its own docstring says it exists 'so a CA can see and correct what a "
         "bank taught us' — and no screen shows them. A real gap, and a small "

@@ -54,6 +54,10 @@ const UNLINKED: Record<string, string> = {
   // `/accounting/invoices` LEFT THIS LIST on 27-09: it was a tombstone for the
   // Sales tab and is the Sales worklist now, named in lib/navigation/screens.ts
   // and linked from the Accounting panel's "Across clients" group.
+  "/team/work-allocation":
+    "a redirect stub to /team/workload (practice_management-24), kept so an old " +
+    "bookmark or a #unassigned-tasks link still lands somewhere — nothing in the " +
+    "product links to it and nothing should",
   "/portal/employee/activate":
     "the landing page for the invite link emailed by " +
     "services/employee_portal_service.py::_send_invite_email — nothing in " +

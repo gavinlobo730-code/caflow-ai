@@ -4,6 +4,7 @@ from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access
+from domain.practice import task_estimate
 from repositories.task_template_repository import task_template_repo
 
 router = APIRouter(prefix="/api/task-templates", tags=["task-templates"])
@@ -130,6 +131,13 @@ def instantiate_template(
         "created_at": now,
         "updated_at": now,
     }
+    # The template says how long the work takes (whole hours); the task carries it
+    # in minutes from the moment it is made, so the forecast reads this task's own
+    # figure and a later edit to the template does not re-estimate it. A template
+    # with no estimate adds no key at all — never a 0.
+    estimate = task_estimate.minutes_from_hours(tpl.get("estimated_hours"))
+    if estimate is not None:
+        task_data["estimated_minutes"] = estimate
     result = db.table("tasks").insert(task_data).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to create task")

@@ -207,6 +207,10 @@ export interface Task {
   assigned_to?: string;
   due_date?: string;
   completed_at?: string;
+  /** How long this is expected to take, in whole minutes (> 0), or null when
+   *  nobody has estimated it — which is not 0. Copied at creation from the
+   *  template or workflow step the task was made from. */
+  estimated_minutes?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -747,6 +751,31 @@ export interface WorkloadMember {
   utilisation_pct: number;
   is_overloaded: boolean;
   is_underutilised: boolean;
+  /** Recorded estimates of this person's OPEN tasks, totalled. Tasks that carry
+   *  none are counted in `open_tasks_without_estimate`, never averaged over. */
+  estimated_open_minutes?: number;
+  open_tasks_without_estimate?: number;
+  /** The first few open tasks, earliest due first. `active_tasks` is the count. */
+  open_tasks?: WorkloadTask[];
+}
+
+/** An open task as `GET /api/workload` serves it to the person allocating work. */
+export interface WorkloadTask {
+  id: string;
+  title: string | null;
+  client_id: string | null;
+  due_date: string | null;
+  priority: string | null;
+  status: string | null;
+  estimated_minutes: number | null;
+}
+
+/** Open work with nobody on it: in no person's count and no utilisation figure. */
+export interface UnassignedWork {
+  count: number;
+  estimated_minutes: number;
+  without_estimate: number;
+  tasks: WorkloadTask[];
 }
 
 export interface TeamWorkload {
@@ -756,6 +785,7 @@ export interface TeamWorkload {
   overloaded_count: number;
   underutilised_count: number;
   avg_utilisation_pct: number;
+  unassigned?: UnassignedWork;
 }
 
 export interface MyWorkloadSummary {

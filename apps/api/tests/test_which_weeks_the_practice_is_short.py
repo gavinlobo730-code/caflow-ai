@@ -103,10 +103,11 @@ def test_hours_come_only_from_what_was_recorded():
 
 
 def test_nothing_is_averaged_over_the_tasks_with_no_estimate():
-    """`tasks` has no effort column — only `workflow_steps` and
-    `task_templates` do — so most tasks carry none. Imputing an average would
-    produce a confident hours figure whose accuracy is a property of how many
-    tasks happen to come from workflows, which the CA cannot see."""
+    """`tasks.estimated_minutes` is filled only where something estimated the task
+    (migration 452 — copied from its template or workflow step), so most tasks
+    carry none. Imputing an average would produce a confident hours figure whose
+    accuracy is a property of how many tasks happen to carry an estimate, which
+    the CA cannot see."""
     out = run([due(0, hours=10.0)] + [due(0) for _ in range(9)])
     assert out.weeks[0].estimated_hours == 10.0, "not 100.0"
     assert out.weeks[0].items_without_an_estimate == 9

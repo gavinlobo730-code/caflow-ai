@@ -196,8 +196,10 @@ export const SCREENS: Screen[] = [
   firm("/team", "Team", "Practice", ["staff", "users", "permissions"]),
   firm("/team/assignments", "Client assignments", "Practice", ["who handles which client"]),
   firm("/team/login-history", "Login history", "Practice", ["sign ins", "access log"]),
-  firm("/team/work-allocation", "Work allocation", "Practice", ["allocate", "assign work"]),
-  firm("/team/workload", "Workload", "Practice", ["capacity", "utilisation"]),
+  // Work allocation is merged into this screen (practice_management-24); its URL
+  // is a redirect, so it is not a screen of its own to search for.
+  firm("/team/workload", "Workload", "Practice",
+       ["capacity", "utilisation", "allocate", "assign work", "unassigned", "reassign"]),
 
   // ── Intelligence and reporting ────────────────────────────────────────────
   firm("/health", "Client health", "Insights", ["score", "health"]),
@@ -306,6 +308,10 @@ export const UNLISTED: Record<string, string> = {
   "/onboarding/checklist":
     "a pure redirect to /clients/onboarding/ (sweep-auth-and-public-05) — kept " +
     "for old bookmarks; naming it would give ONE destination two palette entries",
+  "/team/work-allocation":
+    "a pure redirect to /team/workload (practice_management-24) — Work Allocation " +
+    "was merged into it and its URL kept for old bookmarks and #unassigned-tasks " +
+    "links; naming it would give ONE destination two palette entries",
   "/clients/[id]":
     "a pure redirect to /clients/:id/overview/ — naming it would give ONE\n     destination two palette entries, and \"Overview\" is the one a CA means",
   "/health/[client_id]": "a RECORD, which is what entity search already finds",

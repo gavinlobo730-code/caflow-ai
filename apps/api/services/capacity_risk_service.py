@@ -7,13 +7,19 @@ own capacity rows — none of them proportional to transaction volume, and the
 tasks read carries `workflow_step_id` so the one effort estimate this product
 actually records can be resolved without a fourth query per task.
 
-THE EFFORT ESTIMATE IS A JOIN THAT MAY FIND NOTHING, AND THAT IS THE POINT.
-`tasks` has no estimate column (migrations 002 / 063 put one on
-`workflow_steps` and `task_templates` instead), so a task generated from a
-workflow step has one and everything else does not. The estimates are looked up
-for the steps actually referenced — a bounded `.in_` over the distinct ids, not
-one read per task — and a task with no step simply carries None, which the
-domain module counts rather than averages over.
+THE EFFORT ESTIMATE IS THE TASK'S OWN, AND IT MAY BE ABSENT, AND THAT IS THE POINT.
+`tasks.estimated_minutes` (migration 452) is where effort lives, copied at
+creation from the template or workflow step a task was made from
+(`domain/practice/task_estimate`). Until then `tasks` carried none, and the one
+estimate this product recorded sat on `workflow_steps` behind a
+`workflow_step_id` that nothing writes, so the forecast said "no effort
+estimates recorded" for practically every firm.
+
+That join is KEPT, as a fallback only: a task with no estimate of its own but a
+workflow step that has one still resolves, looked up for the steps actually
+referenced by tasks that NEED it — a bounded `.in_` over the distinct ids, not
+one read per task. A task with neither simply carries None, which the domain
+module counts rather than averages over.
 """
 from __future__ import annotations
 
@@ -24,6 +30,7 @@ from core.authz import filter_by_client
 from core.db_paging import fetch_all
 from core.ist_clock import ist_today
 from domain.practice import capacity_risk as rule
+from domain.practice import task_estimate
 from repositories.capacity_repository import DEFAULT_WEEKLY_HOURS
 
 #: Statuses that mean the work is done. Everything else is outstanding —
@@ -66,15 +73,19 @@ def capacity_risk(db, current_user: dict, *,
     # filter_by_client narrows this firm-wide read to the caller's own book.
     tasks = fetch_all(
         lambda: db.table("tasks")
-        .select("id, due_date, status, client_id, workflow_step_id, title")
+        .select("id, due_date, status, client_id, workflow_step_id, title, estimated_minutes")
         .eq("firm_id", firm_id)
         .lt("due_date", window_end),
         label="capacity_risk_service.tasks")
     tasks = [t for t in filter_by_client(current_user, tasks)
              if (t.get("status") or "") not in _TASK_DONE]
 
+    # Only a task with NO estimate of its own needs the step lookup: its own
+    # figure is the one a person sees on the task and the one a later edit to a
+    # workflow step must not silently change.
     step_ids = sorted({str(t["workflow_step_id"]) for t in tasks
-                       if t.get("workflow_step_id")})
+                       if t.get("workflow_step_id")
+                       and task_estimate.clean_minutes(t.get("estimated_minutes")) is None})
     effort = _effort_by_step(db, step_ids) if step_ids else {}
 
     # ── the undated backlog, which the window read CANNOT see ────────────────
@@ -98,10 +109,12 @@ def capacity_risk(db, current_user: dict, *,
     for t in tasks:
         task_ids.add(str(t["id"]))
         step = t.get("workflow_step_id")
+        own = task_estimate.hours_from_minutes(t.get("estimated_minutes"))
         items.append(rule.DueItem(
             due_date=t.get("due_date") or "",
             source="task",
-            effort_hours=effort.get(str(step)) if step else None,
+            effort_hours=own if own is not None
+            else (effort.get(str(step)) if step else None),
             label=t.get("title"),
         ))
 

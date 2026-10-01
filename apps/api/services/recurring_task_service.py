@@ -4,6 +4,7 @@ Scans active recurring configs and generates tasks for those due today or past d
 Ensures idempotency by checking last_generated_at.
 """
 import logging
+from domain.practice import task_estimate
 from datetime import date, timedelta, datetime, timezone
 from dateutil.relativedelta import relativedelta
 from typing import Optional
@@ -125,10 +126,11 @@ def generate_due_recurring_tasks(firm_id: Optional[str] = None,
             title = config.get("title")
             description = config.get("description")
             priority = config.get("priority", "medium")
+            estimated_hours = None
 
             if config.get("template_id"):
                 try:
-                    tpl_result = db.table("task_templates").select("name, description, default_priority").eq("id", config["template_id"]).or_(
+                    tpl_result = db.table("task_templates").select("name, description, default_priority, estimated_hours").eq("id", config["template_id"]).or_(
                         f"firm_id.eq.{config['firm_id']},firm_id.is.null"
                     ).maybe_single().execute()
                     if tpl_result.data:
@@ -136,6 +138,7 @@ def generate_due_recurring_tasks(firm_id: Optional[str] = None,
                         title = title or tpl.get("name")
                         description = description or tpl.get("description")
                         priority = priority or tpl.get("default_priority", "medium")
+                        estimated_hours = tpl.get("estimated_hours")
                 except Exception as e:
                     logger.warning(f"Failed to load template {config.get('template_id')}: {str(e)}")
 
@@ -179,6 +182,13 @@ def generate_due_recurring_tasks(firm_id: Optional[str] = None,
                 "created_at": now,
                 "updated_at": now,
             }
+
+            # The template's own estimate travels with the task it generates (one
+            # rule, `domain/practice/task_estimate`); no template, or none on it,
+            # adds no key rather than a 0.
+            estimate = task_estimate.minutes_from_hours(estimated_hours)
+            if estimate is not None:
+                task_data["estimated_minutes"] = estimate
 
             task_result = db.table("tasks").insert(task_data).execute()
             if task_result.data:
