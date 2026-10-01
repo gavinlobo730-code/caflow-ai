@@ -47,7 +47,7 @@ def deny(monkeypatch):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def test_extracting_a_notice_for_another_clients_is_refused(deny, monkeypatch):
-    monkeypatch.setattr(di, "_run_notice_extraction", lambda text: (None, None, 200))
+    monkeypatch.setattr(di, "_run_notice_extraction", lambda text, **kw: (None, None, 200))
     body = di.ExtractNoticeRequest(client_id=THEIRS, document_text="notice text")
     with pytest.raises(HTTPException) as e:
         di.extract_notice(body, current_user=USER)
@@ -58,7 +58,7 @@ def test_extracting_a_notice_for_another_clients_is_refused(deny, monkeypatch):
 def test_extracting_a_notice_for_another_clients_never_calls_groq(deny, monkeypatch):
     """Authorization must be checked BEFORE spending the firm's Groq quota."""
     called = []
-    monkeypatch.setattr(di, "_run_notice_extraction", lambda text: called.append(text) or (None, None, 200))
+    monkeypatch.setattr(di, "_run_notice_extraction", lambda text, **kw: called.append(text) or (None, None, 200))
     body = di.ExtractNoticeRequest(client_id=THEIRS, document_text="notice text")
     with pytest.raises(HTTPException):
         di.extract_notice(body, current_user=USER)
@@ -67,7 +67,7 @@ def test_extracting_a_notice_for_another_clients_never_calls_groq(deny, monkeypa
 
 def test_extracting_a_notice_for_your_own_client_still_works(deny, monkeypatch):
     extracted = {"notice_type": "gst_scrutiny", "authority": "GSTN", "reference_no": "R1"}
-    monkeypatch.setattr(di, "_run_notice_extraction", lambda text: (extracted, None, 200))
+    monkeypatch.setattr(di, "_run_notice_extraction", lambda text, **kw: (extracted, None, 200))
     body = di.ExtractNoticeRequest(client_id=MINE, document_text="notice text")
     out = di.extract_notice(body, current_user=USER)
     assert out["data"]["client_id"] == MINE

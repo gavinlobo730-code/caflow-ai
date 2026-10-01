@@ -41,6 +41,7 @@ import {
 } from "@/lib/purchases/vendorHistory";
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
+import { objectWithLists } from "@/lib/api/shape";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -105,6 +106,20 @@ interface ExtractionTotalsCheck {
   agrees: boolean;
   tolerance_paise: number;
   note: string | null;
+  /** Each failing check's own sentence, with its own amounts (header sum, lines
+   *  against the taxable value, tax at the lines' rates). Absent from a backend one
+   *  deploy behind, which is why the screen falls back to `note`. */
+  failures?: string[];
+}
+
+/** `supplier_check` from the same response (domain/extraction_checks.py): the
+ *  supplier GSTIN against its own check digit, and IGST against CGST+SGST for the
+ *  States involved. Reports; the screen never decides either. */
+interface ExtractionSupplierCheck {
+  /** `valid` is null where there was no GSTIN to test, and false only where the
+   *  check digit (or the shape) failed. */
+  gstin?: { checked: boolean; present: boolean; valid: boolean | null; problem: string | null };
+  failures?: { check: string; reason: string }[];
 }
 
 /** One bill the server believes this one may be a second copy of.
@@ -314,6 +329,7 @@ export function PurchaseBillEditor({
   // (PUR-21). Computed in apps/api — domain/extraction_totals.py — because the
   // tolerance is a rule about CGST s.170's round-off, not a display choice.
   const [aiTotals, setAiTotals] = useState<ExtractionTotalsCheck | null>(null);
+  const [aiSupplier, setAiSupplier] = useState<ExtractionSupplierCheck | null>(null);
   // Storage PATH of the uploaded invoice (not a browser-openable URL — the
   // "Documents" bucket is private) — set on any upload attempt, whether or
   // not AI extraction itself succeeds, so the original file is retained as
@@ -597,6 +613,7 @@ export function PurchaseBillEditor({
     setExtracting(true);
     setAiExtracted(null);
     setAiTotals(null);
+    setAiSupplier(null);
     setError(null);
     try {
       const formData = new FormData();
@@ -615,7 +632,9 @@ export function PurchaseBillEditor({
       if (json.success && json.data?.extracted) {
         const ex = json.data.extracted as ExtractedInvoice;
         setAiExtracted(ex as unknown as Record<string, unknown>);
-        setAiTotals((json.data.totals_check as ExtractionTotalsCheck | undefined) ?? null);
+        setAiTotals(objectWithLists<ExtractionTotalsCheck>(json.data.totals_check, "failures"));
+        const supplier = objectWithLists<ExtractionSupplierCheck>(json.data.supplier_check, "failures");
+        setAiSupplier(supplier);
         if (ex.invoice_no) setBillNo(ex.invoice_no);
         if (ex.invoice_date) setBillDate(ex.invoice_date);
         // Match the extracted vendor — GSTIN first (exact, authoritative),
@@ -627,9 +646,19 @@ export function PurchaseBillEditor({
         // silently stayed empty even on a successful extraction.
         const gstin = ex.vendor_gstin?.trim().toUpperCase();
         const name = ex.vendor_name?.trim().toLowerCase();
-        const matched = (gstin && vendors.find((v) => v.gstin?.toUpperCase() === gstin))
-          ?? (name && vendors.find((v) => v.name.trim().toLowerCase() === name))
-          ?? null;
+        // A GSTIN is matched on only if the server did not find it WRONG (ai-02).
+        // The model is typing fifteen characters it has looked at, and the server
+        // tests them against the check digit; `valid === false` means this one
+        // failed, so it identifies no registration and the vendor is not chosen by
+        // it. `null` (nothing to test) and `true` both leave the match as it was.
+        const gstinTrusted = supplier?.gstin?.valid !== false;
+        const byGstin = gstin && gstinTrusted
+          ? vendors.find((v) => v.gstin?.toUpperCase() === gstin)
+          : undefined;
+        const byName = name
+          ? vendors.find((v) => v.name.trim().toLowerCase() === name)
+          : undefined;
+        const matched = byGstin ?? byName ?? null;
         if (matched) onVendorChange(matched.id);
         if (ex.line_items?.length) {
           // AI-01: nothing is invented here. A quantity, unit, rate or GST rate
@@ -937,7 +966,23 @@ export function PurchaseBillEditor({
                     </div>
                   ))}
                 </div>
-                {aiTotals?.checked && !aiTotals.agrees && (
+                {/* Each failing check says its own thing with its own amounts
+                    (ai-02): the lines against the taxable value and the tax at the
+                    lines' rates are different findings from the header sum, and
+                    "off by" one figure cannot describe all three. A server one
+                    deploy behind sends no `failures`, and the header sentence
+                    below is what it always was. */}
+                {aiTotals && !aiTotals.agrees && (aiTotals.failures?.length ?? 0) > 0 && (
+                  <div className="space-y-1">
+                    {(aiTotals.failures ?? []).map((reason, i) => (
+                      <p key={i} className="flex items-start gap-1 text-3xs text-state-problem bg-state-problem-surface rounded px-1.5 py-1">
+                        <AlertTriangle size={11} className="mt-px flex-shrink-0" />
+                        <span>{reason}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {aiTotals?.checked && !aiTotals.agrees && (aiTotals.failures?.length ?? 0) === 0 && (
                   <p className="flex items-start gap-1 text-3xs text-state-problem bg-state-problem-surface rounded px-1.5 py-1">
                     <AlertTriangle size={11} className="mt-px flex-shrink-0" />
                     <span>
@@ -946,6 +991,16 @@ export function PurchaseBillEditor({
                     </span>
                   </p>
                 )}
+                {/* The supplier, checked beside the figures (ai-02): a GSTIN whose
+                    check digit fails is a GSTIN the model misread, and IGST between
+                    two same-State registrations is a tax head it misread or a place
+                    of supply only the invoice can show. Both WARN. */}
+                {(aiSupplier?.failures ?? []).map((f) => (
+                  <p key={f.check} className="flex items-start gap-1 text-3xs text-state-problem bg-state-problem-surface rounded px-1.5 py-1">
+                    <AlertTriangle size={11} className="mt-px flex-shrink-0" />
+                    <span>{f.reason}</span>
+                  </p>
+                ))}
                 {aiTotals && !aiTotals.checked && (
                   <p className="text-3xs text-ps-hint">{aiTotals.note}</p>
                 )}

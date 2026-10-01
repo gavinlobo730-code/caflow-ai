@@ -118,7 +118,11 @@ def test_the_endpoint_returns_the_check():
     from routers import document_intelligence_v1 as m
     src = inspect.getsource(m.extract_invoice)
     assert '"totals_check": totals' in src
-    assert "_estimate_confidence(extracted, totals)" in src
+    # The confidence is computed FROM the check. (It used to be spelled
+    # `_estimate_confidence(extracted, totals)`; ai-02 adds the supplier check as
+    # a third input, and the rule is that `totals` is one of them, not the
+    # argument list.)
+    assert re.search(r"_estimate_confidence\(\s*extracted,\s*totals\b", src)
 
 
 # ── and the CA is shown the figures ─────────────────────────────────────────

@@ -60,6 +60,8 @@ import json
 import logging
 from typing import Callable, Optional, Protocol
 
+from domain.ai.gateway import ProviderFailed
+
 from .normalizer import NormalizedTxn, StatementParseError, _to_iso_date, _to_paise
 
 _logger = logging.getLogger("caflow.banking.vision")
@@ -251,7 +253,11 @@ def read_statement(
     for i, image in enumerate(images, 1):
         try:
             reply = call_model(image=image, mime=mime, prompt=PROMPT)
-        except StatementParseError:
+        except (StatementParseError, ProviderFailed):
+            # A provider that did not answer is NOT a statement that could not be
+            # read: the gateway has already retried and classified it, and the
+            # caller turns it into the sentence and the status that fit (a
+            # timeout is 504, not a 422 that reads as "your file is wrong").
             raise
         except Exception as e:  # noqa: BLE001 — the provider's own exceptions
             # Which vendor and model this uses is an internal detail and is not
@@ -340,6 +346,13 @@ def read_printed_totals(
 
     try:
         reply = call_model(image=image, mime=mime, prompt=TOTALS_PROMPT)
+    except ProviderFailed:
+        # A provider that is DOWN is not "this page prints no totals". The gateway
+        # has already retried and tried any fallback, so the page reads behind this
+        # probe would fail the same way — and swallowing it here made the refusal
+        # that followed ("this scan does not print its own totals") a false reason
+        # for an outage. The caller turns it into the classified sentence and status.
+        raise
     except Exception as e:  # noqa: BLE001 — the provider's own exceptions
         # NOT fatal. The totals are a bonus on this path; the balances remain,
         # and the caller refuses if neither is available. Failing the whole

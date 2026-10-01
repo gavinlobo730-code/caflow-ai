@@ -130,10 +130,18 @@ def test_the_key_scan_leaves_ordinary_words_alone():
 def test_the_api_is_where_the_keys_are_read():
     """The other half of 'every model call is made server-side': the keys the browser
     must not hold are read by the backend, from the environment."""
-    from domain.ai import groq_text
-    src = Path(groq_text.__file__).read_text(encoding="utf-8")
-    assert "GROQ_API_KEY" in src
-    assert "GEMINI_API_KEY" in (API / "routers" / "document_intelligence_v1.py").read_text(encoding="utf-8")
+    # The RULE is "a backend module reads each key from the environment", not "this
+    # particular file does" — the keys are named in the gateway's provider table and
+    # read where a call is made, and that moved when the two doors were built (ai-04).
+    sources = [p.read_text(encoding="utf-8")
+               for p in API.rglob("*.py")
+               if "tests" not in p.relative_to(API).parts and "venv" not in p.parts]
+    assert len(sources) > 100, "the backend was not found — the scan would pass for ever"
+    for key in ("GROQ_API_KEY", "GEMINI_API_KEY"):
+        assert any(re.search(r"(environ|getenv)[^\n]*" + key, src) for src in sources), (
+            f"no backend module reads {key} from the environment")
+    from domain.ai import gateway
+    assert gateway.GROQ.key_env == "GROQ_API_KEY" and gateway.GEMINI.key_env == "GEMINI_API_KEY"
 
 
 # ── 3. a model call leaves for a provider outside India ──────────────────────
@@ -145,17 +153,20 @@ def test_a_model_call_leaves_for_a_provider_outside_india():
     four pages is wrong in the OTHER direction (it discloses more than is true), and this
     is the test that makes somebody read it."""
     from domain.ai import groq_text
-    import routers.ai_copilot as copilot
 
-    for url in (groq_text.GROQ_CHAT_URL, copilot.GROQ_API_URL):
-        host = urlparse(url).hostname
-        assert host == "api.groq.com", f"text goes to {host}, which the site says is outside India"
-        assert not host.endswith(".in")
+    # There is ONE text destination now (ai-04): the copilot route and the statement
+    # narrator used to carry a URL each, and both go through the door instead.
+    host = urlparse(groq_text.GROQ_CHAT_URL).hostname
+    assert host == "api.groq.com", f"text goes to {host}, which the site says is outside India"
+    assert not host.endswith(".in")
 
-    analysis = (API / "domain" / "financial_analysis_service.py").read_text(encoding="utf-8")
-    assert "https://api.groq.com/" in analysis
+    # …and nothing else names a Groq host, so a second destination cannot appear unseen.
+    others = [str(p.relative_to(API)) for p in API.rglob("*.py")
+              if "tests" not in p.relative_to(API).parts and "venv" not in p.parts
+              and p.name != "groq_text.py" and "api.groq.com" in p.read_text(encoding="utf-8")]
+    assert not others, f"a second place names a Groq host: {others}"
 
-    vision = (API / "routers" / "document_intelligence_v1.py").read_text(encoding="utf-8")
+    vision = (API / "domain" / "ai" / "gemini_vision.py").read_text(encoding="utf-8")
     assert "from google import genai" in vision, (
         "pictures no longer go through Google's SDK — what do the site's AI sentences say now?")
 

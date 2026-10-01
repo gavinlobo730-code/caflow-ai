@@ -18,11 +18,15 @@ from repositories.base import BaseRepository
 
 
 def _configured_text_model() -> str:
-    """The Groq text model as configured NOW — the one place a stored row's
-    `model_used` label comes from. Imported here rather than at module level: this
-    is a repository and domain/ai is a leaf it should not depend on at import."""
+    """The Groq text model that WROTE the reply being stored — the one place a
+    stored row's `model_used` label comes from. That is the model that answered
+    the last call in this context (`groq_text.answered_by`), which is the
+    configured one unless the gateway fell back to another: a reply a fallback
+    wrote must not be recorded under the primary's name. Imported here rather than
+    at module level: this is a repository and domain/ai is a leaf it should not
+    depend on at import."""
     from domain.ai import groq_text
-    return groq_text.text_model()
+    return groq_text.answered_by()
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 

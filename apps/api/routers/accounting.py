@@ -1583,5 +1583,7 @@ async def get_statement_analysis(
     bs = svc.balance_sheet(firm_id, client_id, end, basis=basis)
     prev_pl = svc.profit_loss(firm_id, client_id, prev_start, prev_end, basis=basis)
 
-    result = await generate_statement_analysis(pl, bs, prev_pl, financial_year, prev_fy)
+    result = await generate_statement_analysis(
+        pl, bs, prev_pl, financial_year, prev_fy,
+        firm_id=firm_id, user_id=current_user.get("id"))
     return api_response(True, result)

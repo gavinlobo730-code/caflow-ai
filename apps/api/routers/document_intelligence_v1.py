@@ -18,31 +18,23 @@ from core.uploads import read_limited
 from core.authz import assert_client_access
 from services.internal_client_service import assert_partner_for_internal_id
 from domain.extraction_totals import check_totals
-from domain.extraction_lines import read_line
-from domain.ai.groq_text import DEFAULT_TEXT_MODEL
+from domain.extraction_checks import check_supplier
+from domain.ai import extraction_schemas, gemini_vision, groq_text, untrusted
+from domain.ai.gateway import ProviderFailed
 
 _logger = logging.getLogger("caflow.doc_intelligence_v1")
 _GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
-# Text-only model for PDFs with embedded text — this path works and is
-# unchanged. Overridable without a code change since Groq's model lineup
-# changes over time. The fallback is domain/ai/groq_text.DEFAULT_TEXT_MODEL,
-# imported rather than duplicated as a literal, so this router and _v2 cannot
-# quietly drift from the one place the default is now decided.
-_GROQ_TEXT_MODEL = os.environ.get("GROQ_TEXT_MODEL", DEFAULT_TEXT_MODEL)
-# Vision-capable model for photo/scanned invoice uploads (JPEG/PNG) — a
-# text-only model cannot read pixels (see _run_extraction's docstring for the
-# original bug this replaced: images used to be silently unreadable).
-# Previously routed through Groq (meta-llama/llama-4-maverick-17b-128e-
-# instruct), which returned a live 404 model_not_found on this account.
-# Gemini's free tier is multimodal-native, requires no billing setup, and
-# was already provisioned for this project — switched the image path only;
-# the PDF/text path above still works fine on Groq and is untouched.
+# Which TEXT model reads a PDF with embedded text, and which VISION model reads a
+# photographed or scanned bill, are decided in domain/ai (groq_text.text_model()
+# and gemini_vision.vision_model(), each with its own fallback list) and read at
+# call time. This module used to snapshot both names at import and hand them to
+# the vendor SDKs itself; it no longer imports either SDK (ai-04) — the two
+# doors are the only modules that do.
+#
+# Vision is Gemini because Groq's own vision models returned a live 404
+# model_not_found on this account; Gemini's free tier is multimodal-native and
+# was already provisioned for this project. The PDF/text path stays on Groq.
 _GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
-# gemini-2.5-flash was retired by Google ahead of its announced shutdown
-# date (confirmed live 404 "no longer available to new users" — a known,
-# reported issue, not specific to this account). gemini-3.5-flash is the
-# current free-tier vision-capable model as of this fix.
-_GEMINI_VISION_MODEL = os.environ.get("GEMINI_VISION_MODEL", "gemini-3.5-flash")
 
 router = APIRouter(prefix="/api/document-intelligence-v1", tags=["document_intelligence_v1"])
 
@@ -51,7 +43,7 @@ router = APIRouter(prefix="/api/document-intelligence-v1", tags=["document_intel
 _BUCKET = "Documents"
 
 _EXTRACTION_PROMPT = """
-You are an expert Indian accountant. Analyse the following invoice document text and extract
+You are an expert Indian accountant. Analyse the invoice document supplied to you (as text between markers, or as images) and extract
 the data as valid JSON with exactly these keys:
 {
   "vendor_name": "string",
@@ -83,9 +75,11 @@ Rules:
   shows 0%, nil-rated or exempt.
 - GSTIN format is 15 characters: 2-digit state code + 10-char PAN + entity digit + Z + check digit.
 - Return ONLY the JSON object, no markdown, no explanation.
-
-Document text:
 """
+# The document is NOT part of this prompt any more (ai-16): it travels in its own
+# message, between markers the system message names as untrusted data
+# (domain/ai/untrusted), so a file that says "ignore the above" is read as a
+# file that says it.
 
 
 @router.post("/extract-invoice")
@@ -125,7 +119,9 @@ def extract_invoice(
     # manual bill entry.
     document_url = _upload_bill_document(content, content_type, filename, current_user.get("firm_id"), client_id)
 
-    extracted, error, status_code = _run_extraction(content, content_type, filename)
+    extracted, error, status_code = _run_extraction(
+        content, content_type, filename,
+        firm_id=current_user.get("firm_id"), user_id=current_user.get("id"))
     if error:
         # R2.8/F19: no more fabricated fallback data — surface the failure
         # honestly so the CA knows to enter the bill manually, instead of a
@@ -140,10 +136,16 @@ def extract_invoice(
     # and nothing checked it (PUR-21). Warns, never refuses — see
     # domain/extraction_totals.py for the tolerance and why.
     totals = check_totals(extracted)
+    # And does the SUPPLIER it names exist, and is the tax the kind its place
+    # gives (ai-02)? The GSTIN is fifteen characters the model typed, and the
+    # editor then matches a vendor on it. Reports; refuses and rewrites nothing.
+    supplier = check_supplier(
+        extracted, _client_for_checks(client_id, current_user.get("firm_id")))
     return api_response(True, {
         "extracted": extracted,
-        "confidence": _estimate_confidence(extracted, totals),
+        "confidence": _estimate_confidence(extracted, totals, supplier),
         "totals_check": totals,
+        "supplier_check": supplier,
         "requires_review": True,  # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         "client_id": client_id,
         "document_url": document_url,
@@ -177,8 +179,24 @@ def _upload_bill_document(
         return None
 
 
+def _client_for_checks(client_id: str, firm_id: Optional[str]) -> Optional[dict]:
+    """The client's row, for the State its GSTIN and `state_code` give — or None.
+
+    Best-effort and firm-scoped: the checks that need it say "the client's State
+    is not recorded" when it is missing, and a failed read must not cost the CA
+    an extraction that already succeeded."""
+    try:
+        from repositories.client_repository import client_repo
+        return client_repo.find_by_id(client_id, firm_id=firm_id)
+    except Exception:                                            # noqa: BLE001
+        _logger.warning("extract-invoice: the client row could not be read for the "
+                        "place-of-supply check", exc_info=True)
+        return None
+
+
 def _run_extraction(
-    content: bytes, content_type: str, filename: str
+    content: bytes, content_type: str, filename: str, *,
+    firm_id: Optional[str] = None, user_id: Optional[str] = None,
 ) -> tuple[Optional[dict], Optional[str], int]:
     """
     Attempt AI extraction. Never fabricates data: on any failure returns
@@ -190,6 +208,12 @@ def _run_extraction(
     a text-only model cannot read pixels, and Groq's own vision offering was
     unavailable on this account (live 404 model_not_found), so the two paths
     now use two different providers rather than forcing one non-working fit.
+
+    A provider failure comes back as the gateway's CLASSIFIED sentence and its
+    status (504 for a timeout, 502 for a refusal, and so on — the same words every
+    other AI route uses), and a reply that cannot be accepted as a reading comes
+    back as a refusal that says what was wrong with it. Only a failure nobody
+    classified is the generic sentence.
     """
     is_pdf = "pdf" in content_type or filename.lower().endswith(".pdf")
     if not is_pdf and not _GEMINI_KEY:
@@ -207,18 +231,23 @@ def _run_extraction(
                 # plausible invented vendor and invoice number could come back
                 # from gibberish (ai-03). It is read as the picture it is, or
                 # refused — never guessed at.
-                return _extract_scanned_pdf(content)
+                return _extract_scanned_pdf(content, firm_id=firm_id, user_id=user_id)
             if not _GROQ_KEY:
                 _logger.info("No GROQ_API_KEY — refusing to fabricate an extraction")
                 return None, "AI extraction is not configured on the server", 503
-            return _groq_extract_text(doc_text), None, 200
-        return _gemini_extract_image(content, content_type), None, 200
+            return _groq_extract_text(doc_text, firm_id=firm_id, user_id=user_id), None, 200
+        return _gemini_extract_image(content, content_type, firm_id=firm_id, user_id=user_id), None, 200
+    except ProviderFailed as e:
+        # The provider did not answer, and the gateway has already retried and
+        # tried any configured fallback. What the CA is told is the classified
+        # sentence — which setting is wrong, or whether trying again can help —
+        # where this used to be one generic sentence for every cause (ai-04).
+        return None, e.sentence, e.http_status
+    except extraction_schemas.ExtractionRefused as e:
+        _logger.error("AI extraction refused (%s)", e.sentence)
+        return None, e.sentence, e.http_status
     except Exception as e:
-        # Full failure reason (provider, model, exact error) goes to server
-        # logs only — never to the client. Which AI vendor/model this app
-        # uses under the hood is an internal implementation detail, not
-        # something to surface to the CA using the product; it's also not
-        # actionable for them ("retry or enter manually" already is).
+        # A failure nobody classified. The reason goes to the server log only.
         _logger.error("AI extraction failed (%s): %s", type(e).__name__, e)
         return None, "AI extraction failed — please retry or enter the bill details manually", 502
 
@@ -229,7 +258,9 @@ def _run_extraction(
 SCANNED_PDF_PAGE_LIMIT = 3
 
 
-def _extract_scanned_pdf(content: bytes) -> tuple[Optional[dict], Optional[str], int]:
+def _extract_scanned_pdf(
+    content: bytes, *, firm_id: Optional[str] = None, user_id: Optional[str] = None,
+) -> tuple[Optional[dict], Optional[str], int]:
     """Read a PDF that has no text layer through the image path, or say why not.
 
     The image path is Gemini, the same one a photographed invoice takes
@@ -257,7 +288,7 @@ def _extract_scanned_pdf(content: bytes) -> tuple[Optional[dict], Optional[str],
                       f"bill details by hand."), 422
     if not pages:
         return None, "This PDF has no pages to read.", 422
-    return _gemini_extract_images(pages, "image/png"), None, 200
+    return _gemini_extract_images(pages, "image/png", firm_id=firm_id, user_id=user_id), None, 200
 
 
 def _extract_pdf_text(content: bytes) -> Optional[str]:
@@ -278,73 +309,80 @@ def _extract_pdf_text(content: bytes) -> Optional[str]:
 
 
 def _parse_extraction_json(raw: str) -> dict:
-    """Shared JSON parsing + paise-field coercion for both the text and
-    vision extraction paths — same response shape (_EXTRACTION_PROMPT)."""
-    import json
+    """Shared parsing, validation and paise-field coercion for both the text and
+    vision extraction paths — same response shape (_EXTRACTION_PROMPT).
 
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-
-    data = json.loads(raw)
-
-    for field in ("taxable_amount_paise", "cgst_paise", "sgst_paise", "igst_paise", "total_paise"):
-        data[field] = int(data.get(field) or 0)
-
-    # AI-01: an absent value is UNKNOWN, never a default. The two lines this
-    # replaced were `int(x or 1800)` and `float(x or 1)`, and `0` is falsy — so a
-    # nil-rated or exempt line read as 0% came back as 18%, and ITC on an exempt
-    # purchase was overstated unless the CA spotted it. `read_line` keeps a real
-    # zero as zero, leaves what was not read as None, and names it in `not_read`
-    # so the screen can leave it empty instead of showing a guess as a reading.
-    data["line_items"] = [read_line(item) for item in (data.get("line_items") or [])]
-
-    return data
+    The reply is validated against `extraction_schemas`' pydantic model (ai-05):
+    a reply that is not a JSON object, an amount that is not a whole number of
+    paise, lines that are not objects — each is `ExtractionRefused` with a
+    sentence saying what was wrong, not a generic failure and not a trusted key.
+    Lines then go through `read_line` (AI-01): an absent value is UNKNOWN, never
+    a default. The two lines `read_line` replaced were `int(x or 1800)` and
+    `float(x or 1)`, and `0` is falsy — so a nil-rated or exempt line read as 0%
+    came back as 18%, and ITC on an exempt purchase was overstated unless the CA
+    spotted it. It keeps a real zero as zero, leaves what was not read as None,
+    and names it in `not_read` so the screen can leave it empty instead of
+    showing a guess as a reading."""
+    return extraction_schemas.parse_invoice(raw)
 
 
-def _groq_extract_text(doc_text: str) -> dict:
-    """Call Groq's text model to extract invoice fields from PDF-extracted text."""
-    from groq import Groq
+def _groq_extract_text(doc_text: str, *, firm_id: Optional[str] = None,
+                       user_id: Optional[str] = None) -> dict:
+    """Ask Groq's text model to extract invoice fields from PDF-extracted text.
 
-    client = Groq(api_key=_GROQ_KEY)
-    response = client.chat.completions.create(
-        model=_GROQ_TEXT_MODEL,
-        messages=[
-            {"role": "user", "content": _EXTRACTION_PROMPT + doc_text},
-        ],
+    Through the ONE door (`groq_text.chat_sync`): timeout, bounded retry, the
+    configured fallback model, the classified failure sentence and a usage row.
+    `redact=False` is deliberate and is the exemption this module is listed under
+    in `tests/test_no_model_call_site_sends_an_identifier`: the supplier's GSTIN is
+    printed on the invoice being read, and redacting it would read an invoice
+    without the number it is for. The document is untrusted DATA, in its own
+    message (domain/ai/untrusted)."""
+    reply = groq_text.chat_sync(
+        untrusted.messages(_EXTRACTION_PROMPT, doc_text),
+        api_key=_GROQ_KEY,
+        max_tokens=groq_text.EXTRACTION_MAX_TOKENS,
         temperature=0.0,
-        max_tokens=1024,
+        reasoning_effort="low",
+        response_schema=extraction_schemas.INVOICE_SCHEMA,
+        redact=False,
+        feature="invoice_extraction",
+        firm_id=firm_id,
+        user_id=user_id,
     )
-    return _parse_extraction_json(response.choices[0].message.content)
+    return _parse_extraction_json(reply.text)
 
 
-def _gemini_extract_image(content: bytes, content_type: str) -> dict:
+def _gemini_extract_image(content: bytes, content_type: str, *,
+                          firm_id: Optional[str] = None, user_id: Optional[str] = None) -> dict:
     """Call Gemini's vision-capable model with the actual image bytes so it
     can genuinely read a photographed or scanned invoice. See _run_extraction
     for why this is Gemini rather than Groq."""
     mime = content_type if content_type.startswith("image/") else "image/jpeg"
-    return _gemini_extract_images([content], mime)
+    return _gemini_extract_images([content], mime, firm_id=firm_id, user_id=user_id)
 
 
-def _gemini_extract_images(images: list[bytes], mime: str) -> dict:
-    """One Gemini call over one or more page images of the SAME invoice."""
-    from google import genai
-    from google.genai import types
-
-    client = genai.Client(api_key=_GEMINI_KEY)
-    response = client.models.generate_content(
-        model=_GEMINI_VISION_MODEL,
-        contents=[
-            *[types.Part.from_bytes(data=img, mime_type=mime) for img in images],
-            _EXTRACTION_PROMPT.strip(),
-        ],
+def _gemini_extract_images(images: list[bytes], mime: str, *,
+                           firm_id: Optional[str] = None, user_id: Optional[str] = None) -> dict:
+    """One Gemini call over one or more page images of the SAME invoice, through
+    the ONE vision door (`gemini_vision.generate`): timeout, bounded retry, the
+    configured fallback model, the classified failure sentence and a usage row.
+    The pictures are untrusted DATA, said so in the system instruction."""
+    text = gemini_vision.generate(
+        api_key=_GEMINI_KEY,
+        images=images,
+        mime=mime,
+        prompt=_EXTRACTION_PROMPT.strip(),
+        system_instruction=untrusted.image_system_instruction(),
+        response_schema=extraction_schemas.INVOICE_GEMINI_SCHEMA,
+        feature="invoice_extraction",
+        firm_id=firm_id,
+        user_id=user_id,
     )
-    return _parse_extraction_json(response.text)
+    return _parse_extraction_json(text)
 
 
-def _estimate_confidence(extracted: dict, totals: Optional[dict] = None) -> str:
+def _estimate_confidence(extracted: dict, totals: Optional[dict] = None,
+                         supplier: Optional[dict] = None) -> str:
     """Heuristic confidence in the reading.
 
     R2.8/F19: extracted is always a real Groq result here — the mock fallback
@@ -352,12 +390,20 @@ def _estimate_confidence(extracted: dict, totals: Optional[dict] = None) -> str:
 
     FIELD PRESENCE IS NOT EVIDENCE OF A CORRECT READING, and until PUR-21 it
     was the only input: five fields populated scored "high" whether or not
-    they added up. A header that fails its own arithmetic is the one piece of
+    they added up. A reading that fails its own arithmetic is the one piece of
     evidence available that a figure has been misread, so it caps the answer at
     "low" — the CA is being told how much to trust these numbers, and the
     honest answer when they contradict each other is: not much.
+
+    The same cap now applies on ANY check that ran and found something (ai-02):
+    the lines not adding up to the header, a tax that is not the lines' rates, a
+    supplier GSTIN whose check digit fails, IGST between two same-State
+    registrations. A check that could not run (nothing to test) does not lower
+    it — an unread figure is not a disagreement.
     """
-    if totals is not None and totals.get("checked") and not totals.get("agrees"):
+    if totals is not None and not totals.get("agrees", True):
+        return "low"
+    if supplier is not None and not supplier.get("agrees", True):
         return "low"
     score = 0
     if extracted.get("vendor_name"):

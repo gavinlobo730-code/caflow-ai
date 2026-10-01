@@ -3,10 +3,10 @@ POST /api/ai-copilot/chat says WHY Groq refused, and asks for the configured
 model — not a hardcoded one.
 
 WHAT WAS WRONG (sweep-misc-tools-02)
-    This endpoint has its own httpx call to Groq (it is declared as its own
-    network caller in tests/test_the_never_do_list.py's OUTBOUND_MODULES,
-    unlike /api/assistant and the copilot's domain layer, which both go
-    through domain/ai/groq_text now). It hardcoded the model string
+    This endpoint had its own httpx call to Groq (ai-04 moved it onto
+    domain/ai/groq_text, the one door, like /api/assistant and the copilot's
+    domain layer; the stand-in below is now behind THAT door's HTTP client).
+    It hardcoded the model string
     "llama-3.3-70b-versatile" — the retirement CLAUDE.md says must be a config
     change via GROQ_TEXT_MODEL was a code change here — and on a non-200
     response it discarded Groq's own status and body entirely, answering the
@@ -75,7 +75,7 @@ def _run_chat(monkeypatch, handler):
         kwargs["transport"] = transport
         return _RealAsyncClient(*args, **kwargs)
 
-    monkeypatch.setattr(cp.httpx, "AsyncClient", _client)
+    monkeypatch.setattr(httpx, "AsyncClient", _client)
     return asyncio.run(cp.copilot_chat(_fake_request(), Body(), current_user=USER))
 
 

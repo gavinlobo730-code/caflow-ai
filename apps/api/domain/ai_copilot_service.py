@@ -21,7 +21,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from core.ist_clock import ist_now, ist_today
-from domain.ai import groq_text
+from domain.ai import gateway, groq_text
 
 _logger = logging.getLogger("caflow.ai_copilot")
 
@@ -158,6 +158,7 @@ class AICopilotService:
 
     # ── Chat ───────────────────────────────────────────────────────────────────
 
+    @gateway.attributed("copilot_chat")
     async def chat(
         self,
         firm_id: str,
@@ -413,9 +414,15 @@ class AICopilotService:
             raise HTTPException(status_code=503, detail=(
                 "The AI copilot is not configured on this server: GROQ_API_KEY "
                 "is not set."))
+        # WHO this is for comes from the scope the public method set
+        # (`gateway.attributed`): `_call_groq` has six callers and test doubles
+        # with a fixed signature, so the firm travels as a scope, not an argument.
+        scope = gateway.current_scope()
         try:
             return await groq_text.chat(
-                messages, api_key=_GROQ_API_KEY, max_tokens=2048, temperature=0.3)
+                messages, api_key=_GROQ_API_KEY, max_tokens=2048, temperature=0.3,
+                feature=scope.feature or "copilot", firm_id=scope.firm_id,
+                user_id=scope.user_id)
         except groq_text.ProviderFailed as exc:
             raise HTTPException(status_code=exc.http_status, detail=exc.sentence) from exc
 
@@ -471,6 +478,7 @@ class AICopilotService:
 
     # ── Client Intelligence ────────────────────────────────────────────────────
 
+    @gateway.attributed("client_intelligence")
     async def get_client_intelligence(self, firm_id: str, client_id: str) -> dict:
         """Generate comprehensive AI intelligence for a single client."""
         cached = self._repo.get_summary(firm_id, "client", client_id)
@@ -555,7 +563,7 @@ Format as a structured professional report. Cite relevant sections of IT Act / C
                     "tokens_used": tokens,
                     "client_name": client_name,
                 },
-                "model_used": groq_text.text_model(),
+                "model_used": groq_text.answered_by(),
                 "expires_at": (now + timedelta(hours=6)).isoformat(),
             },
         )
@@ -626,6 +634,7 @@ Format as a structured professional report. Cite relevant sections of IT Act / C
                 out.append(r)
         return out
 
+    @gateway.attributed("compliance_intelligence")
     async def get_compliance_intelligence(
         self, firm_id: str, allowed_client_ids=None
     ) -> dict:
@@ -700,13 +709,14 @@ Cite CGST Act / IT Act sections where relevant."""
                     f"Compliance health score: {compliance_score}/100",
                 ],
                 "metadata": {"tokens_used": tokens, "overdue_count": len(overdue_tasks)},
-                "model_used": groq_text.text_model(),
+                "model_used": groq_text.answered_by(),
                 "expires_at": (now + timedelta(hours=2)).isoformat(),
             },
         )
 
     # ── Workflow Intelligence ──────────────────────────────────────────────────
 
+    @gateway.attributed("workflow_intelligence")
     async def get_workflow_intelligence(
         self, firm_id: str, allowed_client_ids=None
     ) -> dict:
@@ -783,6 +793,7 @@ Provide:
 
     # ── Relationship Intelligence ──────────────────────────────────────────────
 
+    @gateway.attributed("relationship_intelligence")
     async def get_relationship_intelligence(
         self, firm_id: str, allowed_client_ids=None
     ) -> dict:
@@ -863,6 +874,7 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
 
     # ── Executive Dashboard ────────────────────────────────────────────────────
 
+    @gateway.attributed("executive_summary")
     async def get_executive_dashboard(
         self, firm_id: str, allowed_client_ids=None
     ) -> dict:
@@ -1022,7 +1034,7 @@ Firm data as of {ist_now().strftime('%d %B %Y')}:
                                               fy[:4], fy[5:]]
             if text and text.strip() and narration.is_grounded(text, allowed):
                 ai_summary, summary_source = text.strip(), "model"
-                model_used = groq_text.text_model()
+                model_used = groq_text.answered_by()
             elif text and text.strip():
                 _logger.warning(
                     "executive dashboard: the model's summary carried figures the "

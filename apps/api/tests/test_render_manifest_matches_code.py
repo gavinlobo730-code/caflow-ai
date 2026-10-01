@@ -86,6 +86,18 @@ EXEMPT: dict[str, str] = {
         "value outlives the code that expects it.",
     "GEMINI_VISION_MODEL":
         "Same reasoning as GROQ_TEXT_MODEL — an override, not a requirement.",
+    "GROQ_TEXT_MODEL_FALLBACK":
+        "A comma-separated list of models the gateway tries, in order, when "
+        "GROQ_TEXT_MODEL fails (domain/ai/groq_text). UNSET on purpose and by "
+        "default: no fallback name is built in, because a default nobody has "
+        "called is the 29-09-2026 mistake again. Declaring it in the manifest "
+        "would invite a value that nobody has verified Groq serves; it is set in "
+        "the Render dashboard by whoever has checked the model exists.",
+    "GEMINI_VISION_MODEL_FALLBACK":
+        "As GROQ_TEXT_MODEL_FALLBACK, for the vision door (domain/ai/"
+        "gemini_vision): the models tried, in order, when GEMINI_VISION_MODEL "
+        "fails. Unset by default — Google has retired a model ahead of its "
+        "announced date before, and a fallback is a thing to choose, not assume.",
     "RAZORPAY_KEY_ID":
         "Live payment-gateway credential. Only read when PAYMENT_PROVIDER is "
         "'razorpay', which is declared. Listing the gateway secrets in the "

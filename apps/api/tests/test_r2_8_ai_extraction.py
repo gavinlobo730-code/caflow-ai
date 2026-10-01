@@ -232,6 +232,7 @@ class TestInvoiceExtractionV1:
         a Part built from the real uploaded bytes (not a text-only prompt),
         and must go to the configured Gemini model."""
         import routers.document_intelligence_v1 as mod
+        from domain.ai import gemini_vision
         from google.genai import types
 
         captured = {}
@@ -245,8 +246,9 @@ class TestInvoiceExtractionV1:
                 return _FakeResponse()
 
         class _FakeGeminiClient:
-            def __init__(self, api_key=None):
+            def __init__(self, api_key=None, **kwargs):
                 captured["api_key"] = api_key
+                captured["client_kwargs"] = kwargs
             models = _FakeModels()
 
         monkeypatch.setattr(mod, "_GEMINI_KEY", "fake-key")
@@ -256,7 +258,9 @@ class TestInvoiceExtractionV1:
         mod._gemini_extract_image(content, "image/jpeg")
 
         assert captured["api_key"] == "fake-key"
-        assert captured["model"] == mod._GEMINI_VISION_MODEL
+        assert captured["model"] == gemini_vision.vision_model()
+        # ai-04: the call has a timeout of its own — the SDK default is none.
+        assert captured["client_kwargs"]["http_options"].timeout
         image_part = next(p for p in captured["contents"] if isinstance(p, types.Part))
         assert image_part.inline_data.data == content
         assert image_part.inline_data.mime_type == "image/jpeg"
@@ -269,7 +273,10 @@ class TestNoticeExtractionV2:
     def _reset(self, mod):
         mod._MOCK_NOTICES.clear()
 
-    def test_successful_extraction_persists_notice_and_task(self, monkeypatch):
+    def test_successful_extraction_persists_the_notice_for_review_and_no_task(self, monkeypatch):
+        """The notice is STAGED (ai-16): the row exists, awaiting a CA, and no task
+        does. The task is created by the approve call — see
+        tests/test_a_notice_reading_stages_and_a_ca_approves.py."""
         import routers.document_intelligence_v2 as mod
         self._reset(mod)
         monkeypatch.setattr(mod, "_GROQ_KEY", "fake-key")
@@ -295,7 +302,7 @@ class TestNoticeExtractionV2:
         assert len(mod._MOCK_NOTICES) == 1
         stored = list(mod._MOCK_NOTICES.values())[0]
         assert stored["reference_no"] == "REAL-REF-42"
-        assert stored["task_id"] is not None
+        assert stored["task_id"] is None
         assert stored["firm_id"] == FIRM_A
 
     def test_missing_groq_key_persists_nothing(self, monkeypatch):

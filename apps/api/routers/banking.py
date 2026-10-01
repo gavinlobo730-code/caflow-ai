@@ -75,6 +75,7 @@ from domain.banking import account_kind
 from domain.banking.register import opening_balance_gap, OPENING_DATE_REQUIRED
 from domain.banking import vision
 from services import statement_vision
+from domain.ai import gateway
 from middleware import rate_limit
 from domain.banking.normalizer import (
     balance_agreement, header_fingerprint, inspect_statement, validate_mapping,
@@ -857,20 +858,27 @@ def _read_statement_file(filename: str, content: bytes, mapping, *,
     images = [content] if is_image else vision.page_images(content)
     mime = _IMAGE_MIME.get(ext, "image/png")
 
-    # The last page, on its own, before anything else is read: that is where a
-    # statement prints its totals, and this call is shown no transactions so it
-    # cannot produce a figure by adding them up.
-    printed = vision.read_printed_totals(
-        images[-1], call_model=statement_vision.call, mime=mime)
-    if printed is None and not has_balances:
-        # One call in, not twenty. Nothing could check this reading.
-        raise StatementParseError(
-            "This scan does not print its own totals, so there is nothing to "
-            "check the reading against. Give the opening and closing balances "
-            "printed on the statement and upload it again — they are what "
-            "proves every line was read.")
+    # WHO the model calls are for (ai-04): `statement_vision.call` has the fixed
+    # `ModelCall` signature, so the firm and the user travel as a scope rather
+    # than as an argument every fake in the statement tests would have to learn.
+    with gateway.usage_scope(
+            firm_id=(rate_key[0] if rate_key else None),
+            user_id=(rate_key[1] if rate_key else None),
+            feature="statement_scan"):
+        # The last page, on its own, before anything else is read: that is where
+        # a statement prints its totals, and this call is shown no transactions
+        # so it cannot produce a figure by adding them up.
+        printed = vision.read_printed_totals(
+            images[-1], call_model=statement_vision.call, mime=mime)
+        if printed is None and not has_balances:
+            # One call in, not twenty. Nothing could check this reading.
+            raise StatementParseError(
+                "This scan does not print its own totals, so there is nothing to "
+                "check the reading against. Give the opening and closing balances "
+                "printed on the statement and upload it again — they are what "
+                "proves every line was read.")
 
-    txns = vision.read_statement(images, call_model=statement_vision.call, mime=mime)
+        txns = vision.read_statement(images, call_model=statement_vision.call, mime=mime)
     return txns, ("image" if is_image else "pdf-scan"), True, printed
 
 
@@ -1006,6 +1014,12 @@ def upload_statement(
             rate_key=(current_user.get("firm_id") or "", current_user.get("id")))
     except StatementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except gateway.ProviderFailed as e:
+        # The vision model did not answer. The gateway has already retried and
+        # tried any configured fallback; the CA is told the classified sentence
+        # and the status that goes with it (504 for a timeout), as on every other
+        # AI route — not a 422 that reads as "your file is wrong".
+        raise HTTPException(status_code=e.http_status, detail=e.sentence)
 
     # ── BANK-21: a card statement states its balances the other way up ──────
     # A card statement's "total amount due" is a positive figure where the
