@@ -8,6 +8,7 @@ import { WorkspaceShell } from "@/components/shell/WorkspaceShell";
 import { ClientShell } from "@/components/shell/ClientShell";
 import { SearchModal } from "@/components/SearchModal";
 import { SecureAccountBanner } from "@/components/shell/SecureAccountBanner";
+import { SkipToContent } from "@/components/shell/SkipToContent";
 import { isClientWorkspacePath } from "@/lib/workspace/clientPath";
 
 // usePathname() reflects the App Router's FlightRouterState, which under
@@ -124,6 +125,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ClientNavProvider>
       <WorkspaceProvider>
+        {/* FIRST in the document, ahead of the top bar both shells draw, so it is
+            the first stop for a keyboard user. Only here: the no-shell branch
+            above has no navigation to skip. */}
+        <SkipToContent />
         <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
         {isClientWorkspace ? (
           <ClientShell onOpenSearch={() => setSearchOpen(true)}>{content}</ClientShell>

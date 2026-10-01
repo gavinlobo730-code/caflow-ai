@@ -223,7 +223,7 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
         onClick={e => e.stopPropagation()}
       >
         {/* Input */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-ps-border">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-ps-border focus-within:ring-2 focus-within:ring-inset focus-within:ring-brand">
           <Search size={18} className="text-ps-hint shrink-0" />
           <input
             ref={inputRef}

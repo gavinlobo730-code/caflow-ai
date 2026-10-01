@@ -11,9 +11,24 @@
 
 import { useState, useRef, useEffect } from "react";
 import { X, Download, Upload, AlertCircle, CheckCircle, Plus } from "lucide-react";
-import * as XLSX from "xlsx";
 import { LogoIcon } from "@/components/LogoIcon";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+
+// THE SPREADSHEET LIBRARY IS NEVER IMPORTED AT THE TOP OF THIS FILE. SheetJS is
+// 404 KB raw / ~135 KB gzip, and ten screens import this modal — the client
+// list, client Sales and Purchases, Payroll, onboarding, /tds — so a static
+// `import * as XLSX from "xlsx"` here put it in the FIRST LOAD of every one of
+// them, for a file most visits never pick. It is fetched by `import("xlsx")`
+// inside the two handlers that need it (the workbook template and reading a
+// chosen .xlsx), which is also what `lib/export/xlsx.ts` and the accounting
+// screen's exports already do. A CSV never touches it.
+//
+// It must be the NAMESPACE object, never `.default` — see
+// scripts/a-dynamic-xlsx-import-has-no-default.test.ts — and the rule that no
+// file under app/, components/ or lib/ imports it statically is
+// scripts/the-spreadsheet-library-is-not-in-the-first-load.test.ts.
+const XLSX_UNAVAILABLE =
+  "Could not load the Excel reader. Check your connection and try again, or use a CSV file — it does not need it.";
 
 export interface CsvColumn {
   key: string;          // CSV header name (must match template)
@@ -195,7 +210,19 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
       csv);
   }
 
-  function downloadTemplate() {
+  async function downloadTemplate() {
+    // Fetched now, on the click, rather than at import time — see the note at
+    // the top of this file. A failed fetch (offline, a stale deploy) says so and
+    // points at the CSV template beside it; the button must not just do nothing.
+    let XLSX: typeof import("xlsx");
+    try {
+      XLSX = await import("xlsx");
+    } catch {
+      setFileError(XLSX_UNAVAILABLE);
+      return;
+    }
+    setFileError(null);
+
     // Build worksheet: row 1 = headers, row 2 = hints, row 3 = example placeholder
     const headerRow = columns.map(c => c.key);
     const hintRow = columns.map(c => c.hint ?? (c.required ? "REQUIRED" : "optional"));
@@ -268,9 +295,20 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
       return;
     }
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         if (isXlsx) {
+          // The library is fetched only now that somebody has actually chosen
+          // a workbook. Its own failure is reported as itself: "could not read
+          // the file" would send the CA to re-save a perfectly good workbook
+          // when the truth is that the reader never arrived.
+          let XLSX: typeof import("xlsx");
+          try {
+            XLSX = await import("xlsx");
+          } catch {
+            setFileError(XLSX_UNAVAILABLE);
+            return;
+          }
           // Parse the first sheet of the workbook into CSV text, then reuse the
           // same CSV pipeline so validation/preview behave identically.
           const data = new Uint8Array(e.target?.result as ArrayBuffer);

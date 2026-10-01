@@ -91,7 +91,7 @@ export default function ForgotPasswordPage() {
                 <input
                   autoFocus type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                   placeholder={isPortal ? "you@company.com" : "ca@yourfirm.com"}
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-disabled outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                 />
               </div>
 

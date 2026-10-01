@@ -1218,7 +1218,7 @@ export function PurchaseBillEditor({
                             <select value={line.blocked_credit_reason ?? ""}
                               aria-label={`Line ${idx + 1} section 17(5) clause`}
                               onChange={(e) => setLine(idx, { blocked_credit_reason: e.target.value })}
-                              className={`mt-1 w-full px-1 py-1 border rounded focus:outline-none text-3xs ${
+                              className={`mt-1 w-full px-1 py-1 border rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand text-3xs ${
                                 (line.blocked_credit_reason ?? "").trim() === ""
                                   ? "border-state-problem" : "border-ps-border"}`}>
                               <option value="">— which clause? —</option>
@@ -1255,7 +1255,7 @@ export function PurchaseBillEditor({
                               ? `The document prints "${line.unitAsPrinted}", which is not one of the unit codes — choose the code. ${NOT_STATED_TITLE}`
                               : NOT_STATED_TITLE)
                             : undefined}
-                          className={`w-full px-1 py-1 border rounded focus:outline-none text-xs ${unreadOn(line, "unit") ? UNREAD_CLASS : "border-ps-border"}`}>
+                          className={`w-full px-1 py-1 border rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand text-xs ${unreadOn(line, "unit") ? UNREAD_CLASS : "border-ps-border"}`}>
                           {unreadOn(line, "unit") && <option value="">— unit? —</option>}
                           {UQC_CODES.map((u) => <option key={u.code} value={u.code}>{u.code}</option>)}
                         </select>
@@ -1268,7 +1268,7 @@ export function PurchaseBillEditor({
                       <td className="py-1.5 px-1">
                         <select value={unreadOn(line, "gst_rate") ? "" : line.gst_rate} onChange={(e) => setLine(idx, { gst_rate: parseFloat(e.target.value) })} aria-label={`Line ${idx + 1} GST rate`}
                           title={unreadOn(line, "gst_rate") ? NOT_STATED_TITLE : undefined}
-                          className={`w-full px-1 py-1 border rounded focus:outline-none text-xs ${unreadOn(line, "gst_rate") ? UNREAD_CLASS : "border-ps-border"}`}>
+                          className={`w-full px-1 py-1 border rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand text-xs ${unreadOn(line, "gst_rate") ? UNREAD_CLASS : "border-ps-border"}`}>
                           {unreadOn(line, "gst_rate") && <option value="">— rate? —</option>}
                           {gstRateOptions(line.gst_rate).map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>

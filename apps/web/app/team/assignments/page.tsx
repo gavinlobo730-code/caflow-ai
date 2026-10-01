@@ -137,7 +137,7 @@ export default function AssignmentsPage() {
               <p className="px-4 py-10 text-center text-xs text-gray-400">Select a staff member to manage their clients.</p>
             ) : (
               <>
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-ps-border">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-ps-border focus-within:ring-2 focus-within:ring-inset focus-within:ring-brand">
                   <Search size={14} className="text-gray-400" />
                   <input
                     value={filter}

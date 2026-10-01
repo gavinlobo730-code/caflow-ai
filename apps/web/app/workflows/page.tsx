@@ -254,7 +254,7 @@ export default function WorkflowsPage() {
             <select
               value={category}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setCategory(e.target.value)}
-              className="px-3 py-2 text-sm border border-ps-border rounded-lg bg-white focus:outline-none"
+              className="px-3 py-2 text-sm border border-ps-border rounded-lg bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
               <option value="all">All Categories</option>
               {["gst","tds","onboarding","compliance","health","relationship","lifecycle","income_tax","payroll","mca","accounting"].map(c => (

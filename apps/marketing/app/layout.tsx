@@ -25,6 +25,16 @@ export const metadata: Metadata = {
     nothing for `/og.jpg` to be relative TO and the preview is simply dropped.
   */
   metadataBase: new URL(SITE_URL),
+  /*
+    A SELF-REFERENCING CANONICAL ON EVERY PAGE. `./` is resolved against
+    `metadataBase` and the page's own path, so /products/ declares itself
+    canonical and so does every page added later — one line here instead of one
+    per page. It is what tells a search engine that `https://…/products`,
+    `https://…/products/` and `…/products/?utm_source=…` are one page, and which
+    one to list. Pages that define their own `metadata` inherit it, because
+    none of them defines `alternates`.
+  */
+  alternates: { canonical: "./" },
   openGraph: {
     title: "PracticeSync — AI practice management for Indian CAs",
     description:

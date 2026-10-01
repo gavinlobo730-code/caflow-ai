@@ -22,7 +22,8 @@ import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFo
 import {
   formatServiceRate, formatServicePrice, formatServiceKind, type ServiceCatalogueItem,
 } from "@/lib/catalogue/service";
-import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
+import CsvImportModal from "@/components/LazyCsvImportModal";
+import type { ImportRow } from "@/components/CsvImportModal";
 import { Modal } from "@/components/ui/modal";
 import { buildServices, SERVICE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";

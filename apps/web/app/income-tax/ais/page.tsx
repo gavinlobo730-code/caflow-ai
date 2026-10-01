@@ -32,7 +32,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import * as XLSX from "xlsx";
+// xlsx is fetched by the export click below and is NOT imported here: a static
+// `import * as XLSX from "xlsx"` put SheetJS (135 KB gzip) in this page's first
+// load for a button most visits never press. Namespace object, never `.default`
+// (scripts/a-dynamic-xlsx-import-has-no-default.test.ts); the rule that no file
+// imports it statically is scripts/the-spreadsheet-library-is-not-in-the-first-load.test.ts.
 import { api, type AISLine, type AISStatement } from "@/lib/api";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { assessmentYearChoices, financialYearForAy } from "@/lib/income-tax/assessmentYear";
@@ -293,8 +297,15 @@ export default function AISPage() {
       csv);
   }
 
-  function exportXLSX() {
+  async function exportXLSX() {
     if (!exportRows.length) return;
+    let XLSX: typeof import("xlsx");
+    try {
+      XLSX = await import("xlsx");
+    } catch {
+      setError("Could not load the Excel writer. Check your connection and try again.");
+      return;
+    }
     // THE CSV AND THE WORKBOOK WANT DIFFERENT THINGS and `exportRows` is shared.
     // A CSV cell must be a bare string with no grouping and no ₹; a workbook
     // cell must be a NUMBER or `=SUM()` returns 0. So the money columns are

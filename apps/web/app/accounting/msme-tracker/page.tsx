@@ -41,7 +41,11 @@ import { getClients } from "@/lib/data/clients";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { api, type MSME43BHWorking, type MSMEDInterest } from "@/lib/api";
-import * as XLSX from "xlsx";
+// xlsx is fetched by the export click below and is NOT imported here: a static
+// `import * as XLSX from "xlsx"` put SheetJS (135 KB gzip) in this page's first
+// load for a button most visits never press. Namespace object, never `.default`
+// (scripts/a-dynamic-xlsx-import-has-no-default.test.ts); the rule that no file
+// imports it statically is scripts/the-spreadsheet-library-is-not-in-the-first-load.test.ts.
 import type { Client } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -91,8 +95,15 @@ export default function MSME43BHPage() {
 
   const rows = working?.bills ?? [];
 
-  function exportExcel() {
+  async function exportExcel() {
     if (!working) return;
+    let XLSX: typeof import("xlsx");
+    try {
+      XLSX = await import("xlsx");
+    } catch {
+      setError("Could not load the Excel writer. Check your connection and try again.");
+      return;
+    }
     const sheet = working.bills.map(b => ({
       Supplier: b.vendor_name,
       "Bill No": b.bill_no ?? "",
