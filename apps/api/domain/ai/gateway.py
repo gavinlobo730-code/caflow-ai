@@ -99,10 +99,14 @@ REFUSED = "refused"
 #: The provider rejected an OPTIONAL request parameter (structured output,
 #: reasoning effort). Never the end of a call: the call goes again without it.
 PARAM_REJECTED = "param_rejected"
+#: The call was refused BEFORE anything was sent, because the firm has spent its
+#: monthly AI allowance (`domain/ai/budget_gate`). It never reached a provider, so it
+#: says nothing about whether the provider works and is not noted as an attempt on one.
+BUDGET = "budget_exhausted"
 
 OUTCOMES = frozenset({
     OK, TRUNCATED, EMPTY, BAD_SHAPE, TIMEOUT, NETWORK, RATE_LIMITED, SERVER_ERROR,
-    AUTH, MODEL_GONE, TOO_LONG, REFUSED, PARAM_REJECTED,
+    AUTH, MODEL_GONE, TOO_LONG, REFUSED, PARAM_REJECTED, BUDGET,
 })
 
 RETRY = "retry"
@@ -110,7 +114,7 @@ NEXT_MODEL = "next_model"
 STOP = "stop"
 
 #: A second model behind the SAME key or the SAME prompt fails the same way.
-_STOPS = frozenset({AUTH, TOO_LONG, REFUSED})
+_STOPS = frozenset({AUTH, TOO_LONG, REFUSED, BUDGET})
 #: Worth the same model once more, after a pause.
 _RETRYABLE = frozenset({RATE_LIMITED, SERVER_ERROR, NETWORK})
 
@@ -507,6 +511,8 @@ def _default_sink(ev: UsageEvent) -> None:
 #: Outcomes that mean the provider ANSWERED. A reply cut off by the response
 #: budget is still an answer; every other outcome is a failure of the attempt.
 ANSWERED = frozenset({OK, TRUNCATED})
+#: Outcomes that are the gateway's own doing and not the provider's.
+NOT_ABOUT_THE_PROVIDER = frozenset({PARAM_REJECTED, BUDGET})
 
 STATUS_OK = "ok"
 STATUS_FAILING = "failing"
@@ -541,8 +547,9 @@ def reset_health() -> None:
 
 def _note(ev: UsageEvent) -> None:
     # A PARAM_REJECTED attempt is the gateway's own housekeeping (the call goes
-    # again without the hint) and says nothing about whether the provider works.
-    if ev.outcome == PARAM_REJECTED:
+    # again without the hint) and a BUDGET refusal never reached the provider: neither
+    # says anything about whether the provider works.
+    if ev.outcome in NOT_ABOUT_THE_PROVIDER:
         return
     seen = Seen(provider=ev.provider, model=ev.model, outcome=ev.outcome,
                 at=time.time(), latency_ms=ev.latency_ms,
@@ -577,12 +584,41 @@ def provider_status(provider: str, configured: bool) -> str:
     return STATUS_OK if attempt.outcome in ANSWERED else STATUS_FAILING
 
 
+def enforce_budget(*, provider: str, model: str, firm_id: Optional[str],
+                   user_id: Optional[str], feature: str, pages_wanted: int = 0) -> None:
+    """Refuse the call, before anything is sent, if the firm has spent its month.
+
+    Called by each provider's door once, before its first attempt. A refusal is a
+    `ProviderFailed` (kind `budget_exhausted`, 429) and so reaches every caller as the
+    sentence and status it already knows how to show; it leaves a usage row of its own so
+    the Partner's screen can say how many calls were turned away. A fault in the gate itself
+    never takes the AI down: it is logged and the call goes ahead (`budget_gate` fails open
+    for the same reason)."""
+    from domain.ai import budget_gate
+    try:
+        budget_gate.enforce(firm_id, feature, pages_wanted)
+    except ProviderFailed as exc:
+        if exc.kind == BUDGET:
+            record(UsageEvent(
+                firm_id=firm_id, user_id=user_id, feature=feature, provider=provider,
+                model=model, call_id=new_call_id(), attempt=1, outcome=BUDGET,
+                latency_ms=0, http_status=429))
+        raise
+    except Exception:                                            # noqa: BLE001
+        _logger.warning("ai budget: the gate failed; the call goes ahead", exc_info=True)
+
+
 def record(ev: UsageEvent) -> None:
     """Hand one attempt to the sink. Never raises."""
     try:
         _note(ev)
     except Exception:                                            # noqa: BLE001
         _logger.warning("ai_health: could not note an attempt", exc_info=True)
+    try:
+        from domain.ai import budget_gate
+        budget_gate.note(ev)
+    except Exception:                                            # noqa: BLE001
+        _logger.warning("ai budget: could not add an attempt to the running total", exc_info=True)
     try:
         (_sink or _default_sink)(ev)
     except Exception:                                            # noqa: BLE001

@@ -360,6 +360,11 @@ async def chat_detailed(
     # builder that forgets the rule still cannot send a PAN or a GSTIN
     # (domain/ai/redaction). The caller's own list is untouched.
     sendable = redact_messages(messages) if redact else [dict(m) for m in messages]
+    # The firm's monthly allowance, asked BEFORE anything is built or sent (ai-17). It may
+    # read the database once a minute, so off the event loop.
+    await asyncio.to_thread(
+        gateway.enforce_budget, provider="groq", model=text_model(), firm_id=firm_id,
+        user_id=user_id, feature=feature)
     chain = model_chain()
     call_id = gateway.new_call_id()
     deadline = gateway.clock() + gateway.TOTAL_BUDGET_S

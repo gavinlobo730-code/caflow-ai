@@ -169,6 +169,69 @@ export interface AiProbeAnswer {
   status: AiStatus;
 }
 
+/** `GET /api/ai-status/usage` and `PUT /api/ai-status/budget` (ai-17). Partner-only,
+ *  behind the MFA guard. Tokens and pages only — the server holds no price, so neither
+ *  does the screen. A limit of `null` is NO limit, never zero. */
+export interface AiUsageMonth {
+  key: string;
+  label: string;
+  starts_on: string;
+  ends_before: string;
+}
+export interface AiUsageFigures {
+  calls: number;
+  attempts: number;
+  answered: number;
+  failed: number;
+  refused: number;
+  tokens: number;
+  reasoning_tokens: number;
+  pages: number;
+}
+export interface AiUsageByFeature extends AiUsageFigures {
+  feature: string | null;
+  provider: string | null;
+  models: string[];
+}
+export interface AiUsageByDay extends AiUsageFigures {
+  day: string;
+}
+export interface AiUsageFolded {
+  totals: AiUsageFigures;
+  by_feature: AiUsageByFeature[];
+  by_day: AiUsageByDay[];
+  /** A grouped answer reached the row cap, so the figures may be short. */
+  truncated: boolean;
+}
+export interface AiAllowancePart {
+  limit: number | null;
+  used: number;
+  remaining: number | null;
+  reached: boolean;
+}
+export interface AiAllowance {
+  limits: { monthly_tokens: number | null; monthly_pages: number | null };
+  updated_at: string | null;
+  standing: {
+    tokens: AiAllowancePart;
+    pages: AiAllowancePart;
+    reached: boolean;
+    /** The refusal a call would get, set only when an allowance has been reached. */
+    sentence: string | null;
+  };
+}
+export interface AiUsage {
+  month: AiUsageMonth;
+  current_month: AiUsageMonth;
+  choices: { key: string; label: string }[];
+  not_covered: string[];
+  /** `null` with `unread` set means the usage could not be read — NOT that none was used. */
+  usage: AiUsageFolded | null;
+  allowance: AiAllowance | null;
+  first_recorded_at: string | null;
+  unread: string | null;
+}
+
 /** `GET /api/security/posture` — booleans, counts and fixed sentences. Every
  *  field but the two lists is a scalar; the lists are named in
  *  `objectWithLists` at the setter. */
@@ -6803,6 +6866,25 @@ export const api = {
     probe: (provider: AiProviderName) =>
       request<ApiResp<AiProbeAnswer>>(
         `/api/ai-status/probe?${new URLSearchParams({ provider })}`, { method: "POST" }),
+    /** What the firm's AI use came to in an IST month (`YYYY-MM`; the current month when
+     *  absent), and the allowance it is held to. Free: it reads two small aggregates. */
+    usage: (month?: string) => {
+      const url = month
+        ? "/api/ai-status/usage?" + new URLSearchParams({ month }).toString()
+        : "/api/ai-status/usage";
+      return request<ApiResp<AiUsage>>(url);
+    },
+    /** Replace the allowance. BOTH keys travel and `null` is no limit, so what is sent is
+     *  what the allowance is afterwards. The server judges the figures and answers a
+     *  refusal in words. */
+    setBudget: (monthlyTokenLimit: number | null, monthlyPageLimit: number | null) =>
+      request<ApiResp<AiUsage>>("/api/ai-status/budget", {
+        method: "PUT",
+        body: JSON.stringify({
+          monthly_token_limit: monthlyTokenLimit,
+          monthly_page_limit: monthlyPageLimit,
+        }),
+      }),
   },
 
   /** gst-06 — the opening balance of the electronic credit ledger, keyed from the

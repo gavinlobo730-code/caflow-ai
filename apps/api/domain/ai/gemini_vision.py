@@ -149,6 +149,11 @@ def generate(
     from google import genai
     from google.genai import types
 
+    # The firm's monthly allowance, asked BEFORE anything is sent: a document that would
+    # take the firm past its page allowance is refused whole, never read in part (ai-17).
+    gateway.enforce_budget(provider="gemini", model=vision_model(), firm_id=firm_id,
+                           user_id=user_id, feature=feature, pages_wanted=len(images))
+
     chain = model_chain()
     call_id = gateway.new_call_id()
     deadline = gateway.clock() + gateway.TOTAL_BUDGET_S

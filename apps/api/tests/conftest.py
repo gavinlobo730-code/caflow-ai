@@ -68,9 +68,17 @@ def ai_usage_events(monkeypatch):
     # What the gateway has SEEN a provider do is process-wide memory (ai-06); without
     # this a test that made a call would leave `/health` saying "ok" for the next.
     gateway.reset_health()
+    # No firm has a monthly allowance unless a test gives it one: the gate must not go
+    # to a database in the dozens of tests that set SUPABASE_URL, and its per-firm cache
+    # is process-wide.
+    from domain.ai import budget, budget_gate
+    budget_gate.reset()
+    budget_gate.set_fetcher(lambda firm_id, month: (budget.Limits(), budget.Used()))
     yield events
     gateway.set_sink(None)
     gateway.reset_health()
+    budget_gate.set_fetcher(None)
+    budget_gate.reset()
 
 
 @pytest.fixture
