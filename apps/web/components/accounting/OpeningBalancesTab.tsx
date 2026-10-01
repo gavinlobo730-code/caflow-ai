@@ -18,15 +18,22 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
-import { Plus, AlertTriangle, X, Info, Check } from "lucide-react";
+import { Plus, AlertTriangle, X, Info, Check, Upload } from "lucide-react";
 import {
   api,
   type DoubleOpening,
+  type OpeningDocumentBulkResult,
   type OpeningDocumentKinds,
   type OpeningDocumentListing,
 } from "@/lib/api";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import CsvImportModal from "@/components/LazyCsvImportModal";
+import type { ImportMeta, ImportResult, ImportRow } from "@/components/CsvImportModal";
+import {
+  buildOpeningDocumentRows, importOutcomeFrom, importSummarySentence,
+  openingDocumentColumns,
+} from "@/lib/accounting/openingDocumentImport";
 
 type Kind = "receivable" | "payable";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -54,6 +61,9 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  // The spreadsheet import (ACC-05). A trading client has hundreds of open
+  // bills, and one drawer per bill is a week of typing.
+  const [showImport, setShowImport] = useState(false);
   const [form, setForm] = useState(BLANK);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -158,6 +168,28 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
     }
   }
 
+  /**
+   * The import dialog's `onImport`. It hands the rows to the server and reports
+   * what the server decided; nothing is judged here. A throw is the dialog's to
+   * show — it lands the user on its done step with the message rather than on a
+   * spinner that never stops.
+   */
+  async function handleBulkImport(rows: ImportRow[], meta?: ImportMeta): Promise<ImportResult> {
+    const res = await api.openingDocuments.bulkImport({
+      client_id: clientId,
+      kind,
+      rows: buildOpeningDocumentRows(rows, meta?.rowNumbers),
+    });
+    if (!res.success) throw new Error(res.error ?? "The import did not complete.");
+    const data = objectWithLists<OpeningDocumentBulkResult>(res.data, "rows", "reconciliation");
+    if (!data) throw new Error("The server's answer to the import could not be read.");
+    // What the CA reads once the dialog is closed: the party-by-party sentences
+    // below are this client's reconciliation after the write, reloaded.
+    setMsg({ type: "ok", text: importSummarySentence(data, rupees) });
+    await load();
+    return importOutcomeFrom(data);
+  }
+
   async function handleRemove(id: string, no: string) {
     const ok = await confirmDialog({
       title: `Remove ${no}?`,
@@ -196,10 +228,16 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
             balance the ledger already has.
           </p>
         </div>
-        <button onClick={() => { setForm(BLANK); setShowForm(true); }} disabled={busy}
-          className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1.5">
-          <Plus size={13} /> Add a document
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowImport(true)} disabled={busy}
+            className="px-3 py-1.5 text-xs border border-ps-border text-ps-body rounded-lg hover:bg-ps-bg disabled:opacity-50 flex items-center gap-1.5">
+            <Upload size={13} /> Import from CSV / Excel
+          </button>
+          <button onClick={() => { setForm(BLANK); setShowForm(true); }} disabled={busy}
+            className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1.5">
+            <Plus size={13} /> Add a document
+          </button>
+        </div>
       </div>
 
       <div className="inline-flex rounded-lg bg-ps-muted p-0.5">
@@ -322,6 +360,17 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {showImport && (
+        <CsvImportModal
+          title={`Import opening ${kind === "receivable" ? "invoices" : "bills"}`}
+          columns={openingDocumentColumns(kind)}
+          templateFilename={`opening-${kind === "receivable" ? "invoices" : "bills"}-template.csv`}
+          onImport={handleBulkImport}
+          onClose={() => setShowImport(false)}
+          skippedHeading="Already recorded — skipped, so uploading the same file again adds nothing:"
+        />
       )}
 
       {kinds?.section_194_aggregate && kind === "payable" && (

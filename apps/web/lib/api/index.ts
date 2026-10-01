@@ -2103,6 +2103,49 @@ export type OpeningReconciliation = {
   double_openings: DoubleOpening[];
 };
 
+/** One spreadsheet row on its way to the bulk import (ACC-05). Dates and the
+ *  party are TEXT — reading a date and matching a name are the server's rules. */
+export type OpeningDocumentImportRow = {
+  /** The number the person saw in the preview. */
+  row: number;
+  party: string;
+  party_gstin?: string | null;
+  document_no: string;
+  document_date: string;
+  due_date?: string | null;
+  /** Null where the cell is not an amount — the server refuses the row by number. */
+  outstanding_paise: number | null;
+  notes?: string | null;
+};
+
+/** What the server decided about one row. */
+export type OpeningDocumentImportVerdict = {
+  row: number;
+  document_no: string;
+  /** `would_create` only on a dry run. */
+  status: "new" | "would_create" | "already_recorded" | "rejected";
+  problems: string[];
+  party_name: string | null;
+  outstanding_paise: number;
+  id: string | null;
+};
+
+export type OpeningDocumentBulkResult = {
+  kind: "receivable" | "payable";
+  dry_run: boolean;
+  received: number;
+  created: number;
+  would_create: number;
+  already_recorded: number;
+  rejected: number;
+  created_paise: number;
+  would_create_paise: number;
+  rows: OpeningDocumentImportVerdict[];
+  /** Party by party, AFTER the import (projected on a dry run). */
+  reconciliation: OpeningReconciliationRow[];
+  unreconciled_parties: number;
+};
+
 export type OpeningDocumentKinds = {
   kinds: { value: string; label: string; party: string; number: string }[];
   /** Why an opening bill contributes nothing to a section 194 FY aggregate. */
@@ -6368,6 +6411,16 @@ export const api = {
         `/api/opening-documents/${id}?client_id=${encodeURIComponent(clientId)}`
         + `&kind=${encodeURIComponent(kind)}`,
         { method: "DELETE" }),
+    /** A spreadsheet of open invoices or bills, judged row by row (ACC-05).
+     *  Bad rows come back by number, good ones land, a re-upload records
+     *  nothing twice. `dryRun` judges and writes nothing. */
+    bulkImport: (body: {
+      client_id: string;
+      kind: "receivable" | "payable";
+      rows: OpeningDocumentImportRow[];
+      dry_run?: boolean;
+    }) => request<ApiResp<OpeningDocumentBulkResult>>("/api/opening-documents/bulk",
+      { method: "POST", body: JSON.stringify(body) }),
     /** Both sides at once — what the Opening Balances tab opens on. */
     reconciliation: (clientId: string) =>
       request<ApiResp<OpeningReconciliation>>(

@@ -42,6 +42,38 @@ class OpeningDocumentIn(BaseModel):
     notes: Optional[str] = None
 
 
+class OpeningDocumentRowIn(BaseModel):
+    """One spreadsheet row, as typed (ACC-05).
+
+    Dates and the party are TEXT on purpose: reading a date and matching a name
+    are the server's rules (`domain/spreadsheet_cells`,
+    `domain/accounting/opening_document_import`), and a browser that did either
+    would be a second implementation of it. `row` is the number the person saw in
+    the preview, so a sentence that names it can be found.
+
+    `outstanding_paise` is None where the browser could not read the cell as an
+    amount. The row still arrives and is refused here with its number, rather than
+    being dropped on the way and missing from the report.
+    """
+    row: int
+    party: str = ""
+    party_gstin: Optional[str] = None
+    document_no: str = ""
+    document_date: str = ""
+    due_date: Optional[str] = None
+    outstanding_paise: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class OpeningDocumentBulkIn(BaseModel):
+    client_id: str
+    kind: str
+    rows: list[OpeningDocumentRowIn]
+    #: Judge every row and write nothing. The answer carries the reconciliation
+    #: AS IT WOULD STAND, so the CA sees whether the parties will foot first.
+    dry_run: bool = False
+
+
 @router.get("/kinds")
 def list_kinds(current_user: dict = Depends(rbac("accounting", "read"))):
     """The two kinds and what each is called, so a screen holds no vocabulary."""
@@ -98,6 +130,56 @@ def add_document(
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), new_data=row)
     return api_response(True, row)
+
+
+@router.post("/bulk")
+def bulk_import(
+    data: OpeningDocumentBulkIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Bring a client's open invoices or bills over from a spreadsheet (ACC-05).
+
+    Every row is judged before any is written, each bad row comes back with its
+    number and ALL its problems, the good rows still land, and uploading the same
+    file again records nothing twice. `domain/accounting/opening_document_import`
+    carries the argument; this decides nothing. Registered BEFORE the
+    `/{document_id}` route so "bulk" is never read as a document id.
+
+    Posts no journal, declares no tax and withholds nothing — an opening document
+    is the breakup of a balance the ledger already carries, exactly as the single
+    POST above.
+    """
+    assert_client_access(current_user, data.client_id)
+    from domain.accounting import opening_document_import as imp
+    rows = [imp.ImportRow(**r.model_dump()) for r in data.rows]
+    if not os.environ.get("SUPABASE_URL"):
+        return api_response(True, {
+            "kind": data.kind, "dry_run": data.dry_run, "received": len(rows),
+            "created": 0 if data.dry_run else len(rows),
+            "would_create": len(rows) if data.dry_run else 0,
+            "already_recorded": 0, "rejected": 0, "created_paise": 0,
+            "would_create_paise": 0, "rows": [], "reconciliation": [],
+            "unreconciled_parties": 0})
+    from core.supabase_client import get_supabase
+    from services.audit_service import log_event
+    out = svc.bulk_create(
+        get_supabase(), current_user.get("firm_id"), data.client_id,
+        kind=data.kind, rows=rows, actor_id=current_user.get("id"),
+        dry_run=data.dry_run)
+    if not data.dry_run and out["created"]:
+        # One entry for the import, with row numbers and no amounts beyond the
+        # total: the table's own audit trigger records each document, and this
+        # is the line that says they arrived together and from where.
+        log_event(current_user.get("firm_id") or "", "opening_document",
+                  data.client_id, "bulk_import",
+                  actor_id=current_user.get("auth_user_id"),
+                  actor_email=current_user.get("email"),
+                  new_data={"kind": data.kind, "received": out["received"],
+                            "created": out["created"],
+                            "already_recorded": out["already_recorded"],
+                            "rejected": out["rejected"],
+                            "created_paise": out["created_paise"]})
+    return api_response(True, out)
 
 
 @router.delete("/{document_id}")
