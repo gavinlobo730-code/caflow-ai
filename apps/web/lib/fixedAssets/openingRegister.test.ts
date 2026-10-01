@@ -112,11 +112,11 @@ test("a malformed answer cannot crash the report", () => {
 });
 
 test("the headline says where the register stands", () => {
-  const rupees = (p: number) => `₹${(p / 100).toFixed(2)}`;
-  assert.equal(openingRegisterHeadline(result(), rupees),
+  const shown = (p: number) => `₹${(p / 100).toFixed(2)}`;
+  assert.equal(openingRegisterHeadline(result(), shown),
     "2 assets brought over as at 2026-03-31 — cost ₹30000.00, accumulated depreciation "
     + "₹10000.00, net block ₹20000.00; 1 already on the register; 1 refused.");
-  assert.equal(openingRegisterHeadline(result({ created: 0, already_recorded: 0, rejected: 0 }), rupees),
+  assert.equal(openingRegisterHeadline(result({ created: 0, already_recorded: 0, rejected: 0 }), shown),
     "0 assets brought over as at 2026-03-31.");
 });
 

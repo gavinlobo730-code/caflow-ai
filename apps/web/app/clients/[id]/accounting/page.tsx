@@ -1214,19 +1214,21 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
           {/* No New Journal Entry here. The day book is a REPORT; writing an
               entry belongs on the Journal tab, where the list afterwards is the
               list you can act on. */}
+          {/* A spreadsheet of journals, payments, receipts and contras
+              (accounting-17). Posts through the same kernel as the editor, and
+              is its OWN branch beside New Journal Entry's rather than wrapping
+              it — the day-book guard reads that button's own condition. */}
           {!dayBook && (
-            <>
-              {/* A spreadsheet of journals, payments, receipts and contras
-                  (accounting-17). Posts through the same kernel as the editor. */}
-              <VoucherImportButton clientId={clientId} onImported={loadEntries}
-                onSummary={(description) => toast({ title: "Voucher import", description })} />
-              <button
-                onClick={() => router.push(journalEditorHref(clientId, "new"))}
-                className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark flex items-center gap-1"
-              >
-                <Plus size={12} /> New Journal Entry
-              </button>
-            </>
+            <VoucherImportButton clientId={clientId} onImported={loadEntries}
+              onSummary={(description) => toast({ title: "Voucher import", description })} />
+          )}
+          {!dayBook && (
+            <button
+              onClick={() => router.push(journalEditorHref(clientId, "new"))}
+              className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark flex items-center gap-1"
+            >
+              <Plus size={12} /> New Journal Entry
+            </button>
           )}
         </div>
       </div>

@@ -110,11 +110,12 @@ test("the button is on the Journal tab and not on the day book", () => {
   assert.match(page, /import \{ VoucherImportButton \} from "@\/components\/accounting\/VoucherImport";/);
   const uses = page.match(/<VoucherImportButton\b/g) ?? [];
   assert.equal(uses.length, 1, "one entry point, in JournalList");
-  // It sits inside the `!dayBook` branch, which is where New Journal Entry is.
-  const start = page.indexOf("{!dayBook && (");
-  const at = page.indexOf("<VoucherImportButton");
-  const end = page.indexOf("<DataTable", start);
-  assert.ok(start >= 0 && at > start && at < end,
+  // It sits in a `!dayBook` branch of its own — the day book is a report — and
+  // does NOT wrap New Journal Entry, whose own condition
+  // the-book-can-be-read-not-only-posted-to reads (`!dayBook && ( <button`).
+  assert.match(page, /\{!dayBook && \(\s*<VoucherImportButton\b/,
     "the import button must sit in the branch the day book does not render");
+  assert.match(page, /\{!dayBook && \(\s*<button/,
+    "New Journal Entry keeps its own !dayBook branch");
   assert.match(page, /<VoucherImportButton clientId=\{clientId\} onImported=\{loadEntries\}/);
 });

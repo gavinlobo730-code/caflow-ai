@@ -156,9 +156,9 @@ test("a malformed answer cannot crash the report", () => {
 });
 
 test("the summary says where the vouchers went", () => {
-  const rupees = (p: number) => `₹${(p / 100).toFixed(2)}`;
-  assert.equal(voucherSummarySentence(part(), "posted", rupees),
+  const shown = (p: number) => `₹${(p / 100).toFixed(2)}`;
+  assert.equal(voucherSummarySentence(part(), "posted", shown),
     "1 voucher posted to the ledger (₹1.00), 1 already there, 1 refused.");
-  assert.match(voucherSummarySentence(part({ created: 3, created_paise: 300, rejected: 0, already_recorded: 0 }), "draft", rupees),
+  assert.match(voucherSummarySentence(part({ created: 3, created_paise: 300, rejected: 0, already_recorded: 0 }), "draft", shown),
     /^3 vouchers saved as drafts — off the books until posted \(₹3\.00\)\.$/);
 });

@@ -429,6 +429,23 @@ def test_the_password_is_a_form_field_and_never_a_query_parameter():
     """A query string is written to every access log between the browser and this
     process; a multipart body is not."""
     tree = _tree("routers/banking.py")
+
+    def _how_declared(a: ast.arg, d) -> str:
+        """The FastAPI marker a parameter is declared with, in either spelling:
+        `x: T = Form(None)` or `x: Annotated[T, Form()] = None`. The second is the
+        one this router uses, because called as a plain function — which the suites
+        do — the first hands back the Form OBJECT as the default, truthy and not a
+        password."""
+        if isinstance(d, ast.Call):
+            return getattr(d.func, "id", "?")
+        ann = a.annotation
+        if (isinstance(ann, ast.Subscript) and getattr(ann.value, "id", "") == "Annotated"
+                and isinstance(ann.slice, ast.Tuple)):
+            for meta in ann.slice.elts[1:]:
+                if isinstance(meta, ast.Call):
+                    return getattr(meta.func, "id", "?")
+        return "?"
+
     seen = 0
     for fn in ast.walk(tree):
         if not isinstance(fn, ast.FunctionDef):
@@ -437,12 +454,26 @@ def test_the_password_is_a_form_field_and_never_a_query_parameter():
         defaults = ([None] * (len(fn.args.args) - len(fn.args.defaults)) + list(fn.args.defaults)
                     + list(fn.args.kw_defaults))
         for a, d in zip(args, defaults):
-            if a.arg == "pdf_password" and isinstance(d, ast.Call):
+            if a.arg == "pdf_password" and fn.name != "_read_statement_file":
                 seen += 1
-                assert getattr(d.func, "id", "") == "Form", (
+                assert _how_declared(a, d) == "Form", (
                     f"{fn.name}: pdf_password must be a Form field, not "
-                    f"{getattr(d.func, 'id', '?')}")
+                    f"{_how_declared(a, d)}")
+                # And its DEFAULT is a real None, so a direct call gets no password.
+                assert not isinstance(d, ast.Call), (
+                    f"{fn.name}: a Form(None) default is the Form object when called directly")
     assert seen == 3, f"expected the three statement routes, found {seen}"
+
+
+def test_a_route_called_as_a_function_has_no_password_by_default():
+    """The suites call these routes directly, without `pdf_password`. What arrives
+    then must be None — a truthy default is handed to the PDF library as a
+    password, which is how eight statement-vision tests broke."""
+    import inspect
+    import routers.banking as rb
+    for fn in (rb.upload_statement, rb.inspect_statement_file,
+               rb.preview_statement_with_mapping):
+        assert inspect.signature(fn).parameters["pdf_password"].default is None, fn.__name__
 
 
 def test_the_browser_asks_on_the_codes_the_server_sends():

@@ -344,9 +344,11 @@ def world(monkeypatch):
     db = _DB()
     kernel = Kernel(db)
     monkeypatch.setattr(mjs.phase2_journal_service, "_create_journal", kernel)
-    asked = {"assert_open": [], "lock_reason": [], "fy": []}
-    monkeypatch.setattr(mjs.period_lock_service, "assert_open",
-                        lambda db_, f, c, d, cache=None: asked["assert_open"].append(d))
+    asked = {"lock_reason": [], "fy": []}
+    # ONE seam for the client's own lock: `assert_open` is `lock_reason` raising its
+    # answer, so patching the answer leaves the real `assert_open` in both the plan's
+    # asker and `manual_journal_service.create` — which is what lets a test make the
+    # period CLOSED and watch both refuse.
     monkeypatch.setattr(svc.period_lock_service, "lock_reason",
                         lambda db_, f, c, d, cache=None: asked["lock_reason"].append(d))
     monkeypatch.setattr(mjs.period_validation_service, "validate_posting_date",
@@ -443,11 +445,14 @@ def test_a_ledger_of_another_client_is_never_matched(world):
 def test_a_posted_import_asks_both_period_questions_and_a_draft_asks_neither(world):
     db, kernel, asked = world
     svc.import_vouchers(db, "F1", "K1", legs=voucher("PV-1"), status="posted")
-    assert asked["lock_reason"] == ["2026-04-05"] and asked["fy"], "the plan asks"
-    assert asked["assert_open"] == ["2026-04-05"], "and manual_journal_service.create asks again"
-    asked.update(assert_open=[], lock_reason=[], fy=[])
+    # The client's lock is asked twice for the one date — once by the plan, before
+    # anything is posted, and once by manual_journal_service.create — and the FY
+    # check by both as well. Neither is skipped because the other happened.
+    assert asked["lock_reason"] == ["2026-04-05", "2026-04-05"], asked
+    assert len(asked["fy"]) == 2, asked
+    asked.update(lock_reason=[], fy=[])
     svc.import_vouchers(db, "F1", "K1", legs=voucher("PV-2"), status="draft")
-    assert asked == {"assert_open": [], "lock_reason": [], "fy": []}, (
+    assert asked == {"lock_reason": [], "fy": []}, (
         "a draft is off-books and is checked when it is approved")
     assert kernel.calls[-1]["is_posted"] is False
 

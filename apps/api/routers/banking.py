@@ -16,7 +16,7 @@ import logging
 from fastapi import (APIRouter, Depends, HTTPException, Path, Query, UploadFile,
                      File, Form)
 from fastapi.responses import Response
-from typing import Optional
+from typing import Annotated, Optional
 
 from models.common import api_response
 from services import bank_erasure
@@ -935,7 +935,10 @@ def upload_statement(
     # browser and this process, a multipart body is not. It is passed to the one
     # open of this file and nowhere else — not stored, not logged, not in any
     # message, not sent to a model. See normalizer.PdfPasswordError.
-    pdf_password: Optional[str] = Form(None),
+    # `Annotated[..., Form()] = None` and NOT `Form(None)`: a route called as a
+    # function (the suites do) gets a `Form(None)` default as the Form OBJECT —
+    # truthy, and not a password — which the PDF library then tried to use as one.
+    pdf_password: Annotated[Optional[str], Form()] = None,
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Upload a CSV/XLSX/PDF bank statement, or a scan of one. Parsing + normalization + dedup happen
@@ -1210,7 +1213,7 @@ def inspect_statement_file(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     bank_account_id: Optional[str] = Form(None),
-    pdf_password: Optional[str] = Form(None),      # accounting-23 — see upload_statement
+    pdf_password: Annotated[Optional[str], Form()] = None,      # accounting-23 — see upload_statement
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Show a statement's header row and first rows so a CA can map the columns.
@@ -1251,7 +1254,7 @@ def preview_statement_with_mapping(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     column_mapping: str = Form(...),
-    pdf_password: Optional[str] = Form(None),      # accounting-23 — see upload_statement
+    pdf_password: Annotated[Optional[str], Form()] = None,      # accounting-23 — see upload_statement
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Parse with the CA's mapping and show what it produces — WITHOUT importing.

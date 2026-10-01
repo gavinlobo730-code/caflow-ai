@@ -85,7 +85,7 @@ const text = (v: string | undefined): string => (v ?? "").trim();
 
 /** A rupee cell through the one parser: blank is 0, a cell that is not an
  *  amount is null. The currency symbol and Indian commas are taken off first. */
-function cellPaise(v: string | undefined): number | null {
+function amountCell(v: string | undefined): number | null {
   const cleaned = text(v).replace(/[,\s₹]/g, "");
   return cleaned === "" ? 0 : paiseFromRupeeInput(cleaned);
 }
@@ -112,14 +112,14 @@ export function buildVoucherLegs(
       out.push({
         ...head,
         account: text(r.account),
-        debit_paise: cellPaise(r.debit),
-        credit_paise: cellPaise(r.credit),
+        debit_paise: amountCell(r.debit),
+        credit_paise: amountCell(r.credit),
         narration: text(r.narration) || null,
         line_narration: text(r.line_narration) || null,
       });
       return;
     }
-    const amount = cellPaise(r.amount);
+    const amount = amountCell(r.amount);
     const narration = text(r.narration) || null;
     out.push(
       { ...head, account: text(r.debit_account), debit_paise: amount, credit_paise: 0, narration, line_narration: null },

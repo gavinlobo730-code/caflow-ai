@@ -121,11 +121,16 @@ def _period_asker(db, firm_id: str, client_id: str):
     def ask(date_iso: str) -> Optional[str]:
         try:
             period_validation_service.validate_posting_date_cached(firm_id, date_iso, fy_cache)
+            # `assert_open`, which is `lock_reason` raising its answer as a 422: the
+            # client's own lock asked BESIDE the firm's FY check, the shape
+            # `test_every_dated_posting_path_asserts_the_client_lock` requires of a
+            # path that asks the first. Its sentence is taken from the refusal.
+            period_lock_service.assert_open(db, firm_id, client_id, date_iso, lock_cache)
         except HTTPException as e:
             return str(e.detail)
         except ValueError as e:
             return str(e)
-        return period_lock_service.lock_reason(db, firm_id, client_id, date_iso, lock_cache)
+        return None
 
     return ask
 

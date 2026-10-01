@@ -103,11 +103,11 @@ test("a malformed answer cannot crash the report", () => {
 });
 
 test("the summary says what landed and how many parties still do not foot", () => {
-  const rupees = (p: number) => `₹${(p / 100).toFixed(2)}`;
-  assert.equal(importSummarySentence(result(), rupees),
+  const shown = (p: number) => `₹${(p / 100).toFixed(2)}`;
+  assert.equal(importSummarySentence(result(), shown),
     "2 documents recorded (₹3000.00), 1 already there, 1 refused. "
     + "2 parties do not add up to the opening balance on the record — each is named below.");
-  assert.match(importSummarySentence(result({ unreconciled_parties: 1 }), rupees), /1 party does not add up/);
-  assert.match(importSummarySentence(result({ unreconciled_parties: 0, rejected: 0, already_recorded: 0, created: 1, created_paise: 100 }), rupees),
+  assert.match(importSummarySentence(result({ unreconciled_parties: 1 }), shown), /1 party does not add up/);
+  assert.match(importSummarySentence(result({ unreconciled_parties: 0, rejected: 0, already_recorded: 0, created: 1, created_paise: 100 }), shown),
     /^1 document recorded \(₹1\.00\)\. Every party's documents add up to its opening balance\.$/);
 });

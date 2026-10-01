@@ -26,6 +26,7 @@
  */
 import { paiseFromRupeeInput } from "../money/rupeeInput.ts";
 import { financialYearChoices, fyRangeFor } from "../dates/periods.ts";
+import { toLocalISO } from "../dateMath.ts";
 
 export interface OpeningRegisterColumn {
   key: string;
@@ -134,13 +135,13 @@ function cleaned(v: string | undefined): string {
 }
 
 /** A REQUIRED amount: blank is null (unknown), never 0. */
-function requiredPaise(v: string | undefined): number | null {
+function requiredAmount(v: string | undefined): number | null {
   const c = cleaned(v);
   return c === "" ? null : paiseFromRupeeInput(c);
 }
 
 /** An OPTIONAL amount: blank is nothing, which for a salvage value is 0. */
-function optionalPaise(v: string | undefined): number | null {
+function optionalAmount(v: string | undefined): number | null {
   const c = cleaned(v);
   return c === "" ? 0 : paiseFromRupeeInput(c);
 }
@@ -161,9 +162,9 @@ export function buildOpeningRegisterRows(
     asset_category: text(r.asset_category),
     purchase_date: text(r.purchase_date),
     put_to_use_date: orNull(r.put_to_use_date),
-    cost_paise: requiredPaise(r.cost),
-    accumulated_depreciation_paise: requiredPaise(r.accumulated_depreciation),
-    salvage_value_paise: optionalPaise(r.salvage_value),
+    cost_paise: requiredAmount(r.cost),
+    accumulated_depreciation_paise: requiredAmount(r.accumulated_depreciation),
+    salvage_value_paise: optionalAmount(r.salvage_value),
     depreciation_method: orNull(r.depreciation_method),
     useful_life_years: orNull(r.useful_life_years),
     wdv_rate_percent: orNull(r.wdv_rate_percent),
@@ -237,8 +238,9 @@ const MONTHS_END = "31 March";
  * cannot be stated as at a date that has not happened (the server refuses it too).
  */
 export function positionChoices(count: number = 4, today: Date = new Date()): PositionChoice[] {
-  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-`
-    + String(today.getDate()).padStart(2, "0");
+  // The ONE local-calendar formatter, not a copy: a copy is correct on the day it is
+  // written and is what a UTC read-back (toISOString) turns into at 00:20 IST.
+  const todayIso = toLocalISO(today);
   return financialYearChoices(count + 1, today)
     .map((fy) => ({ fy, end: fyRangeFor(fy).end }))
     .filter(({ end }) => end <= todayIso)

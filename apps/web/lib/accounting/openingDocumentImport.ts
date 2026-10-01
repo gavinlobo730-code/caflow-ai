@@ -62,7 +62,7 @@ const text = (v: string | undefined): string => (v ?? "").trim();
 /** A rupee cell with the marks a person puts in one taken off — the currency
  *  symbol, Indian thousands commas, stray spaces — then through the one parser.
  *  Null for blank and for anything that is not an amount. */
-function amountPaise(v: string | undefined): number | null {
+function amountCell(v: string | undefined): number | null {
   const cleaned = text(v).replace(/[,\s₹]/g, "");
   return cleaned === "" ? null : paiseFromRupeeInput(cleaned);
 }
@@ -85,7 +85,7 @@ export function buildOpeningDocumentRows(
     document_no: text(r.document_no),
     document_date: text(r.document_date),
     due_date: text(r.due_date) || null,
-    outstanding_paise: amountPaise(r.outstanding),
+    outstanding_paise: amountCell(r.outstanding),
     notes: text(r.notes) || null,
   }));
 }
