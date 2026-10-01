@@ -3155,6 +3155,77 @@ export interface LateInterestDrafts extends LateInterestStatement {
   failed: { reason: string; invoice_nos: string[] }[];
 }
 
+/** accounting-21 — the post-dated cheque register. A MEMORANDUM: nothing here is in the
+ *  books until a due cheque is converted, and conversion is an ordinary receipt
+ *  or vendor payment made by the server. `state`, `is_due` and `is_stale` are the
+ *  server's answers, worked out against the firm's own (IST) day. */
+export type PostDatedChequeDirection = "received" | "issued";
+export type PostDatedChequeState = "not_due" | "due" | "converted" | "cancelled";
+
+export interface PostDatedCheque {
+  id: string;
+  direction: PostDatedChequeDirection;
+  customer_id: string | null;
+  vendor_id: string | null;
+  party_name: string | null;
+  cheque_no: string;
+  cheque_date: string;
+  amount_paise: number;
+  drawee_bank: string | null;
+  bank_account_id: string | null;
+  allocations: { sales_invoice_id?: string; purchase_bill_id?: string; allocated_paise: number }[];
+  status: "held" | "converted" | "cancelled";
+  state: PostDatedChequeState;
+  is_due: boolean;
+  is_stale: boolean;
+  stale_note: string | null;
+  stale_after: string | null;
+  notes: string | null;
+  converted_receipt_id: string | null;
+  converted_payment_id: string | null;
+  cancel_reason: string | null;
+  /** Always present; null where the posting would be attributable. */
+  posting_account_notice: string | null;
+}
+
+export interface PostDatedChequeRegister {
+  as_of: string;
+  cheques: PostDatedCheque[];
+  summary: Record<PostDatedChequeDirection,
+    Record<PostDatedChequeState, { count: number; amount_paise: number }>>;
+  notes: string[];
+  includes_finished: boolean;
+}
+
+export interface PostDatedChequeOptions {
+  parties: { id: string; name: string | null; gstin: string | null }[];
+  bank_accounts: { id: string; name: string }[];
+  documents: {
+    id: string; number: string | null; date: string | null; due_date: string | null;
+    outstanding_paise: number;
+  }[];
+}
+
+export interface PostDatedChequeConversion {
+  cheque: PostDatedCheque;
+  document: {
+    kind: "receipt" | "payment"; id: string; number: string | null; date: string;
+    amount_paise: number; journal_entry_id: string | null; unallocated_paise: number | null;
+    posting_account_notice: string | null;
+  };
+  stale_note: string | null;
+}
+
+export interface PostDatedChequeWrite {
+  cheque_no?: string;
+  cheque_date?: string;
+  amount_paise?: number;
+  drawee_bank?: string | null;
+  bank_account_id?: string | null;
+  notes?: string | null;
+  allocations?: { sales_invoice_id?: string; purchase_bill_id?: string; allocated_paise: number }[];
+}
+
 export interface PreInvoiceLine {
   description: string;
   hsn_sac?: string | null;
@@ -6073,6 +6144,42 @@ export const api = {
     }) =>
       request<ApiResp<LateInterestDrafts>>("/api/late-interest/drafts",
         { method: "POST", body: JSON.stringify(body) }),
+  },
+
+  /** accounting-21 — the post-dated cheque register. `create`, `update` and `cancel`
+   *  post nothing; `convert` is the one call that reaches the books, and the
+   *  server does it through the ordinary receipt or payment engine. The browser
+   *  never builds a receipt and never decides whether a cheque is due. */
+  postDatedCheques: {
+    list: (clientId: string, direction: PostDatedChequeDirection, includeFinished = false) => {
+      const q = new URLSearchParams({ client_id: clientId, direction });
+      if (includeFinished) q.set("include_finished", "true");
+      return request<ApiResp<PostDatedChequeRegister>>(`/api/post-dated-cheques?${q}`);
+    },
+    options: (clientId: string, direction: PostDatedChequeDirection, partyId?: string) => {
+      const q = new URLSearchParams({ client_id: clientId, direction });
+      if (partyId) q.set("party_id", partyId);
+      return request<ApiResp<PostDatedChequeOptions>>(`/api/post-dated-cheques/options?${q}`);
+    },
+    create: (body: PostDatedChequeWrite & {
+      client_id: string; direction: PostDatedChequeDirection;
+      customer_id?: string; vendor_id?: string;
+      cheque_no: string; cheque_date: string; amount_paise: number;
+    }) =>
+      request<ApiResp<PostDatedCheque>>("/api/post-dated-cheques",
+        { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, clientId: string, body: PostDatedChequeWrite) =>
+      request<ApiResp<PostDatedCheque>>(`/api/post-dated-cheques/${encodeURIComponent(id)}`,
+        { method: "PATCH", body: JSON.stringify({ ...body, client_id: clientId }) }),
+    convert: (id: string, clientId: string, presentedOn?: string) =>
+      request<ApiResp<PostDatedChequeConversion>>(
+        `/api/post-dated-cheques/${encodeURIComponent(id)}/convert`,
+        { method: "POST", body: JSON.stringify({
+          client_id: clientId, ...(presentedOn ? { presented_on: presentedOn } : {}) }) }),
+    cancel: (id: string, clientId: string, reason?: string) =>
+      request<ApiResp<PostDatedCheque>>(
+        `/api/post-dated-cheques/${encodeURIComponent(id)}/cancel`,
+        { method: "POST", body: JSON.stringify({ client_id: clientId, reason: reason || null }) }),
   },
 
   /** THE supplier master. `public.suppliers` (migration 030) looked like a

@@ -27,6 +27,7 @@ import type { ImportRow, ReferenceResolver } from "@/components/CsvImportModal";
 import AllocateReceiptModal from "@/components/sales/AllocateReceiptModal";
 import SalesCycleTab from "@/components/sales/SalesCycleTab";
 import OverdueInterestPanel from "@/components/sales/OverdueInterestPanel";
+import PostDatedChequesPanel from "@/components/banking/PostDatedChequesPanel";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { unallocatedOf } from "@/lib/sales/receiptAllocation";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
@@ -76,7 +77,7 @@ import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements" | "interest";
+type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements" | "interest" | "post-dated-cheques";
 const TABS: { id: SalesTab; label: string }[] = [
   // SALES-21 — the cycle BEFORE the invoice. First, because that is the
   // order the documents are raised in.
@@ -91,6 +92,9 @@ const TABS: { id: SalesTab; label: string }[] = [
   // accounting-22 — what overdue customers owe in interest, as a worklist. Last: it
   // reads the invoices and receipts above it and posts nothing.
   { id: "interest", label: "Overdue Interest" },
+  // accounting-21 — cheques received, dated ahead. A memorandum: nothing is in the
+  // books until a due cheque is converted into a receipt.
+  { id: "post-dated-cheques", label: "Post-dated Cheques" },
 ];
 
 
@@ -406,6 +410,9 @@ export default function SalesPage() {
         )}
         {tab === "interest" && (
           <OverdueInterestPanel clientId={clientId} onOpenInvoice={openInvoice} />
+        )}
+        {tab === "post-dated-cheques" && (
+          <PostDatedChequesPanel clientId={clientId} direction="received" />
         )}
       </div>
     </div>

@@ -11,6 +11,7 @@ import { LandedCostPanel } from "@/components/purchases/LandedCostPanel";
 import { BillsOfEntryTab } from "@/components/purchases/BillsOfEntryTab";
 import { VendorStatementsTab } from "@/components/purchases/VendorStatementsTab";
 import PurchaseCycleTab from "@/components/purchases/PurchaseCycleTab";
+import PostDatedChequesPanel from "@/components/banking/PostDatedChequesPanel";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { api } from "@/lib/api";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
@@ -156,7 +157,7 @@ async function getAuthToken(): Promise<string> {
   return session?.access_token ?? "";
 }
 
-type PurchaseTab = "purchase-cycle" | "bills" | "recurring" | "vendors" | "payments" | "debit-notes" | "credit-notes" | "bills-of-entry" | "statements";
+type PurchaseTab = "purchase-cycle" | "bills" | "recurring" | "vendors" | "payments" | "debit-notes" | "credit-notes" | "bills-of-entry" | "statements" | "post-dated-cheques";
 const TABS: { id: PurchaseTab; label: string }[] = [
   // PUR-25 — the cycle BEFORE the bill. First, because that is the order the
   // documents are raised in, and because the goods receipt is what CGST
@@ -175,6 +176,9 @@ const TABS: { id: PurchaseTab; label: string }[] = [
   // The AP mirror of the Sales screen's Statements tab. `GET /api/vendors/
   // {id}/statement` had been built and reached by nobody.
   { id: "statements", label: "Statements" },
+  // accounting-21 — cheques issued, dated ahead. A memorandum: nothing is in the books
+  // until a due cheque is converted into a payment.
+  { id: "post-dated-cheques", label: "Post-dated Cheques" },
 ];
 
 // Shared money formatter (paise → ₹). Preserves the sign so a negative amount
@@ -337,6 +341,7 @@ export default function PurchasesPage() {
         {tab === "purchase-cycle" && <PurchaseCycleTab clientId={clientId} />}
         {tab === "bills-of-entry" && <BillsOfEntryTab clientId={clientId} openDoc={openDoc} />}
         {tab === "statements" && <VendorStatementsTab clientId={clientId} />}
+        {tab === "post-dated-cheques" && <PostDatedChequesPanel clientId={clientId} direction="issued" />}
       </div>
     </div>
   );

@@ -31,21 +31,12 @@ import {
 } from "@/lib/api";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { todayLocalISO } from "@/lib/dateMath";
+import { dayLabel } from "@/lib/dates/dayLabel";
 import { formatPaise } from "@/lib/money/format";
 import { BASIS_CHOICES, ratePercentText, termsPayload, type TermsText } from "@/lib/sales/lateInterest";
 import { Callout, StatutoryNotes } from "@/components/ui/callout";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/** "2026-08-22" -> "22 Aug 2026", by splitting the string: a date-only string
- *  given to `new Date` is UTC midnight and shifts a day west of Greenwich. */
-function dayLabel(iso: string | null | undefined): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
-  if (!m) return "—";
-  return `${m[3]} ${MONTHS[Number(m[2]) - 1] ?? m[2]} ${m[1]}`;
-}
 
 /** The server's status words, for the eye. A status this build has not heard of
  *  is shown as the server sent it rather than hidden. */
