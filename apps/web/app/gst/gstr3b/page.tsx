@@ -32,6 +32,7 @@ import {
 import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
+import { RegistrationPicker, useRegistrationChoice } from "@/components/gst/RegistrationPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   computeGSTR3B,
@@ -89,6 +90,9 @@ export default function GSTR3BPage() {
   const [clients, setClients] = useState<{ id: string; name: string; gstin: string | null }[]>([]);
   const [clientId, setClientId] = useState("");
   const [yearMonth, setYearMonth] = useState(PERIOD_OPTIONS[1]?.value ?? "");
+  // WHICH REGISTRATION (GST-17): the server's list of what this client holds,
+  // primary first. Only the primary could be built from this screen before.
+  const reg = useRegistrationChoice(clientId || null);
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GSTR3BComputeResult | null>(null);
@@ -133,6 +137,9 @@ export default function GSTR3BPage() {
 
   async function handleCompute() {
     if (!clientId || !yearMonth) return;
+    // A GSTIN the client does not hold is refused here, never defaulted to the
+    // primary (GST-17).
+    if (reg.choice.refused) { setError(reg.choice.refused); return; }
     setLoading(true);
     setError(null);
     setResult(null);
@@ -143,10 +150,12 @@ export default function GSTR3BPage() {
     setRule43(null);
     setRule43Error(null);
     try {
-      const res = await computeGSTR3B(clientId, yearMonth);
+      const res = await computeGSTR3B(clientId, yearMonth, reg.choice.gstin);
       setResult(res);
       const period = toPeriod(yearMonth);
-      const saved = await getGSTR3BReturn(clientId, period);
+      // By the GSTIN the SERVER built it for: with two registrations there are
+      // two saved returns for one period (GST-17).
+      const saved = await getGSTR3BReturn(clientId, period, res.gstin);
       setFilingStatus((saved?.status as GSTReturnStatus) ?? "draft");
       // Asked as at the PERIOD END, not today: a bill that crosses 180 days
       // next week belongs in next month's return, not this one. Failing this
@@ -188,7 +197,7 @@ export default function GSTR3BPage() {
     try {
       const sb = getSupabaseClient();
       const { data: { user } } = await sb.auth.getUser();
-      await approveGSTR3B(clientId, toPeriod(yearMonth), user?.id ?? "");
+      await approveGSTR3B(clientId, toPeriod(yearMonth), user?.id ?? "", result.gstin);
       setFilingStatus("ca_approved");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Approval failed");
@@ -200,7 +209,7 @@ export default function GSTR3BPage() {
   async function handleMarkFiled() {
     if (!clientId || !yearMonth || !arn.trim()) return;
     try {
-      await markGSTR3BFiled(clientId, toPeriod(yearMonth), arn.trim());
+      await markGSTR3BFiled(clientId, toPeriod(yearMonth), arn.trim(), result?.gstin);
       setFilingStatus("submitted");
       setShowFiledModal(false);
       setArn("");
@@ -211,8 +220,10 @@ export default function GSTR3BPage() {
 
   function handleDownload() {
     if (!result || !clientId) return;
+    // The registration the RETURN was built for — the server's answer, not the
+    // client's primary (GST-17).
     const client = clients.find(c => c.id === clientId);
-    const gstin = client?.gstin ?? "UNKNOWN";
+    const gstin = result.gstin || client?.gstin || "UNKNOWN";
     downloadGSTR3BJSON(result.payload, toPeriod(yearMonth), gstin);
   }
 
@@ -277,6 +288,14 @@ export default function GSTR3BPage() {
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
+          </div>
+          <div className="sm:col-span-3">
+            <RegistrationPicker
+              state={reg}
+              id="gstr3b-registration"
+              disabled={actionInFlight}
+              onChange={() => { setResult(null); setError(null); }}
+            />
           </div>
         </div>
         <button

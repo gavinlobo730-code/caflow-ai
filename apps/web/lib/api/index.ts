@@ -2180,6 +2180,12 @@ export type ClientGstRegistration = {
   /** Which s.10 rate a COMPOSITION registration pays. Meaningless otherwise;
    *  null means unrecorded rather than any particular rate (GST-25). */
   composition_category: string | null;
+  /** GST-17 / GST-05 — what a return built for THIS registration would have to
+   *  say: no invoice, bill or note records which registration it belongs to, so
+   *  choosing one does not split the documents. A sentence, or null where the
+   *  client holds one registration that files the ordinary pair. The server's
+   *  words — a picker shows them beside the choice and never composes its own. */
+  documents_not_split_caveat?: string | null;
 };
 
 /** One financial year's CGST s.2(6) aggregate turnover, as the CA recorded it. */

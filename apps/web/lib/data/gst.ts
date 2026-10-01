@@ -898,11 +898,17 @@ export async function fetchRule43Working(
 export async function computeGSTR3B(
   clientId: string,
   yearMonth: string,  // YYYY-MM
+  /** WHICH REGISTRATION (GST-17). Sent when the CA chose one; omitted for a
+   *  client with one registration, which the server answers with the primary.
+   *  The server refuses a GSTIN the client does not hold — it is never
+   *  defaulted to the primary. */
+  gstin?: string,
 ): Promise<GSTR3BComputeResult> {
   const period = toPeriod(yearMonth);
   const result = await apiPost<FromBooksGSTR3B>("/api/gst/gstr3b/from-books", {
     client_id: clientId,
     period,
+    ...(gstin ? { gstin } : {}),
   });
 
   // Carried, not assumed empty. This said "the from-books endpoint reports no
@@ -1045,10 +1051,14 @@ export async function approveGSTR3B(
   clientId: string,
   period: string,
   userId: string,
+  /** Which registration's return (GST-17). Migration 390 keyed this table on
+   *  (client, period, gstin), so without it a client holding two registrations
+   *  has BOTH returns for the period approved by one click. */
+  gstin?: string,
 ): Promise<void> {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
-  const { error } = await sb
+  let q = sb
     .from("gstr3b_returns")
     .update({
       status: "ca_approved",
@@ -1058,6 +1068,8 @@ export async function approveGSTR3B(
     .eq("firm_id", firmId)
     .eq("client_id", clientId)
     .eq("period", period);
+  if (gstin) q = q.eq("gstin", gstin.trim().toUpperCase());
+  const { error } = await q;
 
   if (error) throw new Error(`Failed to approve GSTR-3B: ${error.message}`);
 }
@@ -1073,7 +1085,7 @@ export async function approveGSTR3B(
 export async function buildGSTR1(
   clientId: string,
   yearMonth: string,
-  options: { includeAmendments?: boolean } = {},
+  options: { includeAmendments?: boolean; gstin?: string } = {},
 ): Promise<GSTR1BuildResult> {
   const period = toPeriod(yearMonth);
   // NO `aggregate_turnover_paise` (GST-17). It used to send 0, which is a REAL
@@ -1092,6 +1104,8 @@ export async function buildGSTR1(
     client_id: clientId,
     period,
     ...(options.includeAmendments === false ? { include_amendments: false } : {}),
+    // WHICH REGISTRATION (GST-17) — see computeGSTR3B.
+    ...(options.gstin ? { gstin: options.gstin } : {}),
   });
 
   const shaped: GSTR1BuildResult = {
@@ -1194,10 +1208,12 @@ export async function approveGSTR1(
   clientId: string,
   period: string,
   userId: string,
+  /** Which registration's return (GST-17) — see approveGSTR3B. */
+  gstin?: string,
 ): Promise<void> {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
-  const { error } = await sb
+  let q = sb
     .from("gstr1_returns")
     .update({
       status: "ca_approved",
@@ -1207,37 +1223,48 @@ export async function approveGSTR1(
     .eq("firm_id", firmId)
     .eq("client_id", clientId)
     .eq("period", period);
+  if (gstin) q = q.eq("gstin", gstin.trim().toUpperCase());
+  const { error } = await q;
 
   if (error) throw new Error(`Failed to approve GSTR-1: ${error.message}`);
 }
 
 // ── Return Fetchers ────────────────────────────────────────────────────────
 
-export async function getGSTR3BReturn(clientId: string, period: string) {
+export async function getGSTR3BReturn(clientId: string, period: string,
+                                       /** GST-17: with two registrations there
+                                        *  are two rows for one period, and
+                                        *  `.maybeSingle()` on both is an ERROR,
+                                        *  not "the first one". */
+                                       gstin?: string) {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
-  const { data, error } = await sb
+  let q = sb
     .from("gstr3b_returns")
     .select("*")
     .eq("firm_id", firmId)
     .eq("client_id", clientId)
-    .eq("period", period)
-    .maybeSingle();
+    .eq("period", period);
+  if (gstin) q = q.eq("gstin", gstin.trim().toUpperCase());
+  const { data, error } = await q.maybeSingle();
 
   if (error) throw new Error(error.message);
   return data;
 }
 
-export async function getGSTR1Return(clientId: string, period: string) {
+export async function getGSTR1Return(clientId: string, period: string,
+                                      /** GST-17 — see getGSTR3BReturn. */
+                                      gstin?: string) {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
-  const { data, error } = await sb
+  let q = sb
     .from("gstr1_returns")
     .select("*")
     .eq("firm_id", firmId)
     .eq("client_id", clientId)
-    .eq("period", period)
-    .maybeSingle();
+    .eq("period", period);
+  if (gstin) q = q.eq("gstin", gstin.trim().toUpperCase());
+  const { data, error } = await q.maybeSingle();
 
   if (error) throw new Error(error.message);
   return data;
@@ -1323,8 +1350,10 @@ export async function markGSTR3BFiled(
   clientId: string,
   period: string,
   arn: string,
+  /** Which registration's return (GST-17). */
+  gstin?: string,
 ): Promise<void> {
-  const existing = await getGSTR3BReturn(clientId, period);
+  const existing = await getGSTR3BReturn(clientId, period, gstin);
   const returnId = (existing as { id?: string } | null)?.id;
   if (!returnId) {
     throw new Error(
@@ -1346,8 +1375,10 @@ export async function markGSTR1Filed(
   clientId: string,
   period: string,
   arn: string,
+  /** Which registration's return (GST-17). */
+  gstin?: string,
 ): Promise<void> {
-  const existing = await getGSTR1Return(clientId, period);
+  const existing = await getGSTR1Return(clientId, period, gstin);
   const returnId = (existing as { id?: string } | null)?.id;
   if (!returnId) {
     throw new Error(
