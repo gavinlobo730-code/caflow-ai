@@ -16,6 +16,7 @@ import {
   Coins,
   Scale,
   Globe2,
+  Cpu,
 } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
 
@@ -67,6 +68,7 @@ const SETTINGS_GROUPS: Array<{
       { href: "/settings/firm-hsn-library", label: "HSN Library", icon: Library },
       { href: "/settings/multi-currency", label: "Multi-currency", icon: Coins },
       { href: "/settings/dsc-tracker", label: "DSC Tracker", icon: Shield },
+      { href: "/settings/ai", label: "AI status", icon: Cpu },
     ],
   },
   {

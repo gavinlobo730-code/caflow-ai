@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Building2, Calendar, ShieldCheck, ChevronLeft, User, Palette, Hash, FileText, Mail, Globe2, Scale, Coins } from "lucide-react";
+import { Building2, Calendar, ShieldCheck, ChevronLeft, User, Palette, Hash, FileText, Mail, Globe2, Scale, Coins, Cpu } from "lucide-react";
 import { FormSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -781,6 +781,22 @@ export default function SettingsPage() {
                 className="px-4 py-1.5 border border-state-attention-border text-state-attention text-sm font-medium rounded-lg hover:bg-state-attention-hover transition-colors whitespace-nowrap"
               >
                 Manage →
+              </Link>
+            </div>
+
+            <div className="px-5 py-4 flex items-center justify-between">
+              <div className="flex items-start gap-3">
+                <Cpu size={15} className="text-blue-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-ps-ink">AI status</p>
+                  <p className="text-xs text-ps-hint mt-0.5">Whether the assistant, the copilot and the invoice and notice readers can reach their AI providers — and one button that asks, in words.</p>
+                </div>
+              </div>
+              <Link
+                href="/settings/ai"
+                className="px-4 py-1.5 border border-blue-200 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
+              >
+                Open →
               </Link>
             </div>
 

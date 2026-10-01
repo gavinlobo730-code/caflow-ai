@@ -59,11 +59,15 @@ _windows: Dict[Tuple[str, str, str], list] = defaultdict(list)
 #:   extract       reading an invoice or a notice. Larger prompts, and a scanned
 #:                 PDF is up to three page images.
 #:   vision        reading a scanned statement: up to twenty page images a call.
+#:   probe         the Partner's "is the AI answering?" check: one tiny call, and a
+#:                 failing provider can spend the gateway's whole forty seconds, so
+#:                 it is the smallest bucket (a user's share is never under three).
 BUCKETS: Dict[str, Tuple[int, int]] = {
     "chat": (20, 60),
     "intelligence": (10, 60),
     "extract": (10, 60),
     "vision": (5, 60),
+    "probe": (3, 60),
 }
 
 # The prefixes the original limiter matched on, kept so the one existing call

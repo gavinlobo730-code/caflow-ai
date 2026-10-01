@@ -104,6 +104,71 @@ export interface PortalUnreadSummary {
   clients: { client_id: string; client_name: string | null; unread: number; latest_at: string | null }[];
 }
 
+/** `GET /api/ai-status` and `POST /api/ai-status/probe` (ai-06). Partner-only and
+ *  behind the MFA guard. The server decides every word; the screen decides
+ *  nothing and computes nothing. */
+export type AiProviderName = "groq" | "gemini";
+/** One word per provider: `ok` (answered), `failing` (the last attempt did not),
+ *  `unverified` (nothing asked since this server started — NOT the same as
+ *  failing) or `not_configured` (no key). An unknown word is rendered as
+ *  unverified, never as ok. */
+export type AiProviderStatus = "ok" | "failing" | "unverified" | "not_configured";
+export interface AiSeen {
+  model: string;
+  outcome: string;
+  at: string | null;
+  latency_ms: number | null;
+  total_tokens: number | null;
+  http_status: number | null;
+}
+export interface AiFirmCall {
+  model: string | null;
+  feature: string | null;
+  outcome: string | null;
+  at: string | null;
+  latency_ms: number | null;
+  total_tokens: number | null;
+}
+export interface AiProviderState {
+  provider: AiProviderName;
+  label: string;
+  configured: boolean;
+  model: string;
+  fallback_models: string[];
+  status: AiProviderStatus;
+  /** What the server calls the status and how it tones the chip — the browser
+   *  holds neither a label table nor a tone table. */
+  status_label: string;
+  status_tone: "ready" | "problem" | "attention" | "neutral";
+  this_process: { last_attempt: AiSeen | null; last_success: AiSeen | null };
+  /** `null` with `this_firm_unread` set means the history could not be read —
+   *  NOT that this firm has made no calls. */
+  this_firm: { last_answered: AiFirmCall | null; last_attempt: AiFirmCall | null } | null;
+  this_firm_unread: string | null;
+}
+export interface AiStatus {
+  providers: AiProviderState[];
+  not_covered: string[];
+}
+export interface AiProbeResult {
+  provider: AiProviderName;
+  /** `ok` it answered; `failed` it did not; `skipped` nothing was asked. */
+  state: "ok" | "failed" | "skipped";
+  model: string;
+  answered_by: string | null;
+  latency_ms: number | null;
+  total_tokens: number | null;
+  sentence: string | null;
+  kind: string | null;
+  http_status: number | null;
+  /** The Callout tone the server chose for this result. */
+  tone: "note" | "problem" | "attention";
+}
+export interface AiProbeAnswer {
+  result: AiProbeResult;
+  status: AiStatus;
+}
+
 /** `GET /api/security/posture` — booleans, counts and fixed sentences. Every
  *  field but the two lists is a scalar; the lists are named in
  *  `objectWithLists` at the setter. */
@@ -6726,6 +6791,18 @@ export const api = {
       request<ApiResp<PostDatedCheque>>(
         `/api/post-dated-cheques/${encodeURIComponent(id)}/cancel`,
         { method: "POST", body: JSON.stringify({ client_id: clientId, reason: reason || null }) }),
+  },
+
+  /** Is the AI answering? (ai-06) Partner-only (`firm:admin`), behind the MFA
+   *  guard. `get` is free; `probe` makes ONE small real call to ONE provider and
+   *  is rate limited, so the screen asks twice rather than once for both (a
+   *  failing provider can spend the gateway's forty seconds, and `request`
+   *  abandons at forty-five). */
+  aiStatus: {
+    get: () => request<ApiResp<AiStatus>>("/api/ai-status"),
+    probe: (provider: AiProviderName) =>
+      request<ApiResp<AiProbeAnswer>>(
+        `/api/ai-status/probe?${new URLSearchParams({ provider })}`, { method: "POST" }),
   },
 
   /** gst-06 — the opening balance of the electronic credit ledger, keyed from the
