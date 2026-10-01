@@ -72,7 +72,7 @@ const FAQ = [
   },
   {
     q: "How is my data protected?",
-    a: "Your records sit in a database in Mumbai; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India. Partners and Managers use two-factor authentication on firm administration, billing, payroll and approvals, access is by role and by client assignment, and the audit log records who created, changed or deleted each record — it records changes, not views. PracticeSync also never transmits anything to a government portal — it prepares the return and a CA files it themselves.",
+    a: "Your records sit in a database in Mumbai; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India. Partners and Managers use two-factor authentication on firm administration, billing, payroll and approvals, access is by role and by client assignment, and the audit log records who created, changed or deleted a client, invoice, bill, receipt or ledger entry — it records changes, not views. PracticeSync also never transmits anything to a government portal — it prepares the return and a CA files it themselves.",
   },
 ];
 
