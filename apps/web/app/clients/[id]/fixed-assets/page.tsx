@@ -15,6 +15,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { todayLocalISO } from "@/lib/dateMath";
 import { fyRangeFor } from "@/lib/dates/periods";
 import { CwipTab } from "@/components/fixed-assets/CwipTab";
+import { OpeningRegisterImportButton } from "@/components/fixed-assets/OpeningRegisterImport";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 import { Callout, GapList } from "@/components/ui/callout";
@@ -393,6 +394,9 @@ function RegisterTab({ clientId, openDoc }:
           <button onClick={load} className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
+          {/* A migrated client's register, with the depreciation each asset
+              already carries (accounting-18). Posts nothing to the ledger. */}
+          <OpeningRegisterImportButton clientId={clientId} onImported={load} />
           <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
             <Plus size={12} /> Add Asset
           </button>

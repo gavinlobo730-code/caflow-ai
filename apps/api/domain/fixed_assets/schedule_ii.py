@@ -129,3 +129,19 @@ def default_class(category: Optional[str]) -> dict:
 DEFAULT_WDV_RATES: dict[str, Optional[Decimal]] = {
     category: classes[0]["wdv_rate_percent"] for category, classes in CATEGORIES.items()
 }
+
+
+def no_statutory_basis(category: str, method: str) -> str:
+    """Why a category with no Schedule II life cannot be given a rate, in words.
+
+    Said once here because two doors refuse on it — `create_asset` and the
+    register-opening import (accounting-18) — and a CA who is refused at one and told
+    something different at the other would reasonably conclude the rule differs.
+    """
+    needed = "a WDV rate" if method == "WDV" else "a useful life"
+    return (
+        f"Schedule II prescribes no useful life for '{category}', so there is no rate to "
+        f"default to — record {needed} for this asset. Intangible assets are amortised "
+        f"under AS 26 / Ind AS 38 (Schedule II Part A), which is a judgement the CA makes, "
+        f"not a figure this table can supply."
+    )
