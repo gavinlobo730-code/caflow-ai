@@ -69,8 +69,10 @@ test("the button is disabled while the request is in flight and after it has suc
 test("the draft is said to be a draft, linked, and the server's disagreement is shown unchanged", () => {
   assert.match(DRAFT, /Draft bill created — not received\./);
   assert.match(DRAFT, /documentHref\(clientId, "purchases", "bills", done\.bill\.id\)/);
-  assert.match(DRAFT, /done\.differences\.map/);
-  assert.match(DRAFT, /done\.caveats\.map/);
+  // The pair is rendered by the ONE component that decides its tones (what
+  // disagrees is actionable, the caveats are read once) — not a hand-rolled list.
+  assert.match(DRAFT, /<StatutoryNotes\s+gaps=\{done\.agrees_with_2b \? \[\] : done\.differences\}\s+caveats=\{done\.caveats\}/);
+  assert.doesNotMatch(DRAFT, /\.caveats\.map\(|\.differences\.map\(/);
   assert.match(DRAFT, /objectWithLists<Gstr2bDraftBill>\(resp\.data, "differences", "caveats"\)/);
 });
 

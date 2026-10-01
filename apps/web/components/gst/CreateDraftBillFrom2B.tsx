@@ -32,6 +32,7 @@ import { api } from "@/lib/api";
 import type { Gstr2bDraftBill } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
 import { documentHref } from "@/lib/accounting/sourceDocument";
+import { StatutoryNotes } from "@/components/ui/callout";
 
 export interface DraftableDocument {
   section: string | null;
@@ -83,17 +84,12 @@ export function CreateDraftBillFrom2B({
             Open it
           </Link>
         </p>
-        {!done.agrees_with_2b && (
-          <div role="alert" className="text-state-attention space-y-0.5">
-            <p className="font-medium">
-              The books&apos; arithmetic does not reproduce what the supplier filed:
-            </p>
-            {done.differences.map((d, i) => <p key={i}>{d}</p>)}
-          </div>
-        )}
-        {done.caveats.map((c, i) => (
-          <p key={i} className="text-ps-hint">{c}</p>
-        ))}
+        {/* The pair the server sends, in the one component that decides its
+            tones: what disagrees is actionable, the caveats are read once. */}
+        <StatutoryNotes
+          gaps={done.agrees_with_2b ? [] : done.differences}
+          caveats={done.caveats}
+          title="The books' arithmetic does not reproduce what the supplier filed" />
       </div>
     );
   }
