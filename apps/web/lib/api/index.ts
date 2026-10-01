@@ -2965,6 +2965,59 @@ export interface Gstr2bBulkAnswer {
   needs_attention: number;
 }
 
+/**
+ * gst-15 — credit not yet claimed, each row with the date CGST §16(4) takes it
+ * away. Read-only. The SERVER holds the rule (`domain/gst/itc_time_bar`, over
+ * `correction_window`, the one place that knows the date and its "whichever is
+ * earlier"); this is its answer and the screen computes no date.
+ */
+export type ItcTimeBarStatus = "open" | "closing_soon" | "closed";
+
+export interface ItcTimeBarItem {
+  /** A received bill whose credit §16(2)(aa) withholds, or a 2B document the
+   *  books have no bill for. */
+  kind: "withheld_bill" | "not_booked";
+  closes_on: string;
+  days_left: number;
+  status: ItcTimeBarStatus;
+  financial_year: string;
+  shortened_by_annual_return: boolean;
+  document_id: string | null;
+  label: string;
+  supplier: string;
+  supplier_gstin?: string;
+  document_date: string;
+  return_period?: string;
+  verdict: string;
+  reason: string;
+  credit_at_risk_paise: number;
+}
+
+export interface ItcTimeBar {
+  as_of: string;
+  scanned_financial_years: string[];
+  rule: string;
+  items: ItcTimeBarItem[];
+  by_financial_year: Array<{
+    financial_year: string; closes_on: string; days_left: number;
+    status: ItcTimeBarStatus; shortened_by_annual_return: boolean;
+    count: number; credit_at_risk_paise: number;
+  }>;
+  /** Months with no GSTR-2B reconciled: nothing in them has been judged. */
+  periods_not_reconciled: Array<{
+    period: string; financial_year: string; closes_on: string; days_left: number;
+    status: ItcTimeBarStatus; shortened_by_annual_return: boolean;
+  }>;
+  blocked_by_2b_count: number;
+  not_assessed_count: number;
+  totals: {
+    credit_at_risk_paise: number; open_paise: number;
+    closing_soon_paise: number; lapsed_paise: number;
+  };
+  closing_soon_days: number;
+  notes: string[];
+}
+
 /** SALES-21 — the sales cycle before the tax invoice. */
 export interface SalesCycleVocabulary {
   quote_kinds: { value: string; label: string }[];
@@ -6488,6 +6541,12 @@ export const api = {
       request<ApiResp<Record<string, unknown>>>(
         "/api/gst-workspace/itc/register/reclaim",
         { method: "POST", body: JSON.stringify(body) }),
+
+    /** gst-15 — the credit not yet claimed, with the date CGST §16(4) takes it
+     *  away. Read-only; claims, posts and files nothing. */
+    itcTimeBar: (clientId: string) =>
+      request<ApiResp<ItcTimeBar>>(
+        `/api/gst-workspace/itc/time-bar?client_id=${encodeURIComponent(clientId)}`),
 
     /** gst-10 — reconcile GSTR-2B files for many clients, each routed to its
      *  client by the GSTIN inside it. NO client and NO period is sent: the file

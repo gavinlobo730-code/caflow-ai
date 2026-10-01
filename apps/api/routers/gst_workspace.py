@@ -1740,6 +1740,46 @@ class ITCReclaimIn(BaseModel):
     notes: Optional[str] = None
 
 
+@router.get("/itc/time-bar")
+def itc_time_bar(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """Credit not yet claimed, each row with the date it lapses — CGST §16(4)
+    (gst-15). Nearest lapse first.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Read-only: nothing is claimed,
+    # posted or sent to a portal.
+
+    `domain/gst/itc_time_bar` is the rule and `correction_window` is the one
+    place that knows the date (30 November following the invoice's financial
+    year, or the GSTR-9 date from the books if earlier). The rows are the bills
+    the per-document §16(2)(aa) pass WITHHOLDS and the 2B documents the books
+    have no bill for; the answer also lists the months with no reconciliation at
+    all, and counts, without dating them, the bills the portal itself blocked.
+    "Today" is the Indian date.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {
+            "items": [], "periods_not_reconciled": [], "by_financial_year": [],
+            "notes": ["Running without a database: no bill or GSTR-2B was read."],
+            "totals": {"credit_at_risk_paise": 0, "open_paise": 0,
+                       "closing_soon_paise": 0, "lapsed_paise": 0},
+        })
+    from core.supabase_client import get_supabase
+    from services import itc_time_bar_service
+    try:
+        return api_response(True, itc_time_bar_service.radar(
+            get_supabase(), firm_id=current_user["firm_id"],
+            client_id=client_id, as_of=ist_today()))
+    except HTTPException:
+        raise
+    except Exception:
+        _logger.exception("itc time bar failed for %s", client_id)
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
+
+
 @router.get("/itc/register")
 def itc_register_for_period(
     client_id: str = Query(...),

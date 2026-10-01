@@ -8,6 +8,7 @@ import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import AmendmentsTab from "@/components/gst/AmendmentsTab";
 import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
+import { ItcTimeBarRadar } from "@/components/gst/ItcTimeBarRadar";
 import RegistrationsTab from "@/components/gst/RegistrationsTab";
 import { todayLocalISO } from "@/lib/dateMath";
 import { gstPeriodLabel } from "@/lib/gst/period";
@@ -2285,7 +2286,13 @@ export default function GSTWorkspacePage() {
         {tab === "dashboard" && <GSTDashboard clientId={clientId} />}
         {tab === "gstr1" && <GSTR1Tab clientId={clientId} />}
         {tab === "amendments" && <AmendmentsTab clientId={clientId} />}
-        {tab === "itc" && <ItcRegisterTab clientId={clientId} />}
+        {tab === "itc" && (
+          <>
+            {/* §16(4): credit not yet claimed and the date it lapses (gst-15) */}
+            <ItcTimeBarRadar clientId={clientId} />
+            <ItcRegisterTab clientId={clientId} />
+          </>
+        )}
         {tab === "gstr3b" && <GSTR3BTab clientId={clientId} />}
         {tab === "gstr2b" && <GSTR2BTab clientId={clientId} />}
         {tab === "history" && <FilingHistoryTab clientId={clientId} />}
