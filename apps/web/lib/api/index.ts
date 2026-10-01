@@ -2103,7 +2103,7 @@ export type OpeningReconciliation = {
   double_openings: DoubleOpening[];
 };
 
-/** One spreadsheet row on its way to the bulk import (ACC-05). Dates and the
+/** One spreadsheet row on its way to the bulk import (accounting-05). Dates and the
  *  party are TEXT — reading a date and matching a name are the server's rules. */
 export type OpeningDocumentImportRow = {
   /** The number the person saw in the preview. */
@@ -2146,7 +2146,7 @@ export type OpeningDocumentBulkResult = {
   unreconciled_parties: number;
 };
 
-/** One line of a voucher on its way to the voucher import (ACC-17). The date,
+/** One line of a voucher on its way to the voucher import (accounting-17). The date,
  *  type and account are TEXT — the server reads them. An amount is paise: 0 for a
  *  blank cell and null for one that is not an amount, so the row still arrives
  *  and is refused by its number. */
@@ -3843,7 +3843,7 @@ export const api = {
     // document's own journal_entry_id instead of searching a date window.
     createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
     /** A spreadsheet of journals, payments, receipts and contras, posted voucher
-     *  by voucher through the one posting kernel (ACC-17). `status` is required
+     *  by voucher through the one posting kernel (accounting-17). `status` is required
      *  and has no default — `posted` goes on the books now, `draft` stays off
      *  them. Send a few vouchers per call: each post is several round trips and
      *  the browser gives up at 45 seconds without retrying. */
@@ -4329,7 +4329,7 @@ export const api = {
       // rather than the status line. It is thrown as an ApiRefusal — still an
       // Error — so the server's CODE survives beside the sentence: a locked PDF
       // is refused here with the password-required code and the dialog asks for
-      // the password on that, not on the wording (ACC-23). The body is read
+      // the password on that, not on the wording (accounting-23). The body is read
       // twice, through a clone, because `errorMessage` flattens for display and
       // `refusalFrom` keeps the code.
       if (!res.ok) {
@@ -6464,7 +6464,7 @@ export const api = {
         `/api/opening-documents/${id}?client_id=${encodeURIComponent(clientId)}`
         + `&kind=${encodeURIComponent(kind)}`,
         { method: "DELETE" }),
-    /** A spreadsheet of open invoices or bills, judged row by row (ACC-05).
+    /** A spreadsheet of open invoices or bills, judged row by row (accounting-05).
      *  Bad rows come back by number, good ones land, a re-upload records
      *  nothing twice. `dryRun` judges and writes nothing. */
     bulkImport: (body: {

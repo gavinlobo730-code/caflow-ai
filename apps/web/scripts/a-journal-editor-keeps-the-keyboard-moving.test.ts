@@ -1,4 +1,4 @@
-// ACC-08 — the journal editor's three quick wins, and the purchase bill grid's
+// accounting-08 — the journal editor's three quick wins, and the purchase bill grid's
 // Enter. lib/journal/lineFlow.test.ts holds the ARITHMETIC (Dr 1,000 / Cr 600
 // offers Cr 400); this holds the WIRING, because a pure function nothing calls
 // fixes nothing.

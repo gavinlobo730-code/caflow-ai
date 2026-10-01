@@ -930,7 +930,7 @@ def upload_statement(
     closing_balance_paise: Optional[int] = Form(None),
     allow_vision: bool = Form(False),
     acknowledge_totals_mismatch: Optional[str] = Form(None),
-    # The password of a LOCKED PDF (ACC-23). A FORM field and never a query
+    # The password of a LOCKED PDF (accounting-23). A FORM field and never a query
     # parameter: a query string is written to every access log between the
     # browser and this process, a multipart body is not. It is passed to the one
     # open of this file and nowhere else — not stored, not logged, not in any
@@ -1210,7 +1210,7 @@ def inspect_statement_file(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     bank_account_id: Optional[str] = Form(None),
-    pdf_password: Optional[str] = Form(None),      # ACC-23 — see upload_statement
+    pdf_password: Optional[str] = Form(None),      # accounting-23 — see upload_statement
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Show a statement's header row and first rows so a CA can map the columns.
@@ -1251,7 +1251,7 @@ def preview_statement_with_mapping(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     column_mapping: str = Form(...),
-    pdf_password: Optional[str] = Form(None),      # ACC-23 — see upload_statement
+    pdf_password: Optional[str] = Form(None),      # accounting-23 — see upload_statement
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Parse with the CA's mapping and show what it produces — WITHOUT importing.

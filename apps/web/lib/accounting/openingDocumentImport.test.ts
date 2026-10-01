@@ -1,4 +1,4 @@
-// ACC-05 — the spreadsheet side of the opening-document import, as pure
+// accounting-05 — the spreadsheet side of the opening-document import, as pure
 // functions. What the SERVER decides (party, date, duplicate, reconciliation) is
 // pinned in apps/api/tests/test_bulk_opening_documents.py; this is only the
 // conversion the browser owns.

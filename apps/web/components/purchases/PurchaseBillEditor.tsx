@@ -554,7 +554,7 @@ export function PurchaseBillEditor({
     setLines((prev) => [...prev, { ...EMPTY_LINE, _k: nextKey() }]);
   }
 
-  // ── Enter goes to the next line (ACC-08) ───────────────────────────────────
+  // ── Enter goes to the next line (accounting-08) ───────────────────────────────────
   // A CA keying a bill of ten lines in Tally moves with the keyboard; this grid
   // had no key handling at all, so every line was a trip to the mouse. Enter in
   // one of the grid's PLAIN INPUTS (description, quantity, rate, the two cess

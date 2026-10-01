@@ -1,4 +1,4 @@
-// ACC-17 — the spreadsheet side of the voucher import, as pure functions. What
+// accounting-17 — the spreadsheet side of the voucher import, as pure functions. What
 // the SERVER decides (balance, ledger, period, duplicate) is pinned in
 // apps/api/tests/test_voucher_import.py; this is the conversion the browser owns.
 //

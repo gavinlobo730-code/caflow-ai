@@ -59,7 +59,7 @@ const OWN_CREDENTIALS: Record<string, string> = {
 /** A password typed to open a FILE a BANK locked — neither a PracticeSync
  *  secret nor a portal's, so it is not in the list above and is not a bookmark
  *  toggle either. A bank emails a statement as a PDF locked with a password
- *  built from the customer ID or date of birth (ACC-23); the CA types it so the
+ *  built from the customer ID or date of birth (accounting-23); the CA types it so the
  *  server can open that one file. It is the file's key and not an account's: it
  *  is sent once in the body of the request that needs it, used in memory for
  *  one decrypt, and kept nowhere (the backend half is

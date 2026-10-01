@@ -112,7 +112,7 @@ def page_images(content: bytes, *, resolution: int = _RESOLUTION,
     MAX_PAGES — a truncated statement that then failed the tie-out would send
     the CA looking for a missing transaction that was never sent to the model.
 
-    `password` opens a locked PDF for this one rasterising (ACC-23) — a locked
+    `password` opens a locked PDF for this one rasterising (accounting-23) — a locked
     SCAN reaches here after the text parse opened it with the same password and
     found no text. What leaves for the model is the PNGs this returns: never the
     PDF, and never the password, which pdfplumber hands to its renderer for the

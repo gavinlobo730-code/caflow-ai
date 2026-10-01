@@ -718,7 +718,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
   const [closingRs, setClosingRs] = useState("");
   const [allowVision, setAllowVision] = useState(false);
 
-  // ── A locked PDF (ACC-23) ────────────────────────────────────────────────
+  // ── A locked PDF (accounting-23) ────────────────────────────────────────────────
   // Banks email statements locked with a password the CA has to type. It is
   // revealed by the server's refusal and never offered up front, the same shape
   // as the totals acknowledgement above: a box that is always there is a box

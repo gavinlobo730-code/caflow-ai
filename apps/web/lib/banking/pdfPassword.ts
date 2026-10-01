@@ -1,5 +1,5 @@
 /**
- * What the server's two PDF-password refusals look like to a screen (ACC-23).
+ * What the server's two PDF-password refusals look like to a screen (accounting-23).
  *
  * A bank-emailed statement is often locked with a password the CA has to type.
  * The server answers an upload of such a file with a 422 whose detail carries a

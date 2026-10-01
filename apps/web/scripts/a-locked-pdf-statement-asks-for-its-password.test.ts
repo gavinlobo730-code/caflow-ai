@@ -1,4 +1,4 @@
-// ACC-23, the frontend half. Banks email statements locked with a password;
+// accounting-23, the frontend half. Banks email statements locked with a password;
 // the server now answers such an upload with a 422 carrying a CODE, and the
 // import dialog has to ASK for the password on that code, send it in the body
 // of the retry, and keep it nowhere else.

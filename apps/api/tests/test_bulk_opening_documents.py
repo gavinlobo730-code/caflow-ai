@@ -1,5 +1,5 @@
 """
-ACC-05 — a client's open bills come over from a spreadsheet, in bulk.
+accounting-05 — a client's open bills come over from a spreadsheet, in bulk.
 
 WHAT WAS WRONG
     `routers/opening_documents` took ONE document per POST and the Opening

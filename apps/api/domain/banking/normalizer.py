@@ -80,7 +80,7 @@ class StatementParseError(ValueError):
 
 
 class PdfPasswordError(StatementParseError):
-    """A password-protected PDF could not be opened (ACC-23).
+    """A password-protected PDF could not be opened (accounting-23).
 
     A SUBCLASS of StatementParseError, so every existing `except
     StatementParseError` still turns it into a 422 and no caller has to learn a
@@ -950,7 +950,7 @@ def _pdf_rows(content: bytes, password: Optional[str] = None) -> list[list[str]]
         empty statement. Reading pixels is a vision model's job and is
         deliberately not done here.
 
-    A PASSWORD-PROTECTED PDF (ACC-23)
+    A PASSWORD-PROTECTED PDF (accounting-23)
         Banks commonly email statements locked with a password built from the
         customer ID or date of birth, and this used to open the file with no
         password at all — so such a file came back as "could not be read as a
@@ -1247,7 +1247,7 @@ def parse_statement_detailed(filename: str, content: bytes,
                              pdf_password: Optional[str] = None) -> ParsedStatement:
     """Dispatch by extension, keeping the statement's own printed totals.
 
-    `pdf_password` opens a locked PDF for this one call (ACC-23, see `_pdf_rows`)
+    `pdf_password` opens a locked PDF for this one call (accounting-23, see `_pdf_rows`)
     and is ignored for a CSV or a workbook, which have no password to read.
 
     `parse_statement` is this with the totals dropped. Callers that intend to

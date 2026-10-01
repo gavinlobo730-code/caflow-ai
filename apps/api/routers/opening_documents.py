@@ -43,7 +43,7 @@ class OpeningDocumentIn(BaseModel):
 
 
 class OpeningDocumentRowIn(BaseModel):
-    """One spreadsheet row, as typed (ACC-05).
+    """One spreadsheet row, as typed (accounting-05).
 
     Dates and the party are TEXT on purpose: reading a date and matching a name
     are the server's rules (`domain/spreadsheet_cells`,
@@ -137,7 +137,7 @@ def bulk_import(
     data: OpeningDocumentBulkIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """Bring a client's open invoices or bills over from a spreadsheet (ACC-05).
+    """Bring a client's open invoices or bills over from a spreadsheet (accounting-05).
 
     Every row is judged before any is written, each bad row comes back with its
     number and ALL its problems, the good rows still land, and uploading the same

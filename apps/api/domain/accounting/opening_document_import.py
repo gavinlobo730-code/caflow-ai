@@ -1,4 +1,4 @@
-"""Bringing a client's open bills over from a spreadsheet, in bulk (ACC-05).
+"""Bringing a client's open bills over from a spreadsheet, in bulk (accounting-05).
 
 WHAT WAS MISSING
     `routers/opening_documents` took ONE document per request, so a trading

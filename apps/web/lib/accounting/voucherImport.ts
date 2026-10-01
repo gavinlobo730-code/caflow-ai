@@ -1,5 +1,5 @@
 /**
- * The spreadsheet side of the voucher import (ACC-17).
+ * The spreadsheet side of the voucher import (accounting-17).
  *
  * LIKE `openingDocumentImport`, THIS CONVERTS AND DECIDES NOTHING. Whether a
  * voucher balances, which ledger a cell names, whether a date is open, whether a

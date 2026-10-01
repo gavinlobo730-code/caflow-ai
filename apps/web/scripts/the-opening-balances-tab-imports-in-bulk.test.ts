@@ -1,4 +1,4 @@
-// ACC-05, the screen half. The Opening Balances tab took one document per
+// accounting-05, the screen half. The Opening Balances tab took one document per
 // drawer; a trading client with two hundred open invoices is a week of typing.
 // The tab now offers the shared import dialog and hands every row to the server.
 //

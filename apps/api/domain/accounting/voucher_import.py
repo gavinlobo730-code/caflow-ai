@@ -1,5 +1,5 @@
 """Bringing a bookkeeper's spreadsheet of journals, payments, receipts and contras
-into the books, voucher by voucher (ACC-17).
+into the books, voucher by voucher (accounting-17).
 
 WHAT WAS MISSING
     Bulk import existed for sales invoices, receipts, purchase bills and notes,

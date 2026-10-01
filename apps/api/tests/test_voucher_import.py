@@ -1,5 +1,5 @@
 """
-ACC-17 — a spreadsheet of journals, payments, receipts and contras becomes
+accounting-17 — a spreadsheet of journals, payments, receipts and contras becomes
 vouchers, one by one, through the one posting kernel.
 
 WHAT WAS MISSING

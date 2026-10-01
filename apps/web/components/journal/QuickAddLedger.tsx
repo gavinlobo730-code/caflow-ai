@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Create a ledger without leaving the voucher (ACC-08).
+ * Create a ledger without leaving the voucher (accounting-08).
  *
  * WHAT WAS MISSING
  *   The journal editor's account box had no way to say "this ledger does not

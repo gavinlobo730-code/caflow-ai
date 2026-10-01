@@ -61,7 +61,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  // The spreadsheet import (ACC-05). A trading client has hundreds of open
+  // The spreadsheet import (accounting-05). A trading client has hundreds of open
   // bills, and one drawer per bill is a week of typing.
   const [showImport, setShowImport] = useState(false);
   const [form, setForm] = useState(BLANK);

@@ -233,7 +233,7 @@ def remove(db, firm_id: str, client_id: str, *, kind: str,
     return {"id": document_id, "deleted": True}
 
 
-# ── Bulk import (ACC-05) ─────────────────────────────────────────────────────
+# ── Bulk import (accounting-05) ─────────────────────────────────────────────────────
 #
 # `domain/accounting/opening_document_import` is the rule and decides what each
 # row IS; everything below fetches its inputs, writes what it called new, and

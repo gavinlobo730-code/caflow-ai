@@ -1217,7 +1217,7 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
           {!dayBook && (
             <>
               {/* A spreadsheet of journals, payments, receipts and contras
-                  (ACC-17). Posts through the same kernel as the editor. */}
+                  (accounting-17). Posts through the same kernel as the editor. */}
               <VoucherImportButton clientId={clientId} onImported={loadEntries}
                 onSummary={(description) => toast({ title: "Voucher import", description })} />
               <button

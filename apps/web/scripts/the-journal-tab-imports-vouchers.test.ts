@@ -1,4 +1,4 @@
-// ACC-17, the screen half. Bulk import existed for invoices, receipts, bills and
+// accounting-17, the screen half. Bulk import existed for invoices, receipts, bills and
 // notes and not for the vouchers a bookkeeper most often has in a spreadsheet —
 // journals, payments, receipts, contras — so a small client's Excel of payments
 // was typed again, line by line.

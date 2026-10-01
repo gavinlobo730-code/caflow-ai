@@ -1,4 +1,4 @@
-"""Voucher import — fetch the inputs, post what the plan called new (ACC-17).
+"""Voucher import — fetch the inputs, post what the plan called new (accounting-17).
 
 `domain/accounting/voucher_import` is the rule and decides what each voucher IS;
 this fetches the chart, the entries that already hold a voucher number and the

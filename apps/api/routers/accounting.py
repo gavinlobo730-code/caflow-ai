@@ -539,7 +539,7 @@ def import_trial_balance_endpoint(
 
 
 class VoucherLegIn(BaseModel):
-    """One spreadsheet line of a voucher, as typed (ACC-17).
+    """One spreadsheet line of a voucher, as typed (accounting-17).
 
     The date, the voucher type and the account are TEXT: reading them is the
     server's rule (`domain/spreadsheet_cells`, `domain/accounting/voucher_import`)
@@ -576,7 +576,7 @@ def import_vouchers_endpoint(
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """Bring a spreadsheet of journals, payments, receipts and contras into the
-    books, voucher by voucher (ACC-17).
+    books, voucher by voucher (accounting-17).
 
     Every voucher is judged before any is posted; each bad voucher comes back
     under its number with ALL its problems; the good ones post through

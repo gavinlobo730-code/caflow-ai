@@ -1,5 +1,5 @@
 /**
- * The spreadsheet side of bringing a client's open bills over (ACC-05).
+ * The spreadsheet side of bringing a client's open bills over (accounting-05).
  *
  * THIS MODULE CONVERTS AND DECIDES NOTHING. Which party a name means, how a
  * date is read, whether a number is already recorded and whether the parties

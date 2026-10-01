@@ -1,4 +1,4 @@
-// ACC-08 — the balancing leg and Enter-finishes-a-line, as pure functions.
+// accounting-08 — the balancing leg and Enter-finishes-a-line, as pure functions.
 //
 // Run with: node --experimental-strip-types --test lib/journal/lineFlow.test.ts
 import test from "node:test";

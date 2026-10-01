@@ -1,4 +1,4 @@
-"""Reading what a person typed into a spreadsheet cell — the one place (ACC-05/17/18).
+"""Reading what a person typed into a spreadsheet cell — the one place (accounting-05, accounting-17, accounting-18).
 
 Three bulk imports (opening documents, vouchers, the fixed-asset register) take a
 CSV or workbook a CA or a bookkeeper filled in by hand, and every one of them has

@@ -91,7 +91,7 @@ export type JournalSaveMode = "draft" | "post" | "correct";
 export interface JournalEditorProps {
   accounts: EditorAccount[];
   /** The client the entry belongs to. Present, the account box offers to create
-   *  a ledger that is missing (ACC-08); absent, it offers no such row — a ledger
+   *  a ledger that is missing (accounting-08); absent, it offers no such row — a ledger
    *  has to be created FOR somebody, and guessing the scope is what the Chart of
    *  Accounts screen's firm-wide checkbox exists to avoid. */
   clientId?: string;
@@ -166,7 +166,7 @@ export function JournalEditor({
   const totalCredit = parsed.reduce((s, p) => s + (p.credit ?? 0), 0);
   const isBalanced = !hasUnparseable && totalDebit > 0 && totalDebit === totalCredit;
 
-  // ── ACC-08: the three quick wins ──────────────────────────────────────────
+  // ── accounting-08: the three quick wins ──────────────────────────────────────────
   // (1) A ledger created from inside the voucher. The accounts the page loaded
   // plus the ones made here, so a new one is selectable at once without the
   // page having to reload the chart.

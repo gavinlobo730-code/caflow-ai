@@ -1,5 +1,5 @@
 /**
- * The keyboard flow of a journal's lines, as pure functions (ACC-08).
+ * The keyboard flow of a journal's lines, as pure functions (accounting-08).
  *
  * TWO CONVENIENCES, BOTH ABOUT TYPING SPEED AND NEITHER ABOUT THE LEDGER:
  *

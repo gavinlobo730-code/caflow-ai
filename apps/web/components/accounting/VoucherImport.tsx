@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Import journals, payments, receipts and contras from a spreadsheet (ACC-17).
+ * Import journals, payments, receipts and contras from a spreadsheet (accounting-17).
  *
  * WHAT WAS MISSING
  *   Bulk import existed for invoices, receipts, bills and notes and not for the

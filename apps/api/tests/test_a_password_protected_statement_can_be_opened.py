@@ -1,5 +1,5 @@
 """
-ACC-23 — a password-protected PDF statement can be opened, and the password is
+accounting-23 — a password-protected PDF statement can be opened, and the password is
 used once and kept nowhere.
 
 WHAT WAS WRONG
