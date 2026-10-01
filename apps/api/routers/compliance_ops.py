@@ -8,6 +8,7 @@ Thin surface over services/compliance_obligation_service.py + the existing
 compliance_record_service. Distinct paths from routers/compliance.py (which owns
 /tasks, /calendar, /seed). Never files anything; escalations are internal only.
 """
+from datetime import date, timedelta
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, field_validator
@@ -236,12 +237,41 @@ def compliance_dashboard(current_user: dict = Depends(rbac("compliance", "read")
         current_user["firm_id"], allowed_client_ids=effective_client_ids(current_user)))
 
 
+#: The widest window one calendar read may ask for. A month grid needs about 42
+#: days; a year is generous, and an unbounded window is the read this parameter
+#: exists to avoid (the answer must be proportional to what is on the screen).
+MAX_CALENDAR_WINDOW_DAYS = 400
+
+
 @router.get("/obligations/calendar")
 def obligations_calendar(client_id: Optional[str] = Query(None),
+                         # Annotated, so a caller that invokes the handler directly (the
+                         # existing router-level tests do) gets a real None and not a
+                         # `Query` object that fails the comparison below.
+                         date_from: Annotated[Optional[date], Query()] = None,
+                         date_to: Annotated[Optional[date], Query()] = None,
                          current_user: dict = Depends(rbac("compliance", "read"))):
     """Calendar projection (upcoming / overdue / completed) over the canonical obligations.
-    Assignment-scoped per bucket (M2/M5), mirroring routers/compliance.py."""
-    cal = obligations.calendar(current_user["firm_id"], client_id=client_id)
+    Assignment-scoped per bucket (M2/M5), mirroring routers/compliance.py.
+
+    `date_from` / `date_to` bound upcoming and completed by due date, both
+    inclusive; the OVERDUE bucket is never bounded (see `obligations.calendar`).
+    Giving one without the other, a window that ends before it starts, or one wider
+    than a year is refused rather than answered with something else — a calendar
+    that quietly widened or narrowed the window would show a month that is not the
+    one asked for."""
+    if (date_from is None) != (date_to is None):
+        raise HTTPException(status_code=422,
+                            detail="Give both date_from and date_to, or neither.")
+    if date_from is not None and date_to is not None:
+        if date_to < date_from:
+            raise HTTPException(status_code=422, detail="date_to is before date_from.")
+        if (date_to - date_from) > timedelta(days=MAX_CALENDAR_WINDOW_DAYS):
+            raise HTTPException(
+                status_code=422,
+                detail=f"A calendar window is at most {MAX_CALENDAR_WINDOW_DAYS} days.")
+    cal = obligations.calendar(current_user["firm_id"], client_id=client_id,
+                               date_from=date_from, date_to=date_to)
     cal = {bucket: filter_by_client(current_user, rows) for bucket, rows in cal.items()}
     return api_response(True, cal)
 

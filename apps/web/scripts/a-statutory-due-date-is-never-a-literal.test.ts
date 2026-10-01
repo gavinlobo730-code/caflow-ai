@@ -81,24 +81,14 @@ const ALLOWED: Record<string, string> = {
   // The dates the screen ACTS on come from the engine.
   "app/clients/[id]/compliance/gst/page.tsx": "a §44 citation in a review notice, not a computed deadline",
 
-  // NOT prose, and NOT allowed on merit — this one is a real finding, recorded
-  // here rather than silently swept up into a commit about §44AB.
-  //
-  // app/calendar/page.tsx builds FOURTEEN deadlines from browser literals
-  // (`new Date(y, 4, 31)` and friends): GSTR-1, GSTR-3B, GSTR-9, four advance-tax
-  // instalments, four TDS returns and three MCA forms. It is a second
-  // implementation of services/compliance_engine.py, which CLAUDE.md names as
-  // "the single source for every due date" — and it has already drifted:
-  //
-  //     AOC-4  page 29 Oct   engine 30 Oct   (§137, AGM + 30 days)
-  //     MGT-7  page 28 Nov   engine 29 Nov   (§92,  AGM + 60 days)
-  //
-  // Both one day early, which is the safe direction and is still wrong. The page
-  // also assumes an AGM of 30 September for every company, which is a fact about
-  // the company and not a constant. Fixing it properly means routing all
-  // fourteen through the backend and stating the AGM assumption where it is
-  // made; that is its own change, not a rider on this one.
-  "app/calendar/page.tsx": "KNOWN DEFECT — 14 deadlines built in the browser, two of them (AOC-4, MGT-7) already one day adrift from compliance_engine. Its own fix.",
+  // `app/calendar/page.tsx` LEFT THIS LIST on 01-10-2026 (practice_management-17).
+  // It built FOURTEEN deadlines from browser literals — GSTR-1, GSTR-3B, GSTR-9,
+  // four advance-tax instalments, four TDS returns, three MCA forms — attached
+  // every one to ALL clients, and had already drifted from the engine by a day on
+  // AOC-4 and MGT-7. It reads GET /api/compliance/obligations/calendar now, so
+  // every date on it is one `compliance_engine` computed for that client, and it
+  // holds none of its own. If that entry ever needs to come back, the screen has
+  // started stating dates again.
 };
 
 test("no screen states a statutory due date of its own", () => {

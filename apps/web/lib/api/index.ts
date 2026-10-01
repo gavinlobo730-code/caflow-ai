@@ -4330,8 +4330,18 @@ export const api = {
     dashboard: () => request("/api/compliance/dashboard"),
     obligations: (params?: Record<string, string>) =>
       request(`/api/compliance/obligations${params ? "?" + new URLSearchParams(params) : ""}`),
-    calendar: (clientId?: string) =>
-      request(`/api/compliance/obligations/calendar${clientId ? `?client_id=${clientId}` : ""}`),
+    // The obligations bucketed upcoming / overdue / completed. `date_from` and
+    // `date_to` (YYYY-MM-DD, both or neither) bound upcoming and completed by due
+    // date so a month grid asks for a month; the overdue bucket is never bounded,
+    // because an obligation is overdue whichever month the screen shows.
+    calendar: (params?: { client_id?: string; date_from?: string; date_to?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.client_id) q.set("client_id", params.client_id);
+      if (params?.date_from) q.set("date_from", params.date_from);
+      if (params?.date_to) q.set("date_to", params.date_to);
+      const qs = q.toString();
+      return request<ApiResp<unknown>>(`/api/compliance/obligations/calendar${qs ? `?${qs}` : ""}`);
+    },
     generate: (params?: Record<string, string>) =>
       request(`/api/compliance/obligations/generate${params ? "?" + new URLSearchParams(params) : ""}`, { method: "POST" }),
     assign: (id: string, body: { preparer_id?: string; reviewer_id?: string; approver_id?: string }) =>

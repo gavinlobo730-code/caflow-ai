@@ -140,7 +140,11 @@ BUDGET: dict[str, int] = {
     # endpoint on this prefix at all. It asks GET /register now, and the
     # ratchet credits what that screen reaches.
     "/api/risks": 3,
-    "/api/sales-invoices": 5, "/api/compliance": 4,
+    # /api/compliance 4 -> 3 on 01-10-2026 (practice_management-17):
+    # `GET /obligations/calendar` had a `lib/api` method and no screen — the
+    # firm Calendar built its deadlines in the browser instead. It is that
+    # screen's one read now.
+    "/api/sales-invoices": 5, "/api/compliance": 3,
     # /api/health 4 -> 2 on 25-09-2026 (Phase 3a-4). `DELETE /overrides/{id}`
     # had NO caller at all, so an override recorded without an end date could
     # never be withdrawn; and both health screens read `health_overrides`

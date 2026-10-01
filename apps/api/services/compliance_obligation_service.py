@@ -1524,12 +1524,41 @@ def _dashboard_names(firm_id: str, client_ids: set, user_ids: set) -> tuple[dict
     return clients, staff
 
 
-def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date] = None) -> dict:
+_DONE_STATUSES = ("Filed", "Completed")
+
+
+def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date] = None,
+             date_from: Optional[date] = None, date_to: Optional[date] = None) -> dict:
     """Calendar projection over the canonical obligations (compliance_records).
-    compliance_calendar remains; this is the read view, not a second source of truth."""
+    compliance_calendar remains; this is the read view, not a second source of truth.
+
+    WITH A WINDOW (`date_from`, `date_to`, both inclusive) the read is bounded by
+    due date: a month grid asks for a month, so what crosses the wire is the
+    answer and not every obligation the firm has ever generated. THE OVERDUE
+    BUCKET IS NEVER WINDOWED — an obligation that is overdue is overdue whichever
+    month the screen happens to be showing, and hiding the ones outside it would
+    make navigating to another month read as "nothing is late", which is the false
+    calm this screen exists to prevent. So with a window the overdue bucket is
+    read on its own: every unfiled obligation due before today. Upcoming and
+    completed are the window's.
+    """
     today = today or ist_today()
     today_s = today.isoformat()
-    records = _records_for(firm_id, client_id)
+    if date_from is None and date_to is None:
+        records = _records_for(firm_id, client_id)
+    else:
+        from domain.compliance_record_service import compliance_record_service
+        in_window = compliance_record_service.list_records(
+            firm_id=firm_id, client_id=client_id,
+            due_from=date_from.isoformat() if date_from else None,
+            due_to=date_to.isoformat() if date_to else None)
+        late = compliance_record_service.list_records(
+            firm_id=firm_id, client_id=client_id, exclude_statuses=list(_DONE_STATUSES),
+            due_to=(today - timedelta(days=1)).isoformat())
+        by_id = {str(r.get("id")): r for r in in_window}
+        for r in late:
+            by_id.setdefault(str(r.get("id")), r)
+        records = list(by_id.values())
     upcoming, overdue, completed = [], [], []
     for r in records:
         due = str(r.get("due_date", ""))[:10]
