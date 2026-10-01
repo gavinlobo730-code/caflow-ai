@@ -86,6 +86,13 @@ NOT_A_PORTAL_CREDENTIAL: dict[str, str] = {
     "total_tokens":
         "ai_usage_events — the provider's own total of the three counts above; "
         "an integer, not a credential",
+    "tokens":
+        "the output column of migration 476's ai_usage_by_day / ai_usage_totals "
+        "— a SUM of the token counts above, a bigint; a function result, not a "
+        "stored column and not a credential",
+    "monthly_token_limit":
+        "ai_firm_budgets (migration 476) — the firm's own optional monthly cap "
+        "on AI tokens, a bigint count a Partner types; a limit, not a credential",
 }
 
 

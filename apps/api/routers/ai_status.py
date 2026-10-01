@@ -1,6 +1,6 @@
 """Is the AI answering? — the Partner's status and the one button that asks. (ai-06)
 
-TWO ROUTES, AND ONLY ONE OF THEM COSTS ANYTHING.
+FOUR ROUTES, AND ONLY ONE OF THEM COSTS ANYTHING.
     `GET  /api/ai-status`          reads: what this process has seen each provider
                                    do and what this firm's own usage rows say.
                                    Free, unlimited, no model call.
@@ -9,6 +9,11 @@ TWO ROUTES, AND ONLY ONE OF THEM COSTS ANYTHING.
                                    the real model name and leaves the real usage row.
                                    Rate limited (bucket `probe`) AFTER the permission
                                    check, so a refusal spends nothing.
+    `GET  /api/ai-status/usage`    what the firm's AI use came to in a month (tokens,
+                                   pages, calls, failures, by feature and by day) and
+                                   where it stands against its allowance (ai-17).
+    `PUT  /api/ai-status/budget`   sets or clears the firm's monthly allowance. The
+                                   one write; audited; both limits travel together.
 
 ONE PROVIDER PER REQUEST. A failing provider can spend the gateway's whole forty
 seconds, and `lib/api` abandons a request at forty-five and never retries, so two
@@ -25,16 +30,19 @@ point of the screen — it is not an error of the request.
 from __future__ import annotations
 
 import os
-from typing import Literal
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, StrictInt
 
 from core.auth import mfa_guard
 from core.permissions import rbac
+from core.ist_clock import ist_today
+from domain.ai import budget as ai_budget
 from domain.ai import probe as ai_probe
 from middleware.rate_limit import ai_limit
 from models.common import api_response
-from services import ai_status_service
+from services import ai_status_service, ai_usage_service
 from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/ai-status", tags=["ai"])
@@ -71,3 +79,48 @@ def run_probe(
                         "model": result.model, "answered_by": result.answered_by})
     return api_response(True, {"result": result.as_dict(),
                                "status": ai_status_service.status(_db(), firm_id)})
+
+
+@router.get("/usage", dependencies=[Depends(mfa_guard)])
+def ai_usage(
+    month: Optional[str] = Query(None, description="YYYY-MM; the current IST month when absent"),
+    current_user: dict = Depends(rbac("firm", "admin")),
+) -> dict:
+    try:
+        chosen = ai_budget.parse_month(month, ist_today())
+    except ai_budget.BudgetError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return api_response(True, ai_usage_service.usage(_db(), current_user["firm_id"], chosen))
+
+
+class AllowanceIn(BaseModel):
+    """BOTH keys are required and `null` means no limit, so the request says what the
+    allowance IS afterwards: a screen that sends one limit cannot clear the other by leaving
+    it out, and a client that sends neither changes nothing it meant to."""
+    monthly_token_limit: Optional[StrictInt]
+    monthly_page_limit: Optional[StrictInt]
+
+
+@router.put("/budget", dependencies=[Depends(mfa_guard)])
+def set_ai_budget(
+    body: AllowanceIn,
+    current_user: dict = Depends(rbac("firm", "admin")),
+) -> dict:
+    db = _db()
+    if db is None:
+        raise HTTPException(status_code=503, detail=ai_usage_service.NO_DATABASE)
+    try:
+        limits = ai_budget.Limits(
+            monthly_tokens=ai_budget.validate_limit(
+                body.monthly_token_limit, name="The token limit", maximum=ai_budget.MAX_TOKEN_LIMIT),
+            monthly_pages=ai_budget.validate_limit(
+                body.monthly_page_limit, name="The page limit", maximum=ai_budget.MAX_PAGE_LIMIT))
+    except ai_budget.BudgetError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    firm_id = current_user["firm_id"]
+    previous = ai_usage_service.set_limits(db, firm_id, current_user.get("id"), limits)
+    # A change to what the firm may spend is something an auditor may ask about.
+    log_event(firm_id, "ai_firm_budget", firm_id, "update",
+              actor_id=current_user.get("auth_user_id"),
+              old_data=previous.as_dict(), new_data=limits.as_dict())
+    return api_response(True, ai_usage_service.usage(db, firm_id, ai_budget.month_of(ist_today())))

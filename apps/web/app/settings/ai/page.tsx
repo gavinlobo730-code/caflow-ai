@@ -1,7 +1,9 @@
 "use client";
 
 /**
- * Is the AI answering? — the screen that ends "nobody can say" (ai-06).
+ * Is the AI answering? — the screen that ends "nobody can say" (ai-06) — and, below the
+ * providers, what the firm's AI use came to and the allowance it is held to
+ * (`components/settings/AiUsagePanel`, ai-17).
  *
  * WHAT WAS WRONG
  *   The Groq default was changed on 29-09-2026 after a live `model_not_found`, to
@@ -34,6 +36,7 @@ import { ChevronLeft, Cpu, Loader2, RefreshCw } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { Callout } from "@/components/ui/callout";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { AiUsagePanel } from "@/components/settings/AiUsagePanel";
 import {
   api,
   type AiProbeAnswer,
@@ -260,6 +263,8 @@ export default function AiStatusPage() {
             )}
           </>
         )}
+
+        <AiUsagePanel />
       </div>
     </RoleGuard>
   );
