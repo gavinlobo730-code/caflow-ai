@@ -462,3 +462,74 @@ class DeliveryChallanUpdateIn(BaseModel):
         if v not in oc.CHALLAN_STATUSES:
             raise ValueError(f"status must be one of {', '.join(oc.CHALLAN_STATUSES)}.")
         return v
+
+
+def _iso_date(v, what: str) -> str:
+    from datetime import date as _date
+    try:
+        return _date.fromisoformat(str(v).strip()[:10]).isoformat()
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} must be a date as YYYY-MM-DD.")
+
+
+class ChallanReturnIn(BaseModel):
+    """One return of goods sent for job work — CGST Rule 45(3), ITC-04 Table 5A
+    (GST-30, migration 462).
+
+    Recorded against the challan LINE the goods were sent on, because that is
+    the grain the form asks for and the one the s.143 balance is kept at.
+    `quantity_returned` and `quantity_lost_or_wasted` are both quantities and
+    both ask `quantity_violation`: they land in NUMERIC(10,3) columns, and a
+    fourth decimal is accepted by Postgres and silently rounded.
+
+    THE JOB WORKER'S OWN CHALLAN AND THE NATURE OF THE WORK ARE OPTIONAL. A
+    return is worth recording from a bare "the goods are back" before the job
+    worker's paperwork is in hand, and the statement names each one still
+    missing rather than printing a blank. The job worker's challan number is
+    NOT held to Rule 55(1)'s sixteen characters: it is somebody else's document
+    — the reasoning `opening_documents` gives for not checking a carried-over
+    invoice number against Rule 46(b).
+    """
+    client_id: str
+    challan_line_id: str
+    returned_on: str
+    quantity_returned: float = 0.0
+    quantity_lost_or_wasted: float = 0.0
+    job_worker_challan_no: Optional[str] = None
+    job_worker_challan_date: Optional[str] = None
+    nature_of_job_work: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("returned_on")
+    @classmethod
+    def _returned_on(cls, v):
+        return _iso_date(v, "returned_on")
+
+    @field_validator("job_worker_challan_date")
+    @classmethod
+    def _jw_date(cls, v):
+        return None if v in (None, "") else _iso_date(v, "job_worker_challan_date")
+
+    @field_validator("quantity_returned", "quantity_lost_or_wasted")
+    @classmethod
+    def _quantities(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("A quantity cannot be negative.")
+        problem = quantity_violation(v)
+        if problem:
+            raise ValueError(problem)
+        return v
+
+    @field_validator("job_worker_challan_no", "nature_of_job_work", "notes")
+    @classmethod
+    def _text(cls, v):
+        v = (v or "").strip()
+        return v or None
+
+    @model_validator(mode="after")
+    def _something_moved(self):
+        if not (self.quantity_returned > 0 or self.quantity_lost_or_wasted > 0):
+            raise ValueError(
+                "A return that returns nothing and wastes nothing records nothing — "
+                "give the quantity that came back, or the quantity lost or wasted.")
+        return self

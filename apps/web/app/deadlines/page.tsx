@@ -25,6 +25,7 @@ import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { useToast } from "@/components/ui/use-toast";
 import { Skeleton, DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { ExpiringEwayBills } from "@/components/gst/ExpiringEwayBills";
+import { MissingIrnPanel } from "@/components/gst/MissingIrnPanel";
 
 // ─── Type filter mapping ───────────────────────────────────────────────────
 // URL param → compliance_type predicate. TDS and MCA use prefix matching because
@@ -501,6 +502,14 @@ function DeadlinesContent() {
           a compliance_type and offering a button that means nothing. It
           renders nothing at all when no bill is near its expiry. */}
       <ExpiringEwayBills />
+
+      {/* INVOICES THAT NEED AN IRN AND HAVE NONE (GST-20). Not a filing and not
+          a compliance row either: nothing is filed for an IRN, and Rule 48(5)
+          makes an invoice that needed one and has none no invoice at all, so
+          the recipient's credit goes with it. Across the caller's own clients;
+          renders nothing when none is outstanding, and says so in one line when
+          it could not check — an empty panel here means "none do". */}
+      <MissingIrnPanel />
 
       {/* Registry table — shared DataTable (search, sort, filters, pagination, export, prefs).
           `key` includes urlType so switching type views resets the ephemeral table state. */}

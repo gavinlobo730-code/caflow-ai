@@ -20,7 +20,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from core.permissions import rbac
-from core.authz import assert_client_access, can_access_client
+from core.authz import assert_client_access, can_access_client, effective_client_ids
 from models.common import api_response
 from services.timeline_service import timeline_service
 
@@ -180,6 +180,63 @@ def create_record(
         return api_response(True, {**rec, "ca_review_required": True})
     except Exception as e:
         raise HTTPException(500, detail=str(e))
+
+
+@router.get("/missing-irn")
+def invoices_that_owe_an_irn_and_have_none(
+    client_id: Optional[str] = None,
+    since: Optional[str] = None,
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """In-scope invoices with no live IRN, oldest first, with the IRP's clock
+    (GST-20).
+
+    CGST Rule 48(5): an invoice Rule 48(4) reaches, issued without an IRN, is
+    not treated as an invoice — so the RECIPIENT's input credit goes with it.
+    `irn_scope` has decided, for the one invoice somebody has open, whether
+    Rule 48(4) reaches it; nothing listed the ones that do and have none. This
+    does, per client or across the caller's own book.
+
+    THE TWO LIMBS ARE KEPT APART. Rule 48(4)'s ₹5 crore decides whether an IRN
+    is OWED; the IRP's thirty-day limit, for ₹10 crore and over, decides whether
+    there is a CLOCK. So an in-scope invoice of a smaller client is listed with
+    no deadline rather than dropped or given one nobody imposes. The window's
+    figures are [S]-graded named constants (`VERIFIED` is False), and the answer
+    says so.
+
+    FIRM-WIDE, a client with no recorded turnover is NAMED and not assessed —
+    strict-reading every B2B invoice of every unrecorded client would bury the
+    clients that really are over the line. For ONE client the invoices are
+    listed, flagged.
+
+    Nothing here generates an IRN or reaches a portal: the CA obtains it on the
+    IRP and RECORDS it (`POST /records/{id}/irn-generated`).
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    import os
+    firm_id = current_user["firm_id"]
+    if client_id:
+        assert_client_access(current_user, client_id)
+    scope = effective_client_ids(current_user)
+    if not os.environ.get("SUPABASE_URL"):
+        # No database to read: an empty answer that says so, never a made-up one.
+        return api_response(True, {"invoices": [], "counts": {"total": 0},
+                                   "clients_not_assessed": [], "caveats": [],
+                                   "scope": "client" if client_id else "firm"})
+    try:
+        from core.supabase_client import get_supabase
+        from services import irn_worklist_service
+        return api_response(True, irn_worklist_service.worklist(
+            get_supabase(), firm_id, client_id=client_id, scope=scope, since=since))
+    except ValueError as e:
+        raise HTTPException(422, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:                                       # noqa: BLE001
+        _logger.error("invoices_that_owe_an_irn_and_have_none: %s", e, exc_info=True)
+        return api_response(False, None,
+                            "Unable to load the invoices that need an IRN. Please try again.")
 
 
 @router.get("/records")

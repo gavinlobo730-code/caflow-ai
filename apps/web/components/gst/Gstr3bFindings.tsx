@@ -20,8 +20,12 @@
  * rows`, and this renders what they said. The same arrangement as
  * `Gstr1Findings`.
  */
+import { arrayOrEmpty } from "@/lib/api/shape";
+import { GapList } from "@/components/ui/callout";
+import { formatPaise } from "@/lib/money/format";
 import type {
-  BankLineTotals, GLReconciliation, LateFilingBlock, ReturnPeriodWindow,
+  BankLineTotals, GLReconciliation, Gstr1TieOutBlock, Gstr1TieOutCause,
+  Gstr1TieOutDocuments, Gstr1TieOutRow, LateFilingBlock, ReturnPeriodWindow,
   UndeclarableRow,
 } from "@/lib/data/gst";
 
@@ -228,13 +232,178 @@ export function Gstr3bUndeclarableRows({ rows = [] }: { rows?: UndeclarableRow[]
   );
 }
 
+/** The sign alone. The figure is `formatPaise`'s, so the grouping and the unit
+ *  stay in the one formatter and this screen builds no money string of its own. */
+function signOf(paise: number): string {
+  return paise > 0 ? "+" : paise < 0 ? "−" : "";
+}
+
+const TIE_OUT_HEADS: [string, string][] = [
+  ["taxable_value_paise", "Taxable value"], ["igst_paise", "IGST"],
+  ["cgst_paise", "CGST"], ["sgst_paise", "SGST"], ["cess_paise", "Cess"],
+];
+
+/** THIS BUILD AGAINST THE GSTR-1 THAT WAS FILED (GST-07).
+ *
+ *  From the July 2025 tax period the portal fills Table 3.1 from the period's
+ *  GSTR-1 and locks it, so an invoice raised after that return was filed makes
+ *  the books-built 3B differ from the one the portal will show — and a CA
+ *  finds out while filing. The server reads the filed GSTR-1, ties the outward
+ *  figures out in exact paise and names the cause and the route. NOT FILED is
+ *  its own state and carries no figures: a period with nothing filed has
+ *  nothing to be equal to, which is not the same as the two agreeing. Every
+ *  sentence and every figure is the server's; this decides nothing and
+ *  changes neither return. */
+export function Gstr3bGstr1TieOut({ tieOut }: { tieOut?: Gstr1TieOutBlock | null }) {
+  if (!tieOut || typeof tieOut !== "object") return null;
+  const gaps = arrayOrEmpty<string>(tieOut.gaps);
+  if (tieOut.status === "not_filed") {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm space-y-1">
+        <p className="font-medium text-ps-body">
+          GSTR-1 for this period is not filed — nothing to tie this return to
+        </p>
+        <p className="text-2xs text-ps-label">{tieOut.message}</p>
+        {tieOut.draft_exists && (
+          <p className="text-2xs text-ps-label">
+            A draft GSTR-1 exists for this registration and period. A draft is
+            not a filed return, so it is not compared.
+          </p>
+        )}
+      </div>
+    );
+  }
+  if (tieOut.status !== "ok") {
+    return (
+      <div className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3 text-sm space-y-1">
+        <p className="font-medium text-state-attention">
+          Not checked against the filed GSTR-1
+        </p>
+        <p className="text-2xs text-state-attention">{tieOut.message}</p>
+      </div>
+    );
+  }
+  const rows = arrayOrEmpty<Gstr1TieOutRow>(tieOut.rows);
+  const causes = arrayOrEmpty<Gstr1TieOutCause>(tieOut.causes);
+  const route = arrayOrEmpty<string>(tieOut.route);
+  const filedRef = [tieOut.arn ? `ARN ${tieOut.arn}` : null,
+                    tieOut.filed_at ? String(tieOut.filed_at).slice(0, 10) : null]
+    .filter(Boolean).join(" · ");
+  if (tieOut.tied) {
+    return (
+      <div className="space-y-2">
+        <div className="rounded-lg border border-state-ready-border bg-state-ready-surface p-3 text-sm space-y-1">
+          <p className="font-medium text-state-ready">
+            Tied to the filed GSTR-1{filedRef ? ` (${filedRef})` : ""}
+          </p>
+          <p className="text-2xs text-state-ready">{tieOut.message}</p>
+        </div>
+        {/* What the tie cannot say stays beside the green tick, in the shared
+            gap list, so a tie is never read as more than it was. */}
+        <GapList gaps={gaps} tone="note" />
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+    <div role="alert"
+         className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3 text-sm space-y-2">
+      <p className="font-medium text-state-attention">
+        This return differs from the filed GSTR-1{filedRef ? ` (${filedRef})` : ""}
+      </p>
+      <p className="text-2xs text-state-attention">{tieOut.message}</p>
+      {rows.map((r) => (
+        <div key={r.code} className="space-y-0.5">
+          <p className="text-xs text-ps-body">
+            Table {r.code} <span className="text-ps-label">— {r.label}</span>
+            {r.state === "matched" && <span className="text-state-ready"> · matched</span>}
+          </p>
+          {r.state === "differs" && (
+            <table className="w-full text-2xs text-ps-body">
+              <thead>
+                <tr className="text-ps-label text-left">
+                  <th className="py-0.5 font-normal"></th>
+                  <th className="py-0.5 font-normal text-right">Filed GSTR-1</th>
+                  <th className="py-0.5 font-normal text-right">This build</th>
+                  <th className="py-0.5 font-normal text-right">Difference</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(r.code === "3.1(a)+(b)" ? TIE_OUT_HEADS : [["value_paise", "Value"] as [string, string]])
+                  .map(([key, label]) => {
+                    const f = r.figures?.[key];
+                    if (!f) return null;
+                    return (
+                      <tr key={key} className={f.difference !== 0 ? "font-medium" : ""}>
+                        <td className="py-0.5">{label}</td>
+                        <td className="py-0.5 text-right font-mono">{rupees(f.gstr1_filed)}</td>
+                        <td className="py-0.5 text-right font-mono">{rupees(f.books_3b)}</td>
+                        <td className="py-0.5 text-right font-mono">{signOf(f.difference)}{formatPaise(Math.abs(f.difference))}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ))}
+      {causes.map((c) => {
+        const named = (["missing_from_return", "amount_changed", "reclassified",
+                        "missing_from_books", "b2cs_changed"] as const)
+          .flatMap((k) => arrayOrEmpty<Gstr1TieOutDocuments["documents"][number]>(c[k]?.documents)
+            .map((d) => ({ ...d, bucket: k })));
+        return (
+          <div key={c.kind} className="border-t border-state-attention-border pt-1.5 space-y-0.5">
+            <p className="text-xs text-ps-body">{c.label}</p>
+            {c.figures_paise && (
+              <p className="text-2xs text-ps-label font-mono">
+                {TIE_OUT_HEADS.filter(([k]) => c.figures_paise?.[k])
+                  .map(([k, l]) => {
+                    const v = c.figures_paise?.[k] ?? 0;
+                    return `${l} ${signOf(v)}${formatPaise(Math.abs(v))}`;
+                  }).join(" · ")}
+              </p>
+            )}
+            {c.consequence && <p className="text-2xs text-ps-label">{c.consequence}</p>}
+            {named.length > 0 && (
+              <ul className="text-2xs text-ps-body list-disc pl-4">
+                {named.map((d, i) => (
+                  <li key={`${d.bucket}-${d.doc_no ?? i}`}>
+                    <span className="font-mono">{d.doc_no ?? "B2C-others"}</span>
+                    {" "}— {String(d.bucket).replace(/_/g, " ")}
+                    {d.declare_in ? ` · declare in ${d.declare_in}` : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {arrayOrEmpty<{ kind?: string; reference_no?: string; reason?: string }>(
+              c.documents_the_gstr1_could_not_carry).map((g, i) => (
+              <p key={i} className="text-2xs text-ps-label">
+                {g.reference_no ? `${g.reference_no}: ` : ""}{g.reason}
+              </p>
+            ))}
+          </div>
+        );
+      })}
+      {route.length > 0 && (
+        <div className="border-t border-state-attention-border pt-1.5 space-y-1">
+          <p className="text-xs font-medium text-ps-body">What can be done</p>
+          {route.map((s, i) => <p key={i} className="text-2xs text-ps-label">{s}</p>)}
+        </div>
+      )}
+    </div>
+    <GapList gaps={gaps} tone="attention" />
+    </div>
+  );
+}
+
 /** In the order the return is reviewed: WHAT PERIOD it covers, then what it
  *  costs to be late, what the bank lines added, then what is nil because
  *  nobody can see it. The window comes first because every figure below it is
  *  a figure for that window. */
 export function Gstr3bFindings({
   lateFiling, reconciliation, bankLineCaveats, undeclarableRows,
-  periodWindow, monthsWithout2b, registrationCaveat,
+  periodWindow, monthsWithout2b, registrationCaveat, gstr1TieOut,
 }: {
   lateFiling?: LateFilingBlock;
   reconciliation?: GLReconciliation;
@@ -243,12 +412,14 @@ export function Gstr3bFindings({
   periodWindow?: ReturnPeriodWindow;
   monthsWithout2b?: string[];
   registrationCaveat?: string | null;
+  gstr1TieOut?: Gstr1TieOutBlock | null;
 }) {
   return (
     <>
       <Gstr3bRegistrationCaveat caveat={registrationCaveat} />
       <Gstr3bPeriodWindow periodWindow={periodWindow}
                           monthsWithout2b={monthsWithout2b} />
+      <Gstr3bGstr1TieOut tieOut={gstr1TieOut} />
       <Gstr3bLateFiling lateFiling={lateFiling} />
       <Gstr3bBankLines reconciliation={reconciliation} caveats={bankLineCaveats} />
       <Gstr3bUndeclarableRows rows={undeclarableRows} />

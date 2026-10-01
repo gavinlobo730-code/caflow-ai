@@ -29,6 +29,7 @@ import {
   type SalesQuotation,
 } from "@/lib/api";
 import { paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
+import { Itc04Panel } from "@/components/gst/Itc04Panel";
 
 type Tab = "quotations" | "orders" | "challans";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -647,9 +648,14 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
 
           {challans.some((c) => c.clock?.applies && !c.received_back_on) && (
             <div className="rounded border border-ps-border bg-white p-4">
-              <h4 className="mb-2 text-sm font-semibold">
-                Record goods coming back
+              <h4 className="mb-1 text-sm font-semibold">
+                Mark a whole challan back at once
               </h4>
+              <p className="mb-2 text-xs text-ps-label">
+                This stops the s.143 clock for every line on the challan. Goods that
+                come back in lots are recorded lot by lot under ITC-04 below, which
+                keeps what is still outstanding.
+              </p>
               <div className="space-y-2">
                 {challans.filter((c) => c.clock?.applies && !c.received_back_on)
                   .map((c) => (
@@ -667,6 +673,8 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
               </div>
             </div>
           )}
+
+          <Itc04Panel clientId={clientId} onChanged={() => void load()} />
 
           {detail && (
             <div className="rounded border border-ps-border bg-white p-4">

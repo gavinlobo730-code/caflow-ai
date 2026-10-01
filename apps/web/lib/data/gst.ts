@@ -314,6 +314,9 @@ export interface GSTR3BComputeResult {
    *  document names which it belongs to, so this return contains all of them.
    *  Null where the client holds one. Rendered by `Gstr3bFindings`. */
   registration_caveat?: string | null;
+  /** GST-07 — this build against the GSTR-1 that was filed. Absent from an
+   *  older backend, which is rendered as nothing rather than as a clean tie. */
+  gstr1_tie_out?: Gstr1TieOutBlock | null;
   /** WHAT THIS RETURN ACTUALLY COVERS (GST-11). A month for an ordinary
    *  registration; the whole QUARTER for a QRMP one (CGST Rule 61A), keyed on
    *  its first month. The frequency is a fact about the REGISTRATION and the
@@ -495,6 +498,62 @@ export interface UndeclarableRow {
   reason: string;
 }
 
+/** GST-07 — the GSTR-3B build tied out against the GSTR-1 that was FILED.
+ *
+ *  From the July 2025 tax period the portal fills Table 3.1 from the period's
+ *  GSTR-1 and locks it, so a difference between this build and that return is
+ *  one the CA cannot type away. `domain/gst/gstr1_3b_tie_out.py` decides every
+ *  figure and sentence here; this carries shapes only. `not_filed` is NOT a
+ *  zero — there is nothing to compare against yet — and so carries no rows. */
+export interface Gstr1TieOutFigure {
+  gstr1_filed: number;
+  books_3b: number;
+  /** books minus filed, signed paise. Positive: the build declares MORE. */
+  difference: number;
+}
+export interface Gstr1TieOutRow {
+  code: string;
+  label: string;
+  figures: Record<string, Gstr1TieOutFigure>;
+  state: "matched" | "differs";
+}
+export interface Gstr1TieOutDocuments {
+  count: number;
+  truncated: boolean;
+  documents: { doc_no?: string; kind?: string; declare_in?: string;
+               delta?: Record<string, number>; [k: string]: unknown }[];
+}
+export interface Gstr1TieOutCause {
+  kind: string;
+  label: string;
+  figures_paise?: Record<string, number>;
+  consequence?: string;
+  missing_from_return?: Gstr1TieOutDocuments;
+  missing_from_books?: Gstr1TieOutDocuments;
+  amount_changed?: Gstr1TieOutDocuments;
+  reclassified?: Gstr1TieOutDocuments;
+  b2cs_changed?: Gstr1TieOutDocuments;
+  documents_the_gstr1_could_not_carry?: { kind?: string; reference_no?: string; reason?: string }[];
+}
+export interface Gstr1TieOutBlock {
+  status: "ok" | "not_filed" | "payload_missing" | "unavailable";
+  period: string;
+  gstin: string;
+  message?: string;
+  draft_exists?: boolean;
+  tied?: boolean;
+  filed_at?: string | null;
+  arn?: string | null;
+  portal_locks_outward_tables?: boolean;
+  gstr3b_filed?: boolean | null;
+  rows?: Gstr1TieOutRow[];
+  causes?: Gstr1TieOutCause[];
+  route?: string[];
+  gaps?: string[];
+  held_out?: Record<string, number>;
+  verified?: boolean;
+}
+
 /** What the bank lines a CA marked as carrying GST put on this return (BANK-24). */
 export interface BankLineTotals {
   itc_paise?: number;
@@ -515,6 +574,7 @@ interface FromBooksGSTR3B {
   undeclarable_rows?: UndeclarableRow[];
   bank_line_caveats?: string[];
   registration_caveat?: string | null;
+  gstr1_tie_out?: Gstr1TieOutBlock | null;
   period_window?: ReturnPeriodWindow;
   months_without_gstr2b?: string[];
 }
@@ -838,11 +898,17 @@ export async function fetchRule43Working(
 export async function computeGSTR3B(
   clientId: string,
   yearMonth: string,  // YYYY-MM
+  /** WHICH REGISTRATION (GST-17). Sent when the CA chose one; omitted for a
+   *  client with one registration, which the server answers with the primary.
+   *  The server refuses a GSTIN the client does not hold — it is never
+   *  defaulted to the primary. */
+  gstin?: string,
 ): Promise<GSTR3BComputeResult> {
   const period = toPeriod(yearMonth);
   const result = await apiPost<FromBooksGSTR3B>("/api/gst/gstr3b/from-books", {
     client_id: clientId,
     period,
+    ...(gstin ? { gstin } : {}),
   });
 
   // Carried, not assumed empty. This said "the from-books endpoint reports no
@@ -863,6 +929,7 @@ export async function computeGSTR3B(
     undeclarable_rows: result.undeclarable_rows,
     bank_line_caveats: result.bank_line_caveats,
     registration_caveat: result.registration_caveat ?? null,
+    gstr1_tie_out: result.gstr1_tie_out ?? null,
     reconciliation: result.reconciliation,
     period_window: result.period_window,
     months_without_gstr2b: result.months_without_gstr2b,
@@ -984,10 +1051,14 @@ export async function approveGSTR3B(
   clientId: string,
   period: string,
   userId: string,
+  /** Which registration's return (GST-17). Migration 390 keyed this table on
+   *  (client, period, gstin), so without it a client holding two registrations
+   *  has BOTH returns for the period approved by one click. */
+  gstin?: string,
 ): Promise<void> {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
-  const { error } = await sb
+  let q = sb
     .from("gstr3b_returns")
     .update({
       status: "ca_approved",
@@ -997,6 +1068,8 @@ export async function approveGSTR3B(
     .eq("firm_id", firmId)
     .eq("client_id", clientId)
     .eq("period", period);
+  if (gstin) q = q.eq("gstin", gstin.trim().toUpperCase());
+  const { error } = await q;
 
   if (error) throw new Error(`Failed to approve GSTR-3B: ${error.message}`);
 }
@@ -1012,7 +1085,7 @@ export async function approveGSTR3B(
 export async function buildGSTR1(
   clientId: string,
   yearMonth: string,
-  options: { includeAmendments?: boolean } = {},
+  options: { includeAmendments?: boolean; gstin?: string } = {},
 ): Promise<GSTR1BuildResult> {
   const period = toPeriod(yearMonth);
   // NO `aggregate_turnover_paise` (GST-17). It used to send 0, which is a REAL
@@ -1031,6 +1104,8 @@ export async function buildGSTR1(
     client_id: clientId,
     period,
     ...(options.includeAmendments === false ? { include_amendments: false } : {}),
+    // WHICH REGISTRATION (GST-17) — see computeGSTR3B.
+    ...(options.gstin ? { gstin: options.gstin } : {}),
   });
 
   const shaped: GSTR1BuildResult = {
@@ -1133,10 +1208,12 @@ export async function approveGSTR1(
   clientId: string,
   period: string,
   userId: string,
+  /** Which registration's return (GST-17) — see approveGSTR3B. */
+  gstin?: string,
 ): Promise<void> {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
-  const { error } = await sb
+  let q = sb
     .from("gstr1_returns")
     .update({
       status: "ca_approved",
@@ -1146,37 +1223,48 @@ export async function approveGSTR1(
     .eq("firm_id", firmId)
     .eq("client_id", clientId)
     .eq("period", period);
+  if (gstin) q = q.eq("gstin", gstin.trim().toUpperCase());
+  const { error } = await q;
 
   if (error) throw new Error(`Failed to approve GSTR-1: ${error.message}`);
 }
 
 // ── Return Fetchers ────────────────────────────────────────────────────────
 
-export async function getGSTR3BReturn(clientId: string, period: string) {
+export async function getGSTR3BReturn(clientId: string, period: string,
+                                       /** GST-17: with two registrations there
+                                        *  are two rows for one period, and
+                                        *  `.maybeSingle()` on both is an ERROR,
+                                        *  not "the first one". */
+                                       gstin?: string) {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
-  const { data, error } = await sb
+  let q = sb
     .from("gstr3b_returns")
     .select("*")
     .eq("firm_id", firmId)
     .eq("client_id", clientId)
-    .eq("period", period)
-    .maybeSingle();
+    .eq("period", period);
+  if (gstin) q = q.eq("gstin", gstin.trim().toUpperCase());
+  const { data, error } = await q.maybeSingle();
 
   if (error) throw new Error(error.message);
   return data;
 }
 
-export async function getGSTR1Return(clientId: string, period: string) {
+export async function getGSTR1Return(clientId: string, period: string,
+                                      /** GST-17 — see getGSTR3BReturn. */
+                                      gstin?: string) {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
-  const { data, error } = await sb
+  let q = sb
     .from("gstr1_returns")
     .select("*")
     .eq("firm_id", firmId)
     .eq("client_id", clientId)
-    .eq("period", period)
-    .maybeSingle();
+    .eq("period", period);
+  if (gstin) q = q.eq("gstin", gstin.trim().toUpperCase());
+  const { data, error } = await q.maybeSingle();
 
   if (error) throw new Error(error.message);
   return data;
@@ -1262,8 +1350,10 @@ export async function markGSTR3BFiled(
   clientId: string,
   period: string,
   arn: string,
+  /** Which registration's return (GST-17). */
+  gstin?: string,
 ): Promise<void> {
-  const existing = await getGSTR3BReturn(clientId, period);
+  const existing = await getGSTR3BReturn(clientId, period, gstin);
   const returnId = (existing as { id?: string } | null)?.id;
   if (!returnId) {
     throw new Error(
@@ -1285,8 +1375,10 @@ export async function markGSTR1Filed(
   clientId: string,
   period: string,
   arn: string,
+  /** Which registration's return (GST-17). */
+  gstin?: string,
 ): Promise<void> {
-  const existing = await getGSTR1Return(clientId, period);
+  const existing = await getGSTR1Return(clientId, period, gstin);
   const returnId = (existing as { id?: string } | null)?.id;
   if (!returnId) {
     throw new Error(

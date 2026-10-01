@@ -1400,6 +1400,54 @@ export type ExpiringEwayBill = {
   gap: string | null;
 };
 
+/** GST-20 — an in-scope invoice with no live IRN. `domain/gst/irn_worklist.py`
+ *  decides every field and sentence; this carries shapes only. */
+export type IrnWorklistWindow = {
+  /** Five states and none stands in for another: an invoice of a client below
+   *  the IRP's turnover floor OWES an IRN and has NO clock. */
+  status: "within_window" | "last_day" | "past_window" | "no_reporting_limit" | "not_in_force";
+  days: number;
+  deadline: string | null;
+  days_left: number | null;
+  /** True where the turnover is unrecorded and the clock is shown as if it
+   *  applied — the strict reading, which the screen must say. */
+  assumed: boolean;
+  /** null is a THIRD state (turnover unrecorded), never "does not apply". */
+  applies: boolean | null;
+};
+
+export type IrnWorklistRow = {
+  invoice_id: string;
+  client_id: string;
+  client_name: string;
+  invoice_no: string;
+  invoice_date: string;
+  customer_name: string | null;
+  total_paise: number;
+  treatment: string;
+  irn_state: "none" | "record_prepared_not_generated" | "irn_cancelled";
+  why_in_scope: string;
+  turnover_unknown: boolean;
+  window: IrnWorklistWindow;
+};
+
+export type IrnWorklist = {
+  as_of?: string;
+  scope: "client" | "firm";
+  listed_since?: string;
+  invoices: IrnWorklistRow[];
+  counts: Record<string, number>;
+  truncated?: boolean;
+  /** Said once for the whole list: the [S]-grading of the window, which
+   *  turnover it is judged on, what is not covered, the exempted classes. */
+  caveats: string[];
+  /** Firm-wide: clients with no recorded turnover, NAMED rather than assessed. */
+  clients_not_assessed: { client_id: string; client_name: string; reason: string }[];
+  clients_below_threshold?: number;
+  client_status?: string | null;
+  verified?: boolean;
+};
+
 export type ExpiringEwayBills = {
   as_of: string;
   horizon_days: number;
@@ -2265,6 +2313,12 @@ export type ClientGstRegistration = {
   /** Which s.10 rate a COMPOSITION registration pays. Meaningless otherwise;
    *  null means unrecorded rather than any particular rate (GST-25). */
   composition_category: string | null;
+  /** GST-17 / GST-05 — what a return built for THIS registration would have to
+   *  say: no invoice, bill or note records which registration it belongs to, so
+   *  choosing one does not split the documents. A sentence, or null where the
+   *  client holds one registration that files the ordinary pair. The server's
+   *  words — a picker shows them beside the choice and never composes its own. */
+  documents_not_split_caveat?: string | null;
 };
 
 /** One financial year's CGST s.2(6) aggregate turnover, as the CA recorded it. */
@@ -3481,6 +3535,131 @@ export interface ChallanParticulars {
   ca_review_required: boolean;
 }
 
+/** GST-30 — FORM GST ITC-04 (Rule 45(3)), derived from the job-work challans.
+ *  Every figure and every sentence is the server's; quantities are TEXT with
+ *  three decimals and are never turned into a number here. */
+export interface Itc04Window {
+  cadence: string;
+  key: string;
+  label: string;
+  start: string;
+  end: string;
+  due_date: string;
+  table_4_rows?: number;
+  table_5a_rows?: number;
+}
+
+export interface Itc04Reading {
+  cadence: string;
+  label: string;
+  /** Always false: the cadence turns on a limit this product does not hold. */
+  chosen: boolean;
+  windows: Itc04Window[];
+}
+
+export interface Itc04JobWorker {
+  name: string | null;
+  gstin: string | null;
+  state_code: string | null;
+  identified: boolean;
+}
+
+export interface Itc04Gap { challan_no: string | null; kind: string; reason: string }
+
+export interface Itc04Table4Row {
+  challan_id: string;
+  challan_line_id: string;
+  job_worker: Itc04JobWorker;
+  challan_no: string | null;
+  challan_date: string;
+  type_of_goods: string | null;
+  description: string | null;
+  hsn_sac: string | null;
+  uqc: string | null;
+  quantity: string;
+  taxable_value_paise: number;
+  igst_rate: string;
+  cgst_rate: string;
+  sgst_rate: string;
+}
+
+export interface Itc04Table5aRow {
+  challan_id: string;
+  challan_line_id: string;
+  job_worker: Itc04JobWorker;
+  original_challan_no: string | null;
+  original_challan_date: string;
+  job_worker_challan_no: string | null;
+  job_worker_challan_date: string | null;
+  nature_of_job_work: string | null;
+  returned_on: string;
+  description: string | null;
+  uqc: string | null;
+  quantity: string;
+  lost_or_wasted_quantity: string;
+  derived_from_whole_challan_return: boolean;
+}
+
+export interface Itc04Balance {
+  challan_id: string;
+  challan_no: string | null;
+  challan_date: string;
+  job_worker: Itc04JobWorker;
+  goods_kind: string | null;
+  lines: {
+    challan_line_id: string;
+    description: string | null;
+    uqc: string | null;
+    sent: string;
+    returned: string;
+    lost_or_wasted: string;
+    outstanding: string;
+    taxable_value_at_stake_paise: number;
+  }[];
+  taxable_value_at_stake_paise: number;
+  clock: DeemedSupplyClock;
+}
+
+export interface Itc04Statement {
+  client_id: string;
+  financial_year: string;
+  as_of: string;
+  period: {
+    decided: boolean;
+    readings: string[];
+    refusal: string;
+    preceding_year_aato_paise: number | null;
+    verified: boolean;
+  };
+  readings: Itc04Reading[];
+  selected_window: Itc04Window | null;
+  table_4: { title: string; rows: Itc04Table4Row[]; count: number;
+             taxable_value_paise: number; gaps: Itc04Gap[] } | null;
+  table_5a: { title: string; rows: Itc04Table5aRow[]; count: number;
+              gaps: Itc04Gap[] } | null;
+  table_5b: { derived: boolean; reason: string };
+  table_5c: { derived: boolean; reason: string };
+  outstanding: Itc04Balance[];
+  gaps: string[];
+  nothing_is_filed: boolean;
+  verified: boolean;
+  ca_review_required: boolean;
+}
+
+/** One lot coming back from a job worker. Quantities go as numbers parsed by
+ *  `lib/money/rupeeInput.parseQuantity`, never by `parseFloat`. */
+export interface ChallanReturnBody {
+  client_id: string;
+  challan_line_id: string;
+  returned_on: string;
+  quantity_returned: number;
+  quantity_lost_or_wasted: number;
+  job_worker_challan_no?: string | null;
+  job_worker_challan_date?: string | null;
+  nature_of_job_work?: string | null;
+  notes?: string | null;
+}
+
 export interface OrderOpenLine {
   order_line_id: string;
   description: string;
@@ -4354,6 +4533,20 @@ export const api = {
         request(`/api/fx-revaluation/run?client_id=${encodeURIComponent(clientId)}`, {
           method: "POST", body: JSON.stringify(body),
         }),
+    },
+  },
+  einvoice: {
+    /** GST-20 — in-scope invoices that have no live IRN, oldest first, with the
+     *  IRP's reporting-window clock. Per client when `clientId` is given, else
+     *  across the caller's own clients. Reports only: no IRN is generated and no
+     *  portal is reached. */
+    missingIrn: (clientId?: string | null, since?: string | null) => {
+      const q = new URLSearchParams();
+      if (clientId) q.set("client_id", clientId);
+      if (since) q.set("since", since);
+      const qs = q.toString();
+      return request<ApiResp<IrnWorklist>>(
+        `/api/einvoice/missing-irn${qs ? `?${qs}` : ""}`);
     },
   },
   // Stock register + per-item ledger (migration 188). Read-only — all
@@ -6860,6 +7053,18 @@ export const api = {
       request<ApiResp<DeliveryChallan>>(
         `/api/sales-cycle/challans/${id}?client_id=${encodeURIComponent(clientId)}`,
         { method: "PATCH", body: JSON.stringify(body) }),
+    /** GST-30 — FORM GST ITC-04 derived from the job-work challans entered.
+     *  With no `window`, every reading's windows are listed and none is chosen. */
+    itc04: (clientId: string, financialYear: string, window?: string | null) =>
+      request<ApiResp<Itc04Statement>>(
+        `/api/sales-cycle/itc-04?client_id=${encodeURIComponent(clientId)}`
+        + `&financial_year=${encodeURIComponent(financialYear)}`
+        + (window ? `&window=${encodeURIComponent(window)}` : "")),
+    /** One lot of goods coming back from a job worker, against its challan line. */
+    recordChallanReturn: (challanId: string, body: ChallanReturnBody) =>
+      request<ApiResp<{ id: string; challan_marked_received_back: boolean }>>(
+        `/api/sales-cycle/challans/${challanId}/returns`,
+        { method: "POST", body: JSON.stringify(body) }),
   },
 
   openingDocuments: {

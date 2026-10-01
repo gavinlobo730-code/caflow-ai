@@ -31,6 +31,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
 import { Gstr1Amendments } from "@/components/gst/Gstr1Amendments";
 import { IffPanel } from "@/components/gst/IffPanel";
+import { RegistrationPicker, useRegistrationChoice } from "@/components/gst/RegistrationPicker";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
@@ -87,6 +88,9 @@ export default function GSTR1Page() {
   const [clients, setClients] = useState<{ id: string; name: string; gstin: string | null }[]>([]);
   const [clientId, setClientId] = useState("");
   const [yearMonth, setYearMonth] = useState(PERIOD_OPTIONS[1]?.value ?? "");
+  // WHICH REGISTRATION (GST-17): the server's list of what this client holds,
+  // primary first. Only the primary could be built from this screen before.
+  const reg = useRegistrationChoice(clientId || null);
 
   const [loading, setLoading] = useState(false);
   // gst-33: the corrections this period owes (9A / 9C / 10, CGST Act §37) are
@@ -121,11 +125,15 @@ export default function GSTR1Page() {
 
   async function handleBuild() {
     if (!clientId || !yearMonth) return;
+    // A GSTIN the client does not hold is refused here, never defaulted to the
+    // primary (GST-17).
+    if (reg.choice.refused) { setError(reg.choice.refused); return; }
     setLoading(true);
     setError(null);
     setResult(null);
     try {
-      const res = await buildGSTR1(clientId, yearMonth, { includeAmendments });
+      const res = await buildGSTR1(clientId, yearMonth,
+                                   { includeAmendments, gstin: reg.choice.gstin });
       setResult(res);
       // from-books raises on anything it will not compute, so a returned
       // result is a validated one; a failure lands in catch below.
@@ -144,7 +152,7 @@ export default function GSTR1Page() {
     try {
       const sb = getSupabaseClient();
       const { data: { user } } = await sb.auth.getUser();
-      await approveGSTR1(clientId, toPeriod(yearMonth), user?.id ?? "");
+      await approveGSTR1(clientId, toPeriod(yearMonth), user?.id ?? "", result.gstin);
       setFilingStatus("ca_approved");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Approval failed");
@@ -156,7 +164,7 @@ export default function GSTR1Page() {
   async function handleMarkFiled() {
     if (!clientId || !yearMonth || !arn.trim()) return;
     try {
-      await markGSTR1Filed(clientId, toPeriod(yearMonth), arn.trim());
+      await markGSTR1Filed(clientId, toPeriod(yearMonth), arn.trim(), result?.gstin);
       setFilingStatus("submitted");
       setShowFiledModal(false);
       setArn("");
@@ -167,8 +175,11 @@ export default function GSTR1Page() {
 
   function handleDownload() {
     if (!result || !clientId) return;
+    // The registration the RETURN was built for, which is what the server
+    // reported — not the client's primary, which names the wrong file for a
+    // second registration (GST-17).
     const client = clients.find(c => c.id === clientId);
-    const gstin = client?.gstin ?? "UNKNOWN";
+    const gstin = result.gstin || client?.gstin || "UNKNOWN";
     downloadGSTR1JSON(result.payload, toPeriod(yearMonth), gstin);
   }
 
@@ -244,6 +255,14 @@ export default function GSTR1Page() {
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
+          </div>
+          <div className="sm:col-span-3">
+            <RegistrationPicker
+              state={reg}
+              id="gstr1-registration"
+              disabled={actionInFlight}
+              onChange={() => { setResult(null); setError(null); }}
+            />
           </div>
         </div>
         <label className="flex items-start gap-2 text-sm text-ps-body">

@@ -11,15 +11,16 @@ either module decides.
 # Sales screen, which is the document that declares the supply.
 """
 import os
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.authz import assert_client_access
 from core.permissions import rbac
 from models.common import api_response
+from models.fy import FYLabel
 from models.sales_cycle import (
-    DeliveryChallanIn, DeliveryChallanUpdateIn, QuotationIn, QuotationUpdateIn,
+    ChallanReturnIn, DeliveryChallanIn, DeliveryChallanUpdateIn, QuotationIn, QuotationUpdateIn,
     SalesOrderIn, SalesOrderUpdateIn,
 )
 from domain.gst import delivery_challan as dc
@@ -268,6 +269,80 @@ def create_challan(
     return api_response(True, svc.create_challan(
         _db(), current_user.get("firm_id"), payload.model_dump(),
         current_user.get("id")))
+
+
+@router.get("/itc-04")
+def itc_04_statement(
+    client_id: str = Query(...),
+    financial_year: Annotated[FYLabel, Query(
+        description="The financial year to derive the statement for, e.g. 2025-26")] = ...,
+    window: Optional[str] = Query(
+        None, description="One window key from `readings` — omit to list them all"),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """FORM GST ITC-04 (Rule 45(3)), derived from the job-work challans entered
+    (GST-30). Writes nothing and files nothing.
+
+    BOTH READINGS OF THE PERIOD, NEITHER CHOSEN. Rule 45(3)'s cadence turns on the
+    principal's own preceding-year turnover and on a limit this environment could
+    not confirm, so the windows of every reading are listed with how many rows
+    each would carry, and the CA opens the one that applies. A turnover recorded
+    for the preceding year is shown beside them as context and decides nothing.
+
+    WHAT IS STILL OUT, and the s.143 date for it, is always returned: it is a
+    fact about today and not about a window. A part return reduces the amount
+    left to be deemed supplied and does not move the day the goods left.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. ITC-04 is furnished on the GST
+    # portal by the principal.
+    """
+    assert_client_access(current_user, client_id)
+    if _mock():
+        return api_response(True, {"client_id": client_id, "readings": [],
+                                   "outstanding": [], "gaps": [],
+                                   "ca_review_required": True})
+    from services import itc_04_service
+    try:
+        return api_response(True, itc_04_service.statement(
+            _db(), current_user.get("firm_id"), client_id, financial_year,
+            window=window))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/challans/{challan_id}/returns")
+def record_challan_return(
+    challan_id: str,
+    payload: ChallanReturnIn,
+    current_user: dict = Depends(rbac("invoice", "write")),
+):
+    """Record goods coming back from a job worker, in whole or in part (GST-30).
+
+    Recorded against the challan LINE the goods were sent on. Over-return is
+    refused, never clamped, and lost or wasted quantity is recorded but is NEVER
+    subtracted from what is outstanding. When the returns have brought every line
+    back to nil the challan is marked received back through the one existing
+    write, which stops the s.143 clock.
+
+    The CLIENT in the body is asserted for access AND is what the line is looked
+    up under, so another client's challan line cannot be reached by naming an
+    assigned client beside somebody else's ids; `challan_id` in the path is
+    checked against the line's own challan.
+    """
+    assert_client_access(current_user, payload.client_id)
+    if _mock():
+        return api_response(True, {"id": "mock-return", "challan_id": challan_id})
+    from services import itc_04_service
+    from services.audit_service import log_event
+    db = _db()
+    firm_id = current_user.get("firm_id")
+    row = itc_04_service.record_return(
+        db, firm_id, payload.client_id, challan_id, payload.model_dump(),
+        current_user.get("id"))
+    log_event(firm_id or "", "delivery_challan_return", str(row.get("id") or ""),
+              "create", actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), new_data=row)
+    return api_response(True, row)
 
 
 @router.patch("/challans/{challan_id}")

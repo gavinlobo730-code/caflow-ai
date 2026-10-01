@@ -18,7 +18,9 @@ import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
 import { Gstr1Amendments } from "@/components/gst/Gstr1Amendments";
 import { IffPanel } from "@/components/gst/IffPanel";
 import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
-import type { GLReconciliation, GSTR1AmendmentsBlock, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
+import { RegistrationPicker, useRegistrationChoice } from "@/components/gst/RegistrationPicker";
+import { withRegistration } from "@/lib/gst/registrationChoice";
+import type { GLReconciliation, GSTR1AmendmentsBlock, Gstr1TieOutBlock, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
 import type { ValidationError, PayloadGap } from "@/lib/data/gst";
 import { formatPaise } from "@/lib/money/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
@@ -180,9 +182,14 @@ const STATUS_COLORS: Record<string, string> = {
  *   here rather than discovered at a notice.
  */
 function GSTR3BDetailDrawer({
-  clientId, period, line, label, expectedPaise, onClose,
+  clientId, period, gstin, line, label, expectedPaise, onClose,
 }: {
-  clientId: string; period: string; line: string; label: string;
+  clientId: string; period: string;
+  /** Which registration's return the figure belongs to (GST-17). The detail
+   *  resolves that registration's own filing frequency — a QRMP second
+   *  registration is a quarter even where the primary is a month. */
+  gstin?: string;
+  line: string; label: string;
   expectedPaise: number | null; onClose: () => void;
 }) {
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
@@ -195,7 +202,8 @@ function GSTR3BDetailDrawer({
       try {
         const r = await apiFetch(
           `/api/gst/gstr3b/detail?client_id=${encodeURIComponent(clientId)}` +
-          `&period=${encodeURIComponent(period)}&line=${encodeURIComponent(line)}`);
+          `&period=${encodeURIComponent(period)}&line=${encodeURIComponent(line)}` +
+          (gstin ? `&gstin=${encodeURIComponent(gstin)}` : ""));
         if (cancelled) return;
         if (!r.success) { setError(r.error ?? "Couldn't load the detail."); return; }
         const d = r.data as { rows: Record<string, unknown>[]; [k: string]: unknown };
@@ -212,7 +220,7 @@ function GSTR3BDetailDrawer({
       }
     })();
     return () => { cancelled = true; };
-  }, [clientId, period, line]);
+  }, [clientId, period, gstin, line]);
 
   function exportCsv() {
     if (!rows) return;
@@ -509,7 +517,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [period, setPeriod] = useState("");
-  const [gstin, setGstin] = useState("");
+  // WHICH REGISTRATION (GST-17). Read from the server's own list of what this
+  // client holds, primary first — nothing is typed, because a typed GSTIN is
+  // how a return gets saved under one the client does not hold.
+  const reg = useRegistrationChoice(clientId);
   const [saving, setSaving] = useState(false);
 
   const [showCompute, setShowCompute] = useState(false);
@@ -568,15 +579,18 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   }, []);
 
   async function saveNew() {
+    if (!reg.choice.gstin) {
+      setLoadError(reg.choice.refused ?? "Choose the registration this return is for.");
+      return;
+    }
     setSaving(true);
     try {
       await apiFetch("/api/gst-workspace/gstr1", {
         method: "POST",
-        body: JSON.stringify({ client_id: clientId, period, gstin }),
+        body: JSON.stringify({ client_id: clientId, period, gstin: reg.choice.gstin }),
       });
       setShowNew(false);
       setPeriod("");
-      setGstin("");
       load();
     } catch (e) {
       // Keep the dialog open with what was typed still in it — closing on a
@@ -618,19 +632,25 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   // side; the frontend only displays the result (CLAUDE.md: zero business
   // logic in the frontend).
   async function computeFromBooks() {
+    // A GSTIN the client does not hold is REFUSED here, never defaulted to the
+    // primary (GST-17) — the server would refuse it too, but a refusal that
+    // arrives before the request is one the CA reads where they chose it.
+    if (reg.choice.refused) { setComputeError(reg.choice.refused); return; }
     setComputing(true);
     setComputeError(null);
     setComputeResult(null);
     // `include_amendments` is sent only when the CA asked to leave them out:
     // an absent key is the server's default (in), so an older backend that
     // does not know the field is not handed one it would have to ignore.
+    // `gstin` rides on every compute (GST-17): without it only the primary
+    // registration could be built from this screen.
     const r = await apiFetch("/api/gst/gstr1/from-books", {
       method: "POST",
-      body: JSON.stringify({
+      body: JSON.stringify(withRegistration({
         client_id: clientId,
         period: computePeriod,
         ...(includeAmendments ? {} : { include_amendments: false }),
-      }),
+      }, reg.choice)),
     });
     if (r.success) setComputeResult(r.data as Record<string, unknown>);
     else setComputeError(r.error ?? "Couldn't compute GSTR-1 from books.");
@@ -695,6 +715,9 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
             Derives GSTR-1 entirely from posted sales invoices and issued credit/debit notes,
             and reconciles the output tax to the General Ledger. No manual entry.
           </p>
+          <RegistrationPicker state={reg} id="gstr1-compute-registration"
+            disabled={actionInFlight}
+            onChange={() => { setComputeResult(null); setComputeError(null); }} />
           <input placeholder="Period (MMYYYY e.g. 042025)" value={computePeriod}
             onChange={(e) => setComputePeriod(e.target.value)}
             className="w-full border rounded px-3 py-1.5 text-sm" />
@@ -791,11 +814,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
           <input placeholder="Period (MMYYYY e.g. 042025)" value={period}
             onChange={(e) => setPeriod(e.target.value)}
             className="w-full border rounded px-3 py-1.5 text-sm" />
-          <input placeholder="GSTIN" value={gstin}
-            onChange={(e) => setGstin(e.target.value)}
-            className="w-full border rounded px-3 py-1.5 text-sm" />
+          <RegistrationPicker state={reg} id="gstr1-new-registration"
+            disabled={actionInFlight} />
           <div className="flex gap-2">
-            <button onClick={saveNew} disabled={actionInFlight || !period || !gstin}
+            <button onClick={saveNew} disabled={actionInFlight || !period || !reg.choice.gstin}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {saving ? "Saving…" : "Save Draft"}
             </button>
@@ -905,7 +927,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   const [demo, setDemo] = useState<{ id: string } | null>(null);
   // Which GSTR-3B line the detail drawer is open on, if any.
   const [detail, setDetail] = useState<
-    { period: string; line: string; label: string; expected: number | null } | null>(null);
+    { period: string; gstin?: string; line: string; label: string; expected: number | null } | null>(null);
   // Per-return: whether the books have moved since it was computed, and what
   // the row is currently busy doing. Keyed by return id so one row's spinner
   // does not freeze the table.
@@ -918,7 +940,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [period, setPeriod] = useState("");
-  const [gstin, setGstin] = useState("");
+  // WHICH REGISTRATION (GST-17) — see GSTR1Tab.
+  const reg = useRegistrationChoice(clientId);
   const [saving, setSaving] = useState(false);
 
   const [showCompute, setShowCompute] = useState(false);
@@ -959,15 +982,18 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   async function saveNew() {
+    if (!reg.choice.gstin) {
+      setLoadError(reg.choice.refused ?? "Choose the registration this return is for.");
+      return;
+    }
     setSaving(true);
     try {
       await apiFetch("/api/gst-workspace/gstr3b", {
         method: "POST",
-        body: JSON.stringify({ client_id: clientId, period, gstin }),
+        body: JSON.stringify({ client_id: clientId, period, gstin: reg.choice.gstin }),
       });
       setShowNew(false);
       setPeriod("");
-      setGstin("");
       load();
     } catch (e) {
       // Same as GSTR1Tab.saveNew — the dialog stays open with its input.
@@ -1064,13 +1090,17 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   // gst_return_service.py::gstr3b_from_books). CA REVIEW REQUIRED before
   // filing — this only computes and previews a draft.
   async function computeFromBooks() {
+    // Refused before the request, never defaulted to the primary (GST-17).
+    if (reg.choice.refused) { setComputeError(reg.choice.refused); return; }
     setComputing(true);
     setComputeError(null);
     setComputeResult(null);
     const r = await apiFetch("/api/gst/gstr3b/from-books", {
       method: "POST",
-      body: JSON.stringify({ client_id: clientId, period: computePeriod,
-                             ...(filedOn ? { filed_on: filedOn } : {}) }),
+      body: JSON.stringify(withRegistration({
+        client_id: clientId, period: computePeriod,
+        ...(filedOn ? { filed_on: filedOn } : {}),
+      }, reg.choice)),
     });
     if (r.success) setComputeResult(r.data as Record<string, unknown>);
     else setComputeError(r.error ?? "Couldn't compute GSTR-3B from books.");
@@ -1118,6 +1148,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
         <GSTR3BDetailDrawer
           clientId={clientId}
           period={detail.period}
+          gstin={detail.gstin}
           line={detail.line}
           label={detail.label}
           expectedPaise={detail.expected}
@@ -1172,6 +1203,9 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             Derives GSTR-3B entirely from posted sales/purchase documents (including issued
             credit/debit notes) and reconciles output tax and ITC to the General Ledger.
           </p>
+          <RegistrationPicker state={reg} id="gstr3b-compute-registration"
+            disabled={actionInFlight}
+            onChange={() => { setComputeResult(null); setComputeError(null); }} />
           <div className="grid grid-cols-2 gap-2">
             <input placeholder="Period (MMYYYY e.g. 042025)" value={computePeriod}
               onChange={(e) => setComputePeriod(e.target.value)}
@@ -1287,6 +1321,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                   bankLineCaveats={computeResult.bank_line_caveats as string[] | undefined}
                   undeclarableRows={computeResult.undeclarable_rows as UndeclarableRow[] | undefined}
                   registrationCaveat={computeResult.registration_caveat as string | null | undefined}
+                  gstr1TieOut={computeResult.gstr1_tie_out as Gstr1TieOutBlock | null | undefined}
                 />
                 {/* THE TABLES, not just the totals.
                     The GSTN offline utility is table by table, and a CA
@@ -1327,6 +1362,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                               <button
                                 onClick={() => setDetail({
                                   period: computeResult.period as string,
+                                  gstin: (computeResult.gstin as string | undefined) || undefined,
                                   line: drill, label, expected: total,
                                 })}
                                 className="text-blue-700 hover:underline text-left"
@@ -1400,11 +1436,10 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
           <input placeholder="Period (MMYYYY)" value={period}
             onChange={(e) => setPeriod(e.target.value)}
             className="w-full border rounded px-3 py-1.5 text-sm" />
-          <input placeholder="GSTIN" value={gstin}
-            onChange={(e) => setGstin(e.target.value)}
-            className="w-full border rounded px-3 py-1.5 text-sm" />
+          <RegistrationPicker state={reg} id="gstr3b-new-registration"
+            disabled={actionInFlight} />
           <div className="flex gap-2">
-            <button onClick={saveNew} disabled={actionInFlight || !period || !gstin}
+            <button onClick={saveNew} disabled={actionInFlight || !period || !reg.choice.gstin}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {saving ? "Saving…" : "Save Draft"}
             </button>
