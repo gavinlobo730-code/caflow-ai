@@ -23,6 +23,7 @@ from models.invoices import InvoiceLineIn
 from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
+from core.uploads import accept_upload, safe_path_segment
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
@@ -380,19 +381,23 @@ def upload_debit_note_document(
     storage PATH, the same shape purchase_bills.py's document_url stores.
     Mirrors document_intelligence_v1.py's _upload_bill_document."""
     assert_client_access(current_user, client_id)
+    # OUTSIDE the try: a refusal is an HTTPException (413 / 415 / 422) and the
+    # broad `except Exception` below would turn it into "Unable to upload
+    # attachment" with a 200 — the very reason a bad file must be refused here.
+    accepted = accept_upload(file)
+    safe_client = safe_path_segment(client_id, field="client_id")
     try:
-        content = file.file.read()
+        content = accepted.content
         firm_id = current_user.get("firm_id")
         if _USE_MOCK:
-            return api_response(True, {"document_url": f"mock/{firm_id}/{client_id}/debit_note/{uuid.uuid4()}"})
+            return api_response(True, {"document_url": f"mock/{firm_id}/{safe_client}/debit_note/{uuid.uuid4()}"})
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        safe_name = (file.filename or "upload").replace("/", "_")
-        storage_path = f"{firm_id}/{client_id}/debit_note/{uuid.uuid4()}_{safe_name}"
+        storage_path = f"{firm_id}/{safe_client}/debit_note/{uuid.uuid4()}_{accepted.storage_name}"
         db.storage.from_(_BUCKET).upload(
             path=storage_path, file=content,
-            file_options={"content-type": file.content_type or "application/octet-stream"},
+            file_options={"content-type": accepted.content_type},
         )
         return api_response(True, {"document_url": storage_path})
     except Exception as e:

@@ -209,13 +209,19 @@ def test_sign_rejected_when_not_actionable():
 
 
 def test_sign_uses_forwarded_client_ip():
+    """With one trusted proxy the client is the entry that proxy appended — the
+    RIGHT-hand one. This used to pin the LEFT-hand entry ("9.9.9.9"), which is the
+    one the signer writes themselves (SECURITY-PRIVACY-25); the header here is
+    what a proxy appends after a caller's own value, so the answer is the address
+    the proxy saw connect. The forged-header cases are in
+    test_a_forged_forwarded_for_does_not_choose_the_recorded_address.py."""
     db = FakeDB()
     db.selects["engagements"] = [_eng(status="Viewed")]
     with world(db):
         res = sign_letter(TOKEN, SignBody(signer_name="Rahul", consent=True),
                           FakeRequest(xff="9.9.9.9, 10.0.0.1"))
     assert res["success"] is True
-    assert db.updates["engagements"][-1]["signed_ip"] == "9.9.9.9"
+    assert db.updates["engagements"][-1]["signed_ip"] == "10.0.0.1"
 
 
 # ── reject ────────────────────────────────────────────────────────────────────

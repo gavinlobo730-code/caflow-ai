@@ -83,6 +83,15 @@ services:
       # Without it, get_user_client() raises and the USE_USER_JWT path is dead.
       - key: SUPABASE_ANON_KEY
         sync: false
+      # The `iss` a login token must carry. OPTIONAL and normally unset: core/auth.py
+      # derives it as {SUPABASE_URL}/auth/v1, which is what a hosted project signs.
+      # It exists only for a project served from a custom domain, where the token's
+      # issuer is that domain and not SUPABASE_URL. An override REPLACES the derived
+      # value — one exact string is still required, so it cannot loosen the check —
+      # and a wrong one rejects every login, so set it only after decoding a live
+      # token's `iss`. (SECURITY-PRIVACY-21.)
+      - key: SUPABASE_JWT_ISSUER
+        sync: false
       - key: ALLOWED_ORIGINS
         sync: false
       # The app's public origin, and the SINGLE source of every user-facing
@@ -141,6 +150,19 @@ services:
       # ⚠️ Only the FALLBACK list includes it. A deployment that sets
       # ALLOWED_ORIGINS replaces the whole list and must name this origin too.
       - key: MARKETING_URL
+        sync: false
+
+      # How many proxies stand between the internet and this service AND append to
+      # X-Forwarded-For. core/client_ip.py takes the caller's address as the Nth
+      # entry from the RIGHT, because the left of that header is whatever the
+      # caller wrote. OPTIONAL: unset means 1, the choice that can never read the
+      # caller's own entries — too small names a proxy (a coarser rate limit, a
+      # signing address that is the proxy's) and too large is the spoofing this
+      # exists to stop. Render's real hop count was recalled and not read, so
+      # CONFIRM IT WITH ONE REQUEST: send `X-Forwarded-For: 203.0.113.9` to the
+      # API and look at the `forwarded_for` on the next signing event; if the
+      # chain ends in a proxy's address, set this to 2. (SECURITY-PRIVACY-25.)
+      - key: TRUSTED_PROXY_HOPS
         sync: false
 
       # --- Scheduled jobs --------------------------------------------------
@@ -204,10 +226,19 @@ services:
       # "Multi-factor authentication required for this action.", and production
       # returns that string verbatim.
       #
-      # Neither is verifiable from code — `sync: false` means the value lives in
-      # the dashboard, and no test can see it (see the header of
-      # tests/test_render_manifest_matches_code.py). This comment is the only
-      # record that the answer is "true". Do not soften it back to a default.
+      # Neither is verifiable from THIS FILE — `sync: false` means the value lives
+      # in the dashboard, and no test can see it (see the header of
+      # tests/test_render_manifest_matches_code.py). What changed on 2026-09-30
+      # (SECURITY-PRIVACY-16 / OPS-06) is that the RUNNING SERVICE can now say:
+      #   * with APP_ENV=production (declared above) an UNSET, blank or
+      #     unrecognisable value now means ON (core/security_config.py). An
+      #     explicit "false" is still honoured — it is the rollback — but
+      #     core/security_posture.py logs it at ERROR at boot.
+      #   * GET /api/security/posture (Partner-only, behind the MFA guard)
+      #     returns what the process actually resolved, as booleans. That
+      #     response, not this comment, is the record that the answer is "true".
+      # Set both to "true" in the dashboard anyway, so the decision is written
+      # down where an operator looks. Do not soften this back to a default.
       - key: USE_USER_JWT
         sync: false
       - key: REQUIRE_MFA
