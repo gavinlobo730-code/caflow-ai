@@ -114,16 +114,19 @@ KIND_NOT_LIVE_REASON: dict[str, str] = {
         "their customer and carries your client's name, not yours.)"
     ),
     "reminder": (
-        "Not applied yet. The compliance reminder this wording is for "
-        "(`send_compliance_due_soon`) is written and has no caller, so nothing "
-        "sends it. The payment reminders that ARE sent go from your client to "
-        "their customer about your client's own sales invoice, and they carry "
-        "your client's name rather than the practice's."
+        "Not applied yet. This wording is for a compliance reminder sent to "
+        "the CLIENT, and the product sends none — the deadline mails it does "
+        "send (`send_compliance_due_soon` and its digest) go to the practice's "
+        "own staff, in built-in wording. The payment reminders that ARE sent "
+        "go from your client to their customer about your client's own sales "
+        "invoice, and they carry your client's name rather than the practice's."
     ),
     "document_request": (
-        "Not applied yet. Creating a document request records it on the client "
-        "portal and sends no mail, so there is nothing for this wording to be "
-        "used in."
+        "Not applied yet. Creating a document request now emails the client's "
+        "portal contact, but in the product's own wording: this kind's shipped "
+        "default promises an upload the portal cannot do and names a financial "
+        "year a document request does not hold, so applying your own wording "
+        "waits until that contract is settled."
     ),
 }
 

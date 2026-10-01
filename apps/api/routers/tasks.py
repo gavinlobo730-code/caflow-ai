@@ -278,7 +278,9 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
                         old_assignee = user_repo.find_by_id(old_assignee_id, firm_id=firm_id)
                         if old_assignee:
                             reason = "Task load rebalancing"
-                            notification_service.notify_task_reassigned(updated, old_assignee, new_assignee, reason)
+                            notification_service.notify_task_reassigned(
+                                updated, old_assignee, new_assignee, reason,
+                                reassigned_by=current_user)
                     else:
                         # This is a new assignment
                         notification_service.notify_task_assigned(updated, new_assignee, current_user)

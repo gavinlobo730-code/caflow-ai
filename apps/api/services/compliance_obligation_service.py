@@ -1321,9 +1321,14 @@ def transition(firm_id: str, record_id: str, new_status: str, actor: Optional[di
     return compliance_record_service.update_record(record_id, data, firm_id=firm_id, actor=actor)
 
 
-def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) -> None:
+def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) -> set:
     """Internal-only escalation: client timeline + audit, plus a best-effort
-    in-app notification to preparer/reviewer/approver. NEVER emails the client."""
+    in-app notification to preparer/reviewer/approver. NEVER emails the client.
+
+    Returns the ids of the staff it addressed, so `escalate` can mail the same
+    people once per sweep (practice_management-03) rather than once per
+    obligation: the mail is the SAME event as the in-app notification and goes
+    to exactly the same recipients."""
     severity = "critical" if tier in ("overdue", "due_1") else "warning"
     label = {"overdue": "OVERDUE", "due_1": "due tomorrow",
              "due_3": "due in 3 days", "due_7": "due in 7 days"}.get(tier, tier)
@@ -1352,10 +1357,10 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) 
     except Exception:  # pragma: no cover
         pass
     # Best-effort in-app notifications (internal). Guarded — never fatal.
+    recipients: set = {r for r in (rec.get("preparer_id"), rec.get("reviewer_id"),
+                                   rec.get("approver_id"), rec.get("assigned_to")) if r}
     try:
         from repositories.notifications_repository import notifications_repo
-        recipients = {r for r in (rec.get("preparer_id"), rec.get("reviewer_id"),
-                                  rec.get("approver_id"), rec.get("assigned_to")) if r}
         for uid in recipients:
             notifications_repo.create({
                 "firm_id": firm_id, "user_id": uid, "type": "compliance_due",
@@ -1368,6 +1373,7 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) 
             })
     except Exception:  # pragma: no cover - notifications are best-effort
         pass
+    return recipients
 
 
 def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] = None,
@@ -1381,6 +1387,7 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
     today = today or ist_today()
     today_s = today.isoformat()
     counts = {"due_7": 0, "due_3": 0, "due_1": 0, "overdue": 0}
+    mail_batch: dict[str, list[dict]] = {}
     # Pushed server-side: escalate() only ever acts on open obligations, so
     # there's no reason to also fetch every Filed/Completed row just to
     # discard it in Python.
@@ -1410,9 +1417,25 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
         if tier == "overdue" and last_tier == "overdue" and last_on:
             if (today - ce_date(last_on)).days < 7:
                 continue
-        _notify_internal(firm_id, r, tier, actor)
+        for uid in _notify_internal(firm_id, r, tier, actor):
+            mail_batch.setdefault(str(uid), []).append({
+                "record_id": r.get("id"), "tier": tier,
+                "client_id": r.get("client_id"), "due_date": due,
+                "label": r.get("period_label") or r.get("obligation_type"),
+            })
         compliance_records_repo.update(r["id"], {"last_escalated_tier": tier, "last_escalated_on": today_s})
         counts[tier] += 1
+    # ONE mail per recipient for the whole sweep, after the loop. A practice with
+    # sixty clients has sixty GSTR-3Bs reach the 7-day tier on the same morning;
+    # a mail each is how a deadline reminder earns a filter rule. Never fatal and
+    # never part of the answer: the shape returned below is pinned by tests and
+    # by the scheduler's run log, and what was mailed is in practice_email_log.
+    if mail_batch:
+        try:
+            from services import practice_mail_service
+            practice_mail_service.send_deadline_mails(firm_id, mail_batch, today=today)
+        except Exception:  # pragma: no cover - mail is best-effort
+            pass
     return {"escalated": sum(counts.values()), **counts}
 
 

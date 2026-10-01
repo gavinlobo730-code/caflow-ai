@@ -17,9 +17,10 @@ import os
 
 from models.common import api_response
 from core.permissions import rbac  # M1: applied to every endpoint below (was unauthenticated)
-from core.authz import assert_client_access, can_access_client  # M2: assignment scope
+from core.authz import assert_client_access, can_access_client, effective_client_ids  # M2: assignment scope
 import domain.portal_service as portal_svc
 from services import portal_data_service  # Phase 4.5.2: canonical AR (retires `transactions` dues)
+from services import portal_notice_service  # practice_management-02: tell both sides
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
 
@@ -90,13 +91,14 @@ def list_document_requests(
 
     res = (
         db.table("document_requests")
-        # `due_date` is not a column on document_requests and never has been —
-        # the table carries is_urgent as its only urgency signal. PostgREST
-        # rejects the whole select at parse time, so this endpoint returned 500
-        # on every call rather than degrading to a missing field. No caller
-        # reads a due date off a document request, so it is dropped rather than
-        # inventing a column to satisfy a select nobody depended on.
-        .select("id, firm_id, client_id, title, description, is_urgent, status, fulfilled_at, created_at")
+        # `due_date` was NOT a column here for the whole life of this endpoint —
+        # PostgREST rejects the whole select at parse time, so it returned 500 on
+        # every call — and it was dropped from this read rather than invented to
+        # satisfy a select nobody depended on. Migration 450 added it, because
+        # POST (below) declared it all along and the mail the client now gets
+        # says when the document is needed by; this read names it again.
+        .select("id, firm_id, client_id, title, description, is_urgent, status, "
+                "fulfilled_at, created_at, due_date")
         .eq("firm_id", firm_id)
         .eq("client_id", client_id)
         .order("created_at", desc=True)
@@ -124,13 +126,15 @@ def create_document_request(
             due_date=body.due_date,
             is_urgent=body.is_urgent,
         )
-        return api_response(True, record)
+        return api_response(True, {**record, "client_notice": portal_notice_service.document_requested(
+            firm_id, body.client_id, record)})
 
     now = _now()
     record = {
         "id": str(uuid.uuid4()),
         "firm_id": firm_id,
         "client_id": body.client_id,
+        "requested_by": current_user.get("id"),
         "title": body.title,
         "description": body.description,
         "due_date": body.due_date,
@@ -141,7 +145,13 @@ def create_document_request(
     }
 
     res = db.table("document_requests").insert(record).execute()
-    return api_response(True, res.data[0] if res.data else record)
+    written = res.data[0] if res.data else record
+    # practice_management-02: tell the client's portal contacts. The request is
+    # already saved, so this can never fail it, and the answer says whether the
+    # client was told — "created" and "the client knows" are two facts.
+    written = {**written, "client_notice": portal_notice_service.document_requested(
+        firm_id, body.client_id, written)}
+    return api_response(True, written)
 
 
 @router.put("/document-requests/{request_id}/complete")
@@ -197,7 +207,7 @@ def list_messages(
     # response. Mapping here keeps both paths returning the same thing.
     res = (
         db.table("portal_messages")
-        .select("id, firm_id, client_id, body, sender_type, created_at")
+        .select("id, firm_id, client_id, body, sender_type, is_read, created_at")
         .eq("firm_id", firm_id)
         .eq("client_id", client_id)
         .order("created_at", desc=True)
@@ -208,6 +218,9 @@ def list_messages(
             "id": m["id"], "firm_id": m["firm_id"], "client_id": m["client_id"],
             "text": m.get("body"),
             "from_ca": m.get("sender_type") == "ca",
+            # Whether the FIRM has opened it - meaningful for a message the
+            # client sent; a CA message's flag is the client's to set.
+            "is_read": bool(m.get("is_read")),
             "created_at": m.get("created_at"),
         }
         for m in (res.data or [])
@@ -231,6 +244,9 @@ def send_message(
             text=body.text,
             from_ca=body.from_ca,
         )
+        if body.from_ca:
+            record = {**record, "client_notice": portal_notice_service.ca_message_posted(
+                firm_id, body.client_id)}
         return api_response(True, record)
 
     now = _now()
@@ -248,14 +264,50 @@ def send_message(
 
     res = db.table("portal_messages").insert(row).execute()
     written = (res.data or [row])[0]
-    # Answer in the shape callers expect (see the read path's note).
-    return api_response(True, {
+    out = {
         "id": written["id"], "firm_id": written["firm_id"],
         "client_id": written["client_id"],
         "text": written.get("body"),
         "from_ca": written.get("sender_type") == "ca",
         "created_at": written.get("created_at"),
-    })
+    }
+    # practice_management-02: a message FROM the practice reaches the client's
+    # portal contacts by mail (the words stay on the portal). Only a CA message:
+    # this door also lets the body name `from_ca: false`, and a mail telling
+    # the client "your accountant wrote to you" about that would be a lie.
+    if written.get("sender_type") == "ca":
+        out["client_notice"] = portal_notice_service.ca_message_posted(firm_id, body.client_id)
+    return api_response(True, out)
+
+
+class MarkThreadReadBody(BaseModel):
+    client_id: str
+
+
+@router.get("/unread")
+def unread_portal_messages(current_user: dict = Depends(rbac("portal", "read"))):
+    """Client messages nobody at the firm has opened, per client - the firm-wide
+    count, so staff do not have to open each client's tab to find out who wrote.
+    Narrowed to the caller's own book (`effective_client_ids`: None is firm-wide,
+    an empty set is nothing)."""
+    return api_response(True, portal_notice_service.unread_summary(
+        current_user["firm_id"], effective_client_ids(current_user)))
+
+
+@router.post("/messages/read")
+def mark_thread_read(body: MarkThreadReadBody,
+                     current_user: dict = Depends(rbac("portal", "write"))):
+    """The firm has opened this client's thread: mark what the client sent as
+    read. Only `is_read` / `read_at` change, and only on the CLIENT's messages.
+
+    `portal:write`, which is the tier that can answer the thread: a role that
+    may only READ the messages sees the count and does not clear it for
+    everybody else (the firm-wide flag is one per message, not one per reader),
+    and `tests/test_write_requires_write_permission.py` is right that a route
+    which changes a row is not satisfied by a read-level action."""
+    assert_client_access(current_user, body.client_id)
+    marked = portal_notice_service.mark_thread_read(current_user["firm_id"], body.client_id)
+    return api_response(True, {"marked_read": marked})
 
 
 # ── Dues ──────────────────────────────────────────────────────────────────────

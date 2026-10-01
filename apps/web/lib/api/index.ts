@@ -65,6 +65,44 @@ export type FirmProfile = {
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+/** One kind of practice mail a person can switch on or off
+ *  (`GET /api/notifications/email-preferences`). The vocabulary and the
+ *  defaults are the server's (`domain/practice_notices`) and this screen
+ *  holds neither. `is_default` is false only where the person chose. */
+export interface EmailPreferenceEvent {
+  event_type: string;
+  label: string;
+  description: string;
+  email_enabled: boolean;
+  is_default: boolean;
+  default_email: boolean;
+}
+
+export interface EmailLogRow {
+  id: string;
+  event_type: string;
+  ref_type: string | null;
+  ref_id: string | null;
+  tier: string | null;
+  sent_for_date: string;
+  status: "sent" | "failed";
+  created_at: string;
+}
+
+/** What a portal screen is told about the CLIENT's own notice: created and
+ *  "the client knows" are two facts (`services/portal_notice_service`). */
+export interface ClientNotice {
+  contacts: number;
+  emailed: number;
+  reason: string | null;
+}
+
+/** A client's unread messages, per client (`GET /api/portal/unread`). */
+export interface PortalUnreadSummary {
+  unread_total: number;
+  clients: { client_id: string; client_name: string | null; unread: number; latest_at: string | null }[];
+}
+
 /** `GET /api/security/posture` — booleans, counts and fixed sentences. Every
  *  field but the two lists is a scalar; the lists are named in
  *  `objectWithLists` at the setter. */
@@ -4334,6 +4372,17 @@ export const api = {
     markRead: (id: string) => request(`/api/notifications/${id}/read`, { method: "PATCH" }),
     markAllRead: () => request("/api/notifications/read-all", { method: "PATCH" }),
     stats: () => request("/api/notifications/stats"),
+    /** Which of the practice's own mail THIS person gets, event by event, and
+     *  whether they chose it or it is the event's default. */
+    emailPreferences: () =>
+      request<ApiResp<{ events: EmailPreferenceEvent[] }>>("/api/notifications/email-preferences"),
+    setEmailPreference: (event_type: string, email_enabled: boolean) =>
+      request<ApiResp<{ events: EmailPreferenceEvent[] }>>("/api/notifications/email-preferences", {
+        method: "PUT", body: JSON.stringify({ event_type, email_enabled }),
+      }),
+    /** The mails the product sent THIS person: "why did I not get it?". */
+    emailLog: (limit = 50) =>
+      request<ApiResp<{ sent: EmailLogRow[] }>>(`/api/notifications/email-log?limit=${limit}`),
   },
   copilot: {
     chat: (body: { message: string; conversation_history: unknown[]; context?: string }) =>
@@ -5115,6 +5164,13 @@ export const api = {
       request(`/api/portal/document-requests/${id}/complete`, { method: "PUT" }),
     getMessages: (firmId: string, clientId: string) =>
       request(`/api/portal/messages?firm_id=${firmId}&client_id=${clientId}`),
+    /** Firm-wide: how many client messages nobody at the firm has opened. */
+    unreadMessages: () => request<ApiResp<PortalUnreadSummary>>("/api/portal/unread"),
+    /** The firm has opened this client's thread. */
+    markThreadRead: (clientId: string) =>
+      request<ApiResp<{ marked_read: number }>>("/api/portal/messages/read", {
+        method: "POST", body: JSON.stringify({ client_id: clientId }),
+      }),
     sendMessage: (data: {
       firm_id: string;
       client_id: string;

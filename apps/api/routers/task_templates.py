@@ -136,6 +136,21 @@ def instantiate_template(
 
     task = result.data[0]
 
+    # A task handed to somebody is an assignment however it was made, and the
+    # other two doors (POST /api/tasks and PATCH) tell the assignee — in the app
+    # and by mail (practice_management-03). This one told nobody. The assignee
+    # is resolved through the firm-scoped repository, so a request cannot name
+    # another firm's user and have a mail sent to them.
+    if body.assignee_id:
+        try:
+            from repositories.user_repository import user_repo
+            from services.notification_service import notification_service
+            assignee = user_repo.find_by_id(body.assignee_id, firm_id=firm_id)
+            if assignee:
+                notification_service.notify_task_assigned(task, assignee, current_user)
+        except Exception:
+            pass
+
     if tpl.get("tags"):
         for tag in tpl["tags"]:
             try:

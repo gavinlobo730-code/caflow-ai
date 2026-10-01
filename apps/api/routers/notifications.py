@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
@@ -18,6 +18,55 @@ class NotificationCreate(BaseModel):
     client_id: Optional[str] = None
     action_url: Optional[str] = None
     metadata: Optional[dict] = None
+
+
+class EmailPreferenceIn(BaseModel):
+    event_type: str
+    email_enabled: bool
+
+
+def _me(current_user: dict) -> str:
+    uid = current_user.get("id")
+    if not uid:
+        raise HTTPException(status_code=400, detail="Your account could not be resolved.")
+    return str(uid)
+
+
+@router.get("/email-preferences")
+def get_email_preferences(current_user: dict = Depends(rbac("notification", "read"))):
+    """Which of the practice's own mail THIS person gets, event by event, and
+    whether they chose it or it is the event's default (practice_management-03).
+    Always the caller's own: there is no user id to pass, so there is nothing to
+    tamper with, and a Partner does not edit a colleague's mail."""
+    from services import practice_mail_service
+    return api_response(True, {"events": practice_mail_service.effective_preferences(
+        current_user["firm_id"], _me(current_user))})
+
+
+@router.put("/email-preferences")
+def set_email_preference(body: EmailPreferenceIn,
+                         current_user: dict = Depends(rbac("notification", "write"))):
+    """Switch one kind of mail on or off for the caller. An event the product
+    does not define is refused with a sentence, not stored."""
+    from services import practice_mail_service
+    me = _me(current_user)
+    try:
+        practice_mail_service.set_preference(
+            current_user["firm_id"], me, body.event_type, body.email_enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return api_response(True, {"events": practice_mail_service.effective_preferences(
+        current_user["firm_id"], me)})
+
+
+@router.get("/email-log")
+def get_email_log(limit: int = 50,
+                  current_user: dict = Depends(rbac("notification", "read"))):
+    """The mails the product sent THIS person, newest first - the answer to
+    "why did I not get it?" (a skipped mail is the absence of a row)."""
+    from services import practice_mail_service
+    return api_response(True, {"sent": practice_mail_service.recent_log(
+        current_user["firm_id"], _me(current_user), limit)})
 
 
 @router.get("")

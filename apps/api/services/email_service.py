@@ -2,6 +2,7 @@
 Email delivery via Resend API.
 All transactional emails for task lifecycle, invoice, compliance, and onboarding events.
 """
+import html as _html
 import os
 import re
 import logging
@@ -298,6 +299,121 @@ def send_escalation_alert(to: str, manager_name: str, task_title: str, assignee_
     </table>
     """
     return _send(to, subject, html)
+
+
+# ── The practice's own notices that are not one task or one obligation ───────
+#
+# Everything below ESCAPES what it interpolates: a client's name, a task's title
+# and a portal message's sender are all typed by somebody, and a mail body is
+# HTML. The four older notices above interpolate raw and are left as they were —
+# `test_internal_notifications_are_unchanged` pins their exact wire shape.
+
+def _esc(value: object) -> str:
+    return _html.escape(str(value if value is not None else ""), quote=True)
+
+
+def _oneline(value: object) -> str:
+    """A value fit for a SUBJECT: one line, no control characters. The subject
+    is a JSON field to the provider, so this is hygiene, not an injection fix."""
+    return re.sub(r"[\x00-\x1f\x7f\s]+", " ", str(value if value is not None else "")).strip()
+
+
+def send_attention_digest(to: str, recipient_name: str, subject: str, intro: str,
+                          groups: list[tuple[str, list[str]]],
+                          link: Optional[str] = None) -> bool:
+    """ONE mail listing everything that needs a person's attention after a sweep.
+
+    A practice with sixty clients has sixty GSTR-3Bs due on the 20th, and the
+    7-day tier reaches all of them on the 13th — sixty mails to the preparer is
+    how a deadline reminder gets a filter rule. So the sweeps send one mail per
+    recipient and the single-item functions above are used only where there is
+    exactly one thing to say.
+
+    `groups` is `[(heading, [line, ...]), ...]`; nothing here knows what a line
+    means. Internal mail: the product's own sender, no Reply-To, like every
+    other staff notice.
+    """
+    body = "".join(
+        f"<p><strong>{_esc(heading)}</strong></p><ul>"
+        + "".join(f"<li>{_esc(line)}</li>" for line in lines)
+        + "</ul>"
+        for heading, lines in groups if lines
+    )
+    open_link = (f'<p><a href="{_esc(link)}">Open PracticeSync AI</a></p>'
+                 if link else "<p>Log in to PracticeSync AI to action these.</p>")
+    html = f"<p>Hi {_esc(recipient_name or 'there')},</p><p>{_esc(intro)}</p>{body}{open_link}"
+    return _send(to, _oneline(subject), html)
+
+
+def send_client_wrote_to_staff(to: str, recipient_name: str, client_name: str,
+                               link: str) -> bool:
+    """A client posted a message on the portal. The BODY is not in the mail: a
+    message is the client's own business, mail is not a secure channel, and the
+    in-app notification inside the authenticated app is where the words are."""
+    subject = _oneline(f"New portal message from {client_name}")
+    html = (f"<p>Hi {_esc(recipient_name or 'there')},</p>"
+            f"<p><strong>{_esc(client_name)}</strong> sent you a message on the client portal.</p>"
+            f'<p><a href="{_esc(link)}">Read it in PracticeSync AI</a></p>')
+    return _send(to, subject, html)
+
+
+def send_document_request_notice(
+    to: str,
+    contact_name: str,
+    firm_name: str,
+    request_title: str,
+    is_urgent: bool,
+    due_date: Optional[str],
+    login_url: str,
+    *,
+    sender_name: Optional[str] = None,
+    reply_to: Optional[str] = None,
+) -> bool:
+    """Tell a client's portal contact their accountant has asked for something.
+
+    THE PRACTICE IS THE SENDER (practice_management-04): this is the practice
+    writing to its own client, so the From name is the practice's and a reply
+    reaches it. It is NOT an invoice-type mail and names no client's customer.
+
+    The wording says where to SEE the request and never offers to upload against
+    it: the portal's document upload is deliberately not built
+    (routers/portal_data.portal_document_requests), and a mail promising a
+    button that is not there is worse than no mail.
+
+    Built-in wording only — the firm's own `document_request` template is NOT
+    applied (see domain/branding/email_template.KIND_NOT_LIVE_REASON).
+    """
+    urgent = "<p><strong>This request is marked urgent.</strong></p>" if is_urgent else ""
+    needed = (f"<tr><td><strong>Needed by</strong></td><td>{_esc(due_date)}</td></tr>"
+              if due_date else "")
+    subject = _oneline(
+        f"{'Urgent: ' if is_urgent else ''}{firm_name} has asked you for: {request_title}")
+    html = (f"<p>Dear {_esc(contact_name or 'Client')},</p>"
+            f"<p><strong>{_esc(firm_name)}</strong> has asked you for a document.</p>"
+            f"{urgent}"
+            f'<table cellpadding="8"><tr><td><strong>Request</strong></td>'
+            f"<td>{_esc(request_title)}</td></tr>{needed}</table>"
+            f'<p><a href="{_esc(login_url)}">Sign in to your portal</a> to see the details, '
+            f"or reply to this email.</p>")
+    return _send(to, subject, html, sender_name=sender_name, reply_to=reply_to)
+
+
+def send_portal_message_notice(
+    to: str,
+    contact_name: str,
+    firm_name: str,
+    login_url: str,
+    *,
+    sender_name: Optional[str] = None,
+    reply_to: Optional[str] = None,
+) -> bool:
+    """Tell a client's portal contact their accountant has written to them.
+    The message itself stays on the portal — see `send_client_wrote_to_staff`."""
+    subject = _oneline(f"New message from {firm_name}")
+    html = (f"<p>Dear {_esc(contact_name or 'Client')},</p>"
+            f"<p><strong>{_esc(firm_name)}</strong> sent you a message on your client portal.</p>"
+            f'<p><a href="{_esc(login_url)}">Sign in to read it</a>, or reply to this email.</p>')
+    return _send(to, subject, html, sender_name=sender_name, reply_to=reply_to)
 
 
 def send_firm_invite(to: str, firm_name: str, inviter_name: str, role: str, invite_link: str) -> bool:

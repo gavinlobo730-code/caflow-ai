@@ -122,8 +122,14 @@ BUDGET: dict[str, int] = {
     # and tested, with no screen at all — the plan's own "you already own
     # more analysis than the product shows". `/practice/profitability`
     # reaches both.
+    # /api/portal 5 -> 3 on 01-10-2026 (practice_management-02): the staff
+    # client-portal screen wrote `document_requests` straight over PostgREST
+    # because `POST /api/portal/document-requests` failed on every call (it
+    # named a column the table lacked, repaired by migration 450). It goes
+    # through the API now, so that door is reached, and the new unread count and
+    # mark-read endpoints are reached from the same screen.
     "/api/analytics": 3, "/api/automation": 5, "/api/gst-portal": 5,
-    "/api/itr": 5, "/api/lifecycle": 5, "/api/portal": 5,
+    "/api/itr": 5, "/api/lifecycle": 5, "/api/portal": 3,
     # /api/risks 5 -> 3 on 24-09-2026: `app/risks/page.tsx` derived its
     # whole register in the browser from six PostgREST reads and called no
     # endpoint on this prefix at all. It asks GET /register now, and the
