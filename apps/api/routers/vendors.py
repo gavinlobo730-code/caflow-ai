@@ -15,6 +15,7 @@ from pydantic import BaseModel, ValidationError
 from models.common import api_response
 from domain.party_duplicates import possible_duplicates, same_party_sentence
 from models.parties import VendorIn, VendorUpdateIn
+from domain.tds.section_rates import threshold_class_problem
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services import party_erasure
@@ -228,6 +229,13 @@ def create_vendor(
         # opening balances into a journal the caller's firm can post.
         assert_client_access(current_user, vendor_in.client_id)
         payload = vendor_in.model_dump()
+        # TDS-30 / migration 454. An UNSET class is not sent at all, so a
+        # supplier created with none writes exactly what it wrote before the
+        # column existed — and does not depend on the migration having landed
+        # first. A write naming a column production lacks is rejected whole
+        # (PGRST204), and "no class" is the overwhelmingly common case.
+        if payload.get("interest_threshold_class") is None:
+            payload.pop("interest_threshold_class", None)
         payload["firm_id"] = current_user.get("firm_id")
         payload["is_active"] = True
         payload["created_at"] = datetime.now(timezone.utc).isoformat()
@@ -466,6 +474,13 @@ def create_vendors_bulk(
             continue
 
         payload = vendor_in.model_dump()
+        # TDS-30 / migration 454. An UNSET class is not sent at all, so a
+        # supplier created with none writes exactly what it wrote before the
+        # column existed — and does not depend on the migration having landed
+        # first. A write naming a column production lacks is rejected whole
+        # (PGRST204), and "no class" is the overwhelmingly common case.
+        if payload.get("interest_threshold_class") is None:
+            payload.pop("interest_threshold_class", None)
         # Shape AND check digit, the same test create_vendor applies (GST-29).
         # A CSV import is where a transposed GSTIN is most likely to arrive,
         # and on the purchase side a wrong supplier GSTIN is what the 2B
@@ -663,6 +678,20 @@ def update_vendor(
         # can post a real GL journal, so the refusal must land before that fetch
         # even decides whether anything changed, let alone before the update.
         prior = _load_vendor_or_404(current_user, vendor_id)
+
+        # TDS-30. The model judged the §194A limit class against the section
+        # only where one request carried both. A PATCH carrying just the
+        # section — moving a supplier off 194A — would otherwise leave a stale
+        # 'bank_deposit' on a row whose section cannot honour it, and every
+        # later bill would refuse. Asked of the MERGED row, so the stale class
+        # is caught at the edit that makes it stale.
+        if "tds_section" in data or "interest_threshold_class" in data:
+            _class_problem = threshold_class_problem(
+                data.get("tds_section", prior.get("tds_section")),
+                data.get("interest_threshold_class",
+                         prior.get("interest_threshold_class")))
+            if _class_problem:
+                raise HTTPException(status_code=422, detail=_class_problem)
 
         if _USE_MOCK:
             for i, v in enumerate(MOCK_VENDORS):

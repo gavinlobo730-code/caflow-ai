@@ -25,11 +25,42 @@ import {
   computeReturnFromBooks, approveTDSReturn, markTDSFiled,
   saveTDSReturn, downloadTDSJSON, currentFinancialYear, currentQuarter,
   type TDSReturnPayload, type TDSReturnStatus, type TDSQuarter, type TDSReturnType,
+  type TDSDeductee,
 } from "@/lib/data/tds";
 import { Callout, GapList } from "@/components/ui/callout";
 
 function r(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
+}
+
+/** TDS-31. The s.393 payment code one row carries, as the SERVER answered it.
+ *
+ *  Three states and they are not interchangeable. A code is shown (with a star
+ *  where it rests on a stated default — s.192's 1002 assumes a non-government
+ *  deductor, and the sentence is the tooltip). A gap is shown as "not held" with
+ *  the server's reason, because that row has to be keyed by hand. Neither is
+ *  shown as a dash: a 1961-Act statement asks for no code, and a dash there
+ *  must not read as a row that is missing one. */
+function PaymentCodeCell({ d }: { d: TDSDeductee }) {
+  if (d.payment_code) {
+    return (
+      <span className="font-mono" title={d.payment_code_assumption ?? undefined}>
+        {d.payment_code}{d.payment_code_assumption ? " *" : ""}
+      </span>
+    );
+  }
+  if (d.payment_code_gap) {
+    return <span className="text-state-attention" title={d.payment_code_gap}>not held</span>;
+  }
+  return <span className="text-ps-label">—</span>;
+}
+
+/** Whether the statement asks for a payment code at all — true once ANY row
+ *  carries one or says why not. Derived from what the server sent rather than
+ *  from the form number, so this screen holds no copy of which periods are
+ *  2025-Act ones. */
+function asksForPaymentCode(rows: TDSDeductee[] | undefined): boolean {
+  return (rows ?? []).some(d => Boolean(d.payment_code) || Boolean(d.payment_code_gap));
 }
 
 const STATUS_CONFIG: Record<TDSReturnStatus, { label: string; color: string }> = {
@@ -401,6 +432,9 @@ export default function TDSReturnsPage() {
                         <th className="text-left px-3 py-2 text-ps-label">Name</th>
                         <th className="text-left px-3 py-2 text-ps-label font-mono">PAN</th>
                         <th className="text-left px-3 py-2 text-ps-label">Section</th>
+                        {asksForPaymentCode(result.deductees) && (
+                          <th className="text-left px-3 py-2 text-ps-label">Payment code</th>
+                        )}
                         <th className="text-right px-3 py-2 text-ps-label">Payment</th>
                         <th className="text-right px-3 py-2 text-ps-label">Rate</th>
                         <th className="text-right px-3 py-2 text-ps-label">TDS Deducted</th>
@@ -415,6 +449,9 @@ export default function TDSReturnsPage() {
                           <td className="px-3 py-2">
                             <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">{d.section}</span>
                           </td>
+                          {asksForPaymentCode(result.deductees) && (
+                            <td className="px-3 py-2"><PaymentCodeCell d={d} /></td>
+                          )}
                           <td className="px-3 py-2 text-right">{r(d.payment_amount_paise)}</td>
                           <td className="px-3 py-2 text-right">{d.tds_rate_pct}%</td>
                           <td className="px-3 py-2 text-right font-semibold">{r(d.tds_deducted_paise)}</td>
@@ -424,7 +461,7 @@ export default function TDSReturnsPage() {
                     </tbody>
                     <tfoot className="bg-ps-bg border-t border-ps-border font-semibold">
                       <tr>
-                        <td colSpan={3} className="px-3 py-2">Total</td>
+                        <td colSpan={asksForPaymentCode(result.deductees) ? 4 : 3} className="px-3 py-2">Total</td>
                         <td className="px-3 py-2 text-right">{r(result.total_payment_paise ?? result.total_salary_paise ?? 0)}</td>
                         <td />
                         <td className="px-3 py-2 text-right text-blue-700">{r(result.total_tds_deducted_paise)}</td>
@@ -516,6 +553,9 @@ export default function TDSReturnsPage() {
                               </th>
                               <th className="text-left px-3 py-1.5 text-ps-label font-mono">PAN</th>
                               <th className="text-left px-3 py-1.5 text-ps-label">Section</th>
+                              {asksForPaymentCode(result.deductees) && (
+                                <th className="text-left px-3 py-1.5 text-ps-label">Payment code</th>
+                              )}
                               <th className="text-right px-3 py-1.5 text-ps-label">Amount</th>
                               <th className="text-right px-3 py-1.5 text-ps-label">Rate</th>
                               <th className="text-right px-3 py-1.5 text-ps-label">TDS</th>
@@ -527,6 +567,9 @@ export default function TDSReturnsPage() {
                                 <td className="px-3 py-1.5">{d.deductee_name}</td>
                                 <td className="px-3 py-1.5 font-mono">{d.deductee_pan}</td>
                                 <td className="px-3 py-1.5">{d.section}</td>
+                                {asksForPaymentCode(result.deductees) && (
+                                  <td className="px-3 py-1.5"><PaymentCodeCell d={d} /></td>
+                                )}
                                 <td className="px-3 py-1.5 text-right">{r(d.payment_amount_paise)}</td>
                                 <td className="px-3 py-1.5 text-right">{d.tds_rate_pct}%</td>
                                 <td className="px-3 py-1.5 text-right font-semibold">{r(d.tds_deducted_paise)}</td>

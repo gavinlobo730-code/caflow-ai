@@ -38,6 +38,19 @@ export interface TDSDeductee {
    *  this field. Optional only because a payload saved before TDS-17 has no
    *  such key. */
   section_1961?: string;
+  /** TDS-31. The s.393 payment code this row carries on a Form 138/140/144
+   *  statement (Income-tax Act 2025, from FY 2026-27), where the Protean
+   *  specification answers it. Null on a 1961-Act statement — which asks for
+   *  none — and on a row the table does not answer, and `payment_code_gap`
+   *  says which of the two. Optional only because a payload saved before the
+   *  field existed has no such key, and that is NOT a row with nothing held. */
+  payment_code?: string | null;
+  /** WHY a 2025-Act row has no code, in the server's words. Null both where a
+   *  code is held and where the period asks for none. */
+  payment_code_gap?: string | null;
+  /** A code held on a STATED DEFAULT (s.192's 1002 assumes a non-government
+   *  deductor). Shown beside the code, not hidden behind it. */
+  payment_code_assumption?: string | null;
   nature_of_payment: string;
   payment_date: string;
   payment_amount_paise: number;
@@ -303,6 +316,13 @@ export interface TDSSection {
    *  behaviour that existed before the flag. */
   vendor_eligible?: boolean;
   section_197_eligible?: boolean;
+  /** TDS-30. The limits a CA may record on a supplier for this section, as the
+   *  server serves them — empty for every section but 194A, whose ₹10,000 /
+   *  ₹50,000 / ₹1,00,000 hang on who pays and who is paid. Keys, labels and
+   *  amounts are all the server's: a screen that spelled "senior citizen" as
+   *  its own option would be offering ₹1,00,000 to a payee whose payer is not
+   *  a bank. Optional so a frontend ahead of the backend renders no picker. */
+  threshold_classes?: { key: string; label: string; threshold_paise: number }[];
 }
 
 export interface TDSAmountResult {
@@ -315,6 +335,10 @@ export interface TDSAmountResult {
   tds_applicable: boolean;
   applicable_rate_pct: number;
   tds_paise: number;
+  /** The class that moved the limit, or null — what was APPLIED, which is not
+   *  always what was asked (a class is ignored for a year before the raised
+   *  limits). `threshold_paise` is the limit the payment was tested against. */
+  threshold_class?: string | null;
 }
 
 /** IT Act Chapter XVII-B section list with current thresholds/rates — the
@@ -336,6 +360,9 @@ export async function computeTdsAmount(params: {
   payment_amount_paise: number;
   pan?: string | null;
   fy?: string;
+  /** s.194A(3)(i)'s limit class, when the supplier has one recorded — so the
+   *  calculator beside the picker answers what the bill will. */
+  threshold_class?: string | null;
 }): Promise<TDSAmountResult> {
   const resp = await authedFetch<TDSAmountResult>("/api/tds/compute-amount", {
     method: "POST",

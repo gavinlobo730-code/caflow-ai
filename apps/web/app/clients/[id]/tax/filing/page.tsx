@@ -72,8 +72,19 @@ const ITR_FORMS_FALLBACK = ["ITR-1", "ITR-2", "ITR-3", "ITR-4", "ITR-5", "ITR-6"
 // often has business income here, so ITR-3 is the safer default over the
 // presumptive-only ITR-4 — either way this is a STARTING point the CA can
 // still change in the picker below, never a computed answer.
+//
+// THE SERVER NOW ANSWERS THIS (`default_itr_form` on the same assessee-kind
+// response — `assessee.DEFAULT_ITR_FORM` is the authority), and this map is the
+// FALLBACK for the window where the frontend has redeployed ahead of the
+// backend, the Schedule III caption shape. It is pinned from the Python side
+// against that table (tests/test_a_huf_aop_and_boi_have_their_own_tax_basis.py).
+// A HUF starts on ITR-2 (ITR-1 is an individual's alone) and an AOP or a BOI on
+// ITR-5 with the firms.
 const FORM_BY_ASSESSEE_KIND: Record<string, string> = {
   individual: "ITR-3",
+  huf: "ITR-2",
+  aop: "ITR-5",
+  boi: "ITR-5",
   firm: "ITR-5",
   llp: "ITR-5",
   domestic_company: "ITR-6",
@@ -276,7 +287,10 @@ export default function ITRFilingPage() {
     apiFetch(`/api/income-tax/assessee-kind?entity_type=${encodeURIComponent(entity.entityType)}`)
       .then((r) => {
         if (cancelled || !r?.success) return;
-        const mapped = FORM_BY_ASSESSEE_KIND[r.data?.kind as string];
+        const served = r.data?.default_itr_form;
+        const mapped = (typeof served === "string" && served)
+          ? served
+          : FORM_BY_ASSESSEE_KIND[r.data?.kind as string];
         if (mapped) {
           setForm(mapped);
           formDefaultApplied.current = true;

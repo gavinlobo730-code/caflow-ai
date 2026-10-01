@@ -13,6 +13,14 @@ class EntityType(str, Enum):
     TRUST = "Trust"
     SOCIETY = "Society"
     INDIVIDUAL = "Individual"
+    # Migration 453. Three assessees the Act taxes on a basis of their own
+    # (domain/income_tax/assessee.py): a HUF gets no s.87A rebate, no s.16(ia)
+    # and no senior-citizen slab, and an AOP or a BOI is charged under s.167B,
+    # at the maximum marginal rate where its members' shares are indeterminate
+    # or a member's own income is above the exemption limit.
+    HUF = "HUF"
+    AOP = "AOP"
+    BOI = "BOI"
 
 
 class ClientStatus(str, Enum):

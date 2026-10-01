@@ -56,7 +56,11 @@ most-likely-to-flag) figure is used, so the tool over-flags rather than
 silently under-deducts; the CA reviews every figure before filing anyway:
   * 194A: ₹10,000 is the "any other payer" threshold. Banks/co-op/post
     office: ₹50,000; senior-citizen payees: ₹1,00,000 (both Finance Act
-    2025). Payer type isn't modelled, so the lowest applies.
+    2025). The two higher limits are now MODELLED as classes a CA records on
+    the supplier (`class_thresholds_paise`, TDS-30) and the ₹10,000 is what a
+    supplier with none takes — still the lowest, the direction that cannot
+    under-deduct. The ₹1,00,000 reaches a senior citizen ONLY where the payer
+    is a bank, co-operative bank or post office.
   * 194I: the Finance Act 2025 limit is ₹50,000 per month or part thereof
     (was ₹2,40,000 per year). Modelled as a per-payment threshold, which
     matches the statute for the ordinary monthly-rent-bill case; a single
@@ -178,6 +182,158 @@ class TDSSectionRule:
     # while an excess is the payee's to reclaim. So the higher rate is the
     # honest default and a guessed concessional rate is not.
     rate_gap: str | None = None
+    # A THRESHOLD THAT DEPENDS ON WHO PAYS AND WHO IS PAID, keyed by class (TDS-30).
+    # None on every section but one: §194A is the only entry here whose limit
+    # moves with the payer's and the payee's kind. Each value replaces BOTH
+    # limbs (the single payment and the FY aggregate) where the statute names
+    # one amount for both, which §194A(3)(i) does.
+    #
+    # The class is a FACT a CA RECORDS on the supplier, never derived from the
+    # amount or the PAN — a senior citizen is an age and a deposit with a bank
+    # is a fact about the instrument, and neither is held by anything else in
+    # this product. The default (no class) is the LOWEST limit, which is the
+    # direction that cannot under-deduct. See "THE THREE THINGS A VENDOR CAN
+    # SAY" below.
+    class_thresholds_paise: dict[str, int] | None = None
+
+
+#: THE THREE THINGS A VENDOR CAN SAY ABOUT ITS §194A INTEREST (TDS-30).
+#:
+#: §194A(3)(i) sets TWO different limits and they hang on TWO different facts,
+#: so there are exactly three answers and not four:
+#:
+#:   * THE PAYER is a banking company, a co-operative society engaged in
+#:     banking, or a post office, and the interest is on a deposit — ₹50,000
+#:     (FA 2025, from ₹40,000), or ₹1,00,000 where the PAYEE is a senior
+#:     citizen (from ₹50,000);
+#:   * anyone else paying interest other than on securities — ₹10,000 (FA 2025,
+#:     from ₹5,000), whoever is paid.
+#:
+#: THE SENIOR-CITIZEN LIMIT IS NOT A PAYEE-ONLY CONCESSION, and that is the
+#: part the finding's own wording ("bank, senior citizen, other" as payee
+#: classes) would have got wrong: it exists only inside the first limb. A
+#: company paying a pensioner interest on an unsecured loan withholds at
+#: ₹10,000 exactly as it would for anybody else. Granting ₹1,00,000 on the
+#: payee's age alone would UNDER-deduct on the commonest §194A payment a
+#: practice sees — and an under-deduction disallows 30% of the expenditure
+#: under §40(a)(ia) with §201(1) and §201(1A) on top, where an over-deduction
+#: is the payee's to reclaim. So the class is the PRODUCT of the two facts,
+#: the way Donation80G's four categories are, and `senior` alone is not an
+#: answer.
+#:
+#: And interest paid TO a bank is a third thing altogether: §194A(3)(iii)
+#: exempts it outright, at no threshold. That is not modelled here — it is a
+#: reason to leave TDS off the supplier, not a limit to lower.
+#:
+#: `ordinary` is a STATEMENT ("this is not a bank deposit"), distinct from
+#: NULL ("nobody said"): both resolve to ₹10,000, and the word exists because a
+#: PATCH cannot set a column back to NULL, so without it a CA who recorded the
+#: wrong class could never take it back.
+THRESHOLD_CLASS_ORDINARY = "ordinary"
+THRESHOLD_CLASS_BANK_DEPOSIT = "bank_deposit"
+THRESHOLD_CLASS_BANK_DEPOSIT_SENIOR = "bank_deposit_senior"
+
+THRESHOLD_CLASS_LABELS: dict[str, str] = {
+    THRESHOLD_CLASS_ORDINARY:
+        "Ordinary — interest paid by anyone other than a bank, co-operative "
+        "bank or post office (₹10,000)",
+    THRESHOLD_CLASS_BANK_DEPOSIT:
+        "Deposit with a bank, co-operative bank or post office (₹50,000)",
+    THRESHOLD_CLASS_BANK_DEPOSIT_SENIOR:
+        "Deposit with a bank, co-operative bank or post office — payee is a "
+        "senior citizen (₹1,00,000)",
+}
+
+#: THE FIRST FINANCIAL YEAR THE TWO RAISED LIMITS EXIST IN (TDS-30).
+#:
+#: Finance Act 2025 raised §194A(3)(i)'s limits from ₹40,000 / ₹50,000 to
+#: ₹50,000 / ₹1,00,000 with effect from 01-04-2025. This registry holds
+#: 2025-26 onwards, and `tds_rates_for` SUBSTITUTES the latest verified year for
+#: an earlier one — so without this a bill for FY 2024-25 entered late would
+#: have taken ₹50,000 / ₹1,00,000 from a year that had ₹40,000 / ₹50,000. A
+#: class recorded on a vendor is therefore IGNORED for an earlier year, and the
+#: figure is exactly what it was before this class existed (the substituted
+#: year's ₹10,000, with the substitution named by `fy_rate_gap`). The same fork
+#: shape as `SECTION_194T_FIRST_FY` and `SECTION_206C_1H_CEASED_FROM_FY`.
+SECTION_194A_CLASS_THRESHOLDS_FIRST_FY = "2025-26"
+
+#: `[S]`-GRADED, AND SAID SO ON THE CONSTANT. Both figures are the ones this
+#: file's own comment on the 194A entry has recorded since Finance Act 2025
+#: ("Banks/co-op/post office: ₹50,000; senior-citizen payees: ₹1,00,000"),
+#: carried here from the repository's own record rather than read from the Act —
+#: egress is refused in this environment, so neither the section nor the
+#: Finance Act could be opened. `tests/test_a_194a_limit_depends_on_who_pays_and_
+#: who_is_paid.py` pins each exactly. False means exactly that and no more.
+THRESHOLD_CLASSES_194A_VERIFIED = False
+
+_194A_CLASS_THRESHOLDS: dict[str, int] = {
+    THRESHOLD_CLASS_BANK_DEPOSIT: 50_000_00,
+    THRESHOLD_CLASS_BANK_DEPOSIT_SENIOR: 1_00_000_00,
+}
+
+
+def class_thresholds_in_force(fy: str | None = None) -> bool:
+    """Whether the raised §194A limits exist in the year being asked about —
+    judged on the year REQUESTED, never the year `tds_rates_for` substituted."""
+    key = fy or current_fy()
+    try:
+        return int(str(key)[:4]) >= int(SECTION_194A_CLASS_THRESHOLDS_FIRST_FY[:4])
+    except (TypeError, ValueError):
+        return False
+
+
+def threshold_classes_for(section: str, fy: str | None = None) -> list[dict]:
+    """The classes a CA may record for a section, as the screen offers them —
+    empty for every section that has none. Served by `GET /api/tds/sections`
+    so no screen spells a limit or a label."""
+    rule = tds_rates_for(fy).sections.get((section or "").upper().strip())
+    if rule is None or not rule.class_thresholds_paise:
+        return []
+    ordinary = rule.single_threshold_paise
+    out = [{"key": THRESHOLD_CLASS_ORDINARY,
+            "label": THRESHOLD_CLASS_LABELS[THRESHOLD_CLASS_ORDINARY],
+            "threshold_paise": ordinary}]
+    for key, paise in rule.class_thresholds_paise.items():
+        out.append({"key": key, "label": THRESHOLD_CLASS_LABELS[key],
+                    "threshold_paise": paise})
+    return out
+
+
+ALL_THRESHOLD_CLASSES: tuple[str, ...] = (
+    THRESHOLD_CLASS_ORDINARY, THRESHOLD_CLASS_BANK_DEPOSIT,
+    THRESHOLD_CLASS_BANK_DEPOSIT_SENIOR)
+
+
+def threshold_class_problem(section: str | None, klass: str | None) -> str | None:
+    """What is wrong with recording `klass` against `section`, or None.
+
+    ONE QUESTION, ASKED AT EVERY DOOR. The vendor models ask it where both are
+    in the request; the PATCH route asks it of the MERGED row, because a
+    PATCH carrying only the section would otherwise slip a stale class past a
+    model that never sees the stored one. `resolve_tds` raises the same refusal
+    last of all, for a row that arrived another way.
+
+    `None` and `ordinary` are always acceptable — they are the section's own
+    limit, which every section has. A section is not required: a class
+    recorded before the section is, is judged when the section arrives.
+    """
+    if klass is None or klass == "" or klass == THRESHOLD_CLASS_ORDINARY:
+        return None
+    if klass not in ALL_THRESHOLD_CLASSES:
+        return (f"interest_threshold_class must be one of "
+                f"{', '.join(ALL_THRESHOLD_CLASSES)} (got '{klass}'). It "
+                f"decides which of s.194A(3)(i)'s limits a supplier's interest "
+                f"is tested against.")
+    sec = (section or "").upper().strip()
+    if not sec:
+        return None
+    rule = tds_rates_for().sections.get(parent_of(sec))
+    if rule is None or klass not in (rule.class_thresholds_paise or {}):
+        return (f"'{klass}' is a limit that only s.194A carries, and this "
+                f"supplier's TDS section is {sec}, which has a single limit. "
+                f"It would change nothing and read as though it had — clear "
+                f"it, or change the section to 194A.")
+    return None
 
 
 @dataclass(frozen=True)
@@ -220,7 +376,15 @@ _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     # sets the limit on "the amount or, as the case may be, the aggregate of the
     # amounts of such income credited or paid ... during the financial year", so
     # the same ₹10,000 is both limbs.
-    "194A":  TDSSectionRule(10_000_00, 1000, 1000, aggregate_threshold_paise=10_000_00),
+    #
+    # THE TWO LIMITS THIS COMMENT USED TO CALL A SIMPLIFICATION ARE MODELLED
+    # (TDS-30): `class_thresholds_paise` carries ₹50,000 and ₹1,00,000 for the
+    # two deposit-with-a-bank classes a CA records on the supplier, and the
+    # ₹10,000 here is what every supplier with no class — which is every
+    # supplier today — still takes. See "THE THREE THINGS A VENDOR CAN SAY"
+    # above for why the senior-citizen figure is not a payee-only concession.
+    "194A":  TDSSectionRule(10_000_00, 1000, 1000, aggregate_threshold_paise=10_000_00,
+                            class_thresholds_paise=_194A_CLASS_THRESHOLDS),
     # Lottery/crossword winnings — ₹10,000, now per single transaction (FA 2025).
     "194B":  TDSSectionRule(10_000_00, 3000, 3000),
     # Contractors — unchanged: ₹30,000 single OR ₹1,00,000 FY aggregate; 1%/2%.

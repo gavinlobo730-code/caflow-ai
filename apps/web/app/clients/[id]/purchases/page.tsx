@@ -38,6 +38,7 @@ import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { Combobox } from "@/components/ui/combobox";
+import { InterestThresholdClassSelect } from "@/components/tds/InterestThresholdClassSelect";
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow, ReferenceResolver } from "@/components/CsvImportModal";
 import {
@@ -1382,6 +1383,10 @@ interface VendorRow {
   no_pe_declaration_on: string | null;
   no_pe_declaration_ref: string | null;
   treaty_rate_bps: number | null;
+  // TDS-30 (migration 454). Which s.194A(3)(i) limit this supplier's interest
+  // is tested against; null is "nobody said" and takes the lowest. Optional in
+  // the type for a row read before the column existed.
+  interest_threshold_class?: string | null;
 }
 
 // The GSTIN rule is `lib/gst/gstin.gstinProblem` and there is one of it. A
@@ -1423,6 +1428,9 @@ function Vendors({ clientId }: { clientId: string }) {
   const [phone, setPhone] = useState("");
   const [tdsApplicable, setTdsApplicable] = useState(false);
   const [tdsSection, setTdsSection] = useState("194C");
+  // TDS-30. "" is "not stated" and is a real value: the server takes the
+  // section's own (lowest) limit for it.
+  const [interestThresholdClass, setInterestThresholdClass] = useState("");
   const [tdsRate, setTdsRate] = useState("2");
   const [openingBalance, setOpeningBalance] = useState("");
   // "" is a real third value — nobody has established this vendor's residence.
@@ -1569,6 +1577,11 @@ function Vendors({ clientId }: { clientId: string }) {
     setOpeningBalance(v.opening_balance_paise ? String(v.opening_balance_paise / 100) : "");
     setTdsApplicable(v.tds_applicable);
     setTdsSection(v.tds_section ?? "194C");
+    // 'ordinary' is a statement and "" is an absence, but both resolve to the
+    // same limit — the picker shows either as "Not stated".
+    setInterestThresholdClass(
+      v.interest_threshold_class && v.interest_threshold_class !== "ordinary"
+        ? v.interest_threshold_class : "");
     setResidentialStatus(v.residential_status ?? "");
     setGstRegistrationStatus(v.gst_registration_status ?? "");
     setCountryOfResidence(v.country_of_residence ?? "");
@@ -1632,6 +1645,15 @@ function Vendors({ clientId }: { clientId: string }) {
         phone: phone.trim() || undefined,
         tds_applicable: tdsApplicable,
         tds_section: tdsApplicable ? tdsSection : undefined,
+        // TDS-30. PATCH drops a null, so taking a recorded class back is done
+        // with the word the server has for it ('ordinary'), never by omission
+        // — omitting it would leave the stored class standing while the
+        // screen showed "Not stated".
+        interest_threshold_class:
+          (tdsApplicable && interestThresholdClass)
+          || (editingVendor?.interest_threshold_class
+              && editingVendor.interest_threshold_class !== "ordinary"
+              ? "ordinary" : undefined),
         residential_status: residentialStatus || undefined,
         gst_registration_status: gstRegistrationStatus || undefined,
         // Only meaningful for a non-resident; 26Q has no field for either.
@@ -1690,7 +1712,7 @@ function Vendors({ clientId }: { clientId: string }) {
       setShowForm(false);
       setEditingVendor(null);
       setName(""); setGstin(""); setPan(""); setEmail(""); setPhone("");
-      setTdsApplicable(false); setTdsSection("194C"); setTdsRate("2"); setOpeningBalance("");
+      setTdsApplicable(false); setTdsSection("194C"); setInterestThresholdClass(""); setTdsRate("2"); setOpeningBalance("");
       setResidentialStatus(""); setCountryOfResidence(""); setTaxIdentificationNumber("");
       setGstRegistrationStatus("");
       setNatureOfIncome(""); setPayeeClass(""); setTrcOnFile(false); setForm10fOnFile(false);
@@ -2347,7 +2369,16 @@ function Vendors({ clientId }: { clientId: string }) {
                   <Combobox
                     options={TDS_SECTIONS}
                     value={TDS_SECTIONS.find((s) => s.value === tdsSection) ?? null}
-                    onChange={(v) => { const s = v && !Array.isArray(v) ? v : null; if (s) setTdsSection(s.value); }}
+                    onChange={(v) => {
+                      const s = v && !Array.isArray(v) ? v : null;
+                      if (s) {
+                        // A limit class belongs to the section it was chosen
+                        // under; carrying it to another would be refused by
+                        // the server and by a control that is no longer shown.
+                        if (s.value !== tdsSection) setInterestThresholdClass("");
+                        setTdsSection(s.value);
+                      }
+                    }}
                     getOptionId={(s) => s.value}
                     getLabel={(s) => s.label}
                     getSearchFields={(s) => [s.value, s.label]}
@@ -2356,6 +2387,15 @@ function Vendors({ clientId }: { clientId: string }) {
                     ariaLabel="TDS section"
                   />
                 </div>
+                {/* TDS-30 — rendered by the server's own list of limit classes,
+                    so this tab knows neither which section carries them nor
+                    what any of them is worth. Nothing shows for 194C. */}
+                <InterestThresholdClassSelect
+                  section={tdsSection}
+                  value={interestThresholdClass}
+                  onChange={setInterestThresholdClass}
+                  disabled={saving}
+                />
                 {/* NO TDS RATE INPUT (PUR-06).
                     The field was collected here, shown in the vendor list, and
                     read by nothing: routers/purchase_bills.py resolves the rate

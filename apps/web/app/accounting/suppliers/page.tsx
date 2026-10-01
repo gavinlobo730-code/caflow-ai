@@ -56,6 +56,7 @@ import { getClients } from "@/lib/data/clients";
 import { api, type Vendor, type VendorWrite } from "@/lib/api";
 import { listTdsSections, computeTdsAmount, type TDSSection, type TDSAmountResult } from "@/lib/data/tds";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { InterestThresholdClassSelect } from "@/components/tds/InterestThresholdClassSelect";
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
@@ -121,6 +122,8 @@ const BLANK_FORM = {
   gstin: "",
   pan: "",
   tds_section: "",
+  // TDS-30. "" is "not stated" and takes the section's own (lowest) limit.
+  interest_threshold_class: "",
   credit_limit_rs: "",
   credit_days: "30",
   // "" is UNRECORDED, which is a real third state rather than a missing
@@ -218,11 +221,14 @@ export default function SuppliersPage() {
       return;
     }
     let cancelled = false;
-    computeTdsAmount({ section: form.tds_section, payment_amount_paise: billPaise, pan: form.pan || null })
+    computeTdsAmount({
+      section: form.tds_section, payment_amount_paise: billPaise, pan: form.pan || null,
+      threshold_class: form.interest_threshold_class || null,
+    })
       .then(result => { if (!cancelled) { setTdsCalc(result); setTdsCalcError(null); } })
       .catch(err => { if (!cancelled) { setTdsCalc(null); setTdsCalcError(err instanceof Error ? err.message : "TDS calculation failed"); } });
     return () => { cancelled = true; };
-  }, [billPaise, form.tds_section, form.pan]);
+  }, [billPaise, form.tds_section, form.pan, form.interest_threshold_class]);
 
   function openAdd() {
     setEditingId(null);
@@ -239,6 +245,11 @@ export default function SuppliersPage() {
       gstin: v.gstin ?? "",
       pan: v.pan ?? "",
       tds_section: v.tds_section ?? "",
+      // 'ordinary' is a statement and "" an absence, and both resolve to the
+      // same limit — the picker shows either as "Not stated".
+      interest_threshold_class:
+        v.interest_threshold_class && v.interest_threshold_class !== "ordinary"
+          ? v.interest_threshold_class : "",
       credit_limit_rs: v.credit_limit_paise ? String(v.credit_limit_paise / 100) : "",
       credit_days: v.credit_days !== null && v.credit_days !== undefined ? String(v.credit_days) : "",
       gst_registration_status: v.gst_registration_status ?? "",
@@ -250,7 +261,12 @@ export default function SuppliersPage() {
   }
 
   function onSectionChange(val: string) {
-    setForm(f => ({ ...f, tds_section: val }));
+    // A limit class belongs to the section it was chosen under; carried to
+    // another it would be refused by the server, by a control no longer shown.
+    setForm(f => ({
+      ...f, tds_section: val,
+      interest_threshold_class: val === f.tds_section ? f.interest_threshold_class : "",
+    }));
   }
 
   // ONLY THE SECTIONS A VENDOR MAY ACTUALLY CARRY.
@@ -309,6 +325,16 @@ export default function SuppliersPage() {
       // together when a Finance Act moves one — see this file's header.
       tds_applicable: !!form.tds_section,
       tds_section: form.tds_section || null,
+      // TDS-30. PATCH drops a null, so a class already recorded is taken back
+      // with the word the server has for it, never by omission — omitting it
+      // would leave the stored class standing while the screen said "Not
+      // stated".
+      interest_threshold_class:
+        form.interest_threshold_class
+        || (editingId
+            && vendors.find(x => x.id === editingId)?.interest_threshold_class
+            && vendors.find(x => x.id === editingId)?.interest_threshold_class !== "ordinary"
+              ? "ordinary" : undefined),
       credit_limit_paise: creditLimit,
       credit_days: creditDays,
       // Omitted rather than sent as null when unrecorded: the server drops
@@ -539,6 +565,16 @@ export default function SuppliersPage() {
                   ariaLabel="TDS section"
                 />
               </div>
+
+              {/* TDS-30 — rendered by the server's own list of limit classes, so
+                  this screen knows neither which section carries them nor what
+                  any of them is worth. */}
+              <InterestThresholdClassSelect
+                section={form.tds_section}
+                value={form.interest_threshold_class}
+                onChange={(next) => setForm(f => ({ ...f, interest_threshold_class: next }))}
+                disabled={saving}
+              />
 
               {form.tds_section && (
                 <p className="text-2xs text-ps-hint leading-tight">

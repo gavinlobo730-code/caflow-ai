@@ -73,7 +73,10 @@ type EntityType =
   | "Public Limited"
   | "Trust"
   | "Society"
-  | "Individual";
+  | "Individual"
+  | "HUF"
+  | "AOP"
+  | "BOI";
 
 interface Lead {
   id: string;
@@ -130,6 +133,9 @@ const ENTITY_TYPES: EntityType[] = [
   "Trust",
   "Society",
   "Individual",
+  "HUF",
+  "AOP",
+  "BOI",
 ];
 
 const STAGE_COLORS: Record<Stage, { bg: string; header: string; badge: string }> = {

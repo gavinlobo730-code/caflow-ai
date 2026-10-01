@@ -8,7 +8,10 @@ export type EntityType =
   | "Public Limited"
   | "Trust"
   | "Society"
-  | "Individual";
+  | "Individual"
+  | "HUF"
+  | "AOP"
+  | "BOI";
 
 export type ClientStatus = "active" | "inactive" | "archived";
 

@@ -250,6 +250,36 @@ _PAYMENT_CODES_CONFIRMED: dict[str, str] = {
                          # the firm..." — s.393(3) Table Sl. No. 7.
 }
 
+#: WHY EACH SECTION THAT SPLITS FURTHER IS NOT ANSWERED, in the words the
+#: statement and the keying sheet show (TDS-31). These two were comments and
+#: are sentences now, because a row that says only "no code is held" sends the
+#: CA to look up a table, where saying WHICH fact is missing sends them to the
+#: deductee's own record — and one shared paragraph is how two different
+#: reasons come to read as one. Each states the table's own split (Annexure 2
+#: of the Protean specification, see `_PAYMENT_CODES_CONFIRMED`) and what this
+#: product does not record that would settle it.
+_PAYMENT_CODE_SPLITS: dict[str, str] = {
+    "194A": ("s.194A resolves to one of THREE payment codes (1020, 1021, "
+             "1022) by the payee's age and the payer's kind. Neither fact is "
+             "recorded against a deductee here, and this registry's single "
+             "194A rate does not distinguish them."),
+    "194J(B)": ("s.194J(b) shares one table entry (Sl. No. 6(iii).D(b)) "
+                "between a PROFESSIONAL FEE (1027) and a DIRECTOR's "
+                "remuneration or commission (1028). The registry's 194J(B) "
+                "key cannot tell the two apart."),
+    # The bare parent sections hold both limbs, and a payment recorded under
+    # the bare section has not said which one it is — the same reason
+    # section_rates.py withholds at the higher rate for it.
+    "194I": ("s.194I resolves to 1008 (plant, machinery or equipment) or 1009 "
+             "(land, building or furniture) by the clause, and a payment "
+             "recorded under the bare section has not said which. Record the "
+             "clause as 194I(a) or 194I(b) on the supplier."),
+    "194J": ("s.194J resolves to 1026 (technical services) or to 1027/1028 "
+             "(professional fee / director's remuneration) by the clause, and "
+             "a payment recorded under the bare section has not said which. "
+             "Record the clause as 194J(a) or 194J(b) on the supplier."),
+}
+
 #: "194C" alone needs a second fact (see the module comment above): which of
 #: TDSSectionRule's two rates applied. Keyed on the exact bps the engine
 #: resolves with, so a caller passing anything else is a caller passing the
@@ -448,6 +478,12 @@ def payment_code_for(section_1961: str, *, rate_bps: int | None = None,
     confirmed = _PAYMENT_CODES_CONFIRMED.get(code)
     if confirmed:
         return confirmed, None
+    split = _PAYMENT_CODE_SPLITS.get(code)
+    if split:
+        return None, Gap(
+            field="tds_payment_code",
+            note=(f"No payment code is filled in for s.{code}. {split} Read "
+                  f"the code off the current Rules and enter it on the portal."))
     return None, Gap(
         field="tds_payment_code",
         note=(f"No confirmed s.393 payment code is held for {code or '(blank)'!r}. "

@@ -166,18 +166,38 @@ test("every entity type the database permits is classified by the module", () =>
   // schema without deciding its MCA regime here, "none" would be assumed for
   // it silently — and if that new type were a company, its CA would lose the
   // MCA workspace with no error anywhere. This test is the tripwire.
-  const sql = fs.readFileSync(
-    path.join(WEB, "..", "api", "migrations", "001_initial_schema.sql"), "utf8");
-  const clientsTable = sql.slice(sql.indexOf("CREATE TABLE clients"));
-  const check = clientsTable.slice(
-    clientsTable.indexOf("entity_type TEXT NOT NULL CHECK"));
-  const values = Array.from(
-    check.slice(0, check.indexOf(")),")).matchAll(/'([^']+)'/g), (m) => m[1]);
+  //
+  // THE LAST MIGRATION TO DEFINE THE CONSTRAINT, found by number. Migration 001
+  // declared it inline with eight values and migration 453 replaced it with
+  // eleven (HUF, AOP, BOI); a parse pinned to 001 would have gone on certifying
+  // a vocabulary the database no longer has.
+  const migrationsDir = path.join(WEB, "..", "api", "migrations");
+  let values: string[] = [];
+  for (const f of fs.readdirSync(migrationsDir).sort()) {
+    if (!/^\d+_.*\.sql$/.test(f) || f.endsWith("_rollback.sql")) continue;
+    const sql = fs.readFileSync(path.join(migrationsDir, f), "utf8");
+    let body: string | null = null;
+    if (f.startsWith("001_")) {
+      const clientsTable = sql.slice(sql.indexOf("CREATE TABLE clients"));
+      const at = clientsTable.indexOf("entity_type TEXT NOT NULL CHECK");
+      if (at >= 0) {
+        const check = clientsTable.slice(at);
+        body = check.slice(0, check.indexOf(")),"));
+      }
+    } else {
+      const m = sql.match(
+        /ADD CONSTRAINT clients_entity_type_check\s+CHECK \(entity_type IN \(([\s\S]*?)\)\)/);
+      if (m) body = m[1];
+    }
+    if (body !== null) {
+      values = Array.from(body.matchAll(/'([^']+)'/g), (m) => m[1]);
+    }
+  }
 
   // Prove the parse found something before asserting over it — a selector
   // that matches nothing passes every test after it.
-  assert.ok(values.length >= 8,
-    `expected the clients.entity_type CHECK list, parsed ${JSON.stringify(values)}`);
+  assert.ok(values.length >= 11 && values.includes("HUF"),
+    `expected the clients.entity_type CHECK list as migration 453 leaves it, parsed ${JSON.stringify(values)}`);
   assert.ok(values.includes("Proprietorship") && values.includes("Private Limited"),
     `parsed the wrong constraint: ${JSON.stringify(values)}`);
 
@@ -190,6 +210,12 @@ test("every entity type the database permits is classified by the module", () =>
     "Trust": "none",
     "Society": "none",
     "Individual": "none",
+    // Migration 453. None of the three is incorporated anywhere: a HUF is a
+    // family, an AOP and a BOI are associations, and the MCA files nothing for
+    // any of them.
+    "HUF": "none",
+    "AOP": "none",
+    "BOI": "none",
   };
   for (const v of values) {
     assert.ok(v in CLASSIFIED,

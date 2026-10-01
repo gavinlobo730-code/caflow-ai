@@ -28,15 +28,17 @@ flagging them "pending verification" (that discipline is reserved for
 empirical data that changes by government notification, like the CII table
 or state Professional Tax slabs — see roadmap R3.1/R3.12).
 
-KNOWN SIMPLIFICATION: Section 234C(1)'s proviso exempts the shortfall
-caused by income that could not reasonably have been foreseen (capital
-gains, casual/lottery income, and certain dividend income) from interest
-for the instalments preceding when that income arose. This engine has no
-per-income-type breakdown to evaluate that proviso — the existing UI (and
-the `advance_tax_payments` table) only ever collected one lump "estimated
-annual tax" figure per instalment — and does not attempt it. Not
-implemented rather than silently assumed; a future extension needing
-quarter-wise income-head detail is out of scope here.
+THE §234C(1) PROVISO FOR INCOME NOBODY COULD HAVE FORESEEN IS APPLIED (IT-21).
+This docstring used to record it as a KNOWN SIMPLIFICATION — "the engine has no
+per-income-type breakdown to evaluate that proviso" — and a client with a
+March sale was charged §234C interest on instalments that were not yet due on
+that income. The breakdown is now an INPUT: `UnforeseenIncome` names the kind
+(capital gain, winnings under §2(24)(ix), dividend), the date it arose and the
+TAX it adds, and `compute_234c_interest(..., unforeseen=[...])` measures each
+instalment against the tax due on the returned income LESS the tax on whatever
+arose after that instalment's date. The default is the empty list, which is
+exactly the behaviour this engine had: no figure moves for a caller that says
+nothing. See `_apply_proviso` for the rule and for what it refuses to assume.
 
 Integer paise throughout — never float in any stored or returned amount.
 """
@@ -44,7 +46,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional
+from typing import Optional, Sequence
 
 
 def _round_paise(numerator: int, denominator: int) -> int:
@@ -147,6 +149,79 @@ class InstallmentPayment:
     paid_date: Optional[date] = None
 
 
+#: What the proviso reaches (IT-21). §234C(1)'s own text names capital gains and
+#: income of the nature in §2(24)(ix) — winnings from lotteries, crossword
+#: puzzles, races, card games and betting — and the Finance Act 2020 added
+#: dividend income when it abolished dividend distribution tax. A kind outside
+#: this list is REFUSED rather than treated as one of them: "casual income" in
+#: the loose sense is not §2(24)(ix), and widening the proviso is a way of
+#: showing a client less interest than they owe.
+UNFORESEEN_KINDS = ("capital_gain", "winnings", "dividend")
+
+#: The words a screen shows for each, served so no screen spells them.
+UNFORESEEN_KIND_LABELS = {
+    "capital_gain": "Capital gain",
+    "winnings": "Winnings — lottery, crossword, races, cards, betting (§2(24)(ix))",
+    "dividend": "Dividend",
+}
+
+#: `[S]`-GRADED, AND SAID SO ON THE CONSTANT. The proviso's shape — measure each
+#: instalment against the tax due LESS the tax on income that arose after it,
+#: and only where that tax is then paid in the remaining instalments or, where
+#: none remains, by 31 March — is the section's own, but egress is refused in
+#: this environment so neither §234C(1) nor the Finance Act 2020 amendment could
+#: be opened. The dividend limb is the least certain of the three. Pinned by
+#: tests/test_a_234c_proviso_excuses_the_shortfall_unforeseen_income_caused.py.
+UNFORESEEN_PROVISO_VERIFIED = False
+
+_DIVIDEND_CAVEAT = (
+    "The dividend limb of the proviso reaches dividend income and not a deemed "
+    "dividend under §2(22)(e); nothing recorded here can tell the two apart, so "
+    "confirm the dividend is a real one.")
+_PROVISO_CAVEAT = (
+    "§234C(1)'s proviso is applied as written: each instalment is measured "
+    "against the tax due on the returned income LESS the tax on income that "
+    "arose AFTER that instalment's date, and only where the tax on that income "
+    "is then paid in the instalments that remain — or, where none remains, by "
+    "31 March. Payments are taken against each such income in the order it "
+    "arose, from the day it arose. The figures behind it ([S]-graded) were not "
+    "read against the Act in this environment.")
+
+
+@dataclass(frozen=True)
+class UnforeseenIncome:
+    """One income that could not have been estimated when an instalment fell due.
+
+    `tax_paise` is THE TAX THE INCOME ADDS to the year's tax due on the returned
+    income — a figure from the computation, never derived here from an amount,
+    because it depends on the rest of the return (the §112A exemption is annual,
+    the basic exemption absorbs into special-rate gains, surcharge turns on the
+    total). It is the caller's, and where the caller estimated it the answer
+    says so.
+    """
+    kind: str
+    arose_on: date
+    tax_paise: int
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class UnforeseenLine:
+    """What the proviso did with one income — the working a CA checks."""
+    kind: str
+    arose_on: date
+    tax_paise: int
+    description: str
+    #: Whether the proviso's CONDITION is met. False means the income is treated
+    #: as foreseeable at every instalment, and `reason` says why.
+    relief: bool
+    #: The last date its tax had to be paid by: the final instalment where one
+    #: remained after it arose, 31 March where none did.
+    settle_by: date
+    paid_toward_paise: int
+    reason: str
+
+
 @dataclass(frozen=True)
 class InstallmentInterestResult:
     installment_number: int
@@ -159,6 +234,14 @@ class InstallmentInterestResult:
     shortfall_paise: int
     interest_months: int
     interest_paise: int
+    #: The tax on income that arose AFTER this instalment's date and was
+    #: therefore left out of what it is measured against (IT-21). Zero where
+    #: nothing was supplied, which is the engine's behaviour before the proviso
+    #: was applied.
+    unforeseen_excluded_paise: int = 0
+    #: The tax due on the returned income this instalment's percentages were
+    #: taken of — the estimated tax less the figure above.
+    base_paise: int = 0
 
 
 @dataclass(frozen=True)
@@ -170,6 +253,10 @@ class AdvanceTaxInterestResult:
     #: four, and nothing on the screen explains the difference.
     is_presumptive_44ad_44ada: bool = False
     basis: str = ""
+    #: One line per income handed to the proviso, with whether relief was
+    #: granted and why not (IT-21). Empty where none was supplied.
+    unforeseen_lines: tuple[UnforeseenLine, ...] = ()
+    caveats: tuple[str, ...] = ()
 
 
 _GENERAL_BASIS = (
@@ -188,6 +275,7 @@ def compute_234c_interest(
     payments: list[InstallmentPayment],
     *,
     is_presumptive_44ad_44ada: bool = False,
+    unforeseen: Sequence[UnforeseenIncome] = (),
 ) -> AdvanceTaxInterestResult:
     """Section 234C interest for deferment of advance tax.
 
@@ -203,6 +291,11 @@ def compute_234c_interest(
     into is the CA's determination and no turnover figure here decides it — so
     it is supplied, not inferred, and the answer carries `basis` saying which
     branch was taken.
+
+    `unforeseen` is §234C(1)'s OTHER proviso (IT-21): income that arose after an
+    instalment fell due is left out of what that instalment is measured
+    against, on the condition the proviso states. Empty — the default — is
+    exactly the behaviour before it was applied.
     """
     if estimated_tax_paise <= 0:
         return AdvanceTaxInterestResult(
@@ -212,6 +305,7 @@ def compute_234c_interest(
 
     due_dates = dict(installment_schedule(
         fy, is_presumptive_44ad_44ada=is_presumptive_44ad_44ada))
+    lines, caveats = _apply_proviso(fy, due_dates, payments, list(unforeseen))
     results = []
     total = 0
     for rule in installment_rules(is_presumptive_44ad_44ada=is_presumptive_44ad_44ada):
@@ -220,8 +314,16 @@ def compute_234c_interest(
             p.paid_amount_paise for p in payments
             if p.paid_date is not None and p.paid_date <= due_date
         )
-        required_cumulative = _round_paise(estimated_tax_paise * rule.cumulative_required_percent, 100)
-        trigger_amount = _round_paise(estimated_tax_paise * rule.trigger_percent, 100)
+        # What arose AFTER this date and met the proviso's condition is not part
+        # of what this instalment is measured against. Capped at the whole
+        # estimate: the figures are the caller's, and a total that exceeds the
+        # tax it is a part of is a sign of an input error that must not turn
+        # the base negative.
+        excluded = min(estimated_tax_paise, sum(
+            ln.tax_paise for ln in lines if ln.relief and ln.arose_on > due_date))
+        base = estimated_tax_paise - excluded
+        required_cumulative = _round_paise(base * rule.cumulative_required_percent, 100)
+        trigger_amount = _round_paise(base * rule.trigger_percent, 100)
         is_short = actual_cumulative < trigger_amount
         shortfall = max(0, required_cumulative - actual_cumulative) if is_short else 0
         interest = _round_paise(shortfall * _INTEREST_RATE_PERCENT_PER_MONTH * rule.interest_months, 100)
@@ -236,13 +338,133 @@ def compute_234c_interest(
             shortfall_paise=shortfall,
             interest_months=rule.interest_months,
             interest_paise=interest,
+            unforeseen_excluded_paise=excluded,
+            base_paise=base,
         ))
         total += interest
+
+    if sum(ln.tax_paise for ln in lines if ln.relief) > estimated_tax_paise:
+        caveats = caveats + (
+            "The tax on the income handed to the proviso exceeds the estimated "
+            "tax it is part of, so what each instalment excluded was capped at "
+            "the estimate. Check the two figures against each other.",)
 
     return AdvanceTaxInterestResult(
         installments=tuple(results), total_interest_paise=total,
         is_presumptive_44ad_44ada=is_presumptive_44ad_44ada,
-        basis=_PRESUMPTIVE_BASIS if is_presumptive_44ad_44ada else _GENERAL_BASIS)
+        basis=_PRESUMPTIVE_BASIS if is_presumptive_44ad_44ada else _GENERAL_BASIS,
+        unforeseen_lines=lines, caveats=caveats)
+
+
+def _apply_proviso(
+    fy: str,
+    due_dates: dict[int, date],
+    payments: list[InstallmentPayment],
+    items: list[UnforeseenIncome],
+) -> tuple[tuple[UnforeseenLine, ...], tuple[str, ...]]:
+    """Decide, for each income handed in, whether §234C(1)'s proviso applies.
+
+    THE CONDITION IS ON THE INCOME ITSELF, and it is the half of the proviso a
+    simple "leave it out until it arises" gets wrong. The relief is available
+    only where the assessee has paid the whole of the tax on that income in the
+    instalments that remain after it arose — or, where none remains because it
+    arose after the last one, by 31 March. So an income realised on 20 March is
+    excused from the 15 March instalment only if its tax is then paid by the
+    31st; paid on 5 April it is not, and the 15 March shortfall is charged as if
+    it had been foreseen.
+
+    PAYMENTS ARE TAKEN AGAINST EACH INCOME IN THE ORDER IT AROSE, from the day it
+    arose to its settlement date, and a rupee is never counted against two of
+    them. A payment made BEFORE an income arose cannot have been made "in the
+    remaining instalments", which is why an assessee who prepaid generously in
+    June gets no relief for a March sale from it. Where an earlier payment is in
+    fact what covered the tax, the CA says so by entering the income's tax as
+    already paid — which is not a thing this engine can know.
+
+    An income that arose on or before the FIRST instalment date was foreseeable
+    at every date and changes nothing; it is returned with `relief=False` and
+    that reason, so it appears on the working rather than vanishing from it.
+
+    REFUSES an income outside the financial year (it is not this year's income),
+    a kind the proviso does not name, a negative tax and a date that is not a
+    date. Raised, never clamped: a misdated gain moves the whole answer.
+    """
+    if not items:
+        return (), ()
+
+    start_year = int(fy.split("-")[0])
+    fy_start, fy_end = date(start_year, 4, 1), date(start_year + 1, 3, 31)
+    for it in items:
+        if it.kind not in UNFORESEEN_KINDS:
+            raise ValueError(
+                f"'{it.kind}' is not an income §234C(1)'s proviso reaches. It names "
+                f"capital gains, winnings under §2(24)(ix) and dividend income: "
+                f"{', '.join(UNFORESEEN_KINDS)}.")
+        if not isinstance(it.arose_on, date):
+            raise ValueError("The date an unforeseen income arose must be a date.")
+        if not (fy_start <= it.arose_on <= fy_end):
+            raise ValueError(
+                f"An income that arose on {it.arose_on.isoformat()} is not income of "
+                f"FY {fy} ({fy_start.isoformat()} to {fy_end.isoformat()}), so the "
+                f"proviso has nothing to say about it.")
+        if not isinstance(it.tax_paise, int) or isinstance(it.tax_paise, bool) or it.tax_paise < 0:
+            raise ValueError("The tax on an unforeseen income is integer paise, and not negative.")
+
+    first_due = min(due_dates.values())
+    last_due = max(due_dates.values())
+    pool = [[p.paid_date, p.paid_amount_paise] for p in payments
+            if p.paid_date is not None and p.paid_amount_paise > 0]
+    pool.sort(key=lambda row: row[0])
+
+    out: list[UnforeseenLine] = []
+    for it in sorted(items, key=lambda i: (i.arose_on, i.kind)):
+        remaining = [d for d in due_dates.values() if d >= it.arose_on]
+        settle_by = last_due if remaining else fy_end
+        needed = it.tax_paise
+        got = 0
+        taken: list[tuple[int, int]] = []
+        for idx, (paid_on, amount) in enumerate(pool):
+            if amount <= 0 or paid_on < it.arose_on or paid_on > settle_by:
+                continue
+            take = min(amount, needed - got)
+            if take <= 0:
+                break
+            taken.append((idx, take))
+            got += take
+            if got >= needed:
+                break
+
+        if it.arose_on <= first_due:
+            relief, reason = False, (
+                f"It arose on or before the first instalment date "
+                f"({first_due.isoformat()}), so it was foreseeable at every instalment "
+                f"and the proviso has nothing to excuse.")
+        elif needed == 0:
+            relief, reason = False, "No tax was supplied for it, so there is nothing to leave out."
+        elif got >= needed:
+            relief, reason = True, (
+                f"Its tax was paid in full between {it.arose_on.isoformat()} and "
+                f"{settle_by.isoformat()}, so the shortfall it caused at every earlier "
+                f"instalment is excused.")
+            for idx, take in taken:
+                pool[idx][1] -= take
+        else:
+            where = ("the instalments that remain" if remaining
+                     else "31 March, there being no instalment left")
+            relief, reason = False, (
+                f"Only {got} of the {needed} paise of tax on it was paid in {where} "
+                f"(by {settle_by.isoformat()}), so the proviso's condition is not met and "
+                f"it is treated as foreseeable at every instalment.")
+
+        out.append(UnforeseenLine(
+            kind=it.kind, arose_on=it.arose_on, tax_paise=it.tax_paise,
+            description=it.description, relief=relief, settle_by=settle_by,
+            paid_toward_paise=got, reason=reason))
+
+    caveats = [_PROVISO_CAVEAT]
+    if any(i.kind == "dividend" for i in items):
+        caveats.append(_DIVIDEND_CAVEAT)
+    return tuple(out), tuple(caveats)
 
 
 # ── Sections 234A and 234B ───────────────────────────────────────────────────

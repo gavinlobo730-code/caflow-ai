@@ -81,4 +81,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   Trust: "Trust",
   Society: "Society",
   Individual: "Individual",
+  HUF: "HUF",
+  AOP: "AOP",
+  BOI: "BOI",
 };
