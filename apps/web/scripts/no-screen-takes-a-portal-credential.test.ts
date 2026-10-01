@@ -56,6 +56,23 @@ const OWN_CREDENTIALS: Record<string, string> = {
     + "ever seen it",
 };
 
+/** A password typed to open a FILE a BANK locked — neither a PracticeSync
+ *  secret nor a portal's, so it is not in the list above and is not a bookmark
+ *  toggle either. A bank emails a statement as a PDF locked with a password
+ *  built from the customer ID or date of birth (ACC-23); the CA types it so the
+ *  server can open that one file. It is the file's key and not an account's: it
+ *  is sent once in the body of the request that needs it, used in memory for
+ *  one decrypt, and kept nowhere (the backend half is
+ *  apps/api/tests/test_a_password_protected_statement_can_be_opened.py, and
+ *  scripts/a-locked-pdf-statement-asks-for-its-password.test.ts pins the
+ *  screen). Its OWN list so the claim stays narrow: every entry must be a
+ *  field for a document, and none may name a government host. */
+const DOCUMENT_PASSWORDS: Record<string, string> = {
+  "components/banking/AccountsPanel.tsx":
+    "the password of a bank-locked PDF statement, revealed only when the "
+    + "server asks for it and dropped when the import lands",
+};
+
 /** Matches of the WORD that are not credentials at all. Kept separate from the
  *  allowlist above on purpose: calling a bookmark toggle an "own credential"
  *  would make the list a place things go to be forgotten. */
@@ -95,13 +112,32 @@ function code(text: string): string {
 
 test("no screen but our own sign-in has a password field", () => {
   const offenders = sources()
-    .filter(({ path }) => !(path in OWN_CREDENTIALS))
+    .filter(({ path }) => !(path in OWN_CREDENTIALS) && !(path in DOCUMENT_PASSWORDS))
     .filter(({ text }) => /type\s*=\s*["']password["']/.test(code(text)))
     .map(({ path }) => path);
   assert.deepEqual(offenders, [],
     "a password box in this product is a credential-capture surface whatever "
     + "it is labelled. If this is our own authentication, add it to "
     + "OWN_SIGN_IN with the reason.");
+});
+
+test("a document password is for a document, and never near a portal", () => {
+  // The allowance above is narrow only while it stays so: the screen that holds
+  // it must not mention a government host, must tell the browser not to save the
+  // value, and must still be reading it in order to open a FILE.
+  const all = sources();
+  for (const path of Object.keys(DOCUMENT_PASSWORDS)) {
+    const text = all.find((s) => s.path === path)?.text;
+    assert.ok(text, `${path} is on the document-password list but does not exist`);
+    const src = code(text);
+    for (const host of GOVERNMENT_HOSTS) {
+      assert.ok(!src.includes(host), `${path} names a government portal (${host})`);
+    }
+    assert.match(src, /autoComplete\s*=\s*["']new-password["']/,
+      `${path}: a document password must tell the browser not to save it`);
+    assert.match(src, /form\.append\(["']pdf_password["']/,
+      `${path}: the password must travel in the body of the request that opens the file`);
+  }
 });
 
 test("no screen but our own sign-in asks for a one-time code", () => {
