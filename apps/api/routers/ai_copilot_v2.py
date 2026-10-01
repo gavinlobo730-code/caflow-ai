@@ -1,13 +1,13 @@
 """
 Phase 11 — AI Copilot Platform API.
-Endpoints: conversations, messages, summaries, recommendations, intelligence, executive dashboard.
+Endpoints: conversations, messages, intelligence, executive dashboard.
+(The recommendations, actions and summaries routes were deleted — see the note at
+the foot of this file.)
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Optional
 from models.common import api_response
 from models.ai_copilot import (
     ConversationCreateIn, MessageIn, FeedbackIn,
-    RecommendationActionIn, AIActionIn,
     GLOBAL_SUGGESTED_QUESTIONS, CLIENT_SUGGESTED_QUESTIONS, COMPLIANCE_SUGGESTED_QUESTIONS,
 )
 from core.permissions import rbac
@@ -275,7 +275,10 @@ async def executive_dashboard(
     current_user: dict = Depends(rbac("firm", "read")),
     _limit: None = Depends(ai_limit("intelligence")),
 ):
-    """AI-powered executive dashboard with firm-wide intelligence."""
+    """The firm's operational position, computed from its records.
+
+    Only the summary sentence can be a model's, and the payload says whether it
+    was (`summary_source`) — see `get_executive_dashboard`."""
     firm_id = current_user["firm_id"]
     # "All clients" means the CALLER's clients. effective_client_ids returns
     # None for a Partner and a set for anyone assignment-scoped; this endpoint
@@ -286,94 +289,30 @@ async def executive_dashboard(
     return api_response(True, result)
 
 
-# ── Recommendations ───────────────────────────────────────────────────────────
-
-@router.get("/recommendations")
-def list_recommendations(
-    client_id: Optional[str] = None,
-    status: Optional[str] = "pending",
-    rec_type: Optional[str] = None,
-    priority: Optional[str] = None,
-    limit: int = Query(50, le=200),
-    current_user: dict = Depends(rbac("task", "read")),
-):
-    firm_id = current_user["firm_id"]
-    # M2 audit finding: client_id is caller-supplied and was never checked;
-    # without one, the firm's whole recommendation list was returned
-    # unfiltered by assignment.
-    if client_id:
-        assert_client_access(current_user, client_id)
-    recs = _repo().list_recommendations(firm_id, client_id=client_id, status=status,
-                                          rec_type=rec_type, priority=priority, limit=limit)
-    if not client_id:
-        recs = filter_by_client(current_user, recs)
-    return api_response(True, {"recommendations": recs, "total": len(recs)})
-
-
-@router.post("/recommendations/{rec_id}/action")
-def act_recommendation(
-    rec_id: str,
-    payload: RecommendationActionIn,
-    current_user: dict = Depends(rbac("task", "write")),
-):
-    firm_id = current_user["firm_id"]
-    user_id = current_user.get("auth_user_id", "user-dev")
-    # M2 audit finding: row-addressed by rec_id, firm-scoped only —
-    # ai_recommendations.client_id (nullable — firm-wide recs like
-    # airec-003 exist) was never checked before acting on it.
-    rec = _repo().get_recommendation(firm_id, rec_id)
-    if not rec or not can_access_client(current_user, rec.get("client_id")):
-        raise HTTPException(404, "Recommendation not found")
-    updated = _service().act_on_recommendation(firm_id, rec_id, payload.action, user_id, payload.snooze_days)
-    if not updated:
-        raise HTTPException(404, "Recommendation not found")
-    return api_response(True, updated)
-
-
-# ── AI Actions (manual execution) ─────────────────────────────────────────────
-
-@router.post("/actions")
-def execute_ai_action(
-    payload: AIActionIn,
-    current_user: dict = Depends(rbac("task", "write")),
-):
-    """Execute an AI-recommended action after user confirmation."""
-    firm_id = current_user["firm_id"]
-    user_id = current_user.get("auth_user_id", "user-dev")
-    # M2 audit finding: when linked to a recommendation, that recommendation's
-    # client was never checked — same shape as act_recommendation above.
-    if payload.recommendation_id:
-        rec = _repo().get_recommendation(firm_id, payload.recommendation_id)
-        if not rec or not can_access_client(current_user, rec.get("client_id")):
-            raise HTTPException(404, "Recommendation not found")
-    action = _repo().create_ai_action(firm_id, {
-        "action_type": payload.action_type,
-        "action_data": payload.action_data,
-        "recommendation_id": payload.recommendation_id,
-    })
-    # Execute the action (simplified — in production this would call the respective service)
-    result = {"action_id": action["id"], "action_type": payload.action_type, "status": "executed"}
-    _repo().complete_ai_action(action["id"], result, user_id)
-    return api_response(True, result)
-
-
-# ── Summaries ─────────────────────────────────────────────────────────────────
-
-@router.get("/summaries")
-def list_summaries(
-    summary_type: Optional[str] = None,
-    entity_id: Optional[str] = None,
-    current_user: dict = Depends(rbac("task", "read")),
-):
-    firm_id = current_user["firm_id"]
-    # M2 audit finding: entity_id can be a client_id (context_type "client"
-    # summaries are stored keyed by client_id) and was never checked.
-    if entity_id:
-        assert_client_access(current_user, entity_id)
-    from repositories.ai_copilot_repository import MOCK_SUMMARIES
-    summaries = [s for s in MOCK_SUMMARIES if s["firm_id"] == firm_id and not s["is_stale"]]
-    if summary_type:
-        summaries = [s for s in summaries if s["summary_type"] == summary_type]
-    if entity_id:
-        summaries = [s for s in summaries if s.get("entity_id") == entity_id]
-    return api_response(True, {"summaries": summaries})
+# ── What this router no longer has (ai-10) ──────────────────────────────────
+#
+# Four routes were DELETED, each because it looked like an AI feature and was not:
+#
+#   GET  /recommendations and POST /recommendations/{id}/action
+#       `ai_recommendations` has had no production generator since the table was
+#       built — `create_recommendation` has no caller outside tests — so the
+#       Insights tab behind them was empty for every firm, and its empty state
+#       said "All insights have been actioned", a congratulation for work that
+#       was never produced. The "accept" button only flipped a status: the row's
+#       `action_data` was never executed by anything.
+#   POST /actions
+#       Wrote an `ai_actions` row, set it `executed` and returned
+#       `{"status": "executed"}` after a comment saying "simplified — in
+#       production this would call the respective service". It executed nothing.
+#       A status the code did not earn is the worst kind of fake: it is the one
+#       a screen would have trusted.
+#   GET  /summaries
+#       Filtered the in-memory `MOCK_SUMMARIES` list directly, whatever the mode,
+#       so in production it answered an empty list for every firm while the real
+#       summaries sat in `ai_summaries` where only the intelligence endpoints
+#       read them.
+#
+# The storage layer (`ai_recommendations` and its repository methods) stays: a
+# real generator would need it. `tests/test_ai_surfaces_are_not_fake_or_dead.py`
+# holds the rule that no AI route may serve a literal sample or claim an
+# execution nothing performed.

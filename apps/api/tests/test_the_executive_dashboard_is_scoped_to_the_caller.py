@@ -92,7 +92,7 @@ def world(monkeypatch):
     monkeypatch.setattr(mod, "_get_workflow_repo", lambda: _Workflows())
     monkeypatch.setattr(svc, "_repo", repo)
 
-    async def _no_model(messages):
+    async def _no_model(messages, **kw):
         return "summary", 0
     monkeypatch.setattr(svc, "_call_groq", _no_model)
     return svc, repo

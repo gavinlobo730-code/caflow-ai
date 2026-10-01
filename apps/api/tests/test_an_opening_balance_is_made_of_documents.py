@@ -208,6 +208,11 @@ EXCLUDES: dict[str, str] = {
         "a tax invoice for a supply this client did not invoice",
     "services/sales_numbering_service.py":
         "Rule 46(b)'s consecutive series is the one kept HERE",
+    "services/purchase_history_service.py":
+        "a carried-over bill's lines were coded in the old system and its ITC "
+        "flag is the column's default, so counting it would teach 'eligible, "
+        "every time' from nothing — and what is learned is proposed for a bill "
+        "that feeds GSTR-3B Table 4",
     "routers/credit_notes.py":
         "a s.34 note adjusts tax declared in the old system",
     "routers/sales_debit_notes.py": "the same, on the debit side",

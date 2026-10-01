@@ -366,6 +366,32 @@ export interface RecommendationsPayload {
   low?: number;
 }
 
+/** `GET /api/intelligence/digest` — what needs attention today across the
+ *  caller's own clients (ai-25). Every `count` is read off an existing check;
+ *  `summary` is a model's wording of them or the plain sentence, and
+ *  `summary_source` says which. `count` is null where nobody looked
+ *  (`status: "unknown"`), which is not zero. */
+export interface PracticeDigestPayload {
+  as_of: string;
+  generated_at: string;
+  scoped: boolean;
+  summary: string;
+  summary_source: "model" | "rule-based";
+  model_used: string | null;
+  basis: string;
+  gaps: string[];
+  items: {
+    key: string;
+    label: string;
+    status: "attention" | "clear" | "unknown";
+    count: number | null;
+    headline: string;
+    source: string;
+    clients: { client_id: string; client_name: string; count: number }[];
+    clients_total: number;
+  }[];
+}
+
 export interface HubWorklistPayload {
   tile: string;
   label: string;
@@ -2892,6 +2918,156 @@ export type GSTStatusUpdate = {
   filed_date?: string;
 };
 
+/**
+ * gst-12 — a PROBABLE pair the 2B reconciliation could not tie together.
+ *
+ * A suggestion and never a link: `changes_credit` is always false, the bill
+ * stays `missing_in_2b` and its credit stays withheld until the CA corrects the
+ * document and runs the reconciliation again. The screen shows the sentences
+ * the server wrote and decides nothing about which pairs are probable.
+ */
+export interface ProbableMatch2B {
+  grade: "strong" | "possible";
+  kind: "supplier_gstin_differs" | "document_number_differs" | "amount_and_date_only";
+  evidence: string[];
+  action: string;
+  changes_credit: false;
+  bill_id: string;
+  bill_no: string;
+  bill_date: string | null;
+  bill_supplier_gstin: string;
+  book_taxable_paise: number;
+  book_tax_paise: number;
+  document_section: string;
+  document_type: string;
+  document_number: string;
+  document_date: string | null;
+  document_supplier_gstin: string;
+  document_supplier_name: string;
+  portal_taxable_paise: number;
+  portal_tax_paise: number;
+  itc_available: string;
+}
+
+/** gst-13 — the address of a GSTR-2B document, and nothing else. No amount, no
+ *  date and no rate is sent: the server reads them off the stored row and the
+ *  file it kept. */
+export interface Gstr2bDraftBillRequest {
+  client_id: string;
+  period: string;
+  section: string;
+  document_type: string;
+  supplier_gstin: string;
+  document_number: string;
+}
+
+/** gst-13 — what creating the draft answered. */
+export interface Gstr2bDraftBill {
+  bill: { id: string; bill_no: string; bill_date: string; status: string;
+          total_paise: number };
+  status: string;
+  /** Does the books' own arithmetic reproduce what the supplier filed? */
+  agrees_with_2b: boolean;
+  /** Every head where it does not, in words. Never corrected, only reported. */
+  differences: string[];
+  caveats: string[];
+}
+
+/**
+ * gst-10 — several clients' GSTR-2B files reconciled in one action, each routed
+ * to its client by the GSTIN inside it.
+ *
+ * One row per file, every key always present and null where it does not apply.
+ * The server decides the status and writes the reason; the screen shows both
+ * and decides nothing about whose a file is.
+ */
+export type Gstr2bBulkStatus =
+  | "reconciled" | "unmatched_gstin" | "ambiguous_gstin"
+  | "refused" | "unreadable" | "failed";
+
+export interface Gstr2bBulkResult {
+  name: string;
+  status: Gstr2bBulkStatus;
+  reason: string | null;
+  gstin: string;
+  period: string | null;
+  client_id: string | null;
+  client_name: string | null;
+  needs_attention: boolean;
+  summary: {
+    matched_count: number;
+    amount_mismatch_count: number;
+    missing_in_2b_count: number;
+    missing_in_books_count: number;
+    itc_at_risk_paise: number;
+    itc_blocked_by_2b_paise: number;
+    probable_match_count: number;
+  } | null;
+  problems: string[];
+  registration_caveat: string | null;
+  /** Set when this file REPLACED an earlier reconciliation of the same month. */
+  replaced_earlier: { reconciled_at: string | null; generated_on: string | null } | null;
+}
+
+export interface Gstr2bBulkAnswer {
+  results: Gstr2bBulkResult[];
+  totals: Record<Gstr2bBulkStatus, number>;
+  needs_attention: number;
+}
+
+/**
+ * gst-15 — credit not yet claimed, each row with the date CGST §16(4) takes it
+ * away. Read-only. The SERVER holds the rule (`domain/gst/itc_time_bar`, over
+ * `correction_window`, the one place that knows the date and its "whichever is
+ * earlier"); this is its answer and the screen computes no date.
+ */
+export type ItcTimeBarStatus = "open" | "closing_soon" | "closed";
+
+export interface ItcTimeBarItem {
+  /** A received bill whose credit §16(2)(aa) withholds, or a 2B document the
+   *  books have no bill for. */
+  kind: "withheld_bill" | "not_booked";
+  closes_on: string;
+  days_left: number;
+  status: ItcTimeBarStatus;
+  financial_year: string;
+  shortened_by_annual_return: boolean;
+  document_id: string | null;
+  label: string;
+  supplier: string;
+  supplier_gstin?: string;
+  document_date: string;
+  return_period?: string;
+  verdict: string;
+  reason: string;
+  credit_at_risk_paise: number;
+}
+
+export interface ItcTimeBar {
+  as_of: string;
+  scanned_financial_years: string[];
+  rule: string;
+  items: ItcTimeBarItem[];
+  by_financial_year: Array<{
+    financial_year: string; closes_on: string; days_left: number;
+    status: ItcTimeBarStatus; shortened_by_annual_return: boolean;
+    count: number; credit_at_risk_paise: number;
+  }>;
+  /** Months with no GSTR-2B reconciled: nothing in them has been judged. */
+  periods_not_reconciled: Array<{
+    period: string; financial_year: string; closes_on: string; days_left: number;
+    status: ItcTimeBarStatus; shortened_by_annual_return: boolean;
+  }>;
+  blocked_by_2b_count: number;
+  not_assessed_count: number;
+  totals: {
+    credit_at_risk_paise: number; open_paise: number;
+    closing_soon_paise: number; lapsed_paise: number;
+  };
+  closing_soon_days: number;
+  notes: string[];
+}
+
 /** SALES-21 — the sales cycle before the tax invoice. */
 export interface SalesCycleVocabulary {
   quote_kinds: { value: string; label: string }[];
@@ -4335,15 +4511,12 @@ export const api = {
     markAllRead: () => request("/api/notifications/read-all", { method: "PATCH" }),
     stats: () => request("/api/notifications/stats"),
   },
-  copilot: {
-    chat: (body: { message: string; conversation_history: unknown[]; context?: string }) =>
-      request("/api/ai-copilot/chat", { method: "POST", body: JSON.stringify(body) }),
-    // clientChat was removed with the endpoint it called. That endpoint posted a
-    // single client's name, GSTIN and PAN to Groq and now returns 410. The
-    // wrapper had no callers, which is exactly why it had to go rather than be
-    // left pointing at a dead route: an unused helper that still builds the URL
-    // is the thing someone wires a button to next.
-  },
+  // `copilot.chat` (POST /api/ai-copilot/chat) was removed with ai-10: no screen
+  // called it — /copilot uses `copilotV2` — and its only product was an answer
+  // plus a keyword-matched list of "suggested actions" with no link behind any of
+  // them. `clientChat` went before it: that endpoint posted a single client's
+  // name, GSTIN and PAN to Groq and now returns 410. An unused helper that still
+  // builds the URL is the thing someone wires a button to next.
   payroll: {
     /** PAY-23 — the annual statutory bonus register (Payment of Bonus Act
      *  1965). Who is owed, who is out and why, §19's due date and the
@@ -5011,6 +5184,10 @@ export const api = {
       request<ApiResp<RelationshipHealthPayload>>("/api/intelligence/relationship-health"),
     recommendations: () =>
       request<ApiResp<RecommendationsPayload>>("/api/intelligence/recommendations"),
+    /** The morning digest: counts from the existing checks, worded by a model
+     *  only when something needs attention, plain text otherwise. */
+    digest: () =>
+      request<ApiResp<PracticeDigestPayload>>("/api/intelligence/digest"),
     /** The capacity engine's own judgements. Typed rather than `unknown`
      *  because one of them — the unassigned backlog — is the only thing on it
      *  that no other screen can say. */
@@ -5269,12 +5446,11 @@ export const api = {
     workflowIntelligence: () => request("/api/copilot/intelligence/workflows"),
     relationshipIntelligence: () => request("/api/copilot/intelligence/relationships"),
     executiveDashboard: () => request("/api/copilot/executive-dashboard"),
-    listRecommendations: (params?: Record<string, string>) =>
-      request(`/api/copilot/recommendations${params ? "?" + new URLSearchParams(params) : ""}`),
-    actRecommendation: (id: string, body: unknown) =>
-      request(`/api/copilot/recommendations/${id}/action`, { method: "POST", body: JSON.stringify(body) }),
-    executeAction: (body: unknown) =>
-      request("/api/copilot/actions", { method: "POST", body: JSON.stringify(body) }),
+    // `listRecommendations`, `actRecommendation` and `executeAction` were removed
+    // with the three routes they called (ai-10): nothing generated a
+    // recommendation, and the action route marked itself `executed` without
+    // executing anything. An unused wrapper that still builds the URL is the
+    // thing someone wires a button to next.
   },
 
   // ── Amendment v1.1 (Batch 7) — Practice / Revenue Operations / Knowledge ──
@@ -6414,6 +6590,30 @@ export const api = {
     itcRegisterReclaim: (body: ITCReclaimInput) =>
       request<ApiResp<Record<string, unknown>>>(
         "/api/gst-workspace/itc/register/reclaim",
+        { method: "POST", body: JSON.stringify(body) }),
+
+    /** gst-15 — the credit not yet claimed, with the date CGST §16(4) takes it
+     *  away. Read-only; claims, posts and files nothing. */
+    itcTimeBar: (clientId: string) =>
+      request<ApiResp<ItcTimeBar>>(
+        `/api/gst-workspace/itc/time-bar?client_id=${encodeURIComponent(clientId)}`),
+
+    /** gst-10 — reconcile GSTR-2B files for many clients, each routed to its
+     *  client by the GSTIN inside it. NO client and NO period is sent: the file
+     *  says whose it is and which month. At most five files a request — the
+     *  caller sends them in turn, because this module aborts a request at 45
+     *  seconds and never retries it. */
+    reconcileGstr2bFiles: (files: { name: string; raw_data: Record<string, unknown> }[]) =>
+      request<ApiResp<Gstr2bBulkAnswer>>(
+        "/api/gst-workspace/gstr2b/bulk",
+        { method: "POST", body: JSON.stringify({ files }) }),
+
+    /** gst-13 — a DRAFT purchase bill from a GSTR-2B document the books have no
+     *  bill for. Never receives, never posts, never claims credit; the server
+     *  refuses what it cannot draft and says why in a sentence. */
+    createDraftBillFrom2b: (body: Gstr2bDraftBillRequest) =>
+      request<ApiResp<Gstr2bDraftBill>>(
+        "/api/purchase-bills/from-2b",
         { method: "POST", body: JSON.stringify(body) }),
 
     /** Advances received against no invoice — GSTR-1 Table 11.

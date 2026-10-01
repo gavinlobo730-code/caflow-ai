@@ -3,8 +3,8 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   Send, Plus, Sparkles, ThumbsUp, ThumbsDown,
-  BarChart2, Users, Shield, Zap, GitBranch, RefreshCw,
-  MessageSquare, Clock, Star,
+  Users, Shield, Zap,
+  MessageSquare, Clock,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { BORDER, BRAND, BRAND_SURFACE } from "@/lib/design/tokens";
@@ -31,19 +31,6 @@ interface Message {
   created_at: string;
 }
 
-interface Recommendation {
-  id: string;
-  recommendation_type: string;
-  priority: string;
-  title: string;
-  description: string;
-  rationale?: string;
-  action_label?: string;
-  status: string;
-  client_name?: string;
-  created_at: string;
-}
-
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CONTEXT_ICONS: Record<string, JSX.Element> = {
@@ -51,21 +38,22 @@ const CONTEXT_ICONS: Record<string, JSX.Element> = {
   client: <Users size={14} />,
   compliance: <Shield size={14} />,
   workflow: <Zap size={14} />,
-  executive: <BarChart2 size={14} />,
-  relationship: <GitBranch size={14} />,
 };
 
-const PRIORITY_STYLES: Record<string, string> = {
-  critical: "bg-sev-critical-surface text-sev-critical border-sev-critical-border",
-  high:     "bg-sev-high-surface text-sev-high border-sev-high-border",
-  medium:   "bg-sev-medium-surface text-sev-medium border-sev-medium-border",
-  low:      "bg-sev-low-surface text-sev-low border-sev-low-border",
-};
-
-const REC_TYPE_LABELS: Record<string, string> = {
-  risk: "Risk", opportunity: "Opportunity", compliance: "Compliance",
-  workflow: "Workflow", relationship: "Relationship", health: "Health",
-};
+/**
+ * The contexts a conversation may be opened in — the ones the server attaches
+ * firm data for (`models/ai_copilot.CONTEXTS_WITH_DATA`, asserted equal to what
+ * `_build_context` injects by `tests/test_ai_surfaces_are_not_fake_or_dead.py`).
+ * "Executive" and "Relationships" were offered here and injected NOTHING, so a
+ * CA who picked one was answered by a model that had been told nothing about
+ * their firm and could not say so (ai-10). `client` is not offered: it needs a
+ * client id, and this page has no client picker.
+ */
+const CONTEXT_CHOICES: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "global", label: "Global" },
+  { value: "compliance", label: "Compliance" },
+  { value: "workflow", label: "Workflows" },
+];
 
 function fmtTime(s: string) {
   const d = new Date(s);
@@ -136,19 +124,15 @@ export default function CopilotPage() {
   const [activeConv, setActiveConv] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [contextType, setContextType] = useState("global");
-  const [tab, setTab] = useState<"chat" | "recommendations">("chat");
-  const [actingRec, setActingRec] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Distinguish "fetch failed" from "genuinely none yet" — a masked failure
   // here used to render as "No conversations yet" / "All insights have been
   // actioned", the worst version of this bug class (an active false-positive
   // congratulatory message, not just an empty list).
   const [conversationsError, setConversationsError] = useState<string | null>(null);
-  const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
   // This row's request is in flight. These handlers had no loading state at
   // all, so the button was never disabled and a second click sent it again.
@@ -171,17 +155,6 @@ export default function CopilotPage() {
     }
   }, []);
 
-  const loadRecommendations = useCallback(async () => {
-    try {
-      const res = (await api.copilotV2.listRecommendations({ status: "pending" })) as { data: { recommendations: Recommendation[] } };
-      setRecommendations(res.data?.recommendations || []);
-      setRecommendationsError(null);
-    } catch (e) {
-      setRecommendations([]);
-      setRecommendationsError(e instanceof Error ? e.message : "Couldn't load recommendations.");
-    }
-  }, []);
-
   const loadSuggestions = useCallback(async () => {
     try {
       const res = (await api.copilotV2.suggestions(contextType)) as { data: { suggestions: string[] } };
@@ -191,9 +164,8 @@ export default function CopilotPage() {
 
   useEffect(() => {
     loadConversations();
-    loadRecommendations();
     loadSuggestions();
-  }, [loadConversations, loadRecommendations, loadSuggestions]);
+  }, [loadConversations, loadSuggestions]);
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
@@ -273,16 +245,6 @@ export default function CopilotPage() {
     } catch {}
   };
 
-  const actOnRecommendation = async (recId: string, action: "accept" | "dismiss" | "snooze") => {
-    setActingRec(recId);
-    try {
-      await api.copilotV2.actRecommendation(recId, { action });
-      setRecommendations((prev: Recommendation[]) => prev.filter((r: Recommendation) => r.id !== recId));
-    } finally {
-      setActingRec(null);
-    }
-  };
-
   return (
     <div className="h-screen flex flex-col bg-ps-bg">
       {/* Header */}
@@ -304,31 +266,10 @@ export default function CopilotPage() {
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setContextType(e.target.value)}
               className="text-xs px-3 py-1.5 border border-ps-border rounded-lg bg-white text-ps-label"
             >
-              <option value="global">Global</option>
-              <option value="compliance">Compliance</option>
-              <option value="workflow">Workflows</option>
-              <option value="executive">Executive</option>
-              <option value="relationship">Relationships</option>
+              {CONTEXT_CHOICES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
             </select>
-            <div className="flex gap-1 border border-ps-border rounded-lg p-0.5 bg-white">
-              <button
-                onClick={() => setTab("chat")}
-                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${tab === "chat" ? "bg-brand text-white" : "text-ps-label hover:text-ps-body"}`}
-              >
-                Chat
-              </button>
-              <button
-                onClick={() => setTab("recommendations")}
-                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors relative ${tab === "recommendations" ? "bg-brand text-white" : "text-ps-label hover:text-ps-body"}`}
-              >
-                Insights
-                {recommendations.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-3xs rounded-full flex items-center justify-center font-bold">
-                    {recommendations.length > 9 ? "9+" : recommendations.length}
-                  </span>
-                )}
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -389,8 +330,10 @@ export default function CopilotPage() {
         {/* Main content */}
         <div className="flex-1 flex flex-col overflow-hidden">
 
-          {tab === "chat" && (
-            <>
+          {/* The Insights tab that stood beside the chat was removed: it listed
+              `ai_recommendations`, which nothing ever generated, so it was empty for
+              every firm and said "All insights have been actioned" (ai-10). */}
+          <>
               {/* Messages area */}
               <div className="flex-1 overflow-y-auto px-6 py-4">
                 {messages.length === 0 ? (
@@ -491,88 +434,7 @@ export default function CopilotPage() {
                   AI responses are advisory — always verify with source documents. Never auto-submit to government portals.
                 </p>
               </div>
-            </>
-          )}
-
-          {tab === "recommendations" && (
-            <div className="flex-1 overflow-y-auto px-6 py-4">
-              <div className="max-w-2xl mx-auto">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-semibold text-brand">AI Recommendations</h2>
-                  <button onClick={loadRecommendations} className="text-xs text-ps-label flex items-center gap-1 hover:text-brand">
-                    <RefreshCw size={12} /> Refresh
-                  </button>
-                </div>
-
-                {recommendationsError ? (
-                  <div className="text-center py-16">
-                    <Star size={40} className="mx-auto text-red-300 mb-3" />
-                    <p className="text-sm text-red-600 font-medium">{recommendationsError}</p>
-                    <button onClick={loadRecommendations} className="mt-3 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
-                  </div>
-                ) : recommendations.length === 0 ? (
-                  <div className="text-center py-16">
-                    <Star size={40} className="mx-auto text-ps-disabled mb-3" />
-                    <p className="text-ps-label">No pending recommendations</p>
-                    <p className="text-sm text-ps-hint mt-1">All insights have been actioned</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {recommendations.map((rec: Recommendation) => (
-                      <div key={rec.id} className="bg-white border border-ps-border rounded-xl p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <span className={`text-3xs px-2 py-0.5 rounded-full font-semibold border ${PRIORITY_STYLES[rec.priority]}`}>
-                                {rec.priority.toUpperCase()}
-                              </span>
-                              <span className="text-3xs bg-ps-muted text-ps-label px-2 py-0.5 rounded-full">
-                                {REC_TYPE_LABELS[rec.recommendation_type] || rec.recommendation_type}
-                              </span>
-                              {rec.client_name && (
-                                <span className="text-3xs text-ps-hint">{rec.client_name}</span>
-                              )}
-                            </div>
-                            <p className="font-medium text-brand text-sm">{rec.title}</p>
-                            <p className="text-xs text-ps-label mt-1">{rec.description}</p>
-                            {rec.rationale && (
-                              <p className="text-2xs text-ps-hint mt-1 italic">{rec.rationale}</p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-ps-border">
-                          {rec.action_label && (
-                            <button
-                              onClick={() => actOnRecommendation(rec.id, "accept")}
-                              disabled={actingRec === rec.id}
-                              className="text-xs px-3 py-1.5 rounded-lg font-medium text-white disabled:opacity-50"
-                              style={{ backgroundColor: BRAND }}
-                            >
-                              {rec.action_label}
-                            </button>
-                          )}
-                          <button
-                            onClick={() => actOnRecommendation(rec.id, "snooze")}
-                            disabled={actingRec === rec.id}
-                            className="text-xs px-3 py-1.5 rounded-lg font-medium border border-ps-border text-ps-label hover:bg-ps-bg disabled:opacity-50"
-                          >
-                            Snooze
-                          </button>
-                          <button
-                            onClick={() => actOnRecommendation(rec.id, "dismiss")}
-                            disabled={actingRec === rec.id}
-                            className="text-xs text-ps-hint hover:text-ps-label px-2 py-1.5 disabled:opacity-50"
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          </>
         </div>
       </div>
     </div>

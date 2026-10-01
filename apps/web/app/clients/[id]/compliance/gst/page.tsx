@@ -8,6 +8,7 @@ import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import AmendmentsTab from "@/components/gst/AmendmentsTab";
 import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
+import { ItcTimeBarRadar } from "@/components/gst/ItcTimeBarRadar";
 import RegistrationsTab from "@/components/gst/RegistrationsTab";
 import { todayLocalISO } from "@/lib/dateMath";
 import { gstPeriodLabel } from "@/lib/gst/period";
@@ -23,7 +24,10 @@ import { formatPaise } from "@/lib/money/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
+import type { ProbableMatch2B } from "@/lib/api";
 import { readGstr2bText } from "@/lib/gst/gstr2bFile";
+import { Probable2BMatches } from "@/components/gst/Probable2BMatches";
+import { CreateDraftBillFrom2B } from "@/components/gst/CreateDraftBillFrom2B";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1586,6 +1590,13 @@ interface Recon2BMatch {
   status: string;
   reason: string;
   difference_paise: number;
+  /** Which of the file's sections the document came from (gst-13). */
+  section?: string | null;
+  /** The server's answer to "may a draft bill be created from this row"
+   *  (gst-13) — this screen keeps no list of which documents are draftable.
+   *  Absent from an older backend, which reads as not offered. */
+  draft_bill_offered?: boolean;
+  draft_bill_refusal?: string | null;
   bill_id: string | null;
   bill_no: string | null;
   supplier_gstin: string;
@@ -1627,6 +1638,8 @@ interface Recon2BResult {
   matches: Recon2BMatch[];
   defaulters: { supplier_gstin: string; unfiled_count: number;
                 itc_at_risk_paise: number; bill_ids: string[] }[];
+  /** gst-12 — suggestions only; they change no verdict and no credit. */
+  probable_matches: ProbableMatch2B[];
 }
 
 const RECON_2B_BUCKETS: { status: string; label: string; hint: string; tone: string }[] = [
@@ -1734,7 +1747,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
         method: "POST",
         body: JSON.stringify({ client_id: clientId, raw_data: raw }),
       });
-      if (resp.success) setResult(objectWithLists<Recon2BResult>(resp.data, "defaulters", "problems"));
+      if (resp.success) setResult(objectWithLists<Recon2BResult>(resp.data, "defaulters", "problems", "probable_matches"));
       else setError(resp.error ?? "Upload failed");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -1916,11 +1929,14 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
                   <th className="text-right py-1.5 pr-3 font-medium">Books tax</th>
                   <th className="text-right py-1.5 pr-3 font-medium">2B tax</th>
                   <th className="text-right py-1.5 font-medium">Difference</th>
+                  {bucket === "missing_in_books" && (
+                    <th className="text-left py-1.5 pl-3 font-medium">Book it</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {shown.length === 0 && (
-                  <tr><td colSpan={5} className="py-3 text-ps-hint">Nothing in this bucket.</td></tr>
+                  <tr><td colSpan={bucket === "missing_in_books" ? 6 : 5} className="py-3 text-ps-hint">Nothing in this bucket.</td></tr>
                 )}
                 {shown.map((m, i) => (
                   <tr key={i} className="border-b last:border-0">
@@ -1943,11 +1959,28 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
                     <td className="py-1.5 text-right font-mono">
                       {m.difference_paise === 0 ? "—" : rupees(m.difference_paise)}
                     </td>
+                    {bucket === "missing_in_books" && (
+                      <td className="py-1.5 pl-3 align-top">
+                        {m.draft_bill_offered ? (
+                          <CreateDraftBillFrom2B clientId={clientId} period={result.period}
+                            document={{ section: m.section ?? null,
+                                        document_type: m.document_type,
+                                        supplier_gstin: m.supplier_gstin,
+                                        document_number: m.document_number }} />
+                        ) : (
+                          <span className="text-3xs text-ps-hint">
+                            {m.draft_bill_refusal ?? ""}
+                          </span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          <Probable2BMatches clientId={clientId} matches={result.probable_matches ?? []} />
 
           {(result.defaulters?.length ?? 0) > 0 && (
             <div>
@@ -2253,7 +2286,13 @@ export default function GSTWorkspacePage() {
         {tab === "dashboard" && <GSTDashboard clientId={clientId} />}
         {tab === "gstr1" && <GSTR1Tab clientId={clientId} />}
         {tab === "amendments" && <AmendmentsTab clientId={clientId} />}
-        {tab === "itc" && <ItcRegisterTab clientId={clientId} />}
+        {tab === "itc" && (
+          <>
+            {/* §16(4): credit not yet claimed and the date it lapses (gst-15) */}
+            <ItcTimeBarRadar clientId={clientId} />
+            <ItcRegisterTab clientId={clientId} />
+          </>
+        )}
         {tab === "gstr3b" && <GSTR3BTab clientId={clientId} />}
         {tab === "gstr2b" && <GSTR2BTab clientId={clientId} />}
         {tab === "history" && <FilingHistoryTab clientId={clientId} />}

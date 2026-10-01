@@ -86,9 +86,10 @@ def _get_workflow_repo():
 
 _SYSTEM_PROMPT_TEMPLATE = """You are PracticeSync AI Copilot — an expert assistant for Indian Chartered Accountants.
 You have deep knowledge of:
-- Indian Income Tax Act (IT Act 1961)
+- Indian Income-tax Act 1961 and the Income-tax Act 2025 (in force from 01-04-2026,
+  which renumbered the TDS and TCS forms and sections — see the brief below)
 - CGST Act 2017 and GST Rules — sections and notifications
-- TDS provisions: Sections 192-196D with thresholds and rates
+- TDS and TCS provisions under both Acts, with thresholds and rates
 - Companies Act 2013 (MCA compliance, ROC filings)
 - SEBI regulations and FEMA provisions
 - CA firm operations: client management, compliance calendars, billing
@@ -135,9 +136,18 @@ def _system_prompt() -> str:
     """
     from core.ist_clock import ist_fy_label
 
+    from domain.ai import statutory_brief
+
     fy = ist_fy_label()                      # e.g. "2026-27"
     fy_start = int(fy.split("-")[0])         # 2026
-    return _SYSTEM_PROMPT_TEMPLATE.format(fy=fy, fy_start=fy_start, fy_end=fy_start + 1)
+    head = _SYSTEM_PROMPT_TEMPLATE.format(fy=fy, fy_start=fy_start, fy_end=fy_start + 1)
+    # The two Acts and the rate years' status, GENERATED (ai-19) and appended
+    # AFTER `.format` so a brace in either can never be read as a placeholder.
+    # The copilot prompt said "IT Act 1961" and nothing of the Income-tax Act
+    # 2025 that took over the TDS vocabulary on 01-04-2026, so for an event after
+    # that date it cited 1961 sections the engine itself no longer emits.
+    return (head + "\n\n" + statutory_brief.act_transition_block() + "\n\n"
+            + statutory_brief.rates_status_line())
 
 
 class AICopilotService:
@@ -210,6 +220,18 @@ class AICopilotService:
         grounded in current DB state.  Failures are silently swallowed so
         that a repo outage never breaks the chat flow.
         """
+        # A context this builder attaches NO data for is answered as the global
+        # one, and the model is told so (ai-10). "executive" and "relationship"
+        # were offered by the page and injected nothing, so a conversation opened
+        # there — conversations already stored under those names still exist —
+        # was answered from the three header lines below and no figure at all,
+        # by a model with no way to say it had none. Global is strictly more
+        # grounded, and the note stops the model implying a narrower view.
+        from models.ai_copilot import CONTEXTS_WITH_DATA
+        requested_context = context_type
+        if context_type not in CONTEXTS_WITH_DATA:
+            context_type = "global"
+
         lines = [
             f"FIRM: {firm_id}",
             # The Indian day, not the UTC one. Between 00:00 and 05:30 IST the
@@ -219,6 +241,13 @@ class AICopilotService:
             f"DATE: {ist_now().strftime('%d %B %Y')}",
             f"CONTEXT TYPE: {context_type}",
         ]
+        if requested_context != context_type:
+            lines.append(
+                f"CONTEXT NOTE: this conversation was opened in a "
+                f"'{requested_context}' context that carries no data of its own. "
+                f"The firm-wide figures below are the only ones attached; do not "
+                f"claim to know anything about executive or relationship matters "
+                f"beyond them.")
 
         try:
             if context_type in ("global", "client"):
@@ -344,8 +373,14 @@ class AICopilotService:
         messages.append({"role": "user", "content": user_message})
         return messages
 
-    async def _call_groq(self, messages: list[dict]) -> tuple[str, int]:
+    async def _call_groq(self, messages: list[dict], *,
+                         canned_ok: bool = True) -> tuple[str, int]:
         """Ask Groq. Returns (reply_text, tokens_used), or RAISES.
+
+        `canned_ok=False` makes the mock-mode canned paragraph a refusal too: a
+        caller that STORES the text under the model's name (the executive
+        summary) must never be handed the mock's words as though a model had
+        written them.
 
         ⚠️ THIS USED TO CATCH EVERY FAILURE AND RETURN `_mock_response` — a
         canned paragraph chosen by keyword — as though the model had said it.
@@ -370,7 +405,7 @@ class AICopilotService:
         from fastapi import HTTPException
 
         if not _GROQ_API_KEY:
-            if _USE_MOCK:
+            if _USE_MOCK and canned_ok:
                 last_user = next(
                     (m["content"] for m in reversed(messages) if m["role"] == "user"), ""
                 )
@@ -742,7 +777,6 @@ Provide:
             "failing_workflows": failing[:5],
             "overdue_approvals": overdue_approvals[:5],
             "recurring_bottlenecks": [{"name": n} for n in bottleneck_names[:3]],
-            "recommendations": self._repo.list_recommendations(firm_id, rec_type="workflow")[:3],
             "ai_analysis": content,
             "generated_at": now.isoformat(),
         }
@@ -823,9 +857,6 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
                 {"type": "multi_entity_pan", "count": len(multi_entity_pans)}
             ] if multi_entity_pans else [],
             "high_risk_entities": [],
-            "recommendations": self._repo.list_recommendations(
-                firm_id, rec_type="relationship"
-            )[:3],
             "ai_analysis": content,
             "generated_at": now.isoformat(),
         }
@@ -835,20 +866,53 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
     async def get_executive_dashboard(
         self, firm_id: str, allowed_client_ids=None
     ) -> dict:
+        """The firm's operational position — every figure computed, or said unknown.
+
+        ⚠️ THIS USED TO INVENT ABOUT HALF OF WHAT IT SHOWED (ai-08). Outstanding
+        invoices, outstanding amount and average collection days were literal
+        zeroes; utilisation was `overdue * 5 + 50`; the average health score was
+        75 when there were no scores; two growth opportunities carried a rupee
+        value per head that nobody had measured; and the summary was stamped
+        with the Groq model's name even when the sentence was a template because
+        the Groq call had failed inside `except Exception: pass`.
+        `domain/practice/executive_dashboard` holds the replacements and its
+        header says what each one refuses. An unknown is `None` here and the page
+        renders "No data" with the reason.
+
+        The revenue block is the PRACTICE'S OWN fee ledger (`collections_service`
+        — open invoices to the internal practice client), NOT the clients' own
+        receivables: summing those would put what the clients' customers owe
+        THEM into the practice's revenue. It is Partner-only everywhere else in
+        the product (G1), so a caller who is narrowed to their own clients gets
+        it WITHHELD with the reason rather than a figure computed over clients
+        they may not see.
+        """
+        from core.ist_clock import fy_bounds, ist_fy_label
+        from domain.ai import narration
+        from domain.practice import executive_dashboard as ed
+
         scope = self._scope_key(allowed_client_ids)
         cached = self._repo.get_summary(firm_id, "executive", scope)
+        # A row written before DASHBOARD_VERSION carries figures this method no
+        # longer produces (see the module note) and is treated as absent. A
+        # current one is served as the payload itself — it used to be returned as
+        # the raw `ai_summaries` row, so the page had to look under `metadata`
+        # for the one shape and at the top level for the other.
         if cached:
-            return cached
+            meta = cached.get("metadata")
+            if isinstance(meta, dict) and meta.get("dashboard_version") == ed.DASHBOARD_VERSION:
+                return meta
 
         now = datetime.now(timezone.utc)
+        today = ist_today()
 
         # ── Gather real data ────────────────────────────────────────────────
         clients: list[dict] = []
-        tasks_overdue = 0
+        overdue_tasks: list[dict] = []
+        compliance_records: list[dict] = []
         wf_failures = 0
         pending_approvals = 0
         active_automations = 0
-        all_tasks: list[dict] = []
 
         # EVERY read below is narrowed to the caller's clients (ai-09). The scope
         # used to feed only the CACHE KEY, so a scoped Manager or Executive got
@@ -859,7 +923,7 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
             clients = self._visible(
                 _get_client_repo().find_all(firm_id=firm_id), allowed_client_ids, "id")
         except Exception:
-            pass
+            _logger.warning("executive dashboard: clients could not be read", exc_info=True)
 
         try:
             wf_repo = _get_workflow_repo()
@@ -874,138 +938,150 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
             templates = wf_repo.list_templates(firm_id, is_active=True)
             active_automations = len([t for t in templates if t.get("is_active")])
         except Exception:
-            pass
+            _logger.warning("executive dashboard: workflow figures could not be read",
+                            exc_info=True)
 
         try:
-            all_tasks = self._visible(
+            overdue_tasks = self._visible(
                 _get_task_repo().find_overdue(firm_id=firm_id), allowed_client_ids)
-            tasks_overdue = len(all_tasks)
         except Exception:
-            pass
+            _logger.warning("executive dashboard: tasks could not be read", exc_info=True)
 
-        # ── Client risk breakdown ───────────────────────────────────────────
-        critical = len([
-            c for c in clients
-            if c.get("health_score", 100) < 40 or c.get("status") == "critical"
-        ])
-        at_risk = len([
-            c for c in clients
-            if (40 <= c.get("health_score", 100) < 70)
-            or c.get("status") == "at_risk"
-        ])
-        healthy = max(0, len(clients) - critical - at_risk)
+        try:
+            compliance_records = self._visible(
+                _get_compliance_records_repo().find_all(firm_id=firm_id),
+                allowed_client_ids)
+        except Exception:
+            _logger.warning("executive dashboard: compliance records could not be read",
+                            exc_info=True)
 
-        # ── Churn signals ───────────────────────────────────────────────────
-        churn_signals: list[dict] = []
-        for c in clients:
-            score = c.get("health_score", 100)
-            if score < 50:
-                churn_signals.append({
-                    "client_name": c.get("client_name", "Unknown"),
-                    "signal": f"Health score {score} — below threshold (50)",
-                    "risk": "high" if score < 30 else "medium",
-                })
-        churn_signals = sorted(
-            churn_signals, key=lambda x: 0 if x["risk"] == "high" else 1
-        )[:5]
+        # ── Computed from the records, or unknown ───────────────────────────
+        risk = ed.client_risk(clients)
+        avg_score = ed.average_health(clients)
+        fy = ist_fy_label()
+        coverage = ed.compliance_coverage(
+            compliance_records, fy_bounds(fy)[0], today.isoformat())
+        overdue_filings = len([r for r in compliance_records
+                               if r.get("status") == "Overdue"])
+        task_facts = ed.overdue_task_facts(overdue_tasks)
 
-        # ── Growth opportunities ────────────────────────────────────────────
-        growth_opportunities: list[dict] = []
-        inactive = [c for c in clients if c.get("status") == "inactive"]
-        if inactive:
-            # All monetary values stored in integer paise (₹5,000 = 500000 paise)
-            growth_opportunities.append({
-                "type": "reactivation",
-                "description": f"{len(inactive)} inactive clients could be re-engaged",
-                "estimated_value_paise": len(inactive) * 500_000,  # ₹5,000 per client
-            })
-        # Clients without GST registration may be candidates for advisory
-        no_gst = [
-            c for c in clients
-            if not c.get("gstin") and c.get("status") == "active"
-        ]
-        if no_gst:
-            growth_opportunities.append({
-                "type": "advisory",
-                "description": f"{len(no_gst)} active clients without GSTIN — GST advisory opportunity",
-                "estimated_value_paise": len(no_gst) * 300_000,  # ₹3,000 per client
-            })
+        # Revenue: the practice's own fee ledger, Partner-only. A failure here
+        # costs this block and nothing else, and says so.
+        if allowed_client_ids is not None:
+            revenue = {
+                "available": False,
+                "reason": ("The practice's own fee receivables are shown to "
+                           "Partners only, so they are not part of a view "
+                           "narrowed to your clients."),
+            }
+        else:
+            try:
+                from services import collections_service
+                revenue = collections_service.executive_snapshot(firm_id, today)
+            except Exception:
+                _logger.warning("executive dashboard: the fee ledger could not be read",
+                                exc_info=True)
+                revenue = {"available": False,
+                           "reason": "The practice's fee ledger could not be read just now."}
 
-        # ── Health metrics ──────────────────────────────────────────────────
-        scores = [c["health_score"] for c in clients if c.get("health_score") is not None]
-        avg_score = int(sum(scores) / len(scores)) if scores else 75
-        compliance_coverage = min(100, max(0, 100 - tasks_overdue * 5))
+        # ── The summary: a model's wording of THESE facts, or the plain sentence ─
+        facts = {
+            "clients": len(clients), "critical": risk["critical"],
+            "at_risk": risk["at_risk"], "healthy": risk["healthy"],
+            "unscored": risk["unscored"], "overdue_filings": overdue_filings,
+            "overdue_tasks": task_facts["overdue_tasks"],
+            "workflow_failures": wf_failures, "pending_approvals": pending_approvals,
+            "active_automations": active_automations,
+        }
+        ai_summary = ed.template_summary(facts)
+        summary_source = "template"
+        model_used: Optional[str] = None
 
-        # ── AI summary (uses real numbers) ──────────────────────────────────
+        score_line = (str(avg_score) if avg_score is not None
+                      else "not available (no client has a score)")
         summary_prompt = f"""Summarise this CA firm's current operational status for an executive in 3 concise sentences.
-Be specific with numbers. Highlight the most urgent issue first.
+Use ONLY the figures below, exactly as given. Do not add, derive, estimate or round any other figure (no percentages, no "about a third"). Highlight the most urgent issue first.
 
 Firm data as of {ist_now().strftime('%d %B %Y')}:
-- Total clients: {len(clients)} | Critical: {critical} | At-risk: {at_risk} | Healthy: {healthy}
-- Overdue tasks: {tasks_overdue}
-- Workflow failures: {wf_failures} | Pending approvals: {pending_approvals}
-- Active automations: {active_automations}
-- Average client health score: {avg_score}/100
-- Compliance coverage: {compliance_coverage}%"""
-
-        ai_summary = (
-            f"Firm has {len(clients)} clients with {critical} critical and {at_risk} at-risk. "
-            f"{tasks_overdue} overdue tasks require attention."
-        )
+- Clients in view: {facts['clients']} | Critical: {facts['critical']} | At-risk: {facts['at_risk']} | Healthy: {facts['healthy']} | No health score yet: {facts['unscored']}
+- Overdue compliance filings: {facts['overdue_filings']}
+- Overdue tasks: {facts['overdue_tasks']}
+- Workflow failures: {facts['workflow_failures']} | Pending approvals: {facts['pending_approvals']}
+- Active automations: {facts['active_automations']}
+- Average client health score: {score_line}"""
         try:
             messages = [
                 {"role": "system", "content": _system_prompt()},
                 {"role": "user", "content": summary_prompt},
             ]
-            ai_summary_raw, _ = await self._call_groq(messages)
-            if ai_summary_raw:
-                ai_summary = ai_summary_raw
-        except Exception:
-            pass
-
-        recs = self._repo.list_recommendations(firm_id, status="pending", limit=10)
-        critical_recs = [r for r in recs if r["priority"] == "critical"]
+            # canned_ok=False: with no key in mock mode `_call_groq` would hand
+            # back its canned paragraph, which is not a summary of this firm and
+            # must not be stored under the model's name.
+            text, _ = await self._call_groq(messages, canned_ok=False)
+            allowed = list(facts.values()) + [avg_score, today.day, today.year,
+                                              fy[:4], fy[5:]]
+            if text and text.strip() and narration.is_grounded(text, allowed):
+                ai_summary, summary_source = text.strip(), "model"
+                model_used = groq_text.text_model()
+            elif text and text.strip():
+                _logger.warning(
+                    "executive dashboard: the model's summary carried figures the "
+                    "engines did not compute (%s) — the plain sentence is shown",
+                    narration.ungrounded_numbers(text, allowed))
+        except Exception as exc:
+            _logger.warning("executive dashboard: no model summary (%s: %s) — the "
+                            "plain sentence is shown", type(exc).__name__, exc)
 
         dashboard_data = {
+            "dashboard_version": ed.DASHBOARD_VERSION,
             "firm_id": firm_id,
             # Said the way the relationship view says it: a scoped answer is
             # narrowed AND labelled, so nobody reads a Manager's three clients
             # as the practice's health.
             "scoped": allowed_client_ids is not None,
             "analysed_client_count": len(clients),
-            "revenue_insights": {
-                "outstanding_invoices": 0,
-                "outstanding_amount_paise": 0,
-                "avg_collection_days": 0,
-                "billing_trend": "stable",
-            },
+            "revenue_insights": revenue,
             "capacity_insights": {
-                "team_utilisation_percent": min(100, tasks_overdue * 5 + 50),
-                "overloaded_staff": 0,
-                "underutilised_staff": 0,
-                "avg_tasks_per_staff": 0,
+                **task_facts,
+                # Utilisation is time logged against a weekly capacity and
+                # lives at /team/workload. Not computed here, and said so.
+                "utilisation_percent": None,
+                "utilisation_note": ("Utilisation needs time logged against a "
+                                     "weekly capacity — see Team workload."),
             },
             "client_risk_insights": {
-                "critical_clients": critical,
-                "at_risk_clients": at_risk,
-                "healthy_clients": healthy,
-                "compliance_failures": tasks_overdue,
+                "critical_clients": risk["critical"],
+                "at_risk_clients": risk["at_risk"],
+                "healthy_clients": risk["healthy"],
+                "unscored_clients": risk["unscored"],
+                # Overdue COMPLIANCE FILINGS. This was `tasks_overdue`: a count
+                # of overdue tasks under a heading that said compliance.
+                "compliance_failures": overdue_filings,
             },
-            "churn_signals": churn_signals,
-            "growth_opportunities": growth_opportunities,
+            "churn_signals": ed.churn_signals(clients),
+            "growth_opportunities": ed.growth_opportunities(clients),
             "firm_health_summary": {
                 "overall_score": avg_score,
-                "compliance_coverage": compliance_coverage,
+                "compliance_coverage": coverage["percent"],
+                "compliance_coverage_basis": {
+                    "due": coverage["due"], "filed": coverage["filed"],
+                    "basis": coverage["basis"],
+                },
                 "active_automations": active_automations,
                 "pending_approvals": pending_approvals,
-                "ai_recommendations_pending": len(recs),
-                "critical_actions": critical + wf_failures,
+                "critical_actions": risk["critical"] + wf_failures,
             },
             "ai_summary": ai_summary,
+            # Which kind of sentence that is: "model" only when a model wrote it
+            # AND every figure in it was one of the engines'.
+            "summary_source": summary_source,
+            "model_used": model_used,
             "generated_at": now.isoformat(),
         }
 
-        high_recs = [r for r in recs if r["priority"] == "high"]
+        # A plain sentence is cached briefly so the next load retries the model;
+        # a transient provider failure must not stick for an hour.
+        ttl = timedelta(hours=1) if summary_source == "model" else timedelta(minutes=5)
         self._repo.upsert_summary(
             firm_id,
             "executive",
@@ -1014,44 +1090,25 @@ Firm data as of {ist_now().strftime('%d %B %Y')}:
                 "title": "Executive Intelligence Dashboard",
                 "content": ai_summary,
                 "key_points": [
-                    f"{len(critical_recs)} critical recommendations",
-                    f"{len(high_recs)} high-priority items",
-                    f"{len(clients)} total clients, {critical} critical",
-                    f"{tasks_overdue} overdue tasks",
+                    f"{len(clients)} total clients, {risk['critical']} critical",
+                    f"{overdue_filings} overdue filings",
+                    f"{task_facts['overdue_tasks']} overdue tasks",
                 ],
                 "metadata": dashboard_data,
-                "model_used": groq_text.text_model(),
-                "expires_at": (now + timedelta(hours=1)).isoformat(),
+                # The model's name only where a model wrote the text. This was
+                # `groq_text.text_model()` unconditionally — recorded against a
+                # row whose sentence was the template above.
+                "model_used": model_used,
+                "expires_at": (now + ttl).isoformat(),
             },
         )
         return dashboard_data
 
-    # ── Recommendations ────────────────────────────────────────────────────────
-
-    def list_recommendations(self, firm_id: str, **kwargs) -> list[dict]:
-        return self._repo.list_recommendations(firm_id, **kwargs)
-
-    def act_on_recommendation(
-        self,
-        firm_id: str,
-        rec_id: str,
-        action: str,
-        user_id: str,
-        snooze_days: Optional[int] = None,
-    ) -> Optional[dict]:
-        snooze_until = None
-        if action == "snooze" and snooze_days:
-            snooze_until = (
-                datetime.now(timezone.utc) + timedelta(days=snooze_days)
-            ).isoformat()
-            status = "snoozed"
-        elif action == "accept":
-            status = "accepted"
-        else:
-            status = "dismissed"
-        return self._repo.update_recommendation_status(
-            firm_id, rec_id, status, user_id, snooze_until
-        )
+    # The recommendation methods that stood here (`list_recommendations`,
+    # `act_on_recommendation`) were deleted with their routes (ai-10): nothing ever
+    # generated a recommendation, so they listed and acted on an always-empty
+    # table. The workflow and relationship payloads no longer carry a `recommendations`
+    # key for the same reason.
 
 
 ai_copilot_service = AICopilotService()

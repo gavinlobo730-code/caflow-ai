@@ -1,6 +1,6 @@
 """
-AI Insights Completion Tests — 10 tests covering insight lifecycle,
-cross-client pattern detection, and data integrity.
+AI Insights Completion Tests — insight lifecycle and data integrity (the
+cross-client stub that used to be tested here is deleted — see below).
 
 All tests run in mock mode (no SUPABASE_URL required).
 """
@@ -62,47 +62,18 @@ def test_insight_created_with_evidence_confidence_severity():
     assert insight["status"] == "open"
 
 
-def test_cross_client_pattern_detection_returns_results():
+def test_the_cross_client_stub_is_gone():
+    """The two tests that stood here asserted the SHAPE of a hardcoded sample.
+
+    `get_cross_client_patterns` returned the same three fixed patterns — a
+    director called Rajesh Mehta, three client ids that exist in no firm — for
+    every firm, and `GET /api/ai-insights/cross-client` served them as though
+    they were that firm's cross-client intelligence (ai-10). Both are deleted;
+    `tests/test_ai_surfaces_are_not_fake_or_dead.py` holds the rule that no AI
+    route may serve a literal sample.
     """
-    Test 2: Cross-client pattern detection returns a non-empty list of patterns,
-    each with the required fields.
-    """
-    from domain.ai_insight_service import get_cross_client_patterns
-
-    patterns = get_cross_client_patterns(firm_id="firm-001")
-    assert isinstance(patterns, list)
-    assert len(patterns) >= 2, "At least 2 cross-client patterns expected in mock mode"
-
-    for p in patterns:
-        assert "pattern_type" in p
-        assert "title" in p
-        assert "evidence" in p
-        assert isinstance(p["evidence"], list)
-        assert len(p["evidence"]) > 0
-        assert "confidence" in p
-        assert 0 <= p["confidence"] <= 100
-        assert "severity" in p
-        assert "recommended_action" in p
-
-
-def test_cross_client_pattern_has_required_fields():
-    """
-    Test 3: Each cross-client pattern must include pattern_type, evidence list,
-    confidence 0-100, severity, and recommended_action.
-    """
-    from domain.ai_insight_service import get_cross_client_patterns
-
-    patterns = get_cross_client_patterns(firm_id="firm-001")
-    first = patterns[0]
-
-    assert isinstance(first["pattern_type"], str)
-    assert len(first["pattern_type"]) > 0
-    assert isinstance(first["evidence"], list)
-    assert first["confidence"] >= 0
-    assert first["confidence"] <= 100
-    assert first["severity"] in ("critical", "high", "medium", "low", "info")
-    assert isinstance(first["recommended_action"], str)
-    assert len(first["recommended_action"]) > 0
+    import domain.ai_insight_service as svc
+    assert not hasattr(svc, "get_cross_client_patterns")
 
 
 def test_insight_acknowledgement_updates_status():
@@ -174,21 +145,6 @@ def test_evidence_is_always_array():
     assert len(insight_single["evidence"]) == 1
 
 
-def test_real_insights_have_non_empty_evidence():
-    """
-    Test 8: Every cross-client pattern (a "real" insight from AI analysis)
-    must have at least one evidence item — never an empty array.
-    """
-    from domain.ai_insight_service import get_cross_client_patterns
-
-    patterns = get_cross_client_patterns(firm_id="firm-001")
-    for p in patterns:
-        assert isinstance(p["evidence"], list)
-        assert len(p["evidence"]) > 0, (
-            f"Pattern '{p['pattern_type']}' has empty evidence — real insights must have evidence"
-        )
-
-
 def test_insight_feed_returns_open_insights_sorted_by_severity():
     """
     Test 9: The insight feed must return only open insights, sorted by severity
@@ -226,12 +182,4 @@ def test_all_insight_severities_are_valid():
     for insight in MOCK_AI_INSIGHTS_V2:
         assert insight["severity"] in valid_severities, (
             f"Insight {insight['id']} has invalid severity: {insight['severity']!r}"
-        )
-
-    # Also verify the cross-client patterns have valid severities
-    from domain.ai_insight_service import get_cross_client_patterns
-    patterns = get_cross_client_patterns(firm_id="firm-001")
-    for p in patterns:
-        assert p["severity"] in valid_severities, (
-            f"Pattern {p['pattern_type']} has invalid severity: {p['severity']!r}"
         )

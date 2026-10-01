@@ -19,13 +19,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from models.common import api_response
-from core.authz import assert_client_access, can_access_client
+from core.authz import assert_client_access, can_access_client, effective_client_ids
 from core.permissions import rbac
 from core.ist_clock import ist_today
 from core.validators import validate_gstin
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
-from services import gst_2b_reconciliation_service
+from services import gst_2b_bulk_service, gst_2b_reconciliation_service
 from domain.gst import gstr2b_intake
 from domain.gst.gstr2b import parse_gstr2b, paise as gstr2b_paise
 from services.period_validation_service import period_validation_service
@@ -170,6 +170,21 @@ class UpdateStatusRequest(BaseModel):
     # this app can lag the portal by days, and the period lock keys on the real
     # filing date, not on when someone got round to recording it.
     filed_date: Optional[str] = None
+
+
+class GSTR2BBulkFile(BaseModel):
+    #: The file's name as the browser knew it. Shown back beside its result and
+    #: never trusted for anything: the month and the client both come from the
+    #: file's own contents (gst-10).
+    name: str = Field(default="", max_length=300)
+    raw_data: dict = Field(default_factory=dict, description="GSTR-2B JSON from portal")
+
+
+class GSTR2BBulkRequest(BaseModel):
+    """Several clients' files in one action. NO client_id and NO period: each
+    file says whose it is and which month it is for (gst-10)."""
+    files: list[GSTR2BBulkFile] = Field(
+        ..., min_length=1, max_length=gst_2b_bulk_service.MAX_FILES_PER_REQUEST)
 
 
 class GSTR2BUploadRequest(BaseModel):
@@ -1004,6 +1019,7 @@ def upload_gstr2b(
                 "persisted": False,
                 "portal_document_count": len(parsed.documents),
                 "summary": None, "matches": [], "defaulters": [],
+                "probable_matches": [],
             })
 
         from core.supabase_client import get_supabase
@@ -1017,31 +1033,15 @@ def upload_gstr2b(
 
         # The upload itself is kept whether or not it reconciled — a file that
         # would not parse is exactly the one a CA needs to be able to point at.
-        db.table("gstr2b_uploads").insert({
-            "id": str(uuid.uuid4()),
-            "firm_id": firm_id,
-            "client_id": body.client_id,
-            "period": period,
-            "file_url": body.file_url,
-            "raw_data": body.raw_data,
-            "reconciliation_result": {k: v for k, v in result.items()
-                                      if k != "matches"},
-            "status": "reconciled" if result.get("persisted") else "parse_failed",
-            "created_by": current_user.get("id"),
-            "uploaded_at": datetime.utcnow().isoformat(),
-        }).execute()
+        # One writer, shared with the bulk door (gst-10).
+        gst_2b_reconciliation_service.keep_upload(
+            db, firm_id=firm_id, client_id=body.client_id, period=period,
+            raw=body.raw_data, file_url=body.file_url,
+            created_by=current_user.get("id"), result=result)
 
-        summary = result.get("summary") or {}
-        if summary.get("missing_in_2b_count") or summary.get("amount_mismatch_count"):
-            timeline_service.log_timeline_event(
-                client_id=body.client_id, firm_id=firm_id,
-                financial_year="", category="gst", event_type="gst_mismatch_detected",
-                title=(f"GSTR-2B for {period}: "
-                       f"{summary.get('missing_in_2b_count', 0)} bills the supplier "
-                       f"has not filed, {summary.get('amount_mismatch_count', 0)} "
-                       f"amount mismatches"),
-                severity="warning",
-            )
+        gst_2b_reconciliation_service.log_discrepancies(
+            timeline_service, firm_id=firm_id, client_id=body.client_id,
+            period=period, summary=result.get("summary"))
         return api_response(True, result)
     except HTTPException:
         raise
@@ -1102,6 +1102,54 @@ def inspect_gstr2b(
         raise
     except Exception:
         _logger.exception("gstr2b inspect failed for %s", body.client_id)
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
+
+
+@router.post("/gstr2b/bulk")
+def bulk_gstr2b(
+    body: GSTR2BBulkRequest,
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """Reconcile several clients' GSTR-2B files in one action, each routed by the
+    GSTIN inside it (gst-10).
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing is sent to a portal; the
+    # files the CA downloaded from gst.gov.in are read here and nowhere else.
+
+    The request names no client: a file's recipient GSTIN (`data.gstin`) is
+    matched against the registrations clients of THIS firm hold, narrowed to the
+    clients the CALLER may see (`effective_client_ids` — a Partner sees every
+    client of the firm, anyone else only their assigned book). A file whose
+    GSTIN matches no such client is REPORTED and not stored, never defaulted to
+    some client, and a file for a client outside the caller's book reads exactly
+    like one nobody holds. See `services/gst_2b_bulk_service`.
+
+    The answer is one row per file with its own status — reconciled,
+    unmatched_gstin, ambiguous_gstin, refused, unreadable or failed — and never
+    the per-document matches, which stay one click away on the client's own
+    GSTR-2B tab. One file's failure is one row's, never the batch's.
+
+    A request takes at most `MAX_FILES_PER_REQUEST` files: the browser aborts at
+    45 seconds and never retries, so the screen sends them in turn.
+    """
+    try:
+        firm_id = current_user["firm_id"]
+        files = [{"name": f.name, "raw": f.raw_data} for f in body.files]
+
+        if _USE_MOCK:
+            return api_response(True, gst_2b_bulk_service.without_a_database(files))
+
+        from core.supabase_client import get_supabase
+        out = gst_2b_bulk_service.process(
+            get_supabase(), firm_id=firm_id, files=files,
+            visible=effective_client_ids(current_user),
+            can_access=lambda cid: can_access_client(current_user, cid),
+            created_by=current_user.get("id"), timeline=timeline_service)
+        return api_response(True, out)
+    except HTTPException:
+        raise
+    except Exception:
+        _logger.exception("gstr2b bulk reconciliation failed")
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
@@ -1690,6 +1738,46 @@ class ITCReclaimIn(BaseModel):
     sgst_paise: int = Field(default=0, ge=0)
     cess_paise: int = Field(default=0, ge=0)
     notes: Optional[str] = None
+
+
+@router.get("/itc/time-bar")
+def itc_time_bar(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """Credit not yet claimed, each row with the date it lapses — CGST §16(4)
+    (gst-15). Nearest lapse first.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Read-only: nothing is claimed,
+    # posted or sent to a portal.
+
+    `domain/gst/itc_time_bar` is the rule and `correction_window` is the one
+    place that knows the date (30 November following the invoice's financial
+    year, or the GSTR-9 date from the books if earlier). The rows are the bills
+    the per-document §16(2)(aa) pass WITHHOLDS and the 2B documents the books
+    have no bill for; the answer also lists the months with no reconciliation at
+    all, and counts, without dating them, the bills the portal itself blocked.
+    "Today" is the Indian date.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {
+            "items": [], "periods_not_reconciled": [], "by_financial_year": [],
+            "notes": ["Running without a database: no bill or GSTR-2B was read."],
+            "totals": {"credit_at_risk_paise": 0, "open_paise": 0,
+                       "closing_soon_paise": 0, "lapsed_paise": 0},
+        })
+    from core.supabase_client import get_supabase
+    from services import itc_time_bar_service
+    try:
+        return api_response(True, itc_time_bar_service.radar(
+            get_supabase(), firm_id=current_user["firm_id"],
+            client_id=client_id, as_of=ist_today()))
+    except HTTPException:
+        raise
+    except Exception:
+        _logger.exception("itc time bar failed for %s", client_id)
+        return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
 @router.get("/itc/register")

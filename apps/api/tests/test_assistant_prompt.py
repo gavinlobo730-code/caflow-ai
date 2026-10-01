@@ -153,10 +153,45 @@ def test_the_model_is_told_to_flag_a_later_year_rather_than_answer_for_it():
 
 def test_no_slab_table_is_labelled_with_an_unverified_forward_year():
     """The specific regression to prevent: re-heading the rate block with a
-    financial year later than the Act it came from."""
-    for bad in ("FY 2026-27", "AY 2027-28", "FY 2027-28"):
-        assert bad not in assistant.SYSTEM_PROMPT, \
-            f"prompt asserts rates for {bad}, which no cited Act here establishes"
+    financial year later than the Act it came from.
+
+    RESTATED ON 01-10-2026 (ai-19). This used to forbid the substrings "FY 2026-27",
+    "AY 2027-28" and "FY 2027-28" anywhere in the prompt, which was a SPELLING of
+    the rule: it kept the prompt from asserting FY 2026-27 rates by keeping it
+    from mentioning FY 2026-27 at all — in the financial year the product is
+    actually running in, with the Income-tax Act 2025 in force and the model told
+    nothing about either. The rule is that a year whose figures are NOT verified is
+    never presented as verified: the slab table is headed with the year the
+    registry has VERIFIED, and the current year's own status is stated in the
+    registry's own words (`fy_rate_gap`) wherever it is named. The original
+    protection is kept in full — nothing here asserts rates for a year the
+    registry does not hold.
+    """
+    from domain.income_tax.statutory_rates import (
+        LATEST_VERIFIED_FY, RATES_BY_FY, current_fy, fy_rate_gap,
+    )
+    from domain.tds import section_rates
+
+    prompt = assistant.SYSTEM_PROMPT
+    heading = next(ln for ln in prompt.splitlines() if ln.startswith("INCOME TAX RATES"))
+    assert f"FY {LATEST_VERIFIED_FY}" in heading, \
+        "the slab table is not headed with the year the registry verified"
+    assert RATES_BY_FY[LATEST_VERIFIED_FY].verified
+
+    # A year the registry has not held at all is never named as one it has.
+    assert "FY 2027-28" not in prompt and "AY 2027-28" not in prompt
+
+    # The current year is named WITH what the registry says about it.
+    for gap in (fy_rate_gap(current_fy()), section_rates.fy_rate_gap(current_fy())):
+        if gap:
+            assert gap in prompt, f"the prompt names the year without saying: {gap[:60]}…"
+    # …and only ever inside those sentences or the two headings that carry them.
+    for ln in prompt.splitlines():
+        if "FY 2026-27" in ln:
+            assert (ln.startswith(("STATUS OF THE CURRENT YEAR", "TDS, FY",
+                                   "TDS rates for FY", "- Statements"))
+                    or "carried forward" in ln or "not held" in ln or "has verified" in ln), \
+                f"FY 2026-27 appears outside a status line: {ln[:90]}"
 
 
 # ── Guard rails that predate the port and must not be lost in it ─────────────

@@ -85,7 +85,7 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "documents",    label: "Documents",     href: (id) => `/clients/${id}/documents/` },
   { id: "tasks",        label: "Tasks",         href: (id) => `/clients/${id}/tasks/` },
   { id: "portal",        label: "Portal",         href: (id) => `/clients/${id}/portal/` },
-  { id: "ai-insights",  label: "AI Insights",    href: (id) => `/clients/${id}/ai-insights/` },
+  { id: "ai-insights",  label: "Insights",       href: (id) => `/clients/${id}/ai-insights/` },
   { id: "lifecycle",    label: "Lifecycle",      href: (id) => `/clients/${id}/lifecycle/` },
   // "Related Parties", not "Relationships", and the ROUTE deliberately does not
   // move. The section is the input side of the AS 18 disclosure, Companies Act

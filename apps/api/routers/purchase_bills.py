@@ -15,7 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError, field_validator
 from dataclasses import asdict
 from domain.purchases import near_duplicate
-from domain.gst import compensation_cess
+from domain.gst import compensation_cess, draft_bill_from_2b, gstr2b_intake
+from domain.gst.gstr2b import parse_gstr2b
 from domain.extraction_lines import LABELS, UNIT, read_line
 from models.common import api_response
 from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocumentIn
@@ -274,6 +275,46 @@ def probe_near_duplicates(
     except Exception as e:                                      # noqa: BLE001
         _logger.error("probe_near_duplicates: %s", e)
         return api_response(False, None, "Could not check for similar bills.")
+
+
+@router.get("/vendor-history")
+def vendor_history(
+    client_id: str = Query(..., description="CA client ID — required"),
+    vendor_id: str = Query(..., description="The supplier the bill is from"),
+    hsn: Optional[list[str]] = Query(
+        None, description="HSN/SAC codes of the lines on the bill being typed"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """What this supplier's earlier bills say about the one being typed (ai-23).
+
+    A proposal and nothing more: the expense account and the §17(5) treatment
+    the firm gave this supplier's lines before — per HSN/SAC, falling back to the
+    supplier as a whole — each with the evidence ("coded this way 3 of 3 times"),
+    and a notice where earlier bills were assessed under a TDS section the
+    supplier record no longer carries. Nothing is written and the editor applies
+    a suggestion only on a click. `domain/purchases/bill_history` is the rule and
+    `services/purchase_history_service` fetches; this decides nothing.
+
+    Declared BEFORE `/{bill_id}`, which would otherwise take "vendor-history" as
+    a bill id. A GET because it reads and writes nothing and carries no document
+    identifier — unlike `/near-duplicates`, which takes an invoice number.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        # Nothing to learn from. An empty answer would read as "checked, and
+        # there is no history", which is a stronger claim than mock mode can make.
+        return api_response(True, {"checked": False})
+    try:
+        from core.supabase_client import get_supabase
+        from services import purchase_history_service
+        return api_response(True, purchase_history_service.vendor_history(
+            get_supabase(), current_user["firm_id"], client_id, vendor_id, hsn or []))
+    except HTTPException:
+        raise
+    except Exception as e:                                      # noqa: BLE001
+        _logger.error("vendor_history: %s", e)
+        # A suggestion that could not be computed is silence, never a blocked bill.
+        return api_response(False, None, "Could not look up this supplier's earlier bills.")
 
 
 @router.post("/tds-preview")
@@ -2212,6 +2253,186 @@ def create_bill_from_document(
         raise
     except Exception as e:
         _logger.error("create_bill_from_document: %s", e)
+        return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
+
+
+class BillFrom2BIn(BaseModel):
+    """The ADDRESS of a GSTR-2B document, and nothing else (gst-13).
+
+    No amount, no date and no rate is accepted: they come off the stored row
+    and the kept file, so a caller cannot draft a bill the portal never
+    carried. The five fields are the stored row's natural key
+    (`uq_gstr2a_records_document`) with the client.
+    """
+    client_id: str
+    #: MMYYYY — the reconciliation the row sits in, as the result returned it.
+    period: str
+    section: str
+    document_type: str
+    supplier_gstin: str
+    document_number: str
+
+
+def _vendor_for_supplier_gstin(db, firm_id: str, client_id: str, gstin: str) -> str:
+    """The client's ONE vendor carrying this GSTIN, or a 422 saying what to do.
+
+    Firm- AND client-scoped, for `_match_extracted_vendor`'s reason: a vendor of
+    another client carries the wrong TDS section, PAN and State. Stricter than
+    that function in one way — more than one live vendor with the GSTIN is
+    REFUSED rather than taking the first, because the bill would carry one
+    vendor's TDS section on the strength of a coin toss.
+    """
+    rows = (db.table("vendors").select("id, name, is_active")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("gstin", gstin).execute().data) or []
+    live = [r for r in rows if r.get("is_active") is not False]
+    if len(live) > 1:
+        raise HTTPException(status_code=422, detail=(
+            f"More than one supplier on this client's books carries GSTIN "
+            f"{gstin} ({', '.join(str(r.get('name') or r.get('id')) for r in live)}), "
+            f"so the bill cannot be drafted against either. Merge or correct "
+            f"them first — the vendor carries the TDS section the bill is "
+            f"computed from."))
+    chosen = live[0] if live else (rows[0] if rows else None)
+    if chosen is None:
+        raise HTTPException(status_code=422, detail=(
+            f"No supplier on this client's books carries GSTIN {gstin}. Add the "
+            f"supplier as a vendor and create the draft again — a bill cannot be "
+            f"booked without one, because the vendor carries the TDS section, "
+            f"PAN and State it is computed from. If the supplier IS on the "
+            f"books under a different GSTIN, correct that record instead: "
+            f"that is what the probable-match list is for."))
+    return chosen["id"]
+
+
+@router.post("/from-2b")
+def create_bill_from_2b(
+    data: BillFrom2BIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Create a DRAFT purchase bill from a GSTR-2B document with no bill in the
+    books — the supplier filed it and the client never entered it (gst-13).
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    Always 'draft'. Nothing reaches the general ledger and no credit is claimed:
+    that happens when a CA calls /receive, exactly as for a typed bill. Nothing
+    is sent to any portal.
+
+    ONE CREATE PATH, as `from-document` has been since PUR-17. This resolves the
+    vendor, takes the lines from `domain/gst/draft_bill_from_2b` and calls
+    `_create_purchase_bill_core`, which computes the totals, withholds the TDS
+    and asks the financial-year and filed-return locks. What the file cannot
+    supply is REFUSED and named — see that module for the list.
+
+    THE VENDOR'S NUMBER IS THEIRS: `bill_no` is the supplier's invoice number
+    exactly as 2B carries it. And there is no stored link to the 2B row: the
+    draft carries the supplier's number under the supplier's GSTIN, so once it
+    is received the next reconciliation matches it by key. A link written now
+    would make a bill nobody has received read as matched.
+
+    The answer says whether the engine's arithmetic REPRODUCES the supplier's
+    figures (`agrees_with_2b`) and names every head where it does not; it never
+    adjusts either side.
+    """
+    assert_client_access(current_user, data.client_id)
+    try:
+        firm_id = current_user.get("firm_id") or ""
+        if _USE_MOCK:
+            return api_response(False, None, (
+                "GSTR-2B reconciliations are kept in the database, and there is "
+                "none here: running without one, so no draft was created."))
+        from core.supabase_client import get_supabase
+        from services import gst_2b_reconciliation_service as recon
+        db = get_supabase()
+
+        period = (data.period or "").strip()
+        if not gstr2b_intake._valid(period):
+            raise HTTPException(status_code=422, detail=(
+                f"The period given, '{period}', is not MMYYYY (for example 042025)."))
+        section = (data.section or "").strip()
+        dtype = (data.document_type or "").strip()
+        gstin = (data.supplier_gstin or "").strip().upper()
+        number = (data.document_number or "").strip()
+
+        why = draft_bill_from_2b.refusal_for_kind(section, dtype)
+        if why:
+            raise HTTPException(status_code=422, detail=why)
+
+        rows = recon.find_records(
+            db, firm_id=firm_id, client_id=data.client_id, period=period,
+            section=section, document_type=dtype, supplier_gstin=gstin,
+            document_number=number)
+        if not rows:
+            raise HTTPException(status_code=404, detail=(
+                f"No such document on this client's GSTR-2B reconciliation for "
+                f"{gstr2b_intake.label_of(period)}. Upload the file again and "
+                f"choose the document from the result."))
+        if len(rows) > 1:
+            raise HTTPException(status_code=409, detail=(
+                "More than one stored document matches that address, so none was "
+                "chosen. Upload the file again."))
+        row = rows[0]
+        if row.get("purchase_bill_id"):
+            raise HTTPException(status_code=409, detail=(
+                f"This document is already matched to bill "
+                f"{row['purchase_bill_id']} — there is nothing to draft."))
+
+        kept = recon.read_kept_file(db, firm_id=firm_id, client_id=data.client_id,
+                                    period=period)
+        if kept is None:
+            raise HTTPException(status_code=422, detail=(
+                "No copy of the GSTR-2B file is kept for this month, and the "
+                "rates the supplier charged are only in the file. Upload it "
+                "again, then create the draft."))
+        parsed = parse_gstr2b(kept)
+        doc = next((d for d in parsed.documents
+                    if d.section == section and d.document_type == dtype
+                    and d.supplier_gstin == gstin
+                    and d.document_number == number), None)
+        if doc is None:
+            raise HTTPException(status_code=422, detail=(
+                "The copy of the GSTR-2B file kept for this month does not "
+                "contain this document, so it cannot be the file the stored "
+                "row came from. Upload the file again."))
+
+        plan = draft_bill_from_2b.plan(
+            doc, row, period_label=gstr2b_intake.label_of(period))
+        if not plan.ok:
+            raise HTTPException(status_code=422, detail=plan.refusal)
+
+        vendor_id = _vendor_for_supplier_gstin(db, firm_id, data.client_id, gstin)
+
+        bill = _create_purchase_bill_core({
+            "client_id": data.client_id,
+            "vendor_id": vendor_id,
+            # The supplier's own number, as filed. Never folded or replaced.
+            "bill_no":   doc.document_number,
+            "bill_date": doc.document_date,
+            "lines":     list(plan.lines),
+            "notes":     plan.notes,
+        }, current_user)
+
+        agrees, differences = draft_bill_from_2b.describe_agreement(bill, doc)
+
+        log_event(
+            firm_id, "purchase_bill", bill.get("id"),
+            "created_from_gstr2b", actor_id=current_user.get("auth_user_id"),
+            actor_email=current_user.get("email"),
+            metadata={"period": period, "section": section,
+                      "supplier_gstin": gstin, "document_number": number,
+                      "agrees_with_2b": agrees},
+        )
+        return api_response(True, {
+            "bill": bill,
+            "status": bill.get("status"),
+            "agrees_with_2b": agrees,
+            "differences": differences,
+            "caveats": list(plan.caveats),
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("create_bill_from_2b: %s", e)
         return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
 
 

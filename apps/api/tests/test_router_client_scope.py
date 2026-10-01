@@ -623,7 +623,8 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # allowed_client_ids=effective_client_ids(...) threaded into
     # get_insight_feed, the same F2 convention compliance_ops.py's
     # generate_obligations/compliance_dashboard/run_escalations used.
-    # cross_client_patterns is the one EXEMPT route below — see its reason.
+    # (GET /cross-client, the one route here with no client-scoped data, was
+    # deleted as a hardcoded sample — ai-10 — so nothing in this router is EXEMPT.)
     "/api/ai-insights": (
         "assert_client_access", "filter_by_client", "effective_client_ids",
         "_assert_insight_scope",
@@ -1559,14 +1560,6 @@ EXEMPT: dict[str, str] = {
         "that §44AB applies; whether it does is a turnover question this app "
         "does not hold, and /api/compliance/itr-due-date is the client-scoped "
         "endpoint that answers per assessee.",
-    # ai_insights.py — the one route with no real client-scoped data.
-    "/api/ai-insights/cross-client":
-        "get_cross_client_patterns (domain/ai_insight_service.py) is a "
-        "hardcoded stub that returns the same fixed sample patterns for "
-        "every firm regardless of real data — its own docstring says so "
-        "('In production this would query the DB... For now return "
-        "realistic mock patterns.'). There is no real client-scoped row "
-        "here for an assignment check to gate.",
     # engagement_sign_public.py — see the AUDITED entry above for the full
     # reasoning (public token-bearer flow, no firm-staff caller at all).
     "/api/public/engagement-letters/{token}":
@@ -1792,7 +1785,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/reminders": 3, "/api/engagements": 7,
               "/api/compliance-records": 6, "/api/task-templates": 6, "/api/customers": 10,
               "/api/vendors": 10, "/api/billing": 15, "/api/invoices": 8,
-              "/api/copilot": 17, "/api/health": 13,
+              "/api/copilot": 13, "/api/health": 13,
               "/api/year-end/{engagement_id}/adjustments": 7,
               "/api/itr": 17, "/api/platform": 9,
               "/api/year-end/engagements": 9,
@@ -1813,7 +1806,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/identity": 13, "/api/tally-migration": 7, "/api/reports": 2,
               "/api/accounting": 21, "/api/approvals": 7, "/api/xbrl": 7,
               "/api/income-tax": 11, "/api/compliance": 12,
-              "/api/ai-insights": 6, "/api/eway-bill": 6, "/api/inventory": 6,
+              "/api/ai-insights": 5, "/api/eway-bill": 6, "/api/inventory": 6,
               "/api/public/engagement-letters": 3,
               "/api/receipts": 5, "/api/purchase-payments": 5,
               "/api/document-intelligence-v2": 5, "/api/payments": 6,

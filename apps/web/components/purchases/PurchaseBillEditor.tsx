@@ -35,6 +35,10 @@ import {
 import {
   lineFromExtraction, unreadAfterEdit, type ExtractedLine,
 } from "@/lib/purchases/extractedLine";
+import {
+  parseVendorHistory, distinctHsns, chipsForLine, accountPatch, itcPatch,
+  type VendorHistory,
+} from "@/lib/purchases/vendorHistory";
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 
@@ -295,6 +299,10 @@ export function PurchaseBillEditor({
   // different things: one is "you are about to book this twice", the other is
   // "you just did". Both come from the one rule in apps/api.
   const [dupeAhead, setDupeAhead] = useState<NearDuplicate[]>([]);
+  // ai-23. What this supplier's earlier bills propose for the lines being typed,
+  // with the evidence. A PROPOSAL: nothing in it is written to a line except by
+  // a click on one of the chips below (see lib/purchases/vendorHistory.ts).
+  const [history, setHistory] = useState<VendorHistory | null>(null);
   const [attempted, setAttempted] = useState(false);
 
   // AI Upload (Extract) — create-only; re-extracting into an already-saved
@@ -454,6 +462,33 @@ export function PurchaseBillEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dupeProbeKey]);
 
+  // ── What did this supplier's earlier bills say? (ai-23) ──────────────────
+  // Asked of the server whenever the supplier or the set of HSN/SAC codes on the
+  // bill changes, debounced. The learning is entirely in apps/api —
+  // domain/purchases/bill_history — and is scoped to this firm, this client and
+  // this supplier there. Only on a NEW bill: an existing one is already coded.
+  // A lookup that fails is silence, never a blocked bill.
+  const historyHsns = distinctHsns(lines);
+  const historyKey = isEdit || !vendorId ? "" : [clientId, vendorId, ...historyHsns].join("|");
+  useEffect(() => {
+    if (!historyKey) { setHistory(null); return; }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const token = await getAuthToken();
+        const qs = new URLSearchParams({ client_id: clientId, vendor_id: vendorId });
+        for (const h of historyHsns) qs.append("hsn", h);
+        const res = await apiGet(`/api/purchase-bills/vendor-history?${qs.toString()}`, token);
+        if (cancelled) return;
+        setHistory(res.success ? parseVendorHistory(res.data) : null);
+      } catch {
+        if (!cancelled) setHistory(null);
+      }
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyKey]);
+
   const validation = validateBillEditor({ vendorId, billDate, lines, isForeign, exchangeRate });
   const estBaseTotal = isForeign && rateNum > 0 ? estimateBaseMinor(vendorTotalPaise, rateNum) : vendorTotalPaise;
 
@@ -584,8 +619,10 @@ export function PurchaseBillEditor({
         if (ex.invoice_no) setBillNo(ex.invoice_no);
         if (ex.invoice_date) setBillDate(ex.invoice_date);
         // Match the extracted vendor — GSTIN first (exact, authoritative),
-        // then name (fuzzy) — mirrors bill_from_document's own server-side
-        // matching (routers/purchase_bills.py). Previously this extraction
+        // then the name, compared EXACTLY after trimming and lower-casing (it
+        // said "fuzzy" here for a long time; it never was, and a near-miss
+        // spelling is left for the CA to pick) — mirrors bill_from_document's
+        // own server-side matching (routers/purchase_bills.py). Previously this extraction
         // path never attempted a vendor match at all, so the Vendor field
         // silently stayed empty even on a successful extraction.
         const gstin = ex.vendor_gstin?.trim().toUpperCase();
@@ -1107,6 +1144,16 @@ export function PurchaseBillEditor({
           </div>
         )}
 
+        {/* ai-23. Earlier bills from this supplier were assessed under a TDS
+            section the supplier record no longer carries. A NOTICE and not a
+            control: this bill's section is decided from the supplier record when
+            it is created, so the sentence says what the bill WILL do. */}
+        {history?.tds && (
+          <Callout tone="attention" title="TDS section differs from earlier bills">
+            {history.tds.sentence}
+          </Callout>
+        )}
+
         {/* Line items */}
         <section className="bg-white rounded-xl border border-ps-border p-4">
           <div className="mb-2 flex items-center justify-between gap-3">
@@ -1213,6 +1260,25 @@ export function PurchaseBillEditor({
                               : { itc_eligible: true, blocked_credit_reason: "" })} />
                           ITC blocked (§17(5))
                         </label>
+                        {/* ai-23. Only where the earlier lines were BLOCKED — an
+                            "eligible" history restates the column's default and is
+                            not shown. Applies on a click and never before. */}
+                        {(() => {
+                          const s = chipsForLine(history, line).itc;
+                          if (!s) return null;
+                          return (
+                            <div className="mt-1 text-3xs text-ps-hint" data-testid={`history-itc-${idx}`}>
+                              <button type="button" disabled={isLocked}
+                                onClick={() => setLine(idx, itcPatch(s))}
+                                className="px-1.5 py-0.5 rounded-full bg-ps-muted border border-ps-border text-ps-body hover:bg-white disabled:opacity-40">
+                                Mark ITC blocked
+                              </button>
+                              <span className="ml-1">
+                                Earlier lines were blocked — {s.sentence.charAt(0).toLowerCase() + s.sentence.slice(1)}
+                              </span>
+                            </div>
+                          );
+                        })()}
                         {!lineIsItcEligible(line) && (
                           <>
                             <select value={line.blocked_credit_reason ?? ""}
@@ -1241,6 +1307,26 @@ export function PurchaseBillEditor({
                       </td>
                       <td className="py-1.5 px-1">
                         <AccountLookup accounts={accounts} value={line.expense_account_id} onChange={(id) => setLine(idx, { expense_account_id: id })} size="sm" placeholder="— Account —" ariaLabel="Expense account" />
+                        {/* ai-23. A PROPOSAL from this supplier's earlier bills,
+                            with its evidence, shown only while the account is
+                            blank. The field is NOT filled in: a click is what
+                            sets it, so an account never arrives looking like the
+                            CA's own decision. */}
+                        {(() => {
+                          const s = chipsForLine(history, line).expense_account;
+                          const patch = s ? accountPatch(s) : null;
+                          if (!s || !patch) return null;
+                          return (
+                            <div className="mt-1 text-3xs text-ps-hint" data-testid={`history-account-${idx}`}>
+                              <button type="button" disabled={isLocked}
+                                onClick={() => setLine(idx, patch)}
+                                className="px-1.5 py-0.5 rounded-full bg-ps-muted border border-ps-border text-ps-body hover:bg-white disabled:opacity-40">
+                                Use {s.label ?? "this account"}
+                              </button>
+                              <span className="ml-1">{s.sentence}</span>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="py-1.5 px-1">
                         <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label={`Line ${idx + 1} quantity`}

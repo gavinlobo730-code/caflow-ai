@@ -9,8 +9,8 @@ at all. ack_insight/dismiss_insight are row-addressed by insight_id and
 checked only firm_id — new _assert_insight_scope resolver closes that gap.
 insight_feed returns NAMED insight rows firm-wide with no narrowing at all —
 confined via effective_client_ids threaded into get_insight_feed as
-allowed_client_ids. cross_client_patterns is EXEMPT (a hardcoded stub with no
-real client data — see the ratchet's EXEMPT reason).
+allowed_client_ids. (`cross_client_patterns` was EXEMPT as a hardcoded stub with
+no real client data; it was deleted on 01-10-2026, ai-10.)
 """
 import pytest
 from fastapi import HTTPException
