@@ -26,6 +26,7 @@ import { errorMessage } from "@/lib/api";
 import type { ProbableMatch2B } from "@/lib/api";
 import { readGstr2bText } from "@/lib/gst/gstr2bFile";
 import { Probable2BMatches } from "@/components/gst/Probable2BMatches";
+import { CreateDraftBillFrom2B } from "@/components/gst/CreateDraftBillFrom2B";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1588,6 +1589,13 @@ interface Recon2BMatch {
   status: string;
   reason: string;
   difference_paise: number;
+  /** Which of the file's sections the document came from (gst-13). */
+  section?: string | null;
+  /** The server's answer to "may a draft bill be created from this row"
+   *  (gst-13) — this screen keeps no list of which documents are draftable.
+   *  Absent from an older backend, which reads as not offered. */
+  draft_bill_offered?: boolean;
+  draft_bill_refusal?: string | null;
   bill_id: string | null;
   bill_no: string | null;
   supplier_gstin: string;
@@ -1920,11 +1928,14 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
                   <th className="text-right py-1.5 pr-3 font-medium">Books tax</th>
                   <th className="text-right py-1.5 pr-3 font-medium">2B tax</th>
                   <th className="text-right py-1.5 font-medium">Difference</th>
+                  {bucket === "missing_in_books" && (
+                    <th className="text-left py-1.5 pl-3 font-medium">Book it</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {shown.length === 0 && (
-                  <tr><td colSpan={5} className="py-3 text-ps-hint">Nothing in this bucket.</td></tr>
+                  <tr><td colSpan={bucket === "missing_in_books" ? 6 : 5} className="py-3 text-ps-hint">Nothing in this bucket.</td></tr>
                 )}
                 {shown.map((m, i) => (
                   <tr key={i} className="border-b last:border-0">
@@ -1947,6 +1958,21 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
                     <td className="py-1.5 text-right font-mono">
                       {m.difference_paise === 0 ? "—" : rupees(m.difference_paise)}
                     </td>
+                    {bucket === "missing_in_books" && (
+                      <td className="py-1.5 pl-3 align-top">
+                        {m.draft_bill_offered ? (
+                          <CreateDraftBillFrom2B clientId={clientId} period={result.period}
+                            document={{ section: m.section ?? null,
+                                        document_type: m.document_type,
+                                        supplier_gstin: m.supplier_gstin,
+                                        document_number: m.document_number }} />
+                        ) : (
+                          <span className="text-3xs text-ps-hint">
+                            {m.draft_bill_refusal ?? ""}
+                          </span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

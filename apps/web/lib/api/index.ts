@@ -2899,6 +2899,30 @@ export interface ProbableMatch2B {
   itc_available: string;
 }
 
+/** gst-13 — the address of a GSTR-2B document, and nothing else. No amount, no
+ *  date and no rate is sent: the server reads them off the stored row and the
+ *  file it kept. */
+export interface Gstr2bDraftBillRequest {
+  client_id: string;
+  period: string;
+  section: string;
+  document_type: string;
+  supplier_gstin: string;
+  document_number: string;
+}
+
+/** gst-13 — what creating the draft answered. */
+export interface Gstr2bDraftBill {
+  bill: { id: string; bill_no: string; bill_date: string; status: string;
+          total_paise: number };
+  status: string;
+  /** Does the books' own arithmetic reproduce what the supplier filed? */
+  agrees_with_2b: boolean;
+  /** Every head where it does not, in words. Never corrected, only reported. */
+  differences: string[];
+  caveats: string[];
+}
+
 /** SALES-21 — the sales cycle before the tax invoice. */
 export interface SalesCycleVocabulary {
   quote_kinds: { value: string; label: string }[];
@@ -6421,6 +6445,14 @@ export const api = {
     itcRegisterReclaim: (body: ITCReclaimInput) =>
       request<ApiResp<Record<string, unknown>>>(
         "/api/gst-workspace/itc/register/reclaim",
+        { method: "POST", body: JSON.stringify(body) }),
+
+    /** gst-13 — a DRAFT purchase bill from a GSTR-2B document the books have no
+     *  bill for. Never receives, never posts, never claims credit; the server
+     *  refuses what it cannot draft and says why in a sentence. */
+    createDraftBillFrom2b: (body: Gstr2bDraftBillRequest) =>
+      request<ApiResp<Gstr2bDraftBill>>(
+        "/api/purchase-bills/from-2b",
         { method: "POST", body: JSON.stringify(body) }),
 
     /** Advances received against no invoice — GSTR-1 Table 11.

@@ -39,7 +39,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from domain.accounting import opening_documents as _opening
-from domain.gst import gstr2b_intake, itc_probable
+from domain.gst import draft_bill_from_2b, gstr2b_intake, itc_probable
 from domain.gst.gstr2b import GSTR2BFile, parse_gstr2b
 from domain.gst.itc_matching import (
     BookBill, PortalDocument, Reconciliation, defaulters, reconcile,
@@ -318,11 +318,26 @@ def _match_json(m) -> dict:
         "status": m.status,
         "reason": m.reason,
         "difference_paise": m.difference_paise,
+        # Which of the file's sections the document came from. With the
+        # document type, the supplier's GSTIN and the number it is the stored
+        # row's whole natural key (uq_gstr2a_records_document), which is what
+        # "create a draft bill from this document" addresses it by (gst-13).
+        "section": d.section if d else None,
         "bill_id": m.bill_id,
         "bill_no": b.bill_no if b else None,
         "bill_date": b.bill_date if b else None,
         "book_taxable_paise": b.taxable_paise if b else None,
         "book_tax_paise": b.tax_paise if b else None,
+        # Whether a draft purchase bill may be created from this row, and if
+        # not, why — decided by `domain/gst/draft_bill_from_2b` so the screen
+        # keeps no list of which kinds of document are draftable (gst-13). Only
+        # a document the books have no bill for is ever offered one.
+        "draft_bill_offered": bool(
+            m.status == "missing_in_books" and d is not None
+            and draft_bill_from_2b.refusal_for_kind(d.section, d.document_type) is None),
+        "draft_bill_refusal": (
+            draft_bill_from_2b.refusal_for_kind(d.section, d.document_type)
+            if m.status == "missing_in_books" and d is not None else None),
         "supplier_gstin": (d.supplier_gstin if d else (b.supplier_gstin if b else "")),
         "supplier_name": d.supplier_name if d else None,
         "document_number": d.document_number if d else (b.bill_no if b else None),
@@ -332,6 +347,53 @@ def _match_json(m) -> dict:
         "portal_tax_paise": d.tax_paise if d else None,
         "itc_available": d.itc_available if d else None,
     }
+
+
+def find_records(db, *, firm_id: str, client_id: str, period: str, section: str,
+                 document_type: str, supplier_gstin: str,
+                 document_number: str) -> list[dict]:
+    """The stored 2B row(s) at one natural key — the address a screen names a
+    document by (gst-13).
+
+    `uq_gstr2a_records_document` makes (client, period, section, document type,
+    supplier GSTIN, number) unique, so this answers 0 or 1 rows; a LIST is
+    returned so a caller that meets two says so instead of silently taking the
+    first. Firm- AND client-scoped: the service-role key bypasses RLS.
+
+    The request supplies the KEY and never the figures — what a draft bill is
+    built from comes off the stored row, so a caller cannot draft a bill for an
+    amount the portal never carried.
+    """
+    return (db.table("gstr2a_records")
+            .select("id, return_period, section, document_type, supplier_gstin, "
+                    "supplier_name, invoice_number, invoice_date, "
+                    "taxable_value_paise, igst_paise, cgst_paise, sgst_paise, "
+                    "cess_paise, itc_available, itc_unavailable_reason, "
+                    "purchase_bill_id, match_status")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("return_period", period).eq("section", section)
+            .eq("document_type", document_type)
+            .eq("supplier_gstin", supplier_gstin)
+            .eq("invoice_number", document_number)
+            .limit(2).execute().data) or []
+
+
+def read_kept_file(db, *, firm_id: str, client_id: str, period: str) -> Optional[dict]:
+    """The GSTR-2B file the CA uploaded for this period, as parsed JSON.
+
+    Kept by `gstr2b_uploads` on every upload and until now read by one route
+    that returns a row by id. A draft bill needs it because the stored rows hold
+    each document's TOTALS and the file alone holds the rate it was charged at,
+    per line (`domain/gst/gstr2b.RateLine`). The newest RECONCILED upload is the
+    one the stored rows came from — a re-upload replaces them — and a refused or
+    unparseable file is never marked reconciled, so it cannot be mistaken for it.
+    """
+    rows = (db.table("gstr2b_uploads").select("id, raw_data, status, uploaded_at")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("period", period).eq("status", "reconciled")
+            .order("uploaded_at", desc=True).limit(1).execute().data) or []
+    raw = (rows[0] if rows else {}).get("raw_data")
+    return raw if isinstance(raw, dict) else None
 
 
 def read_reconciliation(db, *, firm_id: str, client_id: str, period: str) -> dict:
