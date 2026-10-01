@@ -3226,6 +3226,47 @@ export interface PostDatedChequeWrite {
   allocations?: { sales_invoice_id?: string; purchase_bill_id?: string; allocated_paise: number }[];
 }
 
+/** accounting-20 — price lists. A PRE-FILL source for an invoice line's rate and nothing
+ *  else: it changes no tax and posts nothing, and an invoice keeps whatever rate it
+ *  was given. The browser holds no pricing rule; `resolve` is the server's answer. */
+export interface PriceList {
+  id: string;
+  client_id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+}
+
+export interface PriceListItemRow {
+  id: string;
+  service_catalogue_id: string;
+  name: string | null;
+  hsn_sac: string | null;
+  unit: string | null;
+  is_active: boolean | null;
+  rate_paise: number;
+  /** The catalogue's own rate, beside the list's. null where the catalogue has none. */
+  catalogue_rate_paise: number | null;
+}
+
+export interface PriceListCustomerRow {
+  customer_id: string;
+  customer_name: string | null;
+  is_active: boolean;
+  price_list_id: string | null;
+  price_list_name: string | null;
+  price_list_archived: boolean;
+}
+
+/** Where a pre-filled rate came from. `none` carries a null rate, never 0. */
+export interface ResolvedRate {
+  rate_paise: number | null;
+  source: "price_list" | "catalogue" | "none";
+  price_list_id: string | null;
+  price_list_name: string | null;
+  note: string | null;
+}
+
 export interface PreInvoiceLine {
   description: string;
   hsn_sac?: string | null;
@@ -6144,6 +6185,46 @@ export const api = {
     }) =>
       request<ApiResp<LateInterestDrafts>>("/api/late-interest/drafts",
         { method: "POST", body: JSON.stringify(body) }),
+  },
+
+  /** accounting-20 — price lists. Every call keeps a list or a customer's pointer to one;
+   *  none of them touches an invoice. `resolve` is asked when a catalogue item is
+   *  picked and its answer lands in the rate box, where it stays editable. */
+  priceLists: {
+    list: (clientId: string, includeArchived = false) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (includeArchived) q.set("include_archived", "true");
+      return request<ApiResp<{ price_lists: PriceList[] }>>(`/api/price-lists?${q}`);
+    },
+    customers: (clientId: string) =>
+      request<ApiResp<{ customers: PriceListCustomerRow[] }>>(
+        `/api/price-lists/customers?client_id=${encodeURIComponent(clientId)}`),
+    resolve: (clientId: string, customerId: string, serviceCatalogueId: string) => {
+      const q = new URLSearchParams({
+        client_id: clientId, customer_id: customerId, service_catalogue_id: serviceCatalogueId });
+      return request<ApiResp<ResolvedRate>>(`/api/price-lists/resolve?${q}`);
+    },
+    items: (listId: string, clientId: string) =>
+      request<ApiResp<{ price_list: PriceList; items: PriceListItemRow[] }>>(
+        `/api/price-lists/${encodeURIComponent(listId)}/items?client_id=${encodeURIComponent(clientId)}`),
+    create: (clientId: string, name: string, description?: string) =>
+      request<ApiResp<PriceList>>("/api/price-lists", { method: "POST",
+        body: JSON.stringify({ client_id: clientId, name, description: description || null }) }),
+    update: (listId: string, clientId: string,
+             body: { name?: string; description?: string | null; is_active?: boolean }) =>
+      request<ApiResp<PriceList>>(`/api/price-lists/${encodeURIComponent(listId)}`, {
+        method: "PATCH", body: JSON.stringify({ ...body, client_id: clientId }) }),
+    setItem: (listId: string, serviceCatalogueId: string, clientId: string, ratePaise: number) =>
+      request<ApiResp<unknown>>(
+        `/api/price-lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(serviceCatalogueId)}`,
+        { method: "PUT", body: JSON.stringify({ client_id: clientId, rate_paise: ratePaise }) }),
+    removeItem: (listId: string, serviceCatalogueId: string, clientId: string) =>
+      request<ApiResp<unknown>>(
+        `/api/price-lists/${encodeURIComponent(listId)}/items/${encodeURIComponent(serviceCatalogueId)}`
+        + `?client_id=${encodeURIComponent(clientId)}`, { method: "DELETE" }),
+    assign: (clientId: string, customerId: string, priceListId: string | null) =>
+      request<ApiResp<unknown>>("/api/price-lists/assign", { method: "PUT",
+        body: JSON.stringify({ client_id: clientId, customer_id: customerId, price_list_id: priceListId }) }),
   },
 
   /** accounting-21 — the post-dated cheque register. `create`, `update` and `cancel`

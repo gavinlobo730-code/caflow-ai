@@ -28,6 +28,7 @@ import AllocateReceiptModal from "@/components/sales/AllocateReceiptModal";
 import SalesCycleTab from "@/components/sales/SalesCycleTab";
 import OverdueInterestPanel from "@/components/sales/OverdueInterestPanel";
 import PostDatedChequesPanel from "@/components/banking/PostDatedChequesPanel";
+import PriceListsPanel from "@/components/sales/PriceListsPanel";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { unallocatedOf } from "@/lib/sales/receiptAllocation";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
@@ -3129,6 +3130,10 @@ function Customers({
           </button>
         </div>
       </div>
+
+      {/* accounting-20 — named price lists and each customer's default one: a PRE-FILL
+          source for the rate when an item is picked on a new invoice line. */}
+      <PriceListsPanel clientId={clientId} />
 
       {showImport && (
         <CsvImportModal

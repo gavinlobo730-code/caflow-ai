@@ -537,6 +537,12 @@ app.include_router(late_interest_router, dependencies=_CLIENT_GUARD)
 from routers.post_dated_cheques import router as post_dated_cheques_router
 app.include_router(post_dated_cheques_router, dependencies=_CLIENT_GUARD)
 
+# accounting-20 — price lists and a default list per customer. A PRE-FILL source for an
+# invoice line's rate: it changes no tax and posts nothing, and the invoice keeps
+# whatever rate it was given. `client_id` is required on every route.
+from routers.price_lists import router as price_lists_router
+app.include_router(price_lists_router, dependencies=_CLIENT_GUARD)
+
 
 # Beta hardening (Phase F) — validate configuration at boot so missing env vars are
 # visible immediately in the logs rather than surfacing as opaque runtime errors.
