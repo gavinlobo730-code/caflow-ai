@@ -554,6 +554,47 @@ export function PurchaseBillEditor({
     setLines((prev) => [...prev, { ...EMPTY_LINE, _k: nextKey() }]);
   }
 
+  // ── Enter goes to the next line (ACC-08) ───────────────────────────────────
+  // A CA keying a bill of ten lines in Tally moves with the keyboard; this grid
+  // had no key handling at all, so every line was a trip to the mouse. Enter in
+  // one of the grid's PLAIN INPUTS (description, quantity, rate, the two cess
+  // cells) moves to the SAME cell on the next line — down the column, the way a
+  // spreadsheet does it — and on the last line adds one, but only when the line
+  // has something on it, so Enter on an untouched blank line is not a way to
+  // grow the bill.
+  //
+  // ONLY inputs that carry `data-cell` take part. The catalogue, HSN and account
+  // pickers keep Enter (it selects an option), selects and checkboxes keep it
+  // (it is how they are operated), and a delegated handler on the body is what
+  // lets every cell opt in with one attribute instead of seven handlers.
+  const gridRef = useRef<HTMLTableSectionElement>(null);
+  const [focusCell, setFocusCell] = useState<{ row: number; cell: string } | null>(null);
+  useEffect(() => {
+    if (!focusCell) return;
+    const rows = gridRef.current?.children;
+    const input = rows?.[focusCell.row]?.querySelector<HTMLInputElement>(
+      `[data-cell="${focusCell.cell}"]`);
+    input?.focus();
+    input?.select();
+    setFocusCell(null);
+  }, [focusCell]);
+
+  function onLineGridKeyDown(e: React.KeyboardEvent<HTMLTableSectionElement>) {
+    if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    const target = e.target as HTMLElement;
+    const cell = target instanceof HTMLInputElement ? target.dataset.cell : undefined;
+    if (!cell || !gridRef.current) return;
+    const rowEl = target.closest("tr");
+    const row = rowEl ? Array.prototype.indexOf.call(gridRef.current.children, rowEl) : -1;
+    if (row < 0) return;
+    e.preventDefault();
+    if (row < lines.length - 1) { setFocusCell({ row: row + 1, cell }); return; }
+    const last = lines[row];
+    if (!last || !(last.description.trim() || last.rate || last.hsn_sac || last.service_catalogue_id)) return;
+    addLine();
+    setFocusCell({ row: row + 1, cell });
+  }
+
   // Look up catalogue items sharing each extracted line's HSN/SAC (one
   // batched query, not one search per line) and either auto-link a single
   // confident match or attach the candidate list for the chip UI below.
@@ -1206,7 +1247,7 @@ export function PurchaseBillEditor({
                   <th className="pb-2 w-6" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ps-border">
+              <tbody ref={gridRef} onKeyDown={onLineGridKeyDown} className="divide-y divide-ps-border">
                 {lines.map((line, idx) => {
                   const g = previewBillTotals([line], isInterstate);
                   const invalid = attempted && !isValidBillLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
@@ -1242,7 +1283,7 @@ export function PurchaseBillEditor({
                         )}
                       </td>
                       <td className="py-1.5 pr-2">
-                        <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" aria-label={`Line ${idx + 1} description`}
+                        <input data-cell="description" value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" aria-label={`Line ${idx + 1} description`}
                           className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-xs" />
                         {/* CGST ACT §17(5), UNDER THE DESCRIPTION AND NOT IN A
                             COLUMN OF ITS OWN. Eligible is the ordinary case, so
@@ -1329,7 +1370,7 @@ export function PurchaseBillEditor({
                         })()}
                       </td>
                       <td className="py-1.5 px-1">
-                        <input type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label={`Line ${idx + 1} quantity`}
+                        <input data-cell="qty" type="number" min="0" step="0.001" value={line.qty} onChange={(e) => setLine(idx, { qty: e.target.value })} aria-label={`Line ${idx + 1} quantity`}
                           placeholder={unreadOn(line, "quantity") ? "?" : undefined}
                           title={unreadOn(line, "quantity") ? NOT_STATED_TITLE : undefined}
                           className={`w-full px-2 py-1 border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs ${unreadOn(line, "quantity") ? UNREAD_CLASS : "border-ps-border"}`} />
@@ -1347,7 +1388,7 @@ export function PurchaseBillEditor({
                         </select>
                       </td>
                       <td className="py-1.5 px-1">
-                        <input type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })} placeholder={unreadOn(line, "rate") ? "?" : "0.00"} aria-label={`Line ${idx + 1} rate`}
+                        <input data-cell="rate" type="number" min="0" step="0.01" value={line.rate} onChange={(e) => setLine(idx, { rate: e.target.value })} placeholder={unreadOn(line, "rate") ? "?" : "0.00"} aria-label={`Line ${idx + 1} rate`}
                           title={unreadOn(line, "rate") ? NOT_STATED_TITLE : undefined}
                           className={`w-full px-2 py-1 border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs ${unreadOn(line, "rate") ? UNREAD_CLASS : "border-ps-border"}`} />
                       </td>
@@ -1362,14 +1403,14 @@ export function PurchaseBillEditor({
                       {showCess && (
                         <>
                           <td className="py-1.5 px-1">
-                            <input type="number" min="0" step="0.01"
+                            <input data-cell="cessPercent" type="number" min="0" step="0.01"
                               value={line.cessPercent ?? ""}
                               onChange={(e) => setLine(idx, { cessPercent: e.target.value })}
                               placeholder="0" aria-label={`Line ${idx + 1} compensation cess percent`}
                               className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
                           </td>
                           <td className="py-1.5 px-1">
-                            <input type="number" min="0" step="0.01"
+                            <input data-cell="cessPerUnit" type="number" min="0" step="0.01"
                               value={line.cessPerUnit ?? ""}
                               onChange={(e) => setLine(idx, { cessPerUnit: e.target.value })}
                               placeholder="0.00" aria-label={`Line ${idx + 1} compensation cess per unit`}

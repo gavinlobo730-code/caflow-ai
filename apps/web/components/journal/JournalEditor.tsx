@@ -30,9 +30,11 @@
  * in integer paise and refuse. The same goes for the period lock: this screen
  * only renders what the backend resolved.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
+import { QuickAddLedger } from "@/components/journal/QuickAddLedger";
+import { afterEnter, balancingLeg, isAmountless } from "@/lib/journal/lineFlow";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 // The totals are a RENDERING, not an input: Indian grouping (D6) from the one
 // authority, the same one the Journal list reads. `rupeeInputFromPaise` is the
@@ -88,6 +90,11 @@ export type JournalSaveMode = "draft" | "post" | "correct";
 
 export interface JournalEditorProps {
   accounts: EditorAccount[];
+  /** The client the entry belongs to. Present, the account box offers to create
+   *  a ledger that is missing (ACC-08); absent, it offers no such row — a ledger
+   *  has to be created FOR somebody, and guessing the scope is what the Chart of
+   *  Accounts screen's firm-wide checkbox exists to avoid. */
+  clientId?: string;
   /** null in create mode; otherwise the entry as the backend returned it. */
   existing: JournalEntryDetail | null;
   saving?: boolean;
@@ -102,7 +109,7 @@ export interface JournalEditorProps {
 }
 
 export function JournalEditor({
-  accounts, existing, saving = false, serverError = null, onSave, onCancel,
+  accounts, clientId, existing, saving = false, serverError = null, onSave, onCancel,
 }: JournalEditorProps) {
   const isNew = existing === null;
   const isPosted = !!existing?.is_posted;
@@ -159,8 +166,61 @@ export function JournalEditor({
   const totalCredit = parsed.reduce((s, p) => s + (p.credit ?? 0), 0);
   const isBalanced = !hasUnparseable && totalDebit > 0 && totalDebit === totalCredit;
 
+  // ── ACC-08: the three quick wins ──────────────────────────────────────────
+  // (1) A ledger created from inside the voucher. The accounts the page loaded
+  // plus the ones made here, so a new one is selectable at once without the
+  // page having to reload the chart.
+  const [created, setCreated] = useState<EditorAccount[]>([]);
+  const allAccounts = useMemo(
+    () => [...accounts, ...created.filter((c) => !accounts.some((a) => a.id === c.id))],
+    [accounts, created]);
+  // Which line asked for it, by KEY and not by position, so removing a line
+  // while the dialog is open cannot send the new ledger to the wrong one.
+  const [quickAdd, setQuickAdd] = useState<{ name: string; lineKey: string } | null>(null);
+
+  // (2) Which line's Account cell to focus once the row exists. Set by "Add
+  // line" and by Enter, consumed after the render that created the row — the
+  // element does not exist until then.
+  const [pendingFocus, setPendingFocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pendingFocus) return;
+    document.getElementById(`je-account-${pendingFocus}`)?.focus();
+    setPendingFocus(null);
+  }, [pendingFocus, lines]);
+
   function setLine(idx: number, patch: Partial<FormLine>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  }
+
+  /** Picking an account on a line that has no amount yet offers the amount that
+   *  would balance the entry, on the side it is short of. A line the CA has
+   *  already put a figure on is theirs and is never touched. */
+  function pickAccount(idx: number, accountId: string) {
+    setLines((prev) => prev.map((l, i) => {
+      if (i !== idx) return l;
+      const leg = accountId && isAmountless(l) ? balancingLeg(prev, idx) : null;
+      return { ...l, account_id: accountId, ...(leg ? { [leg.side]: leg.amount } : {}) };
+    }));
+  }
+
+  /** Append a line. It arrives carrying the balancing leg when the entry is out
+   *  of balance and blank when it is not, and focus goes to its Account cell. */
+  function addLine() {
+    const line = newLine();
+    const leg = balancingLeg(lines);
+    if (leg) line[leg.side] = leg.amount;
+    setLines((prev) => [...prev, line]);
+    setPendingFocus(line.key);
+  }
+
+  /** Enter finishes a line: on to the next one, or — on the last, while the
+   *  entry still does not balance — a new one. See lib/journal/lineFlow. */
+  function onLineEnter(e: React.KeyboardEvent, idx: number) {
+    if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || readOnly) return;
+    e.preventDefault();
+    const next = afterEnter(idx, lines.length, isBalanced);
+    if (next.kind === "focus") setPendingFocus(lines[next.row].key);
+    else if (next.kind === "add") addLine();
   }
 
   /** A line carries one side or the other, never both — typing in one clears the other. */
@@ -368,31 +428,39 @@ export function JournalEditor({
                   <tr key={line.key}>
                     <td className="py-1.5 pr-2">
                       <AccountLookup
-                        accounts={accounts}
+                        accounts={allAccounts}
                         value={line.account_id}
-                        onChange={(id) => setLine(idx, { account_id: id })}
+                        onChange={(id) => pickAccount(idx, id)}
+                        id={`je-account-${line.key}`}
                         size="sm"
                         disabled={readOnly}
                         placeholder="— Select account —"
                         ariaLabel="Account"
+                        onCreate={clientId && !readOnly
+                          ? (name) => setQuickAdd({ name, lineKey: line.key })
+                          : undefined}
+                        createLabel={(q) => `Create ledger “${q}”…`}
                       />
                     </td>
                     <td className="py-1.5 px-2">
                       <input inputMode="decimal" value={line.debit} disabled={readOnly}
                              aria-invalid={bad("debit")} aria-label="Debit"
                              onChange={(e) => setAmount(idx, "debit", e.target.value)}
+                             onKeyDown={(e) => onLineEnter(e, idx)}
                              placeholder="0.00" className={amountCls("debit")} />
                     </td>
                     <td className="py-1.5 px-2">
                       <input inputMode="decimal" value={line.credit} disabled={readOnly}
                              aria-invalid={bad("credit")} aria-label="Credit"
                              onChange={(e) => setAmount(idx, "credit", e.target.value)}
+                             onKeyDown={(e) => onLineEnter(e, idx)}
                              placeholder="0.00" className={amountCls("credit")} />
                     </td>
                     <td className="py-1.5 pl-3">
                       <input value={line.narration} disabled={readOnly} placeholder="optional"
                              aria-label="Line narration"
                              onChange={(e) => setLine(idx, { narration: e.target.value })}
+                             onKeyDown={(e) => onLineEnter(e, idx)}
                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-xs disabled:bg-ps-bg" />
                     </td>
                     <td className="py-1.5 pl-1">
@@ -430,10 +498,26 @@ export function JournalEditor({
         </div>
 
         {!readOnly && (
-          <button onClick={() => setLines((p) => [...p, newLine()])}
+          <button type="button" onClick={addLine}
                   className="text-xs text-blue-600 hover:underline flex items-center gap-1">
             <Plus size={12} /> Add line
           </button>
+        )}
+
+        {quickAdd && clientId && (
+          <QuickAddLedger
+            clientId={clientId}
+            seedName={quickAdd.name}
+            onClose={() => setQuickAdd(null)}
+            onCreated={(account) => {
+              setCreated((prev) => [...prev, account]);
+              // Back to the SAME line, with the new ledger selected. A line that
+              // was removed while the dialog was open simply is not found.
+              const at = lines.findIndex((l) => l.key === quickAdd.lineKey);
+              if (at >= 0) pickAccount(at, account.id);
+              setQuickAdd(null);
+            }}
+          />
         )}
 
         {(localError || serverError) && (
