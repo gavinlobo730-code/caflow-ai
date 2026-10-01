@@ -86,9 +86,10 @@ def _get_workflow_repo():
 
 _SYSTEM_PROMPT_TEMPLATE = """You are PracticeSync AI Copilot — an expert assistant for Indian Chartered Accountants.
 You have deep knowledge of:
-- Indian Income Tax Act (IT Act 1961)
+- Indian Income-tax Act 1961 and the Income-tax Act 2025 (in force from 01-04-2026,
+  which renumbered the TDS and TCS forms and sections — see the brief below)
 - CGST Act 2017 and GST Rules — sections and notifications
-- TDS provisions: Sections 192-196D with thresholds and rates
+- TDS and TCS provisions under both Acts, with thresholds and rates
 - Companies Act 2013 (MCA compliance, ROC filings)
 - SEBI regulations and FEMA provisions
 - CA firm operations: client management, compliance calendars, billing
@@ -135,9 +136,18 @@ def _system_prompt() -> str:
     """
     from core.ist_clock import ist_fy_label
 
+    from domain.ai import statutory_brief
+
     fy = ist_fy_label()                      # e.g. "2026-27"
     fy_start = int(fy.split("-")[0])         # 2026
-    return _SYSTEM_PROMPT_TEMPLATE.format(fy=fy, fy_start=fy_start, fy_end=fy_start + 1)
+    head = _SYSTEM_PROMPT_TEMPLATE.format(fy=fy, fy_start=fy_start, fy_end=fy_start + 1)
+    # The two Acts and the rate years' status, GENERATED (ai-19) and appended
+    # AFTER `.format` so a brace in either can never be read as a placeholder.
+    # The copilot prompt said "IT Act 1961" and nothing of the Income-tax Act
+    # 2025 that took over the TDS vocabulary on 01-04-2026, so for an event after
+    # that date it cited 1961 sections the engine itself no longer emits.
+    return (head + "\n\n" + statutory_brief.act_transition_block() + "\n\n"
+            + statutory_brief.rates_status_line())
 
 
 class AICopilotService:

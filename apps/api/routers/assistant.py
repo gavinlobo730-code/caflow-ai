@@ -62,7 +62,7 @@ def _rupees(paise: int) -> str:
     return f"Rs {whole_rupees(paise)}"
 
 
-def _tds_lines() -> str:
+def _tds_lines(fy: str | None = None) -> str:
     """The TDS bullet list, generated from the rate registry rather than typed.
 
     It used to be typed, and it drifted: the prompt still carried the s. 194J
@@ -79,7 +79,14 @@ def _tds_lines() -> str:
     drifting from the code that owns it. The cure is the same - derive it.
     tests/test_system_prompts_agree_with_the_code.py holds the two together.
     """
-    from domain.tds.section_rates import LATEST_VERIFIED_TDS_FY, tds_rates_for
+    from domain.tds.section_rates import tds_rates_for
+    from core import ist_clock
+
+    # THE YEAR THE CLOCK SAYS IT IS, not `LATEST_VERIFIED_TDS_FY` (ai-19): the
+    # block described FY 2025-26's table in FY 2026-27 without saying so. A year
+    # the registry does not hold falls back inside `tds_rates_for` and the
+    # heading `_tds_heading` says that it did, in `fy_rate_gap`'s own words.
+    fy = fy or ist_clock.ist_fy_label()
 
     # The sections a CA actually asks about, in the order they are usually met,
     # with what the registry's single figure MEANS where that is not obvious.
@@ -97,7 +104,7 @@ def _tds_lines() -> str:
         ("194Q", "purchase of goods", ""),
     ]
 
-    rules = tds_rates_for(LATEST_VERIFIED_TDS_FY).sections
+    rules = tds_rates_for(fy).sections
     out = []
     for code, what, note in WANTED:
         r = rules.get(code)
@@ -131,7 +138,29 @@ def _tds_lines() -> str:
     return "\n".join(out)
 
 
-SYSTEM_PROMPT = """You are an expert AI assistant for Indian Chartered Accountants \
+# ── THE PROMPT IS BUILT PER REQUEST, NOT AT IMPORT (ai-19) ───────────────────
+#
+# `SYSTEM_PROMPT` used to be a module-level string with `_tds_lines()` spliced in
+# once, when the module was first imported. On Render the process stays up across
+# 1 April, so it kept briefing the model for a financial year that had ended, and
+# the slab, rebate, surcharge, e-invoice and registration figures around the
+# generated TDS block were typed text for FY 2025-26 — while the Income-tax Act
+# 2025 had taken over the TDS vocabulary on 01-04-2026 and the prompt never said so.
+#
+# Now the statutory blocks come from `domain/ai/statutory_brief`, which reads the
+# registries the engines compute with (`statutory_rates`, `domain/tds/vocabulary`,
+# `domain/gst/irn_scope`) at call time, names the financial year the clock says it
+# is, and says in the registry's own words when that year's figures are carried
+# forward or not held. `SYSTEM_PROMPT` survives as a module attribute computed on
+# access (PEP 562), so the tests and any reader that imports it get the CURRENT
+# prompt rather than the import-time one; the handler calls `build_system_prompt`.
+#
+# What stays typed is what is statutory and stable across years — the GST due
+# dates, the TDS return dates, the advance-tax instalments, the MCA windows — and
+# `tests/test_system_prompts_agree_with_the_code.py` checks each against
+# `services/compliance_engine`.
+
+_PROMPT_HEAD = """You are an expert AI assistant for Indian Chartered Accountants \
 using PracticeSync. You answer on Indian taxation, GST and statutory compliance.
 
 OUTPUT CONTRACT — follow exactly:
@@ -140,32 +169,18 @@ Source: [Act name], Section [number]
 This line is parsed by the application. Never omit it, never place anything after \
 it, and never use the word "Source:" anywhere earlier in the answer.
 
-INCOME TAX RATES (Finance Act 2025, for FY 2025-26 / AY 2026-27):
-- New Tax Regime (default): 0-4L Nil, 4-8L 5%, 8-12L 10%, 12-16L 15%, 16-20L 20%, \
-20-24L 25%, above 24L 30%
-- Rebate u/s 87A: no tax payable if total income <= Rs 12 lakh under the new regime
-- Standard deduction for salaried: Rs 75,000 under the new regime
-- Old Tax Regime slabs: 0-2.5L Nil, 2.5-5L 5%, 5-10L 20%, above 10L 30%
-- Surcharge: 10% (50L-1Cr), 15% (1Cr-2Cr), 25% (2Cr-5Cr), 37% (above 5Cr) — old \
-regime only; capped at 25% under the new regime
-- Health & Education Cess: 4% on tax plus surcharge
+"""
 
-These rates are as enacted by the Finance Act 2025. If the user asks about a LATER \
-financial year, say plainly that a subsequent Finance Act may have amended them and \
-that the figures must be confirmed against the Act for that year. Do not restate \
-them as current for a year you cannot verify.
+_PROMPT_GST_DATES = """
 
 GST COMPLIANCE (CGST Act) — statutory due dates:
 - GSTR-1: 11th of the following month (Section 37); QRMP filers 13th
 - GSTR-3B: 20th of the following month (Section 39); 22nd/24th for small taxpayers
 - GSTR-9 annual return: 31st December (Section 44)
 - GSTR-2B auto-populated by the 14th of the following month
-- E-invoicing mandatory above Rs 5 crore turnover
-- Registration thresholds: Rs 40L goods, Rs 20L services, Rs 10L special category states
+"""
 
-TDS (rates and thresholds below are generated from the engine that computes \
-them — domain/tds/section_rates.py — so they cannot drift from what the app does):
-""" + _tds_lines() + """
+_PROMPT_TDS_AFTER = """
 - Section 192 salary: applicable slab rates
 - Sections 194I and 194J each have TWO LIMBS with different rates, and the \
 engine carries only the higher one of each. On 194I the rate above is for land, \
@@ -198,6 +213,58 @@ the IT Act". A general answer with no section is not useful to a CA.
 - If you are unsure, say so. Never guess on a tax matter — a wrong figure stated \
 confidently is worse than no answer.
 - End with the Source: line described in the output contract above."""
+
+
+def _tds_heading(fy: str) -> str:
+    """The TDS block's title: the year it is for, and what the registry says about it.
+
+    Named because the same table can be one year's verified figures or another's
+    carry-forward, and the model has to be able to tell a CA which. The sentence
+    is `section_rates.fy_rate_gap`'s own, so the prompt and the engine's refusal
+    to call an unverified year verified can never disagree.
+    """
+    from domain.tds import section_rates
+
+    head = (f"TDS, FY {fy} (rates and thresholds below are generated from the engine "
+            f"that computes them — domain/tds/section_rates.py — so they cannot drift "
+            f"from what the app does):")
+    gap = section_rates.fy_rate_gap(fy)
+    return head + (f"\n{gap}" if gap else "")
+
+
+def build_system_prompt(today=None) -> str:
+    """The assistant's brief for TODAY — see the block comment above.
+
+    `today` is injectable so a test can move the clock without patching the module
+    that reads it. Everything generated reads a registry; everything typed is a
+    statutory date that does not move with the year.
+    """
+    from core import ist_clock
+    from domain.ai import statutory_brief as brief
+
+    today = today or ist_clock.ist_today()
+    fy = ist_clock.ist_fy_label(today)
+    return (
+        _PROMPT_HEAD
+        + brief.income_tax_block(today)
+        + "\n\n"
+        + brief.act_transition_block(today)
+        + _PROMPT_GST_DATES
+        + "- " + brief.einvoice_block().replace("\n", "\n  ") + "\n"
+        + brief.registration_threshold_block()
+        + "\n\n"
+        + _tds_heading(fy) + "\n"
+        + _tds_lines(fy)
+        + _PROMPT_TDS_AFTER
+    )
+
+
+def __getattr__(name: str):
+    """`SYSTEM_PROMPT` as a computed attribute (PEP 562): importing the name
+    returns the prompt for the clock's CURRENT year, never the import-time one."""
+    if name == "SYSTEM_PROMPT":
+        return build_system_prompt()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # No URL and no model name here any more. Both lived here as literals — the
 # model hardcoded while GROQ_TEXT_MODEL existed for exactly this — and the
@@ -305,7 +372,16 @@ async def assistant(request: AssistantRequest, current_user: dict = Depends(rbac
             "The AI assistant is not configured on this server: GROQ_API_KEY is "
             "not set."))
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": build_system_prompt()}]
+
+    # When the question NAMES a date, pin the Act-transition rule to it so the
+    # answer carries both numberings for an event on or after 01-04-2026. A
+    # separate system message, like the client brief below: the standing brief is
+    # about the law and the same for everyone, this is about one question.
+    from domain.ai import statutory_brief
+    dated = statutory_brief.event_brief(request.question)
+    if dated:
+        messages.append({"role": "system", "content": dated})
 
     if request.client_id:
         # The SECOND check. See the field's own note: the first is the mount

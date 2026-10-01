@@ -249,7 +249,14 @@ async def copilot_chat(request: Request, body: CopilotRequest, current_user: dic
 
     try:
         firm_context = _build_firm_context(current_user["firm_id"], current_user)
-        system_prompt = COPILOT_SYSTEM_PROMPT.format(firm_context=firm_context)
+        # The two Acts and the rate years' status are GENERATED from the
+        # registries and appended after `.format` (ai-19): this prompt said
+        # "IT Act 1961" and nothing of the Income-tax Act 2025 in force from
+        # 01-04-2026.
+        from domain.ai import statutory_brief
+        system_prompt = (COPILOT_SYSTEM_PROMPT.format(firm_context=firm_context)
+                         + "\n\n" + statutory_brief.act_transition_block()
+                         + "\n\n" + statutory_brief.rates_status_line())
 
         messages = [{"role": "system", "content": system_prompt}]
         messages += [{"role": msg.role, "content": msg.content} for msg in body.conversation_history]

@@ -268,3 +268,76 @@ def test_no_prompt_states_a_superseded_tds_threshold():
     for name, text in _prompts().items():
         for literal, why in SUPERSEDED.items():
             assert literal not in text, f"{name} states {literal} — {why}"
+
+
+# ── The dates the assistant's prompt TYPES, held to the engine (ai-19) ───────
+#
+# The assistant's brief types the GST, TDS-return and advance-tax dates because
+# they are statutory and do not move with the year. "Typed" is exactly the
+# condition under which the Q4 date drifted, so each is derived from
+# `services/compliance_engine` here and asserted in the prompt's own wording.
+# The engine is asked, never restated: a CBIC or CBDT extension edits one place.
+
+def _assistant_text() -> str:
+    return _prompts()["routers/assistant.py"]
+
+
+def _line(text: str, starts_with: str) -> str:
+    return next(ln for ln in text.splitlines() if ln.startswith(starts_with))
+
+
+def _ordinal(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def test_the_gst_monthly_due_days_are_the_engines():
+    from services.compliance_engine import gstr1_due_date, gstr3b_due_date
+
+    assert f"{_ordinal(gstr1_due_date(2026, 6).day)} of the following month" in _line(
+        _assistant_text(), "- GSTR-1:")
+    assert f"{_ordinal(gstr3b_due_date(2026, 6).day)} of the following month" in _line(
+        _assistant_text(), "- GSTR-3B:")
+
+
+def test_the_qrmp_due_days_are_the_engines():
+    from services.compliance_engine import QUARTERLY, gstr1_due_date, gstr3b_due_date
+
+    assert f"QRMP filers {_ordinal(gstr1_due_date(2026, 6, QUARTERLY).day)}" in _line(
+        _assistant_text(), "- GSTR-1:")
+    x = gstr3b_due_date(2026, 6, QUARTERLY, state_code="27").day     # category X
+    y = gstr3b_due_date(2026, 6, QUARTERLY, state_code="07").day     # category Y
+    assert f"{_ordinal(x)}/{_ordinal(y)} for small taxpayers" in _line(_assistant_text(), "- GSTR-3B:")
+
+
+def test_the_annual_return_date_is_the_engines():
+    from services.compliance_engine import gstr9_due_date
+
+    d = gstr9_due_date(2027)
+    assert f"{_ordinal(d.day)} {d.strftime('%B')}" in _line(_assistant_text(), "- GSTR-9")
+
+
+def test_the_advance_tax_instalments_are_the_engines():
+    from services.compliance_engine import advance_tax_due_dates
+
+    text = _assistant_text()
+    for row in advance_tax_due_dates(2027):
+        d = date.fromisoformat(row["due_date"])
+        assert f"{d.day} {d.strftime('%B')} {row['cumulative_percentage']}%" in text, row
+
+
+def test_the_tds_return_dates_are_the_engines():
+    from services.compliance_engine import tds_return_due_date
+
+    line = next(ln for ln in _assistant_text().splitlines() if ln.startswith("- 24Q/26Q returns"))
+    for q in ("Q1", "Q2", "Q3", "Q4"):
+        d = tds_return_due_date(q, 2027)
+        assert f"{d.day} {d.strftime('%B')} ({q})" in line, q
+
+
+def test_the_mca_offsets_are_the_engines():
+    from services.compliance_engine import MCA_AGM_OFFSET_DAYS
+
+    text = _assistant_text()
+    assert f"AOC-4 financial statements: within {MCA_AGM_OFFSET_DAYS['AOC-4']} days of the AGM" in text
+    assert f"MGT-7 / 7A annual return: within {MCA_AGM_OFFSET_DAYS['MGT-7']} days of the AGM" in text
+    assert f"ADT-1 auditor appointment: within {MCA_AGM_OFFSET_DAYS['ADT-1']} days of the AGM" in text
