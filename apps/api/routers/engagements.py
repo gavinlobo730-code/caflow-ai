@@ -193,6 +193,29 @@ def update_engagement(
     return api_response(True, {"engagement": updated})
 
 
+class EngagementBillableRateIn(BaseModel):
+    # Whole paise; None CLEARS the override. 0 is a stated rate and NULL is not.
+    billable_rate_paise: Optional[int] = None
+
+
+@router.put("/{engagement_id}/billable-rate")
+def set_engagement_billable_rate(
+    engagement_id: str,
+    body: EngagementBillableRateIn,
+    current_user: dict = Depends(rbac("billing", "write")),
+):
+    """The billing-rate OVERRIDE for time recorded against this engagement
+    (practice_management-11). Its own door rather than a field on PATCH because
+    PATCH drops every null (`if v is not None`), so an override set once could
+    never be taken off again."""
+    engagement = _assert_engagement_scope(
+        current_user, engagement_repo.find_by_id(engagement_id))
+    from services import time_rates_service
+    result = time_rates_service.set_engagement_rate(
+        current_user["firm_id"], engagement["id"], body.billable_rate_paise)
+    return api_response(True, result)
+
+
 @router.delete("/{engagement_id}")
 def delete_engagement(
     engagement_id: str,

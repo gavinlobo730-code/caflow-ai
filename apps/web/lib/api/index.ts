@@ -3142,6 +3142,21 @@ export interface FeeEngagement {
   end_date?: string | null;
   status: FeeEngagementStatus;
   notes?: string | null;
+  /** The billing-rate OVERRIDE for time recorded against this engagement
+   *  (practice_management-11), in paise. null is "none" — and 0 is a stated
+   *  rate ("these hours bill at nothing"), which is a different thing. */
+  billable_rate_paise?: number | null;
+}
+
+/** One person's billing rate, as `GET /api/billing/staff-billable-rates` serves
+ *  it. `default_billable_rate_paise: null` means nobody has said what an hour of
+ *  this person bills at — NOT that it bills at nothing. */
+export interface StaffBillableRate {
+  user_id: string;
+  full_name: string | null;
+  role?: string | null;
+  is_active?: boolean;
+  default_billable_rate_paise: number | null;
 }
 
 /** What `POST /{id}/transition` will accept from each status, mirroring
@@ -3337,6 +3352,15 @@ export const api = {
       request<ApiResp<{ engagement: FeeEngagement }>>(`/api/engagements/${id}`, {
         method: "PATCH", body: JSON.stringify(body),
       }),
+    // The billing-rate OVERRIDE for time recorded against this engagement
+    // (practice_management-11). Its own door because PATCH drops every null, so
+    // an override set once could never be taken off again; `null` clears it and
+    // 0 is a stated rate.
+    setBillableRate: (id: string, billableRatePaise: number | null) =>
+      request<ApiResp<{ engagement_id: string; billable_rate_paise: number | null }>>(
+        `/api/engagements/${id}/billable-rate`, {
+          method: "PUT", body: JSON.stringify({ billable_rate_paise: billableRatePaise }),
+        }),
     // The state machine's own door. `status` must be one the server allows
     // FROM the current one — it answers 422 naming the permitted set rather
     // than writing whatever it is sent, which is why the screen offers the
@@ -5474,8 +5498,22 @@ export const api = {
     // 18-09-2026, when both were found to send nothing (migration 405).
     flagOverdueForFollowup: () =>
       request("/api/billing/collections/flag-followups", { method: "POST" }),
+    // Billable, not-yet-billed time: what is worth money, and — apart — the time
+    // that has NO rate (`no_rate`), which is never counted as zero. Read it with
+    // `readUnbilledWork` (lib/time/unbilledWork), not as a bare payload.
     unbilledWork: (clientId?: string) =>
-      request(`/api/billing/unbilled-work${clientId ? `?client_id=${clientId}` : ""}`),
+      request<ApiResp<unknown>>(
+        `/api/billing/unbilled-work${clientId ? `?client_id=${clientId}` : ""}`),
+    // What an hour of each PERSON bills at (practice_management-11) — not
+    // `cost_rate_paise`, which is what the hour costs the firm. null clears it.
+    listBillableRates: () =>
+      request<ApiResp<{ staff: StaffBillableRate[] }>>("/api/billing/staff-billable-rates"),
+    setBillableRate: (userId: string, defaultBillableRatePaise: number | null) =>
+      request<ApiResp<{ user_id: string; default_billable_rate_paise: number | null }>>(
+        `/api/billing/staff-billable-rates/${userId}`, {
+          method: "PUT",
+          body: JSON.stringify({ default_billable_rate_paise: defaultBillableRatePaise }),
+        }),
     listCostRates: () => request("/api/billing/staff-cost-rates"),
     setCostRate: (userId: string, costRatePaise: number | null) =>
       request(`/api/billing/staff-cost-rates/${userId}`, {

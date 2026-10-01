@@ -105,8 +105,13 @@ def set_preference(firm_id: str, user_id: str, event_type: str, email_enabled: b
     if _USE_MOCK:
         MOCK_PREFERENCES[(str(user_id), event_type)] = row
         return dict(row)
+    # The payload is written out at the call so `tests/_backend_query_parser` can
+    # read its keys against the real schema; passing `row` by name would make this
+    # write invisible to that check (its unreadable budget is exact).
     _db().table("user_notification_preferences").upsert(
-        row, on_conflict="user_id,event_type").execute()
+        {"firm_id": firm_id, "user_id": str(user_id), "event_type": event_type,
+         "email_enabled": email_enabled, "updated_at": now},
+        on_conflict="user_id,event_type").execute()
     return row
 
 
@@ -142,9 +147,14 @@ def _sent_keys(firm_id: str, keys: list[str]) -> set[str]:
 def _record(firm_id: str, event_type: str, recipient: dict, email: str, kind: str,
             refs: list[Ref], day: date, status: str, keys: dict[Ref, str],
             detail: Optional[str] = None) -> None:
-    rows = []
-    for ref in refs:
-        rows.append({
+    if not refs:
+        return
+    # ONE comprehension with the row written out in it, and the insert below takes
+    # that comprehension rather than a name: `tests/_backend_query_parser` reads the
+    # keys of a dict literal inside an insert's comprehension against the real
+    # schema and cannot read a payload held in a variable.
+    def rows():
+        return [{
             "firm_id": firm_id,
             "event_type": event_type,
             "recipient_kind": kind,
@@ -159,22 +169,34 @@ def _record(firm_id: str, event_type: str, recipient: dict, email: str, kind: st
             "dedupe_key": keys.get(ref) if status == "sent" else None,
             "status": status,
             "detail": detail,
-        })
-    if not rows:
-        return
+        } for ref in refs]
+
     if _USE_MOCK:
         MOCK_LOG.extend({**r, "created_at": datetime.now(timezone.utc).isoformat()}
-                        for r in rows)
+                        for r in rows())
         return
     try:
-        _db().table("practice_email_log").insert(rows).execute()
+        _db().table("practice_email_log").insert([{
+            "firm_id": firm_id,
+            "event_type": event_type,
+            "recipient_kind": kind,
+            "recipient_user_id": recipient.get("id") if kind == "staff" else None,
+            "recipient_email": email,
+            "ref_type": ref.ref_type,
+            "ref_id": ref.ref_id,
+            "tier": ref.tier,
+            "sent_for_date": day.isoformat(),
+            "dedupe_key": keys.get(ref) if status == "sent" else None,
+            "status": status,
+            "detail": detail,
+        } for ref in refs]).execute()
     except Exception:                                           # noqa: BLE001
         # The mail has ALREADY gone. A unique-key collision here means another
         # run recorded the same send first, which is the dedupe doing its job;
         # any other failure is a record that was not kept, not a mail that was
         # not sent, and the work that triggered it must not fail over it.
         _logger.warning("caflow.practice_mail: could not record %d %s send(s) "
-                        "for firm %s", len(rows), event_type, firm_id, exc_info=True)
+                        "for firm %s", len(refs), event_type, firm_id, exc_info=True)
 
 
 def deliver(firm_id: str, event_type: str, recipient: dict, refs: list[Ref],

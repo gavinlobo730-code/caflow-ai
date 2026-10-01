@@ -34,7 +34,10 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.compliance_ops")
 
 # Engagement statuses whose obligations are actively generated/tracked.
-_ACTIVE_ENGAGEMENT_STATUSES = ("Active", "In Progress", "Review")
+# ONE definition, shared with `domain/billing/time_rate` — "the client's active
+# engagement" decides which override a recorded hour bills under, and two sets
+# would make it mean two things in one product.
+from domain.billing.time_rate import ACTIVE_ENGAGEMENT_STATUSES as _ACTIVE_ENGAGEMENT_STATUSES
 _OPEN_OBLIGATION = lambda s: s not in ("Filed", "Completed")  # noqa: E731
 
 # GSTR1/GSTR3B/PMT06 are the three obligation types whose PERIOD SHAPE depends

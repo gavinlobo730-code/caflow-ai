@@ -734,3 +734,42 @@ def test_a_task_the_sweep_hands_to_somebody_new_mails_them_once_not_twice(task_s
     assert to.count(PREPARER["email"]) == 1, f"the new owner got {to.count(PREPARER['email'])} mails"
     subjects = [b["subject"] for b in wire if b["to"] == [PREPARER["email"]]]
     assert subjects == ["New task assigned: File TDS return"]
+
+
+def test_the_row_a_send_is_recorded_as_is_the_same_in_mock_and_against_a_database(monkeypatch):
+    """`_record` writes the row out TWICE — once for the in-memory store and once as
+    the literal inside `.insert([...])` — because `tests/_backend_query_parser`
+    reads the keys of a dict literal in an insert against the real schema and
+    cannot read a payload held in a variable (its unreadable budget is exact). Two
+    literals can drift, so this pins them: the same call, once in mock mode and
+    once against a capturing table, writes identical rows."""
+    ref = mail.Ref("compliance_record", "r1", "due_7")
+    keys = {ref: "k-1"}
+    args = (FIRM, "compliance_deadline", {"id": "u-1"}, "p@f.in", "staff", [ref],
+            date(2026, 10, 13), "sent", keys)
+
+    mail.reset_mock_stores()
+    mail._record(*args, detail="ok")
+    in_memory = {k: v for k, v in mail.MOCK_LOG[0].items() if k != "created_at"}
+
+    captured: list = []
+
+    class _Table:
+        def insert(self, rows):
+            captured.append(rows)
+            return self
+
+        def execute(self):
+            return self
+
+    class _DB:
+        def table(self, name):
+            assert name == "practice_email_log"
+            return _Table()
+
+    monkeypatch.setattr(mail, "_USE_MOCK", False)
+    monkeypatch.setattr(mail, "_db", lambda: _DB())
+    mail._record(*args, detail="ok")
+    assert captured == [[in_memory]], (
+        "the in-memory row and the row inserted against a database must be identical")
+    mail.reset_mock_stores()

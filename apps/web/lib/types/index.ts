@@ -697,6 +697,14 @@ export interface TimeEntry {
   duration_minutes?: number;
   is_billable: boolean;
   hourly_rate_paise?: number;
+  /** The rate this entry was STORED with — the entry's own, the engagement's
+   *  or the person's, resolved when it was recorded. null: nobody had said. */
+  billable_rate_paise?: number | null;
+  /** What the SERVER says an hour of this entry bills at, and what its time is
+   *  worth (minutes x rate / 60, whole paise). null is "no rate" — which is not
+   *  0. Only the list endpoint adds these; the browser never works them out. */
+  rate_paise?: number | null;
+  value_paise?: number | null;
   created_at: string;
   updated_at: string;
 }

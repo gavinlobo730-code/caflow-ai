@@ -373,6 +373,31 @@ def set_staff_cost_rate(user_id: str, body: StaffCostRateIn,
         current_user["firm_id"], user_id, body.cost_rate_paise))
 
 
+class StaffBillableRateIn(BaseModel):
+    # Whole paise; None CLEARS it. NULL means "nobody has said what an hour of this
+    # person bills at" and is not 0, which is a rate somebody stated.
+    default_billable_rate_paise: Optional[int] = None
+
+
+@router.get("/staff-billable-rates")
+def list_staff_billable_rates(current_user: dict = Depends(rbac("billing", "read"))):
+    """What an hour of each person bills at (practice_management-11). Partner-only
+    like every fee figure here, and read as the service role: under the caller's own
+    JWT `users` shows only the caller."""
+    from services import time_rates_service
+    return api_response(True, {"staff": time_rates_service.list_staff_rates(current_user["firm_id"])})
+
+
+@router.put("/staff-billable-rates/{user_id}")
+def set_staff_billable_rate(user_id: str, body: StaffBillableRateIn,
+                            current_user: dict = Depends(rbac("billing", "write"))):
+    """Set or clear a person's default billing rate. NOT `cost_rate_paise`, which
+    is what the hour costs the firm and is never used in a computation."""
+    from services import time_rates_service
+    return api_response(True, time_rates_service.set_staff_rate(
+        current_user["firm_id"], user_id, body.default_billable_rate_paise))
+
+
 # ── Fee Billing receipts (R3.9b) ─────────────────────────────────────────────
 # fee_invoices/fee_receipts are a separate "Fee Billing" system (apps/web/app/
 # billing/page.tsx) from the internal-customer billing_schedules/

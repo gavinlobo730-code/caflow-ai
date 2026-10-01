@@ -1258,6 +1258,16 @@ EXEMPT: dict[str, str] = {
     "/api/billing/staff-cost-rates/{user_id}":
         "same table, addressed by a STAFF user_id — not a client — for the "
         "write side.",
+    # practice_management-11 — what an hour of each PERSON bills at. Firm-level
+    # staff data like the cost rates beside it: no client_id anywhere in the
+    # request, Partner-only (billing:read / billing:write) through rbac().
+    "/api/billing/staff-billable-rates":
+        "firm-level staff billing rates (list), not client data. No client_id in "
+        "the request; billing:read is Partner-only.",
+    "/api/billing/staff-billable-rates/{user_id}":
+        "same column, addressed by a STAFF user_id — not a client — for the write "
+        "side; the firm filter is on the UPDATE so another firm's member matches "
+        "no row.",
     "/api/copilot/suggestions":
         "GLOBAL/CLIENT/COMPLIANCE_SUGGESTED_QUESTIONS are hardcoded prompt "
         "lists in models/ai_copilot.py — no client_id in the request, no "
@@ -1615,6 +1625,18 @@ EXEMPT: dict[str, str] = {
     "/api/notifications/stats":
         "firm-wide counts by type/severity. No client is named and no "
         "per-client figure is returned.",
+    # practice_management-03 — the caller's OWN mail settings and record. There
+    # is no user id to pass (the caller is always the subject), no client is
+    # named, and nothing per-client is returned: a stricter scope than
+    # client assignment, for the reason the recipient-owned routes above give.
+    "/api/notifications/email-preferences":
+        "the caller's own per-event email switches (user_notification_"
+        "preferences, keyed on the caller's own user id). No client_id, no "
+        "other user's row is reachable, and the GET and the PUT share this path.",
+    "/api/notifications/email-log":
+        "the mails sent to the CALLER (recipient_user_id = the caller). It "
+        "records an event type and what it was about by id, names no client "
+        "and returns no other person's row.",
     # workload.py — the capacity configuration pair.
     "/api/workload/capacity":
         "user_capacity has a firm_id and a STAFF user_id, and no client_id "
@@ -1802,13 +1824,13 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/year-end/{engagement_id}/notes": 5,
               "/api/year-end/{engagement_id}/exports": 5,
               "/api/year-end/mappings": 4,
-              "/api/portal/document-requests": 3, "/api/portal/messages": 2,
+              "/api/portal/document-requests": 3, "/api/portal/messages": 3,
               "/api/portal/dues": 1, "/api/portal/clients": 2,
               "/api/portal/contacts": 2,
               "/api/clients": 7,
               "/api/credit-notes": 6, "/api/debit-notes": 8,
               "/api/purchase-credit-notes": 8, "/api/sales-debit-notes": 6,
-              "/api/service-catalogue": 6, "/api/time-entries": 9,
+              "/api/service-catalogue": 6, "/api/time-entries": 10,
               "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
               "/api/identity": 13, "/api/tally-migration": 7, "/api/reports": 2,
               "/api/accounting": 21, "/api/approvals": 7, "/api/xbrl": 7,
@@ -1818,7 +1840,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/receipts": 5, "/api/purchase-payments": 5,
               "/api/document-intelligence-v2": 5, "/api/payments": 6,
               "/api/insights": 2, "/api/assignments": 5, "/api/risks": 5,
-              "/api/notifications": 7, "/api/documents": 5, "/api/workload": 4,
+              "/api/notifications": 10, "/api/documents": 5, "/api/workload": 4,
               "/api/team": 1, "/api/ai-copilot": 3,
               "/api/einvoice": 4, "/api/form-26as": 6, "/api/fixed-assets": 5,
               "/api/analytics": 5, "/api/intelligence": 6, "/api/hsn": 1,

@@ -97,7 +97,12 @@ BUDGET: dict[str, int] = {
     # now have a caller; the one left is POST /{id}/generate-obligations, which
     # is `compliance:write` and belongs on a compliance screen rather than on
     # the fee-billing one.
-    "/api/billing": 7, "/api/engagements": 1, "/api/income-tax": 5,
+    # /api/billing 7 -> 6 on 01-10-2026 (practice_management-11): `unbilled-work`
+    # had a `lib/api` method and no screen for as long as it existed; the Time
+    # screen's "Unbilled work" tab is its first caller, and its two new siblings
+    # (`staff-billable-rates`, GET and PUT) are wired by the "Billing rates" tab in
+    # the same commit rather than added to the budget.
+    "/api/billing": 6, "/api/engagements": 1, "/api/income-tax": 5,
     # /api/ai-insights 6 -> 4 on 25-09-2026 (Phase 3a-6): the client AI
     # Insights screen read `ai_insights` over PostgREST and nothing could
     # write it — `generate_insights_for_client` is written and tested and
