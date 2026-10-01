@@ -91,6 +91,7 @@ from routers import engagement_letters
 # Phase 14 routers that existed but were never mounted (production-readiness fix)
 from routers import einvoice, eway_bill, tally_migration, xbrl_engine, itr_workspace, form_26as, gst_portal
 from routers import ais
+from routers import income_tax_worksheets
 # Phase 6 — Year End
 from routers import year_end, year_end_checklist, year_end_adjustments
 from routers import year_end_statements, year_end_notes, year_end_reviews
@@ -347,6 +348,9 @@ app.include_router(ai_copilot.router, dependencies=_CLIENT_GUARD)
 app.include_router(gst.router, dependencies=_CLIENT_GUARD)
 app.include_router(tds.router, dependencies=_CLIENT_GUARD)
 app.include_router(income_tax.router, dependencies=_CLIENT_GUARD)
+# The house-property and salary working papers (TDS-INCOME-TAX-14, -15). Every
+# route names its client in the query or the body, so the mount guard fires.
+app.include_router(income_tax_worksheets.router, dependencies=_CLIENT_GUARD)
 app.include_router(task_templates.router, dependencies=_CLIENT_GUARD)
 app.include_router(task_extras.router)
 app.include_router(task_recurring.router, dependencies=_CLIENT_GUARD)

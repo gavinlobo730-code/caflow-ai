@@ -1,6 +1,9 @@
 "use client";
 
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
+import AisComputationLinesPanel from "@/components/tax/AisComputationLines";
+import HousePropertyWorksheet from "@/components/tax/HousePropertyWorksheet";
+import SalaryWorksheet from "@/components/tax/SalaryWorksheet";
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Loader2, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Save } from "lucide-react";
 import { formatWhole } from "@/lib/money/format";
@@ -1087,6 +1090,32 @@ export default function TaxComputationPage() {
 
   const toggle = (s: string) => setActiveSection(prev => prev === s ? null : s);
   const latestSnap = snapshots[0];
+
+  // What is typed in a box, in paise — undefined where it is blank or not an
+  // amount, which the AIS panel reads as "not typed" (and not as zero).
+  const typedAmount = (text: string): number | undefined => {
+    if (text.trim() === "") return undefined;
+    const p = paiseFromRupeeInput(text);
+    return p === null ? undefined : p;
+  };
+  // An AIS line accepted for a box. The panel calls this only for an EMPTY box;
+  // the mapping is a server key to a local box and holds no statute.
+  const applyAisLine = useCallback((target: string, paise: number) => {
+    if (target === "gross_salary_paise") setSalary(rupeeInputFromPaise(paise));
+    else if (target === "other_income_paise") setOtherIncome(rupeeInputFromPaise(paise));
+  }, []);
+  // Schedule S's answer, put in the boxes the computation already has: the one
+  // salary box (the figure the engine takes) and the HRA fields.
+  const useSalaryWorksheet = (e: {
+    gross_salary_paise: number;
+    hra: { basic_salary_paise: number; hra_received_paise: number; rent_paid_paise: number; is_metro: boolean };
+  }) => {
+    setSalary(rupeeInputFromPaise(e.gross_salary_paise));
+    setHraBasic(rupeeInputFromPaise(e.hra.basic_salary_paise));
+    setHraReceived(rupeeInputFromPaise(e.hra.hra_received_paise));
+    setHraRent(rupeeInputFromPaise(e.hra.rent_paid_paise));
+    setHraMetro(e.hra.is_metro);
+  };
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-4">
@@ -2207,6 +2236,51 @@ export default function TaxComputationPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* THE WORKING PAPERS THAT FEED THE BOXES ABOVE (TDS-INCOME-TAX-10, -14,
+          -15). Salary, house property and other income were each ONE typed
+          figure that was really the result of a working done on paper first.
+          Each panel here asks the server, keeps the CA's inputs, and offers its
+          answer to the box the computation already reads — on the CA's click,
+          and never over a figure they typed. Nothing here is computed in the
+          browser. */}
+      <div className="bg-white border border-ps-border rounded-xl overflow-hidden">
+        <button
+          onClick={() => toggle("worksheets")}
+          className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-ps-bg text-left"
+        >
+          <p className="text-xs font-semibold text-ps-body">
+            Working papers — AIS, house property{offers("salary_head") && !isEntity ? ", salary" : ""}
+          </p>
+          {activeSection === "worksheets" ? <ChevronUp size={14} className="text-ps-hint" /> : <ChevronDown size={14} className="text-ps-hint" />}
+        </button>
+        {activeSection === "worksheets" && fy && clientId && clientId !== "_placeholder" && (
+          <div className="px-5 pb-5 border-t border-ps-border pt-4 space-y-6">
+            <div className="space-y-2">
+              <p className="text-2xs font-semibold text-ps-body">What the Annual Information Statement says</p>
+              <AisComputationLinesPanel
+                clientId={clientId} fy={fy}
+                typedGrossSalary={typedAmount(salary)}
+                typedOtherIncome={typedAmount(otherIncome)}
+                onApply={applyAisLine} />
+            </div>
+            <div className="space-y-2 border-t border-ps-border pt-4">
+              <p className="text-2xs font-semibold text-ps-body">Income from house property</p>
+              <HousePropertyWorksheet
+                clientId={clientId} fy={fy} useNewRegime={regime === "new"}
+                onUse={p => setHousePropertyIncome(rupeeInputFromPaise(p))} />
+            </div>
+            {offers("salary_head") && !isEntity && (
+              <div className="space-y-2 border-t border-ps-border pt-4">
+                <p className="text-2xs font-semibold text-ps-body">Salary — Schedule S</p>
+                <SalaryWorksheet
+                  clientId={clientId} fy={fy} useNewRegime={regime === "new"}
+                  onUse={useSalaryWorksheet} />
               </div>
             )}
           </div>
