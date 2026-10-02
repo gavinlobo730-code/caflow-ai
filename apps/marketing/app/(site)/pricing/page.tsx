@@ -74,9 +74,7 @@ const TIERS: Tier[] = [
     features: [
       "Unlimited users & clients",
       "Dedicated onboarding & migration",
-      "Single sign-on (SSO)",
       "Audit logs",
-      "SLA & account manager",
     ],
     cta: { label: "Book a demo", href: "/demo", external: false },
     highlighted: false,
@@ -102,7 +100,7 @@ const FAQS = [
   },
   {
     q: "Is my data secure, and where is it hosted?",
-    a: "The database is in the Mumbai region and encrypted; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India. Partners and Managers use two-factor authentication on firm administration, billing, payroll and approvals, and everyone works under role-based access, so only your team sees your clients' information.",
+    a: "The database is in the Mumbai region; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India. Partners and Managers use two-factor authentication on firm administration, billing, payroll and approvals, and everyone works under role-based access, so only your team sees your clients' information.",
   },
   {
     q: "Does PracticeSync file returns for me?",

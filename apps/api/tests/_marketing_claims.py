@@ -136,15 +136,6 @@ CLAIMS: tuple[Claim, ...] = (
         ),
     ),
     Claim(
-        id="sso",
-        status=UNPROVEN,
-        fact="Single sign-on (SAML or OIDC) for the Firm plan.",
-        decision="Nothing in apps/api or apps/web speaks SAML, OIDC or any identity provider; sign-in is Supabase email, magic link and password. Either build it, label the bullet 'planned', or remove it from the Firm plan. A commercial decision for the owner, not a copy edit.",
-        says=(
-            Says("Single sign-on (SSO)", PRICING),
-        ),
-    ),
-    Claim(
         id="access-by-role-and-assignment",
         status=PROVEN,
         fact="Every route is behind a role check (Partner > Manager > Executive > Reviewer > Client), and a Manager or Executive reaches only the clients they are assigned to; firm-wide reports mean the caller's own clients.",
@@ -239,7 +230,7 @@ CLAIMS: tuple[Claim, ...] = (
         says=(
             Says("PracticeSync is built around how Indian CA firms actually work: the database is in Mumbai, access is by role and by client assignment, every change to a client, invoice, bill, receipt or ledger entry is written to an audit log, and no filing ever leaves your hands without your confirmation.", PRODUCTS),
             Says("Two-factor sign-in for Partners and Managers · Database in Mumbai", ACCESS),
-            Says("The database is in the Mumbai region and encrypted; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", PRICING),
+            Says("The database is in the Mumbai region; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", PRICING),
             Says("Your records sit in a database in Mumbai; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", SUPPORT),
             Says("Your firm's and your clients' records sit in a database in the Mumbai region.", HOME),
             Says("Records sit in a Mumbai database.", PRICING),
@@ -256,7 +247,7 @@ CLAIMS: tuple[Claim, ...] = (
         ),
         says=(
             Says("The application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", HOME, PRODUCTS),
-            Says("The database is in the Mumbai region and encrypted; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", PRICING),
+            Says("The database is in the Mumbai region; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", PRICING),
             Says("The servers that run the application are in Singapore, and the AI features call providers outside India.", PRICING),
             Says("Your records sit in a database in Mumbai; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", SUPPORT),
         ),
@@ -272,18 +263,9 @@ CLAIMS: tuple[Claim, ...] = (
         not_proved="Names are not pseudonymised, and document extraction is exempt from the redaction by name (the supplier's GSTIN is printed on the invoice being read).",
         says=(
             Says("The application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", HOME, PRODUCTS),
-            Says("The database is in the Mumbai region and encrypted; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", PRICING),
+            Says("The database is in the Mumbai region; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", PRICING),
             Says("The servers that run the application are in Singapore, and the AI features call providers outside India.", PRICING),
             Says("Your records sit in a database in Mumbai; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", SUPPORT),
-        ),
-    ),
-    Claim(
-        id="database-encrypted",
-        status=UNPROVEN,
-        fact="The database is encrypted.",
-        decision="Supabase documents encryption at rest for every project, but nothing in this repository states or checks it, so the sentence rests on a vendor's page nobody has cited. Either cite the provider's security page in the copy, or drop 'and encrypted' from the pricing FAQ. Do not add 'bank-grade' or 'military-grade' beside it.",
-        says=(
-            Says("The database is in the Mumbai region and encrypted; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", PRICING),
         ),
     ),
     Claim(
@@ -373,15 +355,6 @@ CLAIMS: tuple[Claim, ...] = (
             Says("The Firm plan includes dedicated onboarding and data migration, and our team can help import client masters and opening balances on any plan.", PRICING),
             Says("Get help with PracticeSync — guides, email and phone support, plus hands-on onboarding and data migration for Indian CA firms moving from Tally, ClearTax or Winman.", SUPPORT),
             Says("Practice and Firm plans also get a dedicated onboarding specialist to set up your team, templates and compliance calendar.", SUPPORT),
-        ),
-    ),
-    Claim(
-        id="sla-and-account-manager",
-        status=UNPROVEN,
-        fact="A service-level agreement and a named account manager for the Firm plan.",
-        decision="No SLA document, uptime target or measurement exists in the repository (nothing has measured uptime — the homepage says so itself), and nobody is assigned as an account manager. Either write the SLA and name the role, label the bullet 'on request', or remove it. A commercial decision for the owner.",
-        says=(
-            Says("SLA & account manager", PRICING),
         ),
     ),
     Claim(

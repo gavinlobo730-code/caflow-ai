@@ -366,11 +366,9 @@ def _client_brief(client_id: str, current_user: dict) -> Optional[str]:
     except Exception:                                            # noqa: BLE001
         logger.exception("assistant: the client brief could not be built")
         return None
-    return build_client_brief(
-        client.get("legal_name") or client.get("client_name"),
-        client.get("entity_type"),
-        payload,
-    )
+    # No name is read for the brief: it is "this client" plus the entity type
+    # (domain/ai/client_brief, 02-10-2026).
+    return build_client_brief(client.get("entity_type"), payload)
 
 
 @router.post("")
