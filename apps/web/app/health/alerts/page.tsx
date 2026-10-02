@@ -6,8 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -34,7 +35,6 @@ const SEVERITY_COLORS: Record<string, string> = {
   warning: "bg-sev-medium-surface text-sev-medium",
   critical: "bg-sev-critical-surface text-sev-critical",
 };
-function formatDate(d: string) { try { return formatDateShared(d); } catch { return d; } }
 
 export default function HealthAlertsPage() {
   const [alerts, setAlerts] = useState<HealthAlert[]>([]);
@@ -75,13 +75,11 @@ export default function HealthAlertsPage() {
 
   return (
     <div className="p-6 space-y-5 bg-ps-bg min-h-full">
-      <div className="flex items-center gap-3">
-        <Bell size={20} className="text-amber-500" />
-        <div>
-          <h1 className="text-2xl font-bold text-brand">Health Alerts</h1>
-          <p className="text-sm text-gray-500">Active unresolved alerts across all clients</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Bell size={20} className="text-amber-500" />}
+        title="Health Alerts"
+        subtitle="Active unresolved alerts across all clients"
+      />
       {error && <Callout tone="problem">{error}</Callout>}
       {loading ? (
         <TransactionListSkeleton rows={3} />

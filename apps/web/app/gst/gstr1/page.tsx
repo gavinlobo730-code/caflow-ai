@@ -18,7 +18,6 @@ import {
   AlertTriangle,
   Download,
   FileCheck,
-  ArrowLeft,
   Info,
   X,
   Building2,
@@ -26,13 +25,13 @@ import {
   Users,
   ReceiptText,
 } from "lucide-react";
-import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
 import { Gstr1Amendments } from "@/components/gst/Gstr1Amendments";
 import { IffPanel } from "@/components/gst/IffPanel";
 import { RegistrationPicker, useRegistrationChoice } from "@/components/gst/RegistrationPicker";
 import { formatPaise } from "@/lib/services/formatting";
+import { formatMonthYear } from "@/lib/dates/format";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   buildGSTR1,
@@ -44,6 +43,7 @@ import {
   type GSTReturnStatus,
 } from "@/lib/data/gst";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -65,7 +65,7 @@ function buildPeriodOptions() {
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     opts.push({
       value: `${yyyy}-${mm}`,
-      label: d.toLocaleDateString("en-IN", { month: "long", year: "numeric" }),
+      label: formatMonthYear(`${yyyy}-${mm}`),
     });
   }
   return opts.reverse();
@@ -207,17 +207,11 @@ export default function GSTR1Page() {
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
 
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/gst" className="text-ps-hint hover:text-ps-label">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-ps-ink">GSTR-1 Review</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            CGST Act Section 37 — Details of outward supplies. Due 11th of following month.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: "/gst", label: "GST" }}
+        title="GSTR-1 Review"
+        subtitle="CGST Act Section 37 — Details of outward supplies. Due 11th of following month."
+      />
 
       {/* CA Review Banner */}
       <div className="bg-state-attention-surface border border-state-attention-border rounded-lg p-3 flex items-start gap-2">

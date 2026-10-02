@@ -49,6 +49,7 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { api } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ─── The server's shape ───────────────────────────────────────────────────────
 
@@ -353,27 +354,29 @@ export default function RisksPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Risk Intelligence</h1>
-          <p className="text-sm text-ps-label mt-0.5">
+      <PageHeader
+        title="Risk Intelligence"
+        subtitle={
+          <>
             Statutory risk across the clients you can see
             {register?.as_at ? ` · as at ${formatDate(register.as_at)}` : ""}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={loadData} disabled={loading} className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg disabled:opacity-50">
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            Refresh
-          </button>
-          {rows.length > 0 && (
-            <button onClick={exportCsv} className="flex items-center gap-2 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand-dark">
-              <Download size={14} />
-              Export CSV
+          </>
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            <button onClick={loadData} disabled={loading} className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg disabled:opacity-50">
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+              Refresh
             </button>
-          )}
-        </div>
-      </div>
+            {rows.length > 0 && (
+              <button onClick={exportCsv} className="flex items-center gap-2 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand-dark">
+                <Download size={14} />
+                Export CSV
+              </button>
+            )}
+          </div>
+        }
+      />
 
       {loading ? (
         <div className="flex items-center justify-center py-24"><Loader2 className="h-7 w-7 animate-spin text-blue-500" /></div>

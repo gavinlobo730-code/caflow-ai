@@ -5,6 +5,8 @@ import { Wallet, RefreshCw, Bell, Activity } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
+import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
 
 interface DashboardData {
   total_receivable_paise: number; overdue_paise: number; overdue_count: number;
@@ -55,15 +57,16 @@ function Collections() {
 
   return (
     <div className="p-6 max-w-3xl">
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-2">
-          <Wallet size={18} className="text-brand" />
-          <h1 className="text-lg font-semibold text-brand">Collections</h1>
-        </div>
-        <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
-          <RefreshCw size={13} /> Refresh
-        </button>
-      </div>
+      <PageHeader
+        icon={<Wallet size={18} className="text-brand" />}
+        title="Collections"
+        actions={
+          <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
+            <RefreshCw size={13} /> Refresh
+          </button>
+        }
+        className="mb-5"
+      />
 
       {msg && <div className="mb-3 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700">{msg}</div>}
 
@@ -84,15 +87,15 @@ function Collections() {
       </div>
 
       <div className="flex gap-3">
-        <button onClick={() => run("sweep")} disabled={busy}
+        <Button variant="plain" size="none" onClick={() => run("sweep")} disabled={busy}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm text-brand hover:bg-ps-bg disabled:opacity-50">
           <Activity size={14} /> Run overdue sweep
-        </button>
-        <button onClick={() => run("followups")} disabled={busy}
+        </Button>
+        <Button variant="plain" size="none" onClick={() => run("followups")} disabled={busy}
           title="Writes a Timeline note against each overdue fee invoice. No email is sent."
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm disabled:opacity-50">
           <Bell size={14} /> Flag for follow-up
-        </button>
+        </Button>
       </div>
       <p className="text-2xs text-gray-400 mt-4">
         Both actions are on the practice&apos;s own fee invoices only. Flagging is cadence-gated

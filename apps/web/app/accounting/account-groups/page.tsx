@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect, useId } from "react";
-import Link from "next/link";
-import { ChevronLeft, Layers, Plus } from "lucide-react";
+import { Layers, Plus } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface CoaRow {
   id: string;
@@ -265,23 +265,18 @@ export default function AccountGroupsPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-5">
-      <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft size={18} />
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink flex items-center gap-2">
-            <Layers size={18} className="text-blue-600" /> Account Groups
-          </h1>
-          <p className="text-xs text-ps-label mt-0.5">
-            {parentGroups.length} parent groups · {accounts.length} active accounts
-          </p>
-        </div>
-        <button onClick={() => setAdding(true)}
-                className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
-          <Plus size={12} /> Add ledger
-        </button>
-      </div>
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        icon={<Layers size={18} className="text-blue-600" />}
+        title="Account Groups"
+        subtitle={<>{parentGroups.length} parent groups · {accounts.length} active accounts</>}
+        actions={
+          <button onClick={() => setAdding(true)}
+                  className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
+            <Plus size={12} /> Add ledger
+          </button>
+        }
+      />
 
       <div className="space-y-5">
         {parentGroups.map(pg => {

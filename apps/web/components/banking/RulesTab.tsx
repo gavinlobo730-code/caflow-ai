@@ -25,6 +25,9 @@ import { Can } from "@/components/Can";
 import { useToast } from "@/components/ui/use-toast";
 import { type Account, fmt, rsToP, BANK_CATEGORIES, GST_RATE_OPTIONS } from "@/components/banking/shared";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { Button } from "@/components/ui/button";
 
 interface BankRule {
   id: string;
@@ -441,9 +444,9 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
           {formError && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{formError}</p>}
           <div className="flex gap-2 justify-end pt-1">
             <button onClick={() => setEditing(null)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-            <button onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+            <Button variant="plain" size="none" onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
               {saving ? "Saving…" : editing === "new" ? "Create rule" : "Save changes"}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -454,9 +457,17 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : rules.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border p-10 text-center">
-          <p className="text-sm text-ps-hint">No rules yet.</p>
-          <p className="text-2xs text-ps-hint mt-1">Rules save re-booking the same line every month — bank charges, salary, a recurring vendor. Book a few lines under a ledger in Entries and it will offer to make one.</p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            title="No rules yet"
+            description="Rules save re-booking the same line every month: bank charges, salary, a recurring vendor. Book a few lines under a ledger in Entries and it will offer to make one, or write one yourself."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["banking", "write"]} icon={<Plus size={14} />} label="New Rule"
+                  onClick={startNew} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden divide-y divide-ps-border">
@@ -494,19 +505,19 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
                 <Can resource="banking" action="approve"
                   fallback={r.is_trusted ? <span className="text-3xs text-ps-hint" title="Only a Manager or Partner can change this">trusted</span> : null}>
                   {r.is_active && (
-                    <button onClick={() => trust(r, !r.is_trusted)} disabled={busy[r.id] || (!r.is_trusted && !r.suggested_account_id)}
+                    <Button variant="plain" size="none" onClick={() => trust(r, !r.is_trusted)} disabled={busy[r.id] || (!r.is_trusted && !r.suggested_account_id)}
                       title={!r.is_trusted && !r.suggested_account_id ? "Give the rule a ledger first" : r.is_trusted ? "Stop it passing on its own" : "Let it pass its lines without a click"}
                       className={`text-3xs px-2 py-1 border rounded ${r.is_trusted ? "border-ps-border text-ps-label hover:bg-ps-bg" : "border-state-ready-border bg-state-ready-surface text-state-ready hover:bg-state-ready-hover"} disabled:opacity-40`}>
                       {r.is_trusted ? "Un-trust" : "Trust"}
-                    </button>
+                    </Button>
                   )}
                 </Can>
-                <button onClick={() => patch(r, { is_active: !r.is_active }, "Couldn't change the rule")} disabled={busy[r.id]}
+                <Button variant="plain" size="none" onClick={() => patch(r, { is_active: !r.is_active }, "Couldn't change the rule")} disabled={busy[r.id]}
                   className="text-3xs px-2 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
                   {r.is_active ? "Turn off" : "Turn on"}
-                </button>
+                </Button>
                 <button onClick={() => startEdit(r)} disabled={busy[r.id]} className="text-ps-hint hover:text-ps-label" aria-label={`Edit ${r.rule_name}`}><Pencil size={13} /></button>
-                <button onClick={() => remove(r)} disabled={busy[r.id]} className="text-ps-hint hover:text-state-problem" aria-label={`Delete ${r.rule_name}`}><X size={14} /></button>
+                <Button variant="plain" size="none" onClick={() => remove(r)} disabled={busy[r.id]} className="text-ps-hint hover:text-state-problem" aria-label={`Delete ${r.rule_name}`}><X size={14} /></Button>
               </div>
             </div>
           ))}

@@ -22,6 +22,7 @@ import { arrayOrEmpty } from "@/lib/api/shape";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { Skeleton, DashboardSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
+import { formatDate } from "@/lib/dates/format";
 
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
@@ -309,7 +310,7 @@ export default function YearEndDashboardPage() {
     : 0;
 
   const statementsGeneratedDate = statements_generated_at
-    ? new Date(statements_generated_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+    ? formatDate(statements_generated_at)
     : null;
 
   const StatusIcon = STATUS_ICON[engagement.status];

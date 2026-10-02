@@ -77,6 +77,8 @@ import { formatPaiseBare } from "@/lib/money/format";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements" | "interest" | "post-dated-cheques";
@@ -614,10 +616,18 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
       {loading ? (
         <TableSkeleton cols={8} rows={3} />
       ) : templates.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border text-center py-16">
-          <Clock size={32} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-ps-label">No recurring templates yet</p>
-          <p className="text-xs text-ps-hint mt-1">Create one to auto-generate draft invoices on a schedule.</p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            icon={<Clock size={32} />}
+            title="No recurring templates yet"
+            description="Create one to auto-generate draft invoices on a schedule. Each one arrives as a draft; nothing is issued without you."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="New Template"
+                  onClick={() => setEditor("new")} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       ) : (
         <>
@@ -1400,10 +1410,10 @@ function Statements({ clientId }: { clientId: string }) {
             {applyError && <Callout tone="problem">{applyError}</Callout>}
             <div className="flex justify-end gap-2">
               <button onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
-              <button onClick={applyCredit} disabled={actionInFlight || !applyInvoiceId || !applyAmount}
+              <Button variant="plain" size="none" onClick={applyCredit} disabled={actionInFlight || !applyInvoiceId || !applyAmount}
                 className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {applying ? "Applying…" : "Apply"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -2231,6 +2241,16 @@ function SalesInvoices({
         exportFilename="sales-invoices"
         persistKey="sales.invoices"
         emptyTitle="No invoices in this period"
+        emptyDescription="Nothing is dated in this period. Raise an invoice, or bring in the ones you already have from a CSV file or a Tally export."
+        emptyAction={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="New Invoice"
+              onClick={() => router.push(newInvoiceHref(clientId))} />
+            <EmptyStateAction requires={["accounting", "write"]} variant="secondary" icon={<Upload size={14} />} label="Import from CSV"
+              onClick={() => setShowImport(true)} />
+            <EmptyStateAction requires={["accounting", "approve"]} variant="secondary" label="Migrate from Tally" href="/migration" />
+          </EmptyStateActions>
+        }
         error={loadFailed ? "Couldn't load invoices — the request failed or timed out." : null}
         onRetry={load}
         onRowClick={(inv) => setDetailId(inv.id)}
@@ -3134,7 +3154,7 @@ function Customers({
 
       {/* accounting-20 — named price lists and each customer's default one: a PRE-FILL
           source for the rate when an item is picked on a new invoice line. */}
-      <PriceListsPanel clientId={clientId} />
+      <PriceListsPanel clientId={clientId} onAddCustomer={() => { setEditCustomer(null); setShowForm(true); }} />
 
       {showImport && (
         <CsvImportModal
@@ -3350,6 +3370,16 @@ function Customers({
         exportFilename="customers"
         persistKey="sales.customers"
         emptyTitle="No customers yet"
+        emptyDescription="Add the people and businesses this client invoices, or bring the list in from a CSV file or a Tally export."
+        emptyAction={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["client", "write"]} icon={<Plus size={14} />} label="Add Customer"
+              onClick={() => { setEditCustomer(null); setShowForm(true); }} />
+            <EmptyStateAction requires={["client", "write"]} variant="secondary" icon={<Upload size={14} />} label="Import from CSV"
+              onClick={() => setShowImport(true)} />
+            <EmptyStateAction requires={["accounting", "approve"]} variant="secondary" label="Migrate from Tally" href="/migration" />
+          </EmptyStateActions>
+        }
         bulkActions={[
           {
             id: "deactivate",
@@ -3623,6 +3653,15 @@ function Receipts({
         exportFilename="receipts"
         persistKey="sales.receipts"
         emptyTitle={`No receipts in FY ${financialYear}`}
+        emptyDescription="A receipt records money a customer has paid and settles the invoices it covers."
+        emptyAction={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Record Receipt"
+              onClick={() => setShowForm(true)} />
+            <EmptyStateAction requires={["accounting", "write"]} variant="secondary" icon={<Upload size={14} />} label="Import from CSV"
+              onClick={() => setShowImport(true)} />
+          </EmptyStateActions>
+        }
         toolbarExtra={<FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />}
         error={loadFailed ? "Couldn't load receipts — the request failed or timed out." : null}
         onRetry={load}
@@ -4562,6 +4601,15 @@ function CreditNotes({
         exportFilename="credit-notes"
         persistKey="sales.credit-notes"
         emptyTitle={`No credit notes in FY ${financialYear}`}
+        emptyDescription="A credit note reduces what a customer owes after an invoice has been raised: a return, a later discount, an overbilling put right (CGST Act §34)."
+        emptyAction={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Create Credit Note"
+              onClick={() => router.push(`/clients/${clientId}/sales/credit-notes/new/edit`)} />
+            <EmptyStateAction requires={["accounting", "write"]} variant="secondary" icon={<Upload size={14} />} label="Import from CSV"
+              onClick={() => setShowImport(true)} />
+          </EmptyStateActions>
+        }
         error={loadFailed ? "Couldn't load credit notes — the request failed or timed out." : null}
         onRetry={load}
         toolbarExtra={
@@ -4983,6 +5031,15 @@ function SalesDebitNotes({
         exportFilename="sales-debit-notes"
         persistKey="sales.debit-notes"
         emptyTitle={`No debit notes in FY ${financialYear}`}
+        emptyDescription="A debit note raises what a customer owes after an invoice: an extra charge, an under-billing put right (CGST Act §34)."
+        emptyAction={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Create Debit Note"
+              onClick={() => router.push(`/clients/${clientId}/sales/debit-notes/new/edit`)} />
+            <EmptyStateAction requires={["accounting", "write"]} variant="secondary" icon={<Upload size={14} />} label="Import from CSV"
+              onClick={() => setShowImport(true)} />
+          </EmptyStateActions>
+        }
         error={loadFailed ? "Couldn't load debit notes — the request failed or timed out." : null}
         onRetry={load}
         toolbarExtra={

@@ -22,6 +22,8 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -542,23 +544,22 @@ export default function DocumentsPage() {
   return (
     <div className="p-6 max-w-ps-data mx-auto">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Documents</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            Manage client documents and files
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
-          >
-            <Upload size={16} />
-            Upload Document
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Documents"
+        subtitle="Manage client documents and files"
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
+            >
+              <Upload size={16} />
+              Upload Document
+            </button>
+          </div>
+        }
+        className="mb-6"
+      />
 
       {/* ── Documents table — shared DataTable (search, sort, filters, pagination, export, prefs) ── */}
       <DataTable
@@ -579,13 +580,10 @@ export default function DocumentsPage() {
         emptyDescription={documents.length === 0 ? "Upload your first document to get started." : undefined}
         emptyAction={
           documents.length === 0 ? (
-            <button
-              onClick={() => setShowUploadModal(true)}
-              className="mt-4 flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
-            >
-              <Upload size={14} />
-              Upload Document
-            </button>
+            <EmptyStateActions>
+              <EmptyStateAction requires={["document", "write"]} icon={<Upload size={14} />} label="Upload Document"
+                onClick={() => setShowUploadModal(true)} />
+            </EmptyStateActions>
           ) : undefined
         }
         rowActions={(doc) => (

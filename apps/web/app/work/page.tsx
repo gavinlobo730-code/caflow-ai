@@ -15,7 +15,9 @@ import { getUserProfile } from "@/lib/data/getFirmId";
 import type { Task, TaskStatus, TeamWorkload } from "@/lib/types";
 import type { TaskCounts } from "@/lib/data/tasks";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-ps-muted text-ps-label",
@@ -39,13 +41,6 @@ const PRIORITY_COLORS: Record<string, string> = {
   medium: "bg-sev-medium-surface text-sev-medium",
   low: "bg-sev-low-surface text-sev-low",
 };
-
-function fmt(date?: string) {
-  if (!date) return "—";
-  const [, m, d] = date.split("-");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${d} ${months[parseInt(m) - 1]}`;
-}
 
 function isToday(dateStr?: string) {
   if (!dateStr) return false;
@@ -83,7 +78,7 @@ function TaskRow({ task }: { task: Task }) {
         )}
         {task.due_date && (
           <p className={`text-2xs mt-0.5 ${isOverdue(task.due_date) ? "text-state-problem font-medium" : "text-ps-hint"}`}>
-            {fmt(task.due_date)}
+            {formatDate(task.due_date)}
           </p>
         )}
       </div>
@@ -151,17 +146,17 @@ export default function WorkPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">My Work</h1>
-          <p className="text-sm text-ps-label mt-0.5">Your personal task view</p>
-        </div>
-        <Link href="/tasks">
-          <Button variant="outline" size="sm" className="gap-1.5 text-xs">
-            <ExternalLink size={12} /> All Tasks
-          </Button>
-        </Link>
-      </div>
+      <PageHeader
+        title="My Work"
+        subtitle="Your personal task view"
+        actions={
+          <Link href="/tasks">
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+              <ExternalLink size={12} /> All Tasks
+            </Button>
+          </Link>
+        }
+      />
 
       {error && <Callout tone="problem">{error}</Callout>}
 

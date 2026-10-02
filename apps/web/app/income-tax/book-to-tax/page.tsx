@@ -32,8 +32,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import Link from "next/link";
-import { ChevronLeft, Info, AlertTriangle, CheckCircle } from "lucide-react";
+import { Info, AlertTriangle, CheckCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -45,6 +44,7 @@ import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface BridgeLine {
   label: string;
@@ -143,15 +143,11 @@ export default function BookToTaxBridgePage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-ps-hint hover:text-ps-body"><ChevronLeft size={18} /></Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink">Book-to-tax bridge</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            Profit per the accounts, down to taxable income, one named adjustment at a time
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: "/income-tax", label: "Income Tax" }}
+        title="Book-to-tax bridge"
+        subtitle="Profit per the accounts, down to taxable income, one named adjustment at a time"
+      />
 
       <div className="flex flex-wrap gap-3">
         <div className="min-w-[240px]">

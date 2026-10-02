@@ -33,10 +33,14 @@ import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
+import { formatMonthYear } from "@/lib/dates/format";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { Button } from "@/components/ui/button";
 import { promptDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -117,11 +121,6 @@ function fmt(paise: number) {
   // front of it, as ₹1,18,000 with the paise gone. A column where some rows
   // carry paise and some do not cannot be added up by eye.
   return formatPaise(paise);
-}
-
-function fmtMonth(m: string) {
-  const [y, mo] = m.split("-");
-  return new Date(parseInt(y), parseInt(mo) - 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -280,7 +279,7 @@ function DashboardTab({ clientId }: { clientId: string }) {
 
       {latest && (
         <div className="bg-white rounded-xl border border-ps-border p-4">
-          <p className="text-2xs font-semibold uppercase tracking-widest text-ps-hint mb-3">Latest Run — {fmtMonth(latest.month)}</p>
+          <p className="text-2xs font-semibold uppercase tracking-widest text-ps-hint mb-3">Latest Run — {formatMonthYear(latest.month)}</p>
           <div className="grid grid-cols-3 gap-4">
             <SummaryRow label="Gross Payroll" value={fmt(latest.total_gross_paise)} />
             <SummaryRow label="PF (both sides)" value={fmt(latest.total_pf_paise)} />
@@ -296,13 +295,24 @@ function DashboardTab({ clientId }: { clientId: string }) {
       <div className="bg-white rounded-xl border border-ps-border p-4">
         <p className="text-2xs font-semibold uppercase tracking-widest text-ps-hint mb-3">Payroll History</p>
         {runs.length === 0 ? (
-          <p className="text-sm text-ps-hint">No payroll runs yet. Create your first run from the Register tab.</p>
+          <EmptyState
+            icon={<Play size={28} />}
+            className="py-8"
+            title="No payroll runs yet"
+            description="A month is paid by creating a run on the Register tab, which computes pay for the employees entered under Inputs."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["payroll", "write"]} icon={<Play size={14} />} label="Go to Register"
+                  href={`/clients/${clientId}/payroll?tab=register`} />
+              </EmptyStateActions>
+            }
+          />
         ) : (
           <div className="space-y-2">
             {runs.slice(0, 6).map(r => (
               <div key={r.id} className="flex items-center justify-between py-2 border-b border-ps-border last:border-0">
                 <div>
-                  <p className="text-sm font-medium text-ps-ink">{fmtMonth(r.month)}</p>
+                  <p className="text-sm font-medium text-ps-ink">{formatMonthYear(r.month)}</p>
                   <p className="text-2xs text-ps-hint">{r.headcount} employees</p>
                 </div>
                 <div className="text-right">
@@ -488,7 +498,22 @@ function EmployeesTab({ clientId }: { clientId: string }) {
           </thead>
           <tbody className="divide-y divide-ps-border">
             {employees.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-ps-hint text-sm">No employees yet</td></tr>
+              <tr><td colSpan={8}>
+                <EmptyState
+                  icon={<Users size={28} />}
+                  className="py-10"
+                  title="No employees yet"
+                  description="Add the people this client pays. Their PAN, UAN and joining date are what TDS, the PF return and a part-year salary are worked from later."
+                  action={
+                    <EmptyStateActions>
+                      <EmptyStateAction requires={["payroll", "write"]} icon={<Plus size={14} />} label="Add Employee"
+                        onClick={() => setShowAdd(true)} />
+                      <EmptyStateAction requires={["payroll", "write"]} variant="secondary" icon={<Upload size={14} />} label="Import from CSV"
+                        onClick={() => setShowImport(true)} />
+                    </EmptyStateActions>
+                  }
+                />
+              </td></tr>
             ) : employees.map(e => (
               <tr key={e.id} className="hover:bg-ps-bg transition-colors">
                 <td className="px-4 py-3 font-medium text-ps-ink">{e.name}</td>
@@ -879,7 +904,20 @@ function RunsTab({ clientId, firmId, openDoc }:
         ) : (
         <>
         {runs.length === 0 && (
-          <div className="bg-white rounded-xl border border-ps-border p-8 text-center text-ps-hint text-sm">No payroll runs yet</div>
+          <div className="bg-white rounded-xl border border-ps-border">
+            <EmptyState
+              icon={<Play size={28} />}
+              className="py-10"
+              title="No payroll runs yet"
+              description="Pick the month above and press Compute & Draft. A run is worked out from the employees entered under Inputs, so add them first if the list there is empty."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction requires={["payroll", "write"]} variant="secondary" icon={<Users size={14} />} label="Go to Inputs"
+                    href={`/clients/${clientId}/payroll?tab=inputs`} />
+                </EmptyStateActions>
+              }
+            />
+          </div>
         )}
         {runs.map(r => (
           <div key={r.id} className={"bg-white rounded-xl border overflow-hidden " +
@@ -889,7 +927,7 @@ function RunsTab({ clientId, firmId, openDoc }:
               <div className="flex items-center gap-3">
                 <StatusBadge status={r.status} />
                 <div>
-                  <p className="text-sm font-semibold text-ps-ink">{fmtMonth(r.month)}</p>
+                  <p className="text-sm font-semibold text-ps-ink">{formatMonthYear(r.month)}</p>
                   <p className="text-2xs text-ps-hint">{r.headcount} employees · Gross {fmt(r.total_gross_paise)}</p>
                 </div>
               </div>
@@ -923,7 +961,7 @@ function RunsTab({ clientId, firmId, openDoc }:
                     <span className="flex items-center gap-1">
                       <Button variant="plain" size="none" onClick={() => deleteRun(r.id)} disabled={rebuilding === r.id}
                         className="text-2xs px-2.5 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
-                        Delete {fmtMonth(r.month)}?
+                        Delete {formatMonthYear(r.month)}?
                       </Button>
                       <button onClick={() => setConfirmDelete(null)}
                         className="text-2xs px-2 py-1.5 text-ps-label hover:text-ps-body">
@@ -1180,7 +1218,7 @@ function StatutoryTab({ clientId, initialMonth }: { clientId: string; initialMon
           // for this month — and it must not read as the pre-Load prompt
           // below, which would tell a CA to do something they already did.
           <div className="bg-white rounded-xl border border-ps-border p-8 text-center text-ps-hint text-sm">
-            No payroll run recorded for {fmtMonth(month)}
+            No payroll run recorded for {formatMonthYear(month)}
           </div>
         ) : (
           <div className="bg-white rounded-xl border border-ps-border p-8 text-center text-ps-hint text-sm">
@@ -1284,9 +1322,18 @@ function ReleaseTab({ clientId }: { clientId: string }) {
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : runs.length === 0 ? (
-        <p className="text-center text-sm text-ps-hint py-10">
-          No payroll runs yet. Compute one under Register first.
-        </p>
+        <EmptyState
+          icon={<Play size={28} />}
+          className="py-10"
+          title="No payroll runs yet"
+          description="A run is released from the Register tab, so compute one there first."
+          action={
+            <EmptyStateActions>
+              <EmptyStateAction requires={["payroll", "write"]} icon={<Play size={14} />} label="Go to Register"
+                href={`/clients/${clientId}/payroll?tab=register`} />
+            </EmptyStateActions>
+          }
+        />
       ) : (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-xs">
@@ -1304,7 +1351,7 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                 const finalized = r.status === "finalized";
                 return (
                   <tr key={r.id}>
-                    <td className="px-3 py-2 font-medium text-ps-ink">{fmtMonth(r.month)}</td>
+                    <td className="px-3 py-2 font-medium text-ps-ink">{formatMonthYear(r.month)}</td>
                     <td className="px-3 py-2">
                       <span className={`px-2 py-0.5 rounded text-2xs ${
                         paid ? "bg-green-100 text-green-700"
@@ -1411,9 +1458,20 @@ function OutputsTab({ clientId }: { clientId: string }) {
 
   if (loading) return <div className="p-5"><TransactionListSkeleton rows={3} /></div>;
   if (runs.length === 0) {
-    return <p className="p-5 text-center text-sm text-ps-hint py-10">
-      No payroll runs yet. Compute one under Register first.
-    </p>;
+    return (
+      <EmptyState
+        icon={<Play size={28} />}
+        className="py-10"
+        title="No payroll runs yet"
+        description="The month's files are built from a run, so compute one on the Register tab first."
+        action={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["payroll", "write"]} icon={<Play size={14} />} label="Go to Register"
+              href={`/clients/${clientId}/payroll?tab=register`} />
+          </EmptyStateActions>
+        }
+      />
+    );
   }
 
   const items: { key: string; label: string; hint: string; run: () => void; ready: boolean }[] = [
@@ -1442,7 +1500,7 @@ function OutputsTab({ clientId }: { clientId: string }) {
         <label className="text-2xs text-ps-label">Month</label>
         <select value={runId} onChange={(e) => { setRunId(e.target.value); setMsg(null); }}
           className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-brand">
-          {runs.map((r) => <option key={r.id} value={r.id}>{fmtMonth(r.month)} · {r.status}</option>)}
+          {runs.map((r) => <option key={r.id} value={r.id}>{formatMonthYear(r.month)} · {r.status}</option>)}
         </select>
       </div>
 
@@ -2168,10 +2226,11 @@ export default function PayrollPage() {
     <div className="flex flex-col h-full bg-ps-bg">
       {/* Header */}
       <div className="bg-white border-b border-ps-border px-5 py-4 shrink-0">
-        <div className="flex items-center gap-2 mb-3">
-          <Users size={16} className="text-blue-600" />
-          <h1 className="text-base font-semibold text-ps-ink">Payroll</h1>
-        </div>
+        <PageHeader
+          icon={<Users size={16} className="text-blue-600" />}
+          title="Payroll"
+          className="mb-3"
+        />
         <PayrollEnablementLine clientId={clientId} />
         <div className="flex items-center gap-0.5">
           {TABS.map(t => (
@@ -2340,7 +2399,22 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
         </div>
       )}
       <div className="grid grid-cols-2 gap-3">
-        {structures.length === 0 && <p className="col-span-2 text-sm text-ps-hint text-center py-8">No structures yet</p>}
+        {structures.length === 0 && (
+          <div className="col-span-2 bg-white rounded-xl border border-ps-border">
+            <EmptyState
+              icon={<FileText size={28} />}
+              className="py-10"
+              title="No salary structures yet"
+              description="A structure is a reusable split of pay into basic and HRA. Create one, then apply it to employees instead of keying each of them in by hand."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction requires={["payroll", "write"]} icon={<Plus size={14} />} label="Add Structure"
+                    onClick={() => setShowAdd(true)} />
+                </EmptyStateActions>
+              }
+            />
+          </div>
+        )}
         {structures.map(s => (
           <div key={s.id} className="bg-white rounded-xl border border-ps-border p-4">
             <p className="font-semibold text-sm text-ps-ink">{s.name}</p>
@@ -2440,7 +2514,7 @@ function ReportsTab({ clientId, initialMonth }: { clientId: string; initialMonth
       {(data?.slips?.length ?? 0) > 0 && (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">
-            <p className="text-xs font-semibold text-ps-ink">Salary Register — {fmtMonth(month)}</p>
+            <p className="text-xs font-semibold text-ps-ink">Salary Register — {formatMonthYear(month)}</p>
             <span className="text-2xs text-ps-hint">{data!.slips.length} employees</span>
           </div>
           <table className="w-full text-2xs">
@@ -2474,7 +2548,7 @@ function ReportsTab({ clientId, initialMonth }: { clientId: string; initialMonth
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       )}
-      {data && !data.slips?.length && <p className="text-center text-sm text-ps-hint py-8">No salary data for {fmtMonth(month)}</p>}
+      {data && !data.slips?.length && <p className="text-center text-sm text-ps-hint py-8">No salary data for {formatMonthYear(month)}</p>}
     </div>
   );
 }

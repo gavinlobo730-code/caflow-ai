@@ -33,6 +33,9 @@ import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { FxRatesPanel } from "@/components/currency/FxRatesPanel";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 type ClientRow = { id: string; name?: string; client_name?: string };
 type Row = { client: ClientRow; policy: CurrencyPolicy | null };
@@ -129,15 +132,11 @@ export default function MultiCurrencyPage() {
           <ChevronLeft size={13} /> Settings
         </Link>
 
-        <div className="flex items-center gap-2.5">
-          <Globe size={17} className="text-blue-600" />
-          <h1 className="text-lg font-semibold text-ps-ink">Multi-currency</h1>
-        </div>
-        <p className="text-xs text-ps-label max-w-2xl">
-          Lets a client raise invoices, receive payments and hold bank accounts in a
-          foreign currency, with the realized and unrealized exchange difference
-          computed and posted. The books stay in rupees.
-        </p>
+        <PageHeader
+          icon={<Globe size={17} className="text-blue-600" />}
+          title="Multi-currency"
+          subtitle="Lets a client raise invoices, receive payments and hold bank accounts in a foreign currency, with the realized and unrealized exchange difference computed and posted. The books stay in rupees."
+        />
 
         {error && <Callout tone="problem">{error}</Callout>}
 
@@ -179,7 +178,16 @@ export default function MultiCurrencyPage() {
                 <p className="text-sm font-semibold text-ps-ink">Clients</p>
               </div>
               {rows.length === 0 ? (
-                <p className="px-5 py-8 text-center text-sm text-ps-label">No clients yet.</p>
+                <EmptyState
+                  className="py-10"
+                  title="No clients yet"
+                  description="Multi-currency is switched on per client, so add a client first."
+                  action={
+                    <EmptyStateActions>
+                      <EmptyStateAction requires={["client", "write"]} label="Go to Clients" href="/clients" />
+                    </EmptyStateActions>
+                  }
+                />
               ) : (
                 <table className="w-full text-xs">
                   <thead>

@@ -37,6 +37,7 @@ import { AlertTriangle, Clock, HelpCircle, Loader2, Truck } from "lucide-react";
 import { api, type ExpiringEwayBill, type ExpiringEwayBills as Report } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
 import { Can } from "@/components/Can";
+import { Button } from "@/components/ui/button";
 
 const STATE_LABEL: Record<ExpiringEwayBill["state"], string> = {
   expired: "Expired",
@@ -107,10 +108,10 @@ function RecordExtension({ bill, onDone }: { bill: ExpiringEwayBill; onDone: () 
         className="w-full text-xs px-2 py-1 rounded-md border border-ps-border bg-ps-surface text-ps-ink" />
       {error && <p className="text-xs text-state-problem">{error}</p>}
       <div className="flex gap-1.5">
-        <button onClick={submit} disabled={saving || !validUpto || !reason.trim()}
+        <Button variant="plain" size="none" onClick={submit} disabled={saving || !validUpto || !reason.trim()}
           className="text-xs px-2 py-1 rounded-md font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 inline-flex items-center gap-1">
           {saving && <Loader2 size={11} className="animate-spin" />}Save
-        </button>
+        </Button>
         <button onClick={() => { setOpen(false); setError(null); }}
           className="text-xs px-2 py-1 rounded-md border border-ps-border text-ps-label hover:bg-ps-bg">
           Cancel

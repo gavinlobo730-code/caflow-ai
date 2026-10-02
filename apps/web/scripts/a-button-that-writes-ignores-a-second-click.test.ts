@@ -29,7 +29,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { analyseButtons, findDroppedPromises, findRawAsyncButtons } from "./rawAsyncButtons.ts";
+import {
+  analyseButtons, API_CLIENTS, findDroppedPromises, findRawAsyncButtons, GUARDED_PRIMITIVES, READS_BY_POST, writingClientMethods,
+} from "./rawAsyncButtons.ts";
 import { stripComments } from "./stripComments.ts";
 
 const WEB = join(import.meta.dirname, "..");
@@ -65,7 +67,7 @@ test("a raw button whose click starts an async write is found", () => {
 });
 
 test("through an inline arrow, a Supabase write and a non-GET fetch it is found too", () => {
-  assert.equal(raw(`function F(){ async function s(){ await supabase.from(TABLE).insert({}); }
+  assert.equal(raw(`function F(){ async function s(){ await supabase.from("customers").insert({}); }
     return <button onClick={() => s()}>x</button>; }`).length, 1);
   assert.equal(raw(`function F(){ async function s(){ await apiCall("/x", "POST", {}); }
     return <button onClick={s}>x</button>; }`).length, 1);
@@ -139,12 +141,125 @@ test("a <Button> whose handler RETURNS the promise is held, and one that drops i
     "a sync wrapper that drops it");
   assert.equal(dropped(`${head} function click(){ return save(); } return <Button onClick={click}>x</Button>; }`).length, 0,
     "a sync wrapper that hands it back");
+  // The promise is the value of a short-circuit or a conditional, so it is handed back whichever
+  // way the expression goes: `() => id && remove(id)` is how a row's delete is written.
+  assert.equal(dropped(`${head} return <Button onClick={() => id && save()}>x</Button>; }`).length, 0, "&&");
+  assert.equal(dropped(`${head} return <Button onClick={() => id ? save() : undefined}>x</Button>; }`).length, 0, "?:");
+  assert.equal(dropped(`${head} return <Button onClick={() => { return id && save(); }}>x</Button>; }`).length, 0, "return &&");
+  assert.equal(dropped(`${head} return <Button onClick={() => { id && save(); }}>x</Button>; }`).length, 1,
+    "a short-circuit used as a STATEMENT discards its value");
+  assert.equal(dropped(`${head} return <Button onClick={() => save() && other()}>x</Button>; }`).length, 1,
+    "the LEFT side is the condition, not what comes back");
+});
+
+test("an <EmptyStateAction> is held like a <Button>: found when it drops the promise, held when it returns it, never raw", () => {
+  // EmptyStateAction renders the Button primitive (components/ui/empty-state-action.tsx; the render
+  // test beside it proves a second click is ignored), so it is a Button here and not a raw one. Before
+  // it was named, a screen could write `onClick={() => void save()}` on one, drop the promise the
+  // primitive needs, and no ratchet saw it: four sites did, and the ratchet read 0 of them.
+  const head = `function F(){ async function save(){ await api.accounting.createAccount(1); }`;
+  const action = (onClick: string) =>
+    `${head} return <EmptyStateAction requires={["accounting", "write"]} label="Post" onClick={${onClick}} />; }`;
+  assert.equal(dropped(action("save")).length, 0, "the async function itself");
+  assert.equal(dropped(action("() => save()")).length, 0, "an arrow returning it");
+  assert.equal(dropped(action("() => save().then(() => 1)")).length, 0, "a chain on it");
+  assert.equal(dropped(action("() => void save()")).length, 1, "void");
+  assert.equal(dropped(action("() => { save(); }")).length, 1, "a statement");
+  assert.equal(raw(action("save")).length, 0, "it is not a raw <button>");
+  assert.equal(raw(action("() => void save()")).length, 0, "and dropping the promise is the dropped-promise rule's, not the raw one's");
+  assert.equal(analyseButtons("t.tsx", action("save")).buttons[0].tag, "EmptyStateAction");
+  // a click that only opens a form writes nothing, so there is nothing to hold
+  assert.equal(dropped(`function F(){ return <EmptyStateAction requires="anyone" label="New" onClick={() => setOpen(true)} />; }`).length, 0);
+});
+
+test("a component the analysis treats as a guarded Button really renders the Button primitive", () => {
+  // The analysis equates these tags with <Button>, which is only true while each one's source hands
+  // its click to the primitive. Held here so the equivalence cannot rot silently: a primitive that
+  // went back to a raw <button> would still read as guarded in every table below.
+  for (const tag of GUARDED_PRIMITIVES.filter((t) => t !== "Button")) {
+    const file = {
+      EmptyStateAction: "components/ui/empty-state-action.tsx",
+    }[tag as string];
+    assert.ok(file, `${tag} is treated as a guarded Button and has no source recorded here`);
+    const src = stripComments(source(file));
+    assert.match(src, /import \{ Button \} from "@\/components\/ui\/button"/, `${file} must import the Button primitive`);
+    assert.match(src, /<Button\b[^>]*onClick=/, `${file} must hand its click to <Button>`);
+    assert.doesNotMatch(src, /<button\b/, `${file} must not render a raw <button>`);
+  }
 });
 
 test("the analysis exposes the node a fix has to rewrite", () => {
   const { buttons } = analyseButtons("t.tsx", `function F(){ async function save(){ await api.accounting.createAccount(1); }
     return <Button onClick={() => { save(); }}>x</Button>; }`);
   assert.equal(buttons[0].dropSites.length, 1);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// WHICH CLIENT METHOD WRITES IS READ OFF THE CLIENT, NOT OFF ITS NAME
+// ═════════════════════════════════════════════════════════════════════════════
+
+test("a client method that sends a POST is a write whatever it is called, at any depth, on any client", () => {
+  // The frozen table below was a number the analysis could not make true: the first version asked
+  // whether a method's NAME began with a verb from a list, on a chain of exactly `api.<ns>.<verb>`.
+  // `invoices.fromEngagement` (Raise Invoice), `yearEndApi.notes.generateAll` (Generate All Notes)
+  // and `api.banking.entries.pass` (Pass, which books a bank line) matched neither limb, so the
+  // screens that held them read as having no write and a money screen carried raw buttons while
+  // its own guard said it carried none.
+  assert.equal(raw(`function F(){ async function s(){ await api.invoices.fromEngagement(1); }
+    return <button onClick={s}>x</button>; }`).length, 1, "a verb nobody listed");
+  assert.equal(raw(`function F(){ async function s(){ await yearEndApi.notes.generateAll(1); }
+    return <button onClick={s}>x</button>; }`).length, 1, "a second client");
+  assert.equal(raw(`function F(){ async function s(){ await partyCreditsApi.apply({}); }
+    return <button onClick={s}>x</button>; }`).length, 1, "a third, one level deep");
+  assert.equal(raw(`function F(){ async function s(){ await api.accounting.fxRevaluation.run("c", {}); }
+    return <button onClick={s}>x</button>; }`).length, 1, "a namespace inside a namespace");
+  assert.equal(dropped(`function F(){ async function s(){ await api.banking.entries.pass("t"); }
+    return <Button onClick={() => { s(); }}>Pass</Button>; }`).length, 1, "and the dropped-promise rule sees it too");
+});
+
+test("a client method that only reads is not a write, a POST that only computes is named, and an unknown chain falls back to its verb", () => {
+  assert.equal(raw(`function F(){ async function s(){ await api.invoices.downloadPdf(1); }
+    return <button onClick={s}>x</button>; }`).length, 0, "a GET download");
+  assert.equal(raw(`function F(){ async function s(){ await api.accounting.fxRevaluation.preview("c", {}); }
+    return <button onClick={s}>Preview</button>; }`).length, 0, "a preview is a POST that writes nothing");
+  assert.equal(raw(`function F(){ async function s(){ await api.notAMethodTheClientHas.createThing(1); }
+    return <button onClick={s}>x</button>; }`).length, 1, "a chain the clients do not define is judged by its verb, as before");
+  assert.equal(raw(`function F(){ async function s(){ await api.notAMethodTheClientHas.listThings(); }
+    return <button onClick={s}>x</button>; }`).length, 0);
+});
+
+test("the writing methods are read from the client files, and each client is registered", () => {
+  const writers = writingClientMethods();
+  assert.ok(writers.size >= 330, `only ${writers.size} writing client methods found — the derivation has probably gone blind`);
+  for (const must of [
+    "api.invoices.fromEngagement", "api.banking.entries.pass", "api.accounting.fxRevaluation.run",
+    "api.clients.permanentDelete", "api.billing.run", "yearEndApi.notes.generateAll", "partyCreditsApi.apply",
+  ]) assert.ok(writers.has(must), `${must} sends a mutating HTTP method and is not in the derived set`);
+  for (const mustNot of ["api.invoices.downloadPdf", "api.accounting.fxRevaluation.preview"]) {
+    assert.equal(writers.has(mustNot) && !(mustNot in READS_BY_POST), false, `${mustNot} reads`);
+  }
+  // A client object added under lib/api and not named in API_CLIENTS is a client the analysis cannot see.
+  const declared: string[] = [];
+  for (const f of readdirSync(join(WEB, "lib/api")).filter((n) => n.endsWith(".ts"))) {
+    for (const m of readFileSync(join(WEB, "lib/api", f), "utf8").matchAll(/^export const (api|[A-Za-z]+Api)\s*=\s*\{/gm)) {
+      declared.push(m[1]);
+    }
+  }
+  assert.deepEqual(declared.sort(), Object.keys(API_CLIENTS).sort(),
+    "every exported API client object must be named in API_CLIENTS (scripts/rawAsyncButtons.ts)");
+  for (const [root, rel] of Object.entries(API_CLIENTS)) {
+    assert.match(readFileSync(join(WEB, rel), "utf8"), new RegExp(`export const ${root}\\s*=`), `${root} is not defined in ${rel}`);
+  }
+});
+
+test("every method named as a read-by-POST is real and really sends a POST", () => {
+  // A stale entry would quietly exempt a method that no longer exists — or one that has since
+  // started to write. Each is checked against the same derivation that would otherwise count it.
+  const writers = writingClientMethods();
+  for (const [method, why] of Object.entries(READS_BY_POST)) {
+    assert.ok(writers.has(method), `${method} is named a read-by-POST but the client has no POST method by that name`);
+    assert.ok(why.length > 15, `${method} needs its reason written down`);
+  }
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -168,7 +283,6 @@ const BASELINE: Record<string, number> = {
   "app/accounting/suppliers/page.tsx": 1,
   "app/settings/branding/page.tsx": 1,
   "app/settings/dsc-tracker/page.tsx": 3,
-  "app/settings/firm-hsn-library/page.tsx": 4,
   "app/settings/invoice-settings/page.tsx": 1,
   "app/settings/invoice-templates/page.tsx": 1,
   "app/settings/page.tsx": 2,
@@ -190,18 +304,16 @@ const BASELINE: Record<string, number> = {
   "app/documents/page.tsx": 2,
   "app/income-tax/notices/page.tsx": 5,
   "app/clients/[id]/compliance/page.tsx": 2,
-  "app/clients/[id]/lifecycle/page.tsx": 5,
+  "app/clients/[id]/lifecycle/page.tsx": 4,
   "app/tasks/page.tsx": 2,
   "app/workflows/page.tsx": 1,
   // ── client health, relationships, intelligence ──
   "app/clients/[id]/ai-insights/page.tsx": 1,
   "app/clients/[id]/health/page.tsx": 4,
-  "app/clients/[id]/relationships/page.tsx": 2,
   "app/health/[client_id]/HealthDetailClient.tsx": 2,
   "app/health/alerts/page.tsx": 1,
   "app/health/page.tsx": 1,
   "app/knowledge/page.tsx": 1,
-  "app/memory/page.tsx": 1,
   "app/relationships/[entity_id]/EntityDetailClient.tsx": 2,
   "app/relationships/cross-client/page.tsx": 2,
   "app/relationships/page.tsx": 1,
@@ -214,7 +326,6 @@ const BASELINE: Record<string, number> = {
   "app/sign/page.tsx": 2,
   "components/portal/TaxDeclarationTab.tsx": 1,
   // ── platform administration and the practice's own profile ──
-  "app/platform/page.tsx": 2,
   "app/practice/page.tsx": 2,
 };
 
@@ -274,6 +385,20 @@ const MONEY_SCREENS = [
   "app/payroll/people/page.tsx",
   "app/portal/dashboard/page.tsx",
   "app/onboarding/page.tsx",
+  // Named when the analysis learned which client methods write (see writingClientMethods): each
+  // was reading as having NO async write, and each posts, certifies or registers a statutory figure.
+  // The FX revaluation POSTS journals through the kernel; the ITC register records a Rule 37/42/43
+  // reversal that GSTR-3B Table 4(B) reads; the 2B panel makes a draft purchase bill through the bill
+  // engine; the three bank modals post, split or certify a reconciliation; Rules trusts a pattern
+  // that then posts with nobody watching; a year-end adjustment posts a journal.
+  "components/accounting/FxRevaluationPanel.tsx",
+  "components/gst/ItcRegisterTab.tsx",
+  "components/gst/CreateDraftBillFrom2B.tsx",
+  "components/banking/SplitAcrossLedgersModal.tsx",
+  "components/banking/ReconcileTab.tsx",
+  "components/banking/EntryDetailModal.tsx",
+  "components/banking/RulesTab.tsx",
+  "app/clients/[id]/year-end/[engagementId]/adjustments/_page.tsx",
 ];
 
 test("the raw async-writing buttons that remain are exactly the frozen table", () => {

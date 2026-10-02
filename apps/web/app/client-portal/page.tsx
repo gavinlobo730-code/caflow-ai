@@ -24,6 +24,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { ListSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/use-toast";
+import { PageHeader } from "@/components/ui/page-header";
 
 type PortalTab = "requests" | "shared" | "reports" | "filings" | "dues" | "messages";
 
@@ -518,32 +519,32 @@ export default function ClientPortalPage() {
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
       {/* Page Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ps-ink">Client Portal Preview</h1>
-          <p className="text-sm text-ps-label mt-1">
-            Manage document requests and shared files for your clients
-          </p>
-        </div>
-        {selectedClient && (
-          <button
-            onClick={handleCopyPortalLink}
-            className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
-          >
-            {copied ? (
-              <>
-                <CheckCircle size={15} />
-                Portal link copied!
-              </>
-            ) : (
-              <>
-                <Copy size={15} />
-                Share Portal Link
-              </>
+      <PageHeader
+        title="Client Portal Preview"
+        subtitle="Manage document requests and shared files for your clients"
+        actions={
+          <>
+            {selectedClient && (
+              <button
+                onClick={handleCopyPortalLink}
+                className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
+              >
+                {copied ? (
+                  <>
+                    <CheckCircle size={15} />
+                    Portal link copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy size={15} />
+                    Share Portal Link
+                  </>
+                )}
+              </button>
             )}
-          </button>
-        )}
-      </div>
+          </>
+        }
+      />
 
       {notice && (
         <div role="status"

@@ -8,6 +8,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { PageLoader } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface Article { id: string; title: string; current_version: number; tags?: string[]; updated_at?: string }
 
@@ -119,20 +120,21 @@ export default function ClientKnowledgePage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Library size={18} className="text-brand" />
-          <h1 className="text-lg font-semibold text-brand">Client Knowledge</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          {canAuthor && (
-            <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white">
-              <Plus size={13} /> New article
-            </button>
-          )}
-          <button onClick={() => load(query)} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Library size={18} className="text-brand" />}
+        title="Client Knowledge"
+        actions={
+          <div className="flex items-center gap-3">
+            {canAuthor && (
+              <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white">
+                <Plus size={13} /> New article
+              </button>
+            )}
+            <button onClick={() => load(query)} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
+          </div>
+        }
+        className="mb-4"
+      />
       <div className="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-1.5 bg-white mb-4 focus-within:ring-2 focus-within:ring-brand">
         <Search size={14} className="text-gray-400" />
         {/* No Enter-key handler: the debounced effect above already covers

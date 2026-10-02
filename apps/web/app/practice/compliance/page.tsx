@@ -10,6 +10,7 @@ import { toCsv } from "@/lib/table/process";
 import { objectOrNull } from "@/lib/api/shape";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
+import { PageHeader } from "@/components/ui/page-header";
 
 // Compliance lifecycle (mirrors the server-side VALID_TRANSITIONS — presentation
 // only; the backend is the source of truth and rejects invalid transitions).
@@ -143,29 +144,30 @@ function ComplianceDashboard() {
   const s = dash?.summary;
   return (
     <div className="p-6 max-w-6xl">
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-2">
-          <ShieldCheck size={18} className="text-brand" />
-          <h1 className="text-lg font-semibold text-brand">Compliance</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => act(() => api.complianceOps.generate(), (r) => {
-            const d = (r as ApiResp<{ generated: number }>).data; return `${d?.generated ?? 0} obligation(s) generated.`;
-          })} disabled={busy}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-brand hover:bg-ps-bg disabled:opacity-50">
-            <PlayCircle size={13} /> Generate obligations
-          </button>
-          <button onClick={() => act(() => api.complianceOps.runEscalations(), (r) => {
-            const d = (r as ApiResp<{ escalated: number }>).data; return `${d?.escalated ?? 0} escalation(s) sent (internal).`;
-          })} disabled={busy}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white disabled:opacity-50">
-            <Bell size={13} /> Run escalations
-          </button>
-          <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
-            <RefreshCw size={13} /> Refresh
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        icon={<ShieldCheck size={18} className="text-brand" />}
+        title="Compliance"
+        actions={
+          <div className="flex items-center gap-3">
+            <button onClick={() => act(() => api.complianceOps.generate(), (r) => {
+              const d = (r as ApiResp<{ generated: number }>).data; return `${d?.generated ?? 0} obligation(s) generated.`;
+            })} disabled={busy}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-brand hover:bg-ps-bg disabled:opacity-50">
+              <PlayCircle size={13} /> Generate obligations
+            </button>
+            <button onClick={() => act(() => api.complianceOps.runEscalations(), (r) => {
+              const d = (r as ApiResp<{ escalated: number }>).data; return `${d?.escalated ?? 0} escalation(s) sent (internal).`;
+            })} disabled={busy}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white disabled:opacity-50">
+              <Bell size={13} /> Run escalations
+            </button>
+            <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
+              <RefreshCw size={13} /> Refresh
+            </button>
+          </div>
+        }
+        className="mb-5"
+      />
 
       {msg && <div className="mb-3 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700">{msg}</div>}
 

@@ -16,8 +16,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ChevronLeft, CheckCircle2, Circle, Save } from "lucide-react";
+import { CheckCircle2, Circle, Save } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -30,6 +29,7 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { api, type Form3cdClause, type Form3cdRegister } from "@/lib/api";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { renderClauseValue as renderValue } from "@/lib/income-tax/form3cdRender";
+import { PageHeader } from "@/components/ui/page-header";
 
 const FY_OPTIONS = financialYearChoicesAround(null);
 
@@ -147,19 +147,11 @@ export default function Form3cdPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/income-tax/tax-audit" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft size={18} />
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink">Form 3CD</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            The 44-clause statement of particulars annexed to the §44AB audit report.
-            Derived clauses are computed from the books; every other clause is the
-            CA&apos;s own to record.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: "/income-tax/tax-audit", label: "Tax Audit" }}
+        title="Form 3CD"
+        subtitle="The 44-clause statement of particulars annexed to the §44AB audit report. Derived clauses are computed from the books; every other clause is the CA&apos;s own to record."
+      />
 
       <div className="flex flex-wrap gap-3 items-end">
         <div>

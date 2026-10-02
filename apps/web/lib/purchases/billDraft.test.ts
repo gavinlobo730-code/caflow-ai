@@ -256,10 +256,7 @@ test("restoring into an EXISTING draft bill never changes its supplier, currency
 
 test("the catalogue lookup links the rows that came back and unlinks the ones that did not", () => {
   const found = new Map([["cat-rent", { id: "cat-rent", name: "Rent" }]]);
-  // The editor's line carries `product`; the fixture's lines are the raw fields, so the row type is spelled out
-  // here rather than inferred from a fixture that predates it.
-  type Row = (typeof GOOD.lines)[number] & { product?: { id: string; name: string } | null };
-  const { lines, missing } = linkCatalogue<{ id: string; name: string }, Row>(GOOD.lines.map((l) => ({ ...l })), found);
+  const { lines, missing } = linkCatalogue(GOOD.lines.map((l) => ({ ...l })), found);
   assert.equal(missing, 1);
   assert.deepEqual(lines[0].product, { id: "cat-rent", name: "Rent" });
   assert.equal(lines[0].service_catalogue_id, "cat-rent");

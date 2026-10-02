@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import type { HubWorklistPayload } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/money/format";
+import { PageHeader } from "@/components/ui/page-header";
 
 /**
  * A firm-level module worklist — which clients need work here (D22, G3).
@@ -90,13 +91,15 @@ export function ModuleWorklist({ tile, heading }: { tile: string; heading: strin
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold text-ps-ink">{heading}</h1>
-        <p className="text-xs text-ps-hint mt-1">
-          {data?.question ?? "Which clients need work here"} · across every
-          client you can see
-        </p>
-      </div>
+      <PageHeader
+        title={heading}
+        subtitle={
+          <>
+            {data?.question ?? "Which clients need work here"} · across every
+            client you can see
+          </>
+        }
+      />
 
       {loading && (
         <p className="text-xs text-ps-hint">Loading…</p>

@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
-import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { formatDate } from "@/lib/dates/format";
 import { HEALTH_GRADE_BANDS, gradeForScore, gradeOf } from "@/lib/health/vocabulary";
+import { PageHeader } from "@/components/ui/page-header";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -120,15 +121,6 @@ function gradeBadge(grade: Grade): string {
     "Critical":        "bg-sev-critical-surface text-sev-critical",
   };
   return map[grade] ?? "bg-gray-100 text-gray-700";
-}
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "—";
-  try {
-    return formatDateShared(dateStr);
-  } catch {
-    return dateStr;
-  }
 }
 
 // ─── Mini dimension dots ─────────────────────────────────────────────────────
@@ -321,22 +313,20 @@ export default function HealthPage() {
   return (
     <div className="p-6 space-y-5 bg-ps-bg min-h-full">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-brand">Client Health Monitor</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {clients.length} clients tracked
-          </p>
-        </div>
-        <button
-          onClick={handleRecalculateAll}
-          disabled={recalculating}
-          className="flex items-center gap-1.5 text-sm text-emerald-700 border border-emerald-300 px-3 py-1.5 rounded-md hover:bg-emerald-50 disabled:opacity-50"
-        >
-          <RefreshCw size={13} className={recalculating ? "animate-spin" : ""} />
-          {recalculating ? "Recalculating…" : "Recalculate All"}
-        </button>
-      </div>
+      <PageHeader
+        title="Client Health Monitor"
+        subtitle={<>{clients.length} clients tracked</>}
+        actions={
+          <button
+            onClick={handleRecalculateAll}
+            disabled={recalculating}
+            className="flex items-center gap-1.5 text-sm text-emerald-700 border border-emerald-300 px-3 py-1.5 rounded-md hover:bg-emerald-50 disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={recalculating ? "animate-spin" : ""} />
+            {recalculating ? "Recalculating…" : "Recalculate All"}
+          </button>
+        }
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">

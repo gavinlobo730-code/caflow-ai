@@ -75,7 +75,7 @@ test("periodOptionLabel resolves FY-dependent labels", () => {
 
 test("formatRangeLabel: a single day shows once, a range shows both ends", () => {
   assert.equal(formatRangeLabel("2026-07-12", "2026-07-12"), "12 Jul 2026");
-  assert.equal(formatRangeLabel("2026-04-01", "2027-03-31"), "1 Apr 2026 – 31 Mar 2027");
+  assert.equal(formatRangeLabel("2026-04-01", "2027-03-31"), "01 Apr 2026 – 31 Mar 2027");
 });
 
 // ── splitPeriodColumns ───────────────────────────────────────────────────
@@ -123,7 +123,7 @@ test("yearly split of a 2-year custom range yields 2 FY columns, each clipped", 
 
 test("a custom range's 'total' label shows the actual dates, not a preset name", () => {
   const cols = splitPeriodColumns("custom", FY, { from: "2026-06-01", to: "2026-06-30" }, "total", TODAY);
-  assert.equal(cols[0].label, "1 Jun 2026 – 30 Jun 2026");
+  assert.equal(cols[0].label, "01 Jun 2026 – 30 Jun 2026");
 });
 
 test("all_time collapses to a single 'All Time' column even when Monthly/Quarterly is requested — a 1900-2999 span split by month would be 13,000+ columns", () => {

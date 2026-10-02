@@ -48,6 +48,7 @@ import { type Account, type BankAccount, fmt } from "@/components/banking/shared
 import { EntryDetailModal } from "@/components/banking/EntryDetailModal";
 import { BankAccounts, BankImportModal } from "@/components/banking/AccountsPanel";
 import { Button } from "@/components/ui/button";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ── the row, as the server sends it ─────────────────────────────────────────
 
@@ -612,9 +613,9 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
     if (t.entry_state === "covered") return <span className="text-3xs text-ps-hint">—</span>;
     const canPass = t.entry_state === "ready" || (t.entry_state === "proposed" && t.draft_source !== "document");
     if (canPass) {
-      return <button onClick={(e) => { stop(e); passOne(t); }}
+      return <Button variant="plain" size="none" onClick={(e) => { stop(e); return passOne(t); }}
         title={t.entry_state === "proposed" ? "Accept the proposal and pass it" : "Pass this entry into the books"}
-        className={`text-2xs px-2.5 py-1 rounded-md font-medium text-white ${t.entry_state === "ready" ? "bg-state-ready-solid hover:bg-state-ready" : "bg-brand hover:bg-brand-dark"}`}>Pass</button>;
+        className={`text-2xs px-2.5 py-1 rounded-md font-medium text-white ${t.entry_state === "ready" ? "bg-state-ready-solid hover:bg-state-ready" : "bg-brand hover:bg-brand-dark"}`}>Pass</Button>;
     }
     return <button onClick={(e) => { stop(e); setDetailId(t.id); }}
       className="text-2xs px-2.5 py-1 rounded-md font-medium text-state-attention bg-state-attention-surface border border-state-attention-border hover:bg-state-attention-hover">Answer</button>;
@@ -780,15 +781,15 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
             className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg disabled:opacity-40 inline-flex items-center gap-1.5">
             <Upload size={12} /> Import statement
           </button>
-          <button onClick={settle} disabled={!!progress} title="Propose again for every line nobody has proposed for yet"
+          <Button variant="plain" size="none" onClick={settle} disabled={!!progress} title="Propose again for every line nobody has proposed for yet"
             className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg disabled:opacity-40 inline-flex items-center gap-1.5">
             <Sparkles size={12} /> Propose
-          </button>
-          <button onClick={passAllReady} disabled={!!progress || counts.ready === 0}
+          </Button>
+          <Button variant="plain" size="none" onClick={passAllReady} disabled={!!progress || counts.ready === 0}
             title={counts.ready ? "Pass every Ready entry into the books" : "Nothing is ready to pass"}
             className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-state-ready-solid hover:bg-state-ready disabled:opacity-40 inline-flex items-center gap-1.5">
             <CheckCircle size={13} /> Pass {counts.ready} ready
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -858,7 +859,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
             <input value={rulePrompt.pattern} disabled={ruleSaving}
               onChange={(e) => setRulePrompt((r) => (r ? { ...r, pattern: e.target.value } : r))}
               className="px-2 py-1 text-xs font-mono border border-brand-light rounded bg-white min-w-[16rem] flex-1" />
-            <button onClick={createRuleFromPrompt} disabled={actionInFlight} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40">{ruleSaving ? "Saving…" : "Create rule"}</button>
+            <Button variant="plain" size="none" onClick={createRuleFromPrompt} disabled={actionInFlight} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40">{ruleSaving ? "Saving…" : "Create rule"}</Button>
             <button onClick={() => setRulePrompt(null)} disabled={ruleSaving} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-white">Not now</button>
           </div>
         </div>
@@ -881,6 +882,14 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
             : state === "to_do"
               ? "Every line on this account is passed or set aside. Import a statement to continue."
               : "No entries in this state."}
+        emptyAction={
+          noLinesAtAll || state === "to_do" ? (
+            <EmptyStateActions>
+              <EmptyStateAction requires={["banking", "write"]} icon={<Upload size={14} />} label="Import statement"
+                onClick={() => (bankAccounts.length === 0 ? setShowAccounts(true) : setShowImport(true))} />
+            </EmptyStateActions>
+          ) : undefined
+        }
         rowClassName={(t) => t.entry_state === "ready" ? "bg-state-ready-surface hover:bg-state-ready-hover" : t.entry_state === "needs_you" && t.draft_error ? "bg-state-problem-surface/40" : ""}
         onRowClick={(t) => setDetailId(t.id)}
         rowActions={actionCell}

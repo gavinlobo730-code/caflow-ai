@@ -69,6 +69,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { formatPaise } from "@/lib/services/formatting";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { useToast } from "@/components/ui/use-toast";
 // The engine, reached through the API. Rates, thresholds, the
 // individual-vs-company split, §206AA and the year's aggregate are all
@@ -80,6 +81,9 @@ import {
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { panProblem } from "@/lib/identifiers/pan";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── TDS section labels ──────────────────────────────────────────────────────
 //
@@ -895,7 +899,7 @@ export default function TDSPage() {
   // against the browser's local midnight would call a return overdue several
   // hours early for a CA travelling, and several hours late for one at home.
   const returnCounts = useMemo(() => {
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const today = todayIstISO();
     const unfiled = returns.filter(r => !FILED.has(r.status));
     return [
       { label: "Not filed", n: unfiled.length },
@@ -926,7 +930,7 @@ export default function TDSPage() {
     },
     {
       key: "transaction_date", header: "Payment Date", accessor: (d) => d.transaction_date, sortable: true,
-      render: (d) => <span className="text-xs text-ps-label">{d.transaction_date ? new Date(d.transaction_date).toLocaleDateString("en-IN") : "—"}</span>,
+      render: (d) => <span className="text-xs text-ps-label">{formatDate(d.transaction_date)}</span>,
     },
     {
       key: "gross_amount_paise", header: "Gross Amount", accessor: (d) => d.payment_amount_paise,
@@ -961,18 +965,20 @@ export default function TDSPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">TDS Module</h1>
-          <p className="text-sm text-ps-label mt-0.5">Tax Deducted at Source — IT Act Chapter XVII-B</p>
-        </div>
-        {/* Deductions are per client, so the client is chosen before anything
-            can be recorded or listed. */}
-        <div className="min-w-[240px]">
-          <label className="block text-xs font-medium text-ps-label mb-1">Client *</label>
-          <ClientLookup clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
-        </div>
-      </div>
+      <PageHeader
+        title="TDS Module"
+        subtitle="Tax Deducted at Source — IT Act Chapter XVII-B"
+        actions={
+          <>
+            {/* Deductions are per client, so the client is chosen before anything
+                can be recorded or listed. */}
+            <div className="min-w-[240px]">
+              <label className="block text-xs font-medium text-ps-label mb-1">Client *</label>
+              <ClientLookup clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
+            </div>
+          </>
+        }
+      />
 
       {!selectedClientId && (
         <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-800">
@@ -1065,7 +1071,13 @@ export default function TDSPage() {
             exportFilename="tds-deductions"
             persistKey="tds.deductions"
             emptyTitle="No deductions recorded yet"
-            emptyDescription={'Click "Add Deduction" to start.'}
+            emptyDescription="A deduction is one payment on which tax was withheld. Record each one so the challans and the quarterly statement can be built from them."
+            emptyAction={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["tds", "compute"]} icon={<Plus size={14} />} label="Add Deduction"
+                  onClick={() => setShowAddDeduction(true)} />
+              </EmptyStateActions>
+            }
           />
 
           {deductions.length > 0 && (
@@ -1093,7 +1105,17 @@ export default function TDSPage() {
             </button>
           </div>
           {challans.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm text-ps-hint">No challans added yet. Click &ldquo;Add Challan&rdquo; to record a deposit.</div>
+            <EmptyState
+              className="py-10"
+              title="No challans added yet"
+              description="A challan is one deposit of tax withheld, with its BSR code, date and serial number. Record each deposit so a quarter's statement can be matched to it."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction requires={["tds", "compute"]} icon={<Plus size={14} />} label="Add Challan"
+                    onClick={() => setShowAddChallan(true)} />
+                </EmptyStateActions>
+              }
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1108,7 +1130,7 @@ export default function TDSPage() {
                   {challans.map(c => (
                     <tr key={c.id} className="hover:bg-ps-bg/50">
                       <td className="px-4 py-3 text-xs font-mono text-ps-ink">{c.bsr_code || "—"}</td>
-                      <td className="px-4 py-3 text-xs text-ps-label">{c.payment_date ? new Date(c.payment_date).toLocaleDateString("en-IN") : "—"}</td>
+                      <td className="px-4 py-3 text-xs text-ps-label">{formatDate(c.payment_date)}</td>
                       <td className="px-4 py-3 text-xs font-mono text-ps-label">{c.challan_no || "—"}</td>
                       {/* total_paise, not tds_paise: a challan can carry
                           interest and penalty as well as tax, and the tracker
@@ -1206,7 +1228,7 @@ export default function TDSPage() {
                       {c.quarter ? `${QUARTER_LABEL[c.quarter] ?? c.quarter} ` : ""}{c.financial_year}
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-ps-ink">{formatPaise(c.tds_deducted_paise ?? 0)}</td>
-                    <td className="px-4 py-3 text-xs text-ps-label">{c.issued_at ? new Date(c.issued_at).toLocaleDateString("en-IN") : "—"}</td>
+                    <td className="px-4 py-3 text-xs text-ps-label">{formatDate(c.issued_at)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[c.status] ?? ""}`}>
                         {STATUS_LABEL[c.status] ?? c.status}

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
-  ChevronLeft, Plus, Pencil, FileText, AlertCircle, CheckCircle2,
+  Plus, Pencil, FileText, AlertCircle, CheckCircle2,
   IndianRupee, Users, ExternalLink, X, Power,
 } from "lucide-react";
 import { formatPaise } from "@/lib/services/formatting";
@@ -14,6 +14,9 @@ import { paiseFromRupeeInput, rupeeInputFromPaise, bpsFromPercentInput } from "@
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -315,24 +318,19 @@ export default function RetainerPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft size={18} />
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink">Monthly Retainer Tracker</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            Fixed-fee arrangements, saved for the firm. Generating raises a real draft
-            invoice in the practice&apos;s books.
-          </p>
-        </div>
-        <Link
-          href="/billing"
-          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-ps-border rounded-md hover:bg-ps-bg"
-        >
-          Billing <ExternalLink size={13} />
-        </Link>
-      </div>
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        title="Monthly Retainer Tracker"
+        subtitle="Fixed-fee arrangements, saved for the firm. Generating raises a real draft invoice in the practice&apos;s books."
+        actions={
+          <Link
+            href="/billing"
+            className="flex items-center gap-1 px-3 py-1.5 text-sm border border-ps-border rounded-md hover:bg-ps-bg"
+          >
+            Billing <ExternalLink size={13} />
+          </Link>
+        }
+      />
 
       {error && <Callout tone="problem">{error}</Callout>}
       {notice && (
@@ -410,7 +408,16 @@ export default function RetainerPage() {
         {loading ? (
           <div className="px-5 py-8 text-center text-sm text-ps-hint">Loading…</div>
         ) : clients.length === 0 ? (
-          <div className="px-5 py-8 text-center text-sm text-ps-hint">No clients found — add clients first</div>
+          <EmptyState
+            className="py-10"
+            title="No clients found"
+            description="Retainer billing is set up per client, so add a client first."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["client", "write"]} label="Go to Clients" href="/clients" />
+              </EmptyStateActions>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

@@ -13,8 +13,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useRef, ChangeEvent } from "react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Combobox } from "@/components/ui/combobox";
-import Link from "next/link";
-import { ChevronLeft, Plus, X, Upload, Download, Trash2, FileText, AlertTriangle, CheckCircle, Clock, Loader2 } from "lucide-react";
+import { Plus, X, Upload, Download, Trash2, FileText, AlertTriangle, CheckCircle, Clock, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -28,6 +27,7 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/use-toast";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -362,16 +362,16 @@ export default function ITNoticesPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-ps-hint hover:text-ps-label"><ChevronLeft size={18} /></Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink">IT Notices Tracker</h1>
-          <p className="text-sm text-ps-label mt-0.5">Sections 143(1), 148, 271 — Income Tax notices with document upload</p>
-        </div>
-        <Button size="sm" onClick={() => setShowAdd(true)}>
-          <Plus size={14} className="mr-1" /> Add Notice
-        </Button>
-      </div>
+      <PageHeader
+        back={{ href: "/income-tax", label: "Income Tax" }}
+        title="IT Notices Tracker"
+        subtitle="Sections 143(1), 148, 271 — Income Tax notices with document upload"
+        actions={
+          <Button size="sm" onClick={() => setShowAdd(true)}>
+            <Plus size={14} className="mr-1" /> Add Notice
+          </Button>
+        }
+      />
 
       {urgentCount > 0 && (
         <div className="bg-state-problem-surface border border-state-problem-border rounded-xl px-5 py-3 flex items-center gap-3">

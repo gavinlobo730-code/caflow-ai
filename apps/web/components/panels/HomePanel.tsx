@@ -14,6 +14,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { canAccessHref } from "@/lib/auth/permissions";
+import { todayLocalISO } from "@/lib/dateMath";
+import { formatWeekdayDate } from "@/lib/dates/format";
 
 // Home is the launchpad, so two of these are the ROOT of another workspace —
 // `/deadlines` and `/work`, each with its own rail tile. That is deliberate
@@ -40,12 +42,7 @@ export function HomePanel() {
   const pathname = usePathname();
   const { userRole } = useAuth();
   const items = HOME_ITEMS.filter((i) => canAccessHref(i.href, userRole));
-  const now = new Date();
-  const dateStr = now.toLocaleDateString("en-IN", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+  const dateStr = formatWeekdayDate(todayLocalISO());
 
   return (
     <div className="flex flex-col h-full">

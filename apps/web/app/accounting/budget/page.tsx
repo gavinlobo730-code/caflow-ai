@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ChevronLeft, Pencil, Check, X, Download } from "lucide-react";
+import { Pencil, Check, X, Download } from "lucide-react";
 // xlsx is fetched by the export click below and is NOT imported here: a static
 // `import * as XLSX from "xlsx"` put SheetJS (135 KB gzip) in this page's first
 // load for a button most visits never press. Namespace object, never `.default`
@@ -21,6 +21,7 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 import { objectWithLists } from "@/lib/api/shape";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -209,36 +210,34 @@ export default function BudgetPage() {
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-5">
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft size={18} />
-        </Link>
-        <div className="flex-1 min-w-[220px]">
-          <h1 className="text-xl font-semibold text-ps-ink">Budget vs Actuals</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            Budgets are saved for the firm; actuals are the client&apos;s posted entries
-          </p>
-        </div>
-        <div className="w-56">
-          <ClientLookup
-            clients={clients}
-            value={clientId}
-            onChange={setClientId}
-            size="sm"
-            ariaLabel="Client"
-            placeholder="Select a client"
-          />
-        </div>
-        <button
-          onClick={exportXlsx}
-          disabled={rows.length === 0}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40"
-        >
-          <Download size={14} /> Export
-        </button>
-        {/* FY Selector — derived from the clock, never a list of literals. */}
-        <YearPicker value={fy} onChange={v => setFy(v as FY)} size="sm" className="w-auto" />
-      </div>
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        title="Budget vs Actuals"
+        subtitle="Budgets are saved for the firm; actuals are the client&apos;s posted entries"
+        actions={
+          <>
+            <div className="w-56">
+              <ClientLookup
+                clients={clients}
+                value={clientId}
+                onChange={setClientId}
+                size="sm"
+                ariaLabel="Client"
+                placeholder="Select a client"
+              />
+            </div>
+            <button
+              onClick={exportXlsx}
+              disabled={rows.length === 0}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40"
+            >
+              <Download size={14} /> Export
+            </button>
+            {/* FY Selector — derived from the clock, never a list of literals. */}
+            <YearPicker value={fy} onChange={v => setFy(v as FY)} size="sm" className="w-auto" />
+          </>
+        }
+      />
 
       {/* Summary Bar */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

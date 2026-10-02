@@ -18,8 +18,7 @@
 
 import { paiseFromRupeeInput, sumRupeeInputs } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ChevronLeft, Save, AlertTriangle, CheckCircle, Clock, Plus, Trash2 } from "lucide-react";
+import { Save, AlertTriangle, CheckCircle, Clock, Plus, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -42,6 +41,7 @@ import { Callout, StatutoryNotes } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { UnforeseenIncomePanel, type UnforeseenRow } from "@/components/tax/UnforeseenIncomePanel";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
@@ -432,17 +432,17 @@ export default function AdvanceTaxPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-ps-hint hover:text-ps-label"><ChevronLeft size={18} /></Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink">Advance Tax Tracker</h1>
-          <p className="text-sm text-ps-label mt-0.5" title={result?.basis ?? undefined}>
+      <PageHeader
+        back={{ href: "/income-tax", label: "Income Tax" }}
+        title="Advance Tax Tracker"
+        subtitle={
+          <span title={result?.basis ?? undefined}>
             {presumptive
               ? "IT Act Section 211(1) proviso — one instalment, the whole amount by 15 March"
               : "IT Act Section 207/208 — 4 installments per FY"}
-          </p>
-        </div>
-      </div>
+          </span>
+        }
+      />
 
       {/* Controls */}
       <div className="flex flex-wrap gap-3 items-end">

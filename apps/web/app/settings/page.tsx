@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Building2, Calendar, ShieldCheck, ChevronLeft, User, Palette, Hash, FileText, Mail, Globe2, Scale, Coins, Cpu } from "lucide-react";
+import { Building2, Calendar, ShieldCheck, User, Palette, Hash, FileText, Mail, Globe2, Scale, Coins, Cpu } from "lucide-react";
 import { FormSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -13,6 +13,7 @@ import { gstinProblem } from "@/lib/gst/gstin";
 import { isValidPan } from "@/lib/identifiers/pan";
 import { RefusalText } from "@/components/auth/RefusalText";
 import { isMfaRefusal } from "@/lib/auth/mfaRefusal";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ─── Indian states list ────────────────────────────────────────────────────
 const INDIAN_STATES = [
@@ -412,17 +413,11 @@ export default function SettingsPage() {
         />
       )}
 
-      <div>
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label transition-colors mb-1"
-        >
-          <ChevronLeft size={13} />
-          Dashboard
-        </Link>
-        <h1 className="text-xl font-semibold text-ps-ink">Settings</h1>
-        <p className="text-sm text-ps-label mt-0.5">Firm configuration and preferences</p>
-      </div>
+      <PageHeader
+        back={{ href: "/", label: "Dashboard" }}
+        title="Settings"
+        subtitle="Firm configuration and preferences"
+      />
 
       {/* ── Personal Profile — all users ──────────────────────────────── */}
       <div className="bg-white rounded-xl border border-ps-border overflow-hidden">

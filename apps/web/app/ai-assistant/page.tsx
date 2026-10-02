@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Sparkles, Plus } from "lucide-react";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface Message {
   role: "user" | "assistant";
@@ -185,40 +186,41 @@ export default function AIAssistantPage() {
       {/* No page-level "← Dashboard" breadcrumb here — the shell rail already
           provides navigation (the one-shell decision), and /copilot, this
           page's sibling in the AI section, has never had one either. */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-ps-border shrink-0">
-        <div className="flex items-center gap-2">
-          <Sparkles size={15} className="text-blue-500" />
-          <h1 className="text-sm font-semibold text-ps-ink">AI Assistant</h1>
-        </div>
-        <span className="text-xs text-ps-hint hidden lg:block">
-          Ask about GST, Income Tax, TDS, and practice management
-        </span>
-        {clients.length > 0 && (
-          <label className="flex items-center gap-1.5 text-xs text-ps-hint shrink-0">
-            <span className="hidden sm:inline">About</span>
-            <select
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              className="text-xs border border-ps-border rounded-lg px-2 py-1 bg-white text-ps-body outline-none focus:border-brand max-w-[14rem]"
-            >
-              <option value={NO_CLIENT}>No client — general question</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>{c.client_name ?? c.id}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        {messages.length > 0 && (
-          <button
-            onClick={startNewChat}
-            title="Start a new chat (clears this conversation)"
-            className="ml-auto flex items-center gap-1.5 text-xs font-medium text-ps-label hover:text-ps-ink border border-ps-border hover:border-ps-border-strong rounded-lg px-2.5 py-1.5 transition-colors shrink-0"
-          >
-            <Plus size={13} />
-            New chat
-          </button>
-        )}
-      </div>
+      <PageHeader
+        icon={<Sparkles size={15} className="text-blue-500" />}
+        title="AI Assistant"
+        subtitle="Ask about GST, Income Tax, TDS, and practice management"
+        actions={
+          <>
+            {clients.length > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-ps-hint shrink-0">
+                <span className="hidden sm:inline">About</span>
+                <select
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  className="text-xs border border-ps-border rounded-lg px-2 py-1 bg-white text-ps-body outline-none focus:border-brand max-w-[14rem]"
+                >
+                  <option value={NO_CLIENT}>No client — general question</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.client_name ?? c.id}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {messages.length > 0 && (
+              <button
+                onClick={startNewChat}
+                title="Start a new chat (clears this conversation)"
+                className="flex items-center gap-1.5 text-xs font-medium text-ps-label hover:text-ps-ink border border-ps-border hover:border-ps-border-strong rounded-lg px-2.5 py-1.5 transition-colors shrink-0"
+              >
+                <Plus size={13} />
+                New chat
+              </button>
+            )}
+          </>
+        }
+        className="px-6 py-4 border-b border-ps-border shrink-0"
+      />
 
       {/* ⚠️ THE CA IS TOLD WHAT LEAVES THE BUILDING. The note above about chat
           history says it never reaches our servers; choosing a client changes

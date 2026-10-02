@@ -29,6 +29,7 @@ import type { ComplianceEntry } from "@/lib/data/compliance";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type ReportId = "gst_summary" | "pl_statement" | "compliance_status" | "outstanding_invoices";
@@ -890,10 +891,11 @@ export default function ReportsPage() {
       `}</style>
 
       <div className="p-6 max-w-ps-data mx-auto space-y-6 report-print-root">
-        <div className="print:hidden">
-          <h1 className="text-xl font-semibold text-ps-ink">Reports</h1>
-          <p className="text-sm text-ps-label mt-0.5">Generate and export practice reports</p>
-        </div>
+        <PageHeader
+          title="Reports"
+          subtitle="Generate and export practice reports"
+          className="print:hidden"
+        />
 
         {/* Cash Flow Forecast link card */}
         {!activeReport && (

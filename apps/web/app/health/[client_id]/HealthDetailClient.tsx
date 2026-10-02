@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import {
@@ -169,16 +169,6 @@ function gradeBadgeColor(grade: Grade): string {
     "Critical":         "bg-sev-critical-surface text-sev-critical",
   };
   return map[grade] ?? "bg-gray-100 text-gray-700";
-}
-
-
-function formatDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return "—";
-  try {
-    return formatDateShared(dateStr);
-  } catch {
-    return dateStr;
-  }
 }
 
 // ─── Dimension Card ───────────────────────────────────────────────────────────

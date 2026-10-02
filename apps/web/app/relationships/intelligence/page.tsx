@@ -5,6 +5,7 @@ import { AlertTriangle, Building2, FileText, TrendingUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { PageHeader } from "@/components/ui/page-header";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -195,17 +196,11 @@ export default function RelationshipIntelligencePage() {
   return (
     <div className="p-6 space-y-5 bg-ps-bg min-h-full">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-brand flex items-center gap-2">
-            <FileText size={20} />
-            Relationship Intelligence
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Loans (Sec 185/186), properties, and cross-client entity links
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<FileText size={20} />}
+        title="Relationship Intelligence"
+        subtitle="Loans (Sec 185/186), properties, and cross-client entity links"
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">

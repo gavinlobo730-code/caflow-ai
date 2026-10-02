@@ -61,6 +61,8 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -842,52 +844,51 @@ export default function IncomeTaxPage() {
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Income Tax</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            ITR Tracking — IT Act Section 139
-          </p>
-          {/* Sub-navigation */}
-          <div className="flex gap-2 mt-3">
-            <a href="/income-tax/capital-gains" className="text-xs font-medium text-brand hover:text-brand-dark border border-brand-light bg-brand-surface px-2.5 py-1 rounded-lg hover:bg-brand-light transition-colors">
-              Capital Gains Calculator
-            </a>
-            <a href="/income-tax/advance-tax" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
-              Advance Tax
-            </a>
-            <a href="/income-tax/notices" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
-              Notices
-            </a>
-            <a href="/income-tax/deductions" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
-              Deductions
-            </a>
-            <a href="/income-tax/tax-audit" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
-              Tax Audit
-            </a>
-            {/* IT Act §32 — per BLOCK, which is a different system from the
-                Schedule II charge in the fixed-asset register, and usually the
-                largest single line in the book-to-tax bridge. */}
-            <a href="/income-tax/section-32" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
-              Depreciation §32
-            </a>
-            {/* …and the statement the two depreciation systems meet in. The
-                bridge engine and its endpoint existed with no caller at all,
-                so a CA could record §32 blocks and never see what they did to
-                taxable income. */}
-            <a href="/income-tax/book-to-tax" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
-              Book-to-tax bridge
-            </a>
-          </div>
+      <PageHeader
+        title="Income Tax"
+        subtitle="ITR Tracking — IT Act Section 139"
+        actions={
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add ITR Deadline
+          </button>
+        }
+      >
+        {/* Sub-navigation */}
+        <div className="flex gap-2 mt-3">
+          <a href="/income-tax/capital-gains" className="text-xs font-medium text-brand hover:text-brand-dark border border-brand-light bg-brand-surface px-2.5 py-1 rounded-lg hover:bg-brand-light transition-colors">
+            Capital Gains Calculator
+          </a>
+          <a href="/income-tax/advance-tax" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
+            Advance Tax
+          </a>
+          <a href="/income-tax/notices" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
+            Notices
+          </a>
+          <a href="/income-tax/deductions" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
+            Deductions
+          </a>
+          <a href="/income-tax/tax-audit" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
+            Tax Audit
+          </a>
+          {/* IT Act §32 — per BLOCK, which is a different system from the
+              Schedule II charge in the fixed-asset register, and usually the
+              largest single line in the book-to-tax bridge. */}
+          <a href="/income-tax/section-32" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
+            Depreciation §32
+          </a>
+          {/* …and the statement the two depreciation systems meet in. The
+              bridge engine and its endpoint existed with no caller at all,
+              so a CA could record §32 blocks and never see what they did to
+              taxable income. */}
+          <a href="/income-tax/book-to-tax" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
+            Book-to-tax bridge
+          </a>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add ITR Deadline
-        </button>
-      </div>
+      </PageHeader>
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -975,13 +976,10 @@ export default function IncomeTaxPage() {
                   "Each entry records the ITR form, assessment year, due date, and filing status."
                 }
                 emptyAction={
-                  <button
-                    onClick={() => setShowAddModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-surface text-brand text-xs font-medium rounded-lg hover:bg-brand-light transition-colors mt-1"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add first ITR deadline
-                  </button>
+                  <EmptyStateActions>
+                    <EmptyStateAction requires={["compliance_record", "write"]} icon={<Plus size={14} />} label="Add first ITR deadline"
+                      onClick={() => setShowAddModal(true)} />
+                  </EmptyStateActions>
                 }
                 rowActions={(entry) =>
                   entry.filing_status !== "filed" ? (

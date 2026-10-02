@@ -15,6 +15,8 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -365,7 +367,19 @@ function ChallansTab({ clientId }: { clientId: string }) {
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-4 text-center text-ps-hint">No challans yet.</td></tr>
+              <tr><td colSpan={7}>
+                <EmptyState
+                  className="py-8"
+                  title="No challans yet"
+                  description="A challan is one deposit of tax withheld, with its BSR code, date and serial number. Record each deposit so a quarter's statement can be matched to it."
+                  action={
+                    <EmptyStateActions>
+                      <EmptyStateAction requires={["tds", "compute"]} label="New Challan"
+                        onClick={() => setShowNew(true)} />
+                    </EmptyStateActions>
+                  }
+                />
+              </td></tr>
             )}
           </tbody>
         </table>
@@ -778,7 +792,21 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No TDS returns yet.</td></tr>
+              <tr><td colSpan={6}>
+                <EmptyState
+                  className="py-8"
+                  title="No TDS returns yet"
+                  description="A return is one quarter's statement of tax deducted. Compute it from the books, then take the prepared figures to the portal; nothing is filed from here."
+                  action={
+                    <EmptyStateActions>
+                      <EmptyStateAction requires={["tds", "compute"]} label="Compute from Books"
+                        onClick={() => { setShowCompute(true); loadDeductor(); }} />
+                      <EmptyStateAction requires={["tds", "compute"]} variant="secondary" label="New Return"
+                        onClick={() => setShowNew(true)} />
+                    </EmptyStateActions>
+                  }
+                />
+              </td></tr>
             )}
           </tbody>
         </table>
@@ -1062,7 +1090,19 @@ function CertificatesTab({ clientId }: { clientId: string }) {
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No certificates recorded.</td></tr>
+              <tr><td colSpan={6}>
+                <EmptyState
+                  className="py-8"
+                  title="No certificates recorded"
+                  description="This register records the Form 16 and 16A certificates issued to deductees. The certificate itself is generated on TRACES; here you record that it was issued."
+                  action={
+                    <EmptyStateActions>
+                      <EmptyStateAction requires={["tds", "compute"]} label="Record Certificate"
+                        onClick={() => setShowNew(true)} />
+                    </EmptyStateActions>
+                  }
+                />
+              </td></tr>
             )}
           </tbody>
         </table>

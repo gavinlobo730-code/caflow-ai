@@ -8,6 +8,9 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { BORDER, BRAND, BRAND_SURFACE } from "@/lib/design/tokens";
+import { formatDate } from "@/lib/dates/format";
+import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -55,7 +58,9 @@ const CONTEXT_CHOICES: ReadonlyArray<{ value: string; label: string }> = [
   { value: "workflow", label: "Workflows" },
 ];
 
-function fmtTime(s: string) {
+// How long ago, then the date once it is more than a day old. The date half is
+// the one shared format, so an old message reads like every other date.
+function relativeAge(s: string) {
   const d = new Date(s);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
@@ -63,7 +68,7 @@ function fmtTime(s: string) {
   if (diffMins < 1) return "just now";
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  return formatDate(s);
 }
 
 // ── Message bubble ────────────────────────────────────────────────────────────
@@ -92,7 +97,7 @@ function MessageBubble({ msg, onRate }: { msg: Message; onRate: (id: string, rat
         </div>
         {!isUser && (
           <div className="flex items-center gap-2 mt-1.5 px-1">
-            <span className="text-3xs text-ps-hint">{fmtTime(msg.created_at)}</span>
+            <span className="text-3xs text-ps-hint">{relativeAge(msg.created_at)}</span>
             {msg.tokens_used && (
               <span className="text-3xs text-ps-disabled">{msg.tokens_used} tokens</span>
             )}
@@ -249,29 +254,29 @@ export default function CopilotPage() {
     <div className="h-screen flex flex-col bg-ps-bg">
       {/* Header */}
       <div className="bg-white border-b border-ps-border px-6 py-4 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <PageHeader
+          icon={
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: BRAND }}>
               <Sparkles size={16} className="text-white" />
             </div>
-            <div>
-              <h1 className="text-lg font-semibold text-brand">AI Copilot</h1>
-              <p className="text-xs text-ps-label">Intelligent assistant for your CA practice</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Context type selector */}
-            <select
-              value={contextType}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setContextType(e.target.value)}
-              className="text-xs px-3 py-1.5 border border-ps-border rounded-lg bg-white text-ps-label"
-            >
-              {CONTEXT_CHOICES.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+          }
+          title="AI Copilot"
+          subtitle="Intelligent assistant for your CA practice"
+          actions={
+            <>
+              {/* Context type selector */}
+              <select
+                value={contextType}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setContextType(e.target.value)}
+                className="text-xs px-3 py-1.5 border border-ps-border rounded-lg bg-white text-ps-label"
+              >
+                {CONTEXT_CHOICES.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </>
+          }
+        />
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -279,14 +284,14 @@ export default function CopilotPage() {
         {/* Sidebar — conversation history */}
         <div className="w-64 bg-white border-r border-ps-border flex flex-col flex-shrink-0">
           <div className="p-3 border-b border-ps-border">
-            <button disabled={actionInFlight}
+            <Button variant="plain" size="none" disabled={actionInFlight}
               onClick={newConversation}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg text-white transition-colors"
               style={{ backgroundColor: BRAND }}
             >
               <Plus size={14} />
               New Conversation
-            </button>
+            </Button>
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {conversationsError ? (
@@ -316,7 +321,7 @@ export default function CopilotPage() {
                       <div className="flex items-center gap-1 mt-0.5">
                         <Clock size={9} className="text-ps-disabled" />
                         <span className="text-3xs text-ps-disabled">
-                          {conv.last_message_at ? fmtTime(conv.last_message_at) : "new"}
+                          {conv.last_message_at ? relativeAge(conv.last_message_at) : "new"}
                         </span>
                       </div>
                     </div>
@@ -348,13 +353,13 @@ export default function CopilotPage() {
                     </p>
                     <div className="grid grid-cols-2 gap-2 max-w-lg">
                       {suggestions.slice(0, 6).map((q: string, i: number) => (
-                        <button disabled={actionInFlight}
+                        <Button variant="plain" size="none" disabled={actionInFlight}
                           key={i}
                           onClick={() => sendMessage(q)}
                           className="text-left text-xs px-3 py-2.5 rounded-xl border border-ps-border bg-white hover:border-brand-light hover:bg-[#EFF6FF] text-ps-label transition-colors"
                         >
                           {q}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>
@@ -389,13 +394,13 @@ export default function CopilotPage() {
                 <div className="px-6 py-2 border-t border-ps-border bg-white">
                   <div className="flex gap-2 overflow-x-auto pb-1 max-w-3xl mx-auto">
                     {suggestions.slice(0,4).map((q: string, i: number) => (
-                      <button disabled={actionInFlight}
+                      <Button variant="plain" size="none" disabled={actionInFlight}
                         key={i}
                         onClick={() => sendMessage(q)}
                         className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border border-ps-border bg-ps-bg hover:bg-[#EFF6FF] hover:border-brand-light text-ps-label transition-colors whitespace-nowrap"
                       >
                         {q}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -421,14 +426,14 @@ export default function CopilotPage() {
                       style={{ minHeight: "48px", maxHeight: "140px" }}
                     />
                   </div>
-                  <button
+                  <Button variant="plain" size="none"
                     onClick={() => sendMessage()}
                     disabled={actionInFlight || !input.trim()}
                     className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 transition-all"
                     style={{ backgroundColor: input.trim() ? BRAND : BORDER }}
                   >
                     <Send size={15} className={input.trim() ? "text-white" : "text-ps-hint"} />
-                  </button>
+                  </Button>
                 </div>
                 <p className="text-center text-3xs text-ps-disabled mt-2">
                   AI responses are advisory — always verify with source documents. Never auto-submit to government portals.

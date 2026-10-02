@@ -10,6 +10,9 @@ import { useEngagementId } from "../_engagementId";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { Button } from "@/components/ui/button";
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
   if (paise === 0) return "₹0";
@@ -231,9 +234,17 @@ export default function AdjustmentsPage() {
           </div>
         </div>
       ) : !showForm ? (
-        <div className="bg-white rounded-xl border border-ps-border text-center py-14">
-          <p className="text-sm text-ps-label">No adjustments yet</p>
-          <p className="text-xs text-ps-hint mt-1">Click &quot;+ New Adjustment&quot; to create one</p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            title="No adjustments yet"
+            description="An adjustment is a year-end entry the ledger does not hold yet: an accrual, a prepayment, a provision, a reclassification. It starts as a draft and is reviewed before it is posted."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["year_end", "write"]} icon={<Plus size={14} />} label="New Adjustment"
+                  onClick={() => setShowForm(true)} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       ) : null}
 
@@ -436,14 +447,14 @@ function AdjustmentForm({
         >
           Cancel
         </button>
-        <button
+        <Button variant="plain" size="none"
           onClick={handleSave}
           disabled={saving}
           className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1.5"
         >
           {saving && <Loader2 size={12} className="animate-spin" />}
           {saving ? "Saving…" : "Create Adjustment"}
-        </button>
+        </Button>
       </div>
     </div>
   );

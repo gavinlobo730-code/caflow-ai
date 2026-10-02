@@ -59,6 +59,7 @@ import { useToast } from "@/components/ui/use-toast";
 import type { Client } from "@/lib/types";
 import { todayLocalISO, toLocalISO, fromLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { formatDate } from "@/lib/services/formatting";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ─── COLOUR SCHEME ────────────────────────────────────────────────────────────
 
@@ -297,38 +298,35 @@ export default function CalendarPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Compliance Calendar</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            Each client&apos;s own obligations, on the dates the compliance engine computed for them
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <select
-            aria-label="Client"
-            value={clientId}
-            onChange={(e) => { setClientId(e.target.value); setSelectedDay(null); }}
-            className="border border-ps-border rounded-lg px-3 py-1.5 text-sm text-ps-body focus:outline-none focus:ring-2 focus:ring-brand/30"
-          >
-            <option value="">All my clients</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-          </select>
-          <button onClick={goToday} className="px-3 py-1.5 text-sm border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">
-            Today
-          </button>
-          <button onClick={prevMonth} className="p-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg" aria-label="Previous month">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-sm font-semibold text-ps-ink w-36 text-center">
-            {MONTH_NAMES[viewMonth]} {viewYear}
-          </span>
-          <button onClick={nextMonth} className="p-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg" aria-label="Next month">
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Compliance Calendar"
+        subtitle="Each client&apos;s own obligations, on the dates the compliance engine computed for them"
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              aria-label="Client"
+              value={clientId}
+              onChange={(e) => { setClientId(e.target.value); setSelectedDay(null); }}
+              className="border border-ps-border rounded-lg px-3 py-1.5 text-sm text-ps-body focus:outline-none focus:ring-2 focus:ring-brand/30"
+            >
+              <option value="">All my clients</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
+            </select>
+            <button onClick={goToday} className="px-3 py-1.5 text-sm border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">
+              Today
+            </button>
+            <button onClick={prevMonth} className="p-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg" aria-label="Previous month">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm font-semibold text-ps-ink w-36 text-center">
+              {MONTH_NAMES[viewMonth]} {viewYear}
+            </span>
+            <button onClick={nextMonth} className="p-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg" aria-label="Next month">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        }
+      />
 
       {/* Legend */}
       <div className="flex flex-wrap gap-3">

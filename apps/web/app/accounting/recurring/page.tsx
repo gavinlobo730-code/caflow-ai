@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
-  ChevronLeft, Plus, Play, Pause, Trash2, CheckCircle2,
+  Plus, Play, Pause, Trash2, CheckCircle2,
   Download, X, History, ExternalLink,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,6 +24,9 @@ import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -350,47 +353,44 @@ export default function RecurringPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft size={18} />
-        </Link>
-        <div className="flex-1 min-w-[220px]">
-          <h1 className="text-xl font-semibold text-ps-ink">Recurring Journals</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            Templates saved for the firm. Each due occurrence becomes a DRAFT journal —
-            nothing reaches the ledger until a CA posts it.
-          </p>
-        </div>
-        <Button variant="plain" size="none"
-          onClick={runAll}
-          disabled={busyId !== null || dueNow.length === 0}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40"
-        >
-          <Play size={14} /> Generate {dueNow.length} due
-        </Button>
-        <button
-          onClick={() => downloadCsv("recurring-journals.csv", toCsv(templates, [
-            { key: "client", header: "Client", accessor: (t: RecurringJournalTemplate) =>
-                clients.find(c => c.id === t.client_id)?.client_name ?? t.client_id },
-            { key: "name", header: "Name", accessor: (t: RecurringJournalTemplate) => t.name },
-            { key: "frequency", header: "Frequency", accessor: (t: RecurringJournalTemplate) => freqLabel(t.frequency) },
-            { key: "next_due", header: "Next due", accessor: (t: RecurringJournalTemplate) => t.next_run_date },
-            { key: "status", header: "Status", accessor: (t: RecurringJournalTemplate) => t.status },
-            { key: "amount", header: "Amount (₹)", accessor: (t: RecurringJournalTemplate) =>
-                (t.lines.reduce((s, l) => s + l.debit_paise, 0) / 100).toFixed(2) },
-          ]))}
-          disabled={templates.length === 0}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40"
-        >
-          <Download size={14} /> Export
-        </button>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm bg-brand text-white rounded-md hover:bg-brand-dark"
-        >
-          <Plus size={14} /> New template
-        </button>
-      </div>
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        title="Recurring Journals"
+        subtitle="Templates saved for the firm. Each due occurrence becomes a DRAFT journal — nothing reaches the ledger until a CA posts it."
+        actions={
+          <>
+            <Button variant="plain" size="none"
+              onClick={runAll}
+              disabled={busyId !== null || dueNow.length === 0}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40"
+            >
+              <Play size={14} /> Generate {dueNow.length} due
+            </Button>
+            <button
+              onClick={() => downloadCsv("recurring-journals.csv", toCsv(templates, [
+                { key: "client", header: "Client", accessor: (t: RecurringJournalTemplate) =>
+                    clients.find(c => c.id === t.client_id)?.client_name ?? t.client_id },
+                { key: "name", header: "Name", accessor: (t: RecurringJournalTemplate) => t.name },
+                { key: "frequency", header: "Frequency", accessor: (t: RecurringJournalTemplate) => freqLabel(t.frequency) },
+                { key: "next_due", header: "Next due", accessor: (t: RecurringJournalTemplate) => t.next_run_date },
+                { key: "status", header: "Status", accessor: (t: RecurringJournalTemplate) => t.status },
+                { key: "amount", header: "Amount (₹)", accessor: (t: RecurringJournalTemplate) =>
+                    (t.lines.reduce((s, l) => s + l.debit_paise, 0) / 100).toFixed(2) },
+              ]))}
+              disabled={templates.length === 0}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40"
+            >
+              <Download size={14} /> Export
+            </button>
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm bg-brand text-white rounded-md hover:bg-brand-dark"
+            >
+              <Plus size={14} /> New template
+            </button>
+          </>
+        }
+      />
 
       {error && <Callout tone="problem">{error}</Callout>}
       {notice && (
@@ -433,8 +433,18 @@ export default function RecurringPage() {
               {loading ? (
                 <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-ps-hint">Loading…</td></tr>
               ) : templates.length === 0 ? (
-                <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-ps-hint">
-                  No recurring journals yet.
+                <tr><td colSpan={7}>
+                  <EmptyState
+                    className="py-10"
+                    title="No recurring journals yet"
+                    description="A template posts the same entry on a schedule, such as the month's rent. Each occurrence arrives as a draft for you to review."
+                    action={
+                      <EmptyStateActions>
+                        <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="New template"
+                          onClick={openCreate} />
+                      </EmptyStateActions>
+                    }
+                  />
                 </td></tr>
               ) : templates.map(t => {
                 const dr = t.lines.find(l => l.debit_paise > 0);

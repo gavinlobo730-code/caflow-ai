@@ -144,8 +144,13 @@ test("no screen but our own sign-in asks for a one-time code", () => {
   // Placeholders and labels, which is where a field announces itself to the
   // person filling it in. `otp` alone is too loose — it appears inside
   // identifiers and prose — so this looks at what a CA would actually READ.
+  //
+  // The attribute name must STAND ALONE: `subtitle="Manage your password…"` is a
+  // prop of PageHeader that happens to end in "title", not a `title` attribute a
+  // CA reads while typing into a field, and matching it made every screen whose
+  // subtitle mentioned a password look like a credential box.
   const asksForACode =
-    /(placeholder|aria-label|title)\s*=\s*["'][^"']*\b(otp|one[- ]time|passcode|pin|captcha|password|verification code)\b[^"']*["']/i;
+    /(?<![\w-])(placeholder|aria-label|title)\s*=\s*["'][^"']*\b(otp|one[- ]time|passcode|pin|captcha|password|verification code)\b[^"']*["']/i;
   const offenders = sources()
     .filter(({ path }) => !(path in OWN_CREDENTIALS)
                        && !(path in NOT_A_CREDENTIAL))

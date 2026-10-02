@@ -7,9 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   HEALTH_DIMENSIONS, dimensionLabel, gradeOf, weightLabel,
   type HealthDimensionKey, type HealthGrade,
@@ -150,12 +151,6 @@ function gradeBadge(g: HealthGrade) {
     "Critical":        "bg-sev-critical-surface text-sev-critical",
   };
   return map[g];
-}
-
-function formatDate(d?: string | null) {
-  if (!d) return "—";
-  try { return formatDateShared(d); }
-  catch { return d; }
 }
 
 const EMPTY_OVERRIDE = { dimension: "compliance_health", override_score: "", reason: "", expires_at: "" };
@@ -360,17 +355,19 @@ export default function ClientHealthPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-base font-semibold text-brand">Client Health</h1>
-        <button
-          onClick={handleRecalculate}
-          disabled={actionInFlight}
-          className="flex items-center gap-1.5 text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded hover:bg-gray-50 disabled:opacity-50"
-        >
-          <RefreshCw size={12} className={recalculating ? "animate-spin" : ""} />
-          Recalculate
-        </button>
-      </div>
+      <PageHeader
+        title="Client Health"
+        actions={
+          <button
+            onClick={handleRecalculate}
+            disabled={actionInFlight}
+            className="flex items-center gap-1.5 text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded hover:bg-gray-50 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={recalculating ? "animate-spin" : ""} />
+            Recalculate
+          </button>
+        }
+      />
 
       {error && <Callout tone="problem">{error}</Callout>}
 

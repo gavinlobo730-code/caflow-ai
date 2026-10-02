@@ -22,14 +22,14 @@
  */
 
 import { useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, TrendingDown, Loader2 } from "lucide-react";
+import { TrendingDown, Loader2 } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { objectWithLists } from "@/lib/api/shape";
 import { formatWhole } from "@/lib/money/format";
 import { Callout, StatutoryNotes } from "@/components/ui/callout";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ─── The served shape ─────────────────────────────────────────────────────────
 
@@ -117,17 +117,11 @@ export default function CashFlowForecastPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-5">
-      <div className="flex items-center gap-3">
-        <Link href="/reports" className="text-ps-hint hover:text-ps-label">
-          <ArrowLeft size={16} />
-        </Link>
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Cash Flow Forecast</h1>
-          <p className="text-sm text-ps-hint mt-0.5">
-            Expected receipts and payments, from the client&rsquo;s own open documents
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: "/reports", label: "Reports" }}
+        title="Cash Flow Forecast"
+        subtitle="Expected receipts and payments, from the client&rsquo;s own open documents"
+      />
 
       <div className="bg-white rounded-xl border border-ps-border p-5 flex flex-wrap items-end gap-4">
         <div className="flex-1 min-w-[200px]">

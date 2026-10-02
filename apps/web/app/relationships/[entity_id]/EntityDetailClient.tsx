@@ -12,7 +12,8 @@ import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { errorMessage } from "@/lib/api";
-import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { formatDate } from "@/lib/dates/format";
+import { PageHeader } from "@/components/ui/page-header";
 
 // Same shape and field set as the "Add Entity" form on the Entity Registry
 // list (apps/web/app/relationships/page.tsx) — kept as its own copy here
@@ -456,15 +457,6 @@ export default function EntityDetailPage() {
     }
   }
 
-  function formatDate(dateStr: string | null): string {
-    if (!dateStr) return "—";
-    try {
-      return formatDateShared(dateStr);
-    } catch {
-      return dateStr;
-    }
-  }
-
   if (loading) {
     return (
       <div className="p-6 space-y-5">
@@ -517,19 +509,16 @@ export default function EntityDetailPage() {
 
   return (
     <div className="p-6 space-y-5">
-      {/* Back nav */}
-      <Link href="/relationships" className="flex items-center gap-1 text-xs text-slate-400 hover:text-white">
-        <ChevronLeft size={14} /> Entity Registry
-      </Link>
-
-      {/* Entity header */}
-      <div>
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold text-white">{entity.full_name}</h1>
-          {isInactive && <Badge variant="secondary" className="text-2xs">Inactive</Badge>}
-        </div>
-        <p className="text-xs text-slate-400 mt-0.5">{entity.entity_type}</p>
-      </div>
+      {/* Entity header — the back link, the name, the inactive badge and the
+          entity type. This was written in white and slate-400 for a dark
+          surface the shell does not provide, so the name read white on the
+          light page. The cards below still carry that dark styling. */}
+      <PageHeader
+        back={{ href: "/relationships", label: "Entity Registry" }}
+        title={entity.full_name}
+        meta={isInactive ? <Badge variant="secondary" className="text-2xs">Inactive</Badge> : undefined}
+        subtitle={entity.entity_type}
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-700">

@@ -8,6 +8,7 @@ import { usePermissions } from "@/lib/auth/AuthContext";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { MFA_SETUP_HREF, isMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
 
 // Module 9.0 M4 — Governance Approval Inbox (maker-checker).
 // Partners approve/reject; everyone with access sees pending + history.
@@ -66,14 +67,12 @@ export default function ApprovalsPage() {
 
   return (
     <div className="p-6 max-w-4xl">
-      <div className="flex items-center gap-2 mb-1">
-        <ShieldCheck size={18} className="text-brand" />
-        <h1 className="text-lg font-semibold text-brand">Approvals</h1>
-      </div>
-      <p className="text-xs text-gray-500 mb-4">
-        Sensitive actions (user &amp; role changes, client assignments, master Chart-of-Accounts changes)
-        require Partner approval. Every decision is recorded in the audit log.
-      </p>
+      <PageHeader
+        icon={<ShieldCheck size={18} className="text-brand" />}
+        title="Approvals"
+        subtitle="Sensitive actions (user &amp; role changes, client assignments, master Chart-of-Accounts changes) require Partner approval. Every decision is recorded in the audit log."
+        className="mb-4"
+      />
 
       <div className="flex gap-1 mb-4 border-b border-gray-200">
         {(["pending", "history"] as const).map((t) => (

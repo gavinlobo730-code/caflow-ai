@@ -50,8 +50,12 @@ test("the screen computes no date and names no deadline", () => {
 });
 
 test("a calendar date is shown without ever being read through UTC", () => {
-  assert.match(RADAR, /fromLocalISO\(iso\)/);
-  assert.doesNotMatch(RADAR, /toISOString|Date\.parse/);
+  // It used to carry its own `day()` helper over `fromLocalISO`. The rule is
+  // unchanged and now has one home: the date goes through lib/dates/format,
+  // which prints a bare YYYY-MM-DD from its own digits and never parses it.
+  assert.match(RADAR, /import \{ formatDate \} from "@\/lib\/dates\/format"/);
+  assert.match(RADAR, /formatDate\([a-z]+\.closes_on\)/);
+  assert.doesNotMatch(RADAR, /toISOString|Date\.parse|new Date\(/);
 });
 
 test("the rule sentence on screen is the one the server sent", () => {

@@ -22,10 +22,9 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import Link from "next/link";
 import {
   Users, Plus, X, AlertCircle, Upload, Pencil, Ban, Trash2, RotateCcw,
-  ArrowLeft, ShieldAlert, } from "lucide-react";
+  ShieldAlert, } from "lucide-react";
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow } from "@/components/CsvImportModal";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
@@ -45,6 +44,8 @@ import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
 import { PortalAccessModal } from "@/components/payroll/PortalAccessModal";
 import { ExceptionIndexTab } from "@/components/payroll/ExceptionIndex";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 /** The importable columns: the server-mirrored list, plus the one column only a
  *  FIRM-wide import needs.
@@ -311,20 +312,13 @@ export default function PayrollPeoplePage() {
   return (
     <div className="min-h-screen bg-ps-bg p-8">
       <div className="max-w-ps-data mx-auto">
-        <div className="mb-6">
-          <Link href="/payroll">
-            <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-ps-label hover:text-ps-ink -ml-2">
-              <ArrowLeft size={14} />Payroll
-            </Button>
-          </Link>
-          <h1 className="text-2xl font-bold text-ps-ink flex items-center gap-2 mt-1">
-            <Users size={22} className="text-blue-600" />People
-          </h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            Every employee across every client, and what the statutory outputs
-            still need from them.
-          </p>
-        </div>
+        <PageHeader
+          back={{ href: "/payroll", label: "Payroll" }}
+          icon={<Users size={22} className="text-blue-600" />}
+          title="People"
+          subtitle="Every employee across every client, and what the statutory outputs still need from them."
+          className="mb-6"
+        />
 
         <Tabs defaultValue="roster">
           <TabsList className="mb-6">
@@ -384,7 +378,15 @@ export default function PayrollPeoplePage() {
                     );
                   }}
                   emptyTitle="No employees yet"
-                  emptyDescription={'Click "Add Employee" or import a CSV to get started.'}
+                  emptyDescription="Add the people a client pays, or import them from a CSV file. Their PAN, UAN and joining date are what TDS, the PF return and a part-year salary are worked from later."
+                  emptyAction={
+                    <EmptyStateActions>
+                      <EmptyStateAction requires={["payroll", "write"]} icon={<Plus size={14} />} label="Add Employee"
+                        onClick={() => { setEditEmployee(null); setShowAdd(true); }} />
+                      <EmptyStateAction requires={["payroll", "write"]} variant="secondary" icon={<Upload size={14} />} label="Import CSV"
+                        onClick={() => setShowImportEmp(true)} />
+                    </EmptyStateActions>
+                  }
                 />
               </CardContent>
             </Card>

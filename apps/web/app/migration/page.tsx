@@ -10,6 +10,8 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { api, request } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import {
   ALL_IMPORT_TYPES, importTypeNote, migrationSubtitle, noClientOptionLabel,
 } from "@/lib/migration/writtenTypes";
@@ -808,10 +810,18 @@ export default function MigrationPage() {
           <button onClick={load} className="text-xs text-blue-600 hover:underline">Try again</button>
         </div>
       ) : jobs.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-2">
-          <Database size={28} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-ps-label">No migration jobs yet</p>
-          <p className="text-xs text-ps-hint">Click &quot;New Import&quot; to migrate data from Tally.</p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            icon={<Database size={28} />}
+            title="No migration jobs yet"
+            description="Bring a client's customer and vendor masters across from a Tally export. A preview shows what will be written before anything is."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="New Import"
+                  onClick={() => { setShowCreate(true); setStep("create"); setJobId(null); setParseResult(null); setImportResult(null); setProgress(null); setClientId(""); setError(null); }} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       ) : (
         <div className="space-y-2">

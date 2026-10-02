@@ -10,26 +10,28 @@
  * every other hour shows a time five and a half hours behind what actually
  * happened in India.
  *
- * `formatIst` converts through `Intl.DateTimeFormat` with an explicit
+ * `formatIst` converts through an `Intl.DateTimeFormat` with an explicit
  * `Asia/Kolkata` zone — never a manual UTC+5:30 offset add, which gets the
  * arithmetic right but says nothing about WHICH zone the printed value is
  * in — and the caller appends "IST" so the label travels with the value
- * rather than being assumed.
+ * rather than being assumed. The conversion itself lives in
+ * `lib/dates/format.ts`, beside the one calendar-date format.
  */
 
-const IST_FORMATTER = new Intl.DateTimeFormat("en-IN", {
-  timeZone: "Asia/Kolkata",
-  dateStyle: "medium",
-  timeStyle: "short",
-});
+import { formatDateTime } from "./format.ts";
 
 /** `null`/`undefined`/unparseable in, `null` out — the caller decides what an
- * absent timestamp renders as (this module doesn't guess "—" is always right). */
+ * absent timestamp renders as (this module doesn't guess "—" is always right).
+ *
+ * DELEGATES to `lib/dates/format.formatDateTime`, which is the one date-time
+ * format (frontend_ux-20). It used to build its own `Intl.DateTimeFormat` with
+ * `dateStyle: "medium"`, which prints "5 Sept 2026, 3:30 pm" on a current engine
+ * and "5 Sep 2026" on an older one, and a second spelling of the same moment
+ * beside `formatDateTime`'s "5/9/2026, 10:00:00 am". The names stay because
+ * `verify-books-and-approvals-show-ist-not-raw-utc.test.ts` pins them. */
 export function formatIst(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  return IST_FORMATTER.format(d);
+  const formatted = formatDateTime(value, "");
+  return formatted === "" ? null : formatted;
 }
 
 /** The common case: `formatIst` plus the "IST" label, or the given fallback

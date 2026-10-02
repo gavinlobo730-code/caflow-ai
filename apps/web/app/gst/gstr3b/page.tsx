@@ -24,12 +24,10 @@ import {
   Download,
   FileCheck,
   ChevronRight,
-  ArrowLeft,
   Clock,
   Info,
   X,
 } from "lucide-react";
-import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
 import { Gstr3bCreditLedger } from "@/components/gst/Gstr3bCreditLedger";
@@ -53,7 +51,9 @@ import {
 } from "@/lib/data/gst";
 import { periodEndDate, splitRule37Bills } from "@/lib/gst/rule37Period";
 import { financialYearOfMonth } from "@/lib/dates/periods";
+import { formatMonthYear } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -70,7 +70,7 @@ function buildPeriodOptions(): { value: string; label: string }[] {
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     opts.push({
       value: `${yyyy}-${mm}`,
-      label: d.toLocaleDateString("en-IN", { month: "long", year: "numeric" }),
+      label: formatMonthYear(`${yyyy}-${mm}`),
     });
   }
   return opts.reverse();
@@ -241,17 +241,11 @@ export default function GSTR3BPage() {
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
 
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/gst" className="text-ps-hint hover:text-ps-label">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-ps-ink">GSTR-3B Review</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            CGST Act Section 39 — Monthly summary return. Due 20th of following month.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: "/gst", label: "GST" }}
+        title="GSTR-3B Review"
+        subtitle="CGST Act Section 39 — Monthly summary return. Due 20th of following month."
+      />
 
       {/* CA Review Banner */}
       <div className="bg-state-attention-surface border border-state-attention-border rounded-lg p-3 flex items-start gap-2">

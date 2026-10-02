@@ -6,6 +6,8 @@ import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { MissingIrnPanel } from "@/components/gst/MissingIrnPanel";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -214,11 +216,18 @@ export default function EInvoicePage() {
           <p className="text-xs text-ps-hint">Enter a client ID and press Load to see its e-invoice records.</p>
         </div>
       ) : records.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border text-center py-10 space-y-1">
-          <p className="text-sm text-ps-body font-medium">No e-invoice records found</p>
-          <p className="text-xs text-ps-hint">
-            No IRN has been recorded for this client yet. Use New E-Invoice to prepare one.
-          </p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            className="py-10"
+            title="No e-invoice records found"
+            description="No IRN has been recorded for this client yet. Prepare a record here; the IRN itself comes from the portal."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["einvoice", "write"]} icon={<Plus size={14} />} label="New E-Invoice"
+                  onClick={() => setShowCreate(true)} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       ) : (
         <div className="space-y-2">

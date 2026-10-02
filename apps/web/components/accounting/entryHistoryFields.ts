@@ -22,6 +22,7 @@
 // entryHistoryFields.test.ts under plain `node --experimental-strip-types`,
 // which does not resolve the Next.js path alias.
 import { formatPaise } from "../../lib/money/format.ts";
+import { formatDate, formatDateTime } from "../../lib/dates/format.ts";
 
 export type AuditRowLike = {
   action: string;
@@ -74,27 +75,6 @@ const FIELD_DROP = new Set([
   "line_count",
 ]);
 
-/** Stored UTC, shown IST — the rule for every time this product displays. */
-export function istStamp(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString("en-IN", {
-      timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short",
-    });
-  } catch {
-    return iso;
-  }
-}
-
-/** `entry_date` is a DATE column — a calendar date with no time or zone to
- *  convert. Building the Date from its own year/month/day (never by parsing
- *  the ISO string through UTC) means no timezone can shift it a day. */
-function dateOnly(value: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  if (!m) return value;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-}
-
 function humanizeKey(key: string): string {
   return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -105,8 +85,13 @@ function describeValue(key: string, value: unknown): string {
   if (key === "debit_paise" || key === "credit_paise") {
     return formatPaise(value as number | string | null | undefined);
   }
-  if (key === "entry_date") return dateOnly(String(value));
-  if (key === "posted_at") return istStamp(String(value));
+  // `entry_date` is a DATE column — a calendar date with no time or zone to
+  // convert — and `posted_at` a stored UTC instant shown in IST. Both go through
+  // lib/dates/format, which is the one place either rule is written; an
+  // unreadable value is shown as it was stored, because this is an edit log and
+  // a placeholder would hide what the row actually held.
+  if (key === "entry_date") return formatDate(String(value), String(value));
+  if (key === "posted_at") return formatDateTime(String(value), String(value));
   if (key === "attachments" && Array.isArray(value)) {
     return value.length === 1 ? "1 file" : `${value.length} files`;
   }

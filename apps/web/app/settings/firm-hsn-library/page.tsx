@@ -11,8 +11,7 @@
  * reachable inline from an invoice/product form.
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import Link from "next/link";
-import { ChevronLeft, Plus, Pencil, Archive, RotateCcw, Search, Hash, Upload, Download, Trash2, X } from "lucide-react";
+import { Plus, Pencil, Archive, RotateCcw, Search, Hash, Upload, Download, Trash2, X } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
 import {
@@ -26,6 +25,8 @@ import { toCsv } from "@/lib/table/process";
 import type { Column } from "@/lib/table/types";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
 
 type Filter = "active" | "archived";
 type TypeFilter = "all" | "goods" | "services";
@@ -247,30 +248,29 @@ export default function FirmHsnLibraryPage() {
           </div>
         )}
 
-        <div>
-          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label transition-colors mb-1">
-            <ChevronLeft size={13} /> Settings
-          </Link>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h1 className="text-xl font-semibold text-ps-ink flex items-center gap-2">
-                <Hash size={18} className="text-violet-600" /> Firm HSN/SAC Library
-                {!loading && !error && (
-                  <span className="text-xs font-normal text-ps-hint">
-                    {items.length}{capped ? "+" : ""} code{items.length === 1 ? "" : "s"}
-                  </span>
-                )}
-              </h1>
-              <p className="text-sm text-ps-label mt-0.5">
-                The HSN/SAC codes your firm bills against. You add and curate every code here — Caflow does not ship a shared list or suggest a classification; every Product/Service and invoice line picks from this library.
-                {capped && (
-                  <span className="block text-amber-600 mt-0.5">
-                    Showing the first {HSN_LIBRARY_FETCH_LIMIT} matches — refine your search to see more.
-                  </span>
-                )}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
+        <PageHeader
+          back={{ href: "/settings", label: "Settings" }}
+          icon={<Hash size={18} className="text-violet-600" />}
+          title="Firm HSN/SAC Library"
+          meta={
+            !loading && !error ? (
+              <span className="text-xs font-normal text-ps-hint">
+                {items.length}{capped ? "+" : ""} code{items.length === 1 ? "" : "s"}
+              </span>
+            ) : undefined
+          }
+          subtitle={
+            <>
+              The HSN/SAC codes your firm bills against. You add and curate every code here — Caflow does not ship a shared list or suggest a classification; every Product/Service and invoice line picks from this library.
+              {capped && (
+                <span className="block text-amber-600 mt-0.5">
+                  Showing the first {HSN_LIBRARY_FETCH_LIMIT} matches — refine your search to see more.
+                </span>
+              )}
+            </>
+          }
+          actions={
+            <>
               <button
                 onClick={() => setImporting(true)}
                 className="flex items-center gap-1.5 text-sm border border-ps-border text-ps-label px-3.5 py-2 rounded-lg hover:bg-ps-bg whitespace-nowrap"
@@ -290,9 +290,9 @@ export default function FirmHsnLibraryPage() {
               >
                 <Plus size={15} /> Add Code
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        />
 
         {/* Search + filters */}
         <div className="flex items-center gap-2">
@@ -332,13 +332,13 @@ export default function FirmHsnLibraryPage() {
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-3 py-2 text-xs">
             <span className="font-semibold text-[#3730A3]">{selected.size} selected</span>
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              <button
+              <Button variant="plain" size="none"
                 onClick={bulkDelete}
                 disabled={actionInFlight}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-state-problem-border bg-white px-2.5 py-1.5 font-medium text-state-problem hover:bg-state-problem-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Trash2 size={13} /> {bulkBusy ? "Deleting…" : "Delete"}
-              </button>
+              </Button>
               <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className="text-[#6366F1] hover:text-[#4338CA] disabled:opacity-50" aria-label="Clear selection">
                 <X size={14} />
               </button>
@@ -415,11 +415,11 @@ export default function FirmHsnLibraryPage() {
                           <div className="flex items-center justify-end gap-1">
                             <button onClick={() => setEditing(r)} className="p-1.5 text-ps-label hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Edit"><Pencil size={14} /></button>
                             {active ? (
-                              <button disabled={actionInFlight} onClick={() => retire(r)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-state-attention-hover rounded" aria-label="Retire"><Archive size={14} /></button>
+                              <Button variant="plain" size="none" disabled={actionInFlight} onClick={() => retire(r)} className="p-1.5 text-ps-label hover:text-amber-600 hover:bg-state-attention-hover rounded" aria-label="Retire"><Archive size={14} /></Button>
                             ) : (
-                              <button disabled={actionInFlight} onClick={() => restore(r)} className="p-1.5 text-ps-label hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Restore"><RotateCcw size={14} /></button>
+                              <Button variant="plain" size="none" disabled={actionInFlight} onClick={() => restore(r)} className="p-1.5 text-ps-label hover:text-violet-600 hover:bg-violet-50 rounded" aria-label="Restore"><RotateCcw size={14} /></Button>
                             )}
-                            <button disabled={actionInFlight} onClick={() => purgeSingle(r)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-state-problem-hover rounded" aria-label="Delete permanently"><Trash2 size={14} /></button>
+                            <Button variant="plain" size="none" disabled={actionInFlight} onClick={() => purgeSingle(r)} className="p-1.5 text-ps-label hover:text-red-600 hover:bg-state-problem-hover rounded" aria-label="Delete permanently"><Trash2 size={14} /></Button>
                           </div>
                         </td>
                       </tr>
@@ -514,9 +514,9 @@ function EditCodeModal({ row, onClose, onSaved, onError }: {
         </label>
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} disabled={saving} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
-          <button onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
+          <Button variant="plain" size="none" onClick={submit} disabled={saving} className="text-sm px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
             Save changes
-          </button>
+          </Button>
         </div>
       </div>
     </div>

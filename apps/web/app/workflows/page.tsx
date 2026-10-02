@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/services/formatting";
 import { ATTENTION, BRAND, BRAND_SURFACE, HINT, MUTED, PROBLEM, READY } from "@/lib/design/tokens";
 import { objectWithLists } from "@/lib/api/shape";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -179,35 +180,35 @@ export default function WorkflowsPage() {
     <div className="min-h-screen bg-ps-bg">
       {/* Header */}
       <div className="bg-white border-b border-ps-border px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-brand">Workflow Automation</h1>
-            <p className="text-sm text-ps-label mt-0.5">Automate firm operations across compliance, onboarding, and more</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/workflows/approvals"
-              className="flex items-center gap-1.5 px-3 py-2 text-sm border border-ps-border rounded-lg bg-white hover:bg-ps-bg text-ps-label"
-            >
-              <CheckCircle2 size={14} />
-              Approvals
-              {summary?.pending_approvals ? (
-                <span className="ml-1 bg-orange-500 text-white text-xs rounded-full px-1.5 py-0.5 font-semibold">
-                  {summary.pending_approvals}
-                </span>
-              ) : null}
-            </Link>
-            <button
-              onClick={load}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm border border-ps-border rounded-lg bg-white hover:bg-ps-bg text-ps-label"
-            >
-              <RefreshCw size={14} />
-              Refresh
-            </button>
-            {/* "New Workflow" button removed — it had no handler (dead button) and no
-                builder flow exists yet. Re-add wired to a builder when implemented. */}
-          </div>
-        </div>
+        <PageHeader
+          title="Workflow Automation"
+          subtitle="Automate firm operations across compliance, onboarding, and more"
+          actions={
+            <div className="flex items-center gap-2">
+              <Link
+                href="/workflows/approvals"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm border border-ps-border rounded-lg bg-white hover:bg-ps-bg text-ps-label"
+              >
+                <CheckCircle2 size={14} />
+                Approvals
+                {summary?.pending_approvals ? (
+                  <span className="ml-1 bg-orange-500 text-white text-xs rounded-full px-1.5 py-0.5 font-semibold">
+                    {summary.pending_approvals}
+                  </span>
+                ) : null}
+              </Link>
+              <button
+                onClick={load}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm border border-ps-border rounded-lg bg-white hover:bg-ps-bg text-ps-label"
+              >
+                <RefreshCw size={14} />
+                Refresh
+              </button>
+              {/* "New Workflow" button removed — it had no handler (dead button) and no
+                  builder flow exists yet. Re-add wired to a builder when implemented. */}
+            </div>
+          }
+        />
       </div>
 
       <div className="px-6 py-6 max-w-ps-data mx-auto space-y-6">

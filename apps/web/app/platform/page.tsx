@@ -19,6 +19,8 @@ import { confirmDialog, promptDialog } from "@/components/ui/confirm-dialog";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatDate } from "@/lib/services/formatting";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
 
 interface FirmRow { id: string; name: string; created_at: string; users: number; clients: number; status: string }
 interface Stats { total_firms: number; active_firms: number; suspended_firms: number; total_users: number; total_clients: number }
@@ -300,13 +302,11 @@ export default function PlatformAdminPage() {
 
   return (
     <div className="min-h-screen bg-ps-bg p-6 lg:p-8 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-brand-dark flex items-center justify-center"><ShieldCheck size={16} className="text-white" /></div>
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Platform Admin</h1>
-          <p className="text-sm text-ps-label">Manage firms using PracticeSync</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<div className="w-8 h-8 rounded-lg bg-brand-dark flex items-center justify-center"><ShieldCheck size={16} className="text-white" /></div>}
+        title="Platform Admin"
+        subtitle="Manage firms using PracticeSync"
+      />
 
       {toast && (
         <div className={`rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2 ${toast.ok ? "bg-green-50 text-green-700 border border-green-100" : "bg-state-problem-surface text-state-problem border border-state-problem-border"}`}>
@@ -344,9 +344,9 @@ export default function PlatformAdminPage() {
           rowActions={(f) => (
             <div className="flex items-center justify-end gap-3 flex-wrap text-xs">
               <button disabled={actionInFlight} onClick={() => view(f)} className="text-blue-600 hover:underline">View</button>
-              {f.status === "active" && <button onClick={() => suspend(f)} disabled={busy} className="text-state-attention hover:underline flex items-center gap-1"><Ban size={11} /> Suspend</button>}
-              {f.status === "suspended" && <button onClick={() => unsuspend(f)} disabled={busy} className="text-green-700 hover:underline flex items-center gap-1"><RotateCcw size={11} /> Unsuspend</button>}
-              {f.status !== "deleted" && <button onClick={() => softDelete(f)} disabled={busy} className="text-red-600 hover:underline flex items-center gap-1"><Trash2 size={11} /> Delete</button>}
+              {f.status === "active" && <Button variant="plain" size="none" onClick={() => suspend(f)} disabled={busy} className="text-state-attention hover:underline flex items-center gap-1"><Ban size={11} /> Suspend</Button>}
+              {f.status === "suspended" && <Button variant="plain" size="none" onClick={() => unsuspend(f)} disabled={busy} className="text-green-700 hover:underline flex items-center gap-1"><RotateCcw size={11} /> Unsuspend</Button>}
+              {f.status !== "deleted" && <Button variant="plain" size="none" onClick={() => softDelete(f)} disabled={busy} className="text-red-600 hover:underline flex items-center gap-1"><Trash2 size={11} /> Delete</Button>}
               <button onClick={() => openPurge(f)} disabled={busy} className="text-state-problem hover:underline flex items-center gap-1 font-medium"><AlertTriangle size={11} /> Delete permanently</button>
             </div>
           )}
@@ -413,11 +413,11 @@ export default function PlatformAdminPage() {
             </div>
             <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-ps-border">
               <button onClick={() => setPurgeTarget(null)} disabled={purgeBusy} className="text-sm text-ps-label px-3 py-2 hover:underline disabled:opacity-50">Cancel</button>
-              <button onClick={confirmPurge}
+              <Button variant="plain" size="none" onClick={confirmPurge}
                 disabled={actionInFlight || purgeName.trim() !== purgeTarget.name || purgeCode.replace(/\s/g, "").length !== 6}
                 className="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white text-sm font-medium px-4 py-2 hover:bg-red-700 disabled:opacity-50">
                 {purgeBusy ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />} Delete permanently
-              </button>
+              </Button>
             </div>
           </div>
         </div>

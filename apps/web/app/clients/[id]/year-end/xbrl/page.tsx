@@ -12,6 +12,9 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
@@ -216,10 +219,18 @@ export default function XBRLPage() {
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : packages.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-2">
-          <Code size={28} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-ps-label">No XBRL packages yet</p>
-          <p className="text-xs text-ps-hint">Create a package to start XBRL generation.</p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            icon={<Code size={28} />}
+            title="No XBRL packages yet"
+            description="A package is one financial year's XBRL filing set. It is prepared here; filing it on the MCA portal is yours to do."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["year_end", "write"]} icon={<Plus size={14} />} label="New Package"
+                  onClick={() => setShowCreate(true)} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       ) : (
         <div className="space-y-2">
@@ -232,7 +243,7 @@ export default function XBRLPage() {
               <Code size={16} className="text-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-ps-ink">FY {pkg.financial_year} — {pkg.taxonomy_version}</p>
-                <p className="text-3xs text-ps-hint">v{pkg.version} · {new Date(pkg.created_at).toLocaleDateString("en-IN")}</p>
+                <p className="text-3xs text-ps-hint">v{pkg.version} · {formatDate(pkg.created_at)}</p>
               </div>
               <span className={`text-3xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[pkg.status]}`}>
                 {pkg.status.replace(/_/g, " ")}

@@ -426,10 +426,10 @@ export default function InventoryPage() {
               Show today
             </button>
           ) : null}
-          <button onClick={startCount} disabled={openingCount}
+          <Button variant="plain" size="none" onClick={startCount} disabled={openingCount}
                   className="px-3 py-[7px] text-xs border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-50 whitespace-nowrap disabled:opacity-50">
             {openingCount ? "Opening…" : "Physical count"}
-          </button>
+          </Button>
           <button onClick={load} className="p-1.5 mb-0.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>

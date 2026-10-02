@@ -13,7 +13,7 @@
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ChevronLeft, Plus, X, CheckCircle, Clock, AlertTriangle, Pencil } from "lucide-react";
+import { Plus, X, CheckCircle, Clock, AlertTriangle, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -25,10 +25,12 @@ import { getClients } from "@/lib/data/clients";
 import { api, type TaxAuditDueDates, type TaxAuditApplicability } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { formatDate } from "@/lib/dates/format";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { duplicateAuditErrorMessage } from "@/lib/income-tax/taxAuditErrors";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,14 +60,6 @@ const STATUS_OPTIONS: AuditStatus[] = ["not_started", "in_progress", "completed"
 // helper (lib/dates/periods.ts); see
 // scripts/a-financial-year-choice-comes-from-the-clock.test.ts.
 const FY_OPTIONS = financialYearChoicesAround(null);
-
-/** An ISO date as an Indian compliance screen prints it: 30 Sep 2026. */
-function fmtDate(iso: string): string {
-  const d = new Date(`${iso}T00:00:00`);
-  return Number.isNaN(d.getTime())
-    ? iso
-    : d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-}
 
 function statusBadge(status: AuditStatus) {
   switch (status) {
@@ -583,25 +577,29 @@ export default function TaxAuditPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-ps-hint hover:text-ps-label"><ChevronLeft size={18} /></Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink">Tax Audit Tracker</h1>
-          <p className="text-sm text-ps-label mt-0.5" title={dueDates?.basis ?? undefined}>
+      <PageHeader
+        back={{ href: "/income-tax", label: "Income Tax" }}
+        title="Tax Audit Tracker"
+        subtitle={
+          <span title={dueDates?.basis ?? undefined}>
             IT Act Section 44AB — Form 3CA/3CB/3CD
             {dueDates
-              ? <> | Report due {fmtDate(dueDates.report_due_date)} · return due {fmtDate(dueDates.return_due_date)}</>
+              ? <> | Report due {formatDate(dueDates.report_due_date)} · return due {formatDate(dueDates.return_due_date)}</>
               : <> | due dates unavailable</>}
-          </p>
-        </div>
-        <YearPicker value={fyFilter} onChange={setFyFilter} className="w-auto" />
-        <Link href="/income-tax/tax-audit/form-3cd">
-          <Button size="sm" variant="outline">Form 3CD</Button>
-        </Link>
-        <Button size="sm" onClick={() => setShowAdd(true)}>
-          <Plus size={14} className="mr-1" /> Add Audit
-        </Button>
-      </div>
+          </span>
+        }
+        actions={
+          <>
+            <YearPicker value={fyFilter} onChange={setFyFilter} className="w-auto" />
+            <Link href="/income-tax/tax-audit/form-3cd">
+              <Button size="sm" variant="outline">Form 3CD</Button>
+            </Link>
+            <Button size="sm" onClick={() => setShowAdd(true)}>
+              <Plus size={14} className="mr-1" /> Add Audit
+            </Button>
+          </>
+        }
+      />
 
       {/* Notice */}
       <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-5 py-3 flex items-start gap-3">

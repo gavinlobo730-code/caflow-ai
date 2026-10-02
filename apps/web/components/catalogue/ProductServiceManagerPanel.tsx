@@ -28,6 +28,8 @@ import { Modal } from "@/components/ui/modal";
 import { buildServices, SERVICE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // Generous, not enforced by the API — but a ceiling either way, so whether it
 // was reached has to be visible rather than silently shortening the table.
@@ -297,32 +299,31 @@ export function ProductServiceManagerPanel({
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink flex items-center gap-2"><BookMarked size={18} className="text-emerald-600" /> Products &amp; Services</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            {onPick
+      <PageHeader
+        icon={<BookMarked size={18} className="text-emerald-600" />}
+        title="Products &amp; Services"
+        subtitle={onPick
               ? "Search, pick, or manage this client's billing presets without leaving the invoice."
               : "Reusable billing presets for this client. Products (kind='good') also track stock and moving-average cost — see the Inventory tab for full ledger detail."}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => { setOpeningBalanceDate(""); setImportStep("date"); }}
-            className="flex items-center gap-1.5 text-sm border border-ps-border text-ps-label px-3.5 py-2 rounded-lg hover:bg-ps-bg whitespace-nowrap"
-          >
-            <Upload size={15} /> Import
-          </button>
-          <button
-            type="button"
-            onClick={() => setEditing("new")}
-            className="flex items-center gap-1.5 text-sm bg-emerald-600 text-white px-3.5 py-2 rounded-lg hover:bg-emerald-700 whitespace-nowrap"
-          >
-            <Plus size={15} /> New Product/Service
-          </button>
-        </div>
-      </div>
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => { setOpeningBalanceDate(""); setImportStep("date"); }}
+              className="flex items-center gap-1.5 text-sm border border-ps-border text-ps-label px-3.5 py-2 rounded-lg hover:bg-ps-bg whitespace-nowrap"
+            >
+              <Upload size={15} /> Import
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing("new")}
+              className="flex items-center gap-1.5 text-sm bg-emerald-600 text-white px-3.5 py-2 rounded-lg hover:bg-emerald-700 whitespace-nowrap"
+            >
+              <Plus size={15} /> New Product/Service
+            </button>
+          </div>
+        }
+      />
 
       {/* The ceiling was reached: the table below is a PREFIX of the catalogue
           and its "of N" is the cap, not the count. */}
@@ -350,9 +351,10 @@ export function ProductServiceManagerPanel({
         persistKey="products-services"
         emptyTitle="No products or services yet"
         emptyAction={
-          <button type="button" onClick={() => setEditing("new")} className="mt-3 text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
-            Create the first one
-          </button>
+          <EmptyStateActions>
+            <EmptyStateAction requires={["accounting", "write"]} label="Create the first one"
+              onClick={() => setEditing("new")} />
+          </EmptyStateActions>
         }
         onRowClick={onPick ? handlePick : undefined}
         bulkActions={[

@@ -9,6 +9,8 @@ import { useEngagementId } from "../_engagementId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { useClientEntityType } from "@/lib/clients/useClientEntityType";
 import { usesScheduleIII } from "@/lib/entityObligations";
+import { formatDate } from "@/lib/dates/format";
+import { Button } from "@/components/ui/button";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -245,7 +247,7 @@ export default function ExportsPage() {
               )}
 
               <div className="flex gap-2 mt-auto">
-                <button
+                <Button variant="plain" size="none"
                   onClick={() => handleGenerate(cfg.type)}
                   disabled={!!generatingType}
                   className={`flex-1 flex items-center justify-center gap-1.5 text-xs py-2 rounded-lg disabled:opacity-50 ${
@@ -256,7 +258,7 @@ export default function ExportsPage() {
                 >
                   {isGenerating ? <Loader2 size={11} className="animate-spin" /> : null}
                   {isGenerating ? "Generating…" : "Generate"}
-                </button>
+                </Button>
                 {latest && (
                   <button
                     onClick={() => handleDownload(latest)}
@@ -318,9 +320,7 @@ export default function ExportsPage() {
                     <td className="px-3 py-2.5 text-ps-label">v{exp.version_number ?? 1}</td>
                     <td className="px-3 py-2.5 text-ps-label">{exp.generated_by ?? exp.created_by}</td>
                     <td className="px-3 py-2.5 text-ps-label whitespace-nowrap">
-                      {new Date(exp.generated_at ?? exp.created_at).toLocaleDateString("en-IN", {
-                        day: "numeric", month: "short", year: "numeric",
-                      })}
+                      {formatDate(exp.generated_at ?? exp.created_at)}
                     </td>
                     <td className="px-3 py-2.5">
                       {(exp.is_draft ?? false) ? (

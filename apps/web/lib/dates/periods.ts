@@ -12,6 +12,7 @@
  * India-based user of this product).
  */
 import { toLocalISO, todayLocalISO, currentFinancialYearLabel } from "../dateMath.ts";
+import { MONTH_ABBREVIATIONS as MONTH_ABBR, formatDate } from "./format.ts";
 
 export type PeriodMode =
   | "today"
@@ -314,8 +315,6 @@ export type LedgerSpan = { first: string; last: string } | null;
  */
 export const MAX_SPLIT_COLUMNS = 60;
 
-const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
@@ -329,9 +328,12 @@ function lastDayOfMonth(y: number, m: number): number {
   return new Date(y, m, 0).getDate();
 }
 
+// The one date format (lib/dates/format.ts). This used to be its own
+// `${d} ${MONTH_ABBR[m - 1]} ${y}` — unpadded, so a range label read "1 Apr 2026"
+// here and "01 Apr 2026" everywhere else a date is printed. An unreadable bound
+// is shown as it came, because it is the text of a period label.
 function formatOneDate(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  return `${d} ${MONTH_ABBR[m - 1]} ${y}`;
+  return formatDate(iso, iso);
 }
 
 export function formatRangeLabel(start: string, end: string): string {

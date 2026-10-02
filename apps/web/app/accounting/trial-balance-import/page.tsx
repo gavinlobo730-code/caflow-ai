@@ -14,6 +14,7 @@ import { parseCSV, buildParsedAccounts, type ParsedAccount, type ColumnMap } fro
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/ui/page-header";
 
 const SAMPLE_CSV = `Account Name,Account Code,Debit Balance,Credit Balance,Account Type
 Cash in Hand,1001,50000,0,Asset
@@ -152,8 +153,11 @@ export default function TrialBalanceImportPage() {
   return (
     <div className="min-h-screen bg-ps-bg p-8">
       <div className="max-w-ps-data mx-auto">
-        <h1 className="text-2xl font-bold text-ps-ink mb-2">Trial Balance Import</h1>
-        <p className="text-sm text-ps-label mb-6">Universal importer — Tally, Busy, QuickBooks, Zoho, Excel (export as CSV)</p>
+        <PageHeader
+          title="Trial Balance Import"
+          subtitle="Universal importer — Tally, Busy, QuickBooks, Zoho, Excel (export as CSV)"
+          className="mb-6"
+        />
 
         {/* A trial balance is one client's opening position and posts to that
             client's ledger, so the client is chosen before anything else. */}

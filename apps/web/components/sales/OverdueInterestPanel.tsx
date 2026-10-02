@@ -36,6 +36,8 @@ import { formatPaise } from "@/lib/money/format";
 import { BASIS_CHOICES, ratePercentText, termsPayload, type TermsText } from "@/lib/sales/lateInterest";
 import { Button } from "@/components/ui/button";
 import { Callout, StatutoryNotes } from "@/components/ui/callout";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { EmptyState } from "@/components/ui/states";
 import type { SingleFlight } from "@/lib/async/singleFlight";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
 
@@ -358,7 +360,22 @@ export default function OverdueInterestPanel({
               </thead>
               <tbody>
                 {terms.length === 0 && (
-                  <tr><td colSpan={5} className="p-3 text-xs text-ps-hint">No customers yet.</td></tr>
+                  <tr><td colSpan={5}>
+                    <EmptyState
+                      className="py-8"
+                      title="No customers yet"
+                      description="Interest is worked out per customer, from the rate and grace period recorded for each. Add this client's customers first, then set their terms here."
+                      action={
+                        <EmptyStateActions>
+                          {/* The Customers tab of this same screen: ?tab= is the one deep-link convention
+                              (decision D10: no new route under /clients/[id]), and a customer is added by
+                              whoever may write the client's records. */}
+                          <EmptyStateAction requires={["client", "write"]} label="Add Customers"
+                            href={`/clients/${clientId}/sales?tab=customers`} />
+                        </EmptyStateActions>
+                      }
+                    />
+                  </td></tr>
                 )}
                 {terms.map((t) => {
                   const edit = edits[t.customer_id] ?? termsText(t);

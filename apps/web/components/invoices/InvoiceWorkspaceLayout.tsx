@@ -11,9 +11,8 @@
  * It is presentational — the editor content, the Save & Issue/Send actions, and the
  * summary panel are supplied by the caller and evolve in later batches.
  */
-import Link from "next/link";
-import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
+import { PageHeader } from "@/components/ui/page-header";
 
 export interface Crumb {
   label: string;
@@ -45,28 +44,14 @@ export function InvoiceWorkspaceLayout({
 }: InvoiceWorkspaceLayoutProps) {
   return (
     <div className="max-w-screen-2xl mx-auto px-6 pt-4 pb-24 lg:pt-5 lg:pb-6">
-      {/* Breadcrumbs */}
-      <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-xs text-ps-hint mb-2 flex-wrap">
-        {breadcrumbs.map((c, i) => (
-          <span key={i} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight size={12} className="text-ps-disabled" />}
-            {c.href ? (
-              <Link href={c.href} className="hover:text-ps-body">{c.label}</Link>
-            ) : (
-              <span className="text-ps-label">{c.label}</span>
-            )}
-          </span>
-        ))}
-      </nav>
-
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <h1 className="text-lg font-semibold text-ps-ink truncate">{title}</h1>
-          {statusPill}
-        </div>
-        {dirtyHint && <div className="text-xs text-ps-hint flex-shrink-0">{dirtyHint}</div>}
-      </div>
+      {/* Breadcrumbs, title, status pill and unsaved hint — the one screen heading. */}
+      <PageHeader
+        breadcrumbs={breadcrumbs}
+        title={title}
+        meta={statusPill}
+        actions={dirtyHint ? <div className="text-xs text-ps-hint">{dirtyHint}</div> : undefined}
+        className="mb-3"
+      />
 
       {/* Sticky toolbar (actions). On mobile it pins to the bottom of the viewport. */}
       {toolbar && (

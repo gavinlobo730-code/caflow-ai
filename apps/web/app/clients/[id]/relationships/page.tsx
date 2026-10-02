@@ -8,7 +8,7 @@ import { Callout, StatutoryNotes } from "@/components/ui/callout";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { formatDate } from "@/lib/dates/format";
 import { formatPaise, NO_FIGURE } from "@/lib/money/format";
 import { api } from "@/lib/api";
 import type {
@@ -18,6 +18,8 @@ import type {
   RelationshipEntity,
 } from "@/lib/api";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
+import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
 
 /**
  * Related parties — the AS 18 note, and the roles it is built from.
@@ -69,11 +71,6 @@ interface CrossClientMatch {
    *  said otherwise and read a field that is always undefined. */
   reviewed: boolean;
   is_confirmed?: boolean;
-}
-
-function formatDate(d?: string | null) {
-  if (!d) return "—";
-  try { return formatDateShared(d); } catch { return d; }
 }
 
 const STANDING_STYLE: Record<string, string> = {
@@ -227,29 +224,27 @@ export default function ClientRelatedPartiesPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-base font-semibold text-brand">Related Parties</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Directors, shareholders and related parties, and the AS 18 note built from them
-          </p>
-        </div>
-        <div className="flex gap-2 shrink-0">
-          <button
-            onClick={handleDetectMatches}
-            disabled={actionInFlight}
-            className="flex items-center gap-1 text-xs text-state-attention border border-state-attention-border px-2.5 py-1.5 rounded hover:bg-state-attention-hover disabled:opacity-50"
-          >
-            <Network size={12} /> Detect Matches
-          </button>
-          <button
-            onClick={() => setAddRoleModal(true)}
-            className="flex items-center gap-1 text-xs bg-brand text-white px-3 py-1.5 rounded-md hover:bg-brand-dark"
-          >
-            <Plus size={12} /> Link Entity
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Related Parties"
+        subtitle="Directors, shareholders and related parties, and the AS 18 note built from them"
+        actions={
+          <div className="flex gap-2 shrink-0">
+            <Button variant="plain" size="none"
+              onClick={handleDetectMatches}
+              disabled={actionInFlight}
+              className="flex items-center gap-1 text-xs text-state-attention border border-state-attention-border px-2.5 py-1.5 rounded hover:bg-state-attention-hover disabled:opacity-50"
+            >
+              <Network size={12} /> Detect Matches
+            </Button>
+            <button
+              onClick={() => setAddRoleModal(true)}
+              className="flex items-center gap-1 text-xs bg-brand text-white px-3 py-1.5 rounded-md hover:bg-brand-dark"
+            >
+              <Plus size={12} /> Link Entity
+            </button>
+          </div>
+        }
+      />
 
       {error && <Callout tone="problem">{error}</Callout>}
 
@@ -375,7 +370,7 @@ export default function ClientRelatedPartiesPage() {
                       </td>
                       <td className="px-3 py-3 text-gray-500">{formatDate(r.effective_from)}</td>
                       <td className="px-3 py-3 text-right">
-                        <button
+                        <Button variant="plain" size="none"
                           onClick={() => handleRemoveRole(r.id)}
                           disabled={actionInFlight}
                           title="Remove this role"
@@ -383,7 +378,7 @@ export default function ClientRelatedPartiesPage() {
                           className="text-ps-hint hover:text-state-problem transition-colors disabled:opacity-40"
                         >
                           <Trash2 size={13} />
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -516,13 +511,13 @@ export default function ClientRelatedPartiesPage() {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none"
                 onClick={handleAddRole}
                 disabled={actionInFlight || !roleForm.entity_id}
                 className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
               >
                 {savingRole ? "Linking…" : "Link entity"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { AsyncBoundary, EmptyState } from "@/components/ui/states";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useDataTable } from "@/lib/table/useDataTable";
+import { emptyKind, FILTERED_EMPTY } from "@/lib/table/emptyKind";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toCsv } from "@/lib/table/process";
 import { isFromInteractiveControl, rowKeyAction, stepIndex } from "@/lib/table/rowKeyboard";
@@ -478,7 +479,35 @@ export function DataTable<T>({
         isEmpty={page.total === 0}
         onRetry={onRetry}
         skeleton={<TableSkeleton rows={8} cols={Math.min(colSpan || 4, 6)} />}
-        empty={<div className="rounded-xl border border-ps-border bg-white"><EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} /></div>}
+        empty={
+          <div className="rounded-xl border border-ps-border bg-white">
+            {emptyKind({
+              rowCount: data.length,
+              serverPaged: Boolean(serverPaged),
+              activeFilterCount: t.activeFilterCount,
+              // A server-paged table keeps its search on the server's side of the line.
+              search: serverSearch ? (serverPaged?.search ?? "") : t.prefs.search,
+            }) === "filtered" ? (
+              <EmptyState
+                title={FILTERED_EMPTY.title}
+                description={FILTERED_EMPTY.description}
+                action={
+                  <button
+                    type="button"
+                    // setQ("") reaches a server-side search through the debounce above;
+                    // clearFilters alone would leave the server still filtering.
+                    onClick={() => { t.clearFilters(); setQ(""); }}
+                    className="inline-flex items-center justify-center rounded-lg border border-ps-border bg-white px-4 py-2 text-sm font-medium text-ps-label transition-colors hover:bg-ps-bg"
+                  >
+                    {FILTERED_EMPTY.clearLabel}
+                  </button>
+                }
+              />
+            ) : (
+              <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} />
+            )}
+          </div>
+        }
       >
         <div className="overflow-x-auto rounded-xl border border-ps-border bg-white">
           <table className="w-full text-xs">

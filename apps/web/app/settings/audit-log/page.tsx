@@ -9,6 +9,7 @@ import { formatDate } from "@/lib/services/formatting";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Skeleton } from "@/components/ui/skeleton";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ── Formatting helpers ─────────────────────────────────────────────────────────
 // The audit_log table stores backend vocabulary: entity_type is snake_case
@@ -302,13 +303,11 @@ function AuditLogContent() {
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <ShieldCheck size={16} className="text-blue-600" />
-            <h1 className="text-xl font-semibold text-ps-ink">Audit Log</h1>
-          </div>
-          <p className="text-sm text-ps-label mt-0.5">
-            Partner-only view — immutable trail of who changed what across invoices, journals, compliance, clients and users.
-          </p>
+          <PageHeader
+            icon={<ShieldCheck size={16} className="text-blue-600" />}
+            title="Audit Log"
+            subtitle="Partner-only view — immutable trail of who changed what across invoices, journals, compliance, clients and users."
+          />
         </div>
         <button
           onClick={() => loadData()}

@@ -17,6 +17,9 @@ import { Callout } from "@/components/ui/callout";
 import Link from "next/link";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import type { WorkloadInsight, CapacityRiskPayload } from "@/lib/api";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 function UtilisationBar({ pct }: { pct: number }) {
   const clamped = Math.min(100, Math.max(0, pct));
@@ -425,15 +428,15 @@ export default function WorkloadPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Team Workload</h1>
-          <p className="text-sm text-ps-label mt-0.5">Capacity and task distribution across the team</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading} className="gap-1.5">
-          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
-        </Button>
-      </div>
+      <PageHeader
+        title="Team Workload"
+        subtitle="Capacity and task distribution across the team"
+        actions={
+          <Button variant="outline" size="sm" onClick={load} disabled={loading} className="gap-1.5">
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
+          </Button>
+        }
+      />
 
       {error && <Callout tone="problem">{error}</Callout>}
 
@@ -562,10 +565,16 @@ export default function WorkloadPage() {
 
           {workload.members?.length === 0 && (
             <Card>
-              <CardContent className="py-16 text-center text-ps-hint">
-                <Users size={32} className="mx-auto mb-3 opacity-30" />
-                <p>No team members found. Add team members to see workload data.</p>
-              </CardContent>
+              <EmptyState
+                icon={<Users size={32} />}
+                title="No team members found"
+                description="Workload is worked out for each person on your team, so add them first."
+                action={
+                  <EmptyStateActions>
+                    <EmptyStateAction requires={["team", "write"]} label="Go to Team" href="/team" />
+                  </EmptyStateActions>
+                }
+              />
             </Card>
           )}
 

@@ -16,6 +16,8 @@ import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO } from "@/lib/dateMath";
 import { formatDate } from "@/lib/services/formatting";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -624,29 +626,28 @@ export default function TasksPage() {
   return (
     <div className="p-6 h-full flex flex-col min-h-0">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-ps-ink">Tasks</h1>
-          <p className="text-ps-label text-sm mt-0.5">
-            {loading ? "Loading…" : `${tasks.length} task${tasks.length !== 1 ? "s" : ""}`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={load}
-            className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label"
-            title="Refresh"
-          >
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          </button>
-          <button
-            onClick={() => setModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark transition-colors"
-          >
-            <Plus size={16} /> New Task
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Tasks"
+        subtitle={loading ? "Loading…" : `${tasks.length} task${tasks.length !== 1 ? "s" : ""}`}
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={load}
+              className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label"
+              title="Refresh"
+            >
+              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+            </button>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark transition-colors"
+            >
+              <Plus size={16} /> New Task
+            </button>
+          </div>
+        }
+        className="mb-5"
+      />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
@@ -684,7 +685,13 @@ export default function TasksPage() {
         exportFilename="tasks"
         persistKey="tasks.list"
         emptyTitle="No tasks found"
-        emptyDescription="Create a task or adjust your filters."
+        emptyDescription="A task is one piece of work with a due date and, usually, a client and an owner."
+        emptyAction={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["task", "write"]} icon={<Plus size={14} />} label="New Task"
+              onClick={() => setModalOpen(true)} />
+          </EmptyStateActions>
+        }
         onRowClick={(t) => setDetailTask(t)}
         rowActions={(t) => (
           <div className="flex items-center justify-end gap-1">

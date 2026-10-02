@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, AlertCircle, FileText, XCircle } from "lucide-react";
+import { formatDateTime } from "@/lib/dates/format";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -27,17 +28,6 @@ type Letter = {
   rejected_at: string | null;
   expired: boolean;
 };
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "";
-  try {
-    return new Date(iso).toLocaleString("en-IN", {
-      day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-}
 
 function LetterFrame({ html }: { html: string }) {
   // sandbox="" disables scripts/forms/popups entirely — the letter is display-only
@@ -155,7 +145,7 @@ export default function SignPage() {
                     <p className="text-sm font-semibold text-green-800">Accepted — thank you</p>
                     <p className="text-sm text-green-700">
                       Signed by {letter.signed_by_name || "you"}
-                      {letter.signed_at ? ` on ${fmtDate(letter.signed_at)}` : ""}. A confirmation
+                      {letter.signed_at ? ` on ${formatDateTime(letter.signed_at)}` : ""}. A confirmation
                       has been recorded with {letter.firm_name}.
                     </p>
                   </div>
@@ -167,7 +157,7 @@ export default function SignPage() {
                   <div>
                     <p className="text-sm font-semibold text-red-800">Engagement declined</p>
                     <p className="text-sm text-state-problem">
-                      You declined this engagement{letter.rejected_at ? ` on ${fmtDate(letter.rejected_at)}` : ""}.
+                      You declined this engagement{letter.rejected_at ? ` on ${formatDateTime(letter.rejected_at)}` : ""}.
                       If this was a mistake, please contact {letter.firm_name}.
                     </p>
                   </div>

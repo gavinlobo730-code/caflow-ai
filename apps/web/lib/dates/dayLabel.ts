@@ -9,11 +9,11 @@
  *
  * Anything that is not a date reads "—" rather than "Invalid Date".
  */
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+import { MONTH_ABBREVIATIONS } from "./format.ts";
 
 export function dayLabel(iso: string | null | undefined): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
   if (!m) return "—";
-  const month = MONTHS[Number(m[2]) - 1];
+  const month = MONTH_ABBREVIATIONS[Number(m[2]) - 1];
   return month ? `${m[3]} ${month} ${m[1]}` : "—";
 }

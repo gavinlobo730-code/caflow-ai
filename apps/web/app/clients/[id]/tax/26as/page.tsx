@@ -6,6 +6,7 @@ import { formatWhole } from "@/lib/money/format";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { formatDate } from "@/lib/dates/format";
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
@@ -511,7 +512,7 @@ export default function Form26ASPage() {
                 <div>
                   <p className="text-xs font-medium text-ps-ink">FY {u.financial_year}</p>
                   <p className="text-3xs text-ps-hint">
-                    {new Date(u.uploaded_at).toLocaleDateString("en-IN")} · {u.total_records} records
+                    {formatDate(u.uploaded_at)} · {u.total_records} records
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">

@@ -6,6 +6,7 @@ import { yearEndApi, type ReviewStep, type ReviewHistory, type ReviewStatus } fr
 import { Skeleton, FormSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { useRefreshEngagement } from "../_engagementRefresh";
+import { formatDate } from "@/lib/dates/format";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -14,7 +15,7 @@ function timeAgo(iso: string): string {
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
-  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  return formatDate(iso);
 }
 
 const STEP_LABELS: Record<string, string> = {

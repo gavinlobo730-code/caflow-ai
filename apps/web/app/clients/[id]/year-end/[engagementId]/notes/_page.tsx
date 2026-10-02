@@ -7,6 +7,10 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { GapList } from "@/components/ui/callout";
+import { formatDate } from "@/lib/dates/format";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { Button } from "@/components/ui/button";
 
 const TYPE_BADGE: Record<string, string> = {
   auto: "bg-blue-100 text-blue-700",
@@ -165,21 +169,29 @@ export default function NotesPage() {
         <p className="text-xs font-semibold text-ps-body">
           {notes.length} note{notes.length !== 1 ? "s" : ""}
         </p>
-        <button
+        <Button variant="plain" size="none"
           onClick={handleGenerateAll}
           disabled={generating}
           className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark disabled:opacity-50"
         >
           {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
           {generating ? "Generating…" : "Auto-Generate All Notes"}
-        </button>
+        </Button>
       </div>
 
       {notes.length === 0 && (
-        <div className="bg-white rounded-xl border border-ps-border text-center py-14">
-          <Sparkles size={28} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-sm text-ps-label">No notes yet</p>
-          <p className="text-xs text-ps-hint mt-1">Click &quot;Auto-Generate All Notes&quot; to create standard notes.</p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            icon={<Sparkles size={28} />}
+            title="No notes yet"
+            description="Generate the standard notes to the financial statements from the ledger, then edit and lock each one."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["year_end", "write"]} icon={<Sparkles size={14} />} label="Auto-Generate All Notes"
+                  onClick={() => handleGenerateAll()} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       )}
 
@@ -253,14 +265,14 @@ export default function NotesPage() {
                               >
                                 Discard
                               </button>
-                              <button
+                              <Button variant="plain" size="none"
                                 onClick={() => handleSave(note)}
                                 disabled={savingId === note.id}
                                 className="text-xs px-3 py-1.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1"
                               >
                                 {savingId === note.id && <Loader2 size={10} className="animate-spin" />}
                                 Save
-                              </button>
+                              </Button>
                             </div>
                           )}
                           {!isEditing && (
@@ -279,7 +291,7 @@ export default function NotesPage() {
                   {/* Lock button */}
                   {!note.is_locked && (
                     <div className="flex justify-end pt-1">
-                      <button
+                      <Button variant="plain" size="none"
                         onClick={() => handleLock(note)}
                         disabled={lockingId === note.id}
                         className="flex items-center gap-1.5 text-xs text-ps-label hover:text-ps-body border border-ps-border px-3 py-1.5 rounded-lg hover:bg-ps-bg"
@@ -290,7 +302,7 @@ export default function NotesPage() {
                           <Lock size={11} />
                         )}
                         Lock Note
-                      </button>
+                      </Button>
                     </div>
                   )}
                   {note.is_locked && (
@@ -300,7 +312,7 @@ export default function NotesPage() {
                   )}
 
                   <p className="text-3xs text-ps-disabled">
-                    Updated {new Date(note.updated_at).toLocaleDateString("en-IN")}
+                    Updated {formatDate(note.updated_at)}
                   </p>
                 </div>
               )}

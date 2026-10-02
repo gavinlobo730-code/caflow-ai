@@ -5,6 +5,7 @@ import { ClipboardList, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
+import { PageHeader } from "@/components/ui/page-header";
 
 type Bucket = { paise: number; count: number };
 interface Aging {
@@ -44,15 +45,16 @@ function ARDashboard() {
   const buckets = aging?.buckets ?? {};
   return (
     <div className="p-6 max-w-3xl">
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-2">
-          <ClipboardList size={18} className="text-brand" />
-          <h1 className="text-lg font-semibold text-brand">AR Aging</h1>
-        </div>
-        <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
-          <RefreshCw size={13} /> Refresh
-        </button>
-      </div>
+      <PageHeader
+        icon={<ClipboardList size={18} className="text-brand" />}
+        title="AR Aging"
+        actions={
+          <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
+            <RefreshCw size={13} /> Refresh
+          </button>
+        }
+        className="mb-5"
+      />
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <table className="w-full text-sm">
           <thead>

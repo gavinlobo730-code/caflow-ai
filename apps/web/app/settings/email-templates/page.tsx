@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ChevronLeft, Mail, Save } from "lucide-react";
+import { Mail, Save } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type TemplateType = "invoice" | "engagement" | "document_request" | "reminder";
@@ -298,13 +298,11 @@ export default function EmailTemplatesPage() {
       <div className="p-6 max-w-3xl mx-auto space-y-5">
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-        <div>
-          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label transition-colors mb-1">
-            <ChevronLeft size={13} /> Settings
-          </Link>
-          <h1 className="text-xl font-semibold text-ps-ink">Email Templates</h1>
-          <p className="text-sm text-ps-label mt-0.5">Customize the emails sent to clients for invoices, engagements, and reminders.</p>
-        </div>
+        <PageHeader
+          back={{ href: "/settings", label: "Settings" }}
+          title="Email Templates"
+          subtitle="Customize the emails sent to clients for invoices, engagements, and reminders."
+        />
 
         {loadError && !loading && (
           <div className="flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">

@@ -33,6 +33,8 @@ import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/money/format";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { EmptyState } from "@/components/ui/states";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 
@@ -42,7 +44,16 @@ function errorText(e: unknown): string {
   return e instanceof Error && e.message ? e.message : "Something went wrong. Please try again.";
 }
 
-export default function PriceListsPanel({ clientId }: { clientId: string }) {
+export default function PriceListsPanel({
+  clientId,
+  onAddCustomer,
+}: {
+  clientId: string;
+  /** Opens the Add Customer form. Supplied by the Customers tab, which owns that form: a customer is
+   *  made there and this panel only chooses each one's default list, so with no customers the next
+   *  step is the tab's own button, not a second form here. */
+  onAddCustomer: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [lists, setLists] = useState<PriceList[]>([]);
   const [customers, setCustomers] = useState<PriceListCustomerRow[]>([]);
@@ -371,7 +382,17 @@ export default function PriceListsPanel({ clientId }: { clientId: string }) {
               </Callout>
             )}
             {customers.length === 0 ? (
-              <p className="mt-1 text-xs text-ps-hint">No customers yet.</p>
+              <EmptyState
+                className="py-6"
+                title="No customers yet"
+                description="A default price list belongs to a customer. Add this client's customers, then choose each one's list here."
+                action={
+                  <EmptyStateActions>
+                    <EmptyStateAction requires={["client", "write"]} icon={<Plus size={14} />} label="Add Customer"
+                      onClick={onAddCustomer} />
+                  </EmptyStateActions>
+                }
+              />
             ) : (
               <div className="mt-2 overflow-x-auto rounded border border-ps-border">
                 <table className="w-full text-sm">

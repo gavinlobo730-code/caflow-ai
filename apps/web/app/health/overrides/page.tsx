@@ -2,19 +2,18 @@
 
 import { SlidersHorizontal } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 
 export default function OverrideControlsPage() {
 
   // Overrides are per-client — this page shows a brief explanation and links to health dashboard
   return (
     <div className="p-6 space-y-5 bg-ps-bg min-h-full">
-      <div className="flex items-center gap-3">
-        <SlidersHorizontal size={20} className="text-brand" />
-        <div>
-          <h1 className="text-2xl font-bold text-brand">Override Controls</h1>
-          <p className="text-sm text-gray-500">Manage health score overrides per client</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<SlidersHorizontal size={20} className="text-brand" />}
+        title="Override Controls"
+        subtitle="Manage health score overrides per client"
+      />
       <Card className="bg-white border-gray-200 shadow-sm">
         <CardContent className="p-6 space-y-4">
           <p className="text-sm text-gray-700">

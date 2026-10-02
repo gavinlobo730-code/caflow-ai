@@ -31,6 +31,7 @@ import { setupPageLead, SETUP_CONTINUE_HREF } from "@/lib/auth/mfaEnrolment";
 import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { PageHeader } from "@/components/ui/page-header";
 const MIN_PASSWORD_LENGTH = 10;
 
 interface Factor {
@@ -57,10 +58,10 @@ export default function SecuritySettingsPage() {
   const lead = setupPageLead(setup, mustEnrolMfa);
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold text-ps-ink">Security</h1>
-        <p className="text-sm text-ps-label mt-0.5">Manage your password and two-factor authentication</p>
-      </div>
+      <PageHeader
+        title="Security"
+        subtitle="Manage your password and two-factor authentication"
+      />
       {lead === "continue" && (
         <Callout tone="note" title="You're all set">
           <div className="flex flex-wrap items-center justify-between gap-3">

@@ -2,11 +2,13 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import {
-  CheckCircle2, XCircle, Clock, AlertTriangle, ChevronLeft,
+  CheckCircle2, XCircle, Clock, AlertTriangle,
   Building2, RefreshCw,
 } from "lucide-react";
-import Link from "next/link";
 import { api } from "@/lib/api";
+import { formatDateTime } from "@/lib/dates/format";
+import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
 
 interface Approval {
   id: string;
@@ -27,11 +29,6 @@ interface Approval {
   template_name?: string;
   client_name?: string;
   client_id?: string;
-}
-
-function fmtDate(s?: string) {
-  if (!s) return "—";
-  return new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function isOverdue(due?: string) {
@@ -96,20 +93,18 @@ export default function ApprovalsPage() {
     <div className="min-h-screen bg-ps-bg">
       {/* Header */}
       <div className="bg-white border-b border-ps-border px-6 py-4">
-        <div className="flex items-center gap-3">
-          <Link href="/workflows" className="text-ps-label hover:text-brand transition-colors">
-            <ChevronLeft size={18} />
-          </Link>
-          <div>
-            <h1 className="text-xl font-semibold text-brand">Workflow Approvals</h1>
-            <p className="text-sm text-ps-label mt-0.5">Review and respond to pending workflow approval requests</p>
-          </div>
-          {pendingCount > 0 && (
-            <span className="ml-2 bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-              {pendingCount}
-            </span>
-          )}
-        </div>
+        <PageHeader
+          back={{ href: "/workflows", label: "Workflows" }}
+          title="Workflow Approvals"
+          subtitle="Review and respond to pending workflow approval requests"
+          meta={
+            pendingCount > 0 ? (
+              <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                {pendingCount}
+              </span>
+            ) : undefined
+          }
+        />
       </div>
 
       <div className="px-6 py-6 max-w-4xl mx-auto space-y-6">
@@ -211,9 +206,9 @@ export default function ApprovalsPage() {
                       <div className="flex items-center gap-4 mt-2 text-xs text-ps-hint">
                         <span className="flex items-center gap-1">
                           <Clock size={10} />
-                          Due: <strong className={overdue ? "text-red-600" : "text-ps-label"}>{fmtDate(approval.due_at)}</strong>
+                          Due: <strong className={overdue ? "text-red-600" : "text-ps-label"}>{formatDateTime(approval.due_at)}</strong>
                         </span>
-                        <span>Created: {fmtDate(approval.created_at)}</span>
+                        <span>Created: {formatDateTime(approval.created_at)}</span>
                       </div>
                     </div>
 
@@ -248,22 +243,22 @@ export default function ApprovalsPage() {
                         className="w-full px-3 py-2 text-xs border border-ps-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-brand/20 mb-3"
                       />
                       <div className="flex items-center gap-2">
-                        <button
+                        <Button variant="plain" size="none"
                           onClick={() => respond(approval.id, "approved")}
                           disabled={responding === approval.id}
                           className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
                         >
                           <CheckCircle2 size={12} />
                           {responding === approval.id ? "Processing..." : "Approve"}
-                        </button>
-                        <button
+                        </Button>
+                        <Button variant="plain" size="none"
                           onClick={() => respond(approval.id, "rejected")}
                           disabled={responding === approval.id}
                           className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-state-problem-surface text-state-problem border border-state-problem-border hover:bg-state-problem-hover disabled:opacity-50"
                         >
                           <XCircle size={12} />
                           Reject
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}

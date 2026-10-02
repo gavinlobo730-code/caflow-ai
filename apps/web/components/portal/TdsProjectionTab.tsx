@@ -25,6 +25,7 @@ import { Loader2, Info, TrendingUp } from "lucide-react";
 import { apiGet, getAuthToken } from "@/lib/invoices/shared";
 import { formatPaise } from "@/lib/services/formatting";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { formatMonthYear } from "@/lib/dates/format";
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
 
@@ -46,13 +47,6 @@ interface Projection {
   estimated_annual_gross_paise: number;
   gaps: string[];
 }
-
-const MONTH_LABEL = (ym: string) => {
-  const [y, m] = ym.split("-");
-  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${names[Number(m) - 1] ?? m} ${y}`;
-};
 
 export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) {
   // The year list is DERIVED from the clock, never listed — a hardcoded array
@@ -132,7 +126,7 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
               <tbody className="divide-y divide-ps-border">
                 {data.months.map((m) => (
                   <tr key={m.month}>
-                    <td className="px-5 py-2 text-ps-ink">{MONTH_LABEL(m.month)}</td>
+                    <td className="px-5 py-2 text-ps-ink">{formatMonthYear(m.month)}</td>
                     <td className="px-5 py-2 text-right tabular-nums">{formatPaise(m.gross_paise)}</td>
                     <td className="px-5 py-2 text-right tabular-nums">{formatPaise(m.tds_paise)}</td>
                     <td className="px-5 py-2">

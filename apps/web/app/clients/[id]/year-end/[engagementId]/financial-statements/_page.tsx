@@ -8,6 +8,8 @@ import { useEngagementId } from "../_engagementId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { useClientEntityType } from "@/lib/clients/useClientEntityType";
 import { usesScheduleIII } from "@/lib/entityObligations";
+import { formatDate } from "@/lib/dates/format";
+import { Button } from "@/components/ui/button";
 
 /** Format a figure already rounded to a Schedule III para 4 unit. Whole units,
  *  so no decimals and no division — dividing by 100 here would silently
@@ -413,14 +415,14 @@ export default function FinancialStatementsPage() {
         >
           <RefreshCw size={12} /> Refresh from Ledger
         </button>
-        <button
+        <Button variant="plain" size="none"
           onClick={handleSnapshot}
           disabled={snapshotting}
           className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50"
         >
           {snapshotting ? <RefreshCw size={12} className="animate-spin" /> : <Camera size={12} />}
           Create Snapshot
-        </button>
+        </Button>
 
         {/* Version selector */}
         {versions.length > 0 && (
@@ -432,7 +434,7 @@ export default function FinancialStatementsPage() {
             <option value="live">Live (Current)</option>
             {versions.map((v) => (
               <option key={v.id} value={v.id}>
-                Version {v.version_number} — {new Date(v.created_at).toLocaleDateString("en-IN")}
+                Version {v.version_number} — {formatDate(v.created_at)}
               </option>
             ))}
           </select>

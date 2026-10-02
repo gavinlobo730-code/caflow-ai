@@ -33,6 +33,7 @@ import type { Gstr2bDraftBill } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
 import { documentHref } from "@/lib/accounting/sourceDocument";
 import { StatutoryNotes } from "@/components/ui/callout";
+import { Button } from "@/components/ui/button";
 
 export interface DraftableDocument {
   section: string | null;
@@ -96,10 +97,10 @@ export function CreateDraftBillFrom2B({
 
   return (
     <div className="space-y-1">
-      <button type="button" onClick={() => { void create(); }} disabled={busy}
+      <Button variant="plain" size="none" type="button" onClick={() => create()} disabled={busy}
         className="px-2 py-1 border rounded text-3xs hover:bg-ps-bg disabled:opacity-50">
         {busy ? "Creating…" : "Create draft bill"}
-      </button>
+      </Button>
       {error && <p role="alert" className="text-3xs text-state-problem">{error}</p>}
     </div>
   );

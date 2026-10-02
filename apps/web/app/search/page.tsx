@@ -6,6 +6,7 @@ import { Search, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
+import { PageHeader } from "@/components/ui/page-header";
 // The palette's own client for /api/search — one request, one result shape,
 // one set of category labels. This page used to carry a copy of each, and
 // searched only on Enter while rendering "No results" off the text box: so a
@@ -95,7 +96,7 @@ function SearchContent() {
   return (
     <div className="min-h-screen bg-ps-bg p-8">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-2xl font-bold text-ps-ink mb-6">Search</h1>
+        <PageHeader title="Search" className="mb-6" />
         <form onSubmit={handleSubmit} className="mb-8">
           <div className="relative">
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ps-hint" />

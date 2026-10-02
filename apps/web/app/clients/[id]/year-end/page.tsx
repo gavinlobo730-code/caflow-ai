@@ -13,6 +13,8 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatDate } from "@/lib/services/formatting";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -189,10 +191,18 @@ export default function YearEndPage() {
           {error} <button onClick={load} className="ml-2 underline text-xs">Retry</button>
         </div>
       ) : engagements.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-2">
-          <Calendar size={28} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-ps-label">No year-end engagements yet</p>
-          <p className="text-xs text-ps-hint">Click &quot;New Engagement&quot; to start the year-end close process.</p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            icon={<Calendar size={28} />}
+            title="No year-end engagements yet"
+            description="An engagement is one financial year's close: adjustments, Schedule III notes, financial statements and the export pack."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["year_end", "write"]} icon={<Plus size={14} />} label="New Engagement"
+                  onClick={() => setShowCreate(true)} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       ) : (
         <div className="space-y-2">

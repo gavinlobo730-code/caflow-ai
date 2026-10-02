@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { NAV_GROUPS } from "@/components/panels/AccountingPanel";
 import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
+import { PageHeader } from "@/components/ui/page-header";
 
 // Phase 3 consolidation: this is the firm ADMINISTRATION hub only. Day-to-day
 // accounting — journals, ledger, trial balance, P&L, balance sheet, cash flow,
@@ -96,10 +97,10 @@ export default function AccountingHubPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-ps-ink">Accounting — Administration</h1>
-        <p className="text-sm text-ps-label mt-0.5">Firm-level setup & registers. Day-to-day accounting happens in each client&apos;s workspace.</p>
-      </div>
+      <PageHeader
+        title="Accounting — Administration"
+        subtitle="Firm-level setup & registers. Day-to-day accounting happens in each client&apos;s workspace."
+      />
 
       {/* Gateway: accounting flows through clients; the practice is just another client */}
       <Card>
