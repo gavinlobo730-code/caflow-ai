@@ -36,8 +36,10 @@ import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { dayLabel } from "@/lib/dates/dayLabel";
 import { formatPaise } from "@/lib/money/format";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
+import { Button } from "@/components/ui/button";
 import { Callout, StatutoryNotes } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
 
@@ -97,6 +99,10 @@ export default function PostDatedChequesPanel({
   const [msg, setMsg] = useState<Msg>(null);
   const [converted, setConverted] = useState<PostDatedChequeConversion | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // One guard over every write this panel makes (record, convert, cancel). Converting
+  // POSTS a receipt or a vendor payment, so a second click that lands before React has
+  // re-rendered `busy` would be a second voucher; `busy` alone cannot stop that.
+  const { flight } = useSingleFlight();
   const [showFinished, setShowFinished] = useState(false);
   const [presentedOn, setPresentedOn] = useState("");
 
@@ -477,15 +483,16 @@ export default function PostDatedChequesPanel({
           )}
 
           <div className="flex gap-2">
-            <button
+            <Button
+              variant="plain" size="none" spinner={false} flight={flight}
               type="button"
-              onClick={() => void submit()}
+              onClick={() => submit()}
               disabled={busy !== null}
               className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark disabled:opacity-50"
             >
               {busy === "save" && <Loader2 size={12} className="animate-spin" />}
               {editing ? "Save changes" : "Record cheque"}
-            </button>
+            </Button>
             <button type="button" onClick={closeForm}
               className="rounded-lg border border-ps-border px-3 py-1.5 text-xs text-ps-label hover:bg-ps-bg">
               Close
@@ -537,9 +544,10 @@ export default function PostDatedChequesPanel({
                   <td className="px-3 py-2 text-right">
                     {c.status === "held" && (
                       <span className="inline-flex flex-wrap justify-end gap-1">
-                        <button
+                        <Button
+                          variant="plain" size="none" spinner={false} flight={flight}
                           type="button"
-                          onClick={() => void convert(c)}
+                          onClick={() => convert(c)}
                           disabled={!c.is_due || busy !== null}
                           title={c.is_due
                             ? `Make this an ordinary ${words.made.toLowerCase()}`
@@ -548,15 +556,16 @@ export default function PostDatedChequesPanel({
                         >
                           {busy === `convert:${c.id}` && <Loader2 size={12} className="animate-spin" />}
                           {words.convert}
-                        </button>
+                        </Button>
                         <button type="button" onClick={() => openEdit(c)} disabled={busy !== null}
                           className="rounded-lg border border-ps-border px-2 py-1 text-2xs hover:bg-ps-bg disabled:opacity-50">
                           Edit
                         </button>
-                        <button type="button" onClick={() => void cancel(c)} disabled={busy !== null}
+                        <Button variant="plain" size="none" spinner={false} flight={flight}
+                          type="button" onClick={() => cancel(c)} disabled={busy !== null}
                           className="rounded-lg border border-ps-border px-2 py-1 text-2xs text-state-problem hover:bg-ps-bg disabled:opacity-50">
                           Cancel
-                        </button>
+                        </Button>
                       </span>
                     )}
                   </td>

@@ -8,6 +8,7 @@ access. Dual-path: in-memory in mock/dev, Supabase in production.
 import os
 import uuid
 from typing import Optional
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -15,9 +16,7 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _MOCK_ASSIGNMENTS: list[dict] = []
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db
 
 
 class AssignmentRepository:

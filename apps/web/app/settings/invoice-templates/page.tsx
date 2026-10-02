@@ -8,6 +8,7 @@ import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface InvoiceTemplate {
@@ -295,7 +296,7 @@ export default function InvoiceTemplatesPage() {
     const question = t.is_default
       ? "Delete your default template? Invoices will use the built-in layout until you mark another template default. This cannot be undone."
       : "Delete this template? This cannot be undone.";
-    if (!confirm(question)) return;
+    if (!(await confirmDialog({ message: question, danger: true, confirmLabel: "Delete" }))) return;
     try {
       const res = await api.invoiceTemplates.delete(t.id) as ApiResp<{ layout_now?: string | null }>;
       if (!res.success) throw new Error(res.error ?? "Failed to delete");

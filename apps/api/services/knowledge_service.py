@@ -24,6 +24,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from services.internal_client_service import is_internal_client
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.knowledge")
@@ -32,9 +33,7 @@ _FIRMWIDE_ROLES = {"partner", "owner", "manager"}   # see client-scoped content 
 _PARTNER_ROLES = {"partner", "owner"}
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db
 
 
 def _role(current_user: dict) -> str:

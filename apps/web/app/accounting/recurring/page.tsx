@@ -22,6 +22,8 @@ import { todayLocalISO } from "@/lib/dateMath";
 import type { Account, Client } from "@/lib/types";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
+import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -255,7 +257,7 @@ export default function RecurringPage() {
   }
 
   async function remove(t: RecurringJournalTemplate) {
-    if (!confirm(`Delete "${t.name}"? The journals it already generated are not affected.`)) return;
+    if (!(await confirmDialog({ message: `Delete "${t.name}"? The journals it already generated are not affected.`, danger: true, confirmLabel: "Delete" }))) return;
     setBusyId(t.id);
     try {
       const res = await api.recurringJournals.remove(t.id);
@@ -359,13 +361,13 @@ export default function RecurringPage() {
             nothing reaches the ledger until a CA posts it.
           </p>
         </div>
-        <button
+        <Button variant="plain" size="none"
           onClick={runAll}
           disabled={busyId !== null || dueNow.length === 0}
           className="flex items-center gap-1 px-3 py-1.5 text-sm border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40"
         >
           <Play size={14} /> Generate {dueNow.length} due
-        </button>
+        </Button>
         <button
           onClick={() => downloadCsv("recurring-journals.csv", toCsv(templates, [
             { key: "client", header: "Client", accessor: (t: RecurringJournalTemplate) =>
@@ -467,25 +469,25 @@ export default function RecurringPage() {
                     <td className="px-5 py-2.5">
                       <div className="flex items-center gap-3">
                         {t.status === "active" && (
-                          <button
+                          <Button variant="plain" size="none"
                             onClick={() => generate(t)}
                             disabled={busy}
                             className="text-xs text-green-700 hover:text-green-900 font-medium disabled:opacity-40"
                           >
                             {busy ? "Working…" : "Generate draft"}
-                          </button>
+                          </Button>
                         )}
                         <button onClick={() => openEdit(t)} className="text-xs text-blue-600 hover:text-blue-800">
                           Edit
                         </button>
-                        <button
+                        <Button variant="plain" size="none"
                           onClick={() => toggleStatus(t)}
                           disabled={busy}
                           className="text-xs text-ps-hint hover:text-ps-label flex items-center gap-1 disabled:opacity-40"
                         >
                           {t.status === "active" ? <Pause size={12} /> : <Play size={12} />}
                           {t.status === "active" ? "Pause" : "Resume"}
-                        </button>
+                        </Button>
                         <button
                           onClick={() => openHistory(t)}
                           disabled={busy}
@@ -493,13 +495,13 @@ export default function RecurringPage() {
                         >
                           <History size={12} /> History
                         </button>
-                        <button
+                        <Button variant="plain" size="none" spinner={false}
                           onClick={() => remove(t)}
                           disabled={busy}
                           className="text-xs text-red-600 hover:text-red-800 disabled:opacity-40"
                         >
                           <Trash2 size={12} />
-                        </button>
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -737,13 +739,13 @@ export default function RecurringPage() {
               <button onClick={() => setModalOpen(false)} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none"
                 onClick={handleSave}
                 disabled={busyId === "save"}
                 className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
               >
                 {busyId === "save" ? "Saving…" : "Save template"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

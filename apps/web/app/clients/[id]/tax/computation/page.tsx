@@ -16,6 +16,8 @@ import RegimeElectionPanel from "@/components/tax/RegimeElectionPanel";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/use-toast";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1082,7 +1084,7 @@ export default function TaxComputationPage() {
       setDisallAmount("");
       await load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed");
+      toast({ title: err instanceof Error ? err.message : "Failed", variant: "destructive" });
     } finally {
       setSavingDisall(false);
     }
@@ -1543,11 +1545,11 @@ export default function TaxComputationPage() {
                     </div>
                   )}
 
-                  <button type="button" onClick={handlePresumptive}
+                  <Button variant="plain" size="none" type="button" onClick={handlePresumptive}
                     disabled={actionInFlight}
                     className="text-xs px-3 py-1.5 bg-brand-dark text-white rounded-lg disabled:opacity-50">
                     {presComputing ? "Computing…" : "Compute presumptive income"}
-                  </button>
+                  </Button>
 
                   {presError && <Callout tone="problem">{presError}</Callout>}
 
@@ -2007,7 +2009,7 @@ export default function TaxComputationPage() {
               </p>
             )}
 
-            <button
+            <Button variant="plain" size="none" spinner={false}
               onClick={handleCompute}
               // No year resolved means the server never told us which years it
               // can compute. Posting fy:"" would take the engine's own default
@@ -2018,7 +2020,7 @@ export default function TaxComputationPage() {
               {computing && <Loader2 size={12} className="animate-spin" />}
               <Save size={12} />
               Compute &amp; Save Snapshot
-            </button>
+            </Button>
 
             {computeResult && computeResult.fy && computeResult.fy !== fy && (
               <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-3">
@@ -2336,24 +2338,24 @@ export default function TaxComputationPage() {
                       {can("income_tax", "approve") ? (
                         <div className="flex gap-1 justify-end mt-1">
                           {d.status !== "accepted" && (
-                            <button
+                            <Button variant="plain" size="none"
                               type="button"
                               onClick={() => setDisallowanceStatus(d.id, "accepted")}
                               disabled={statusBusy === d.id || actionInFlight}
                               className="text-3xs px-2 py-0.5 rounded border border-green-200 text-green-700 hover:bg-green-50 disabled:opacity-40"
                             >
                               {statusBusy === d.id ? "…" : "Accept"}
-                            </button>
+                            </Button>
                           )}
                           {d.status !== "rejected" && (
-                            <button
+                            <Button variant="plain" size="none"
                               type="button"
                               onClick={() => setDisallowanceStatus(d.id, "rejected")}
                               disabled={statusBusy === d.id || actionInFlight}
                               className="text-3xs px-2 py-0.5 rounded border border-ps-border text-ps-label hover:bg-ps-bg disabled:opacity-40"
                             >
                               {statusBusy === d.id ? "…" : "Reject"}
-                            </button>
+                            </Button>
                           )}
                         </div>
                       ) : d.status === "pending" ? (
@@ -2411,14 +2413,14 @@ export default function TaxComputationPage() {
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => setShowDisallForm(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
-                  <button
+                  <Button variant="plain" size="none" spinner={false}
                     onClick={handleSaveDisallowance}
                     disabled={actionInFlight || !disallDesc || !disallAmount}
                     className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1"
                   >
                     {savingDisall && <Loader2 size={10} className="animate-spin" />}
                     Save
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -2541,14 +2543,14 @@ export default function TaxComputationPage() {
 
                 {lossError && <Callout tone="problem">{lossError}</Callout>}
                 <div className="flex justify-end">
-                  <button
+                  <Button variant="plain" size="none"
                     type="button"
                     onClick={saveLoss}
                     disabled={actionInFlight}
                     className="px-3 py-1.5 rounded bg-brand-dark text-white text-xs font-medium disabled:opacity-40"
                   >
                     {savingLoss ? "Recording…" : "Record loss"}
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -2597,14 +2599,14 @@ export default function TaxComputationPage() {
                   </div>
                   <div className="text-right flex items-center gap-2">
                     {s.status !== "reviewed" && (
-                      <button
+                      <Button variant="plain" size="none"
                         onClick={() => markSnapshotReviewed(s.id)}
                         disabled={reviewing !== null}
                         className="text-3xs px-2 py-1 border border-ps-border rounded-md text-ps-label hover:bg-white disabled:opacity-50"
                         title="A filing cannot leave draft while the computation it pins is unreviewed"
                       >
                         {reviewing === s.id ? "Marking…" : "Mark reviewed"}
-                      </button>
+                      </Button>
                     )}
                     {s.status === "reviewed" && <CheckCircle size={12} className="text-green-500" />}
                     <div>

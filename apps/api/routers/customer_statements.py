@@ -21,18 +21,14 @@ from core.authz import assert_client_access
 from services.customer_statement_service import customer_statement_service
 from services.audit_service import log_event
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
+from core import db_provider
 
 _logger = logging.getLogger("caflow.customer_statements")
 
 router = APIRouter(prefix="/api/customer-statements", tags=["customer-statements"])
 
 
-def _db():
-    import os
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db_or_none
 
 
 class StatementEmailIn(BaseModel):

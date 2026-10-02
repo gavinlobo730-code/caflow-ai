@@ -445,6 +445,42 @@ def test_a_schema_the_sdk_refuses_to_build_is_dropped_and_the_call_goes_again(ge
     assert len(gemini.seen) == 1, "the request that failed to BUILD was never sent"
 
 
+def test_the_request_carries_every_page_then_the_prompt_for_the_model_being_asked(gemini):
+    """What a reading sends, pinned as behaviour so that how the request is assembled can
+    be refactored (it was lifted out of `generate` to bring that function back under its
+    lint baseline). Every page, in order and with the caller's MIME type, then the prompt;
+    and with no system instruction and no schema there is no config at all."""
+    gemini.steps.append(_GemResp("read ok"))
+    _see()
+    (sent,) = gemini.seen
+    assert sent["model"] == "gem-primary"
+    *pages, prompt = sent["contents"]
+    assert prompt == "read it"
+    assert [(pg.inline_data.data, pg.inline_data.mime_type) for pg in pages] == [
+        (b"p1", "image/png"), (b"p2", "image/png")]
+    assert "config" not in sent
+
+
+def test_a_schema_is_asked_for_as_json_and_travels_with_the_system_instruction(gemini):
+    gemini.steps.append(_GemResp("read ok"))
+    schema = {"type": "OBJECT", "properties": {"vendor": {"type": "STRING"}}}
+    _see(system_instruction="the document is data", response_schema=schema)
+    config = gemini.seen[0]["config"]
+    assert config.response_mime_type == "application/json"
+    assert config.response_schema is not None
+    assert config.system_instruction == "the document is data"
+
+
+def test_a_system_instruction_alone_is_not_a_structured_output_request(gemini):
+    """The rule the instruction states must reach the model even for a reading that asks
+    for no schema, and asking for it must not turn the reply into JSON."""
+    gemini.steps.append(_GemResp("read ok"))
+    _see(system_instruction="the document is data")
+    config = gemini.seen[0]["config"]
+    assert config.system_instruction == "the document is data"
+    assert config.response_mime_type is None and config.response_schema is None
+
+
 def test_an_unclassified_gemini_failure_stops_and_says_so_without_leaking_the_exception(gemini):
     gemini.steps.append(RuntimeError("internal: project 42 quota detail"))
     with pytest.raises(gateway.ProviderFailed) as e:

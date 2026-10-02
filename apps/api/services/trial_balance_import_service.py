@@ -55,6 +55,7 @@ from domain.accounting.trial_balance import (
 )
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.trial_balance_import")
@@ -68,9 +69,7 @@ TB_SOURCE = "TrialBalance"
 TB_REFERENCE = "TRIAL-BALANCE"
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db
 
 
 def _slug_code(name: str) -> str:

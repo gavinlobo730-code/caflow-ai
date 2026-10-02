@@ -11,7 +11,7 @@
  * authoritative), and Save & Issue / Save & Send chain the existing endpoints.
  */
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Trash2, CheckCircle, Send, Loader2, AlertCircle, Plus } from "lucide-react";
+import { Trash2, CheckCircle, Send, AlertCircle, Plus } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
@@ -49,6 +49,8 @@ import {
 } from "@/lib/invoices/shared";
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
+import { Button } from "@/components/ui/button";
+import { useSingleFlight } from "@/lib/async/useSingleFlight";
 
 type SaveAction = "draft" | "issue" | "send";
 
@@ -288,6 +290,7 @@ export function InvoiceEditor({
   const keyRef = useRef(initialLines.length); // next stable row key
   const nextKey = () => keyRef.current++;
   const [saving, setSaving] = useState<SaveAction | null>(null);
+  const { flight } = useSingleFlight();
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
 
@@ -859,13 +862,13 @@ export function InvoiceEditor({
       >
         Cancel
       </button>
-      <button
+      <Button variant="plain" size="none" flight={flight}
         onClick={() => save("draft")}
         disabled={busy}
         className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5"
       >
-        {saving === "draft" && <Loader2 size={12} className="animate-spin" />} Save Changes
-      </button>
+        Save Changes
+      </Button>
     </>
   ) : (
     <>
@@ -876,27 +879,31 @@ export function InvoiceEditor({
       >
         Cancel
       </button>
-      <button
+      {/* ONE flight over the three: Save Draft, Save & Send and Save & Issue
+          pressed on the same tick are two documents, and `busy` — React state —
+          lags the click by a render (frontend_ux-09). Button supplies the
+          spinner for the one that was pressed. */}
+      <Button variant="plain" size="none" flight={flight}
         onClick={() => save("draft")}
         disabled={busy}
         className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label disabled:opacity-50 inline-flex items-center gap-1.5"
       >
-        {saving === "draft" && <Loader2 size={12} className="animate-spin" />} Save Draft
-      </button>
-      <button
+        Save Draft
+      </Button>
+      <Button variant="plain" size="none" flight={flight} icon={<Send size={12} />}
         onClick={() => save("send")}
         disabled={busy}
         className="text-xs px-3 py-1.5 border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-50 disabled:opacity-50 inline-flex items-center gap-1.5"
       >
-        {saving === "send" ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Save &amp; Send
-      </button>
-      <button
+        Save &amp; Send
+      </Button>
+      <Button variant="plain" size="none" flight={flight} icon={<CheckCircle size={12} />}
         onClick={() => save("issue")}
         disabled={busy}
         className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5"
       >
-        {saving === "issue" ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Save &amp; Issue
-      </button>
+        Save &amp; Issue
+      </Button>
     </>
   );
 

@@ -466,7 +466,7 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
 
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={() => void save()} disabled={saving}>
+          <Button onClick={() => save()} spinner={false} disabled={saving}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1.5" />}
             Save
           </Button>

@@ -26,6 +26,8 @@ import type { Client } from "@/lib/types";
 import { todayLocalISO } from "@/lib/dateMath";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/use-toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -250,7 +252,7 @@ function UploadDocButton({ noticeId, firmId, clientId, field, label, currentPath
       if (dbErr) throw new Error(dbErr.message);
       onUploaded();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Upload failed");
+      toast({ title: e instanceof Error ? e.message : "Upload failed", variant: "destructive" });
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -260,7 +262,7 @@ function UploadDocButton({ noticeId, firmId, clientId, field, label, currentPath
   async function handleDownload() {
     if (!currentPath) return;
     const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(currentPath, 60);
-    if (error) { alert(error.message); return; }
+    if (error) { toast({ title: error.message, variant: "destructive" }); return; }
     window.open(data.signedUrl, "_blank");
   }
 
@@ -341,7 +343,7 @@ export default function ITNoticesPage() {
   }
 
   async function deleteNotice(id: string) {
-    if (!confirm("Delete this notice?")) return;
+    if (!(await confirmDialog({ message: "Delete this notice?", danger: true, confirmLabel: "Delete" }))) return;
     const sb = getSupabaseClient();
     await sb.from("it_notices").delete().eq("id", id);
     loadData();

@@ -11,6 +11,7 @@ from typing import Optional
 from dateutil.relativedelta import relativedelta
 
 from core.ist_clock import ist_today
+from core import db_provider
 
 # Standard credit period applied to all generated invoices
 CREDIT_PERIOD_DAYS = 30
@@ -22,9 +23,7 @@ def _due_date_for(invoice_date: str) -> str:
     return (d + timedelta(days=CREDIT_PERIOD_DAYS)).date().isoformat()
 
 
-def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_get_db = db_provider.request_db
 
 
 class PeriodAlreadyBilled(Exception):

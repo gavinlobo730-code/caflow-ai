@@ -26,6 +26,7 @@ from typing import Optional
 
 from fastapi import HTTPException, Request, Depends
 from core.auth import get_current_user
+from core import db_provider
 
 _logger = logging.getLogger("caflow.internal_client")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -34,9 +35,7 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _PARTNER_ROLES = {"partner", "owner"}
 
 
-def _db():
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+_db = db_provider.service_db
 
 
 def is_partner(current_user: dict) -> bool:

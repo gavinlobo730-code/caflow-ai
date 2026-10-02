@@ -26,6 +26,7 @@ from models.sales_cycle import (
 from domain.gst import delivery_challan as dc
 from domain.sales import order_cycle as oc
 from services import sales_cycle_service as svc
+from core import db_provider
 
 router = APIRouter(prefix="/api/sales-cycle", tags=["sales_cycle"])
 
@@ -34,15 +35,13 @@ def _mock() -> bool:
     return not os.environ.get("SUPABASE_URL")
 
 
-def _db():
-    # Every route here is already rbac()-gated. get_supabase() is the
-    # RLS-enforced `authenticated` client under USE_USER_JWT, which has no
-    # INSERT/UPDATE/DELETE grant on sales_quotations/sales_orders/
-    # delivery_challans (or their line tables), so the whole sales cycle
-    # 500'd on both read and write. Same fix as routers/fixed_assets.py
-    # (PR #626).
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# Every route here is already rbac()-gated. get_supabase() is the
+# RLS-enforced `authenticated` client under USE_USER_JWT, which has no
+# INSERT/UPDATE/DELETE grant on sales_quotations/sales_orders/
+# delivery_challans (or their line tables), so the whole sales cycle
+# 500'd on both read and write. Same fix as routers/fixed_assets.py
+# (PR #626).
+_db = db_provider.service_db
 
 
 @router.get("/vocabulary")

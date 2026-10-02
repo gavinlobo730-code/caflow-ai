@@ -27,7 +27,7 @@
  * employee's §17(1) for the year. It is not a side effect of looking.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type {
   ArrearsReliefResult, EmployeeLoanRow, PerquisiteResult,
@@ -40,6 +40,10 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
 import { formatDate } from "@/lib/services/formatting";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { useDirtyFields, useReportDirty } from "@/lib/forms/useDirtyFields";
+import { useUnsavedChanges } from "@/lib/invoices/dirtyState";
 
 export type DrawerEmployee = {
   id: string;
@@ -152,19 +156,40 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
   // common case a roster's "Open" button is pressed for.
   const [section, setSection] = useState<Section>("profile");
 
+  // UNSAVED TYPING (frontend_ux-23). Each section is its own form and only one
+  // is mounted, so switching sections used to discard what had been typed in the
+  // last one without a word, and so did Escape, a click on the backdrop and the
+  // Close button. The open section reports whether it holds typing nobody has
+  // saved; every way out of it asks first, and a tab close or reload gets the
+  // browser's own warning.
+  const [dirty, setDirty] = useState(false);
+  const { confirmLeave } = useUnsavedChanges(dirty, undefined, confirmDialog);
+  // ONE question at a time. Escape is heard by this drawer AND by the dialog
+  // that asks (it is dismissed with Escape too), and without this the second
+  // press that dismisses the question would also start another.
+  const asking = useRef(false);
+  const guarded = useCallback(async (then: () => void) => {
+    if (asking.current) return;
+    asking.current = true;
+    try {
+      if (await confirmLeave()) { setDirty(false); then(); }
+    } finally { asking.current = false; }
+  }, [confirmLeave]);
+  const requestClose = useCallback(() => { void guarded(onClose); }, [guarded, onClose]);
+
   // Escape closes the drawer, matching the shared Drawer/Modal/ClientFormModal
   // pattern (a document/window keydown listener) — this component was the one
   // full-screen overlay with no way out but the explicit Close button.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") requestClose();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [requestClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/20" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/20" onClick={requestClose}>
       <div className="w-full max-w-[720px] h-full bg-white shadow-xl overflow-y-auto"
         onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
@@ -175,7 +200,7 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
               {employee.status && employee.status !== "active" ? ` · ${employee.status}` : ""}
             </p>
           </div>
-          <button onClick={onClose}
+          <button onClick={requestClose}
             className="text-xs text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
             Close
           </button>
@@ -183,7 +208,8 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
 
         <div className="px-5 pt-3 flex gap-1.5 flex-wrap border-b border-ps-border pb-3">
           {SECTIONS.map((s) => (
-            <button key={s.key} onClick={() => setSection(s.key)}
+            <button key={s.key}
+              onClick={() => { if (s.key !== section) void guarded(() => setSection(s.key)); }}
               className={`px-2.5 py-1 text-xs rounded-lg border ${
                 section === s.key
                   ? "bg-brand-dark text-white border-brand-dark"
@@ -199,23 +225,24 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
 
         <div className="p-5">
           {section === "profile" && (
-            <ProfileSection employee={employee} onSaved={onChanged} />
+            <ProfileSection employee={employee} onSaved={onChanged} onDirtyChange={setDirty} />
           )}
           {section === "settlement" && (
             <SettlementSection employee={employee} clientId={clientId}
-              canFinalize={canFinalize} onRecorded={onChanged} />
+              canFinalize={canFinalize} onRecorded={onChanged} onDirtyChange={setDirty} />
           )}
           {section === "revisions" && (
-            <RevisionsSection employee={employee} clientId={clientId} onSaved={onChanged} />
+            <RevisionsSection employee={employee} clientId={clientId} onSaved={onChanged}
+              onDirtyChange={setDirty} />
           )}
           {section === "loans" && (
-            <LoansSection employee={employee} clientId={clientId} />
+            <LoansSection employee={employee} clientId={clientId} onDirtyChange={setDirty} />
           )}
           {section === "perquisites" && (
-            <PerquisitesSection employee={employee} clientId={clientId} />
+            <PerquisitesSection employee={employee} clientId={clientId} onDirtyChange={setDirty} />
           )}
           {section === "relief" && (
-            <ReliefSection employee={employee} clientId={clientId} />
+            <ReliefSection employee={employee} clientId={clientId} onDirtyChange={setDirty} />
           )}
         </div>
       </div>
@@ -235,8 +262,8 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
  *  invents, and the format checks (UAN twelve digits, IFSC's RBI shape,
  *  0-100% for HRA/DA, non-negative paise) live once, server-side — an error
  *  here is the server's own sentence, not a client-side guess at its rule. */
-function ProfileSection({ employee, onSaved }: {
-  employee: DrawerEmployee; onSaved: () => void;
+function ProfileSection({ employee, onSaved, onDirtyChange }: {
+  employee: DrawerEmployee; onSaved: () => void; onDirtyChange: (dirty: boolean) => void;
 }) {
   const [pan, setPan] = useState(employee.pan ?? "");
   const [uan, setUan] = useState(employee.uan ?? "");
@@ -254,6 +281,10 @@ function ProfileSection({ employee, onSaved }: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const { dirty, markSaved } = useDirtyFields({
+    pan, uan, esiNumber, bankAccountNo, bankIfsc, joiningDate, basic, hraPercent, daPercent,
+  });
+  useReportDirty(onDirtyChange, dirty);
 
   async function save() {
     setBusy(true); setErr(null); setDone(false);
@@ -289,6 +320,7 @@ function ProfileSection({ employee, onSaved }: {
         da_percent: daBps === null ? null : daBps / 100,
       });
       setDone(true);
+      markSaved();
       onSaved();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "That did not save.");
@@ -346,10 +378,10 @@ function ProfileSection({ employee, onSaved }: {
       {done && <p className="text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700">Saved.</p>}
 
       <div className="flex justify-end">
-        <button onClick={save} disabled={busy}
+        <Button variant="plain" size="none" onClick={save} disabled={busy}
           className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
           {busy ? "Saving…" : "Save"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -357,8 +389,9 @@ function ProfileSection({ employee, onSaved }: {
 
 // ─── Full and final settlement ───────────────────────────────────────────────
 
-function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
+function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirtyChange }: {
   employee: DrawerEmployee; clientId: string; canFinalize: boolean; onRecorded: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const [leavingDate, setLeavingDate] = useState("");
   const [onRetirement, setOnRetirement] = useState(false);
@@ -381,6 +414,12 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const { dirty, markSaved } = useDirtyFields({
+    leavingDate, onRetirement, onDeath, isGovernment, salaryToLastDay, leaveDays, leaveAmount,
+    noticePay, loansOutstanding, otherRecoveries, averageTenMonths, gratuityUsed, leaveUsed,
+    newStatus, paymentDate,
+  });
+  useReportDirty(onDirtyChange, dirty);
 
   function body(): SettlementInput {
     return {
@@ -427,6 +466,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
       setDone(`Settlement recorded. ${employee.name} is now ${newStatus}, the `
         + "withholding is on the year and the ledger entry is posted.");
       setConfirming(false);
+      markSaved();
       onRecorded();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "That did not record.");
@@ -582,10 +622,10 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
                 </label>
                 {confirming ? (
                   <>
-                    <button onClick={record} disabled={busy !== null}
+                    <Button variant="plain" size="none" onClick={record} disabled={busy !== null}
                       className="px-3 py-1.5 text-xs rounded-lg bg-state-problem text-white disabled:opacity-40">
                       {busy === "record" ? "Recording…" : "Yes, record it"}
-                    </button>
+                    </Button>
                     <button onClick={() => setConfirming(false)}
                       className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body">
                       Cancel
@@ -614,8 +654,9 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded }: {
 
 // ─── Salary revisions ────────────────────────────────────────────────────────
 
-function RevisionsSection({ employee, clientId, onSaved }: {
+function RevisionsSection({ employee, clientId, onSaved, onDirtyChange }: {
   employee: DrawerEmployee; clientId: string; onSaved: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const [rows, setRows] = useState<SalaryRevisionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -630,6 +671,10 @@ function RevisionsSection({ employee, clientId, onSaved }: {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { dirty, markSaved } = useDirtyFields({
+    effectiveFrom, basic, hraPercent, daPercent, lta, medical, special, other, reason,
+  });
+  useReportDirty(onDirtyChange, dirty);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -662,6 +707,7 @@ function RevisionsSection({ employee, clientId, onSaved }: {
         throw new Error((res as { error?: string })?.error ?? "That did not save.");
       }
       setEffectiveFrom(""); setBasic(""); setReason("");
+      markSaved();
       await load();
       onSaved();
     } catch (e) {
@@ -704,10 +750,10 @@ function RevisionsSection({ employee, clientId, onSaved }: {
         </div>
         {err && <Callout tone="problem">{err}</Callout>}
         <div className="mt-3 flex justify-end">
-          <button onClick={save} disabled={busy || !effectiveFrom}
+          <Button variant="plain" size="none" onClick={save} disabled={busy || !effectiveFrom}
             className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
             {busy ? "Saving…" : "Record revision"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -744,7 +790,9 @@ function RevisionsSection({ employee, clientId, onSaved }: {
 
 // ─── Loans and advances ──────────────────────────────────────────────────────
 
-function LoansSection({ employee, clientId }: { employee: DrawerEmployee; clientId: string }) {
+function LoansSection({ employee, clientId, onDirtyChange }: {
+  employee: DrawerEmployee; clientId: string; onDirtyChange: (dirty: boolean) => void;
+}) {
   const [rows, setRows] = useState<EmployeeLoanRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [principal, setPrincipal] = useState("");
@@ -755,6 +803,8 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
+  const { dirty, markSaved } = useDirtyFields({ principal, instalment, ratePercent, purpose, startedOn });
+  useReportDirty(onDirtyChange, dirty);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -780,6 +830,7 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
       if (!res?.success) throw new Error(res?.error ?? "That did not save.");
       setNotes(res.data?.notes ?? []);
       setPrincipal(""); setInstalment(""); setPurpose("");
+      markSaved();
       await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "That did not save.");
@@ -821,10 +872,10 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
           </div>
         )}
         <div className="mt-3 flex justify-end">
-          <button onClick={save} disabled={busy || !principal.trim()}
+          <Button variant="plain" size="none" onClick={save} disabled={busy || !principal.trim()}
             className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
             {busy ? "Saving…" : "Record loan"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -861,8 +912,8 @@ function LoansSection({ employee, clientId }: { employee: DrawerEmployee; client
 
 // ─── §17(2) perquisites, Rule 3 ──────────────────────────────────────────────
 
-function PerquisitesSection({ employee, clientId }: {
-  employee: DrawerEmployee; clientId: string;
+function PerquisitesSection({ employee, clientId, onDirtyChange }: {
+  employee: DrawerEmployee; clientId: string; onDirtyChange: (dirty: boolean) => void;
 }) {
   const [fy, setFy] = useState(() => financialYearOfMonth(null));
   const [salaryForRule3, setSalaryForRule3] = useState("");
@@ -885,6 +936,12 @@ function PerquisitesSection({ employee, clientId }: {
   const [busy, setBusy] = useState<"value" | "record" | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const { dirty, markSaved } = useDirtyFields({
+    fy, salaryForRule3, accommodation, populationLakh, employerOwns, leaseRent, rentRecovered,
+    motorCar, engineLitres, withDriver, employerBearsRunning, loan, loanOutstanding,
+    sbiRatePercent, loanInterestCharged, gifts,
+  });
+  useReportDirty(onDirtyChange, dirty);
 
   async function value() {
     setBusy("value"); setErr(null); setDone(null);
@@ -937,6 +994,7 @@ function PerquisitesSection({ employee, clientId }: {
       // next run computed, and only the backend knows that — so it says it.
       setDone((res?.data?.what_it_means ?? "")
         + ` These also reach the employee's Form 16 through 24Q Annexure II.`);
+      markSaved();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "That did not record.");
     } finally { setBusy(null); }
@@ -1086,10 +1144,10 @@ function PerquisitesSection({ employee, clientId }: {
                 employee&apos;s Form 16 through 24Q Annexure II.
               </p>
               <div className="mt-2 flex justify-end">
-                <button onClick={record} disabled={busy !== null}
+                <Button variant="plain" size="none" onClick={record} disabled={busy !== null}
                   className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
                   {busy === "record" ? "Recording…" : "Record for the year"}
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -1101,7 +1159,9 @@ function PerquisitesSection({ employee, clientId }: {
 
 // ─── §89(1) relief on arrears ────────────────────────────────────────────────
 
-function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clientId: string }) {
+function ReliefSection({ employee, clientId, onDirtyChange }: {
+  employee: DrawerEmployee; clientId: string; onDirtyChange: (dirty: boolean) => void;
+}) {
   const [receiptFy, setReceiptFy] = useState(() => financialYearOfMonth(null));
   const [totalIncome, setTotalIncome] = useState("");
   const [useNewRegime, setUseNewRegime] = useState(true);
@@ -1111,6 +1171,12 @@ function ReliefSection({ employee, clientId }: { employee: DrawerEmployee; clien
   const [result, setResult] = useState<ArrearsReliefResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // A WORKSHEET, NOT A SAVE: nothing here is stored — computing §89 relief
+  // answers and keeps nothing — so there is no `markSaved()`. Its typing (a slice
+  // per year, each with two amounts) is still what a section switch or a close
+  // would throw away, so the drawer asks about it like the others.
+  const { dirty } = useDirtyFields({ receiptFy, totalIncome, useNewRegime, form10e, slices });
+  useReportDirty(onDirtyChange, dirty);
 
   async function compute() {
     setBusy(true); setErr(null);

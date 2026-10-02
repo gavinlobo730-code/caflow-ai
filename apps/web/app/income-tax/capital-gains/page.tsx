@@ -59,6 +59,7 @@ import {
 import { listingIsAsked, grandfatheringIsAsked } from "@/lib/income-tax/capitalGainsFacts";
 import { Callout, GapList } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 /** Anything the compute endpoint accepts. The calculator and the register
  *  have different vocabularies and the backend takes the union of both. */
@@ -460,7 +461,7 @@ export default function CapitalGainsPage() {
   }
 
   async function handleDeleteRecord(id: string) {
-    if (!confirm("Delete this record?")) return;
+    if (!(await confirmDialog({ message: "Delete this record?", danger: true, confirmLabel: "Delete" }))) return;
     try {
       await deleteCapitalGain(id);
       await loadRecords();

@@ -27,6 +27,7 @@ from services.statement_currency import attach_currency_outstanding, summarize_b
 from domain.reporting.party_advances import (
     AdvanceInput, aging_bucket as _aging_bucket, empty_buckets, unapplied_advances,
 )
+from core.db_paging import fetch_all
 
 _logger = logging.getLogger("caflow.vendor_statement")
 
@@ -37,31 +38,6 @@ _DEAD_CREDIT_NOTE = {"draft", "cancelled"}
 
 def _d(v) -> str:
     return str(v)[:10]
-
-
-def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
-    """Fetch EVERY row of a Supabase query via keyset paging on `key` (task
-    #221, same audit-C6 class as domain/reporting/sources.py's _fetch_all).
-    An un-paged .execute() is silently capped at PostgREST's ~1000-row limit,
-    understating a client's AP aging / statement totals with no error.
-    `make_query` returns a fresh query builder each call. Test doubles that
-    don't implement order/limit/gt just return their whole (small) fixture
-    from a single execute(), which is already correct."""
-    first = make_query()
-    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
-        return first.execute().data or []
-    out: list = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        rows = q.order(key).limit(page).execute().data or []
-        out.extend(rows)
-        if len(rows) < page:
-            break
-        cursor = rows[-1][key]
-    return out
 
 
 def _ccy_view(row: dict, base_paise: int, txn_amount) -> dict:
@@ -230,13 +206,13 @@ class VendorStatementService:
                 return q
             return q.gte(col, _d(start_date)).lte(col, _d(end_date))
 
-        b = _paginate_all(lambda: _window(db.table("purchase_bills")
+        b = fetch_all(lambda: _window(db.table("purchase_bills")
              .select("id, bill_no, bill_date, net_payable_paise, status, txn_currency, exchange_rate, txn_net_payable")
              .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
              .is_("deleted_at", "null"), "bill_date"))
         bills = [x for x in b if (x.get("status") or "") not in _DEAD_BILL]
 
-        _pay = _paginate_all(lambda: _window(db.table("purchase_payments")
+        _pay = fetch_all(lambda: _window(db.table("purchase_payments")
                 .select("id, payment_no, payment_date, amount_paise, is_reversed, "
                         "txn_currency, exchange_rate, txn_amount")
                 .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id),
@@ -253,7 +229,7 @@ class VendorStatementService:
         payment_ids = [p["id"] for p in payments if p.get("id")]
         fx_delta: dict[str, int] = {}
         if payment_ids:
-            adjs = _paginate_all(lambda: db.table("fx_adjustments").select("id, document_id, base_delta_paise")
+            adjs = fetch_all(lambda: db.table("fx_adjustments").select("id, document_id, base_delta_paise")
                     .eq("firm_id", firm_id).eq("client_id", client_id)
                     .eq("document_type", "purchase_payment").in_("document_id", payment_ids))
             for a in adjs:
@@ -261,13 +237,13 @@ class VendorStatementService:
         for p in payments:
             p["ap_relief_paise"] = int(p.get("amount_paise") or 0) + fx_delta.get(p.get("id"), 0)
 
-        dn = _paginate_all(lambda: _window(db.table("debit_notes")
+        dn = fetch_all(lambda: _window(db.table("debit_notes")
               .select("id, debit_note_no, debit_note_date, total_paise, status")
               .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
               .is_("deleted_at", "null"), "debit_note_date"))
         debit_notes = [x for x in dn if (x.get("status") or "") not in _DEAD_DEBIT_NOTE]
 
-        cn = _paginate_all(lambda: _window(db.table("purchase_credit_notes")
+        cn = fetch_all(lambda: _window(db.table("purchase_credit_notes")
               .select("id, credit_note_no, credit_note_date, total_paise, status")
               .eq("firm_id", firm_id).eq("client_id", client_id).eq("vendor_id", vendor_id)
               .is_("deleted_at", "null"), "credit_note_date"))
@@ -283,7 +259,7 @@ class VendorStatementService:
         # Filtered in the query, not in Python — see customer_statement_service
         # .ar_aging for the reasoning; this is its mirror. outstanding_paise is a
         # generated column (migration 278).
-        bills = _paginate_all(lambda: db.table("purchase_bills")
+        bills = fetch_all(lambda: db.table("purchase_bills")
                  .select("id, vendor_id, bill_no, bill_date, due_date, net_payable_paise, paid_paise, "
                          "debited_paise, credit_note_paise, outstanding_paise, status, txn_currency, "
                          "exchange_rate, txn_net_payable, paid_txn, is_disputed")
@@ -291,7 +267,7 @@ class VendorStatementService:
                  .is_("deleted_at", "null")
                  .not_.in_("status", list(_DEAD_BILL))
                  .gt("outstanding_paise", 0))
-        vnames = {v["id"]: v.get("name") for v in _paginate_all(lambda: db.table("vendors").select("id, name")
+        vnames = {v["id"]: v.get("name") for v in fetch_all(lambda: db.table("vendors").select("id, name")
                   .eq("firm_id", firm_id).eq("client_id", client_id))}
 
         buckets = empty_buckets()
@@ -378,7 +354,7 @@ class VendorStatementService:
         write paths — see domain/reporting/party_advances for why it is read
         rather than derived.
         """
-        pays = _paginate_all(lambda: db.table("purchase_payments")
+        pays = fetch_all(lambda: db.table("purchase_payments")
                 .select("id, payment_no, payment_date, vendor_id, amount_paise, "
                         "unallocated_paise, is_reversed, txn_currency")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
@@ -399,7 +375,7 @@ class VendorStatementService:
         ids = [p["id"] for p in pays if p.get("id")]
         for i in range(0, len(ids), 200):
             chunk = ids[i:i + 200]
-            for a in _paginate_all(lambda chunk=chunk: db.table("purchase_payment_allocations")
+            for a in fetch_all(lambda chunk=chunk: db.table("purchase_payment_allocations")
                     .select("id, purchase_payment_id, allocated_paise, is_voided")
                     .in_("purchase_payment_id", chunk)):
                 if a.get("is_voided"):

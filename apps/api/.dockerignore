@@ -13,3 +13,17 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# WHAT THE SERVING IMAGE DOES NOT NEED (engineering-04). The test suite is most of the directory's weight
+# and none of it runs in production: shipping it put the test runner's whole fixture set, and every
+# production-schema snapshot in tests/fixtures, into the image Render serves traffic from. Nothing the
+# image runs imports from tests/ (a test asserts it, so a runtime module that starts to would fail CI
+# instead of failing in production).
+#
+# migrations/ is NOT here and must not be: core/schema_guard.py reads the migration files at boot to
+# know which columns the code expects. scripts/ is kept (small, and seed_demo_firm.py is run from a shell
+# in the image). tests/test_the_backend_installs_from_a_lock.py holds both halves.
+tests/
+requirements.in
+requirements-dev.in
+requirements-dev.txt

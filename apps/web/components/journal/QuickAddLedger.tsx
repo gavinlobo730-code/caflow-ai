@@ -26,6 +26,7 @@
  * created with a type alone, which is all a journal line needs.
  */
 import { useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Callout } from "@/components/ui/callout";
@@ -119,10 +120,11 @@ export function QuickAddLedger({ clientId, seedName, onCreated, onClose }: {
                   className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
             Cancel
           </button>
-          <button type="button" onClick={() => void save()} disabled={saving}
+          <Button variant="plain" size="none" spinner={false}
+                  type="button" onClick={() => save()} disabled={saving}
                   className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Creating…" : "Create ledger"}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

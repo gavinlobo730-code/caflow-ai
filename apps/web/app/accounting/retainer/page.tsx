@@ -13,6 +13,7 @@ import type { Client } from "@/lib/types";
 import { paiseFromRupeeInput, rupeeInputFromPaise, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
+import { Button } from "@/components/ui/button";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -208,13 +209,13 @@ function SetRetainerModal({
           <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
             Cancel
           </button>
-          <button
+          <Button variant="plain" size="none"
             disabled={saving}
             onClick={handleSave}
             className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save Retainer"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -467,24 +468,24 @@ export default function RetainerPage() {
                             {sched ? "Edit" : "Set"} retainer
                           </button>
                           {sched && sched.is_active && (
-                            <button
+                            <Button variant="plain" size="none"
                               disabled={busy}
                               onClick={() => generate(sched)}
                               className="text-xs text-green-700 hover:text-green-900 font-medium whitespace-nowrap flex items-center gap-1 disabled:opacity-40"
                             >
                               <FileText className="w-3 h-3" />
                               {busy ? "Working…" : "Generate draft invoice"}
-                            </button>
+                            </Button>
                           )}
                           {sched && (
-                            <button
+                            <Button variant="plain" size="none"
                               disabled={busy}
                               onClick={() => toggleActive(sched)}
                               className="text-xs text-ps-hint hover:text-ps-label whitespace-nowrap flex items-center gap-1 disabled:opacity-40"
                             >
                               <Power className="w-3 h-3" />
                               {sched.is_active ? "Pause" : "Resume"}
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </td>

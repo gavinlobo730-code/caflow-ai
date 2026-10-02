@@ -58,7 +58,10 @@ def _npm_apps() -> list[str]:
 
 
 def _pip_apps() -> list[str]:
-    return sorted(p.parent.name for p in APPS.glob("*/requirements*.txt"))
+    # One entry per APP, not per file: apps/api holds the runtime lock requirements.txt (what the image
+    # installs) and its dev lock requirements-dev.txt (what the test and lint jobs add, engineering-04), and
+    # Dependabot's pip entry is per directory, so counting files would say the same app twice.
+    return sorted({p.parent.name for p in APPS.glob("*/requirements*.txt")})
 
 
 def test_the_tree_has_the_manifests_the_rest_of_this_file_assumes():

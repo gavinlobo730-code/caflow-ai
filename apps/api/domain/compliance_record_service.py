@@ -3,7 +3,6 @@ Compliance Record Engine.
 Manages compliance records lifecycle: Not Started → Filed.
 Risk scoring and client health scores.
 """
-import os
 from datetime import date, timedelta
 from typing import Optional
 
@@ -11,6 +10,7 @@ from core.exceptions import ValidationError, NotFoundError
 from core.ist_clock import ist_now, ist_today
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.client_repository import client_repo
+from core import db_provider
 
 # Valid status transitions. Phase 4.4 adds the terminal Filed -> Completed step
 # (Module D progression: ... -> Ready To File -> Filed -> Completed).
@@ -130,13 +130,9 @@ def _filed_date_for(record: dict, data: dict) -> Optional[str]:
     return str(filed)[:10]
 
 
-def _filing_db():
-    """The handle the `filings` row is written through, or None where there is
-    no database (mock mode). One function so a test can hand in a double."""
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+# The handle the `filings` row is written through, or None where there is
+# no database (mock mode). One function so a test can hand in a double.
+_filing_db = db_provider.request_db_or_none
 
 
 def _close_the_period(record: dict, filed_date: Optional[str], arn: Optional[str]) -> dict:

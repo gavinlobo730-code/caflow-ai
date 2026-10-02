@@ -47,6 +47,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { type Account, type BankAccount, fmt } from "@/components/banking/shared";
 import { EntryDetailModal } from "@/components/banking/EntryDetailModal";
 import { BankAccounts, BankImportModal } from "@/components/banking/AccountsPanel";
+import { Button } from "@/components/ui/button";
 
 // ── the row, as the server sends it ─────────────────────────────────────────
 
@@ -603,10 +604,10 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
   const actionCell = (t: Entry) => {
     const stop = (e: React.MouseEvent) => e.stopPropagation();
     if (t.entry_state === "passed") {
-      return <button onClick={(e) => { stop(e); undoOne(t); }} className="text-2xs px-2.5 py-1 border border-ps-border rounded-md text-ps-label hover:bg-ps-bg inline-flex items-center gap-1"><Undo2 size={11} /> Undo</button>;
+      return <Button variant="plain" size="none" onClick={(e) => { stop(e); return undoOne(t); }} className="text-2xs px-2.5 py-1 border border-ps-border rounded-md text-ps-label hover:bg-ps-bg inline-flex items-center gap-1"><Undo2 size={11} /> Undo</Button>;
     }
     if (t.entry_state === "set_aside") {
-      return <button onClick={(e) => { stop(e); restoreOne(t); }} className="text-2xs px-2.5 py-1 border border-ps-border rounded-md text-ps-label hover:bg-ps-bg inline-flex items-center gap-1"><RotateCcw size={11} /> Restore</button>;
+      return <Button variant="plain" size="none" onClick={(e) => { stop(e); return restoreOne(t); }} className="text-2xs px-2.5 py-1 border border-ps-border rounded-md text-ps-label hover:bg-ps-bg inline-flex items-center gap-1"><RotateCcw size={11} /> Restore</Button>;
     }
     if (t.entry_state === "covered") return <span className="text-3xs text-ps-hint">—</span>;
     const canPass = t.entry_state === "ready" || (t.entry_state === "proposed" && t.draft_source !== "document");
@@ -902,7 +903,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
             <p className="text-3xs text-ps-hint">The lines become Ready with this ledger; nothing is passed until you pass it.</p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setBookUnder(null)} disabled={bookBusy} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
-              <button onClick={applyBookUnder} disabled={actionInFlight || !bookAccountId} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40">{bookBusy ? "Booking…" : "Book under"}</button>
+              <Button variant="plain" size="none" onClick={applyBookUnder} disabled={actionInFlight || !bookAccountId} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40">{bookBusy ? "Booking…" : "Book under"}</Button>
             </div>
           </div>
         </div>

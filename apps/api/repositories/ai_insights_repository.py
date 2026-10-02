@@ -2,6 +2,7 @@ import os
 import uuid
 from typing import Optional
 from repositories.base import BaseRepository
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -9,9 +10,7 @@ if _USE_MOCK:
     from domain.ai_insight_service import MOCK_AI_INSIGHTS_V2, _insight_index
 
 
-def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_get_db = db_provider.request_db
 
 
 class AIInsightsRepository(BaseRepository[dict]):

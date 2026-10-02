@@ -109,6 +109,23 @@ HELPERS = {
     "_marketing_claims.py",
     "_marketing_copy.py",
     "_marketing_vocabulary.py",
+    # engineering-23. The one place a Hypothesis test's settings are decided (derandomized, no replay
+    # database, a deadline that cannot flake) and the amount strategies the property tests share. Imported
+    # by `test_the_money_and_statutory_kernels_hold_for_any_input.py`; it skips the importer where hypothesis
+    # is not installed and raises where `CI` is set.
+    "_property.py",
+    # ops-16. A stand-in for `psql` that records how the migration runner CALLED it and models
+    # what a transaction does (a file that fails on its third statement leaves nothing, a
+    # baseline file keeps its partial effects). Imported by
+    # `test_the_migration_runner_is_atomic_and_remembers.py`; the real server's half of the
+    # proof is `test_a_migration_is_atomic_pg.py`, which needs HARNESS_PG.
+    "_fake_psql.py",
+    # ops-14. The scheduler's claim state machine as ONE table of scenarios (who claims, who is
+    # refused, what an expired lease allows), run through the in-memory store by
+    # `test_a_scheduled_job_is_claimed_before_it_runs.py` and through migration 471's SQL on a real
+    # PostgreSQL by `test_471_a_scheduled_job_is_claimed_before_it_runs_pg.py`. Shared on purpose: two
+    # copies of the table would be two suites agreeing with themselves, not with each other.
+    "_claim_scenarios.py",
 }
 
 _EXITS = {"exit", "quit", "_exit"}

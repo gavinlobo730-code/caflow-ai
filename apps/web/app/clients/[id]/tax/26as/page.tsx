@@ -9,6 +9,7 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL (TDS-20's first half).
@@ -429,14 +430,14 @@ export default function Form26ASPage() {
           <Upload size={12} /> Upload 26AS Text
         </button>
         {parsedUploads.length > 0 && (
-          <button
+          <Button variant="plain" size="none" spinner={false}
             onClick={handleReconcile}
             disabled={actionInFlight}
             className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
           >
             {reconciling ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
             Run Reconciliation
-          </button>
+          </Button>
         )}
       </div>
 
@@ -488,14 +489,14 @@ export default function Form26ASPage() {
           <div className="flex gap-2 justify-end">
             <button onClick={() => { setShowUpload(false); setRawText(""); }}
               className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
-            <button
+            <Button variant="plain" size="none" spinner={false}
               onClick={handleUploadAndParse}
               disabled={actionInFlight || !rawText.trim()}
               className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1"
             >
               {uploading && <Loader2 size={10} className="animate-spin" />}
               Upload &amp; Parse
-            </button>
+            </Button>
           </div>
         </div>
       )}

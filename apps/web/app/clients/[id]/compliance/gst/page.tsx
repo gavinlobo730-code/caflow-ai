@@ -31,6 +31,8 @@ import type { CreditLedgerBlock, ProbableMatch2B } from "@/lib/api";
 import { readGstr2bText } from "@/lib/gst/gstr2bFile";
 import { Probable2BMatches } from "@/components/gst/Probable2BMatches";
 import { CreateDraftBillFrom2B } from "@/components/gst/CreateDraftBillFrom2B";
+import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -734,10 +736,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
           </label>
           {computeError && <p className="text-state-problem text-sm">{computeError}</p>}
           <div className="flex gap-2">
-            <button onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
+            <Button variant="plain" size="none" onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
-            </button>
+            </Button>
             <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); }}
               className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
@@ -799,10 +801,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                     />
                   );
                 })()}
-                <button onClick={saveComputed} disabled={actionInFlight}
+                <Button variant="plain" size="none" onClick={saveComputed} disabled={actionInFlight}
                   className="px-3 py-1 bg-state-ready-solid text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
-                </button>
+                </Button>
               </div>
             );
           })()}
@@ -818,10 +820,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
           <RegistrationPicker state={reg} id="gstr1-new-registration"
             disabled={actionInFlight} />
           <div className="flex gap-2">
-            <button onClick={saveNew} disabled={actionInFlight || !period || !reg.choice.gstin}
+            <Button variant="plain" size="none" onClick={saveNew} disabled={actionInFlight || !period || !reg.choice.gstin}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {saving ? "Saving…" : "Save Draft"}
-            </button>
+            </Button>
             <button onClick={() => setShowNew(false)}
               className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
@@ -867,12 +869,12 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                 </td>
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "draft" && (
-                    <button onClick={() => updateStatus(r.id as string, "validated")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Validate</button>
+                    <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "validated")}
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Validate</Button>
                   )}
                   {r.status === "validated" && (
-                    <button onClick={() => updateStatus(r.id as string, "ca_approved")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">CA Approve</button>
+                    <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "ca_approved")}
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">CA Approve</Button>
                   )}
                   {/* Only on an approved statement, and only where the server
                       says the walk-through exists — the dead-control rule. */}
@@ -1064,10 +1066,9 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   }
 
   async function deleteReturn(id: string, period: string) {
-    if (!window.confirm(
-      `Delete the GSTR-3B for ${period}?\n\nThis removes the saved working only. ` +
+    if (!(await confirmDialog({ message: `Delete the GSTR-3B for ${period}?\n\nThis removes the saved working only. ` +
       `Nothing has been filed, and the underlying invoices and bills are untouched — ` +
-      `you can compute it again at any time.`)) return;
+      `you can compute it again at any time.`, danger: true, confirmLabel: "Delete" }))) return;
     setBusyRow(id);
     setRowError(null);
     try {
@@ -1225,10 +1226,10 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
           </div>
           {computeError && <p className="text-state-problem text-sm">{computeError}</p>}
           <div className="flex gap-2">
-            <button onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
+            <Button variant="plain" size="none" onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
-            </button>
+            </Button>
             <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); }}
               className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
@@ -1435,10 +1436,10 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     );
                   })()}
                 </details>
-                <button onClick={saveComputed} disabled={actionInFlight}
+                <Button variant="plain" size="none" onClick={saveComputed} disabled={actionInFlight}
                   className="px-3 py-1 bg-state-ready-solid text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
-                </button>
+                </Button>
               </div>
             );
           })()}
@@ -1454,10 +1455,10 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
           <RegistrationPicker state={reg} id="gstr3b-new-registration"
             disabled={actionInFlight} />
           <div className="flex gap-2">
-            <button onClick={saveNew} disabled={actionInFlight || !period || !reg.choice.gstin}
+            <Button variant="plain" size="none" onClick={saveNew} disabled={actionInFlight || !period || !reg.choice.gstin}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {saving ? "Saving…" : "Save Draft"}
-            </button>
+            </Button>
             <button onClick={() => setShowNew(false)}
               className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
@@ -1501,17 +1502,17 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 </td>
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "draft" && (
-                    <button onClick={() => updateStatus(r.id as string, "validated")}
+                    <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "validated")}
                       disabled={busyRow === r.id}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted disabled:opacity-40">
-                      {busyRow === r.id ? "Working…" : "Validate"}</button>
+                      {busyRow === r.id ? "Working…" : "Validate"}</Button>
                   )}
                   {r.status === "validated" && (
-                    <button onClick={() => updateStatus(r.id as string, "ca_approved")}
+                    <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "ca_approved")}
                       disabled={busyRow === r.id}
                       title="Approval re-checks the return against the books first, which can take a few seconds"
                       className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready disabled:opacity-40">
-                      {busyRow === r.id ? "Checking books…" : "CA Approve"}</button>
+                      {busyRow === r.id ? "Checking books…" : "CA Approve"}</Button>
                   )}
                   {/* Only on an approved return, because that is where real
                       filing would sit — and only where the server says the
@@ -1542,18 +1543,18 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       control that exists only to be told no. */}
                   {UNFILED.includes(r.status as string) && (
                     <>
-                      <button onClick={() => recheck(r.id as string)}
+                      <Button variant="plain" size="none" onClick={() => recheck(r.id as string)}
                         disabled={busyRow === r.id}
                         title="Check whether the books have changed since this was computed"
                         className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted disabled:opacity-40">
                         {busyRow === r.id ? "…" : "Recheck"}
-                      </button>
-                      <button onClick={() => deleteReturn(r.id as string, r.period as string)}
+                      </Button>
+                      <Button variant="plain" size="none" onClick={() => deleteReturn(r.id as string, r.period as string)}
                         disabled={busyRow === r.id}
                         title="Delete this saved working. Nothing has been filed."
                         className="text-xs px-2 py-0.5 border border-state-problem-border rounded hover:bg-state-problem-hover text-state-problem disabled:opacity-40">
                         Delete
-                      </button>
+                      </Button>
                     </>
                   )}
                 </td>
@@ -1576,11 +1577,11 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                           </p>
                         ))}
                         <div className="pt-1">
-                          <button onClick={() => recompute(r.id as string)}
+                          <Button variant="plain" size="none" onClick={() => recompute(r.id as string)}
                             disabled={busyRow === r.id}
                             className="text-xs px-2 py-0.5 border border-state-attention-border rounded hover:bg-state-attention-hover disabled:opacity-40">
                             {busyRow === r.id ? "Recomputing…" : "Recompute from books"}
-                          </button>
+                          </Button>
                           <span className="ml-2 text-2xs">
                             Recomputing replaces the saved figures and returns this to draft,
                             because an approval of the old ones no longer applies.
@@ -1889,10 +1890,10 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
           </p>
         )}
         {error && <p role="alert" className="text-state-problem text-sm">{error}</p>}
-        <button onClick={upload} disabled={loading || reading || !raw || !inspection?.ok}
+        <Button variant="plain" size="none" onClick={upload} disabled={loading || reading || !raw || !inspection?.ok}
           className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
           {loading ? "Reconciling…" : "Upload & Reconcile"}
-        </button>
+        </Button>
       </div>
 
       {result && (result.problems?.length ?? 0) > 0 && (

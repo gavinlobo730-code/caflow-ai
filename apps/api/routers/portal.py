@@ -21,6 +21,7 @@ from core.authz import assert_client_access, can_access_client, effective_client
 import domain.portal_service as portal_svc
 from services import portal_data_service  # Phase 4.5.2: canonical AR (retires `transactions` dues)
 from services import portal_notice_service  # practice_management-02: tell both sides
+from core import db_provider
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
 
@@ -29,10 +30,7 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 
 def _db():
-    if _USE_MOCK:
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    return None if _USE_MOCK else db_provider.request_db()
 
 
 def _now() -> str:

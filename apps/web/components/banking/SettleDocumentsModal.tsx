@@ -15,6 +15,7 @@ import { VendorLookup } from "@/components/lookups/VendorLookup";
 import { api } from "@/lib/api";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { fmt, rsToP, QueueTxn } from "@/components/banking/shared";
+import { Button } from "@/components/ui/button";
 
 // ── Bank settlement modal ───────────────────────────────────────────────────
 // Allocates ONE bank transaction across one or more sales invoices (a credit
@@ -318,9 +319,9 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
         </div>
         <div className="flex gap-3 justify-end px-5 py-4 border-t border-ps-border">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button onClick={save} disabled={saving || checked.size === 0 || remaining < 0} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+          <Button variant="plain" size="none" onClick={save} disabled={saving || checked.size === 0 || remaining < 0} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Settling…" : `Confirm allocation`}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

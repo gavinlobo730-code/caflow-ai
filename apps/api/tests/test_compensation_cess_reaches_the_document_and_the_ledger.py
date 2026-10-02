@@ -789,7 +789,7 @@ def test_the_line_cess_reaches_table_12(monkeypatch):
         def gt(self, *a, **k): return self
         def execute(self): return type("R", (), {"data": rows})()
 
-    monkeypatch.setattr(grs, "_paginate_all", lambda fn: rows)
+    monkeypatch.setattr(grs, "fetch_all", lambda fn, *a, **k: rows)
     by_doc = grs._document_lines(
         _DB(), "client_sales_invoice_lines", "sales_invoice_id", {"INV-1"})
     line = by_doc["INV-1"][0]

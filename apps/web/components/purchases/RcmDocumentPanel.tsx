@@ -25,6 +25,7 @@ import { api, type RcmDocumentPreview } from "@/lib/api";
 import { formatPaise } from "@/lib/money/format";
 import { Callout, GapList, StatutoryNotes } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 export function RcmDocumentPanel({
   clientId, kind, purchaseBillId, purchasePaymentId, onClose, onIssued,
@@ -242,11 +243,11 @@ export function RcmDocumentPanel({
               className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
               Close
             </button>
-            <button onClick={issue}
+            <Button variant="plain" size="none" onClick={issue}
               disabled={!preview?.due || !!issued || issuing || busy}
               className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
               {issuing ? "Issuing…" : "Issue"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

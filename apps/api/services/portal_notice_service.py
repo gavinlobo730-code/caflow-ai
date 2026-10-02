@@ -51,6 +51,7 @@ from core.urls import portal_login_url
 from domain import practice_notices as rules
 from services import email_service, practice_mail_service as mail
 from services.practice_mail_service import Ref
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.portal_notice")
@@ -58,9 +59,7 @@ _logger = logging.getLogger("caflow.portal_notice")
 _EXCERPT = 140
 
 
-def _db():
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+_db = db_provider.service_db
 
 
 # ── (a) the client's own contacts ────────────────────────────────────────────
@@ -113,7 +112,7 @@ def _notify_contacts(firm_id: str, client_id: str, event_type: str, ref: Ref, se
             firm_id, event_type, contact, [ref],
             lambda _r, c=contact: sender(c, firm_name, practice_name, practice_email),
             day=ist_today(), kind="client_contact")
-        if status == "sent":
+        if status in ("sent", "queued"):
             emailed += 1
     reason = None
     if emailed == 0:
@@ -204,7 +203,7 @@ def client_wrote(firm_id: str, client_id: str, message: dict,
                     str(p.get("email")), p.get("full_name") or "", client_name,
                     mail.app_link(link)),
                 day=ist_today())
-            if status == "sent":
+            if status in ("sent", "queued"):
                 result["emailed"] += 1
     except Exception:                                           # noqa: BLE001
         _logger.warning("caflow.portal_notice: client_wrote failed", exc_info=True)

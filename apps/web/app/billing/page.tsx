@@ -26,6 +26,7 @@ import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 // grouped the Western way (₹1,234,567).
 import { formatPaise as fmtPaise } from "@/lib/money/format";
 import { isOwedFeeInvoice, type FeeInvoiceStatus } from "@/lib/constants/feeInvoiceStatus";
+import { Button } from "@/components/ui/button";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -216,10 +217,10 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
             className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg">
             Cancel
           </button>
-          <button onClick={handleSave} disabled={saving}
+          <Button variant="plain" size="none" onClick={handleSave} disabled={saving}
             className="flex-1 bg-brand text-white rounded-lg py-2 text-sm hover:bg-brand-dark disabled:opacity-60">
             {saving ? "Saving…" : "Save Engagement"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -325,10 +326,10 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
             className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg">
             Cancel
           </button>
-          <button onClick={handleSave} disabled={saving}
+          <Button variant="plain" size="none" onClick={handleSave} disabled={saving}
             className="flex-1 bg-green-600 text-white rounded-lg py-2 text-sm hover:bg-green-700 disabled:opacity-60">
             {saving ? "Saving…" : "Record Receipt"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -770,14 +771,14 @@ export default function BillingPage() {
                         {canWrite ? (
                           <div className="flex flex-wrap gap-1.5">
                             {(ENGAGEMENT_TRANSITIONS[e.status] ?? []).map(next => (
-                              <button
+                              <Button variant="plain" size="none"
                                 key={next}
                                 onClick={() => handleTransition(e, next)}
                                 disabled={transitioning !== null}
                                 className="text-2xs px-2 py-1 rounded-md border border-ps-border text-ps-body hover:bg-ps-hover disabled:opacity-50"
                               >
                                 {transitioning === `${e.id}:${next}` ? "…" : next}
-                              </button>
+                              </Button>
                             ))}
                             {(ENGAGEMENT_TRANSITIONS[e.status] ?? []).length === 0 && (
                               <span className="text-2xs text-ps-hint">No further step</span>

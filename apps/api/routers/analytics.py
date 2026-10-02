@@ -11,13 +11,12 @@ from repositories.engagement_repository import engagement_repo
 from repositories.user_repository import user_repo
 from repositories.client_repository import client_repo
 from core.ist_clock import fy_quarters, ist_fy_label, ist_today
+from core import db_provider
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 
-def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_get_db = db_provider.request_db
 
 
 def _period_range(period: str) -> tuple[str, str, str]:

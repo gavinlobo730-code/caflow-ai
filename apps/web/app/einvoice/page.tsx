@@ -5,6 +5,7 @@ import { Plus, Loader2, AlertTriangle, Zap } from "lucide-react";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { MissingIrnPanel } from "@/components/gst/MissingIrnPanel";
+import { Button } from "@/components/ui/button";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -193,10 +194,10 @@ export default function EInvoicePage() {
           {createError && <p className="text-xs text-red-600">{createError}</p>}
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
-            <button onClick={handleCreate} disabled={actionInFlight || !invNo || !invDate || !clientId}
+            <Button variant="plain" size="none" spinner={false} onClick={handleCreate} disabled={actionInFlight || !invNo || !invDate || !clientId}
               className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -269,10 +270,10 @@ export default function EInvoicePage() {
           {irnError && <p className="text-xs text-red-600">{irnError}</p>}
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowIRN(null)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
-            <button onClick={() => handleRecordIRN(showIRN)} disabled={actionInFlight || !irn || !ackNo}
+            <Button variant="plain" size="none" spinner={false} onClick={() => handleRecordIRN(showIRN)} disabled={actionInFlight || !irn || !ackNo}
               className="text-xs px-3 py-1.5 bg-green-600 text-white rounded disabled:opacity-50 flex items-center gap-1">
               {savingIRN && <Loader2 size={10} className="animate-spin" />} Record IRN
-            </button>
+            </Button>
           </div>
         </div>
       )}

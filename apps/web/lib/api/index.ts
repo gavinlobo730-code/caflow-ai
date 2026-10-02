@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
+import { withReference } from "@/lib/api/requestReference";
 import { exportQuery, type ExportFormat, type ExportParams, type ExportReport } from "@/lib/export/reportExport";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -3023,6 +3024,11 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
  * depreciation it was waiting for.
  */
 export async function errorMessage(res: Response): Promise<string> {
+  // A server-side failure names the request it was, so a CA can quote it (the id is on every response).
+  return withReference(await errorSentence(res), res.status, res.headers);
+}
+
+async function errorSentence(res: Response): Promise<string> {
   let body = "";
   try {
     body = await res.text();

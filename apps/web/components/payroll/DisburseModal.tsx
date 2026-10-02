@@ -12,6 +12,7 @@ import { api, type ApiResp } from "@/lib/api";
 import { toLocalISO } from "@/lib/dateMath";
 import { fmtRs } from "@/components/payroll/shared";
 import { Callout } from "@/components/ui/callout";
+import { Button } from "@/components/ui/button";
 
 /** Only what the modal actually needs. Narrower than the pages' own PayrollRun
  *  types, deliberately: a shared component that demanded every column would
@@ -116,9 +117,9 @@ export function DisburseModal({ run, onClose, onDone }: {
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button onClick={save} disabled={saving || loadingAccts || accounts.length === 0} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+          <Button variant="plain" size="none" onClick={save} disabled={saving || loadingAccts || accounts.length === 0} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Recording…" : "Confirm Payment"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

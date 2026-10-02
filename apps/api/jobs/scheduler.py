@@ -17,19 +17,28 @@ Idempotency:
   - recurring generation is idempotent per-day inside the service
     (last_generated_at check)
   - the scheduler additionally records each job run in scheduler_runs and
-    skips jobs already completed successfully today, so restarts or multiple
-    workers do not double-run
+    skips jobs already completed successfully today, so a restart does not
+    run a finished job again
+  - and a job is CLAIMED before it runs (jobs/claims.py, migration 471), by one
+    atomic statement with an expiring lease, so two instances at once - a rolling
+    deploy, a standby - cannot both run it. The select above is only the cheap
+    first look; the claim is what refuses the second runner. The per-minute
+    workflow tick is claimed per occurrence the same way (ops-14).
 
-Enable with ENABLE_SCHEDULER=true (off by default so multi-worker gunicorn
-deployments can dedicate a single scheduler process, or trigger the same
-logic externally via POST /api/tasks/trigger-scheduler-run with a cron).
+Enable with ENABLE_SCHEDULER=true (off by default so a deployment can leave the
+daily run to something else: a dedicated process, or an external cron calling
+POST /api/internal/scheduler/run-pending with SCHEDULER_TRIGGER_TOKEN, which runs
+whatever is pending through the same claims - ops-15).
 """
 import logging
 import os
+import threading
 from core.db_paging import fetch_all
 from datetime import date, datetime, timezone
 from typing import Optional
 from core.ist_clock import ist_today
+from core import db_provider
+from jobs import claims
 
 logger = logging.getLogger("caflow.jobs")
 
@@ -40,6 +49,13 @@ _scheduler = None
 
 # All per-firm job names recorded in scheduler_runs, in run order. Kept in sync
 # with run_daily_jobs() so health reporting can surface every job's last run.
+#
+# It is what catch-up, the external trigger (run_pending_now) and the health page
+# all judge "what is still pending" by, so a job missing from it is a job whose
+# failure reads as a complete day. `recurring_purchase_bills` and
+# `client_period_metrics` ran in the sweep and were missing from it until ops-15;
+# tests/test_a_scheduled_job_is_claimed_before_it_runs.py now asserts the list is
+# exactly the jobs run_daily_jobs gates, so a job added to one cannot miss the other.
 KNOWN_JOBS = [
     "recurring_generation",
     "escalations",
@@ -47,10 +63,12 @@ KNOWN_JOBS = [
     "collections",
     "recurring_invoices",
     "recurring_journals",
+    "recurring_purchase_bills",
     "compliance_generation",
     "compliance_escalations",
     "balance_cache_audit",
     "reconciliation_audit",
+    "client_period_metrics",
     "bank_trusted_rules",
     "memory_pipeline",
 ]
@@ -62,9 +80,7 @@ def _scheduler_enabled() -> bool:
     return os.environ.get("ENABLE_SCHEDULER", "").lower() in ("1", "true", "yes")
 
 
-def _get_db():
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+_get_db = db_provider.service_db
 
 
 def _already_ran_today(job_name: str, firm_id: Optional[str]) -> bool:
@@ -87,6 +103,68 @@ def _already_ran_today(job_name: str, firm_id: Optional[str]) -> bool:
     except Exception as e:
         logger.warning(f"scheduler_runs check failed ({job_name}): {e}")
         return False
+
+
+# ── Claiming a job before it runs (ops-14) ─────────────────────────────────────
+#
+# `_already_ran_today` above is a SELECT and answers "did a run finish?"; it
+# cannot answer "is one running right now?", which is the question a second
+# instance asks. `_begin` asks both: the cheap read first (so a day's success
+# written before the claim table existed still counts, and a finished job costs
+# one read and no claim), then the claim, which is the part that is atomic.
+#
+# The claim a job holds is kept per THREAD, keyed (job, firm), and ended by
+# `_log_run`: every job block already ends by calling it, success or failure,
+# so the lock is released in the one place that already knows the outcome, and
+# AFTER the run row is written - a process that dies between the two leaves a
+# run row (which `_begin` honours) rather than a finished claim with no record.
+_held = threading.local()
+
+
+def _claim_store():
+    return claims.store_for(mock=_USE_MOCK, db=lambda: _get_db())
+
+
+def _state() -> tuple[dict, dict]:
+    if not hasattr(_held, "claims"):
+        _held.claims, _held.refusals = {}, {}
+    return _held.claims, _held.refusals
+
+
+def _begin(job_name: str, firm_id: Optional[str], force: bool) -> bool:
+    """May this process run `job_name` for `firm_id` now? True means it holds the
+    claim and MUST end it through `_log_run`; False says why in `_skip_reason`."""
+    held, refusals = _state()
+    key = (job_name, firm_id)
+    refusals.pop(key, None)
+    if not force and _already_ran_today(job_name, firm_id):
+        refusals[key] = claims.SKIP_TEXT[claims.ALREADY_SUCCEEDED]
+        return False
+    if firm_id is None:
+        # Every job is per firm (run_daily_jobs loops over firms), so a missing
+        # one is a caller bug. Claims are keyed on the firm; running unclaimed is
+        # what the code did before, and refusing would stop a sweep over a typo.
+        return True
+    decision = claims.claim(job_name, firm_id, run_date=ist_today(), force=force,
+                            heartbeat=True, store=_claim_store())
+    if not decision.claimed:
+        refusals[key] = decision.skip_text
+        return False
+    if decision.claim is not None:
+        held[key] = decision.claim
+    return True
+
+
+def _skip_reason(job_name: str, firm_id: Optional[str]) -> str:
+    _, refusals = _state()
+    return refusals.pop((job_name, firm_id), claims.SKIP_TEXT[claims.ALREADY_SUCCEEDED])
+
+
+def _end_claim(job_name: str, firm_id: Optional[str], status: str) -> None:
+    held, _ = _state()
+    claim = held.pop((job_name, firm_id), None)
+    if claim is not None:
+        claim.finish(status == "success")
 
 
 def _now_iso() -> str:
@@ -121,13 +199,18 @@ def _log_run(job_name: str, firm_id: Optional[str], status: str, detail: dict,
     }
     if started_at:
         record["started_at"] = started_at
-    if _USE_MOCK:
-        _MOCK_RUNS.append(record)
-        return
     try:
-        _get_db().table("scheduler_runs").insert(record).execute()
-    except Exception as e:
-        logger.warning(f"Failed to log scheduler run ({job_name}): {e}")
+        if _USE_MOCK:
+            _MOCK_RUNS.append(record)
+            return
+        try:
+            _get_db().table("scheduler_runs").insert(record).execute()
+        except Exception as e:
+            logger.warning(f"Failed to log scheduler run ({job_name}): {e}")
+    finally:
+        # The claim ends AFTER the record is written (see the note above _begin),
+        # and in a `finally` so a failing insert cannot leave it held.
+        _end_claim(job_name, firm_id, status)
 
 
 def _list_firm_ids() -> list[str]:
@@ -162,6 +245,15 @@ def _list_firm_ids() -> list[str]:
             return []
 
 
+def _close_sweep(firm_ids: list) -> None:
+    """The end of a sweep. A per-minute workflow schedule leaves a claim row per occurrence, so old days are
+    forgotten here, once per run (best effort, and bounded by the store's own retention); then the sweep says
+    it finished. Lifted out of `run_daily_jobs` because that function is under the lint ratchet's size cap and
+    this is the one part of it that owes nothing to a job."""
+    claims.prune(_claim_store())
+    logger.info(f"Daily scheduler run completed for {len(firm_ids)} firm(s)")
+
+
 def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
     """
     Run all daily automation jobs. Safe to call repeatedly — each job is
@@ -176,7 +268,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         firm_result: dict = {}
 
         # 1. Recurring task generation
-        if force or not _already_ran_today("recurring_generation", fid):
+        if _begin("recurring_generation", fid, force):
             t0 = _now_iso()
             try:
                 from jobs.recurring_task_job import run_recurring_generation_job
@@ -190,10 +282,10 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["recurring"] = {"error": str(e)}
                 _log_run("recurring_generation", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["recurring"] = {"skipped": "already ran today"}
+            firm_result["recurring"] = {"skipped": _skip_reason("recurring_generation", fid)}
 
         # 2. Escalation rules
-        if force or not _already_ran_today("escalations", fid):
+        if _begin("escalations", fid, force):
             t0 = _now_iso()
             try:
                 from services.escalation_service import escalation_service
@@ -205,10 +297,10 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["escalations"] = {"error": str(e)}
                 _log_run("escalations", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["escalations"] = {"skipped": "already ran today"}
+            firm_result["escalations"] = {"skipped": _skip_reason("escalations", fid)}
 
         # 3. Invoice overdue transitions
-        if force or not _already_ran_today("invoice_overdue", fid):
+        if _begin("invoice_overdue", fid, force):
             t0 = _now_iso()
             try:
                 from services.invoice_lifecycle_service import run_overdue_check
@@ -220,7 +312,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["invoice_overdue"] = {"error": str(e)}
                 _log_run("invoice_overdue", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["invoice_overdue"] = {"skipped": "already ran today"}
+            firm_result["invoice_overdue"] = {"skipped": _skip_reason("invoice_overdue", fid)}
 
         # 4. Collections — AR overdue sweep + internal follow-up flags
         #    (Amendment v1.1 Batch 4). Operates on the firm's internal-client FEE
@@ -233,7 +325,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #    the code did not: the flag used to advance `reminder_count`, the
         #    column whose number decides whether a real reminder reads as
         #    friendly, second or FINAL. See migration 405.
-        if force or not _already_ran_today("collections", fid):
+        if _begin("collections", fid, force):
             t0 = _now_iso()
             try:
                 from services.collections_service import (
@@ -248,14 +340,14 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["collections"] = {"error": str(e)}
                 _log_run("collections", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["collections"] = {"skipped": "already ran today"}
+            firm_result["collections"] = {"skipped": _skip_reason("collections", fid)}
 
         # 5. Recurring invoices (Phase 4.3) — generate DRAFT invoices for due
         #    templates via the existing invoice engine. Drafts only: never
         #    auto-issue, auto-post a journal, or auto-email (locked decisions).
         #    Idempotent (one invoice per template/occurrence); also runnable
         #    manually so it works whether or not the scheduler is enabled.
-        if force or not _already_ran_today("recurring_invoices", fid):
+        if _begin("recurring_invoices", fid, force):
             t0 = _now_iso()
             try:
                 from services.recurring_invoice_service import generate_due_recurring_invoices
@@ -267,14 +359,14 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["recurring_invoices"] = {"error": str(e)}
                 _log_run("recurring_invoices", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["recurring_invoices"] = {"skipped": "already ran today"}
+            firm_result["recurring_invoices"] = {"skipped": _skip_reason("recurring_invoices", fid)}
 
         # 5b. Recurring JOURNALS (ACC-06). Generates DRAFT manual journals for
         #     every due template and never posts one — this product acts
         #     unprompted only where a Manager marked a bank rule trusted. A
         #     template that fails is recorded and does NOT advance, so the
         #     occurrence stays owed rather than being skipped silently.
-        if force or not _already_ran_today("recurring_journals", fid):
+        if _begin("recurring_journals", fid, force):
             t0 = _now_iso()
             try:
                 from services.recurring_journal_service import run_due as _run_journals
@@ -286,7 +378,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["recurring_journals"] = {"error": str(e)}
                 _log_run("recurring_journals", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["recurring_journals"] = {"skipped": "already ran today"}
+            firm_result["recurring_journals"] = {"skipped": _skip_reason("recurring_journals", fid)}
 
         # 5c. Recurring PURCHASE BILLS (PUR-26). Generates DRAFT supplier bills
         #     — rent, retainers, utilities — and never RECEIVES one: receiving
@@ -295,7 +387,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #     It matters more than a convenience: most of the s.194 series
         #     charges on the YEAR'S aggregate, so a month nobody entered
         #     changes what the next bill should withhold.
-        if force or not _already_ran_today("recurring_purchase_bills", fid):
+        if _begin("recurring_purchase_bills", fid, force):
             t0 = _now_iso()
             try:
                 from services.recurring_purchase_bill_service import generate_due_recurring_bills
@@ -307,7 +399,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["recurring_purchase_bills"] = {"error": str(e)}
                 _log_run("recurring_purchase_bills", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["recurring_purchase_bills"] = {"skipped": "already ran today"}
+            firm_result["recurring_purchase_bills"] = {"skipped": _skip_reason("recurring_purchase_bills", fid)}
 
         # 6. Compliance obligation generation (H7) — idempotently materialise the
         #    statutory obligations (GST/TDS/ITR/ROC) for every active engagement so
@@ -318,7 +410,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #    be escalated in the same run. Near FY end (Jan/Feb/Mar) we also roll
         #    forward into the NEXT FY so April-onward periods exist before the year
         #    turns. Generation only — never files or emails anything.
-        if force or not _already_ran_today("compliance_generation", fid):
+        if _begin("compliance_generation", fid, force):
             t0 = _now_iso()
             try:
                 from services.compliance_obligation_service import generate_due, _current_fy
@@ -340,13 +432,13 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["compliance_generation"] = {"error": str(e)}
                 _log_run("compliance_generation", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["compliance_generation"] = {"skipped": "already ran today"}
+            firm_result["compliance_generation"] = {"skipped": _skip_reason("compliance_generation", fid)}
 
         # 7. Compliance escalations (Phase 4.4) — notify the internal team about
         #    obligations due in 7/3/1 days or overdue. Internal only (the mail goes to
         #    the preparer/reviewer/approver and never to a client); idempotent per
         #    (obligation, tier, day) and again per sent mail. No filing.
-        if force or not _already_ran_today("compliance_escalations", fid):
+        if _begin("compliance_escalations", fid, force):
             t0 = _now_iso()
             try:
                 from services.compliance_obligation_service import escalate
@@ -358,7 +450,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["compliance_escalations"] = {"error": str(e)}
                 _log_run("compliance_escalations", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["compliance_escalations"] = {"skipped": "already ran today"}
+            firm_result["compliance_escalations"] = {"skipped": _skip_reason("compliance_escalations", fid)}
 
         # 8. Balance-cache audit (reporting passbook) — re-derive every client's
         #    monthly buckets from scratch and self-heal any drift, so the
@@ -366,7 +458,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #    the ledger. Read-only for reports (it only touches the derived
         #    account_period_balances cache); safe to run whether or not reports
         #    are yet reading the passbook.
-        if force or not _already_ran_today("balance_cache_audit", fid):
+        if _begin("balance_cache_audit", fid, force):
             t0 = _now_iso()
             try:
                 from services.balance_cache_service import audit_and_heal_firm
@@ -378,7 +470,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["balance_cache_audit"] = {"error": str(e)}
                 _log_run("balance_cache_audit", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["balance_cache_audit"] = {"skipped": "already ran today"}
+            firm_result["balance_cache_audit"] = {"skipped": _skip_reason("balance_cache_audit", fid)}
 
         # 9. Books-integrity reconciliation (task #244) — trial balance, missing
         #     COGS/inventory-receipt journals, inventory cache-vs-ledger drift,
@@ -389,7 +481,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #     that found the ₹38.14L inventory drift and the ₹15,036.14 missing-
         #     COGS gap on 2026-07-25 — it should never again take a human running
         #     ad hoc queries to notice a books-integrity break.
-        if force or not _already_ran_today("reconciliation_audit", fid):
+        if _begin("reconciliation_audit", fid, force):
             t0 = _now_iso()
             try:
                 from services.reconciliation_service import run_reconciliation_for_firm
@@ -401,7 +493,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["reconciliation_audit"] = {"error": str(e)}
                 _log_run("reconciliation_audit", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["reconciliation_audit"] = {"skipped": "already ran today"}
+            firm_result["reconciliation_audit"] = {"skipped": _skip_reason("reconciliation_audit", fid)}
 
         # 9b. Per-client period metrics (migration 417, D30) — the aggregates a
         #     cross-client tax benchmark reads. It runs HERE, beside the two
@@ -413,7 +505,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #     moves a figure that was already written. Two financial years,
         #     bounded by `client_metrics_service.YEARS_SWEPT`. Writes nothing
         #     a CA sees directly and posts nothing.
-        if force or not _already_ran_today("client_period_metrics", fid):
+        if _begin("client_period_metrics", fid, force):
             t0 = _now_iso()
             try:
                 from services.client_metrics_service import refresh_firm
@@ -425,7 +517,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["client_period_metrics"] = {"error": str(e)}
                 _log_run("client_period_metrics", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["client_period_metrics"] = {"skipped": "already ran today"}
+            firm_result["client_period_metrics"] = {"skipped": _skip_reason("client_period_metrics", fid)}
 
         # 10b. Bank trusted-rule sweep (migration 322, 09-bank-entries.md) —
         #     pass every ready draft a TRUSTED rule wrote and nobody clicked
@@ -434,7 +526,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #     rule. Before the memory pipeline, so the profile sees the books
         #     as the rules have left them. Bounded per client; the run log
         #     records what was carried over.
-        if force or not _already_ran_today("bank_trusted_rules", fid):
+        if _begin("bank_trusted_rules", fid, force):
             t0 = _now_iso()
             try:
                 from jobs.bank_trusted_rules_job import run_trusted_rules_for_firm
@@ -448,7 +540,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["bank_trusted_rules"] = {"error": str(e)}
                 _log_run("bank_trusted_rules", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["bank_trusted_rules"] = {"skipped": "already ran today"}
+            firm_result["bank_trusted_rules"] = {"skipped": _skip_reason("bank_trusted_rules", fid)}
 
         # 10. Memory pipeline (Phase 13, task #158) — refresh every client's
         #     profile, detect pattern anomalies, raise memory triggers. This used
@@ -459,7 +551,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #     here so it gets the same already-ran-today gate, run log, health
         #     visibility and catch-up as the rest of the sweep. Last in the order
         #     deliberately: it profiles the state the ten jobs above have settled.
-        if force or not _already_ran_today("memory_pipeline", fid):
+        if _begin("memory_pipeline", fid, force):
             t0 = _now_iso()
             try:
                 from jobs.memory_job import run_memory_pipeline_for_firm
@@ -471,11 +563,11 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 firm_result["memory_pipeline"] = {"error": str(e)}
                 _log_run("memory_pipeline", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
-            firm_result["memory_pipeline"] = {"skipped": "already ran today"}
+            firm_result["memory_pipeline"] = {"skipped": _skip_reason("memory_pipeline", fid)}
 
         results["firms"][fid] = firm_result
 
-    logger.info(f"Daily scheduler run completed for {len(firm_ids)} firm(s)")
+    _close_sweep(firm_ids)
     return results
 
 
@@ -497,9 +589,25 @@ def start_scheduler() -> None:
     # never registered, so cron workflow schedules silently never fired.
     # Every minute; a fast no-op when nothing is due.
     _scheduler.add_job(run_due_schedules, CronTrigger(minute="*"), id="workflow_schedules")
+    # Deliver the practice's queued mail (ops-21). Every minute, one run at a time: a drain
+    # takes at most ~45 seconds, and a run that is still going when the next is due is
+    # skipped rather than stacked. It sends nothing the practice's mail switch is off for
+    # and is safe beside a second instance (rows are claimed with SKIP LOCKED).
+    _scheduler.add_job(drain_email_outbox, CronTrigger(minute="*"), id="email_outbox",
+                       max_instances=1, coalesce=True)
     _scheduler.start()
     logger.info("Background scheduler started (daily automation at 06:00 IST; "
-                "workflow schedule tick every minute)")
+                "workflow schedule tick and mail outbox drain every minute)")
+
+
+def drain_email_outbox() -> None:
+    """The per-minute tick that delivers queued mail (ops-21). Never raises: a failing drain
+    is logged and the next minute tries again."""
+    try:
+        from services import email_outbox_service
+        email_outbox_service.drain()
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error(f"Mail outbox drain failed: {e}", exc_info=True)
 
 
 def stop_scheduler() -> None:
@@ -782,11 +890,83 @@ def run_catchup_if_stale(*, background: bool = True) -> dict:
         _catchup_worker()
         return {"ran": True, "reason": "ran inline", "pending": len(pending)}
 
-    import threading
     threading.Thread(
         target=_catchup_worker, name="scheduler-catchup", daemon=True
     ).start()
     return {"ran": True, "reason": "started in background", "pending": len(pending)}
+
+
+# ── ops-15 — an external trigger that does not depend on this host being awake ─
+#
+# WHAT IT IS
+#     `run_pending_now` is what the token-protected POST
+#     (routers/scheduler_trigger.py) calls: run whatever today's sweep still owes,
+#     now, through exactly the claims `run_daily_jobs` takes. An external
+#     scheduler (a Render cron job, pg_cron with pg_net, any HTTP caller) that
+#     fires at 06:00 IST therefore starts the day's jobs at 06:00 IST whether or
+#     not the in-process timer was alive to fire, and wakes a sleeping instance
+#     by the act of calling it.
+#
+# HOW IT DIFFERS FROM `run_catchup_if_stale`
+#     Catch-up runs ONCE per process, at boot, and only when ENABLE_SCHEDULER is
+#     on. This runs when asked, as often as asked, and does NOT need
+#     ENABLE_SCHEDULER: that flag is off precisely when something else owns the
+#     daily run, and an external trigger is that something. Asking twice is safe
+#     because every job is gated by `_begin`: a finished job is skipped, a job
+#     another instance is running is skipped, and a failed one is retried.
+#
+# WHAT IT DOES NOT DO
+#     It does not run before 06:00 IST. A trigger misconfigured to fire at
+#     midnight would otherwise run the day's reminders at midnight, so it answers
+#     "before the scheduled hour" and runs nothing — the safe direction for a
+#     timezone mistake, and the answer says so rather than reporting success.
+#     It schedules nothing itself.
+
+_pending_run_lock = threading.Lock()
+
+
+def _pending_worker() -> None:
+    try:
+        run_daily_jobs()
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error(f"External-trigger run failed: {e}", exc_info=True)
+    finally:
+        _pending_run_lock.release()
+
+
+def run_pending_now(*, background: bool = True) -> dict:
+    """Run today's still-pending daily jobs now. Never raises.
+
+    Returns {"started": bool, "reason": str, "pending": int}. `background=True`
+    runs them on a daemon thread and returns at once, which is what an HTTP
+    trigger wants (the sweep can take minutes); a second call while one is still
+    running in this process is told so. Across instances the claims decide.
+    """
+    if not _past_scheduled_hour():
+        return {"started": False, "reason": "before the scheduled hour (06:00 IST)", "pending": 0}
+    try:
+        pending = _pending_jobs_today()
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(f"External-trigger pending check failed: {e}")
+        return {"started": False, "reason": f"check failed: {type(e).__name__}", "pending": 0}
+    if not pending:
+        return {"started": False, "reason": "today's run is already complete", "pending": 0}
+    if not _pending_run_lock.acquire(blocking=False):
+        return {"started": False, "reason": "a run is already in progress in this process",
+                "pending": len(pending)}
+    logger.warning("External trigger: %d job/firm pair(s) have not succeeded today; running them.",
+                   len(pending))
+    if not background:
+        _pending_worker()
+        return {"started": True, "reason": "ran inline", "pending": len(pending)}
+    try:
+        threading.Thread(target=_pending_worker,
+                         name="scheduler-external-trigger", daemon=True).start()
+    except Exception as e:  # pragma: no cover - defensive
+        _pending_run_lock.release()
+        logger.error(f"External-trigger thread could not start: {e}")
+        return {"started": False, "reason": "could not start the run", "pending": len(pending)}
+    return {"started": True, "reason": "started in background", "pending": len(pending)}
 
 
 # ── Phase 10B — Workflow Schedule Runner ──────────────────────────────────────
@@ -828,8 +1008,21 @@ def run_due_schedules() -> None:
     corresponding workflow template via the engine, then updates schedule
     metadata (last_run_at, last_run_status, next_run_at).
 
-    NOT safe for multi-worker deployments — use a dedicated single-worker
-    process or an external cron job.
+    SAFE FOR MORE THAN ONE INSTANCE (ops-14). This used to say "NOT safe for
+    multi-worker deployments", and was not: every instance listed the same due
+    schedules and fired each, and `next_run_at` only moved afterwards. Each
+    OCCURRENCE (a schedule and the time it was due) is now claimed first, by the
+    same atomic claim the daily jobs take (jobs/claims.py), so one instance fires
+    it and the others skip it.
+
+    The claim is ended BEFORE the schedule's own metadata is advanced, which is
+    what makes a crash between the two harmless: the next tick finds this
+    occurrence already `success` and only advances `next_run_at`, never firing it
+    again. (A failed advance used to mean the schedule fired AGAIN on the next
+    tick; it now cannot.) A holder that dies mid-fire loses its lease within ten
+    minutes and the next tick takes the occurrence over, which is at-least-once:
+    the narrow window is a death between the engine accepting the trigger and the
+    claim being ended.
     """
     now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -847,11 +1040,36 @@ def run_due_schedules() -> None:
 
     logger.info("Workflow scheduler tick: %d due schedule(s)", len(schedules))
 
+    store = _claim_store()
     for schedule in schedules:
         firm_id = schedule["firm_id"]
         schedule_id = schedule["id"]
         cron_expr = schedule.get("cron_expression", "0 9 * * *")
         tz_str = schedule.get("timezone", "Asia/Kolkata")
+
+        # One claim per OCCURRENCE: the schedule and the time it was due. The key
+        # is the due time, which only moves when the schedule is advanced, so a
+        # tick that sees the same occurrence again finds the same claim.
+        due_at = schedule.get("next_run_at")
+        decision = claims.claim(
+            "workflow_schedule", firm_id,
+            run_date=claims.ist_date_of(due_at, ist_today()),
+            claim_key=f"{schedule_id}@{due_at}", store=store)
+        if not decision.claimed:
+            if decision.reason == claims.ALREADY_SUCCEEDED:
+                # A previous holder fired this occurrence and went away before it
+                # advanced the schedule. Advance it; never fire it twice.
+                logger.warning("Workflow schedule %s was already fired for %s; "
+                               "advancing it without firing again", schedule_id, due_at)
+                try:
+                    repo.update_schedule_run(schedule_id, "success",
+                                             _compute_next_run(cron_expr, tz_str))
+                except Exception as e:
+                    logger.error("Failed to advance schedule %s: %s", schedule_id, e)
+            else:
+                logger.info("Workflow schedule %s not fired here: %s",
+                            schedule_id, decision.skip_text)
+            continue
 
         try:
             # Fire the SPECIFIC template this schedule targets
@@ -879,6 +1097,10 @@ def run_due_schedules() -> None:
         except Exception as e:
             run_status = "failed"
             logger.error("Workflow schedule %s failed for firm %s: %s", schedule_id, firm_id, e)
+
+        # End the claim BEFORE advancing the schedule (see the docstring).
+        if decision.claim is not None:
+            decision.claim.finish(run_status == "success")
 
         next_run = _compute_next_run(cron_expr, tz_str)
         try:

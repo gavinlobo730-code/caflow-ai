@@ -13,6 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/use-toast";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -277,7 +279,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
     // parseInt (which would read "1,24,500" as 1) or Math.round(x * 100).
     const amount = paiseFromRupeeInput(form.amount_rupees);
     if (amount === null || amount < 0) {
-      alert("Amount must be a non-negative amount in rupees, e.g. 124500 or 124500.50.");
+      toast({ title: "Amount must be a non-negative amount in rupees, e.g. 124500 or 124500.50.", variant: "destructive" });
       return;
     }
     await apiFetch("/api/tds-workspace/challans", {
@@ -322,7 +324,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
             </select>
           </div>
           <div className="flex gap-2">
-            <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</button>
+            <Button variant="plain" size="none" onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</Button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -597,11 +599,11 @@ function ReturnsTab({ clientId }: { clientId: string }) {
           )}
           {computeError && <p className="text-state-problem text-sm">{computeError}</p>}
           <div className="flex gap-2">
-            <button onClick={computeFromBooks}
+            <Button variant="plain" size="none" onClick={computeFromBooks}
               disabled={actionInFlight || !computeForm.financial_year || !computeForm.tan || !computeForm.deductor_name || !computeForm.deductor_pan}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
-            </button>
+            </Button>
             <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); }}
               className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
@@ -692,10 +694,10 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                     ))}
                   </div>
                 )}
-                <button onClick={saveComputed} disabled={actionInFlight}
+                <Button variant="plain" size="none" onClick={saveComputed} disabled={actionInFlight}
                   className="px-3 py-1 bg-state-ready-solid text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
-                </button>
+                </Button>
               </div>
             );
           })()}
@@ -719,7 +721,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               className="border rounded px-3 py-1.5 text-sm" />
           </div>
           <div className="flex gap-2">
-            <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</button>
+            <Button variant="plain" size="none" onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</Button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -760,12 +762,12 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                 </td>
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "pending" && (
-                    <button onClick={() => updateStatus(r.id as string, "prepared")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Prepare</button>
+                    <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "prepared")}
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Prepare</Button>
                   )}
                   {r.status === "prepared" && (
-                    <button onClick={() => updateStatus(r.id as string, "ca_approved")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">CA Approve</button>
+                    <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "ca_approved")}
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">CA Approve</Button>
                   )}
                 </td>
               </tr>
@@ -867,10 +869,10 @@ function Form26ASTab({ clientId }: { clientId: string }) {
           value={jsonText} onChange={(e) => setJsonText(e.target.value)}
           rows={8} className="w-full border rounded px-3 py-2 text-sm font-mono" />
         {error && <p className="text-state-problem text-sm">{error}</p>}
-        <button onClick={upload} disabled={loading || !fy || !jsonText}
+        <Button variant="plain" size="none" onClick={upload} disabled={loading || !fy || !jsonText}
           className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
           {loading ? "Reconciling…" : "Reconcile"}
-        </button>
+        </Button>
       </div>
 
       {recon && (
@@ -939,7 +941,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
   async function saveNew() {
     const tdsAmount = paiseFromRupeeInput(form.tds_amount_rupees);
     if (tdsAmount === null || tdsAmount < 0) {
-      alert("TDS amount must be a non-negative amount in rupees, e.g. 12450 or 12450.50.");
+      toast({ title: "TDS amount must be a non-negative amount in rupees, e.g. 12450 or 12450.50.", variant: "destructive" });
       return;
     }
     // CHECK res.success. This router answers a refusal as HTTP 200 with
@@ -1011,7 +1013,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
           </div>
           {saveError && <p className="text-sm text-state-problem">{saveError}</p>}
           <div className="flex gap-2">
-            <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Record certificate</button>
+            <Button variant="plain" size="none" onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Record certificate</Button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -1332,10 +1334,10 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowNew(false)}
               className="text-sm px-3 py-1 border rounded">Cancel</button>
-            <button onClick={saveNew} disabled={saving}
+            <Button variant="plain" size="none" onClick={saveNew} disabled={saving}
               className="text-sm px-3 py-1 bg-state-ready-solid text-white rounded disabled:opacity-50">
               {saving ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </div>
         </div>
       )}

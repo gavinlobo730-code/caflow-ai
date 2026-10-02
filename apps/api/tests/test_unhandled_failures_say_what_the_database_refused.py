@@ -192,7 +192,11 @@ def test_the_ca_sees_the_constraint_and_a_400(client):
 def test_a_real_internal_error_is_still_called_one(client):
     res = client.get("/__test__/breaks")
     assert res.status_code == 500
-    assert res.json()["error"] == "Internal server error"
+    # The honest answer, and since ops-11 the request's id after it ("... (reference 3f2a...)") so a CA reading
+    # the screen out can be traced to one request. Nothing else may be added to the sentence.
+    error = res.json()["error"]
+    assert error.startswith("Internal server error")
+    assert error[len("Internal server error"):] in ("", f" (reference {res.headers['X-Request-ID']})")
 
 
 def test_the_response_still_follows_the_api_response_shape(client):

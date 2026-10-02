@@ -29,6 +29,7 @@ import { usePermissions } from "@/lib/auth/AuthContext";
 import { EngagementPicker } from "@/components/time/EngagementPicker";
 import { UnbilledWorkPanel } from "@/components/time/UnbilledWorkPanel";
 import { BillingRatesPanel } from "@/components/time/BillingRatesPanel";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 function fmtTime(iso: string) {
   const d = new Date(iso);
@@ -220,7 +221,7 @@ export default function TimeTrackingPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this time entry?")) return;
+    if (!(await confirmDialog({ message: "Delete this time entry?", danger: true, confirmLabel: "Delete" }))) return;
     try {
       await deleteTimeEntry(id);
       await loadEntries();

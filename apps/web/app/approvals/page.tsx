@@ -7,6 +7,7 @@ import { api, type ApprovalRequest } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { MFA_SETUP_HREF, isMfaRefusal } from "@/lib/auth/mfaRefusal";
+import { Button } from "@/components/ui/button";
 
 // Module 9.0 M4 — Governance Approval Inbox (maker-checker).
 // Partners approve/reject; everyone with access sees pending + history.
@@ -135,21 +136,21 @@ export default function ApprovalsPage() {
                 </span>
                 {r.status === "pending" && canApprove && (
                   <>
-                    <button disabled={busy === r.id} onClick={() => act(r.id, "approve")}
+                    <Button variant="plain" size="none" spinner={false} disabled={busy === r.id} onClick={() => act(r.id, "approve")}
                       className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-brand text-white disabled:opacity-60">
                       {busy === r.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Approve
-                    </button>
-                    <button disabled={busy === r.id} onClick={() => act(r.id, "reject")}
+                    </Button>
+                    <Button variant="plain" size="none" disabled={busy === r.id} onClick={() => act(r.id, "reject")}
                       className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-gray-300 text-gray-600 disabled:opacity-60">
                       <X size={12} /> Reject
-                    </button>
+                    </Button>
                   </>
                 )}
                 {r.status === "pending" && !canApprove && canRequest && (
-                  <button disabled={busy === r.id} onClick={() => act(r.id, "cancel")}
+                  <Button variant="plain" size="none" disabled={busy === r.id} onClick={() => act(r.id, "cancel")}
                     className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-gray-300 text-gray-600 disabled:opacity-60">
                     <Ban size={12} /> Cancel
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>

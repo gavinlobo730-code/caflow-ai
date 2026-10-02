@@ -22,7 +22,6 @@ the caller's assignment scope is the screen's.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -32,6 +31,7 @@ from core.authz import assert_client_access
 from core.permissions import rbac
 from domain.reporting.export_document import ExportRefused
 from services import report_export_service as exports
+from core import db_provider
 
 _logger = logging.getLogger("caflow.report_exports")
 
@@ -45,16 +45,11 @@ _DATE = r"^\d{4}-\d{2}-\d{2}$"
 ReportName = Literal["ledger", "trial-balance", "cash-flow", "ar-ageing", "ap-ageing"]
 
 
-def _prod_db():
-    """The privileged client, or None with no database (mock/dev).
-
-    Every route here is rbac()-gated and reads only; this is the same choice
-    `routers/accounting._prod_db` makes for the reports it serves.
-    """
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# The privileged client, or None with no database (mock/dev).
+#
+# Every route here is rbac()-gated and reads only; this is the same choice
+# `routers/accounting._prod_db` makes for the reports it serves.
+_prod_db = db_provider.service_db_or_none
 
 
 @router.get("/{report}")

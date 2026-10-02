@@ -35,6 +35,7 @@ import {
 } from "@/lib/invoices/hub";
 import { CompliancePanel } from "@/components/invoices/CompliancePanel";
 import { todayLocalISO } from "@/lib/dateMath";
+import { Button } from "@/components/ui/button";
 import {
   complianceTimelineItems, type EInvoiceRecord, type EWayRecord,
 } from "@/lib/invoices/compliance";
@@ -641,13 +642,15 @@ const inputCls = "w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block space-y-1"><span className="block text-xs font-medium text-ps-label">{label}</span>{children}</label>;
 }
-function ModalActions({ onClose, onSubmit, saving, label }: { onClose: () => void; onSubmit: () => void; saving: boolean; label: string }) {
+/** `onSubmit` is the modal's async save. It is handed to the Button, which holds a
+ *  repeat click until the promise it returns settles (frontend_ux-09). */
+function ModalActions({ onClose, onSubmit, saving, label }: { onClose: () => void; onSubmit: () => unknown; saving: boolean; label: string }) {
   return (
     <div className="flex justify-end gap-2 pt-1">
       <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
-      <button onClick={onSubmit} disabled={saving} className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
+      <Button variant="plain" size="none" spinner={false} onClick={onSubmit} disabled={saving} className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
         {saving && <Loader2 size={12} className="animate-spin" />} {label}
-      </button>
+      </Button>
     </div>
   );
 }

@@ -56,6 +56,7 @@ from fastapi import HTTPException
 
 from core.db_paging import fetch_all
 from domain import recurrence as _rec
+from core import db_provider
 
 _logger = logging.getLogger("caflow.recurring_journal")
 
@@ -68,15 +69,13 @@ MOCK_JOURNAL_TEMPLATES: list[dict] = []
 MOCK_JOURNAL_RUNS: list[dict] = []
 
 
-def _db():
-    # Every caller reaches here through a rbac()-gated router. get_supabase()
-    # is the RLS-enforced `authenticated` client under USE_USER_JWT, which has
-    # no write grant on journal_entries/journal_lines at all — generating a
-    # draft posts through the same kernel a manual journal does — so
-    # generate/run 500'd with "The server is not permitted to write this
-    # table." Same fix as routers/fixed_assets.py (PR #626).
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# Every caller reaches here through a rbac()-gated router. get_supabase()
+# is the RLS-enforced `authenticated` client under USE_USER_JWT, which has
+# no write grant on journal_entries/journal_lines at all — generating a
+# draft posts through the same kernel a manual journal does — so
+# generate/run 500'd with "The server is not permitted to write this
+# table." Same fix as routers/fixed_assets.py (PR #626).
+_db = db_provider.service_db
 
 
 def _now_iso() -> str:

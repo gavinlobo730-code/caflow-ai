@@ -31,33 +31,9 @@ from domain.currency.conversion import to_base_minor
 from domain.currency import currency_service
 from services.period_validation_service import period_validation_service
 from services.phase2_journal_service import phase2_journal_service as K
+from core.db_paging import fetch_all
 
 _BASE = "INR"
-
-
-def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
-    """Fetch EVERY row of a Supabase query via keyset paging on `key`.
-
-    An un-paged .execute() is silently capped at PostgREST's ~1000-row limit, so for
-    a large ledger this would truncate the journal read and understate/mis-target the
-    revaluation delta (no error raised). `make_query` returns a fresh query builder each
-    call. Test doubles that don't implement order/limit/gt just return their whole (small)
-    fixture from a single execute(), which is already correct."""
-    first = make_query()
-    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
-        return first.execute().data or []
-    out: list = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        rows = q.order(key).limit(page).execute().data or []
-        out.extend(rows)
-        if len(rows) < page:
-            break
-        cursor = rows[-1][key]
-    return out
 
 
 def _next_day(period_end: str) -> str:
@@ -66,7 +42,7 @@ def _next_day(period_end: str) -> str:
 
 class FXRevaluationService:
     def _open_receivables(self, db, firm_id, client_id, period_end):
-        rows = _paginate_all(lambda: db.table("client_sales_invoices")
+        rows = fetch_all(lambda: db.table("client_sales_invoices")
                              .select("id, txn_currency, exchange_rate, total_paise, paid_paise, credited_paise, debit_note_paise, txn_total, paid_txn, status, invoice_date")
                              .eq("firm_id", firm_id).eq("client_id", client_id))
         out = []
@@ -87,7 +63,7 @@ class FXRevaluationService:
         return out
 
     def _open_payables(self, db, firm_id, client_id, period_end):
-        rows = _paginate_all(lambda: db.table("purchase_bills")
+        rows = fetch_all(lambda: db.table("purchase_bills")
                              .select("id, txn_currency, exchange_rate, net_payable_paise, paid_paise, debited_paise, credit_note_paise, txn_net_payable, paid_txn, status, bill_date")
                              .eq("firm_id", firm_id).eq("client_id", client_id))
         out = []
@@ -141,13 +117,13 @@ class FXRevaluationService:
         it keeps BOTH the foreign holding and its carrying base at the original booked
         values across re-runs — that is what makes the delta idempotent/self-healing
         (exactly as AR/AP read the document, not the overlay)."""
-        entries = _paginate_all(lambda: db.table("journal_entries").select("id, entry_date, is_posted, deleted_at")
+        entries = fetch_all(lambda: db.table("journal_entries").select("id, entry_date, is_posted, deleted_at")
                                 .eq("firm_id", firm_id).eq("client_id", client_id)
                                 .eq("is_posted", True).is_("deleted_at", "null"))
         keep = {e["id"] for e in entries if str(e.get("entry_date") or "")[:10] <= str(as_of)[:10]}
         if not keep:
             return 0, 0
-        lines = _paginate_all(lambda: db.table("journal_lines")
+        lines = fetch_all(lambda: db.table("journal_lines")
                               .select("id, journal_entry_id, account_id, debit_paise, credit_paise, txn_debit, txn_credit, txn_currency")
                               .eq("account_id", account_id))
         cur = (currency or _BASE).upper()

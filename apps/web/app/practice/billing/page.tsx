@@ -11,6 +11,7 @@ import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
+import { Button } from "@/components/ui/button";
 
 interface Schedule {
   id: string; client_id: string; arrangement: string; cadence: string;
@@ -159,7 +160,7 @@ function Billing() {
                 <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(s.amount_paise)}</td>
                 <td className="px-4 py-2.5 text-gray-600">{s.next_run_date ?? "—"}</td>
                 <td className="px-4 py-2.5 text-right">
-                  <button disabled={rowBusy} onClick={() => generate(s.id)} className="text-xs text-blue-600 hover:underline">Generate draft</button>
+                  <Button variant="plain" size="none" disabled={rowBusy} onClick={() => generate(s.id)} className="text-xs text-blue-600 hover:underline">Generate draft</Button>
                 </td>
               </tr>
             ))}

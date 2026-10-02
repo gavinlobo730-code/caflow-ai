@@ -58,6 +58,7 @@ from domain.income_tax.ais import (
     file_hash,
     parse,
 )
+from core import db_provider
 
 _logger = logging.getLogger("caflow.ais")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -84,9 +85,7 @@ class AISRefused(Exception):
     """A refusal the CA needs to read, not a 500."""
 
 
-def _supabase():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_supabase = db_provider.request_db
 
 
 def _now() -> str:

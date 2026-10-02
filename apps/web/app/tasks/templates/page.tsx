@@ -19,6 +19,7 @@ import { getClients } from "@/lib/data/clients";
 import type { TaskTemplate, Client } from "@/lib/types";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: "bg-sev-low-surface text-sev-low",
@@ -128,7 +129,7 @@ export default function TaskTemplatesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this template?")) return;
+    if (!(await confirmDialog({ message: "Delete this template?", danger: true, confirmLabel: "Delete" }))) return;
     try {
       await deleteTaskTemplate(id);
       await load();

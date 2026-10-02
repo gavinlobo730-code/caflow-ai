@@ -30,6 +30,7 @@ import { useCallback, useEffect, useState } from "react";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { api, type FxRate } from "@/lib/api/index";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 
 /** A plain decimal, and nothing else. Not a parser — it never converts, so
  *  what is sent is exactly what was typed. */
@@ -148,10 +149,10 @@ export function FxRatesPanel() {
             onChange={(e) => setRate(e.target.value)}
             className="w-32 text-xs px-2 py-1.5 border border-ps-border rounded-lg font-mono text-right" />
         </div>
-        <button onClick={save} disabled={saving}
+        <Button variant="plain" size="none" onClick={save} disabled={saving}
           className="text-xs px-4 py-2 bg-brand text-white rounded-lg disabled:opacity-50">
           {saving ? "Saving…" : "Record rate"}
-        </button>
+        </Button>
       </div>
 
       {/* What this rate type IS. The server's sentence, because the four are not

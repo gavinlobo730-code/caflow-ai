@@ -2,12 +2,14 @@
 Email delivery via Resend API.
 All transactional emails for task lifecycle, invoice, compliance, and onboarding events.
 """
+import contextvars
 import html as _html
 import os
 import re
 import logging
+from dataclasses import dataclass
 from email.utils import parseaddr
-from typing import Optional
+from typing import Callable, Optional
 
 from domain.branding import email_template
 from domain.money_text import rupees_paise
@@ -129,6 +131,117 @@ def _log_provider_error(resp, to: str, subject: str) -> None:
     )
 
 
+# ── The outbox seam (ops-21) ──────────────────────────────────────────────────
+#
+# `deliver` (services/practice_mail_service) is the ONE door for the practice's own
+# mail, and every mail it sends calls `_send` below from inside a callback. The
+# door puts the mail on a QUEUE instead of posting it from the request thread by
+# setting this context variable around that callback: `_send` then hands the
+# message to the sink and returns True, meaning "accepted for delivery", which is
+# what a True from the provider meant to the caller anyway. Nothing else sets
+# it, so every other path (an invoice, a statement, an invite - mail whose sender
+# reports delivery to the person who pressed the button) posts synchronously exactly
+# as it always did. A ContextVar and not a parameter: eleven senders and their
+# callers would each have had to learn a flag, and a flag one of them forgot is a
+# mail that bypasses the queue - which is the PRACTICE_MAIL_ENABLED bypass the
+# queue must not become.
+_OUTBOX_SINK: "contextvars.ContextVar[Optional[Callable[..., bool]]]" = contextvars.ContextVar(
+    "email_outbox_sink", default=None)
+
+
+@dataclass(frozen=True)
+class SendOutcome:
+    """What one POST to the provider came to, in the terms a retry policy needs.
+
+    `retryable` is the whole point of it: a 5xx, a 429, a timeout and a refused
+    connection are the provider's or the network's bad moment and the same message
+    will go on a later attempt; a 400 or 422 says the MESSAGE is wrong and will
+    never go; and 401/403 say the KEY or the sending domain is wrong, which a person
+    fixes in a dashboard, so those wait and retry as well."""
+    ok: bool
+    retryable: bool = False
+    status_code: Optional[int] = None
+    message_id: Optional[str] = None
+    code: Optional[str] = None
+
+
+#: HTTP statuses a later attempt can fix besides every 5xx: timeouts and rate limits,
+#: and the two that mean "our credentials or sending domain are not accepted yet".
+_RETRYABLE_STATUSES = frozenset({401, 403, 408, 409, 425, 429})
+
+
+def _retryable_status(status: int) -> bool:
+    return status >= 500 or status in _RETRYABLE_STATUSES
+
+
+def _short_code(value: object, fallback: str) -> str:
+    """A provider's error NAME or an exception's class name, cut to a storable label.
+    Never the message: a provider message can quote the recipient's address."""
+    text = re.sub(r"[^A-Za-z0-9_.-]", "_", str(value or ""))[:60].strip("_")
+    return text or fallback
+
+
+def _error_code(resp) -> str:
+    try:
+        payload = resp.json()
+        if isinstance(payload, dict) and payload.get("name"):
+            return _short_code(payload["name"], f"http_{resp.status_code}")
+    except Exception:                                           # noqa: BLE001
+        # No readable error body: the HTTP status below is the answer. Said at DEBUG, not swallowed.
+        _logger.debug("the provider's error body could not be read", exc_info=True)
+    return f"http_{getattr(resp, 'status_code', 'unknown')}"
+
+
+def _message_id(resp) -> Optional[str]:
+    try:
+        payload = resp.json()
+        got = payload.get("id") if isinstance(payload, dict) else None
+        return str(got) if got else None
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
+def transport(to: str, subject: str, html: str, *,
+              sender_name: Optional[str] = None,
+              reply_to: Optional[str] = None,
+              idempotency_key: Optional[str] = None) -> SendOutcome:
+    """POST one message to Resend and say what came of it. Never raises.
+
+    `idempotency_key` is the outbox row's id. A retry after an AMBIGUOUS failure - the
+    request timed out after the provider had accepted it - would otherwise send the
+    message twice; Resend honours an `Idempotency-Key` header for 24 hours and answers
+    the repeat with the first result. `[S]`-graded: recalled from the provider's
+    documentation, egress being refused here, and harmless if it is ignored (the
+    worst case is the duplicate the header exists to prevent)."""
+    if not _RESEND_API_KEY:
+        _logger.warning(
+            "Email NOT sent — provider not configured (RESEND_API_KEY missing). "
+            "to=%s subject=%r", to, subject,
+        )
+        return SendOutcome(False, retryable=True, code="not_configured")
+    headers = {"Authorization": f"Bearer {_RESEND_API_KEY}", "Content-Type": "application/json"}
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
+    try:
+        import httpx
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            headers=headers,
+            json=_envelope(to, subject, html, sender_name, reply_to),
+            timeout=10,
+        )
+    except Exception as e:
+        _logger.error("Email transport error to %s (subject=%r): %s: %s",
+                      to, subject, type(e).__name__, e)
+        return SendOutcome(False, retryable=True,
+                           code=_short_code(type(e).__name__, "transport_error"))
+    if resp.status_code in (200, 201):
+        return SendOutcome(True, status_code=resp.status_code, message_id=_message_id(resp))
+    _log_provider_error(resp, to, subject)
+    return SendOutcome(False, retryable=_retryable_status(resp.status_code),
+                       status_code=resp.status_code, code=_error_code(resp))
+
+
 def _send(to: str, subject: str, html: str, *,
           sender_name: Optional[str] = None,
           reply_to: Optional[str] = None) -> bool:
@@ -141,6 +254,10 @@ def _send(to: str, subject: str, html: str, *,
     `sender_name` and `reply_to` are optional and default to the configured
     sender with no Reply-To, which is what every internal notification (task
     assigned, escalation, firm invite) still sends.
+
+    INSIDE `practice_mail_service.deliver` the message is QUEUED instead of posted
+    (see the note on `_OUTBOX_SINK`): True then means "accepted for delivery", and
+    the retry, the final failure and the bounce are the outbox's.
     """
     if not _RESEND_API_KEY:
         _logger.warning(
@@ -148,22 +265,10 @@ def _send(to: str, subject: str, html: str, *,
             "to=%s subject=%r", to, subject,
         )
         return False
-    try:
-        import httpx
-        resp = httpx.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {_RESEND_API_KEY}", "Content-Type": "application/json"},
-            json=_envelope(to, subject, html, sender_name, reply_to),
-            timeout=10,
-        )
-        if resp.status_code in (200, 201):
-            return True
-        _log_provider_error(resp, to, subject)
-        return False
-    except Exception as e:
-        _logger.error("Email transport error to %s (subject=%r): %s: %s",
-                      to, subject, type(e).__name__, e)
-        return False
+    sink = _OUTBOX_SINK.get()
+    if sink is not None:
+        return bool(sink(to, subject, html, sender_name, reply_to))
+    return transport(to, subject, html, sender_name=sender_name, reply_to=reply_to).ok
 
 
 # ── The firm's own wording, where it has written one (SALES-13) ──────────────

@@ -15,6 +15,7 @@ import {
 import { Modal as ModalShell } from "@/components/ui/modal";
 import { apiCall, apiGet, getAuthToken, fmt, type InvoiceDetail } from "@/lib/invoices/shared";
 import { todayLocalISO } from "@/lib/dateMath";
+import { Button } from "@/components/ui/button";
 import {
   gstTreatment, treatmentLabel, validatePlaceOfSupply,
   irnEligibility, ewayEligibility, irnStatus, ewayStatus,
@@ -348,13 +349,13 @@ function PrimaryBtn({ children, onClick, disabled }: { children: React.ReactNode
 // ── Modals ────────────────────────────────────────────────────────────────────
 const inputCls = "w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand";
 
-function Actions({ onClose, onSubmit, busy, label, disabled }: { onClose: () => void; onSubmit: () => void; busy: boolean; label: string; disabled?: boolean }) {
+function Actions({ onClose, onSubmit, busy, label, disabled }: { onClose: () => void; onSubmit: () => unknown; busy: boolean; label: string; disabled?: boolean }) {
   return (
     <div className="flex justify-end gap-2 pt-1">
       <button onClick={onClose} disabled={busy} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
-      <button onClick={onSubmit} disabled={busy || disabled} className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+      <Button variant="plain" size="none" spinner={false} onClick={onSubmit} disabled={busy || disabled} className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
         {busy && <Loader2 size={12} className="animate-spin" />} {label}
-      </button>
+      </Button>
     </div>
   );
 }

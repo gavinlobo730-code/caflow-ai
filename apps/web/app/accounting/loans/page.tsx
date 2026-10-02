@@ -32,6 +32,7 @@ import { daysBetweenLocalISO, todayLocalISO } from "@/lib/dateMath";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
+import { Button } from "@/components/ui/button";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -921,9 +922,9 @@ export default function LoansAndFDPage() {
             </div>
             <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
               <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
-              <button onClick={handleAddLoan} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
+              <Button variant="plain" size="none" onClick={handleAddLoan} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {loanSaving ? "Saving…" : "Add Loan"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1018,9 +1019,9 @@ export default function LoansAndFDPage() {
             </div>
             <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
               <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
-              <button onClick={handleAddFD} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
+              <Button variant="plain" size="none" onClick={handleAddFD} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {fdSaving ? "Saving…" : "Add FD"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

@@ -20,6 +20,7 @@ from models.common import api_response
 from core.client_ip import client_ip
 from core.permissions import rbac
 from services import payment_service
+from core import db_provider
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
@@ -34,11 +35,8 @@ _logger = logging.getLogger("caflow.payments")
 
 
 def _db():
-    """Real Supabase client, or None in mock mode (online payments require a DB)."""
-    if _USE_MOCK:
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    # Real Supabase client, or None in mock mode (online payments require a DB).
+    return None if _USE_MOCK else db_provider.request_db()
 
 
 def _require_db():

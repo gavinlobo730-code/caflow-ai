@@ -11,6 +11,7 @@ import os
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from uuid import uuid4
+from core import db_provider
 
 _logger = logging.getLogger("caflow.eway_bill")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -48,9 +49,7 @@ class ManualEWayProvider(EWayBillProvider):
         return {"status": "unknown"}
 
 
-def _supabase():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_supabase = db_provider.request_db
 
 
 def create_eway_bill(

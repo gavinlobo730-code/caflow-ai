@@ -21,7 +21,9 @@ import type { PurchaseBillLine } from "./billEditor.ts";
 
 export type UnreadField = "quantity" | "unit" | "gst_rate" | "rate";
 
-const UNREAD_FIELDS: readonly UnreadField[] = ["quantity", "unit", "gst_rate", "rate"];
+/** The four names, exported so a draft kept in the tab (lib/purchases/billDraft)
+ *  is checked against THIS list when it comes back, never against a copy. */
+export const UNREAD_FIELDS: readonly UnreadField[] = ["quantity", "unit", "gst_rate", "rate"];
 
 /** The three that move money. An unread UNIT does not: it is flagged, and the
  *  line still saves — the server's own `unit or "NOS"` fallback on the bill

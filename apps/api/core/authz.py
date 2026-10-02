@@ -30,6 +30,7 @@ from fastapi import Depends, HTTPException, Request
 
 from core.auth import get_current_user
 from core.permissions import Role, _to_role, can as _rbac_can
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -42,9 +43,7 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _FIRMWIDE_ROLES = {Role.PARTNER}
 
 
-def _db():
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+_db = db_provider.service_db
 
 
 def _role(user: dict) -> Optional[Role]:

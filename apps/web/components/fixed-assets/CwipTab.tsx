@@ -27,6 +27,7 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 interface Project {
   id: string;
@@ -74,7 +75,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 function Shell({ title, children, onClose, onSave, saving, error, cta }: {
   title: string; children: React.ReactNode; onClose: () => void;
-  onSave: () => void; saving: boolean; error: string; cta: string;
+  onSave: () => unknown; saving: boolean; error: string; cta: string;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
@@ -90,10 +91,10 @@ function Shell({ title, children, onClose, onSave, saving, error, cta }: {
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
             Cancel
           </button>
-          <button onClick={onSave} disabled={saving}
+          <Button variant="plain" size="none" onClick={onSave} disabled={saving}
             className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
             {cta}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -233,18 +234,18 @@ export function CwipTab({ clientId, asOf, openDoc }:
                             Add cost
                           </button>
                           {p.status === "in_progress" ? (
-                            <button onClick={() => setStatus(p, "suspended")}
+                            <Button variant="plain" size="none" spinner={false} onClick={() => setStatus(p, "suspended")}
                               title="Suspend — the balance stays in capital work-in-progress"
                               aria-label="Suspend project"
                               className="text-2xs px-2 py-1 rounded border border-ps-border text-ps-label hover:bg-ps-bg mr-1">
                               <PauseCircle size={11} className="inline" />
-                            </button>
+                            </Button>
                           ) : (
-                            <button onClick={() => setStatus(p, "in_progress")}
+                            <Button variant="plain" size="none" spinner={false} onClick={() => setStatus(p, "in_progress")}
                               aria-label="Resume project"
                               className="text-2xs px-2 py-1 rounded border border-ps-border text-ps-label hover:bg-ps-bg mr-1">
                               <PlayCircle size={11} className="inline" />
-                            </button>
+                            </Button>
                           )}
                           <button onClick={() => setCapitalising(p)}
                             className="text-2xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50">

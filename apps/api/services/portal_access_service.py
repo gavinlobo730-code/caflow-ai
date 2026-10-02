@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.portal_access")
@@ -32,9 +33,7 @@ MOCK_PORTAL_CONTACTS: list[dict] = []
 MOCK_LEGACY_PORTAL: dict[str, dict] = {}
 
 
-def _db():
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+_db = db_provider.service_db
 
 
 def _now() -> str:

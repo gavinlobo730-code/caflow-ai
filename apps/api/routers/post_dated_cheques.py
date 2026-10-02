@@ -16,17 +16,17 @@ needs a per-bank layout nobody here holds and is a later add-on.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import date
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field, field_validator
 
 from core.authz import assert_client_access
 from core.permissions import rbac
 from models.common import api_response
 from services import post_dated_cheque_service as service
+from core import db_provider
 
 _logger = logging.getLogger("caflow.post_dated_cheques")
 
@@ -35,15 +35,10 @@ router = APIRouter(prefix="/api/post-dated-cheques", tags=["accounting"])
 
 def _db():
     """The privileged client, or a 503 with no database. Every route is rbac()-
-    gated and checks the client scope first; the service carries `firm_id` and
-    `client_id` on every read and write. The register's writes are
-    service-role-only by grant (migration 460), so this is the client they need."""
-    if not os.environ.get("SUPABASE_URL"):
-        raise HTTPException(
-            status_code=503,
-            detail="The cheque register is kept in the database and is unavailable without it.")
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+gated and checks the client scope first; the service carries `firm_id` and
+`client_id` on every read and write. The register's writes are
+service-role-only by grant (migration 460), so this is the client they need."""
+    return db_provider.service_db_or_503('The cheque register is kept in the database and is unavailable without it.')
 
 
 def _a_date(v: Optional[str]) -> Optional[str]:

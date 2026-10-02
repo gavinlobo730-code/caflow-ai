@@ -28,7 +28,9 @@
 import { useState } from "react";
 import { Landmark } from "lucide-react";
 import { api, type CreditBalanceFigures, type CreditLedgerBlock } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
+import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { formatPaise } from "@/lib/money/format";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 
@@ -80,6 +82,10 @@ export function Gstr3bCreditLedger({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Saving and removing the keyed balance share one guard: both rewrite what the
+  // next GSTR-3B opens with, and `busy` alone takes a render to reach the DOM.
+  // (Declared before the early return below: a hook may not follow a conditional exit.)
+  const { flight } = useSingleFlight();
 
   if (!ledger || !ledger.opening) return null;
   const { opening, closing } = ledger;
@@ -212,19 +218,21 @@ export function Gstr3bCreditLedger({
           </div>
           {error && <p role="alert" className="text-xs text-state-problem">{error}</p>}
           <div className="flex flex-wrap items-center gap-3">
-            <button type="button" onClick={save} disabled={busy}
+            <Button variant="plain" size="none" spinner={false} flight={flight}
+                    type="button" onClick={() => save()} disabled={busy}
                     className="rounded bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark disabled:opacity-50">
               {busy ? "Saving…" : "Save and compute again"}
-            </button>
+            </Button>
             <button type="button" onClick={() => setEditing(false)} disabled={busy}
                     className="text-xs text-ps-body hover:underline">
               Cancel
             </button>
             {opening.source === "recorded" && (
-              <button type="button" onClick={remove} disabled={busy}
+              <Button variant="plain" size="none" spinner={false} flight={flight}
+                      type="button" onClick={() => remove()} disabled={busy}
                       className="text-xs text-state-problem hover:underline">
                 Remove the recorded balance
-              </button>
+              </Button>
             )}
           </div>
         </div>

@@ -32,6 +32,7 @@ import type { ApplyStructureResult } from "@/lib/api";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 type RosterEmployee = {
   id: string; name: string; basic_paise?: number; status?: string;
@@ -278,17 +279,17 @@ export default function ApplyStructureModal({
           )}
 
           <div className="flex justify-end gap-2">
-            <button onClick={() => send(true)} disabled={!ready || busy !== null}
+            <Button variant="plain" size="none" onClick={() => send(true)} disabled={!ready || busy !== null}
               className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
               {busy === "preview" ? "Computing…" : "Preview"}
-            </button>
+            </Button>
             {/* Apply is offered only AFTER a preview has come back, so nobody
                 writes a revision for a whole roster without having seen it. */}
-            <button onClick={() => send(false)}
+            <Button variant="plain" size="none" onClick={() => send(false)}
               disabled={!ready || busy !== null || !result?.preview}
               className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
               {busy === "apply" ? "Applying…" : "Apply"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

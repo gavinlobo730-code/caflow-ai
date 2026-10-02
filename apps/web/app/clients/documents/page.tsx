@@ -18,6 +18,7 @@ import type { Client } from "@/lib/types";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 type DocCategory = "Identity" | "GST" | "Income Tax" | "MCA" | "Financials" | "Other";
 
 const CATEGORIES: DocCategory[] = ["Identity", "GST", "Income Tax", "MCA", "Financials", "Other"];
@@ -258,7 +259,7 @@ export default function ClientDocumentsPage() {
   useEffect(() => { load(); }, [load]);
 
   async function handleDelete(doc: ClientDocument) {
-    if (!confirm(`Delete "${doc.description ?? doc.file_name}"?`)) return;
+    if (!(await confirmDialog({ message: `Delete "${doc.description ?? doc.file_name}"?`, danger: true, confirmLabel: "Delete" }))) return;
     try {
       const sb = getSupabaseClient();
       // Storage first, then the row — the order app/client-portal/page.tsx

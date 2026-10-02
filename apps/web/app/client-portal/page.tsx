@@ -22,6 +22,8 @@ import type { Transaction } from "@/lib/data/transactions";
 import { formatDate } from "@/lib/services/formatting";
 import { formatPaise } from "@/lib/services/formatting";
 import { ListSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/use-toast";
 
 type PortalTab = "requests" | "shared" | "reports" | "filings" | "dues" | "messages";
 
@@ -389,7 +391,7 @@ export default function ClientPortalPage() {
       setNewMessageText("");
       await loadPortalMessages(selectedClientId);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to send message");
+      toast({ title: e instanceof Error ? e.message : "Failed to send message", variant: "destructive" });
     } finally {
       setSendingMessage(false);
     }
@@ -419,14 +421,14 @@ export default function ClientPortalPage() {
       setNewRequest({ title: "", description: "", is_urgent: false, due_date: "" });
       await loadDocRequests(selectedClientId);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to create request");
+      toast({ title: e instanceof Error ? e.message : "Failed to create request", variant: "destructive" });
     } finally {
       setSavingRequest(false);
     }
   }
 
   async function handleDeleteRequest(id: string) {
-    if (!confirm("Delete this document request?")) return;
+    if (!(await confirmDialog({ message: "Delete this document request?", danger: true, confirmLabel: "Delete" }))) return;
     const sb = getSupabaseClient();
     await sb.from("document_requests").delete().eq("id", id);
     setDocRequests((prev) => prev.filter((r) => r.id !== id));
@@ -477,14 +479,14 @@ export default function ClientPortalPage() {
       setUploadLabel("");
       await loadSharedDocs(selectedClientId);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Upload failed");
+      toast({ title: e instanceof Error ? e.message : "Upload failed", variant: "destructive" });
     } finally {
       setUploadingDoc(false);
     }
   }
 
   async function handleDeleteSharedDoc(doc: SharedDocument) {
-    if (!confirm(`Delete "${doc.description ?? doc.file_name}"?`)) return;
+    if (!(await confirmDialog({ message: `Delete "${doc.description ?? doc.file_name}"?`, danger: true, confirmLabel: "Delete" }))) return;
     const sb = getSupabaseClient();
     await sb.storage.from("Documents").remove([doc.file_path]);
     await sb.from("client_documents").delete().eq("id", doc.id);
@@ -497,7 +499,7 @@ export default function ClientPortalPage() {
       .from("Documents")
       .createSignedUrl(doc.file_path, 3600);
     if (err || !data) {
-      alert("Could not generate download link.");
+      toast({ title: "Could not generate download link.", variant: "destructive" });
       return;
     }
     window.open(data.signedUrl, "_blank");
@@ -896,7 +898,7 @@ export default function ClientPortalPage() {
                               </button>
                               <button
                                 onClick={async () => {
-                                  if (!confirm("Remove this shared report?")) return;
+                                  if (!(await confirmDialog({ message: "Remove this shared report?", danger: true, confirmLabel: "Remove" }))) return;
                                   const sb = getSupabaseClient();
                                   await sb.from("shared_reports").delete().eq("id", r.id);
                                   setSharedReports((prev) => prev.filter((x) => x.id !== r.id));

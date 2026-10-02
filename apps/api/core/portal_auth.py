@@ -19,6 +19,7 @@ from typing import Optional
 from fastapi import Depends, Header, HTTPException, status
 
 from core.auth import get_jwt_user
+from core.request_context import bind_firm
 from services import portal_access_service
 
 _logger = logging.getLogger("caflow.portal_auth")
@@ -96,6 +97,7 @@ def get_current_portal_client(
         "memberships": [{"client_id": m["client_id"], "name": m.get("name")} for m in memberships],
     }
     _touch_portal_session(ctx)  # health engine's engagement signal; best-effort
+    bind_firm(ctx.get("firm_id"))  # ops-11: the firm's id for the request's log line, never the contact
     return ctx
 
 
@@ -176,6 +178,7 @@ def get_current_portal_employee(jwt_user: dict = Depends(get_jwt_user)) -> dict:
     if not emp.get("portal_enabled"):
         raise denied
 
+    bind_firm(emp.get("firm_id"))  # ops-11: the firm's id for the request's log line, never the employee
     return {
         "portal": True,
         "employee": True,

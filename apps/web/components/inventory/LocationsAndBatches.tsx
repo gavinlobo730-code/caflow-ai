@@ -28,6 +28,8 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 interface Godown {
   id: string;
@@ -137,11 +139,9 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
     // just stops it taking new stock and being offered as a destination —
     // and it can be reopened, both of which the dialog says so the CA is not
     // choosing blind.
-    if (!confirm(
-      `Close ${g.name}? It stops taking new stock movements and won't be ` +
+    if (!(await confirmDialog({ message: `Close ${g.name}? It stops taking new stock movements and won't be ` +
       `offered as a destination any more. Nothing recorded against it is ` +
-      `deleted, and you can reopen it later.`,
-    )) return;
+      `deleted, and you can reopen it later.`, confirmLabel: "Close" }))) return;
     try {
       const res = await request<{ success: boolean; data: { ok: boolean; closed: boolean }; error: string | null }>(
         `/api/inventory/godowns/${g.id}?client_id=${encodeURIComponent(clientId)}`,
@@ -257,15 +257,15 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
                     </td>
                     <td className="px-5 py-2 text-right">
                       {g.is_active ? (
-                        <button onClick={() => closeGodown(g)} aria-label={`Close ${g.name}`}
+                        <Button variant="plain" size="none" spinner={false} onClick={() => closeGodown(g)} aria-label={`Close ${g.name}`}
                           className="p-1 rounded hover:bg-state-problem-hover text-red-600">
                           <Trash2 size={12} />
-                        </button>
+                        </Button>
                       ) : (
-                        <button onClick={() => reopenGodown(g)} aria-label={`Reopen ${g.name}`}
+                        <Button variant="plain" size="none" spinner={false} onClick={() => reopenGodown(g)} aria-label={`Reopen ${g.name}`}
                           className="p-1 rounded hover:bg-ps-hover text-ps-label">
                           <RotateCcw size={12} />
-                        </button>
+                        </Button>
                       )}
                     </td>
                   </tr>
@@ -564,10 +564,10 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
         )}
 
         <div className="flex justify-end">
-          <button onClick={move} disabled={saving || !item || !quantity || from === to}
+          <Button variant="plain" size="none" onClick={move} disabled={saving || !item || !quantity || from === to}
             className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
             Move stock
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -654,10 +654,10 @@ function GodownModal({ clientId, onClose, onSaved }: {
             className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
             Cancel
           </button>
-          <button onClick={save} disabled={saving || !name.trim()}
+          <Button variant="plain" size="none" onClick={save} disabled={saving || !name.trim()}
             className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
             Create
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -735,10 +735,10 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
             className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
             Cancel
           </button>
-          <button onClick={save} disabled={saving || !item || !batchNo.trim()}
+          <Button variant="plain" size="none" onClick={save} disabled={saving || !item || !batchNo.trim()}
             className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
             Create
-          </button>
+          </Button>
         </div>
       </div>
     </div>

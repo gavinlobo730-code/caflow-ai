@@ -20,15 +20,14 @@ from models.client import PracticeIdentityUpdate
 from core.permissions import rbac
 from core.validators import derive_state_code, validate_state_code
 from services.internal_client_service import provision, get_internal_client_id
+from core import db_provider
 
 router = APIRouter(prefix="/api/practice", tags=["practice"])
 _logger = logging.getLogger("caflow.practice")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db
 
 
 @router.get("")

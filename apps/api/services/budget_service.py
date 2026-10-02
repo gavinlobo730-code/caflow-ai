@@ -44,6 +44,7 @@ from typing import Optional
 
 from core.db_paging import fetch_all
 from core.ist_clock import fy_quarters
+from core import db_provider
 
 _logger = logging.getLogger("caflow.budget")
 
@@ -59,9 +60,7 @@ MOCK_BUDGETS: dict[tuple[str, str, str, str], dict] = {}
 BUDGETABLE_TYPES = ("Revenue", "Income", "Expense")
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db
 
 
 def _now() -> str:

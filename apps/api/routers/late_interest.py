@@ -18,11 +18,10 @@ unrelated businesses.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import date
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, field_validator, model_validator
 
 from core.authz import assert_client_access
@@ -30,6 +29,7 @@ from core.permissions import rbac
 from domain.sales import late_interest as L
 from models.common import api_response
 from services import late_interest_service as service
+from core import db_provider
 
 _logger = logging.getLogger("caflow.late_interest")
 
@@ -40,15 +40,9 @@ _DATE = r"^\d{4}-\d{2}-\d{2}$"
 
 def _db():
     """The privileged client, or a 503 with no database. Every route is rbac()-
-    gated and checks the client scope first; the reads and writes carry
-    `firm_id` and `client_id` filters in the service."""
-    if not os.environ.get("SUPABASE_URL"):
-        raise HTTPException(
-            status_code=503,
-            detail="Interest is computed from the live books and is unavailable "
-                   "without the database.")
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+gated and checks the client scope first; the reads and writes carry
+`firm_id` and `client_id` filters in the service."""
+    return db_provider.service_db_or_503('Interest is computed from the live books and is unavailable without the database.')
 
 
 class LateInterestTermsIn(BaseModel):

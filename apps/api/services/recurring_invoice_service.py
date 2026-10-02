@@ -36,6 +36,7 @@ from fastapi import HTTPException
 from domain import recurrence as _rec
 from models.invoices import SalesInvoiceIn, SalesInvoiceLineIn
 from services.numbering import draft_placeholder_invoice_no
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.recurring")
@@ -59,9 +60,7 @@ MOCK_RECURRING_TEMPLATES: list[dict] = []
 MOCK_RECURRING_RUNS: list[dict] = []
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db
 
 
 #: One date parser, in domain/recurrence, for the same reason the cadence is.

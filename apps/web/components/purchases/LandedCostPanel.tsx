@@ -30,6 +30,7 @@ import { apiGet, apiCall, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 interface Charge {
   id: string;
@@ -276,11 +277,11 @@ export function LandedCostPanel({
                               <span title="Already in the cost of the stock"
                                 className="inline-flex text-ps-hint"><Lock size={12} /></span>
                             ) : (
-                              <button onClick={() => remove(c)} disabled={saving}
+                              <Button variant="plain" size="none" spinner={false} onClick={() => remove(c)} disabled={saving}
                                 aria-label={`Remove ${c.description}`}
                                 className="p-1 rounded hover:bg-state-problem-hover text-state-problem disabled:opacity-40">
                                 <Trash2 size={12} />
-                              </button>
+                              </Button>
                             )}
                           </td>
                         </tr>
@@ -307,10 +308,10 @@ export function LandedCostPanel({
                       inputMode="decimal"
                       className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg text-xs text-right tabular-nums" />
                   </label>
-                  <button onClick={add} disabled={saving}
+                  <Button variant="plain" size="none" onClick={add} disabled={saving}
                     className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
                     Add
-                  </button>
+                  </Button>
                 </div>
                 {received && (
                   <p className="text-2xs text-ps-hint">

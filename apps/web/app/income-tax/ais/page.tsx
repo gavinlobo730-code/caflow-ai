@@ -58,6 +58,7 @@ import { Callout } from "@/components/ui/callout";
 import { buildWorkbook } from "@/lib/export/xlsx";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 function formatRupees(paise: number): string {
   const rupees = Math.floor(Math.abs(paise) / 100);
@@ -550,21 +551,21 @@ export default function AISPage() {
                       <td className="px-4 py-3 space-y-1">
                         <StatusBadge status={line.status} />
                         <div>
-                          <button
-                            onClick={() => { setBooks((p) => ({ ...p, [line.id]: "" })); void saveWorking(line, "not_in_books"); }}
+                          <Button variant="plain" size="none"
+                            onClick={() => { setBooks((p) => ({ ...p, [line.id]: "" })); return saveWorking(line, "not_in_books"); }}
                             disabled={busy}
                             className="text-3xs text-state-problem hover:underline disabled:opacity-40"
                           >
                             Mark not in books
-                          </button>
+                          </Button>
                           {line.status === "amount_mismatch" && (
-                            <button
-                              onClick={() => { void saveWorking(line, "explained"); }}
+                            <Button variant="plain" size="none"
+                              onClick={() => { return saveWorking(line, "explained"); }}
                               disabled={busy}
                               className="ml-2 text-3xs text-blue-600 hover:underline disabled:opacity-40"
                             >
                               Explained
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </td>
@@ -580,14 +581,14 @@ export default function AISPage() {
                       </td>
                       <td className="px-4 py-3">
                         {line.source === "manual" && (
-                          <button
-                            onClick={() => { void removeLine(line); }}
+                          <Button variant="plain" size="none" spinner={false}
+                            onClick={() => { return removeLine(line); }}
                             disabled={busy}
                             className="text-ps-disabled hover:text-state-problem transition-colors disabled:opacity-40"
                             aria-label="Remove this line"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          </Button>
                         )}
                       </td>
                     </tr>
@@ -646,13 +647,13 @@ export default function AISPage() {
                     className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
-                <button
-                  onClick={() => { void addManual(); }}
+                <Button variant="plain" size="none"
+                  onClick={() => { return addManual(); }}
                   disabled={busy || !manual.payer.trim() || !manual.amount.trim()}
                   className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-40 transition-colors"
                 >
                   Add
-                </button>
+                </Button>
               </div>
             )}
           </div>

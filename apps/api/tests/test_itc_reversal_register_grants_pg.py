@@ -65,6 +65,17 @@ NOT_FOR_THE_API = {
     "schema_migration_failures",
     "platform_admins",       # cross-firm operator accounts; RLS would not save us
     "platform_audit",        # what those operators did
+    # Three tables migrations 471 and 472 created for the backend ALONE (ops-14, ops-21). Each has row-level
+    # security on, no policy and no grant to `authenticated`, which is the point, and every reader and writer is
+    # the service-role client (`db_provider.service_db`); no screen reads any of them. The deny-list test below
+    # proves the denial is real for each name.
+    "scheduler_claims",      # which scheduled job a process holds, for which firm, until when: the lease that
+                             # keeps two instances from both running a job. Runtime machinery, not application data.
+    "email_outbox",          # the practice's queued mail: recipient addresses and message bodies, and the
+                             # provider's own error codes. A browser read would hand any signed-in person every
+                             # other person's queued mail.
+    "email_suppressions",    # addresses the provider reported as a hard bounce or a complaint: personal data
+                             # about people who are not the firm's users, read only by the sender.
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.

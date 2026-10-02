@@ -14,14 +14,13 @@ if the firm already has any firm-wide account, seeding is skipped.
 import os
 import logging
 from typing import Optional
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.coa_seed")
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db
 
 
 # (account_code, account_name, account_type, account_subtype)

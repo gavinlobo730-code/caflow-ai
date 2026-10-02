@@ -30,6 +30,54 @@ def _practice_mail_is_on_for_the_suite(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_schema_drift_watch_outlives_its_test():
+    """The schema-drift re-check (core/schema_guard.start_drift_watch, ops-19) is a
+    daemon thread that asks the database again every two minutes. Under test it only
+    starts where SUPABASE_URL is set, but some modules set that for their own
+    purposes, and a thread left running would go on mutating the verdict /health
+    reads in whichever test happens to be running two minutes later."""
+    yield
+    from core import schema_guard
+    schema_guard.stop_drift_watch(timeout=1.0)
+
+
+# The modules whose module-level singleton a test module reloads away. `importlib.reload` re-runs the module in the
+# SAME module object, so `phase2_journal_service = Phase2JournalService()` builds a NEW instance: a test module that
+# imported the old one at collection keeps it, while application code that imports it inside a function at call time
+# gets the new one, and a monkeypatch on the first never reaches the second.
+_RELOADED_SINGLETONS = {
+    "services.phase2_journal_service": "phase2_journal_service",
+    "services.period_validation_service": "period_validation_service",
+    "services.timeline_service": "timeline_service",
+}
+_original_singletons: dict = {}
+
+
+@pytest.fixture(autouse=True)
+def _a_reloaded_service_module_leaves_the_same_singleton_behind():
+    """Four test modules (test_phase2_journal_key_resolution, test_phase2_stabilization,
+    test_the_employer_contribution_is_its_own_expense_head, the compensation-cess one) reload the journal service to
+    force it out of mock mode, and reload it again at the end to restore `_USE_MOCK`. The second reload restores the
+    FLAG and not the OBJECT, so every module that ran after one of them and had patched the singleton it imported at
+    collection (test_batch3_1_hardening patches `journal_for_sales_invoice`) saw its patch ignored.
+
+    Serially that never showed, because the alphabetical order puts those modules after the ones they break. It showed
+    the day the suite ran in parallel (`-n auto --dist loadfile`, engineering-21), where which modules share a worker
+    changes from run to run. A required check that fails on the grouping is not a check, so the first test of a
+    process records each singleton and every later test starts with that same object back. The reload itself is left
+    alone: its tests need it, and what they need is the module, not a new singleton for everybody else."""
+    import importlib
+
+    for module_name, attr in _RELOADED_SINGLETONS.items():
+        module = importlib.import_module(module_name)
+        if module_name not in _original_singletons:
+            _original_singletons[module_name] = getattr(module, attr)
+        elif getattr(module, attr) is not _original_singletons[module_name]:
+            setattr(module, attr, _original_singletons[module_name])
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _ai_rate_limit_windows_start_empty():
     """The limiter's windows are process-wide. Without this, the dozen tests that
     upload an invoice for the same firm id would exhaust the extraction bucket

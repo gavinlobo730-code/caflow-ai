@@ -2,7 +2,7 @@
 # (engineering-05).
 #
 # WHAT IT RUNS
-#     pip-audit over the set apps/api/requirements.txt RESOLVES to, and `pnpm audit --prod` over
+#     pip-audit over the lock apps/api/requirements.txt (what the image installs), and `pnpm audit --prod` over
 #     each frontend's lockfile, each judged by apps/api/scripts/ci/audit_gate.py against a
 #     reviewed baseline in .github/audit-baseline/. Read that script's header: it explains why
 #     this is a ratchet rather than "fail on anything".
@@ -13,12 +13,15 @@
 #     land, so the gate fails on an advisory that is NOT in the baseline, names what is, and says
 #     which baseline lines have gone stale. The baseline may only shrink.
 #
-# WHY pip-audit RESOLVES INSTEAD OF READING THE FILE
-#     requirements.txt holds ranges (`httpx>=0.27.0,<0.28.0`, `pydantic>=2.0.0`) and there is no
-#     lockfile, so `pip-audit --no-deps` refuses it ("not pinned to an exact version"). What a
-#     Render build installs is whatever pip resolves that day, and THAT is what has to be audited.
-#     It takes about twenty seconds. A new release can therefore change the answer with no commit,
-#     which is what the weekly schedule is for.
+# WHAT pip-audit READS, NOW THAT THERE IS A LOCK (engineering-04)
+#     apps/api/requirements.txt is pip-compile's output: every package, transitive ones included,
+#     pinned with hashes, and it is exactly what the Docker image installs (`--require-hashes`). So
+#     the audit reads what production runs, not what pip would resolve today. Before the lock the
+#     file held ranges (`httpx>=0.27.0,<0.28.0`, `pydantic>=2.0.0`), `--no-deps` refused it, and
+#     the audit had to resolve the set itself and could change its answer with no commit. It still
+#     takes about twenty seconds, and the weekly schedule is still what finds a NEW advisory
+#     against a version nobody touched: a lock stops a build changing, not an advisory appearing.
+#     The command is unchanged on purpose: against a hashed file pip-audit does not resolve at all.
 #
 # WHEN IT RUNS
 #     - every pull request that changes a dependency manifest, the baseline, or this machinery
@@ -93,7 +96,7 @@ jobs:
             exit 0
           fi
           if git diff --name-only "$base" "$head" | grep -qE \
-            '^(apps/api/requirements\.txt|apps/(web|marketing)/(package\.json|pnpm-lock\.yaml)|\.github/audit-baseline/|apps/api/scripts/ci/audit_gate\.py|\.github/workflows/dependency-audit\.yml)'; then
+            '^(apps/api/requirements\.(txt|in)|apps/(web|marketing)/(package\.json|pnpm-lock\.yaml)|\.github/audit-baseline/|apps/api/scripts/ci/audit_gate\.py|\.github/workflows/dependency-audit\.yml)'; then
             echo "audit=true" >> "$GITHUB_OUTPUT"
             echo "A dependency manifest, the baseline or the audit itself changed — auditing."
           else

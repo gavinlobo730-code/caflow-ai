@@ -18,6 +18,8 @@ import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/Fili
 import { todayLocalISO } from "@/lib/dateMath";
 import { panProblem } from "@/lib/identifiers/pan";
 import { dinProblem } from "@/lib/identifiers/din";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/use-toast";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function getToken(): Promise<string> {
@@ -102,20 +104,20 @@ function CompaniesTab({ clientId }: { clientId: string }) {
   async function saveNew() {
     const cinUp = form.cin.trim().toUpperCase();
     if (cinUp && !/^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/.test(cinUp)) {
-      alert("Invalid CIN. Format: U74999MH2020PTC123456 (21 chars, starts with L or U). Companies Act 2013.");
+      toast({ title: "Invalid CIN. Format: U74999MH2020PTC123456 (21 chars, starts with L or U). Companies Act 2013.", variant: "destructive" });
       return;
     }
     const authorised = paiseFromRupeeInput(form.authorized_capital_rupees);
     const paidUp = paiseFromRupeeInput(form.paid_up_capital_rupees);
     if (authorised === null || paidUp === null) {
-      alert("Authorised and paid-up capital must be amounts in rupees, e.g. 2500000.");
+      toast({ title: "Authorised and paid-up capital must be amounts in rupees, e.g. 2500000.", variant: "destructive" });
       return;
     }
     if (paidUp > authorised) {
       // Companies Act 2013 s.2(64)/s.2(84): paid-up capital is the portion of
       // the issued capital actually paid, so it cannot exceed what is
       // authorised. Catching it here is cheaper than an MCA rejection.
-      alert("Paid-up capital cannot exceed authorised capital.");
+      toast({ title: "Paid-up capital cannot exceed authorised capital.", variant: "destructive" });
       return;
     }
     await apiFetch("/api/mca-workspace/companies", {
@@ -175,7 +177,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
             </select>
           </div>
           <div className="flex gap-2">
-            <button onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</button>
+            <Button variant="plain" size="none" onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</Button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -343,10 +345,10 @@ function DirectorsTab({ clientId }: { clientId: string }) {
           </div>
           {saveError && <p role="alert" className="text-xs text-state-problem">{saveError}</p>}
           <div className="flex gap-2">
-            <button onClick={saveNew} disabled={saving || !form.din.trim() || !form.name.trim()}
+            <Button variant="plain" size="none" onClick={saveNew} disabled={saving || !form.din.trim() || !form.name.trim()}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {saving ? "Saving…" : "Save"}
-            </button>
+            </Button>
             <button onClick={() => { setShowNew(false); setSaveError(null); }} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -378,10 +380,10 @@ function DirectorsTab({ clientId }: { clientId: string }) {
                 </td>
                 <td className="px-3 py-2">
                   {r.kyc_status !== "active" && (
-                    <button onClick={() => updateKYC(r.id as string, "active")}
+                    <Button variant="plain" size="none" onClick={() => updateKYC(r.id as string, "active")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">
                       Mark KYC Active
-                    </button>
+                    </Button>
                   )}
                 </td>
               </tr>
@@ -547,8 +549,8 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
               className="border rounded px-3 py-1.5 text-sm" />
           </div>
           <div className="flex gap-2">
-            <button onClick={saveNew} disabled={!form.form_type}
-              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">Save</button>
+            <Button variant="plain" size="none" onClick={saveNew} disabled={!form.form_type}
+              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">Save</Button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>
@@ -578,8 +580,8 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
                 </td>
                 <td className="px-3 py-2 space-x-2">
                   {r.status === "not_started" && (
-                    <button onClick={() => updateStatus(r.id as string, "in_progress")}
-                      className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Start</button>
+                    <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "in_progress")}
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Start</Button>
                   )}
                   {r.status === "in_progress" && (
                     <button onClick={() => openConfirmFiling(r)}
@@ -630,10 +632,10 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
           </div>
           {confirmError && <p className="text-xs text-state-problem">{confirmError}</p>}
           <div className="flex gap-2">
-            <button onClick={confirmMarkFiled} disabled={confirming}
+            <Button variant="plain" size="none" onClick={confirmMarkFiled} disabled={confirming}
               className="px-3 py-1 bg-state-ready-solid text-white rounded text-sm disabled:opacity-50">
               {confirming ? "Saving…" : "Confirm Filing"}
-            </button>
+            </Button>
             <button onClick={() => setConfirmFiling(null)} className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
         </div>

@@ -259,7 +259,9 @@ def test_tds_deducted_and_deposited_are_two_populations():
 def test_the_nightly_sweep_runs_it():
     src = (API / "jobs" / "scheduler.py").read_text()
     assert "client_metrics_service import refresh_firm" in src
-    assert '_already_ran_today("client_period_metrics"' in src
+    # Gated by `_begin`, which asks "did it already run today" and then takes the
+    # atomic claim (ops-14): the rule is that the job is gated, not the spelling.
+    assert '_begin("client_period_metrics"' in src
 
 
 def test_the_benchmark_endpoint_exists_and_is_read_scoped():

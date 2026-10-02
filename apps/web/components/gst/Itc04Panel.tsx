@@ -42,6 +42,7 @@ import {
   type Itc04Window,
 } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 import { YearPicker } from "@/components/ui/year-picker";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { formatPaise } from "@/lib/money/format";
@@ -445,11 +446,12 @@ export function Itc04Panel({ clientId, onChanged }: {
                                className="block w-full rounded border border-ps-border px-2 py-1" />
                       </label>
                       <div className="sm:col-span-3 flex items-center gap-3">
-                        <button type="button" disabled={saving}
-                                onClick={() => void record(l, b.challan_id)}
+                        <Button variant="plain" size="none" spinner={false}
+                                type="button" disabled={saving}
+                                onClick={() => record(l, b.challan_id)}
                                 className="rounded bg-brand px-3 py-1.5 text-white disabled:opacity-50">
                           {saving ? "Recording…" : "Record this lot"}
-                        </button>
+                        </Button>
                         <p className="text-ps-hint">
                           More than was sent is refused, not trimmed. Lost or wasted
                           quantity is kept and is not taken off what is outstanding.

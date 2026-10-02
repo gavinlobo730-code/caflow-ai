@@ -64,6 +64,22 @@ EXEMPT: dict[str, str] = {
     "SMOKE_END_DATE":
         "CI-only (scripts/smoke_api.py), defaulted in the script. Overrides the "
         "reporting window the smoke check asks for; not a service setting.",
+    "SMOKE_TIMINGS_FILE":
+        "CI-only (scripts/smoke_api.py). Where the smoke run keeps its per-endpoint "
+        "timings for the workflow to upload (ops-12). Unset, nothing is written.",
+    "SMOKE_DEPLOYMENT":
+        "CI-only (scripts/smoke_api.py). Says whether a timings file measured the live "
+        "deployment or a candidate the workflow was aimed at by hand, so a candidate's "
+        "numbers are not read as the live service's history. Defaults to 'live'.",
+    "GITHUB_SHA":
+        "CI-only (scripts/smoke_api.py), set by GitHub Actions. Stamped into the timings "
+        "file so a slow run can be tied to the commit that was live; a service reads none.",
+    "GITHUB_RUN_ID":
+        "CI-only (scripts/smoke_api.py), set by GitHub Actions. Stamped into the timings "
+        "file so two copies of one run are counted once in the history.",
+    "GITHUB_EVENT_NAME":
+        "CI-only (scripts/smoke_api.py), set by GitHub Actions. Stamped into the timings "
+        "file (schedule or workflow_dispatch); a service reads none.",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY":
         "Compatibility fallback only. core/supabase_client.py reads it when "
         "SUPABASE_ANON_KEY is unset, because the frontend spelling is what "
@@ -113,6 +129,12 @@ EXEMPT: dict[str, str] = {
         "events once the transaction quota is gone, and the events it drops "
         "include the posting failures Sentry is installed to surface. Raising "
         "it should be a deliberate act on a paid plan, not a filled-in blank.",
+    "GITHUB_ACTIONS":
+        "Set by GitHub Actions itself, to 'true', on a CI runner and nowhere else. "
+        "scripts/db/apply_migrations.py reads it to decide whether to print a "
+        "workflow-command error annotation for a failed migration; the service never "
+        "reads it. Declaring it in the manifest would invite a value on Render, where "
+        "it would turn a CI formatting convention on for no reader.",
     "MOCK_WEBHOOK_SECRET":
         "Mock payment provider's webhook signing secret. services/payments/"
         "mock.py refuses a hardcoded default on purpose, so an unset value "

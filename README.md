@@ -35,11 +35,18 @@ Runs at http://localhost:3000
 
 ```bash
 cd apps/api
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt   # the tests need the second file
 uvicorn main:app --reload --port 8000
 ```
 
 Runs at http://localhost:8000
+
+`requirements.txt` is a **lock**: every package pinned to one version with its hash, compiled from
+`requirements.in` (what you edit) on Python 3.11 for Linux. CI and the Docker image install it with
+`pip install --require-hashes`; locally the flag is optional, and on macOS or Windows use Python 3.11
+or the container. To change a dependency, edit `requirements.in` and recompile — the commands are at
+the top of that file, and `requirements-dev.in` (pytest, never shipped in the image) is compiled
+after it.
 
 ### Local stack — the backend in a container
 

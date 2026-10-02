@@ -1,0 +1,128 @@
+# Builds the API's Docker image and looks at what came out (engineering-04, ops-27).
+#
+# WHY THIS EXISTS
+#     Everything that makes the image reproducible and small is a property of the BUILD, which no unit test
+#     reaches: that `pip install --require-hashes` really installs the lock, that the build context really
+#     leaves tests/ out, that pytest is not in there, that the app imports with only the locked set. Each is
+#     asserted from the source files by tests/test_the_backend_installs_from_a_lock.py; this is the check on
+#     the artefact, and it is the only place the Dockerfile is ever run before Render runs it.
+#
+# WHAT IT ASSERTS, AFTER `docker build apps/api`
+#     1. /app/tests does not exist           (the build context left it out)
+#     2. `import pytest` fails               (the test runner is not installed)
+#     3. `pip freeze` in the image equals requirements.txt, package for package and version for version
+#        (scripts/ci/compare_freeze_to_lock.py). Two builds a week apart that both pass this are identical.
+#     4. `import main` succeeds              (the app starts with only the locked set; with no SUPABASE_URL
+#        it comes up in mock mode, which is all an import needs)
+#
+# WHEN IT RUNS, AND WHY IT IS NOT A REQUIRED CHECK
+#     When the Dockerfile, .dockerignore or a requirements file changes (a `scope` job decides, inside, exactly
+#     as backend-ci.yml does: no `paths:` filter, so the check always reports), on every push to main, weekly
+#     (the base image tag moves and a build a week apart is the claim), and on demand. A docker build is a few
+#     minutes and a pull request that touches none of these cannot change the answer. It is not required: a
+#     base-image or PyPI outage must not block an unrelated merge.
+#
+# NOT DONE: the image is not pushed anywhere (Render builds its own from the repository), and the base image
+# is not pinned by digest, which is a separate decision with its own upkeep (Dependabot's docker ecosystem).
+name: Docker image
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Mondays 04:00 UTC (09:30 IST).
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  scope:
+    name: scope — can this change the image?
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.detect.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: detect
+        run: |
+          set -euo pipefail
+          # A schedule or a manual run exists to build, whatever the diff says.
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
+          if [ -z "$base" ] \
+            || [ "$base" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "No usable base commit — building."
+            exit 0
+          fi
+          if git diff --name-only "$base" "$head" | grep -qE \
+            '^(apps/api/(Dockerfile|\.dockerignore|requirements[^/]*\.(txt|in))|apps/api/scripts/ci/compare_freeze_to_lock\.py|\.github/workflows/docker-image\.yml)$'; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "The Dockerfile, its context or the lock changed — building."
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing that can change the image changed — this job will report green without building."
+          fi
+
+  image:
+    name: image — builds, no tests, no pytest, installed set equals the lock
+    runs-on: ubuntu-latest
+    needs: scope
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build the image
+        if: needs.scope.outputs.build == 'true'
+        run: docker build --pull -t practicesync-api:ci apps/api
+
+      - name: The image holds no tests and no test runner
+        if: needs.scope.outputs.build == 'true'
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh practicesync-api:ci -c '
+            test ! -e /app/tests || { echo "/app/tests is in the image"; exit 1; }
+            if python -c "import pytest" 2>/dev/null; then echo "pytest is installed in the image"; exit 1; fi
+            echo "no /app/tests, no pytest"
+          '
+
+      - name: The installed set is the lock
+        if: needs.scope.outputs.build == 'true'
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint pip practicesync-api:ci freeze \
+            | python3 apps/api/scripts/ci/compare_freeze_to_lock.py apps/api/requirements.txt
+
+      - name: The app starts with only the locked set
+        if: needs.scope.outputs.build == 'true'
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint python practicesync-api:ci -c "import main; print('import main OK')"
+
+      - name: Nothing that can change the image changed
+        if: needs.scope.outputs.build != 'true'
+        run: echo "Nothing the image is built from changed — nothing to prove here."

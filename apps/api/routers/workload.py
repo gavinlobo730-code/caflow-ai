@@ -10,6 +10,7 @@ from services import capacity_risk_service
 
 from datetime import date, timedelta
 from core.ist_clock import ist_today
+from core import db_provider
 
 router = APIRouter(prefix="/api/workload", tags=["workload"])
 
@@ -36,18 +37,16 @@ def _by_urgency(tasks: list[dict]) -> list[dict]:
                                         t.get("due_date") or "", str(t.get("id") or "")))
 
 
-def _get_db():
-    # sweep-team-hub-04: this router reads `public.users` to build the firm's
-    # roster (get_team_workload, get_user_workload). Under USE_USER_JWT,
-    # get_supabase() returns the CALLER's own JWT client, and `users`' RLS
-    # SELECT policy (`users_own_row_select`) shows a caller exactly one row —
-    # itself — the same defect `repositories/user_repository.py`'s header
-    # documents for the identity router. The service role bypasses that, and
-    # every query here already carries its own `.eq("firm_id", …)` (plus
-    # filter_by_client on the task rows), which is the tenant boundary per
-    # CLAUDE.md's "Tenancy and access" — so this is not a widening of scope.
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# sweep-team-hub-04: this router reads `public.users` to build the firm's
+# roster (get_team_workload, get_user_workload). Under USE_USER_JWT,
+# get_supabase() returns the CALLER's own JWT client, and `users`' RLS
+# SELECT policy (`users_own_row_select`) shows a caller exactly one row —
+# itself — the same defect `repositories/user_repository.py`'s header
+# documents for the identity router. The service role bypasses that, and
+# every query here already carries its own `.eq("firm_id", …)` (plus
+# filter_by_client on the task rows), which is the tenant boundary per
+# CLAUDE.md's "Tenancy and access" — so this is not a widening of scope.
+_get_db = db_provider.service_db
 
 
 class CapacityUpdate(BaseModel):

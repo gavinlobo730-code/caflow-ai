@@ -87,6 +87,16 @@ def fetch_all(
     `stats`: optional out-parameter filled with {"pages", "rows"}. The page COUNT
     is the number worth having when something is slow, since paging is
     sequential and wall-clock is roughly pages x round trip.
+
+    A QUERY THAT CANNOT PAGE IS READ ONCE (engineering-30). Twelve services
+    carried a private copy of this loop, and nine of them carried it for one
+    reason beyond the loop: a hand-written test double that implements `.eq()`
+    and `.execute()` and nothing else returns its whole, small fixture from a
+    single `execute()`, which is already the right answer, and the double has no
+    `.gt` / `.order` / `.limit` to page with. That tolerance lives here now, once,
+    and it is test-double accommodation, said as such: a PostgREST builder always
+    has all three, so production never takes the branch. It is judged on the FIRST
+    page's builder only, so a real query cannot slip into it halfway.
     """
     out: list[dict] = []
     cursor: Any = None
@@ -94,6 +104,10 @@ def fetch_all(
 
     while True:
         q = make_query()
+        if pages == 0 and not (hasattr(q, "gt") and hasattr(q, "order") and hasattr(q, "limit")):
+            out = list(q.execute().data or [])
+            pages = 1
+            break
         if cursor is not None:
             q = q.gt(key, cursor)
         page = q.order(key).limit(PAGE).execute().data or []

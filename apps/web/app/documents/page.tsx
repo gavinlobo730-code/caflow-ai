@@ -21,6 +21,7 @@ import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -402,13 +403,13 @@ export default function DocumentsPage() {
   }, []);
 
   async function handleDelete(doc: Document) {
-    if (!confirm(`Delete "${doc.file_name}"?`)) return;
+    if (!(await confirmDialog({ message: `Delete "${doc.file_name}"?`, danger: true, confirmLabel: "Delete" }))) return;
     setDeleting(doc.id);
     try {
       await apiFetch(`/api/documents/${doc.id}`, { method: "DELETE" });
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Delete failed");
+      toast({ title: err instanceof Error ? err.message : "Delete failed", variant: "destructive" });
     } finally {
       setDeleting(null);
     }
@@ -453,7 +454,7 @@ export default function DocumentsPage() {
       if (error) throw new Error(error.message);
       window.open(data.signedUrl, "_blank");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Download failed");
+      toast({ title: err instanceof Error ? err.message : "Download failed", variant: "destructive" });
     }
   }
 

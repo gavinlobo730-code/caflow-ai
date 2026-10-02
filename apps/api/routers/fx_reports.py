@@ -17,6 +17,7 @@ from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access
 from services.fx_reporting_service import fx_reporting_service
+from core import db_provider
 
 _logger = logging.getLogger("caflow.fx_reports")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -25,10 +26,7 @@ router = APIRouter(prefix="/api/fx-reports", tags=["fx-reports"])
 
 
 def _db_or_none():
-    if _USE_MOCK:
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    return None if _USE_MOCK else db_provider.request_db()
 
 
 def _run(fn, empty):

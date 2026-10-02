@@ -30,6 +30,7 @@ import { VendorLookup } from "@/components/lookups/VendorLookup";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
+import { Button } from "@/components/ui/button";
 
 const FREQUENCIES = ["weekly", "monthly", "quarterly", "half_yearly", "yearly"] as const;
 type Frequency = (typeof FREQUENCIES)[number];
@@ -270,10 +271,10 @@ export function RecurringBills({ clientId }: { clientId: string }) {
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
           {templates.some((t) => t.status === "active") && (
-            <button onClick={runAllDue} disabled={busy === "all"}
+            <Button variant="plain" size="none" onClick={runAllDue} disabled={busy === "all"}
               className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
               {busy === "all" ? "Generating…" : "Generate all due"}
-            </button>
+            </Button>
           )}
           <button onClick={() => setEditor("new")}
             className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
@@ -337,10 +338,10 @@ export function RecurringBills({ clientId }: { clientId: string }) {
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1.5 flex-wrap">
                         {t.status === "active" && (
-                          <button onClick={() => runNow(t)} disabled={busy === t.id}
+                          <Button variant="plain" size="none" onClick={() => runNow(t)} disabled={busy === t.id}
                             className="text-2xs px-2 py-1 border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40">
                             Generate now
-                          </button>
+                          </Button>
                         )}
                         <button onClick={() => setHistoryFor(t)}
                           className="text-2xs px-2 py-1 border border-ps-border rounded-md hover:bg-ps-bg">
@@ -353,22 +354,22 @@ export function RecurringBills({ clientId }: { clientId: string }) {
                           </button>
                         )}
                         {t.status === "active" && (
-                          <button onClick={() => changeStatus(t, "pause")} disabled={busy === t.id}
+                          <Button variant="plain" size="none" onClick={() => changeStatus(t, "pause")} disabled={busy === t.id}
                             className="text-2xs px-2 py-1 border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40">
                             Pause
-                          </button>
+                          </Button>
                         )}
                         {t.status === "paused" && (
-                          <button onClick={() => changeStatus(t, "resume")} disabled={busy === t.id}
+                          <Button variant="plain" size="none" onClick={() => changeStatus(t, "resume")} disabled={busy === t.id}
                             className="text-2xs px-2 py-1 border border-ps-border rounded-md hover:bg-ps-bg disabled:opacity-40">
                             Resume
-                          </button>
+                          </Button>
                         )}
                         {t.status !== "archived" && (
-                          <button onClick={() => changeStatus(t, "archive")} disabled={busy === t.id}
+                          <Button variant="plain" size="none" onClick={() => changeStatus(t, "archive")} disabled={busy === t.id}
                             className="text-2xs px-2 py-1 border border-state-problem-border text-state-problem rounded-md hover:bg-state-problem-hover disabled:opacity-40">
                             Archive
-                          </button>
+                          </Button>
                         )}
                       </div>
                     </td>
@@ -722,10 +723,10 @@ function RecurringBillEditor({
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
             Cancel
           </button>
-          <button onClick={save} disabled={saving}
+          <Button variant="plain" size="none" onClick={save} disabled={saving}
             className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Saving…" : existing ? "Save changes" : "Create template"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

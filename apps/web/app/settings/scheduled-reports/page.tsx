@@ -15,6 +15,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Callout } from "@/components/ui/callout";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -208,7 +209,7 @@ export default function ScheduledReportsPage() {
   async function handleDelete(id: string) {
     setRowBusy(true);
     try {
-    if (!confirm("Delete this schedule?")) return;
+    if (!(await confirmDialog({ message: "Delete this schedule?", danger: true, confirmLabel: "Delete" }))) return;
     try {
       const supabase = getSupabaseClient();
       const { error } = await supabase.from("scheduled_reports").delete().eq("id", id);

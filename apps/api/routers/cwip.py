@@ -28,6 +28,7 @@ from core.permissions import rbac
 from domain.fixed_assets import cwip as cwip_domain
 from models.common import api_response
 from services import cwip_service as svc
+from core import db_provider
 
 router = APIRouter(prefix="/api/cwip", tags=["cwip"])
 
@@ -36,15 +37,13 @@ def _mock_enabled() -> bool:
     return not os.environ.get("SUPABASE_URL")
 
 
-def _db():
-    # SERVICE ROLE, the PR #626 fix. Capitalisation INSERTs the project's
-    # fixed_assets row, and under USE_USER_JWT the `authenticated` role has
-    # SELECT only on fixed_assets, so get_supabase() made every capitalisation
-    # a 42501 after the project had been checked and costed. Every endpoint
-    # below runs rbac() and assert_client_access before reaching this, and
-    # every query in services/cwip_service filters on firm_id.
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# SERVICE ROLE, the PR #626 fix. Capitalisation INSERTs the project's
+# fixed_assets row, and under USE_USER_JWT the `authenticated` role has
+# SELECT only on fixed_assets, so get_supabase() made every capitalisation
+# a 42501 after the project had been checked and costed. Every endpoint
+# below runs rbac() and assert_client_access before reaching this, and
+# every query in services/cwip_service filters on firm_id.
+_db = db_provider.service_db
 
 
 def _journal():

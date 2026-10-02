@@ -32,6 +32,7 @@ from models.common import api_response
 # Reuse the canonical helpers so the public path shares the same audit-event and
 # forward-only lead-advance behaviour as the staff path.
 from routers.engagement_letters import _log_engagement_event, _advance_lead, _revert_lead
+from core import db_provider
 
 router = APIRouter(prefix="/api/public/engagement-letters", tags=["engagement_sign_public"])
 _logger = logging.getLogger("caflow.engagement_sign_public")
@@ -66,11 +67,9 @@ class RejectBody(BaseModel):
     reason: Optional[str] = None
 
 
-def _db():
-    # Token is the credential; there is no user JWT, so use the service-role
-    # client and constrain every access to the token's row.
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# Token is the credential; there is no user JWT, so use the service-role
+# client and constrain every access to the token's row.
+_db = db_provider.service_db
 
 
 def _public_view(eng: dict, firm_name: str) -> dict:

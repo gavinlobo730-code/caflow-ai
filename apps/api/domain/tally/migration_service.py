@@ -18,6 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 from domain.tally import party_identifiers
+from core import db_provider
 
 try:
     import xml.etree.ElementTree as ET
@@ -31,16 +32,12 @@ _MOCK_JOBS: dict[str, dict] = {}
 _MOCK_ITEMS: dict[str, list] = {}
 
 
-def _supabase():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_supabase = db_provider.request_db
 
 
-def _service_supabase():
-    """The SERVICE-ROLE client, for the one write that must land whoever the
-    caller was: marking a detached import `error`. See run_import_detached."""
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# The SERVICE-ROLE client, for the one write that must land whoever the
+# caller was: marking a detached import `error`. See run_import_detached.
+_service_supabase = db_provider.service_db
 
 
 # ── What this importer actually writes ───────────────────────────────────────

@@ -75,6 +75,7 @@ from domain.payroll import one_time_earnings as one_time_domain
 from domain.payroll import perquisites as perq_domain
 from domain.reporting.amount_words import indian_rupees
 from dataclasses import replace as _replace
+from core import db_provider
 
 
 # Every "read failed, carry on with the safe default" branch below logs through
@@ -112,19 +113,14 @@ router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 _MOCK_FINALIZED_RUNS: set[str] = set()  # tracks finalized run IDs in mock mode
 
 
-def _db():
-    import os
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    # Every write below is already gated by rbac() and assert_client_access(),
-    # so this is the privileged path get_service_supabase()'s own docstring
-    # names. get_supabase() would be silently downgraded to the RLS-enforced
-    # `authenticated` client under USE_USER_JWT — which lacks INSERT/UPDATE on
-    # client_payroll_settings and would 503 the "is payroll switched on" check
-    # on every write, and lacks any write grant on journal_entries/journal_lines
-    # once a run is finalized. Same fix as routers/fixed_assets.py (PR #626).
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# Every write below is already gated by rbac() and assert_client_access(),
+# so this is the privileged path get_service_supabase()'s own docstring
+# names. get_supabase() would be silently downgraded to the RLS-enforced
+# `authenticated` client under USE_USER_JWT — which lacks INSERT/UPDATE on
+# client_payroll_settings and would 503 the "is payroll switched on" check
+# on every write, and lacks any write grant on journal_entries/journal_lines
+# once a run is finalized. Same fix as routers/fixed_assets.py (PR #626).
+_db = db_provider.service_db_or_none
 
 
 

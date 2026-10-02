@@ -748,9 +748,15 @@ def test_the_row_a_send_is_recorded_as_is_the_same_in_mock_and_against_a_databas
     args = (FIRM, "compliance_deadline", {"id": "u-1"}, "p@f.in", "staff", [ref],
             date(2026, 10, 13), "sent", keys)
 
+    # The row carries an id (ops-21: a queued mail's outbox row remembers the ids of the log
+    # rows it stands for), and an unchosen one is a fresh uuid per call, so both calls are
+    # given the same one: what is pinned is that the two literals agree, not that uuid4 does.
+    fixed = {ref: "00000000-0000-0000-0000-0000000000a1"}
+
     mail.reset_mock_stores()
-    mail._record(*args, detail="ok")
+    mail._record(*args, detail="ok", log_ids=fixed)
     in_memory = {k: v for k, v in mail.MOCK_LOG[0].items() if k != "created_at"}
+    assert in_memory["id"] == fixed[ref]
 
     captured: list = []
 
@@ -769,7 +775,7 @@ def test_the_row_a_send_is_recorded_as_is_the_same_in_mock_and_against_a_databas
 
     monkeypatch.setattr(mail, "_USE_MOCK", False)
     monkeypatch.setattr(mail, "_db", lambda: _DB())
-    mail._record(*args, detail="ok")
+    mail._record(*args, detail="ok", log_ids=fixed)
     assert captured == [[in_memory]], (
         "the in-memory row and the row inserted against a database must be identical")
     mail.reset_mock_stores()

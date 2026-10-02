@@ -508,9 +508,9 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
         </div>
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
+          <Button variant="plain" size="none" onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
             {saving ? "Saving…" : target ? "Update" : "Add Audit"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

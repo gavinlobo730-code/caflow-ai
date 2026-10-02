@@ -40,15 +40,20 @@ const LEAVE_MESSAGE = "You have unsaved changes. Leave without saving?";
 /**
  * Guard the editor while `dirty` is true. Installs a `beforeunload` warning and
  * returns `confirmLeave()` — call it before any in-app navigation and only proceed
- * when it returns true. `message` is customisable for testing/wording. `confirmFn`
- * lets the caller supply the actual confirm UI (e.g. confirmDialog from
- * @/components/ui/confirm-dialog); defaults to window.confirm.
+ * when it returns true. `message` is customisable for testing/wording.
+ *
+ * `confirmFn` is REQUIRED and is the confirm UI: pass `confirmDialog` from
+ * @/components/ui/confirm-dialog. It used to default to `window.confirm`, which is
+ * why this file held the last native pop-up in the product (frontend_ux-21) — and
+ * a default is the wrong shape for it anyway: an editor that forgot to inject one
+ * got a browser dialog in a product that has none, where the right outcome of
+ * forgetting is a type error. (`undefined` for `message` still takes the default
+ * wording.)
  */
 export function useUnsavedChanges(
   dirty: boolean,
   message: string = LEAVE_MESSAGE,
-  confirmFn: (message: string) => boolean | Promise<boolean> = (m) =>
-    typeof window === "undefined" ? true : window.confirm(m),
+  confirmFn: (message: string) => boolean | Promise<boolean>,
 ) {
   useEffect(() => {
     if (!dirty) return;

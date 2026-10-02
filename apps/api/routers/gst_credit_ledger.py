@@ -26,7 +26,6 @@ belongs in the NEXT window's opening.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -40,6 +39,7 @@ from models.common import api_response
 from services import client_gst_registration_service as regs
 from services import gst_credit_ledger_service as service
 from services.audit_service import log_event
+from core import db_provider
 
 _logger = logging.getLogger("caflow.gst_credit_ledger")
 
@@ -48,16 +48,10 @@ router = APIRouter(prefix="/api/gst-workspace/credit-ledger", tags=["gst"])
 
 def _db():
     """The privileged client, or a 503 with no database. Every route is rbac()-
-    gated and checks the client scope first; the service carries `firm_id` and
-    `client_id` on every read and write. The table's writes are service-role-only
-    by grant (migration 474), so this is the client they need."""
-    if not os.environ.get("SUPABASE_URL"):
-        raise HTTPException(
-            status_code=503,
-            detail="The credit-ledger opening balance is kept in the database "
-                   "and is unavailable without it.")
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+gated and checks the client scope first; the service carries `firm_id` and
+`client_id` on every read and write. The table's writes are service-role-only
+by grant (migration 474), so this is the client they need."""
+    return db_provider.service_db_or_503('The credit-ledger opening balance is kept in the database and is unavailable without it.')
 
 
 def _window(db, firm_id: str, client_id: str, period: str,

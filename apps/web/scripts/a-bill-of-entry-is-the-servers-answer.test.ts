@@ -66,7 +66,7 @@ test("a refusal and a caveat are rendered as different things", () => {
   const src = code(TAB);
   assert.match(src, /r\.refusals\.map/);
   assert.match(src, /r\.caveats\.map/);
-  const post = src.match(/<button onClick=\{\(\) => handlePost\(r\)\}[\s\S]*?<\/button>/);
+  const post = src.match(/<(?:button|Button)\b[^>]*onClick=\{\(\) => handlePost\(r\)\}[\s\S]*?<\/(?:button|Button)>/);
   assert.ok(post, "the post control exists");
   assert.match(post![0], /!r\.can_post/,
     "the server decides whether it can post, not a re-test of the refusals");
@@ -96,7 +96,7 @@ test("posting is confirmed and cannot be double-fired", () => {
     "posting writes a journal, so it is an explicit confirmation");
   assert.match(handler![0], /if \(!ok\) return;/,
     "and declining it must stop the write");
-  const post = src.match(/<button onClick=\{\(\) => handlePost\(r\)\}[\s\S]*?<\/button>/);
+  const post = src.match(/<(?:button|Button)\b[^>]*onClick=\{\(\) => handlePost\(r\)\}[\s\S]*?<\/(?:button|Button)>/);
   assert.match(post![0], /disabled=\{busy/);
 });
 

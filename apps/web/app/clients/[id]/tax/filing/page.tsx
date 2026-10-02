@@ -11,6 +11,8 @@ import { assessmentYearFor, financialYearChoicesAround } from "@/lib/dates/perio
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/use-toast";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -399,7 +401,7 @@ export default function ITRFilingPage() {
       setSelectedFiling(null);
       await load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed");
+      toast({ title: err instanceof Error ? err.message : "Failed", variant: "destructive" });
     } finally {
       setSavingAck(false);
     }
@@ -564,10 +566,10 @@ export default function ITRFilingPage() {
           {createError && <p className="text-xs text-red-600">{createError}</p>}
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
-            <button onClick={handleCreate} disabled={actionInFlight}
+            <Button variant="plain" size="none" spinner={false} onClick={handleCreate} disabled={actionInFlight}
               className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -664,14 +666,14 @@ export default function ITRFilingPage() {
 
           <div className="flex gap-2 flex-wrap">
             {nextStatus(selectedFiling.status) && selectedFiling.status !== "filed" && (
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={() => handleTransition(selectedFiling, nextStatus(selectedFiling.status)!)}
                 disabled={actionInFlight}
                 className="text-xs px-4 py-2 bg-brand text-white rounded-lg disabled:opacity-50 flex items-center gap-1 hover:bg-brand-dark"
               >
                 {transitioning && <Loader2 size={10} className="animate-spin" />}
                 Move to {STATUS_LABEL[nextStatus(selectedFiling.status)!]}
-              </button>
+              </Button>
             )}
             {/* Only on a return that is ready to file, and only where the
                 server says the walk-through exists — the dead-control rule. */}
@@ -733,14 +735,14 @@ export default function ITRFilingPage() {
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setShowAck(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
-                <button
+                <Button variant="plain" size="none" spinner={false}
                   onClick={() => handleRecordAck(selectedFiling)}
                   disabled={actionInFlight || !ackNumber || !ackDate}
                   className="text-xs px-3 py-1.5 bg-green-600 text-white rounded disabled:opacity-50 flex items-center gap-1"
                 >
                   {savingAck && <Loader2 size={10} className="animate-spin" />}
                   Record as Filed
-                </button>
+                </Button>
               </div>
             </div>
           )}
