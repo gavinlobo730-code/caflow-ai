@@ -29,6 +29,7 @@ import { todayLocalISO, daysBetweenLocalISO, toLocalISO, computeOverdueStatus, c
 import { isCompaniesActCompany } from "@/lib/entityObligations";
 import { Callout } from "@/components/ui/callout";
 import { formatCroreLakh } from "@/lib/money/format";
+import { Button } from "@/components/ui/button";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -292,9 +293,9 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
         </div>
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
-          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
+          <Button variant="plain" size="none" onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Filing"}
-          </button>
+          </Button>
         </div>
         <p className="text-3xs text-amber-600 bg-state-attention-surface rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
@@ -465,13 +466,13 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
             Cancel
           </button>
           {rows.length > 0 && (
-            <button
+            <Button variant="plain" size="none"
               onClick={handleSubmit}
               disabled={!allFilled || saving}
               className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
             >
               {saving ? "Saving…" : `Confirm ${rows.length} Filing${rows.length === 1 ? "" : "s"}`}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -1017,13 +1018,13 @@ export default function MCAPage() {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none"
                 onClick={handleMarkFiled}
                 disabled={filedLoading}
                 className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
               >
                 {filedLoading ? "Saving…" : "Confirm Filing"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

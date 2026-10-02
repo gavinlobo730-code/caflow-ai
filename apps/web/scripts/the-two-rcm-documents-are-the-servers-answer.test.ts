@@ -80,7 +80,7 @@ test("the supplier block shows an absent GSTIN as a fact, not a blank", () => {
 
 test("the issue button cannot be pressed twice or on a document already issued", () => {
   const src = code(PANEL);
-  const button = src.match(/<button onClick=\{issue\}[\s\S]*?<\/button>/);
+  const button = src.match(/<(?:button|Button)\b[^>]*onClick=\{issue\}[\s\S]*?<\/(?:button|Button)>/);
   assert.ok(button, "the issue control exists");
   assert.match(button![0], /disabled=\{[^}]*issuing/,
     "issuing is a server write, so a double-click must be stopped");

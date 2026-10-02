@@ -3,14 +3,13 @@ import os
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _MOCK_EVENTS: list[dict] = []
 
 
-def _db():
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+_db = db_provider.service_db
 
 
 def _now() -> str:

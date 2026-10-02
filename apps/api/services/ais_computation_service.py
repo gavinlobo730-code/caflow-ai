@@ -55,6 +55,7 @@ from uuid import uuid4
 
 from core.ist_clock import assessment_year_for
 from services import ais_service
+from core import db_provider
 
 _logger = logging.getLogger("caflow.ais_computation")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -100,9 +101,7 @@ class DecisionRefused(ValueError):
     """The decision cannot be recorded; the message says why."""
 
 
-def _supabase():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_supabase = db_provider.request_db
 
 
 def _now() -> str:

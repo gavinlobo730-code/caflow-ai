@@ -754,6 +754,7 @@ def put_costing_policy(
 from datetime import date as _date  # noqa: E402 — module already imported above
 
 from pydantic import BaseModel as _BaseModel, Field as _Field, field_validator  # noqa: E402
+from core import db_provider
 
 
 def _a_date(value: str, what: str) -> str:
@@ -866,9 +867,7 @@ def _loc():
     return svc
 
 
-def _loc_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_loc_db = db_provider.request_db
 
 
 @router.get("/godowns")

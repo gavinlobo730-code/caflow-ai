@@ -12,6 +12,7 @@ import {
 import { Session, User } from "@supabase/supabase-js";
 import { supabase, getSupabaseClient } from "@/lib/supabase/client";
 import { authErrorMessage } from "@/lib/auth/authErrorMessage";
+import { browserSessionStorage, clearAllDrafts } from "@/lib/drafts/unsentDraft";
 import {
   can as canDo,
   normalizeRole,
@@ -457,6 +458,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { api } = await import("@/lib/api");
       await api.identity.recordLoginEvent("logout").catch(() => {});
     } catch { /* best-effort */ }
+    // Half-typed vouchers kept in this tab for a reload (frontend_ux-23) belong
+    // to the person signing out; the next person at this tab is offered none.
+    clearAllDrafts(browserSessionStorage());
     await supabase.auth.signOut();
   }, []);
 

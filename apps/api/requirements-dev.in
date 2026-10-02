@@ -1,0 +1,28 @@
+# What only the TEST SUITE needs, on top of requirements.txt (engineering-04).
+#
+# pytest used to sit in the production requirements, which put a test runner in the image Render serves
+# traffic from. CI installs both locks; the Dockerfile installs only requirements.txt, and the build
+# context excludes this file and tests/ (see .dockerignore).
+#
+# `-c requirements.txt` makes this a CONSTRAINT: whatever pytest shares with the runtime set (packaging, say)
+# is pinned to the version the production lock chose, so CI can never test against a different version of a
+# runtime library from the one the image installs. Compile this one AFTER requirements.txt; the command is in
+# requirements.in.
+-c requirements.txt
+pytest>=8.0.0
+
+# THE TOOLS ONLY THE TEST AND LINT JOB USES (engineering-01, -21, -23), none of them a dependency of the product
+# and none of them in requirements.txt: shipping a linter, a property-testing engine and a coverage tool to
+# production would be the wrong direction. Each is pinned EXACTLY, and that is deliberate for each:
+#   ruff          a newer release can fire on code that did not change, which turns the lint step red with no
+#                 commit of ours (scripts/ci/ruff_ratchet.py). Bump it by hand, together with the baseline.
+#   hypothesis    a newer release can find a counterexample an older one did not, and a property test that is
+#                 red because of a version bump is a flaky check. The tests also run derandomized
+#                 (tests/_property.py).
+#   pytest-cov    the coverage floor in scripts/ci/coverage_floor.py is measured, and its engine moves.
+#   pytest-xdist  the backend job runs the suite in parallel (`-n auto --dist loadfile`, see backend-ci.yml for
+#                 why that mode and what was measured before it was turned on).
+ruff==0.16.10
+hypothesis==6.168.3
+pytest-cov==7.1.0
+pytest-xdist==3.8.0

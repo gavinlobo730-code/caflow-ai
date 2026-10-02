@@ -29,6 +29,7 @@ from uuid import uuid4
 from domain.income_tax import claimable_credit as _claimable
 from domain.income_tax import form26as_matcher as _m
 from domain.money_text import whole_rupees
+from core import db_provider
 
 _logger = logging.getLogger("caflow.form26as")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -62,9 +63,7 @@ MISMATCH_THRESHOLD_PCT = 1.0
 _MISMATCH_THRESHOLD_PCT_X10 = 10
 
 
-def _supabase():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_supabase = db_provider.request_db
 
 
 # ── Upload ─────────────────────────────────────────────────────────────────────

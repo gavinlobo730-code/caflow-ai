@@ -6,10 +6,13 @@
 #     it is a silent no-op, so apps/api/tests/test_dependencies_are_audited_and_watched.py asserts
 #     that every directory below exists and that every manifest in the tree is named here.
 #
-#       pip             apps/api         requirements.txt. NOTE: it holds ranges (`>=`) as well as
-#                                        pins and there is no lockfile, so what a build installs is
-#                                        whatever pip resolves that day; Dependabot bumps the pins,
-#                                        and the audit workflow checks the RESOLVED set.
+#       pip             apps/api         requirements.in + requirements.txt (and the dev pair). The .in
+#                                        files are what a person edits; the .txt files are pip-compile's
+#                                        hash-pinned lock, which the Docker image and CI install with
+#                                        `--require-hashes`. Dependabot reads the pair and proposes the
+#                                        same change `pip-compile` would (engineering-04); the audit
+#                                        workflow checks the lock itself. A bump to one lock and not the
+#                                        other is caught by tests/test_the_backend_installs_from_a_lock.py.
 #       npm             apps/web         pnpm-lock.yaml. Dependabot's `npm` ecosystem covers pnpm.
 #       npm             apps/marketing   its own lockfile and its own Cloudflare project.
 #       github-actions  /                .github/workflows/*.yml

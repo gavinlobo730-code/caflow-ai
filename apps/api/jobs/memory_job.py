@@ -22,15 +22,14 @@ WHY THIS IS NO LONGER ITS OWN THREAD (task #158)
 """
 import logging
 import os
+from core import db_provider
 
 logger = logging.getLogger("caflow.memory_job")
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 
-def _get_db():
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+_get_db = db_provider.service_db
 
 
 def _get_pipeline():

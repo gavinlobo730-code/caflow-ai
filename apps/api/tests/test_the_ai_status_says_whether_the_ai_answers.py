@@ -34,7 +34,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from core.auth import get_current_user, mfa_guard
-from domain.ai import gateway, gemini_vision, groq_text, probe
+from domain.ai import gateway, probe
 from domain.ai.redaction import contains_identifier
 from middleware import rate_limit
 from services import ai_status_service

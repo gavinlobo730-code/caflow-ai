@@ -464,10 +464,10 @@ export default function PortalDashboardPage() {
                       <td className="px-3 py-2"><StatusBadge status={i.is_overdue ? `overdue ${i.days_overdue}d` : i.status} danger={i.is_overdue} /></td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         {i.outstanding_paise > 0 && (
-                          <button disabled={busy} onClick={() => payInvoice(i.id)}
+                          <Button variant="plain" size="none" disabled={busy} onClick={() => payInvoice(i.id)}
                             className="inline-flex items-center gap-1 text-xs text-brand-dark hover:underline disabled:opacity-40 mr-3">
                             <CreditCard size={13} /> Pay Now
-                          </button>
+                          </Button>
                         )}
                         <button disabled={busy} onClick={() => downloadInvoice(i.id)}
                           className="inline-flex items-center gap-1 text-xs text-brand hover:underline disabled:opacity-40">

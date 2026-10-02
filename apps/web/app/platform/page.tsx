@@ -15,7 +15,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
 import { DataTable } from "@/components/ui/data-table";
-import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { confirmDialog, promptDialog } from "@/components/ui/confirm-dialog";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatDate } from "@/lib/services/formatting";
 import { Callout } from "@/components/ui/callout";
@@ -196,7 +196,14 @@ export default function PlatformAdminPage() {
   }
 
   async function suspend(f: FirmRow) {
-    const reason = window.prompt(`Suspend "${f.name}"? This blocks all its users.\n\nReason (required):`);
+    const reason = await promptDialog({
+      title: `Suspend "${f.name}"?`,
+      message: "This blocks all its users.",
+      label: "Reason (required)",
+      required: true,
+      danger: true,
+      confirmLabel: "Suspend",
+    });
     if (!reason || !reason.trim()) return;
     await act(() => api.platform.suspend(f.id, reason.trim()), `Suspended ${f.name}`);
   }

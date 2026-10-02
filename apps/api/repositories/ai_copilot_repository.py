@@ -15,6 +15,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from repositories.base import BaseRepository
+from core import db_provider
 
 
 def _configured_text_model() -> str:
@@ -31,9 +32,7 @@ def _configured_text_model() -> str:
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 
-def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_get_db = db_provider.request_db
 
 
 def _now() -> str:

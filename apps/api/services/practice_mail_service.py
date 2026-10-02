@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable, Iterable, Optional
@@ -46,7 +47,8 @@ from typing import Callable, Iterable, Optional
 from core.ist_clock import ist_today
 from core.urls import frontend_base, portal_login_url
 from domain import practice_notices as rules
-from services import email_service
+from services import email_outbox_service, email_service
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.practice_mail")
@@ -87,9 +89,7 @@ def reset_mock_stores() -> None:  # test helper
     MOCK_LOG.clear()
 
 
-def _db():
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+_db = db_provider.service_db
 
 
 # ── preferences ──────────────────────────────────────────────────────────────
@@ -169,15 +169,23 @@ def _sent_keys(firm_id: str, keys: list[str]) -> set[str]:
 
 def _record(firm_id: str, event_type: str, recipient: dict, email: str, kind: str,
             refs: list[Ref], day: date, status: str, keys: dict[Ref, str],
-            detail: Optional[str] = None) -> None:
+            detail: Optional[str] = None,
+            log_ids: Optional[dict[Ref, str]] = None) -> None:
     if not refs:
         return
+    # Every row carries an id the CALLER may have chosen. A queued mail (ops-21) is
+    # recorded as `sent` the moment it is accepted for delivery and its outbox row
+    # stores these ids, so a message that fails for good can flip exactly its own log
+    # rows back to `failed`; for every other mail the id is just a fresh one, which is
+    # what the column default would have produced.
+    ids = {ref: str((log_ids or {}).get(ref) or uuid.uuid4()) for ref in refs}
     # ONE comprehension with the row written out in it, and the insert below takes
     # that comprehension rather than a name: `tests/_backend_query_parser` reads the
     # keys of a dict literal inside an insert's comprehension against the real
     # schema and cannot read a payload held in a variable.
     def rows():
         return [{
+            "id": ids[ref],
             "firm_id": firm_id,
             "event_type": event_type,
             "recipient_kind": kind,
@@ -200,6 +208,7 @@ def _record(firm_id: str, event_type: str, recipient: dict, email: str, kind: st
         return
     try:
         _db().table("practice_email_log").insert([{
+            "id": ids[ref],
             "firm_id": firm_id,
             "event_type": event_type,
             "recipient_kind": kind,
@@ -229,14 +238,25 @@ def deliver(firm_id: str, event_type: str, recipient: dict, refs: list[Ref],
 
     `send` receives the refs that are still to be said — after deduplication —
     and returns whether the provider accepted the mail. Returns one of
-    `sent`, `failed`, `duplicate`, `skipped_no_address`, `skipped_inactive`,
-    `skipped_preference` or `skipped_switched_off`. NEVER RAISES.
+    `sent`, `queued`, `failed`, `duplicate`, `skipped_no_address`,
+    `skipped_inactive`, `skipped_preference`, `skipped_suppressed` or
+    `skipped_switched_off`. NEVER RAISES.
 
     THE FIRM-WIDE SWITCH IS ASKED FIRST, before an address, a preference or the
     log: with it off nothing is sent, nothing is recorded (the log is the record
     of SENDS) and `send` is never called. Every mail this module and
     `portal_notice_service` send goes through here, which is what makes one
     check enough.
+
+    AGAINST A DATABASE THE MAIL IS QUEUED, NOT POSTED (ops-21). `send` is run with
+    `email_service._send` pointed at the outbox, so the provider is not called from
+    the request thread: the message waits in `email_outbox` and the scheduler's
+    minute tick (or the drain a queued mail starts) delivers it, with a retry and
+    backoff. The result is `queued` — accepted for delivery, not delivered — and
+    callers that count mails treat it as `sent`. The switch is asked AGAIN when the
+    row is drained (a mail queued before somebody turned the practice's mail off is
+    cancelled, not sent), and so is the person's own preference. In mock mode (no
+    database) the mail is posted as before.
     """
     if not mail_enabled():
         return "skipped_switched_off"
@@ -251,6 +271,11 @@ def deliver(firm_id: str, event_type: str, recipient: dict, refs: list[Ref],
             if not rules.wants_email(
                     event_type, chosen_preferences(firm_id, str(recipient.get("id") or ""))):
                 return "skipped_preference"
+        if email_outbox_service.is_suppressed(email):
+            # A permanent bounce or a spam complaint, reported by the provider: mailing
+            # it again changes nothing for the person and costs the shared sending
+            # domain its reputation. Not recorded: the log is the record of SENDS.
+            return "skipped_suppressed"
         keys: dict[Ref, str] = {}
         if dedupe:
             keys = {r: rules.dedupe_key(event_type, email, r.ref_id, r.tier, day)
@@ -259,6 +284,9 @@ def deliver(firm_id: str, event_type: str, recipient: dict, refs: list[Ref],
             refs = [r for r in refs if keys[r] not in already]
         if not refs:
             return "duplicate"
+        if email_outbox_service.queueing_enabled():
+            return _deliver_queued(firm_id, event_type, recipient, email, kind, refs,
+                                   day, keys, send)
         try:
             ok = bool(send(refs))
             detail = None if ok else "the provider did not accept the mail"
@@ -274,6 +302,72 @@ def deliver(firm_id: str, event_type: str, recipient: dict, refs: list[Ref],
         _logger.warning("caflow.practice_mail: %s delivery failed unexpectedly",
                         event_type, exc_info=True)
         return "failed"
+
+
+def _deliver_queued(firm_id: str, event_type: str, recipient: dict, email: str, kind: str,
+                    refs: list[Ref], day: date, keys: dict[Ref, str],
+                    send: Callable[[list[Ref]], bool]) -> str:
+    """The `deliver` path that puts the mail on the outbox (ops-21).
+
+    The log rows are written HERE, after the mail is accepted, with ids chosen
+    before it was: the outbox row keeps them, so a message that fails for good can
+    flip exactly its own rows to `failed` and clear their dedupe keys, letting the
+    next sweep try again. They are recorded as `sent` with the detail `queued for
+    delivery` — `sent` because the dedupe index is on `sent` rows (a sweep run
+    twice must queue once), the detail because that is all it is yet.
+    """
+    log_ids = {r: str(uuid.uuid4()) for r in refs}
+    recipient_user_id = recipient.get("id") if kind == "staff" else None
+    try:
+        with email_outbox_service.capturing(
+                firm_id=firm_id, event_type=event_type, recipient_kind=kind,
+                recipient_user_id=str(recipient_user_id) if recipient_user_id else None,
+                log_ids=list(log_ids.values())) as capture:
+            ok = bool(send(refs))
+        detail = None if ok else "the provider did not accept the mail"
+    except Exception as exc:                                    # noqa: BLE001
+        ok, detail = False, f"{type(exc).__name__}"
+        capture = None
+        _logger.warning("caflow.practice_mail: %s send raised", event_type, exc_info=True)
+    if ok and capture is not None and capture.queued:
+        _record(firm_id, event_type, recipient, email, kind, refs, day, "sent", keys,
+                email_outbox_service.QUEUED_DETAIL, log_ids)
+        email_outbox_service.kick()
+        return "queued"
+    # Not queued: the callback did not go through the transport (nothing to queue), the
+    # outbox was not in this database and the mail was posted directly, or it failed.
+    # Decide exactly as the direct path does.
+    status = "sent" if ok else "failed"
+    _record(firm_id, event_type, recipient, email, kind, refs, day, status, keys, detail)
+    return status
+
+
+def mark_not_delivered(firm_id: str, log_ids: Iterable[str], detail: str) -> int:
+    """A message that was recorded as `sent` when it was queued never went.
+
+    Flips its log rows to `failed` and CLEARS the dedupe key — the unique index is on
+    sent rows, so leaving the key would stop the next sweep from trying again, which is
+    the failure the outbox exists to end. Returns how many rows it changed; never raises
+    (the outbox must finish its own bookkeeping whether or not this table answers)."""
+    ids = [str(i) for i in log_ids if i]
+    if not ids:
+        return 0
+    try:
+        if _USE_MOCK:
+            n = 0
+            for r in MOCK_LOG:
+                if r.get("firm_id") == firm_id and str(r.get("id")) in ids and r.get("status") == "sent":
+                    r.update(status="failed", dedupe_key=None, detail=detail)
+                    n += 1
+            return n
+        res = (_db().table("practice_email_log")
+               .update({"status": "failed", "dedupe_key": None, "detail": detail})
+               .eq("firm_id", firm_id).eq("status", "sent").in_("id", ids).execute())
+        return len(res.data or [])
+    except Exception:                                           # noqa: BLE001
+        _logger.warning("caflow.practice_mail: could not mark %d queued log row(s) not delivered "
+                        "for firm %s", len(ids), firm_id, exc_info=True)
+        return 0
 
 
 def recent_log(firm_id: str, user_id: str, limit: int = 50) -> list[dict]:

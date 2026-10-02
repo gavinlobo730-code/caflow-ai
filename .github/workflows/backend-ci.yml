@@ -110,14 +110,69 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
-          cache-dependency-path: apps/api/requirements.txt
+          cache-dependency-path: |
+            apps/api/requirements.txt
+            apps/api/requirements-dev.txt
 
+      # From the LOCK, with hashes (engineering-04). requirements.txt is what the Docker image installs
+      # and requirements-dev.txt adds, on top of it and pinned to the same versions of anything they
+      # share, what only this job uses: pytest, ruff (the lint step below), hypothesis (the property tests),
+      # pytest-cov (the coverage report) and pytest-xdist (the parallel run). None of those is in
+      # requirements.txt because that is what the Docker image installs. Every install in this file is the
+      # same command; tests/test_the_backend_installs_from_a_lock.py fails one that is not.
       - name: Install dependencies
         if: needs.scope.outputs.api == 'true'
         working-directory: apps/api
-        run: pip install -r requirements.txt
+        run: pip install --require-hashes -r requirements.txt -r requirements-dev.txt
 
-      - name: Run tests (in-memory / FakeDB)
+      # THE LINT RUNS INSIDE THIS REQUIRED JOB, not as a new one, so an unused import, a bare `except:` or a
+      # four-hundred-line function turns the check that already gates main red without anyone adding a required
+      # status check by hand (and without a `paths:` filter, see the top of this file).
+      #
+      # It is a RATCHET: `ruff check` reports 1,154 findings today and a step that fails on them is red for ever,
+      # so scripts/ci/ruff_ratchet.py compares them with the committed baseline and fails only on a finding the
+      # baseline does not cover — or on a baseline line that no longer fires, because the baseline only shrinks.
+      # Exit 2 means ruff did not run, which is never a clean result. Run it first: it takes seconds, and it
+      # should not wait behind ten minutes of tests to say a name is unused.
+      - name: Lint — ruff against the frozen baseline
+        if: needs.scope.outputs.api == 'true'
+        working-directory: apps/api
+        run: python scripts/ci/ruff_ratchet.py
+
+      # THE SUITE RUNS IN PARALLEL, in `--dist loadfile`, and that was measured before it was switched on.
+      #
+      # On 02-10-2026 the whole mock suite was run twice from the same tree on a four-CPU machine that other work was
+      # also using: once serially, once as this step runs it (`-n 4 --dist loadfile` with coverage). Both produced 21,584
+      # passes, 2,119 skips and no failure, and a junit comparison found the same 23,703 test ids with the same
+      # outcome for every one. The serial run took 13 min 34 s and the parallel one 10 min 20 s WITH coverage on: a
+      # gain of about a quarter of the wall time, far short of four-fold. Three things are in that gap and were not
+      # separated: the coverage tracer's own cost, the other work using the machine, and `loadfile`, which keeps a
+      # module on one worker (the largest single module, test_the_seeder_actually_seeds, is 124 s of the 770 s of
+      # test time, and the four largest are 36% of it). What a GitHub runner makes of it has not been measured; the
+      # first run through this workflow is the first reading.
+      #
+      # WHY IT IS SAFE TO GROUP TESTS DIFFERENTLY: module-level MOCK_* fixtures (48 of them in application code) and
+      # the AI rate limiter's in-process windows are per process under xdist, so no worker can see another's, and the
+      # limiter is reset before every test by an autouse fixture in tests/conftest.py. The risk is the opposite one, a
+      # test that silently relies on state ANOTHER test left behind, which serial order hides and a different grouping
+      # exposes; the identical outcomes above are the evidence there is none today, and they are one measurement, not
+      # a proof. Every test that opens a socket binds port 0, and the tests that write files write to tmp_path or to
+      # mkstemp names.
+      #
+      # `loadfile` and not `load`: a module's tests then stay on one worker and run in the order they were written,
+      # which is what any hidden coupling INSIDE a module (a fixture that builds state the next test reads) assumes.
+      # `load` was NOT measured here. If a flake ever shows up that goes away without `-n`, remove `-n auto` first;
+      # nothing else in the repository depends on it.
+      #
+      # ONLY THIS JOB RUNS IN PARALLEL. The real-Postgres modules (`*_pg.py`, 140 of them gated on HARNESS_PG) run in the
+      # migration job, serially, and a parallel run of them has not been measured: several create a database of a fixed
+      # name, so `-n` with HARNESS_PG set is not safe to assume.
+      #
+      # THE COVERAGE REPORT COMES FROM THE SAME RUN (pytest-cov merges what each worker measured), so measuring costs
+      # no second pass. It covers domain/ and services/, the two places the statutory and money rules live, and
+      # scripts/ci/coverage_floor.py holds each above a recorded floor in the next step. Only the mock-mode suite is
+      # measured here: the real-Postgres tests run in the other job and are not part of this number.
+      - name: Run tests (in-memory / FakeDB), in parallel, with coverage
         if: needs.scope.outputs.api == 'true'
         working-directory: apps/api
         env:
@@ -125,7 +180,26 @@ jobs:
         # Includes the database-free schema-contract test
         # (tests/test_schema_contract.py), which fails if code references a
         # table/RPC that no migration creates.
-        run: pytest tests/ -v --tb=short
+        run: >-
+          pytest tests/ -v --tb=short -n auto --dist loadfile
+          --cov=domain --cov=services
+          --cov-report=term:skip-covered --cov-report=json:coverage.json
+
+      # A TOOL THAT DID NOT RUN IS NOT A CLEAN RESULT: `if: always()` is NOT used. If the tests failed there is no
+      # honest coverage figure to compare, and the floor step would only add a second red mark to a red job. It
+      # exits 2, never 0, when the report is missing or measured nothing.
+      - name: Coverage — report it, and hold the recorded floor
+        if: needs.scope.outputs.api == 'true'
+        working-directory: apps/api
+        run: python scripts/ci/coverage_floor.py coverage.json
+
+      - name: Keep the coverage report with the run
+        if: needs.scope.outputs.api == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: apps/api/coverage.json
+          retention-days: 14
 
       - name: No backend changes
         if: needs.scope.outputs.api != 'true'
@@ -161,7 +235,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
-          cache-dependency-path: apps/api/requirements.txt
+          cache-dependency-path: |
+            apps/api/requirements.txt
+            apps/api/requirements-dev.txt
 
       # THIRD-PARTY APT SOURCES ARE DROPPED BEFORE THE UPDATE, and that is not
       # belt-and-braces — it is what keeps this REQUIRED check from being taken
@@ -202,7 +278,7 @@ jobs:
       - name: Install dependencies
         if: needs.scope.outputs.api == 'true'
         working-directory: apps/api
-        run: pip install -r requirements.txt
+        run: pip install --require-hashes -r requirements.txt -r requirements-dev.txt
 
       # Applies the full migration set (with the Supabase-compat bootstrap) to a
       # throwaway database and asserts the set of migrations that fail to apply
@@ -279,7 +355,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
-          cache-dependency-path: apps/api/requirements.txt
+          cache-dependency-path: |
+            apps/api/requirements.txt
+            apps/api/requirements-dev.txt
 
       # Full requirements rather than bare pytest: several of these modules
       # import application code at module scope (routers, domain), which runs
@@ -287,7 +365,7 @@ jobs:
       # single assertion — the same trap the migrations job documents above.
       - name: Install dependencies
         working-directory: apps/api
-        run: pip install -r requirements.txt
+        run: pip install --require-hashes -r requirements.txt -r requirements-dev.txt
 
       - name: Run the guards that read a frontend
         working-directory: apps/api

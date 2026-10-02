@@ -44,6 +44,7 @@ import { EMPLOYEE_IMPORT_COLUMNS as SERVER_COLUMNS } from "@/lib/imports/mappers
 import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
 import { PortalAccessModal } from "@/components/payroll/PortalAccessModal";
 import { ExceptionIndexTab } from "@/components/payroll/ExceptionIndex";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 /** The importable columns: the server-mirrored list, plus the one column only a
  *  FIRM-wide import needs.
@@ -107,7 +108,7 @@ export default function PayrollPeoplePage() {
 
   const setEmployeeStatus = useCallback(async (emp: Employee, status: "active" | "resigned") => {
     const deactivating = status !== "active";
-    if (!confirm(`${deactivating ? "Deactivate" : "Reactivate"} ${emp.name}? ${deactivating ? "They will be excluded from new payroll runs; existing payslips are unaffected." : "They will be eligible for payroll runs again."}`)) return;
+    if (!(await confirmDialog({ message: `${deactivating ? "Deactivate" : "Reactivate"} ${emp.name}? ${deactivating ? "They will be excluded from new payroll runs; existing payslips are unaffected." : "They will be eligible for payroll runs again."}`, confirmLabel: deactivating ? "Deactivate" : "Reactivate" }))) return;
     try {
       const res = await api.payroll.updateEmployee(emp.id, { status }) as ApiResp<unknown>;
       if (!res.success) { setEmpActionMsg({ type: "err", text: res.error ?? "Could not update the employee." }); return; }
@@ -117,7 +118,7 @@ export default function PayrollPeoplePage() {
   }, [load]);
 
   const deleteEmployeeAction = useCallback(async (emp: Employee) => {
-    if (!confirm(`Permanently delete ${emp.name}? Only an employee with no payroll history can be deleted — otherwise deactivate them instead.`)) return;
+    if (!(await confirmDialog({ message: `Permanently delete ${emp.name}? Only an employee with no payroll history can be deleted — otherwise deactivate them instead.`, danger: true, confirmLabel: "Delete" }))) return;
     try {
       const res = await api.payroll.deleteEmployee(emp.id) as ApiResp<unknown>;
       if (!res.success) { setEmpActionMsg({ type: "err", text: res.error ?? "Could not delete the employee." }); return; }
@@ -371,14 +372,14 @@ export default function PayrollPeoplePage() {
                         <button onClick={() => { setEditEmployee(e); setShowAdd(true); }} title="Edit"
                           className="p-1.5 rounded-lg text-ps-label hover:bg-ps-muted hover:text-ps-body"><Pencil size={14} /></button>
                         {active ? (
-                          <button onClick={() => setEmployeeStatus(e, "resigned")} title="Deactivate"
-                            className="p-1.5 rounded-lg text-ps-label hover:bg-state-attention-hover hover:text-state-attention"><Ban size={14} /></button>
+                          <Button variant="plain" size="none" spinner={false} onClick={() => setEmployeeStatus(e, "resigned")} title="Deactivate"
+                            className="p-1.5 rounded-lg text-ps-label hover:bg-state-attention-hover hover:text-state-attention"><Ban size={14} /></Button>
                         ) : (
-                          <button onClick={() => setEmployeeStatus(e, "active")} title="Reactivate"
-                            className="p-1.5 rounded-lg text-ps-label hover:bg-green-50 hover:text-green-700"><RotateCcw size={14} /></button>
+                          <Button variant="plain" size="none" spinner={false} onClick={() => setEmployeeStatus(e, "active")} title="Reactivate"
+                            className="p-1.5 rounded-lg text-ps-label hover:bg-green-50 hover:text-green-700"><RotateCcw size={14} /></Button>
                         )}
-                        <button onClick={() => deleteEmployeeAction(e)} title="Delete (only if no payroll history)"
-                          className="p-1.5 rounded-lg text-ps-label hover:bg-state-problem-hover hover:text-red-600"><Trash2 size={14} /></button>
+                        <Button variant="plain" size="none" spinner={false} onClick={() => deleteEmployeeAction(e)} title="Delete (only if no payroll history)"
+                          className="p-1.5 rounded-lg text-ps-label hover:bg-state-problem-hover hover:text-red-600"><Trash2 size={14} /></Button>
                       </div>
                     );
                   }}

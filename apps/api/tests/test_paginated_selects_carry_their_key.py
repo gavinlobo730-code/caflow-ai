@@ -1,9 +1,11 @@
 """Every keyset-paginated query must select the column it pages on.
 
 WHAT WAS WRONG
-    Eleven modules hold a copy of the same helper:
+    Eleven modules held a private copy of the same helper (engineering-30 has since moved
+    every one of them onto core.db_paging.fetch_all, and
+    test_no_module_carries_its_own_pager.py fails a new one):
 
-        def _paginate_all(make_query, key="id"):
+        def <a private copy of the pager>(make_query, key="id"):
             ...
             rows = q.order(key).limit(PAGE).execute().data or []
             if len(rows) < PAGE: break

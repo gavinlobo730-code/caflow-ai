@@ -30,6 +30,7 @@ import {
 } from "@/lib/api";
 import { paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { Itc04Panel } from "@/components/gst/Itc04Panel";
+import { Button } from "@/components/ui/button";
 
 type Tab = "quotations" | "orders" | "challans";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -555,13 +556,13 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
           )}
 
           <div className="mt-4 flex gap-2">
-            <button
+            <Button variant="plain" size="none"
               disabled={saving}
-              onClick={() => void save()}
+              onClick={() => save()}
               className="rounded bg-brand px-4 py-1.5 text-sm text-white disabled:opacity-50"
             >
               {saving ? "Saving…" : "Save"}
-            </button>
+            </Button>
             <button
               onClick={() => setShowForm(false)}
               className="rounded border border-ps-border px-4 py-1.5 text-sm"

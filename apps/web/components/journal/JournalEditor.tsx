@@ -34,6 +34,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { QuickAddLedger } from "@/components/journal/QuickAddLedger";
+import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { DraftOffer } from "@/components/ui/draft-offer";
+import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
+import { useSingleFlight } from "@/lib/async/useSingleFlight";
+import { useUnsentDraft } from "@/lib/drafts/useUnsentDraft";
+import {
+  applyJournalDraft, validateJournalDraft, type JournalDraftFields,
+} from "@/lib/journal/journalDraft";
 import { afterEnter, balancingLeg, isAmountless } from "@/lib/journal/lineFlow";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 // The totals are a RENDERING, not an input: Indian grouping (D6) from the one
@@ -93,18 +102,27 @@ export interface JournalEditorProps {
   /** The client the entry belongs to. Present, the account box offers to create
    *  a ledger that is missing (accounting-08); absent, it offers no such row — a ledger
    *  has to be created FOR somebody, and guessing the scope is what the Chart of
-   *  Accounts screen's firm-wide checkbox exists to avoid. */
+   *  Accounts screen's firm-wide checkbox exists to avoid. It also scopes the
+   *  unsent draft kept in this tab, so one client's half-typed entry is never
+   *  offered into another's. */
   clientId?: string;
   /** null in create mode; otherwise the entry as the backend returned it. */
   existing: JournalEntryDetail | null;
   saving?: boolean;
   /** Server-side failure to show verbatim — its wording is written for the CA. */
   serverError?: string | null;
+  /**
+   * RETURN THE PROMISE, and resolve it `true` only when the entry was SAVED.
+   * The editor hands that promise to its buttons, which hold a repeat-click
+   * guard until it settles (components/ui/button.tsx) — an `onSave` that
+   * returns nothing leaves Post Entry open to a second click on the same tick,
+   * and one that resolves `true` on a refusal would delete the CA's draft.
+   */
   onSave: (mode: JournalSaveMode, payload: {
     entry_date: string; entry_type: string; reference_no: string;
     narration: string; lines: JournalLineIO[];
     attachments: { name: string; url: string }[];
-  }) => void;
+  }) => void | boolean | Promise<boolean | void>;
   onCancel: () => void;
 }
 
@@ -152,6 +170,66 @@ export function JournalEditor({
   const [attachName, setAttachName] = useState("");
   const [attachUrl, setAttachUrl] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+
+  // One guard over Save Draft, Post Entry and Save Correction: two of them
+  // pressed on the same tick are two vouchers, and `disabled={saving}` — React
+  // state — takes a render to reach the DOM (frontend_ux-09).
+  const { flight } = useSingleFlight();
+
+  // ── Unsaved changes (frontend_ux-23) ──────────────────────────────────────
+  // The fields as TYPED, and what a freshly opened form of this entry holds.
+  const draftFields: JournalDraftFields = {
+    entryDate, entryType, referenceNo, narration,
+    lines: lines.map((l) => ({
+      account_id: l.account_id, debit: l.debit, credit: l.credit, narration: l.narration,
+    })),
+    attachments,
+  };
+  const [pristine] = useState<JournalDraftFields>(() => ({
+    entryDate: existing?.entry_date ?? todayLocalISO(),
+    entryType: existing?.entry_type ?? "Journal",
+    referenceNo: existing?.reference_no ?? "",
+    narration: existing?.narration ?? "",
+    lines: (existing ? toFormLines(existing.lines) : [newLine(), newLine()]).map((l) => ({
+      account_id: l.account_id, debit: l.debit, credit: l.credit, narration: l.narration,
+    })),
+    attachments: (existing?.attachments ?? [])
+      .filter((a) => !!a.url)
+      .map((a) => ({ name: a.name, url: a.url as string })),
+  }));
+  const dirty = !readOnly && hasChanges(pristine, draftFields);
+  // The two attachment boxes can hold a link the CA has typed and not yet
+  // added; that is unsent work too, though a draft does not keep it.
+  const { confirmLeave } = useUnsavedChanges(
+    (dirty || attachName.trim() !== "" || attachUrl.trim() !== "") && !saving,
+    undefined, confirmDialog,
+  );
+  const draft = useUnsentDraft<JournalDraftFields>({
+    kind: "journal", clientId, entityId: existing?.id ?? "new",
+    fields: draftFields, dirty, validate: validateJournalDraft, enabled: !readOnly,
+  });
+  const [restoreNote, setRestoreNote] = useState<string | null>(null);
+
+  function restoreDraft() {
+    const offered = draft.restore();
+    if (!offered) return;
+    const { fields, accountsDropped } = applyJournalDraft(
+      offered, new Set(accounts.map((a) => a.id)), ENTRY_TYPES);
+    setEntryDate(fields.entryDate);
+    setEntryType(fields.entryType);
+    setReferenceNo(fields.referenceNo);
+    setNarration(fields.narration);
+    const restored = fields.lines.map((l) => ({ key: `l${lineSeq++}`, ...l }));
+    while (restored.length < 2) restored.push(newLine());
+    setLines(restored);
+    // A posted entry's documents are read-only (ACC-25): a restore must not
+    // carry links the server would refuse.
+    if (!attachmentsReadOnly) setAttachments(fields.attachments);
+    setLocalError(null);
+    setRestoreNote(accountsDropped > 0
+      ? `${accountsDropped} account${accountsDropped === 1 ? "" : "s"} in the draft ${accountsDropped === 1 ? "is" : "are"} no longer in this client's chart — pick ${accountsDropped === 1 ? "it" : "them"} again.`
+      : null);
+  }
 
   // Every amount parsed once, exactly, in integer paise. `null` marks a cell
   // whose text is not an amount — surfaced as a per-line error rather than
@@ -253,14 +331,24 @@ export function JournalEditor({
     };
   }
 
-  function handleSave(mode: JournalSaveMode) {
+  /** Returns the save's promise so the button that called it can hold its
+   *  guard until it settles. */
+  function handleSave(mode: JournalSaveMode): Promise<void> | void {
     setLocalError(null);
     if (hasUnparseable) { setLocalError("One of the amounts isn't a number. Check the highlighted cells."); return; }
     if (!narration.trim()) { setLocalError("Narration is required."); return; }
     if (!isBalanced) { setLocalError("Debits must equal credits before saving."); return; }
     const payload = buildPayload();
     if (payload.lines.length < 2) { setLocalError("At least 2 lines with an account and an amount are required."); return; }
-    onSave(mode, payload);
+    return Promise.resolve(onSave(mode, payload)).then((saved) => {
+      // Only a SAVE clears the draft. A refusal (a locked year, an entry the
+      // server reads differently) leaves the CA's typing where it was.
+      if (saved === true) draft.clear();
+    });
+  }
+
+  async function handleLeave() {
+    if (await confirmLeave()) onCancel();
   }
 
   const title = isNew ? "New Journal Entry"
@@ -281,10 +369,22 @@ export function JournalEditor({
             </span>
           )}
         </div>
-        <button onClick={onCancel} className="text-xs text-ps-label hover:text-ps-body">
+        <button onClick={handleLeave} className="text-xs text-ps-label hover:text-ps-body">
           Back to Journal
         </button>
       </div>
+
+      {draft.offer && (
+        <DraftOffer
+          what="journal entry" savedAt={draft.offer.savedAt}
+          onRestore={restoreDraft} onDiscard={draft.discard}
+        />
+      )}
+      {restoreNote && (
+        <p role="status" className="text-xs text-state-attention bg-state-attention-surface rounded px-3 py-2">
+          {restoreNote}
+        </p>
+      )}
 
       {/* Why this cannot be changed — the sentence, not a disabled button. */}
       {readOnly && (
@@ -528,25 +628,28 @@ export function JournalEditor({
 
         {!readOnly && (
           <div className="flex gap-3 justify-end pt-1">
-            <button onClick={onCancel}
+            <button onClick={handleLeave}
                     className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
               Cancel
             </button>
             {isPosted ? (
-              <button onClick={() => handleSave("correct")} disabled={saving || !isBalanced}
+              <Button variant="plain" size="none" flight={flight}
+                      onClick={() => handleSave("correct")} disabled={saving || !isBalanced}
                       className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {saving ? "Saving…" : "Save Correction"}
-              </button>
+              </Button>
             ) : (
               <>
-                <button onClick={() => handleSave("draft")} disabled={saving || !isBalanced}
+                <Button variant="plain" size="none" flight={flight}
+                        onClick={() => handleSave("draft")} disabled={saving || !isBalanced}
                         className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
                   Save Draft
-                </button>
-                <button onClick={() => handleSave("post")} disabled={saving || !isBalanced}
+                </Button>
+                <Button variant="plain" size="none" flight={flight}
+                        onClick={() => handleSave("post")} disabled={saving || !isBalanced}
                         className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                   {saving ? "Saving…" : "Post Entry"}
-                </button>
+                </Button>
               </>
             )}
           </div>

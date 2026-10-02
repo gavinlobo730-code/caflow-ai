@@ -20,6 +20,29 @@
 #     scripts/smoke_api.py prints which variables are missing and exits 0. The
 #     job goes green having done nothing, on purpose — see the "skipped" line in
 #     its output. Set the repository secrets below to turn it on.
+#
+# WHAT IT LEAVES BEHIND (ops-12)
+#     Each run that measured anything uploads `smoke-timings-live-<run id>-<attempt>`:
+#     one small JSON file with every endpoint's response time, its budget and its
+#     target, the wake time, the commit and the run id. NEVER a URL, a path, a client
+#     id or a credential (write_timings in the script says why, and a test reads the
+#     file for them). A run aimed at a candidate through `base_url` is named
+#     `smoke-timings-candidate-…`, so a deployment nobody is on yet does not enter
+#     the live service's history. Artifacts are kept 90 days, GitHub's longest.
+#
+#     The last step reads every `smoke-timings-live-` artifact of the last 30 days
+#     back through the API and writes the table scripts/smoke_timings_report.py makes
+#     to this run's summary page: per endpoint, how many samples, the p50, the p95,
+#     the target and a verdict, and the p95 week by week so a drift shows before a CA
+#     notices it. THE HISTORY IS THE ARTIFACTS THEMSELVES. Nothing is committed to the
+#     repository and nothing is stored anywhere that can disagree with them. When the
+#     artifacts do not yet span 30 days the table says how many days it does cover
+#     rather than presenting a week as a month.
+#
+#     A TARGET IS NOT A GATE. The script's budgets fail a run; the targets are judged
+#     on the table and never fail anything, and that last step is `continue-on-error`:
+#     telemetry about the check must not turn a green API red. Tightening a budget is
+#     a separate change that cites the table (docs/operations/service-levels.md).
 name: API smoke
 
 on:
@@ -53,6 +76,12 @@ on:
         required: false
         type: string
 
+# Least privilege, spelled out. `actions: read` is what lets the last step list and download
+# this workflow's own earlier artifacts; `contents: read` is the checkout. Nothing here writes.
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   smoke:
     name: real API — status + latency
@@ -82,4 +111,50 @@ jobs:
           # make every check pass in milliseconds while proving nothing — the
           # endpoint that took 57s was serving 12,836 entries.
           SMOKE_CLIENT_ID: ${{ secrets.SMOKE_CLIENT_ID }}
+          # Where the run keeps its timings (relative to apps/api), uploaded below.
+          SMOKE_TIMINGS_FILE: timings/smoke-timings.json
+          # `live` unless a person aimed this run at a candidate with `base_url`.
+          SMOKE_DEPLOYMENT: ${{ inputs.base_url && 'candidate' || 'live' }}
         run: python3 scripts/smoke_api.py
+
+      # Even when the run FAILED: an over-budget run is the one worth keeping. A run
+      # that was skipped for want of credentials measured nothing and left no file,
+      # which is why a missing file is not a warning.
+      - name: Keep this run's timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-timings-${{ inputs.base_url && 'candidate' || 'live' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/api/timings/smoke-timings.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Summarise the last 30 days of timings
+        if: always()
+        # Telemetry about the check, never part of it: see the header.
+        continue-on-error: true
+        working-directory: apps/api
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          mkdir -p history
+          cutoff="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          # Newest first; every artifact of this repository, filtered to this workflow's
+          # live ones inside the window. `expired` ones cannot be downloaded.
+          gh api --paginate "repos/${REPO}/actions/artifacts?per_page=100" \
+            --jq ".artifacts[] | select(.expired == false and (.name | startswith(\"smoke-timings-live-\")) and .created_at >= \"${cutoff}\") | .id" \
+            > history/ids.txt || echo "could not list earlier artifacts; reporting this run alone"
+          while read -r id; do
+            [ -n "${id}" ] || continue
+            if gh api "repos/${REPO}/actions/artifacts/${id}/zip" > "history/${id}.zip" \
+               && unzip -oq "history/${id}.zip" -d "history/${id}"; then
+              :
+            else
+              echo "could not fetch artifact ${id}; it is left out of the table"
+            fi
+          done < history/ids.txt
+          # This run's own file too, in case the listing does not show it yet; the report
+          # counts one run once.
+          python3 scripts/smoke_timings_report.py history timings --days 30 >> "${GITHUB_STEP_SUMMARY}"

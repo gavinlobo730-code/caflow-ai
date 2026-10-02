@@ -20,6 +20,7 @@ from core.validators import validate_pan, validate_gstin
 from services.timeline_service import timeline_service
 from services.audit_service import log_event
 from models.fy import FYLabel, OptionalFYLabel
+from core import db_provider
 
 _logger = logging.getLogger("caflow.lifecycle")
 
@@ -35,12 +36,7 @@ _MOCK_ONBOARDING_TASKS:     list[dict] = []
 _MOCK_RENEWALS:  list[dict] = []
 
 
-def _db():
-    import os
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db_or_none
 
 
 # ── Client-assignment scope (M2) ──────────────────────────────────────────────

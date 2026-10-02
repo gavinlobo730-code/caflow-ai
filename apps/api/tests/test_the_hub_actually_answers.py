@@ -128,10 +128,11 @@ def _seed(db: FakeDB) -> None:
 def db(monkeypatch):
     d = FakeDB()
     _seed(d)
-    # hub_service imports both names at module level, so the module's own
-    # attribute is what has to move — patching core.supabase_client would
-    # leave the already-bound reference pointing at the real client.
-    monkeypatch.setattr(hub_service, "get_service_supabase", lambda: d)
+    # `_db` is bound at import (core.db_provider.service_db, engineering-30), so
+    # the module's own attribute is what has to move — patching
+    # core.supabase_client would leave the already-bound reference pointing at
+    # the real client.
+    monkeypatch.setattr(hub_service, "_db", lambda: d)
     return d
 
 

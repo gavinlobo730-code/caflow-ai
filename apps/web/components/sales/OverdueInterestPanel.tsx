@@ -34,7 +34,10 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { dayLabel } from "@/lib/dates/dayLabel";
 import { formatPaise } from "@/lib/money/format";
 import { BASIS_CHOICES, ratePercentText, termsPayload, type TermsText } from "@/lib/sales/lateInterest";
+import { Button } from "@/components/ui/button";
 import { Callout, StatutoryNotes } from "@/components/ui/callout";
+import type { SingleFlight } from "@/lib/async/singleFlight";
+import { useSingleFlight } from "@/lib/async/useSingleFlight";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -80,6 +83,10 @@ export default function OverdueInterestPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // One guard over the panel's two writes: saving a customer's terms and preparing a
+  // draft interest invoice (which is read against those very terms). `busy` alone takes
+  // a render to reach the DOM, and a second click in that gap makes a second draft.
+  const { flight } = useSingleFlight();
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [showTerms, setShowTerms] = useState(false);
   const [drafted, setDrafted] = useState<LateInterestDrafts | null>(null);
@@ -301,7 +308,8 @@ export default function OverdueInterestPanel({
                     onToggle={() => setOpen((o) => ({ ...o, [p.customer_id]: !isOpen }))}
                     busy={busy === `draft:${p.customer_id}`}
                     anyBusy={busy !== null}
-                    onPrepare={() => void prepare(p)}
+                    flight={flight}
+                    onPrepare={() => prepare(p)}
                   />
                 );
               })}
@@ -389,14 +397,15 @@ export default function OverdueInterestPanel({
                         </select>
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <button
+                        <Button
+                          variant="plain" size="none" spinner={false} flight={flight}
                           type="button"
-                          onClick={() => void saveTerms(t.customer_id)}
+                          onClick={() => saveTerms(t.customer_id)}
                           disabled={busy !== null}
                           className="rounded-lg border border-ps-border px-2 py-1 text-2xs hover:bg-ps-bg disabled:opacity-50"
                         >
                           {busy === `terms:${t.customer_id}` ? "Saving…" : "Save"}
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   );
@@ -415,7 +424,7 @@ export default function OverdueInterestPanel({
 }
 
 function PartyRows({
-  party, docs, isOpen, onToggle, busy, anyBusy, onPrepare,
+  party, docs, isOpen, onToggle, busy, anyBusy, onPrepare, flight,
 }: {
   party: LateInterestParty;
   docs: LateInterestDocument[];
@@ -423,7 +432,11 @@ function PartyRows({
   onToggle: () => void;
   busy: boolean;
   anyBusy: boolean;
-  onPrepare: () => void;
+  /** Handed back to the Button, which holds the promise it returns: a second click
+   *  while the draft is being made is ignored, not queued. */
+  onPrepare: () => unknown;
+  /** The panel's shared guard, so Save terms and Prepare cannot run together. */
+  flight: SingleFlight;
 }) {
   const hasInterest = party.interest_paise > 0;
   return (
@@ -451,9 +464,10 @@ function PartyRows({
           {party.terms_set ? formatPaise(party.interest_paise) : "—"}
         </td>
         <td className="px-3 py-2 text-right">
-          <button
+          <Button
+            variant="plain" size="none" spinner={false} flight={flight}
             type="button"
-            onClick={onPrepare}
+            onClick={() => onPrepare()}
             disabled={!hasInterest || anyBusy}
             title={hasInterest
               ? "Make a draft sales invoice for this interest. Nothing is posted until it is issued."
@@ -462,7 +476,7 @@ function PartyRows({
           >
             {busy ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
             Prepare draft invoice
-          </button>
+          </Button>
         </td>
       </tr>
       {isOpen && (

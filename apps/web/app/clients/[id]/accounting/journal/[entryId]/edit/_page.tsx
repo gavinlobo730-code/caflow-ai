@@ -122,12 +122,24 @@ export default function JournalEntryPageClient() {
     router.push(journalListHref(clientId));
   }, [clientId, router]);
 
+  /**
+   * Resolves `true` only when the entry was SAVED — the editor clears the
+   * unsent draft it keeps in this tab on that, and a refusal must not.
+   *
+   * ON SUCCESS `saving` IS DELIBERATELY LEFT UP. `done()` starts a client-side
+   * navigation that takes a moment to land, and lowering the flag here would
+   * re-enable Post Entry for exactly that moment: a click in it posts the same
+   * voucher a second time (frontend_ux-09). Every FAILING path lowers it, and
+   * on the success path this component unmounts — the same shape
+   * `app/login/page.tsx` holds its button disabled for while the router runs.
+   */
   async function handleSave(mode: JournalSaveMode, payload: {
     entry_date: string; entry_type: string; reference_no: string;
     narration: string; lines: JournalLineIO[];
     attachments: { name: string; url: string }[];
-  }) {
+  }): Promise<boolean> {
     setSaving(true); setSaveError(null);
+    let saved = false;
     try {
       if (isNew) {
         // Through the single posting kernel (manual_journal_service →
@@ -153,7 +165,8 @@ export default function JournalEntryPageClient() {
           mode === "post" ? "Journal entry posted" : "Journal entry saved (draft)",
           payload.narration, res.data.id,
         );
-        return;
+        saved = true;
+        return true;
       }
 
       // A posted entry must send its FULL line set — edit_posted_journal
@@ -184,12 +197,15 @@ export default function JournalEntryPageClient() {
         mode === "post" ? "Journal entry posted" : "Journal entry corrected",
         payload.narration, entryId,
       );
+      saved = true;
+      return true;
     } catch (e) {
       // The backend's message is written for the CA — a locked year, a filed
       // return, an unbalanced entry — so it is shown rather than replaced.
       setSaveError(e instanceof Error ? e.message : "Couldn't save this entry.");
+      return false;
     } finally {
-      setSaving(false);
+      if (!saved) setSaving(false);
     }
   }
 

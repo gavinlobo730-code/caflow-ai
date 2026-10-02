@@ -41,6 +41,7 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, StatutoryNotes } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { UnforeseenIncomePanel, type UnforeseenRow } from "@/components/tax/UnforeseenIncomePanel";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
@@ -386,10 +387,9 @@ export default function AdvanceTaxPage() {
   }
 
   async function handleRemoveChallan(id: string, serial: string) {
-    if (!window.confirm(
-      `Remove challan ${serial}? A challan the client actually paid should be `
+    if (!(await confirmDialog({ message: `Remove challan ${serial}? A challan the client actually paid should be `
       + "corrected rather than removed — the return has to be accompanied by "
-      + "proof of every payment.")) return;
+      + "proof of every payment.", danger: true, confirmLabel: "Remove" }))) return;
     setSaBusy(true);
     setSaError(null);
     try {

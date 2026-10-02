@@ -12,7 +12,10 @@ import logging
 import threading
 
 _logger = logging.getLogger("caflow.main")
-logging.basicConfig(level=logging.INFO)
+# basicConfig's own format, plus the request id on every line written while a request is in flight
+# (ops-11: core/request_context.py says what is bound and what never may be).
+from core.request_context import configure_logging, request_id_of, route_template, REQUEST_ID_HEADER
+configure_logging(logging.INFO)
 
 # Error reporting. What is sent, and why tracing is off, is decided in
 # core.observability.init_error_reporting — it moved out of this file so a test can start
@@ -50,6 +53,7 @@ from routers import hub
 from routers import reports  # unified transaction feed for /reports + /client-portal
 from routers import intelligence
 from routers import scheduler_status, audit, onboarding, reconciliation
+from routers import scheduler_trigger  # ops-15 — the daily run, triggered from outside (shared token)
 from routers import search
 from routers import dsc  # H6: DSC (Digital Signature Certificate) backend
 from routers import assignments
@@ -112,6 +116,7 @@ from routers.portal import router as portal_router
 from routers import portal_access, portal_self, portal_data, portal_employee
 # Phase 4.6 — Online Payments (links + public gateway webhook)
 from routers import payments
+from routers import email_webhooks  # ops-21 — the email provider's signed bounce / complaint webhook
 
 @contextlib.asynccontextmanager
 async def _lifespan(_app: FastAPI):
@@ -187,7 +192,9 @@ def _failure_response(request: Request, exc: Exception) -> JSONResponse:
     The exception is logged either way: the CA gets a sentence, support still
     gets the traceback.
     """
-    _logger.exception("Unhandled exception for %s %s", request.method, request.url)
+    # The ROUTE, never the URL: `request.url` carries the raw path and the query string, and a token can be in
+    # either (ops-11). The request id is on the line through the record factory.
+    _logger.exception("Unhandled exception for %s %s", request.method, route_template(request.scope))
     spoken = None
     try:
         spoken = unhandled_failure(exc)
@@ -197,15 +204,26 @@ def _failure_response(request: Request, exc: Exception) -> JSONResponse:
         # is not.
         _logger.exception("unhandled_failure raised while classifying")
     status, message = spoken if spoken else (500, "Internal server error")
+    # A server-side failure carries the request's id in its sentence, so a CA who reads the screen out can be
+    # traced to one request (ops-11). The envelope keeps exactly {success, data, error}: the id rides IN the
+    # error text and in the X-Request-ID header, never as a fourth key. A 4xx the database spoke for (a refused
+    # CHECK) is the CA's to fix and does not need a reference.
+    request_id = request_id_of(request.scope)
+    headers = {}
+    if request_id:
+        headers[REQUEST_ID_HEADER] = request_id
+        if status >= 500:
+            message = f"{message} (reference {request_id})"
     return JSONResponse(
         status_code=status,
         content={"success": False, "data": None, "error": message},
+        headers=headers,
     )
 
 
 # Middleware ordering (Starlette applies the LAST-added as the OUTERMOST):
-#   _carry_user_token  ->  CORSMiddleware  ->  BodySizeLimitMiddleware
-#                      ->  _errors_with_cors  ->  routes
+#   _carry_user_token  ->  CORSMiddleware  ->  RequestContextMiddleware
+#                      ->  BodySizeLimitMiddleware  ->  _errors_with_cors  ->  routes
 # _errors_with_cors is INNERMOST, so any unhandled exception it converts to a
 # JSONResponse travels back OUT through CORSMiddleware and carries the CORS
 # headers. This matters because FastAPI's built-in catch-all `Exception` handler
@@ -229,6 +247,13 @@ async def _errors_with_cors(request: Request, call_next):
 from middleware.body_limit import BodySizeLimitMiddleware
 app.add_middleware(BodySizeLimitMiddleware)
 
+# ops-11: an id on every request (header, log line, Sentry tag, the 5xx body) and one JSON line per request.
+# Added AFTER the body limit so it is OUTSIDE it — a 413 gets an id and a line too — and BEFORE CORS so it is
+# INSIDE it, for the reason the body limit gives above: a response from outside CORS reaches the browser with
+# no Access-Control-Allow-Origin. Pure ASGI (middleware/request_context.py says why).
+from middleware.request_context import RequestContextMiddleware
+app.add_middleware(RequestContextMiddleware)
+
 
 # `expose_headers` is NOT cosmetic. A browser lets script read only the seven
 # CORS-safelisted response headers unless the server names the others here, and
@@ -245,7 +270,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition", "X-Payslip-Problems"],
+    expose_headers=["Content-Disposition", "X-Payslip-Problems", REQUEST_ID_HEADER],
 )
 
 
@@ -365,6 +390,9 @@ app.include_router(engagement_letters.router, dependencies=_CLIENT_GUARD)
 app.include_router(invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(intelligence.router, dependencies=_CLIENT_GUARD)
 app.include_router(scheduler_status.router)
+# ops-15. Authenticated by a shared token in X-Scheduler-Token, not by a person: its caller is an
+# external scheduler. No client_id, no MFA (there is no user); see routers/scheduler_trigger.py.
+app.include_router(scheduler_trigger.router)
 app.include_router(audit.router)
 # task #244: "Verify Books" — Partner-only, no _CLIENT_GUARD (client_id lives
 # in the request body/query per endpoint, not a uniform path param — each
@@ -489,6 +517,9 @@ app.include_router(portal_employee.router)
 # Phase 4.6 — Online Payments. Staff endpoints carry their own accounting rbac;
 # the gateway webhook is public (signature-verified). NOT behind _CLIENT_GUARD.
 app.include_router(payments.router)
+# ops-21. Public like the payment webhook (the caller is the email provider) and protected the
+# same way: its signature. Unsigned requests write nothing. NOT behind _CLIENT_GUARD.
+app.include_router(email_webhooks.router)
 # Public engagement-letter signing — a prospect reviews and e-signs via a
 # tokenized link (no login; the unguessable sign_token is the credential).
 # Intentionally public, like the hosted payment link. NOT behind _CLIENT_GUARD.
@@ -581,6 +612,31 @@ _SCHEMA_DRIFT: dict = {"checked": False, "missing": []}
 from jobs.scheduler import start_scheduler, run_due_schedules, log_scheduler_startup_health
 
 
+def _apply_schema_drift(result: dict) -> None:
+    """The one setter of the verdict /health reads, for the re-check thread.
+
+    A module-level function (not a closure over `_boot_background`) so a test can
+    watch the verdict change the way a request would see it.
+    """
+    global _SCHEMA_DRIFT
+    _SCHEMA_DRIFT = result
+
+
+def _watch_schema_drift(initial: dict) -> None:
+    """ops-19: keep asking while the verdict is "drifted" or "not yet checked".
+
+    Before this the check ran once at boot, so a deploy that booted in the minutes
+    before its migration landed answered 503 until the next restart. See
+    core/schema_guard.start_drift_watch for what the watcher will and will not do
+    (it only ever moves the verdict TOWARDS healthy). Non-fatal like every step.
+    """
+    try:
+        from core.schema_guard import start_drift_watch
+        start_drift_watch(initial, _apply_schema_drift)
+    except Exception:
+        _logger.exception("schema drift watch failed to start")
+
+
 def _boot_background() -> None:
     """The slow half of startup. Every step is non-fatal and logs its own failure.
 
@@ -598,6 +654,11 @@ def _boot_background() -> None:
         # reporting one as drift would fail every deploy on a transient DB
         # hiccup — which is the failure mode this whole change exists to end.
         _SCHEMA_DRIFT = {"checked": False, "missing": []}
+
+    # Straight after the first verdict and before the scheduler: it starts a
+    # daemon thread and returns, so it delays nothing, and it starts nothing at
+    # all when the first check found the schema in order.
+    _watch_schema_drift(_SCHEMA_DRIFT)
 
     try:
         start_scheduler()
@@ -645,19 +706,36 @@ def healthcheck():
     from fastapi.responses import JSONResponse
     from models.common import api_response
     from services import ai_status_service
+    from core import schema_guard
+
+    # ops-19: tables and functions the code calls and the database lacks. A copy of
+    # a dict the check keeps in memory — this route still touches no network.
+    objects = schema_guard.object_drift()
+    objects_missing = bool(objects["missing_tables"] or objects["missing_functions"])
+    schema_objects = {
+        "tables_checked": objects["tables_checked"],
+        "functions_checked": objects["functions_checked"],
+        "missing_tables": objects["missing_tables"][:50],
+        "missing_functions": objects["missing_functions"][:50],
+    }
 
     # task #244: a deploy whose code depends on a migration that was never
     # applied to this database fails its own health check instead of going
     # live and silently corrupting data — Render's healthCheckPath will not
     # cut traffic over to an unhealthy deploy. See core/schema_guard.py.
-    if _SCHEMA_DRIFT.get("missing"):
+    #
+    # The object verdict joins the 503 only when OBJECT_DRIFT_FAILS_HEALTH says so,
+    # which it does not yet: see that constant for what has to be read first.
+    if _SCHEMA_DRIFT.get("missing") or (schema_guard.OBJECT_DRIFT_FAILS_HEALTH and objects_missing):
         return JSONResponse(
             status_code=503,
             content=api_response(
                 False,
-                {"status": "schema_drift", "missing_columns": _SCHEMA_DRIFT["missing"]},
-                "Deployed code depends on database columns that don't exist — a migration "
-                "was committed but never applied. See scripts/db/apply_migrations.py.",
+                {"status": "schema_drift", "missing_columns": _SCHEMA_DRIFT.get("missing", []),
+                 "schema_objects": schema_objects},
+                "Deployed code depends on database objects that don't exist — a migration "
+                "was committed but never applied. See scripts/db/apply_migrations.py. "
+                "This clears by itself within a few minutes of the migration applying.",
             ),
         )
     # 200 while the check is still running, and the body says so. Answering 503
@@ -667,6 +745,10 @@ def healthcheck():
     return api_response(True, {
         "status": "ok",
         "schema": "ok" if _SCHEMA_DRIFT.get("checked") else "checking",
+        # What the code calls that the database lacks. REPORTED, not (yet) a 503:
+        # read it on production, and flip schema_guard.OBJECT_DRIFT_FAILS_HEALTH
+        # once it has been empty for a few days.
+        "schema_objects": schema_objects,
         # Whether a swallowed financial-posting failure would reach anybody (ops-10). SENTRY_DSN is
         # set in Render's dashboard and the repo cannot see it, so this is how it is confirmed:
         # `curl .../health`. A fact about this process, not a call to Sentry: this route touches

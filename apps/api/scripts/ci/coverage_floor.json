@@ -1,0 +1,12 @@
+{
+  "_comment": "Line coverage of the mock-mode suite, per package. Floors may only be raised: scripts/ci/coverage_floor.py explains why each sits a point under what was measured.",
+  "measured_on": "02-10-2026",
+  "measured": {
+    "domain": 93.72,
+    "services": 83.72
+  },
+  "floors": {
+    "domain": 92.0,
+    "services": 82.0
+  }
+}

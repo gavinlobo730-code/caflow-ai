@@ -12,6 +12,7 @@ import os
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from uuid import uuid4
+from core import db_provider
 
 _logger = logging.getLogger("caflow.gst.portal")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -98,9 +99,7 @@ def get_provider(provider_name: str = "manual") -> GSTPortalProvider:
     return ManualGSTProvider()
 
 
-def _supabase():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_supabase = db_provider.request_db
 
 
 # ── Sync Jobs ──────────────────────────────────────────────────────────────────

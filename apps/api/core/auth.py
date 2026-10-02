@@ -14,6 +14,7 @@ import jwt
 _logger = logging.getLogger("caflow.auth")
 from jwt import PyJWKClient
 from core.supabase_client import get_service_supabase
+from core.request_context import bind_firm
 
 _jwks_client: Optional[PyJWKClient] = None
 
@@ -305,6 +306,7 @@ def get_current_user(
                 detail="Server configuration error: SUPABASE_URL not set",
             )
         role = (x_user_role or "partner").strip().capitalize()
+        bind_firm(x_firm_id or "firm-001")
         return {
             "auth_user_id": x_user_id or "dev-user",
             "id": x_user_id or "dev-user",
@@ -399,6 +401,10 @@ def get_current_user(
     # M1 — default to least-privileged staff role (not silently Executive) when a
     # row somehow has no role; never silently grant elevated access.
     role = user_data.get("role") or "Reviewer"
+
+    # ops-11: say which firm this request is for, so the log line, the Sentry event and a 5xx can be found
+    # by firm. The firm's UUID only; core/request_context.py says what may never be bound.
+    bind_firm(user_data["firm_id"])
 
     return {
         "auth_user_id": auth_user_id,

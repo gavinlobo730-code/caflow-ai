@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from typing import Optional
+from core.db_paging import fetch_all
 
 _logger = logging.getLogger("caflow.fx_reporting")
 
@@ -34,31 +35,6 @@ _DEAD = {"draft", "cancelled", "paid"}
 # document is exactly the kind of completed FX transaction the audit trail exists to
 # show, unlike the open-balance filter above.
 _DEAD_UNISSUED = {"draft", "cancelled"}
-
-
-def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
-    """Fetch EVERY row of a Supabase query via keyset paging on `key`.
-
-    An un-paged .execute() is silently capped at PostgREST's ~1000-row limit, so
-    for a large ledger this would truncate the read and understate FX balances /
-    mis-date FX adjustments (no error). `make_query` returns a fresh query builder
-    each call. Test doubles that don't implement order/limit/gt just return their
-    whole (small) fixture from a single execute(), which is already correct."""
-    first = make_query()
-    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
-        return first.execute().data or []
-    out: list = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        rows = q.order(key).limit(page).execute().data or []
-        out.extend(rows)
-        if len(rows) < page:
-            break
-        cursor = rows[-1][key]
-    return out
 
 
 def _today() -> str:
@@ -102,7 +78,7 @@ class FXReportingService:
                     .not_.in_("status", list(_DEAD))
                     .lte("invoice_date", _d(as_of))
                     .gt("txn_outstanding", 0))
-        rows = _paginate_all(_q)
+        rows = fetch_all(_q)
         out = []
         for r in rows:
             cur = (r.get("txn_currency") or _BASE).upper()
@@ -131,7 +107,7 @@ class FXReportingService:
                     .not_.in_("status", list(_DEAD))
                     .lte("bill_date", _d(as_of))
                     .gt("txn_outstanding", 0))
-        rows = _paginate_all(_q)
+        rows = fetch_all(_q)
         out = []
         for r in rows:
             cur = (r.get("txn_currency") or _BASE).upper()
@@ -204,7 +180,7 @@ class FXReportingService:
         """{journal_entry_id: entry_date} for posted entries — so an FX adjustment is
         reported in its SETTLEMENT/posting period (period-accurate for backdated and
         multi-year settlements), not by the audit row's insert timestamp."""
-        rows = _paginate_all(lambda: db.table("journal_entries").select("id, entry_date")
+        rows = fetch_all(lambda: db.table("journal_entries").select("id, entry_date")
                              .eq("firm_id", firm_id).eq("client_id", client_id)
                              .eq("is_posted", True).is_("deleted_at", "null"))
         return {r["id"]: _d(r.get("entry_date")) for r in rows}
@@ -251,7 +227,7 @@ class FXReportingService:
             return qq
         entry_dates = self._entry_dates(db, firm_id, client_id)
         out = []
-        for r in _paginate_all(_adj_query):
+        for r in fetch_all(_adj_query):
             when = entry_dates.get(r.get("journal_entry_id")) or r.get("created_at")
             if not _within(when, start, end):
                 continue
@@ -294,7 +270,7 @@ class FXReportingService:
             if period_end:
                 qq = qq.eq("period_end", _d(period_end))
             return qq
-        rows = _paginate_all(_reval_query)
+        rows = fetch_all(_reval_query)
         groups: dict = {}
         for r in rows:
             key = (_d(r.get("period_end")), (r.get("currency") or "").upper(), r.get("item_type"))
@@ -382,7 +358,7 @@ class FXReportingService:
                 if end:
                     q = q.lte(date_col, _d(end))
                 return q
-            rows = _paginate_all(_doc_query)
+            rows = fetch_all(_doc_query)
             for r in rows:
                 cur = (r.get("txn_currency") or _BASE).upper()
                 if cur == _BASE or (r.get("status") or "") in _DEAD_UNISSUED or not _within(r.get(date_col), start, end):
@@ -433,13 +409,13 @@ def _account_foreign_and_base(db, firm_id, client_id, account_id, currency=_BASE
     txn_currency='INR'), so the reported foreign balance and its carrying base are the
     stable booked values. Derived purely from posted data; tolerant of an absent FX
     column set (returns 0/0 for a foreign filter) so it is safe on any schema."""
-    entries = _paginate_all(lambda: db.table("journal_entries").select("id, is_posted, deleted_at")
+    entries = fetch_all(lambda: db.table("journal_entries").select("id, is_posted, deleted_at")
                             .eq("firm_id", firm_id).eq("client_id", client_id)
                             .eq("is_posted", True).is_("deleted_at", "null"))
     entry_ids = {e["id"] for e in entries}
     if not entry_ids:
         return 0, 0
-    lines = _paginate_all(lambda: db.table("journal_lines")
+    lines = fetch_all(lambda: db.table("journal_lines")
                           .select("id, journal_entry_id, account_id, debit_paise, credit_paise, txn_debit, txn_credit, txn_currency")
                           .eq("account_id", account_id))
     cur = (currency or _BASE).upper()

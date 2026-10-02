@@ -33,6 +33,7 @@ import {
   type PurchaseCreditNoteEditorLine,
 } from "@/lib/purchases/purchaseCreditNoteEditor";
 import { Callout } from "@/components/ui/callout";
+import { Button } from "@/components/ui/button";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const EMPTY_LINE: PurchaseCreditNoteEditorLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "NOS", service_catalogue_id: "" };
@@ -355,9 +356,9 @@ export function PurchaseCreditNoteEditor({
       <button onClick={handleCancel} disabled={busy} className="mr-auto text-xs px-3 py-1.5 text-ps-label hover:text-ps-body disabled:opacity-50">
         Cancel
       </button>
-      <button onClick={save} disabled={busy} className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
+      <Button variant="plain" size="none" spinner={false} onClick={save} disabled={busy} className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
         {saving && <Loader2 size={12} className="animate-spin" />} {isEdit ? "Save Changes" : "Save Draft"}
-      </button>
+      </Button>
     </>
   );
 
@@ -421,9 +422,9 @@ export function PurchaseCreditNoteEditor({
           {!isLocked && (
             <div className="flex items-center gap-2">
               <input type="file" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
-              <button onClick={handleUpload} disabled={!uploadFile || uploading} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+              <Button variant="plain" size="none" onClick={handleUpload} disabled={!uploadFile || uploading} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {uploading ? "Uploading…" : "Upload"}
-              </button>
+              </Button>
             </div>
           )}
           {documentUrl && (

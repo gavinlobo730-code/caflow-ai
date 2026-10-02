@@ -37,33 +37,6 @@ from core.db_paging import fetch_all, fetch_all_in
 
 _logger = logging.getLogger("caflow.reconciliation")
 
-_PAGE = 1000
-
-
-def _paginate_all(make_query, key: str = "id") -> list[dict]:
-    """Keyset-paginate a Supabase query to completion — an un-paged .execute()
-    silently caps at PostgREST's ~1000-row default limit (the same class of
-    bug documented in services/tds_return_service.py's own copy of this).
-
-    EVERY CALLER MUST SELECT `key`. Line for line below, the cursor advances by
-    rows[-1][key] — so a select that omits it works perfectly up to the 1000th
-    row and then raises KeyError. The failure therefore appears only on a
-    client busy enough to need the second page, which is the client whose
-    numbers most need to be right. tests/test_paginated_selects_carry_their_key.py
-    checks every call site."""
-    out: list[dict] = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        rows = q.order(key).limit(_PAGE).execute().data or []
-        out.extend(rows)
-        if len(rows) < _PAGE:
-            break
-        cursor = rows[-1][key]
-    return out
-
 
 def _find_account_id(db, firm_id: str, client_id: str, account_name: str) -> Optional[str]:
     """EXACT account_name match (firm-wide or this client's own), never ILIKE
@@ -140,7 +113,7 @@ def check_missing_cogs_journals(db, firm_id: str, client_id: str, entries) -> li
     the exact bug class found by hand on 2026-07-25: the stock ledger
     correctly recorded 5 invoices' goods leaving, but their COGS journal
     silently never posted."""
-    ledger_rows = _paginate_all(lambda: (
+    ledger_rows = fetch_all(lambda: (
         db.table("inventory_stock_ledger").select("id, source_id, value_delta_paise")
         .eq("firm_id", firm_id).eq("client_id", client_id)
         .eq("source_type", "sales_invoice").eq("movement_type", "sale")
@@ -195,7 +168,7 @@ def check_missing_inventory_receipt_journals(db, firm_id: str, client_id: str, e
     reason)."""
     from services.phase2_journal_service import purchase_bill_journal_ref
 
-    ledger_rows = _paginate_all(lambda: (
+    ledger_rows = fetch_all(lambda: (
         db.table("inventory_stock_ledger").select("id, source_id, value_delta_paise")
         .eq("firm_id", firm_id).eq("client_id", client_id)
         .eq("source_type", "purchase_bill").eq("movement_type", "purchase")
@@ -251,14 +224,14 @@ def check_inventory_cache_drift(db, firm_id: str, client_id: str, entries) -> li
     diverged from what its rows' individual deltas sum to — this check
     catches the SYMPTOM (cache vs. ledger) either way; distinguishing the
     two root causes is a manual follow-up, same as it was this time."""
-    items = _paginate_all(lambda: (
+    items = fetch_all(lambda: (
         db.table("service_catalogue").select("id, name, stock_qty_units, avg_cost_paise")
         .eq("firm_id", firm_id).eq("client_id", client_id).eq("kind", "good")
     ))
     if not items:
         return []
 
-    ledger_rows = _paginate_all(
+    ledger_rows = fetch_all(
         lambda: (
             db.table("inventory_stock_ledger")
             .select("id, service_catalogue_id, running_qty_units, running_avg_cost_paise, created_at")
@@ -311,7 +284,7 @@ def check_ar_subledger_vs_gl(db, firm_id: str, client_id: str, entries) -> list[
         return []
     gl_paise = _account_balance(entries, account_id)
 
-    invoices = _paginate_all(lambda: (
+    invoices = fetch_all(lambda: (
         db.table("client_sales_invoices")
         .select("id, total_paise, paid_paise, credited_paise, debit_note_paise")
         .eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "issued")
@@ -339,7 +312,7 @@ def check_ap_subledger_vs_gl(db, firm_id: str, client_id: str, entries) -> list[
         return []
     gl_paise = -_account_balance(entries, account_id)  # AP is credit-normal
 
-    bills = _paginate_all(lambda: (
+    bills = fetch_all(lambda: (
         db.table("purchase_bills")
         .select("id, net_payable_paise, paid_paise, debited_paise, credit_note_paise")
         .eq("firm_id", firm_id).eq("client_id", client_id)
@@ -385,7 +358,7 @@ def check_bank_reconciliation_discrepancies(db, firm_id: str, client_id: str, en
     no longer describes a current certification, so comparing against it would
     manufacture findings for a period someone is already fixing.
     """
-    sessions = _paginate_all(lambda: (
+    sessions = fetch_all(lambda: (
         db.table("bank_reconciliations")
         .select("id, account_no, period_start, period_end, status, snapshot, completed_at")
         .eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "completed")
@@ -566,7 +539,7 @@ def check_fixed_asset_register(db, firm_id: str, client_id: str, entries) -> lis
     # statutory rule is the wrong direction and one refactor from a cycle.
     from domain.fixed_assets import integrity as fa_integrity
 
-    rows = _paginate_all(lambda: (
+    rows = fetch_all(lambda: (
         db.table("fixed_assets").select(fa_integrity.COLUMNS)
         .eq("firm_id", firm_id).eq("client_id", client_id)
         .is_("deleted_at", "null")

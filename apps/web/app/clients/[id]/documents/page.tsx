@@ -9,6 +9,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { Callout } from "@/components/ui/callout";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 interface ClientDocument {
   id: string;
@@ -183,7 +184,7 @@ export default function DocumentsPage() {
   }
 
   async function handleDeleteDocument(doc: ClientDocument) {
-    if (!confirm(`Delete "${docLabel(doc)}"? This cannot be undone.`)) return;
+    if (!(await confirmDialog({ message: `Delete "${docLabel(doc)}"? This cannot be undone.`, danger: true, confirmLabel: "Delete" }))) return;
     setDeletingDocId(doc.id);
     try {
       const supabase = getSupabaseClient();

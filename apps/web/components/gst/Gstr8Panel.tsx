@@ -32,6 +32,7 @@ import { formatPaise } from "@/lib/money/format";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { INDIAN_STATES } from "@/lib/constants/indianStates";
+import { Button } from "@/components/ui/button";
 
 function todayPeriod(): string {
   const d = new Date();
@@ -260,10 +261,10 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
                     <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(r.cgst_paise)}</td>
                     <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(r.sgst_paise)}</td>
                     <td className="py-1.5 text-right">
-                      <button onClick={() => removeSupply(r.id)} title="Remove"
+                      <Button variant="plain" size="none" spinner={false} onClick={() => removeSupply(r.id)} title="Remove"
                         className="text-state-problem hover:opacity-70">
                         <Trash2 size={12} />
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -305,11 +306,11 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
             ))}
           </div>
           {supplyFormError && <Callout tone="problem">{supplyFormError}</Callout>}
-          <button onClick={addSupply} disabled={savingSupply}
+          <Button variant="plain" size="none" spinner={false} onClick={addSupply} disabled={savingSupply}
             className="text-2xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 inline-flex items-center gap-1.5">
             {savingSupply ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
             Add seller
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -336,10 +337,10 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
                     <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(r.returns_paise)}</td>
                     <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(r.gross_value_paise - r.returns_paise)}</td>
                     <td className="py-1.5 text-right">
-                      <button onClick={() => removeUnregistered(r.id)} title="Remove"
+                      <Button variant="plain" size="none" spinner={false} onClick={() => removeUnregistered(r.id)} title="Remove"
                         className="text-state-problem hover:opacity-70">
                         <Trash2 size={12} />
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -368,11 +369,11 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
             </label>
           </div>
           {unregFormError && <Callout tone="problem">{unregFormError}</Callout>}
-          <button onClick={addUnregistered} disabled={savingUnreg}
+          <Button variant="plain" size="none" spinner={false} onClick={addUnregistered} disabled={savingUnreg}
             className="text-2xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 inline-flex items-center gap-1.5">
             {savingUnreg ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
             Add seller
-          </button>
+          </Button>
         </div>
       </div>
 

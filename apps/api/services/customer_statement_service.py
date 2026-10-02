@@ -30,6 +30,7 @@ from services.statement_currency import attach_currency_outstanding, summarize_b
 from domain.reporting.party_advances import (
     AdvanceInput, aging_bucket as _aging_bucket, empty_buckets, unapplied_advances,
 )
+from core.db_paging import fetch_all
 
 _logger = logging.getLogger("caflow.customer_statement")
 
@@ -41,31 +42,6 @@ _DEAD_DEBIT_NOTE = {"draft", "cancelled"}
 
 def _d(v) -> str:
     return str(v)[:10]
-
-
-def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
-    """Fetch EVERY row of a Supabase query via keyset paging on `key` (task
-    #221, same audit-C6 class as domain/reporting/sources.py's _fetch_all).
-    An un-paged .execute() is silently capped at PostgREST's ~1000-row limit,
-    understating a client's AR aging / statement totals with no error.
-    `make_query` returns a fresh query builder each call. Test doubles that
-    don't implement order/limit/gt just return their whole (small) fixture
-    from a single execute(), which is already correct."""
-    first = make_query()
-    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
-        return first.execute().data or []
-    out: list = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        rows = q.order(key).limit(page).execute().data or []
-        out.extend(rows)
-        if len(rows) < page:
-            break
-        cursor = rows[-1][key]
-    return out
 
 
 def _now() -> str:
@@ -252,13 +228,13 @@ class CustomerStatementService:
                 return q
             return q.gte(col, _d(start_date)).lte(col, _d(end_date))
 
-        inv = _paginate_all(lambda: _window(db.table("client_sales_invoices")
+        inv = fetch_all(lambda: _window(db.table("client_sales_invoices")
                .select("id, invoice_no, invoice_date, total_paise, status, txn_currency, exchange_rate, txn_total")
                .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
                .is_("deleted_at", "null"), "invoice_date"))
         invoices = [i for i in inv if (i.get("status") or "") not in _DEAD_INVOICE]
 
-        _rcpt = _paginate_all(lambda: _window(db.table("receipts")
+        _rcpt = fetch_all(lambda: _window(db.table("receipts")
                  .select("id, receipt_no, receipt_date, amount_paise, tds_paise, unallocated_paise, "
                          "is_reversed, txn_currency, exchange_rate, txn_amount")
                  .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id),
@@ -278,7 +254,7 @@ class CustomerStatementService:
         receipt_ids = [r["id"] for r in receipts if r.get("id")]
         alloc_sum: dict[str, int] = {}
         if receipt_ids:
-            allocs = _paginate_all(lambda: db.table("receipt_allocations")
+            allocs = fetch_all(lambda: db.table("receipt_allocations")
                       .select("id, receipt_id, allocated_paise")
                       .in_("receipt_id", receipt_ids))
             for a in allocs:
@@ -287,13 +263,13 @@ class CustomerStatementService:
         for r in receipts:
             r["ar_relief_paise"] = alloc_sum.get(r.get("id"), 0) + int(r.get("unallocated_paise") or 0)
 
-        cns = _paginate_all(lambda: _window(db.table("credit_notes")
+        cns = fetch_all(lambda: _window(db.table("credit_notes")
                .select("id, credit_note_no, credit_note_date, total_paise, status")
                .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
                .is_("deleted_at", "null"), "credit_note_date"))
         credit_notes = [c for c in cns if (c.get("status") or "") not in _DEAD_CREDIT_NOTE]
 
-        dns = _paginate_all(lambda: _window(db.table("sales_debit_notes")
+        dns = fetch_all(lambda: _window(db.table("sales_debit_notes")
                .select("id, debit_note_no, debit_note_date, total_paise, status")
                .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
                .is_("deleted_at", "null"), "debit_note_date"))
@@ -315,7 +291,7 @@ class CustomerStatementService:
         # list the ones still open. outstanding_paise is a generated column
         # (migration 278), which is what lets the arithmetic be a filter at all:
         # PostgREST can compare a column, not a four-term expression.
-        invs = _paginate_all(lambda: db.table("client_sales_invoices")
+        invs = fetch_all(lambda: db.table("client_sales_invoices")
                 .select("id, customer_id, invoice_no, invoice_date, due_date, total_paise, paid_paise, "
                         "credited_paise, debit_note_paise, outstanding_paise, status, txn_currency, "
                         "exchange_rate, txn_total, paid_txn, is_disputed, considered_doubtful")
@@ -323,7 +299,7 @@ class CustomerStatementService:
                 .is_("deleted_at", "null")
                 .not_.in_("status", list(_DEAD_INVOICE))
                 .gt("outstanding_paise", 0))
-        cnames = {c["id"]: c.get("name") for c in _paginate_all(lambda: db.table("customers").select("id, name")
+        cnames = {c["id"]: c.get("name") for c in fetch_all(lambda: db.table("customers").select("id, name")
                   .eq("firm_id", firm_id).eq("client_id", client_id))}
 
         buckets = empty_buckets()
@@ -407,7 +383,7 @@ class CustomerStatementService:
         the cross-check below report a ₹10,000 discrepancy on every receipt
         that carried withholding.
         """
-        rcpts = _paginate_all(lambda: db.table("receipts")
+        rcpts = fetch_all(lambda: db.table("receipts")
                  .select("id, receipt_no, receipt_date, customer_id, amount_paise, tds_paise, "
                          "unallocated_paise, is_reversed, txn_currency")
                  .eq("firm_id", firm_id).eq("client_id", client_id)
@@ -421,7 +397,7 @@ class CustomerStatementService:
         ids = [r["id"] for r in rcpts if r.get("id")]
         for i in range(0, len(ids), 200):
             chunk = ids[i:i + 200]
-            for a in _paginate_all(lambda chunk=chunk: db.table("receipt_allocations")
+            for a in fetch_all(lambda chunk=chunk: db.table("receipt_allocations")
                     .select("id, receipt_id, allocated_paise, is_voided")
                     .in_("receipt_id", chunk)):
                 if a.get("is_voided"):

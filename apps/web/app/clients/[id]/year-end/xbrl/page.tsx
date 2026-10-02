@@ -11,6 +11,7 @@ import { isCompaniesActCompany } from "@/lib/entityObligations";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
@@ -199,10 +200,10 @@ export default function XBRLPage() {
           </div>
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
-            <button onClick={handleCreate} disabled={actionInFlight}
+            <Button variant="plain" size="none" spinner={false} onClick={handleCreate} disabled={actionInFlight}
               className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -283,14 +284,14 @@ export default function XBRLPage() {
           )}
 
           <div className="flex gap-2">
-            <button
+            <Button variant="plain" size="none" spinner={false}
               onClick={() => handleValidate(selected)}
               disabled={actionInFlight}
               className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg disabled:opacity-50 flex items-center gap-1 hover:bg-brand-dark"
             >
               {validating && <Loader2 size={10} className="animate-spin" />}
               Run Validation
-            </button>
+            </Button>
           </div>
         </div>
       )}

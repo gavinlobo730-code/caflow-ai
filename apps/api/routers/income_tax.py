@@ -46,6 +46,7 @@ from domain.income_tax.presumptive import (
 from services.compliance_obligation_service import itr_due_date_for_client, fy_end_year
 from models.fy import AYLabel, FYLabel, OptionalAYLabel, OptionalFYLabel
 from core.ist_clock import normalise_fy_label
+from core import db_provider
 
 router = APIRouter(prefix="/api/income-tax", tags=["income-tax"])
 
@@ -842,18 +843,13 @@ def compute_hra(
 # verification-status note. Replaces apps/web/app/income-tax/capital-gains/
 # page.tsx's client-side compute-and-persist implementation.
 
-def _db():
-    import os
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    # Shared by both the capital-gains and advance-tax handlers below, all
-    # already rbac()-gated. get_supabase() is the RLS-enforced `authenticated`
-    # client under USE_USER_JWT, which has no INSERT/UPDATE/DELETE grant on
-    # capital_gains or advance_tax_payments, so every save 500'd with "The
-    # server is not permitted to write this table." Same fix as
-    # routers/fixed_assets.py (PR #626).
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# Shared by both the capital-gains and advance-tax handlers below, all
+# already rbac()-gated. get_supabase() is the RLS-enforced `authenticated`
+# client under USE_USER_JWT, which has no INSERT/UPDATE/DELETE grant on
+# capital_gains or advance_tax_payments, so every save 500'd with "The
+# server is not permitted to write this table." Same fix as
+# routers/fixed_assets.py (PR #626).
+_db = db_provider.service_db_or_none
 
 
 @router.get("/capital-gains/cii-table")

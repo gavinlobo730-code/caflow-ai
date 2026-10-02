@@ -11,6 +11,7 @@ import os
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
+from core import db_provider
 
 _logger = logging.getLogger("caflow.tax.workspace")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -26,9 +27,7 @@ _MOCK_LOSSES: dict[str, dict] = {}
 _SNAPSHOT_VERSION_ATTEMPTS = 5
 
 
-def _supabase():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_supabase = db_provider.request_db
 
 
 # Income figures persisted as first-class snapshot columns. The insert used to

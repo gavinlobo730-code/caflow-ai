@@ -369,7 +369,7 @@ def test_there_is_no_second_paginator_in_the_router():
     diverge; this one had already lost `fetch_all`'s page cap and its
     cursor-missing log."""
     src = (API_ROOT / "routers" / "fixed_assets.py").read_text()
-    assert "def _paginate_all" not in src
+    assert "_paginate_all" not in src
     assert "from core.db_paging import fetch_all" in src
 
 

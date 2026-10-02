@@ -43,6 +43,7 @@ from fastapi import HTTPException
 
 from core.authz import assert_client_access
 from core.urls import frontend_base
+from core import db_provider
 
 # Same window the client-portal invites use. Long enough for someone on leave to
 # act on it, short enough that a forgotten invite does not stay live for months.
@@ -62,16 +63,14 @@ def reset_mock_stores() -> None:  # test helper
     MOCK_EMPLOYEES.clear()
 
 
-def _db():
-    # SERVICE ROLE, as in portal_access_service. There is no `core.database`
-    # module, so the import this replaced raised on every production call and
-    # no employee could ever be invited, activated or revoked. Service role is
-    # also what acceptance NEEDS: the accepting employee has no `users` row, so
-    # the RLS-enforced client would see nothing. Every staff path through here
-    # has already run rbac() and assert_client_access, and acceptance is scoped
-    # by the sha256 of a single-use token.
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# SERVICE ROLE, as in portal_access_service. There is no `core.database`
+# module, so the import this replaced raised on every production call and
+# no employee could ever be invited, activated or revoked. Service role is
+# also what acceptance NEEDS: the accepting employee has no `users` row, so
+# the RLS-enforced client would see nothing. Every staff path through here
+# has already run rbac() and assert_client_access, and acceptance is scoped
+# by the sha256 of a single-use token.
+_db = db_provider.service_db
 
 
 def _now() -> str:

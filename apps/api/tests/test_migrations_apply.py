@@ -44,6 +44,13 @@ RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
 
 # ── Drift backlog (R2.6). Migrations that do not cleanly re-apply to a fresh DB.
 # Verified locally against PostgreSQL 16. Each is a real ordering/collision bug.
+#
+# THIS SET IS ALSO scripts/db/apply_migrations.BASELINE_FAILURES (ops-16): the runner
+# tolerates a remembered failure of exactly these ten, and runs exactly these ten
+# without a wrapping transaction because the rest of the schema build was written
+# against what they leave behind. tests/test_the_migration_runner_is_atomic_and_
+# remembers.py asserts the two sets are equal, so removing a name here (a fixed
+# migration) means removing it there in the same commit. It may only shrink.
 EXPECTED_MIGRATION_FAILURES: set[str] = {
     "008_linter_fixes.sql",              # references relation "transactions" before it exists
     "045_assignment_rules.sql",          # FK -> task_recurring_configs (created later, in 063); dup 045 number

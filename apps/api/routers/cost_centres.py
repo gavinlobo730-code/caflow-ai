@@ -26,16 +26,12 @@ from domain.accounting import cost_centre as rule
 from models.common import api_response
 from models.fy import FYLabel
 from services import cost_centre_service as svc
+from core import db_provider
 
 router = APIRouter(prefix="/api/cost-centres", tags=["cost-centres"])
 
 
-def _db():
-    import os
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db_or_none
 
 
 class CostCentreIn(BaseModel):

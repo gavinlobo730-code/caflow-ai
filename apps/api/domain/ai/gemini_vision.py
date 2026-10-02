@@ -127,6 +127,42 @@ def _text_of(response: Any) -> Optional[str]:
     return text if isinstance(text, str) else None
 
 
+def _request_kwargs(
+    types: Any,
+    *,
+    model: str,
+    images: list[bytes],
+    mime: str,
+    prompt: str,
+    system_instruction: Optional[str],
+    response_schema: Any,
+    hints_sent: bool,
+) -> dict[str, Any]:
+    """The keyword arguments of ONE `generate_content` call. Called inside `generate`'s
+    `try`, after the client is built and before the request is sent, exactly where the
+    statements lived before they were lifted out: a response schema the SDK cannot turn
+    into a request raises HERE, and the caller answers that by asking again without the
+    hint (`hints_sent`), so moving this call outside the `try` would cost a reading what
+    should only have cost a hint. `types` is passed in because the SDK is imported where
+    it is used and not at module load."""
+    config_kwargs: dict[str, Any] = {}
+    if system_instruction:
+        config_kwargs["system_instruction"] = system_instruction
+    if hints_sent:
+        config_kwargs["response_mime_type"] = "application/json"
+        config_kwargs["response_schema"] = response_schema
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "contents": [
+            *[types.Part.from_bytes(data=img, mime_type=mime) for img in images],
+            prompt,
+        ],
+    }
+    if config_kwargs:
+        kwargs["config"] = types.GenerateContentConfig(**config_kwargs)
+    return kwargs
+
+
 def generate(
     *,
     api_key: str,
@@ -181,24 +217,13 @@ def generate(
             failure = None
 
             try:
-                config_kwargs: dict[str, Any] = {}
-                if system_instruction:
-                    config_kwargs["system_instruction"] = system_instruction
-                if hints_sent:
-                    config_kwargs["response_mime_type"] = "application/json"
-                    config_kwargs["response_schema"] = response_schema
                 client = genai.Client(
                     api_key=api_key,
                     http_options=types.HttpOptions(timeout=int(attempt_timeout * 1000)))
-                kwargs: dict[str, Any] = {
-                    "model": model,
-                    "contents": [
-                        *[types.Part.from_bytes(data=img, mime_type=mime) for img in images],
-                        prompt,
-                    ],
-                }
-                if config_kwargs:
-                    kwargs["config"] = types.GenerateContentConfig(**config_kwargs)
+                kwargs = _request_kwargs(
+                    types, model=model, images=images, mime=mime, prompt=prompt,
+                    system_instruction=system_instruction, response_schema=response_schema,
+                    hints_sent=hints_sent)
                 response = client.models.generate_content(**kwargs)
             except Exception as exc:                             # noqa: BLE001 — SDK errors
                 api_status, body = _api_status_and_body(exc)

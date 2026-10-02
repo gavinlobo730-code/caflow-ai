@@ -46,6 +46,7 @@ import { Callout } from "@/components/ui/callout";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 import { objectWithLists } from "@/lib/api/shape";
 import { Field, Input, Select } from "@/components/ui/field";
+import { Button } from "@/components/ui/button";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
 type AccountingTab =
@@ -796,9 +797,9 @@ function AddAccountModal({ clientId, onClose, onSaved }: {
 
         <div className="px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
           <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
-          <button onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
+          <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Account"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -883,9 +884,9 @@ function EditAccountModal({ account, onClose, onSaved }: {
 
         <div className="px-5 py-4 border-t border-ps-border flex gap-3 shrink-0">
           <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
-          <button onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
+          <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Save Changes"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -3499,11 +3500,11 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
                     <td className="px-3 py-2 text-right font-mono text-ps-body">{fmt(j.total_credit_paise)}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
                       {status === "draft" ? (
-                        <button onClick={() => approve(j.id)} disabled={busy[j.id] || !balanced}
+                        <Button variant="plain" size="none" onClick={() => approve(j.id)} disabled={busy[j.id] || !balanced}
                           title={balanced ? "Approve & post to the ledger" : "Entry is not balanced"}
                           className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">
                           {busy[j.id] ? "Posting…" : "Approve & Post"}
-                        </button>
+                        </Button>
                       ) : (
                         <span className="text-ps-label">{formatIstLabelled(j.posted_at)}</span>
                       )}
@@ -3687,13 +3688,13 @@ function VerifyBooks({ clientId }: { clientId: string }) {
             </button>
           )}
         </div>
-        <button
+        <Button variant="plain" size="none"
           onClick={runVerification}
           disabled={verifying || !clientId || clientId === "_placeholder"}
           className="flex-shrink-0 text-xs font-medium px-4 py-2 bg-brand-dark text-white rounded-lg hover:bg-brand disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {verifying ? "Verifying…" : "Verify Books"}
-        </button>
+        </Button>
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
@@ -3991,7 +3992,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       const base = reportType === "pl" ? "PL" : reportType === "bs" ? "BalanceSheet" : "Trial-Balance";
       XLSX.writeFile(wb, `${base}-FY${financialYear}-${basisLabel}.xlsx`);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Export failed");
+      toast({ title: e instanceof Error ? e.message : "Export failed", variant: "destructive" });
     } finally {
       setExporting(null);
     }
@@ -4038,7 +4039,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       setTimeout(() => setShareSuccess(null), 3000);
       await loadShared();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Share failed");
+      toast({ title: e instanceof Error ? e.message : "Share failed", variant: "destructive" });
     } finally {
       setSharing(null);
     }
@@ -4110,7 +4111,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                   <Download size={12} />
                   {exporting === r.id ? "…" : "XLSX"}
                 </button>
-                <button
+                <Button variant="plain" size="none"
                   onClick={() => shareToPortal(r.id)}
                   disabled={sharing === r.id}
                   className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${
@@ -4121,7 +4122,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                 >
                   <Share2 size={12} />
                   {sharing === r.id ? "Sharing…" : shareSuccess === r.id ? "Shared ✓" : "Share"}
-                </button>
+                </Button>
               </div>
             </div>
           ))}

@@ -48,6 +48,7 @@ from services.timeline_service import timeline_service
 from core.ist_clock import ist_today
 from domain.health.scoring import DIMENSION_WEIGHTS_BP, DIMENSIONS, grade, weighted_score
 from domain.health.overrides import apply_overrides, as_payload
+from core import db_provider
 
 router = APIRouter(prefix="/api/health", tags=["health"])
 
@@ -60,12 +61,7 @@ _MOCK_OVERRIDES: list[dict]      = []
 _MOCK_ALERTS:    list[dict]      = []
 
 
-def _db():
-    import os
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db_or_none
 
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────

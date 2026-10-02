@@ -16,6 +16,7 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 import xml.etree.ElementTree as ET
 
 from domain.money_text import rupees_paise
+from core import db_provider
 
 _logger = logging.getLogger("caflow.xbrl")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -66,9 +67,7 @@ DEFAULT_MAPPINGS = [
 ]
 
 
-def _supabase():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_supabase = db_provider.request_db
 
 
 def create_xbrl_package(

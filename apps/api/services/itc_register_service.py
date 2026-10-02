@@ -41,10 +41,9 @@ from __future__ import annotations
 
 import logging
 from typing import Optional
+from core.db_paging import fetch_all
 
 _logger = logging.getLogger("caflow.itc_register")
-
-PAGE = 1000
 
 RECLAIMABLE_REASONS = ("rule_37", "rule_37a", "section_16_2b",
                        "section_16_2c", "other")
@@ -68,23 +67,6 @@ _HEADS = ("igst_paise", "cgst_paise", "sgst_paise", "cess_paise")
 
 class ITCRegisterError(ValueError):
     """A register row that would misstate a return. Never swallowed."""
-
-
-def _paginate_all(make_query, key: str = "id") -> list:
-    out: list = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        page = q.order(key).limit(PAGE).execute().data or []
-        out.extend(page)
-        if len(page) < PAGE:
-            break
-        cursor = page[-1].get(key)
-        if cursor is None:
-            break
-    return out
 
 
 def _amounts(src: dict) -> dict:
@@ -311,7 +293,7 @@ def for_periods(db, firm_id: str, client_id: str, periods: list[str]) -> dict:
     names its twelve one by one.
     """
     keys = [str(p) for p in periods if p]
-    rows = _paginate_all(lambda: db.table("itc_reversal_register").select("*")
+    rows = fetch_all(lambda: db.table("itc_reversal_register").select("*")
         .eq("firm_id", firm_id).eq("client_id", client_id).in_("period", keys))
     reversals = [r for r in rows if r.get("kind") == "reversal"]
     reclaims = [r for r in rows if r.get("kind") == "reclaim"]

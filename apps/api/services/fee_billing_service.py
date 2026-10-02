@@ -21,6 +21,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from repositories.invoice_repository import invoice_repo
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.fee_billing")
@@ -30,9 +31,7 @@ _logger = logging.getLogger("caflow.fee_billing")
 MOCK_FEE_RECEIPTS: list[dict] = []
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db
 
 
 def record_receipt(firm_id: str, invoice_id: str, data: dict) -> dict:

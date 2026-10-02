@@ -30,6 +30,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { AccountLookup, type AccountLike } from "@/components/lookups/AccountLookup";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { todayLocalISO } from "@/lib/dateMath";
+import { Button } from "@/components/ui/button";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -347,17 +348,17 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                   <td className="py-2 text-right whitespace-nowrap">
                     {r.status !== "posted" && (
                       <>
-                        <button onClick={() => handlePost(r)}
+                        <Button variant="plain" size="none" onClick={() => handlePost(r)}
                           disabled={busy || !r.can_post}
                           title={r.can_post ? "" : r.refusals.join(" ")}
                           className="px-2 py-1 text-2xs border border-ps-border rounded hover:bg-ps-bg disabled:opacity-40">
                           {postingId === r.id ? "Posting…" : "Post"}
-                        </button>
-                        <button onClick={() => handleDelete(r)} disabled={busy}
+                        </Button>
+                        <Button variant="plain" size="none" spinner={false} onClick={() => handleDelete(r)} disabled={busy}
                           aria-label={`Withdraw ${r.be_number}`}
                           className="ml-1 px-1.5 py-1 text-ps-hint hover:text-state-problem disabled:opacity-40">
                           <Trash2 size={12} />
-                        </button>
+                        </Button>
                       </>
                     )}
                   </td>
@@ -503,10 +504,10 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                 className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                 Cancel
               </button>
-              <button onClick={handleSave} disabled={saving}
+              <Button variant="plain" size="none" onClick={handleSave} disabled={saving}
                 className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {saving ? "Saving…" : "Save"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

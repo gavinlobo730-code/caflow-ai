@@ -35,6 +35,8 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
+import { Button } from "@/components/ui/button";
+import { promptDialog } from "@/components/ui/confirm-dialog";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -778,10 +780,10 @@ function RunsTab({ clientId, firmId, openDoc }:
             <input type="month" value={month} onChange={e => setMonth(e.target.value)}
               className="border border-ps-border rounded-lg px-3 py-1.5 text-sm text-ps-ink outline-none focus:border-brand" />
           </div>
-          <button onClick={createRun} disabled={creating}
+          <Button variant="plain" size="none" onClick={createRun} disabled={creating}
             className="flex items-center gap-1.5 px-4 py-1.5 bg-brand text-white text-xs font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
             <Play size={12} /> {creating ? "Computing…" : "Compute & Draft"}
-          </button>
+          </Button>
         </div>
         {createError && <Callout tone="problem">{createError}</Callout>}
         {runGaps.length > 0 && (
@@ -850,14 +852,14 @@ function RunsTab({ clientId, firmId, openDoc }:
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <Button variant="plain" size="none"
               onClick={() => finalizeRun(blockedRun.runId, overrideReason.trim())}
               disabled={overrideReason.trim().length < OVERRIDE_REASON_MIN
                         || finalizing === blockedRun.runId}
               className="text-2xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40"
             >
               {finalizing === blockedRun.runId ? "Finalising…" : "Finalise anyway"}
-            </button>
+            </Button>
             <button
               onClick={() => { setBlockedRun(null); setOverrideReason(""); }}
               className="text-2xs px-3 py-1.5 border border-amber-300 text-amber-900 rounded-lg hover:bg-amber-100"
@@ -896,10 +898,10 @@ function RunsTab({ clientId, firmId, openDoc }:
                   {selectedRun === r.id ? "Hide Slips" : "View Slips"}
                 </button>
                 {r.status !== "finalized" && r.status !== "paid" && (
-                  <button onClick={() => finalizeRun(r.id)} disabled={finalizing === r.id}
+                  <Button variant="plain" size="none" onClick={() => finalizeRun(r.id)} disabled={finalizing === r.id}
                     className="flex items-center gap-1 text-2xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
                     <CheckCircle size={11} /> {finalizing === r.id ? "Finalising…" : "Finalise"}
-                  </button>
+                  </Button>
                 )}
                 {(r.status === "finalized" || r.status === "paid") && (
                   <span className="text-2xs text-emerald-600 flex items-center gap-1"><CheckCircle size={11} /> {r.status === "paid" ? "Paid" : "Finalised"}</span>
@@ -910,19 +912,19 @@ function RunsTab({ clientId, firmId, openDoc }:
                     just added. Delete is for a run that should not exist at
                     all, and it is what makes the month creatable again. */}
                 {r.status !== "finalized" && r.status !== "paid" && (
-                  <button onClick={() => recomputeRun(r.id)} disabled={rebuilding === r.id}
+                  <Button variant="plain" size="none" onClick={() => recomputeRun(r.id)} disabled={rebuilding === r.id}
                     title="Rebuild this month's slips from the employee master, attendance and salary revisions as they stand now"
                     className="flex items-center gap-1 text-2xs px-2.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-50">
                     <RefreshCw size={11} /> {rebuilding === r.id ? "Rebuilding…" : "Recompute"}
-                  </button>
+                  </Button>
                 )}
                 {r.status !== "finalized" && r.status !== "paid" && (
                   confirmDelete === r.id ? (
                     <span className="flex items-center gap-1">
-                      <button onClick={() => deleteRun(r.id)} disabled={rebuilding === r.id}
+                      <Button variant="plain" size="none" onClick={() => deleteRun(r.id)} disabled={rebuilding === r.id}
                         className="text-2xs px-2.5 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
                         Delete {fmtMonth(r.month)}?
-                      </button>
+                      </Button>
                       <button onClick={() => setConfirmDelete(null)}
                         className="text-2xs px-2 py-1.5 text-ps-label hover:text-ps-body">
                         Cancel
@@ -1229,10 +1231,15 @@ function ReleaseTab({ clientId }: { clientId: string }) {
     // A reason, because a reversal is answered for later. The server records it
     // on the transition log; asking here means the CA writes it while they know
     // why rather than reconstructing it in June.
-    const reason = prompt(
-      `Reverse payroll for ${run.month}?\n\n`
-      + "This posts reversing journals for the accrual and, if paid, the "
-      + "disbursement, then reopens the run for editing. Say why:");
+    const reason = await promptDialog({
+      title: `Reverse payroll for ${run.month}?`,
+      message: "This posts reversing journals for the accrual and, if paid, the "
+        + "disbursement, then reopens the run for editing. Say why:",
+      label: "Reason for the reversal",
+      multiline: true,
+      danger: true,
+      confirmLabel: "Reverse",
+    });
     if (reason === null) return;
     if (reason.trim().length < 10) {
       setMsg({ kind: "err", text: "A reversal needs a reason of at least ten characters." });
@@ -1318,10 +1325,10 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                       )}
                       {(finalized || paid) && (
                         // Never primary. It is a correction to posted books.
-                        <button onClick={() => reverse(r)} disabled={busy === r.id}
+                        <Button variant="plain" size="none" onClick={() => reverse(r)} disabled={busy === r.id}
                           className="px-3 py-1 border border-ps-border rounded-lg text-ps-label hover:bg-state-problem-hover hover:text-red-600 disabled:opacity-50">
                           {busy === r.id ? "Reversing…" : "Reverse"}
-                        </button>
+                        </Button>
                       )}
                       {!finalized && !paid && (
                         <span className="text-2xs text-ps-hint">Finalise it under Register</span>
@@ -1873,8 +1880,8 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
                   <td className="text-ps-body">{r.ptrc_number || <span className="text-ps-hint">—</span>}</td>
                   <td className="text-ps-body">{r.ptec_number || <span className="text-ps-hint">—</span>}</td>
                   <td className="text-right">
-                    <button onClick={() => removePt(r.state)} disabled={saving === "pt"}
-                      className="text-2xs text-red-600 hover:underline disabled:opacity-50">Remove</button>
+                    <Button variant="plain" size="none" onClick={() => removePt(r.state)} disabled={saving === "pt"}
+                      className="text-2xs text-red-600 hover:underline disabled:opacity-50">Remove</Button>
                   </td>
                 </tr>
               ))}
@@ -1889,10 +1896,10 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
             onChange={v => setPtForm({ ...ptForm, ptrc_number: v })} />
           <Field label="PTEC number" value={ptForm.ptec_number} placeholder="optional"
             onChange={v => setPtForm({ ...ptForm, ptec_number: v })} />
-          <button onClick={savePt} disabled={saving === "pt"}
+          <Button variant="plain" size="none" onClick={savePt} disabled={saving === "pt"}
             className="px-4 py-1.5 bg-brand text-white text-xs rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving === "pt" ? "Saving…" : "Add"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -2092,10 +2099,10 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
             {resolved && !mayEnable && " A Partner switches it on here."}
           </span>
           {mayEnable && (
-            <button onClick={() => void switchOn()} disabled={enableSaving}
+            <Button variant="plain" size="none" onClick={() => switchOn()} disabled={enableSaving}
               className="px-2.5 py-1 rounded-lg bg-brand text-white font-medium disabled:opacity-50">
               {enableSaving ? "Switching on…" : "Switch on"}
-            </button>
+            </Button>
           )}
         </>
       )}
@@ -2327,7 +2334,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
           </div>
           {saveError && <Callout tone="problem">{saveError}</Callout>}
           <div className="flex gap-2">
-            <button onClick={addStructure} disabled={saving} className="px-4 py-1.5 bg-brand text-white text-xs rounded-lg hover:bg-brand-dark disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
+            <Button variant="plain" size="none" onClick={addStructure} disabled={saving} className="px-4 py-1.5 bg-brand text-white text-xs rounded-lg hover:bg-brand-dark disabled:opacity-50">{saving ? "Saving…" : "Save"}</Button>
             <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 text-xs text-ps-label border border-ps-border rounded-lg">Cancel</button>
           </div>
         </div>

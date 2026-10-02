@@ -76,6 +76,7 @@ import { DrCr, sideOf } from "@/components/ui/drcr";
 import { formatPaiseBare } from "@/lib/money/format";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements" | "interest" | "post-dated-cheques";
@@ -624,18 +625,18 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-brand-light bg-brand-surface px-3 py-2 text-xs">
               <span className="font-semibold text-brand-dark">{selected.size} selected</span>
               <div className="ml-auto flex flex-wrap items-center gap-2">
-                <button onClick={() => bulkChangeStatus("pause")} disabled={bulkBusy}
+                <Button variant="plain" size="none" onClick={() => bulkChangeStatus("pause")} disabled={bulkBusy}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-brand-light bg-white px-2.5 py-1.5 font-medium text-brand hover:bg-ps-hover disabled:cursor-not-allowed disabled:opacity-50">
                   Pause
-                </button>
-                <button onClick={() => bulkChangeStatus("resume")} disabled={bulkBusy}
+                </Button>
+                <Button variant="plain" size="none" onClick={() => bulkChangeStatus("resume")} disabled={bulkBusy}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-brand-light bg-white px-2.5 py-1.5 font-medium text-brand hover:bg-ps-hover disabled:cursor-not-allowed disabled:opacity-50">
                   Resume
-                </button>
-                <button onClick={() => bulkChangeStatus("archive")} disabled={bulkBusy}
+                </Button>
+                <Button variant="plain" size="none" onClick={() => bulkChangeStatus("archive")} disabled={bulkBusy}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-state-problem-border bg-white px-2.5 py-1.5 font-medium text-red-600 hover:bg-state-problem-hover disabled:cursor-not-allowed disabled:opacity-50">
                   Archive
-                </button>
+                </Button>
                 <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className="text-ps-label hover:text-brand disabled:opacity-50" aria-label="Clear selection">
                   <X size={14} />
                 </button>
@@ -696,7 +697,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
                       <td className="px-4 py-2.5">
                         <div className="flex items-center justify-end gap-2.5">
                           {t.status === "active" && (
-                            <button onClick={() => runNow(t)} className="text-xs text-blue-600 hover:underline">Run now</button>
+                            <Button variant="plain" size="none" onClick={() => runNow(t)} className="text-xs text-blue-600 hover:underline">Run now</Button>
                           )}
                           <button onClick={() => setHistoryFor(t)} className="text-ps-hint hover:text-ps-body" title="History & upcoming">
                             <Clock size={13} />
@@ -705,13 +706,13 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
                             <button onClick={() => setEditor(t)} className="text-ps-hint hover:text-blue-600" title="Edit"><Pencil size={13} /></button>
                           )}
                           {t.status === "active" && (
-                            <button onClick={() => changeStatus(t, "pause")} className="text-xs text-amber-600 hover:underline">Pause</button>
+                            <Button variant="plain" size="none" onClick={() => changeStatus(t, "pause")} className="text-xs text-amber-600 hover:underline">Pause</Button>
                           )}
                           {t.status === "paused" && (
-                            <button onClick={() => changeStatus(t, "resume")} className="text-xs text-emerald-600 hover:underline">Resume</button>
+                            <Button variant="plain" size="none" onClick={() => changeStatus(t, "resume")} className="text-xs text-emerald-600 hover:underline">Resume</Button>
                           )}
                           {t.status !== "archived" && (
-                            <button onClick={() => changeStatus(t, "archive")} className="text-ps-disabled hover:text-red-600" title="Archive"><Trash2 size={13} /></button>
+                            <Button variant="plain" size="none" spinner={false} onClick={() => changeStatus(t, "archive")} className="text-ps-disabled hover:text-red-600" title="Archive"><Trash2 size={13} /></Button>
                           )}
                         </div>
                       </td>
@@ -1365,7 +1366,7 @@ function Statements({ clientId }: { clientId: string }) {
             {emailMsg && <Callout tone="problem">{emailMsg}</Callout>}
             <div className="flex justify-end gap-2">
               <button onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
-              <button onClick={sendEmail} disabled={actionInFlight || !emailTo} className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">{emailing ? "Sending…" : "Send"}</button>
+              <Button variant="plain" size="none" onClick={sendEmail} disabled={actionInFlight || !emailTo} className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">{emailing ? "Sending…" : "Send"}</Button>
             </div>
           </div>
         </div>
@@ -2299,13 +2300,13 @@ function SalesInvoices({
         rowActions={(inv) => (
           <div className="flex items-center justify-end gap-2">
             {inv.status === "draft" && (
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={() => issueInvoice(inv.id)}
                 disabled={issuingId === inv.id}
                 className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
               >
                 {issuingId === inv.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
-              </button>
+              </Button>
             )}
             <button
               onClick={(e) => openMenuFor(e, inv)}
@@ -2408,10 +2409,10 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
             <p className="text-3xs uppercase tracking-wide text-ps-hint">Outstanding</p>
             <p className="text-base font-semibold text-ps-ink font-mono">{hist ? fmt(hist.outstanding_paise) : "…"}</p>
           </div>
-          <button onClick={generate} disabled={busy || !hist || hist.outstanding_paise <= 0}
+          <Button variant="plain" size="none" onClick={generate} disabled={busy || !hist || hist.outstanding_paise <= 0}
             className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             <CreditCard size={13} /> Generate Payment Link
-          </button>
+          </Button>
         </div>
 
         {/* Links */}
@@ -2432,7 +2433,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
                   <span className="font-mono text-ps-label">{fmt(l.amount_paise)}</span>
                   <div className="flex items-center gap-3">
                     <button onClick={() => copy(l.short_url)} className="text-ps-label hover:text-indigo-600 flex items-center gap-1"><Copy size={11} /> Copy</button>
-                    <button onClick={() => send(l.id)} disabled={busy} className="text-emerald-600 hover:underline flex items-center gap-1 disabled:opacity-50"><Send size={11} /> Email</button>
+                    <Button variant="plain" size="none" onClick={() => send(l.id)} disabled={busy} className="text-emerald-600 hover:underline flex items-center gap-1 disabled:opacity-50"><Send size={11} /> Email</Button>
                   </div>
                 </div>
               </div>
@@ -3183,13 +3184,13 @@ function Customers({
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none"
                 onClick={confirmDeactivate}
                 disabled={actionInFlight}
                 className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50"
               >
                 {deactivating ? "Deactivating…" : "Deactivate"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -3225,13 +3226,13 @@ function Customers({
                   >
                     Cancel
                   </button>
-                  <button
+                  <Button variant="plain" size="none"
                     onClick={confirmDelete}
                     disabled={actionInFlight}
                     className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50"
                   >
                     {deleteBusy ? "Deleting…" : "Delete permanently"}
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : (
@@ -3320,10 +3321,10 @@ function Customers({
                   <Ban size={13} /> Deactivate
                 </button>
               ) : (
-                <button onClick={() => { setMenu(null); reactivateCustomer(c); }}
+                <Button variant="plain" size="none" onClick={() => { setMenu(null); return reactivateCustomer(c); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-green-700">
                   <RotateCcw size={13} /> Reactivate
-                </button>
+                </Button>
               )}
               <button onClick={() => { setMenu(null); startDelete(c); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
@@ -3631,10 +3632,10 @@ function Receipts({
               className="text-2xs text-blue-600 hover:text-blue-800 hover:underline">
               Apply
             </button>
-            <button onClick={() => reverseReceipt(r)}
+            <Button variant="plain" size="none" onClick={() => reverseReceipt(r)}
               className="text-2xs text-red-600 hover:text-red-800 hover:underline">
               Reverse
-            </button>
+            </Button>
           </div>
         )}
       />
@@ -4179,13 +4180,13 @@ function ReceiptForm({
       {error && <Callout tone="problem">{error}</Callout>}
       <div className="flex gap-3 justify-end">
         <button onClick={onCancel} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-        <button
+        <Button variant="plain" size="none"
           onClick={handleSave}
           disabled={saving}
           className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50"
         >
           {saving ? "Saving…" : "Record Receipt"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -4508,10 +4509,10 @@ function CreditNotes({
               {c.status === "draft" && (
                 <>
                   <div className="my-1 border-t border-ps-border" />
-                  <button onClick={() => { setMenu(null); deleteCreditNote(c); }}
+                  <Button variant="plain" size="none" onClick={() => { setMenu(null); return deleteCreditNote(c); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
@@ -4601,13 +4602,13 @@ function CreditNotes({
         rowActions={(cn) => (
           <div className="flex items-center justify-end gap-2">
             {cn.status === "draft" && (
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={() => issueCreditNote(cn.id)}
                 disabled={issuingId === cn.id}
                 className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
               >
                 {issuingId === cn.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
-              </button>
+              </Button>
             )}
             <button
               onClick={(e) => openMenuFor(e, cn)}
@@ -4929,10 +4930,10 @@ function SalesDebitNotes({
               {d.status === "draft" && (
                 <>
                   <div className="my-1 border-t border-ps-border" />
-                  <button onClick={() => { setMenu(null); deleteSalesDebitNote(d); }}
+                  <Button variant="plain" size="none" onClick={() => { setMenu(null); return deleteSalesDebitNote(d); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
@@ -5022,13 +5023,13 @@ function SalesDebitNotes({
         rowActions={(dn) => (
           <div className="flex items-center justify-end gap-2">
             {dn.status === "draft" && (
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={() => issueDebitNote(dn.id)}
                 disabled={issuingId === dn.id}
                 className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
               >
                 {issuingId === dn.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
-              </button>
+              </Button>
             )}
             <button
               onClick={(e) => openMenuFor(e, dn)}

@@ -127,6 +127,15 @@ services:
       # --- Email -----------------------------------------------------------
       - key: RESEND_API_KEY
         sync: false
+      # The signing secret of the Resend WEBHOOK endpoint (`whsec_...`, shown once in
+      # Resend's dashboard when the endpoint is created), for POST /api/email/webhook/resend
+      # (ops-21): a permanent bounce or a spam complaint marks the address so the practice
+      # stops mailing it. UNSET means the endpoint answers 503 and refuses every caller —
+      # never an open door — and a delivery whose signature does not verify writes nothing.
+      # `sync: false`: a secret, set in the DASHBOARD. Nothing here registers the endpoint
+      # with Resend; see the answer to ops-21 for what a person has to do.
+      - key: RESEND_WEBHOOK_SECRET
+        sync: false
       - key: EMAIL_FROM
         sync: false
       # Optional, and normally unset. Client-portal activation links derive
@@ -173,6 +182,18 @@ services:
       # here only applies to a blueprint-managed service.
       - key: ENABLE_SCHEDULER
         value: "true"
+
+      # The shared secret an EXTERNAL scheduler presents (header X-Scheduler-Token)
+      # to POST /api/internal/scheduler/run-pending, so the 06:00 IST run starts at
+      # 06:00 whether or not this instance was awake for the in-process timer
+      # (ops-15, routers/scheduler_trigger.py). UNSET means the endpoint answers 503
+      # and refuses every caller — never an open door — and a value shorter than 32
+      # characters is refused the same way. Generate one with `openssl rand -hex 32`
+      # and set it in the DASHBOARD (`sync: false`: it is a secret and never belongs
+      # in this file) AND on whatever job calls the endpoint. Nothing here creates
+      # that job; see the answer to ops-15 for what a person has to do.
+      - key: SCHEDULER_TRIGGER_TOKEN
+        sync: false
 
       # --- The practice's own mail -------------------------------------------
       # OFF unless this is set to true (or 1, yes, on) IN THE DASHBOARD. It is the

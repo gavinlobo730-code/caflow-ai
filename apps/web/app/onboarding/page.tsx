@@ -23,6 +23,9 @@ import { FirmHsnLibraryQuickAddModal } from "@/components/lookups/FirmHsnLibrary
 import { Callout } from "@/components/ui/callout";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { isValidPan } from "@/lib/identifiers/pan";
+import { Button } from "@/components/ui/button";
+import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 interface SignupStash { firmName?: string; fullName?: string }
 function readSignupStash(): SignupStash {
@@ -308,6 +311,22 @@ export default function OnboardingPage() {
   const [showPw, setShowPw] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSet, setPwSet] = useState(false);
+
+  // UNSAVED TYPING (frontend_ux-23). A reload in the middle of the wizard drops
+  // the owner back at step 1 with everything typed gone, and this is the one
+  // form every new firm fills in. Warn (the browser's own prompt, which is all
+  // this page can do — it has no in-app exit) while the firm is NOT yet created
+  // and there is something the person typed: the firm name beyond the one the
+  // signup page handed over, any other firm field, their own name, or a password
+  // not yet set. Once `firmId` exists the firm is saved and step 3 holds nothing
+  // typed that is not already on the server.
+  const [stashedFirmName] = useState(() => readSignupStash().firmName ?? "");
+  const [stashedOwnerName] = useState(ownerName);
+  const hasUnsavedTyping = !firmId && (
+    hasChanges({ ...EMPTY_FIRM, name: stashedFirmName }, firmForm)
+    || ownerName !== stashedOwnerName
+    || ((pw !== "" || pw2 !== "") && !pwSet));
+  useUnsavedChanges(hasUnsavedTyping && !saving, undefined, confirmDialog);
 
   // ─── Pre-fill the firm name from the signup stash ─────────────────────
   useEffect(() => {
@@ -893,14 +912,14 @@ export default function OnboardingPage() {
               >
                 <ChevronLeft size={16} /> Back
               </button>
-              <button
+              <Button variant="plain" size="none"
                 onClick={saveFirmProfile}
                 disabled={actionInFlight}
                 className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
               >
                 {saving ? "Setting up your workspace…" : "Continue"}
                 {!saving && <ChevronRight size={16} />}
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -965,19 +984,19 @@ export default function OnboardingPage() {
                 <ChevronLeft size={16} /> Back
               </button>
               <div className="flex items-center gap-3">
-                <button
+                <Button variant="plain" size="none"
                   onClick={finish}
                   className="text-sm text-ps-label hover:text-ps-body transition-colors"
                 >
                   Skip for now
-                </button>
-                <button
+                </Button>
+                <Button variant="plain" size="none"
                   onClick={finish}
                   className="flex items-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
                 >
                   {hsnAddedCount > 0 ? "Finish setup" : "Continue"}
                   <ChevronRight size={16} />
-                </button>
+                </Button>
               </div>
             </div>
           </div>

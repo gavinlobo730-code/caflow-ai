@@ -24,6 +24,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { Can } from "@/components/Can";
 import { useToast } from "@/components/ui/use-toast";
 import { type Account, fmt, rsToP, BANK_CATEGORIES, GST_RATE_OPTIONS } from "@/components/banking/shared";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 interface BankRule {
   id: string;
@@ -210,15 +211,14 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
   }
 
   async function trust(r: BankRule, on: boolean) {
-    if (on && !confirm(
-      `Trust “${r.rule_name}”?\n\nEvery line it matches will be passed into the books with no click — after each import and in the daily sweep — as a journal created by you. You can undo any of them, and un-trusting the rule stops it at once.`)) return;
+    if (on && !(await confirmDialog({ message: `Trust “${r.rule_name}”?\n\nEvery line it matches will be passed into the books with no click — after each import and in the daily sweep — as a journal created by you. You can undo any of them, and un-trusting the rule stops it at once.`, confirmLabel: "Trust" }))) return;
     const ok = await patch(r, { is_trusted: on }, on ? "Couldn't trust the rule" : "Couldn't un-trust the rule");
     if (ok) toast({ title: on ? "Trusted" : "No longer trusted",
                     description: on ? "Its ready lines will pass the next time Entries loads." : "It proposes only, from now." });
   }
 
   async function remove(r: BankRule) {
-    if (!confirm(`Delete the rule “${r.rule_name}”? Lines it has already passed are unaffected.`)) return;
+    if (!(await confirmDialog({ message: `Delete the rule “${r.rule_name}”? Lines it has already passed are unaffected.`, danger: true, confirmLabel: "Delete" }))) return;
     setBusy((b) => ({ ...b, [r.id]: true }));
     try { await api.banking.rules.remove(r.id); await load(); }
     catch (e) { toast({ title: "Couldn't delete", description: e instanceof Error ? e.message : String(e), variant: "destructive" }); }

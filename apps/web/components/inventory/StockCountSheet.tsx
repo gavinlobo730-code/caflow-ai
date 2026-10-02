@@ -24,6 +24,7 @@ import { api, type StockCountSheet as Sheet, type StockCountLine,
 import { parseQuantity } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 export function StockCountSheetPanel({
   clientId, sessionId, onClose, onPosted,
@@ -265,14 +266,14 @@ export function StockCountSheetPanel({
                 {sheet?.session.count_date}. A line that needs you is left alone.
               </p>
               <div className="flex gap-2">
-                <button onClick={save} disabled={busy}
+                <Button variant="plain" size="none" onClick={save} disabled={busy}
                         className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                   {busy ? "Saving…" : "Save counts"}
-                </button>
-                <button onClick={post} disabled={busy || !sheet?.postable_count}
+                </Button>
+                <Button variant="plain" size="none" onClick={post} disabled={busy || !sheet?.postable_count}
                         className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40">
                   Post {sheet?.postable_count ?? 0} adjustment{sheet?.postable_count === 1 ? "" : "s"}
-                </button>
+                </Button>
               </div>
             </div>
           )}

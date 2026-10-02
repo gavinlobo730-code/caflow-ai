@@ -34,7 +34,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from core.auth import get_current_user, mfa_guard
-from core.ist_clock import IST
 from domain.ai import budget, budget_gate, gateway, gemini_vision, groq_text
 from services import ai_usage_service
 

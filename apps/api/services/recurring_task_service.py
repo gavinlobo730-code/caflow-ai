@@ -9,14 +9,13 @@ from datetime import date, timedelta, datetime, timezone
 from dateutil.relativedelta import relativedelta
 from typing import Optional
 from core.ist_clock import IST, ist_today
+from core import db_provider
 
 
 logger = logging.getLogger("caflow.services")
 
 
-def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_get_db = db_provider.request_db
 
 
 def _advance_date(current: date, frequency: str) -> date:

@@ -52,15 +52,22 @@ test("closing a godown asks first and can be undone", async (t) => {
   const closeBody = functionBody("closeGodown");
 
   await t.test("a close asks for confirmation before firing the request", () => {
-    assert.match(closeBody, /confirm\(/,
+    // The RULE is "something asks first, and declining stops the write" — not the
+    // spelling of what asks. This pinned `confirm(` and failed the day the native
+    // pop-up was replaced by the in-app dialog (frontend_ux-21), which asks the
+    // same question and is awaited.
+    const ASKS = /\bconfirmDialog\(/;
+    assert.match(closeBody, ASKS,
       "closeGodown fires the DELETE with nothing asking first — a single " +
         "misclick permanently closes a godown");
+    assert.match(closeBody, /if \(!\(await confirmDialog\(/,
+      "the dialog is awaited and a refusal returns — an un-awaited promise is truthy");
     // The confirm has to gate the request, not merely appear somewhere in the
     // function — it must be textually BEFORE the fetch it is meant to guard.
-    const confirmAt = closeBody.search(/confirm\(/);
+    const confirmAt = closeBody.search(ASKS);
     const requestAt = closeBody.search(/request</);
     assert.ok(confirmAt >= 0 && requestAt > confirmAt,
-      "confirm() does not precede the request it is meant to gate");
+      "the confirmation does not precede the request it is meant to gate");
   });
 
   await t.test("a refusal from the server is shown, not swallowed", () => {

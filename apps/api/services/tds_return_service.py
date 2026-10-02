@@ -74,6 +74,7 @@ from domain.tds.tds_computer import (
 from domain.tds.section_rates import quarter_dates
 from domain.tds.residency import is_non_resident
 from domain.tds.purchase_return import credit_moved_after_deduction
+from core.db_paging import fetch_all
 
 _logger = logging.getLogger("caflow.tds_return")
 
@@ -84,28 +85,6 @@ _computer = TDSComputer()
 # _SALES_POSTED / _BILL_POSTED convention).
 _BILL_POSTED = ("received", "partially_paid", "paid")
 _PAYROLL_POSTED = ("finalized", "paid")
-
-
-def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
-    """Fetch EVERY row of a Supabase query via keyset paging (same audit-C6
-    class as domain/reporting/sources.py's _fetch_all / gst_return_service.py's
-    _paginate_all) — an un-paged .execute() silently caps at PostgREST's
-    ~1000-row limit, understating TDS deducted/deposited with no error."""
-    first = make_query()
-    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
-        return first.execute().data or []
-    out: list = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        rows = q.order(key).limit(page).execute().data or []
-        out.extend(rows)
-        if len(rows) < page:
-            break
-        cursor = rows[-1][key]
-    return out
 
 
 def _find_account_by_exact_name(db, firm_id: str, client_id: str, account_name: str) -> str | None:
@@ -149,7 +128,7 @@ def _gl_movement_for_entries(db, firm_id: str, client_id: str, account_id: str |
         # gst_return_service.py's identical GL query) — the firm scope comes
         # entirely from journal_entry_ids already being firm-scoped documents'
         # own journal_entry_id references.
-        rows = _paginate_all(lambda chunk=chunk: db.table("journal_lines")
+        rows = fetch_all(lambda chunk=chunk: db.table("journal_lines")
             .select("id, journal_entry_id, account_id, debit_paise, credit_paise")
             .eq("account_id", account_id)
             .in_("journal_entry_id", chunk))
@@ -159,7 +138,7 @@ def _gl_movement_for_entries(db, firm_id: str, client_id: str, account_id: str |
 
 
 def _posted_vendor_tds_bills(db, firm_id: str, client_id: str, start: str, end: str) -> list[dict]:
-    return _paginate_all(lambda: db.table("purchase_bills").select("*")
+    return fetch_all(lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_BILL_POSTED))
             .gt("tds_paise", 0)
@@ -176,7 +155,7 @@ def _posted_vendor_tds_bills_including_nil_195(
     `.eq("tds_section", "195")` each stay selective, and the ids are merged.
     """
     withheld = _posted_vendor_tds_bills(db, firm_id, client_id, start, end)
-    nil_195 = _paginate_all(lambda: db.table("purchase_bills").select("*")
+    nil_195 = fetch_all(lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_BILL_POSTED))
             .eq("tds_section", "195")
@@ -200,7 +179,7 @@ def _withholding_advances(db, firm_id: str, client_id: str, start: str, end: str
     remittance that withheld NIL is still reported on 27Q with a reason —
     26Q's own resident filter is applied by the caller.
     """
-    rows = _paginate_all(lambda: db.table("purchase_payments").select("*")
+    rows = fetch_all(lambda: db.table("purchase_payments").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .gt("tds_base_paise", 0)
             .gte("payment_date", start).lte("payment_date", end))
@@ -283,7 +262,7 @@ def _vendors_by_id(db, firm_id: str, vendor_ids: set[str]) -> dict[str, dict]:
 
 
 def _deposited_challans(db, firm_id: str, client_id: str, fy: str, quarter: str) -> list[dict]:
-    return _paginate_all(lambda: db.table("tds_challans").select("*")
+    return fetch_all(lambda: db.table("tds_challans").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("financial_year", fy).eq("quarter", quarter))
 
@@ -415,7 +394,7 @@ def _credit_moved_gaps(db, firm_id: str, events: list[dict]) -> list[str]:
     for i in range(0, len(ids), 200):
         chunk = ids[i:i + 200]
         try:
-            rows = _paginate_all(lambda chunk=chunk: db.table("debit_notes")
+            rows = fetch_all(lambda chunk=chunk: db.table("debit_notes")
                     .select("id, purchase_bill_id, taxable_amount_paise, status, deleted_at")
                     .eq("firm_id", firm_id).in_("purchase_bill_id", chunk))
         except Exception as e:                                  # noqa: BLE001
@@ -427,7 +406,7 @@ def _credit_moved_gaps(db, firm_id: str, events: list[dict]) -> list[str]:
         _accumulate_note_totals(rows, returned)
 
         try:
-            rows = _paginate_all(lambda chunk=chunk: db.table("purchase_credit_notes")
+            rows = fetch_all(lambda chunk=chunk: db.table("purchase_credit_notes")
                     .select("id, purchase_bill_id, taxable_amount_paise, status, deleted_at")
                     .eq("firm_id", firm_id).in_("purchase_bill_id", chunk))
         except Exception as e:                                  # noqa: BLE001
@@ -658,7 +637,7 @@ def tds_26q_from_books(
 def _finalized_payroll_runs(db, firm_id: str, client_id: str, start: str, end: str) -> list[dict]:
     # month is stored "YYYY-MM"; a quarter never spans a partial month, so a
     # plain string range on "YYYY-MM" (lexicographically monotonic) is exact.
-    return _paginate_all(lambda: db.table("payroll_runs").select("*")
+    return fetch_all(lambda: db.table("payroll_runs").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_PAYROLL_POSTED))
             .gte("month", start[:7]).lte("month", end[:7]))
@@ -670,7 +649,7 @@ def _payroll_slips_for_runs(db, firm_id: str, run_ids: list[str]) -> list[dict]:
     out: list[dict] = []
     for i in range(0, len(run_ids), 200):
         chunk = run_ids[i:i + 200]
-        out.extend(_paginate_all(lambda chunk=chunk: db.table("payroll_slips").select("*")
+        out.extend(fetch_all(lambda chunk=chunk: db.table("payroll_slips").select("*")
             .in_("run_id", chunk)))
     return out
 

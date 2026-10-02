@@ -102,7 +102,16 @@ test("the drawer closes on Escape via a document keydown listener", () => {
   const src = stripped();
   assert.match(src, /addEventListener\("keydown"/);
   assert.match(src, /e\.key === "Escape"/);
-  assert.match(src, /onClose\(\)/);
   assert.match(src, /removeEventListener\("keydown"/,
     "the listener must be cleaned up in the effect's return");
+  // The RULE is that Escape ENDS in onClose. It used to be pinned as the
+  // spelling `onClose()` in this file, which failed the day closing with typed
+  // work started asking first (frontend_ux-23): Escape now calls a guard that
+  // asks and then calls onClose. Either shape satisfies the rule; a handler that
+  // reaches onClose by neither does not.
+  const handler = /e\.key === "Escape"\)\s*(\w+)\(\)/.exec(src)?.[1];
+  assert.ok(handler, "the Escape branch calls a function");
+  const reachesOnClose = handler === "onClose"
+    || new RegExp(`const ${handler} = [^;]*\\bonClose\\b`).test(src);
+  assert.ok(reachesOnClose, `Escape calls ${handler}(), which never reaches onClose`);
 });

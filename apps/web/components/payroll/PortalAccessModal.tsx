@@ -31,6 +31,7 @@ import { api } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { portalInviteEmailFailureMessage } from "@/lib/portal/inviteError";
 import { type Employee } from "@/components/payroll/shared";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 export function PortalAccessModal({ employee, onClose, onChanged }: {
   employee: Employee;
@@ -85,7 +86,7 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
   }
 
   async function revoke() {
-    if (!confirm(`Remove portal access for ${employee.name}? They will no longer be able to sign in and view their payslips. You can invite them again later.`)) return;
+    if (!(await confirmDialog({ message: `Remove portal access for ${employee.name}? They will no longer be able to sign in and view their payslips. You can invite them again later.`, danger: true, confirmLabel: "Remove" }))) return;
     setBusy(true); setErr(null);
     try {
       await api.payroll.revokePortal(employee.id);

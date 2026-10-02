@@ -49,6 +49,7 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 type PayrollRun = { id: string; month: string; status: string };
 
@@ -271,11 +272,11 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
           month at EPFO. Come back and mark it approved once the portal does.
         </p>
       )}
-      <button onClick={submit} disabled={busy}
+      <Button variant="plain" size="none" onClick={submit} disabled={busy}
         className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg
                    hover:bg-brand-dark disabled:opacity-40">
         {busy ? "Saving…" : "Record it"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -774,14 +775,14 @@ function UnmatchedRemittances({ clientId, onLinked }: {
                         would lose. */}
                     <p className="text-3xs text-ps-label mt-0.5">{c.reason}</p>
                   </div>
-                  <button onClick={() => link(r.id, c.journal_entry_id)}
+                  <Button variant="plain" size="none" onClick={() => link(r.id, c.journal_entry_id)}
                     disabled={busy !== null}
                     className="shrink-0 px-2.5 py-1 text-2xs border border-ps-border
                                rounded-lg hover:bg-ps-bg text-ps-body
                                disabled:opacity-40 flex items-center gap-1">
                     <Link2 size={11} />
                     {busy === r.id ? "Matching…" : "This one"}
-                  </button>
+                  </Button>
                 </div>
               ))}
             </div>

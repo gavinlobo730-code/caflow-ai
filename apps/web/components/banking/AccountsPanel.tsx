@@ -29,6 +29,8 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { getBankStatements, getBankTransactions, BankStatement, BankTransaction } from "@/lib/data/bankStatements";
 import { fmt, BankAccount } from "@/components/banking/shared";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
@@ -85,7 +87,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
   async function deactivateAccount(a: BankAccount) {
     setRowBusy(true);
     try {
-    if (!confirm(`Deactivate ${a.bank_name} (····${a.account_no.slice(-4)})? Existing statements and reconciliations keep it — it just won't be selectable for new imports. You can reactivate it later by editing it.`)) return;
+    if (!(await confirmDialog({ message: `Deactivate ${a.bank_name} (····${a.account_no.slice(-4)})? Existing statements and reconciliations keep it — it just won't be selectable for new imports. You can reactivate it later by editing it.`, confirmLabel: "Deactivate" }))) return;
     try {
       const res = await api.banking.updateBankAccount(a.id, { is_active: false }) as { success: boolean; error: string | null };
       if (!res.success) { setMsg({ type: "err", text: res.error ?? "Could not deactivate the account." }); return; }
@@ -110,10 +112,10 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
   async function deleteAccount(a: BankAccount) {
     setRowBusy(true);
     try {
-    if (!confirm(`Permanently delete ${a.bank_name} (····${a.account_no.slice(-4)})?\n\n`
+    if (!(await confirmDialog({ message: `Permanently delete ${a.bank_name} (····${a.account_no.slice(-4)})?\n\n`
       + `This account has no statements, no reconciliations and nothing posted to its `
       + `ledger, so there is no history to keep. Its ledger account goes with it if `
-      + `nothing else uses it. This cannot be undone.`)) return;
+      + `nothing else uses it. This cannot be undone.`, danger: true, confirmLabel: "Delete" }))) return;
     try {
       const res = await api.banking.deleteBankAccount(a.id) as { success: boolean; error: string | null };
       if (!res.success) { setMsg({ type: "err", text: res.error ?? "Could not delete the account." }); return; }
@@ -133,10 +135,10 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
     // statement lines have been posted off is the voucher for those entries
     // (Companies Act s. 128(5)) and is refused with that sentence, shown here
     // verbatim.
-    if (!confirm(`Remove the ${st.bank_name} statement for ${st.statement_from} → ${st.statement_to}?\n\n`
+    if (!(await confirmDialog({ message: `Remove the ${st.bank_name} statement for ${st.statement_from} → ${st.statement_to}?\n\n`
       + `Its ${st.row_count} imported lines go with it, so the right file can be `
       + `imported in its place. A statement with lines already posted, matched or `
-      + `reconciled cannot be removed — the server will say so.`)) return;
+      + `reconciled cannot be removed — the server will say so.`, danger: true, confirmLabel: "Remove" }))) return;
     setRowBusy(true);
     try {
       const res = await api.banking.deleteStatement(st.id) as { success: boolean; error: string | null; detail?: string };
@@ -225,14 +227,14 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <button onClick={() => setAccountModal(a)} className="text-brand hover:text-brand-dark inline-flex items-center gap-1"><Pencil size={11} /> Edit</button>
                     {a.is_active
-                      ? <button disabled={rowBusy} onClick={() => deactivateAccount(a)} className="ml-3 text-state-problem hover:text-red-800">Deactivate</button>
-                      : <button disabled={rowBusy} onClick={() => reactivateAccount(a)} className="ml-3 text-state-ready-solid hover:text-state-ready">Reactivate</button>}
+                      ? <Button variant="plain" size="none" disabled={rowBusy} onClick={() => deactivateAccount(a)} className="ml-3 text-state-problem hover:text-red-800">Deactivate</Button>
+                      : <Button variant="plain" size="none" disabled={rowBusy} onClick={() => reactivateAccount(a)} className="ml-3 text-state-ready-solid hover:text-state-ready">Reactivate</Button>}
                     {/* Delete is offered only for an account with no footprint.
                         When it is blocked the button stays, disabled, carrying the
                         reason — "why can't I delete this?" is the question a
                         missing button leaves unanswered. */}
                     {deletability[a.id]?.deletable ? (
-                      <button disabled={rowBusy} onClick={() => deleteAccount(a)} className="ml-3 text-state-problem hover:text-red-800">Delete</button>
+                      <Button variant="plain" size="none" disabled={rowBusy} onClick={() => deleteAccount(a)} className="ml-3 text-state-problem hover:text-red-800">Delete</Button>
                     ) : deletability[a.id] ? (
                       <span className="ml-3 text-ps-disabled cursor-not-allowed"
                             title={deletability[a.id].reason
@@ -299,14 +301,14 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                     <button onClick={() => selectedStmt === s.id ? setSelectedStmt(null) : openStatement(s.id)} className="text-xs text-blue-600 hover:underline">
                       {selectedStmt === s.id ? "Hide" : "View"} ({s.row_count} txns)
                     </button>
-                    <button
+                    <Button variant="plain" size="none"
                       onClick={() => deleteStatement(s)}
                       disabled={rowBusy}
                       title="Remove a statement imported by mistake"
                       className="text-xs text-state-problem hover:underline ml-3 disabled:opacity-50"
                     >
                       Remove
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -553,9 +555,9 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
         {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+          <Button variant="plain" size="none" onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Saving…" : editing ? "Save Changes" : "Add Account"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -1233,7 +1235,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   {checking ? "Reading…" : "Map columns"}
                 </button>
               )}
-              <button
+              <Button variant="plain" size="none"
                 onClick={handleImport}
                 disabled={
                   busy || !file || accounts.length === 0
@@ -1250,7 +1252,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
               >
                 {importing ? "Importing…" : totalsRefusal ? "Import anyway" : "Import"}
-              </button>
+              </Button>
             </div>
           </>
         )}

@@ -49,27 +49,9 @@ import logging
 from typing import Optional
 
 from domain.banking.charge_gst import split_inclusive_charge
+from core.db_paging import fetch_all
 
 _logger = logging.getLogger("caflow.gst_advances")
-
-PAGE = 1000
-
-
-def _paginate_all(make_query, key: str = "id") -> list:
-    out: list = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        page = q.order(key).limit(PAGE).execute().data or []
-        out.extend(page)
-        if len(page) < PAGE:
-            break
-        cursor = page[-1].get(key)
-        if cursor is None:
-            break
-    return out
 
 
 def _period_bounds(period: str) -> tuple[str, str]:
@@ -214,7 +196,7 @@ def table_11_sections(db, firm_id: str, client_id: str, period: str,
         return {"at": [], "txpd": [], "applicable": False, "gaps": []}
 
     start, end = bounds if bounds else _period_bounds(period)
-    receipts = _paginate_all(lambda: db.table("receipts")
+    receipts = fetch_all(lambda: db.table("receipts")
         .select("id, receipt_date, amount_paise, gst_rate_bps, "
                 "place_of_supply, is_interstate")
         .eq("firm_id", firm_id).eq("client_id", client_id)
@@ -314,7 +296,7 @@ def advances_report(db, firm_id: str, client_id: str, period: str) -> dict:
     start, end = _period_bounds(period)
     computed = advance_tax_applicable(db, firm_id, client_id)
 
-    receipts = _paginate_all(lambda: db.table("receipts")
+    receipts = fetch_all(lambda: db.table("receipts")
         .select("id, receipt_no, receipt_date, customer_id, amount_paise, "
                 "allocated_paise, unallocated_paise")
         .eq("firm_id", firm_id).eq("client_id", client_id)

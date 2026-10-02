@@ -58,33 +58,6 @@ _SALES_POSTED = ("issued", "partially_paid", "paid")
 _BILL_POSTED = ("received", "partially_paid", "paid")
 
 
-def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
-    """Fetch EVERY row of a Supabase query via keyset paging on `key` (task
-    #221, same audit-C6 class as domain/reporting/sources.py's _fetch_all).
-    An un-paged .execute() is silently capped at PostgREST's ~1000-row limit —
-    for a high-volume client, a single busy filing month can plausibly exceed
-    that, understating GSTR-1/3B output tax or ITC with no error and risking a
-    wrongly filed government return (CGST Act §37/§39). `make_query` returns a
-    fresh query builder each call. Test doubles that don't implement
-    order/limit/gt just return their whole (small) fixture from a single
-    execute(), which is already correct."""
-    first = make_query()
-    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
-        return first.execute().data or []
-    out: list = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        rows = q.order(key).limit(page).execute().data or []
-        out.extend(rows)
-        if len(rows) < page:
-            break
-        cursor = rows[-1][key]
-    return out
-
-
 def _period_bounds(period: str, frequency: Optional[str] = None) -> tuple[str, str]:
     """'MMYYYY' → (first_iso, last_iso) for the period the return covers.
 
@@ -112,7 +85,7 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
     # reconciliation below then reported the books as differing from the ledger
     # by their full value, on a return a CA is about to file (CGST Act §39).
     # Observed on a live firm whose entire chart is firm-wide.
-    coa = _paginate_all(lambda: db.table("chart_of_accounts")
+    coa = fetch_all(lambda: db.table("chart_of_accounts")
            .select("id, client_id, system_account_key, account_name, account_type")
            .eq("firm_id", firm_id)
            .or_(f"client_id.eq.{client_id},client_id.is.null"))
@@ -160,7 +133,7 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
                 return h
         return "output"
 
-    entries = _paginate_all(lambda: db.table("journal_entries").select("id, entry_date, is_posted")
+    entries = fetch_all(lambda: db.table("journal_entries").select("id, entry_date, is_posted")
                .eq("firm_id", firm_id).eq("client_id", client_id)
                .gte("entry_date", start).lte("entry_date", end))
     posted_ids = {e["id"] for e in entries if e.get("is_posted", True)}
@@ -168,12 +141,12 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
         return {"output_paise": 0, "itc_paise": 0, "by_head": {}}
 
     # Chunked (PostgREST .in_() with a large entry-id list risks the request
-    # URL/payload limit) AND paged per chunk — see _paginate_all's docstring.
+    # URL/payload limit) AND paged per chunk — see core.db_paging.fetch_all's docstring.
     posted_id_list = list(posted_ids)
     lines: list[dict] = []
     for i in range(0, len(posted_id_list), 200):
         chunk = posted_id_list[i:i + 200]
-        lines.extend(_paginate_all(lambda chunk=chunk: db.table("journal_lines")
+        lines.extend(fetch_all(lambda chunk=chunk: db.table("journal_lines")
             .select("id, journal_entry_id, account_id, debit_paise, credit_paise")
             .in_("journal_entry_id", chunk)))
 
@@ -194,6 +167,7 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
 
 
 from domain.accounting import opening_documents as _opening
+from core.db_paging import fetch_all
 
 
 def _posted_sales(db, firm_id, client_id, start, end) -> list[dict]:
@@ -201,7 +175,7 @@ def _posted_sales(db, firm_id, client_id, start, end) -> list[dict]:
     # An invoice carried over from the system the client migrated from was
     # raised, taxed and DECLARED there; declaring it again here states an
     # outward supply twice and pays the tax on it twice.
-    return _opening.without_carried_over(_paginate_all(
+    return _opening.without_carried_over(fetch_all(
         lambda: db.table("client_sales_invoices").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_SALES_POSTED))
@@ -229,7 +203,7 @@ def _cancelled_sales(db, firm_id, client_id, start, end) -> list[dict]:
     Carried-over opening documents are excluded for `_posted_sales`' reason —
     their numbers belong to the series of the system the client migrated from.
     """
-    return _opening.without_carried_over(_paginate_all(
+    return _opening.without_carried_over(fetch_all(
         lambda: db.table("client_sales_invoices").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "cancelled")
@@ -237,7 +211,7 @@ def _cancelled_sales(db, firm_id, client_id, start, end) -> list[dict]:
 
 
 def _issued_credit_notes(db, firm_id, client_id, start, end) -> list[dict]:
-    return _paginate_all(lambda: db.table("credit_notes").select("*")
+    return fetch_all(lambda: db.table("credit_notes").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "issued")
             .gte("credit_note_date", start).lte("credit_note_date", end))
@@ -263,7 +237,7 @@ def _bills_cancelled_in(db, firm_id, client_id, start, end) -> list[dict]:
     the cancellation reversal nets the original posting to zero inside the same
     month. Only credit availed in an EARLIER period is given back here.
     """
-    rows = _opening.without_carried_over(_paginate_all(
+    rows = _opening.without_carried_over(fetch_all(
         lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "cancelled")
@@ -290,13 +264,13 @@ def _posted_bills(db, firm_id, client_id, start, end) -> list[dict]:
     # 391): the credit on a bill received in the system the client migrated
     # from was availed there, and Table 4(A) claiming it again would double the
     # month's input tax against a GSTR-2B that shows no such document.
-    live = _opening.without_carried_over(_paginate_all(
+    live = _opening.without_carried_over(fetch_all(
         lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_BILL_POSTED))
             .gte("bill_date", start).lte("bill_date", end)))
     cancelled_later = [
-        b for b in _opening.without_carried_over(_paginate_all(
+        b for b in _opening.without_carried_over(fetch_all(
             lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "cancelled")
@@ -326,21 +300,21 @@ def _import_of_services_vendors(db, firm_id, client_id) -> set:
     """
     from domain.tds.residency import is_non_resident
 
-    rows = _paginate_all(lambda: db.table("vendors").select("id, residential_status")
+    rows = fetch_all(lambda: db.table("vendors").select("id, residential_status")
             .eq("firm_id", firm_id).eq("client_id", client_id))
     return {r["id"] for r in (rows or [])
             if r.get("id") and is_non_resident(r.get("residential_status"))}
 
 
 def _issued_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
-    return _paginate_all(lambda: db.table("debit_notes").select("*")
+    return fetch_all(lambda: db.table("debit_notes").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "issued")
             .gte("debit_note_date", start).lte("debit_note_date", end))
 
 
 def _issued_sales_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
-    return _paginate_all(lambda: db.table("sales_debit_notes").select("*")
+    return fetch_all(lambda: db.table("sales_debit_notes").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "issued")
             .gte("debit_note_date", start).lte("debit_note_date", end))
@@ -377,7 +351,7 @@ def _document_lines(db, table: str, fk: str, doc_ids: list[str]) -> dict[str, li
         return {}
     from domain.gst.gstr1_builder import InvoiceLine
 
-    rows = _paginate_all(lambda: db.table(table).select("*").in_(fk, list(doc_ids)))
+    rows = fetch_all(lambda: db.table(table).select("*").in_(fk, list(doc_ids)))
     by_doc: dict[str, list] = {}
     for r in sorted(rows or [], key=lambda x: (x.get(fk) or "", x.get("sort_order") or 0)):
         doc_id = r.get(fk)
@@ -445,7 +419,7 @@ def _classification_by_parent_invoice(db, firm_id: str, note_rows: list[dict]) -
     # value and the GST and leaves the cess untouched. `_note_cess_not_carried`
     # names that on the return rather than letting a CA read a nil `csamt` on
     # table 9B as an assertion that nothing was owed.
-    rows = _paginate_all(lambda: db.table("client_sales_invoices")
+    rows = fetch_all(lambda: db.table("client_sales_invoices")
                          .select("id, supply_type, invoice_type, is_reverse_charge, "
                                  "cess_paise")
                          .eq("firm_id", firm_id).in_("id", list(parent_ids)))
@@ -493,7 +467,7 @@ def _note_classification(row: dict, parents: dict[str, dict]) -> dict:
 
 
 def _issued_purchase_credit_notes(db, firm_id, client_id, start, end) -> list[dict]:
-    return _paginate_all(lambda: db.table("purchase_credit_notes").select("*")
+    return fetch_all(lambda: db.table("purchase_credit_notes").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "issued")
             .gte("credit_note_date", start).lte("credit_note_date", end))
@@ -516,7 +490,7 @@ def _bank_lines_declaring_gst(db, firm_id, client_id, start, end) -> list[dict]:
     `declared_gst` — because a test double that ignores `.not_` would
     otherwise let an unposted line onto the return.
     """
-    return _paginate_all(lambda: db.table("bank_transactions")
+    return fetch_all(lambda: db.table("bank_transactions")
             # Spelled out rather than pulled from a constant so
             # test_backend_columns_exist_pg can read every name and check it
             # against the real schema — a projection built in Python is
@@ -547,7 +521,7 @@ def _disposals_declaring_gst(db, firm_id, client_id, start, end) -> list[dict]:
     Columns are spelled out rather than pulled from a constant so
     test_backend_columns_exist_pg can check every name against the real schema.
     """
-    return _paginate_all(lambda: db.table("fixed_assets")
+    return fetch_all(lambda: db.table("fixed_assets")
             .select("id, asset_name, purchase_date, disposal_date, "
                     "disposal_value_paise, disposal_is_supply, "
                     "disposal_gst_rate_bps, disposal_is_interstate, "
@@ -579,7 +553,7 @@ def _gstr2a_for_periods(db, firm_id, client_id, periods) -> list[dict]:
     _apply_rule_36_4_cap treats a zero 2A total as "no data" and leaves book
     ITC alone rather than capping the whole return to nil.
     """
-    # `id` is selected because it is NOT decoration: _paginate_all keysets on
+    # `id` is selected because it is NOT decoration: fetch_all keysets on
     # it and reads rows[-1]["id"] to advance. Omitting it works right up to the
     # 1000th row and then raises KeyError — so the failure appears only on a
     # client with a busy month, which is the one whose return most needs the
@@ -607,7 +581,7 @@ def _gstr2a_for_periods(db, firm_id, client_id, periods) -> list[dict]:
     # `itc_available` and `itc_unavailable_reason_code` are the answer it
     # recorded. All four have been stored since 340 and nothing read them.
     keys = [str(p) for p in (periods or []) if p]
-    return _paginate_all(lambda: db.table("gstr2a_records")
+    return fetch_all(lambda: db.table("gstr2a_records")
             .select("id, taxable_value_paise, igst_paise, cgst_paise, "
                     "sgst_paise, cess_paise, purchase_bill_id, match_status, "
                     "itc_available, itc_unavailable_reason_code")

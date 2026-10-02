@@ -33,6 +33,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { api, type GstDueDates } from "@/lib/api";
 import { Callout } from "@/components/ui/callout";
 import { BulkGstr2bPanel } from "@/components/gst/BulkGstr2bPanel";
+import { Button } from "@/components/ui/button";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -358,13 +359,13 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
           >
             Cancel
           </button>
-          <button
+          <Button variant="plain" size="none"
             onClick={handleSave}
             disabled={saving}
             className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save Filing"}
-          </button>
+          </Button>
         </div>
 
         <p className="text-3xs text-amber-600 bg-state-attention-surface rounded px-2 py-1.5">
@@ -548,13 +549,13 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
           >
             Cancel
           </button>
-          <button
+          <Button variant="plain" size="none"
             onClick={handleSubmit}
             disabled={!canSubmit}
             className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
           >
             {submitting ? "Saving…" : `Confirm ${rows.length} Filing${rows.length > 1 ? "s" : ""}`}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -1085,13 +1086,13 @@ export default function GSTPage() {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none"
                 onClick={handleMarkFiled}
                 disabled={filedLoading}
                 className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
               >
                 {filedLoading ? "Saving…" : "Confirm Filing"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

@@ -28,6 +28,7 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { formatDate } from "@/lib/services/formatting";
+import { Button } from "@/components/ui/button";
 
 function rupees(paise: number): string {
   return "₹" + (paise / 100).toLocaleString("en-IN", {
@@ -213,10 +214,10 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
                   <Input value={employment} onChange={(e) => setEmployment(e.target.value)} size="sm" />
                 </Field>
                 <div className="sm:col-span-2 flex justify-end">
-                  <button onClick={saveDeclaration} disabled={saving}
+                  <Button variant="plain" size="none" onClick={saveDeclaration} disabled={saving}
                           className="px-2.5 py-1.5 text-xs bg-brand-dark text-white rounded-lg hover:bg-brand disabled:opacity-50">
                     {saving ? "Saving…" : "Record"}
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}

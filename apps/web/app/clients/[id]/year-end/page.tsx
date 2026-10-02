@@ -12,6 +12,7 @@ import { isCompaniesActCompany, usesScheduleIII } from "@/lib/entityObligations"
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatDate } from "@/lib/services/formatting";
+import { Button } from "@/components/ui/button";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -169,14 +170,14 @@ export default function YearEndPage() {
             <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded hover:bg-ps-bg">
               Cancel
             </button>
-            <button
+            <Button variant="plain" size="none" spinner={false}
               onClick={handleCreate}
               disabled={creating}
               className="text-xs px-3 py-1.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1"
             >
               {creating && <Loader2 size={10} className="animate-spin" />}
               Create
-            </button>
+            </Button>
           </div>
         </div>
       )}

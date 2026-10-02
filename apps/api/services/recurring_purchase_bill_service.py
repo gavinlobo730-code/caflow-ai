@@ -58,15 +58,14 @@ _d = _rec.to_date
 # Imported, not re-implemented — see the module docstring.
 from domain.recurrence import next_occurrence                       # noqa: E402
 from core.ist_clock import ist_today
+from core import db_provider
 
 # Mock stores (mock mode only).
 MOCK_RECURRING_BILL_TEMPLATES: list[dict] = []
 MOCK_RECURRING_BILL_RUNS: list[dict] = []
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db
 
 
 def _now_iso() -> str:

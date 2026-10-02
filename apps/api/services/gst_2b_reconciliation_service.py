@@ -56,37 +56,6 @@ _logger = logging.getLogger("caflow.gst_2b_reconciliation")
 BILL_ON_THE_BOOKS = ("received", "partially_paid", "paid")
 
 
-def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
-    """Fetch EVERY row via keyset paging on `key`.
-
-    An un-paged `.execute()` is silently capped at PostgREST's ~1000-row limit.
-    Eleven other services in this codebase carry this helper and this module
-    shipped without it, so `read_book_bills` truncated a busy month's purchase
-    register — and every 2B document belonging to a dropped bill was then
-    reported as `missing_in_books`, telling the CA to chase a document they
-    already hold. `read_reconciliation` truncated the answer the screen reads
-    back.
-
-    Test doubles that do not implement order/limit/gt return their whole (small)
-    fixture from one execute(), which is already correct.
-    """
-    first = make_query()
-    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
-        return first.execute().data or []
-    out: list = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        rows = q.order(key).limit(page).execute().data or []
-        out.extend(rows)
-        if len(rows) < page:
-            break
-        cursor = rows[-1][key]
-    return out
-
-
 def _period_bounds(period: str) -> tuple[str, str]:
     """'MMYYYY' → (first_iso, last_iso). Deliberately a duplicate of
     gst_return_service._period_bounds rather than an import: this module must
@@ -118,7 +87,7 @@ def read_book_bills(db, firm_id: str, client_id: str, period: str) -> list[BookB
     # supplier about a bill from before the engagement started.
     # `is_opening` is in the projection on purpose: the filter reads the key off
     # the row, so a select that omitted it would quietly match nothing.
-    rows = _opening.without_carried_over(_paginate_all(
+    rows = _opening.without_carried_over(fetch_all(
         lambda: db.table("purchase_bills")
             .select("id, vendor_id, bill_no, bill_date, taxable_amount_paise, "
                     "igst_paise, cgst_paise, sgst_paise, status, is_opening")
@@ -508,7 +477,7 @@ def read_reconciliation(db, *, firm_id: str, client_id: str, period: str) -> dic
     The whole point of persisting: the browser reconciliation this replaces
     started from zero every time it was opened.
     """
-    rows = _paginate_all(lambda: db.table("gstr2a_records").select("*")
+    rows = fetch_all(lambda: db.table("gstr2a_records").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("return_period", period))
     counts: dict[str, int] = {}
@@ -755,7 +724,7 @@ def reconciled_at_by_period(db, *, firm_id: str, client_id: str) -> dict[str, st
     re-upload replaces the header, so the value always names the LAST
     reconciliation of that period, which is the one whose match is stored.
     """
-    rows = _paginate_all(lambda: db.table("gstr2b_reconciliations")
+    rows = fetch_all(lambda: db.table("gstr2b_reconciliations")
                          .select("id, return_period, reconciled_at")
                          .eq("firm_id", firm_id).eq("client_id", client_id))
     out: dict[str, str] = {}

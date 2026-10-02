@@ -18,6 +18,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { useDataTable } from "@/lib/table/useDataTable";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toCsv } from "@/lib/table/process";
+import { isFromInteractiveControl, rowKeyAction, stepIndex } from "@/lib/table/rowKeyboard";
 import type { BulkAction, Column, FilterDef, SortState } from "@/lib/table/types";
 // The CSV writer MOVED to `lib/export/csv.ts`, which is now the one place a
 // CSV is written — the BOM, the escaping and the anchor. Re-exported under
@@ -290,6 +291,29 @@ export function DataTable<T>({
 
   const align = (a?: string) => (a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left");
 
+  // ── A clickable row is operable from the keyboard (frontend_ux-16) ─────────
+  // The rule is lib/table/rowKeyboard.ts; this only carries it to the DOM.
+  /** A click on the row's OWN cells opens it. One that began on a link, button
+   *  or input inside it is that control's click, not the row's — opening the
+   *  document AND following the link is two actions from one gesture. */
+  const openRow = (e: React.MouseEvent<HTMLTableRowElement>, row: T) => {
+    if (isFromInteractiveControl(e.target as Element, e.currentTarget)) return;
+    onRowClick!(row);
+  };
+  const onRowKeyDown = (e: React.KeyboardEvent<HTMLTableRowElement>, row: T) => {
+    const action = rowKeyAction({
+      key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey,
+      defaultPrevented: e.defaultPrevented, fromRow: e.target === e.currentTarget,
+    });
+    if (!action) return;
+    // Space would scroll the page and an arrow would scroll the table's wrapper.
+    e.preventDefault();
+    if (action === "activate") { onRowClick!(row); return; }
+    const rows = Array.from(
+      e.currentTarget.parentElement?.querySelectorAll<HTMLTableRowElement>("tr[data-row-clickable]") ?? []);
+    rows[stepIndex(rows.indexOf(e.currentTarget), rows.length, action)]?.focus();
+  };
+
   return (
     <div className="space-y-3">
       {/* ── Toolbar ─────────────────────────────────────────────────────── */}
@@ -521,8 +545,16 @@ export function DataTable<T>({
                     ref={lit ? highlightRef : undefined}
                     className={cn("hover:bg-ps-bg", rowClassName?.(row),
                                   sel && "bg-brand-surface", clickable && "cursor-pointer",
+                                  // A row you can open is a row you can Tab to, and the
+                                  // ring says which one (frontend_ux-16). Inset, because
+                                  // the table sits in an `overflow-x-auto` wrapper that
+                                  // would clip an outer ring on the first and last row.
+                                  clickable && "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand",
                                   lit && "bg-state-attention-surface ring-2 ring-inset ring-amber-300")}
-                    onClick={clickable ? () => onRowClick!(row) : undefined}
+                    tabIndex={clickable ? 0 : undefined}
+                    data-row-clickable={clickable ? "true" : undefined}
+                    onClick={clickable ? (e) => openRow(e, row) : undefined}
+                    onKeyDown={clickable ? (e) => onRowKeyDown(e, row) : undefined}
                   >
                     {hasBulk && (
                       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>

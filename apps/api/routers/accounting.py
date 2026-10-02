@@ -32,6 +32,7 @@ from services.period_validation_service import period_validation_service
 from services import ageing_schedule_service, ratio_analysis_service, budget_service
 from models.fy import FYLabel, OptionalFYLabel
 from core.ist_clock import ist_fy_label
+from core import db_provider
 
 
 def _reporting_service(current_user: Optional[dict] = None) -> ReportingService:
@@ -411,21 +412,16 @@ def create_journal_entry(data: JournalEntryIn, current_user: dict = Depends(rbac
     return api_response(True, entry)
 
 
-def _prod_db():
-    """Production Supabase client, or None in mock/dev (no SUPABASE_URL).
-
-    Every caller (journal get/edit/discard/post/reverse, the journals queue)
-    is already rbac()-gated, so this is the privileged path. get_supabase()
-    is the RLS-enforced `authenticated` client under USE_USER_JWT, which has
-    no write grant on journal_entries/journal_lines/audit_log at all — by
-    design, so a direct PostgREST write can never bypass the posting kernel —
-    so every edit/post/discard 500'd with "The server is not permitted to
-    write this table." Same fix as routers/fixed_assets.py (PR #626).
-    """
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# Production Supabase client, or None in mock/dev (no SUPABASE_URL).
+#
+# Every caller (journal get/edit/discard/post/reverse, the journals queue)
+# is already rbac()-gated, so this is the privileged path. get_supabase()
+# is the RLS-enforced `authenticated` client under USE_USER_JWT, which has
+# no write grant on journal_entries/journal_lines/audit_log at all — by
+# design, so a direct PostgREST write can never bypass the posting kernel —
+# so every edit/post/discard 500'd with "The server is not permitted to
+# write this table." Same fix as routers/fixed_assets.py (PR #626).
+_prod_db = db_provider.service_db_or_none
 
 
 class OpeningBalancePostIn(BaseModel):

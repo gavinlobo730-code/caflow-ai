@@ -46,6 +46,11 @@ _logger = logging.getLogger("caflow.observability")
 # and lets the tagged capture be the only event.
 ignore_logger(_logger.name)
 
+# The one-line-per-request record (middleware/request_context.py) is INFO below 500 and WARNING from it, and
+# neither is an event; ignoring the logger also keeps a line per request out of every event's breadcrumbs.
+from core.request_context import ACCESS_LOGGER  # noqa: E402
+ignore_logger(ACCESS_LOGGER)
+
 
 def _safe_str(value: object) -> str:
     """str(), for a value that may refuse to be one.

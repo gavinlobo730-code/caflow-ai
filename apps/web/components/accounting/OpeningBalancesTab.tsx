@@ -34,6 +34,7 @@ import {
   buildOpeningDocumentRows, importOutcomeFrom, importSummarySentence,
   openingDocumentColumns,
 } from "@/lib/accounting/openingDocumentImport";
+import { Button } from "@/components/ui/button";
 
 type Kind = "receivable" | "payable";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -350,10 +351,10 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
                   <td className="py-2 text-ps-label">{d.due_date ?? "—"}</td>
                   <td className="py-2 text-right tabular-nums">{rupees(d.outstanding_paise)}</td>
                   <td className="py-2 text-right">
-                    <button onClick={() => handleRemove(d.id, d.document_no)} disabled={busy}
+                    <Button variant="plain" size="none" onClick={() => handleRemove(d.id, d.document_no)} disabled={busy}
                       className="px-2 py-1 text-2xs text-ps-hint hover:text-red-600 disabled:opacity-40">
                       Remove
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -451,10 +452,10 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
                   className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                   Cancel
                 </button>
-                <button onClick={handleSave} disabled={saving}
+                <Button variant="plain" size="none" onClick={handleSave} disabled={saving}
                   className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                   {saving ? "Saving…" : "Record"}
-                </button>
+                </Button>
               </div>
             </div>
           </div>

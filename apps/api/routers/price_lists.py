@@ -12,31 +12,26 @@ catalogue item does.
 """
 from __future__ import annotations
 
-import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from core.authz import assert_client_access
 from core.permissions import rbac
 from models.common import api_response
 from services import price_list_service as service
+from core import db_provider
 
 router = APIRouter(prefix="/api/price-lists", tags=["accounting"])
 
 
 def _db():
     """The privileged client, or a 503 with no database. Every route is rbac()-
-    gated and checks the client scope first; the service carries `firm_id` and
-    `client_id` on every read and write, and the tables' writes are service-role-
-    only by grant (migration 459)."""
-    if not os.environ.get("SUPABASE_URL"):
-        raise HTTPException(
-            status_code=503,
-            detail="Price lists are kept in the database and are unavailable without it.")
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+gated and checks the client scope first; the service carries `firm_id` and
+`client_id` on every read and write, and the tables' writes are service-role-
+only by grant (migration 459)."""
+    return db_provider.service_db_or_503('Price lists are kept in the database and are unavailable without it.')
 
 
 class PriceListIn(BaseModel):

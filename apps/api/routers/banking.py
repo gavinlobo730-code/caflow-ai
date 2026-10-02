@@ -82,6 +82,7 @@ from domain.banking.normalizer import (
 )
 from services import bank_column_mapping_service as column_mappings
 from core.uploads import read_limited
+from core import db_provider
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -95,12 +96,7 @@ _EMPTY_BRS_BUCKET = {"items": [], "total_paise": 0, "count": 0, "listed": 0}
 router = APIRouter(prefix="/api/banking", tags=["banking"])
 
 
-def _db():
-    import os
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db_or_none
 
 
 def _scope_rows(current_user: dict, client_id: Optional[str], rows: list) -> list:

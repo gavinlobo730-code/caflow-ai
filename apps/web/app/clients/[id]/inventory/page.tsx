@@ -31,6 +31,7 @@ import { ReorderPanel } from "@/components/inventory/ReorderPanel";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
+import { Button } from "@/components/ui/button";
 interface StockItem {
   id: string;
   name: string;
@@ -872,10 +873,10 @@ function AdjustStockModal({
 
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
-            <button onClick={submit} disabled={saving}
+            <Button variant="plain" size="none" spinner={false} onClick={submit} disabled={saving}
               className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
               {saving && <Loader2 size={12} className="animate-spin" />} Save Adjustment
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -989,10 +990,10 @@ function NrvWritedownModal({
 
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} disabled={saving} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
-            <button onClick={submit} disabled={saving}
+            <Button variant="plain" size="none" spinner={false} onClick={submit} disabled={saving}
               className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
               {saving && <Loader2 size={12} className="animate-spin" />} Save Write-down
-            </button>
+            </Button>
           </div>
         </div>
       </div>

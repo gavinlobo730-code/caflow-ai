@@ -235,6 +235,14 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
         "the caller is the payment gateway, not a person. Public by design, "
         "signature-verified and idempotent inside payment_service; a screen "
         "calling it would be the defect rather than the fix.",
+    ("POST", "/api/email/webhook/resend"):
+        "the caller is the email provider (Resend), which reports a permanent bounce or "
+        "a complaint (ops-21). Public by design, verified by its signature, writes nothing "
+        "for an unsigned request; a screen calling it would be the defect.",
+    ("POST", "/api/internal/scheduler/run-pending"):
+        "the caller is an external scheduler (a Render cron job) holding a shared "
+        "token (ops-15). A screen calling it would put that token in a browser; "
+        "people use POST /api/scheduler/run, which asks for a login.",
 }
 
 # ---------------------------------------------------------------------------

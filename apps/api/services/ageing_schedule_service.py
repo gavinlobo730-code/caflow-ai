@@ -38,6 +38,7 @@ from fastapi import HTTPException
 
 from core.ist_clock import ist_today
 from domain.reporting import ageing
+from core.db_paging import fetch_all
 
 _logger = logging.getLogger("caflow.ageing")
 
@@ -58,28 +59,6 @@ def _as_date(v) -> Optional[date]:
         return None
 
 
-def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
-    """Keyset paging, same shape as the statement services'. An un-paged
-    .execute() is silently capped at PostgREST's ~1000 rows, which here would
-    understate a statutory disclosure with no error at all."""
-    first = make_query()
-    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
-        return first.execute().data or []
-    out: list = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        rows = q.order(key).limit(page).execute().data or []
-        out.extend(rows)
-        if len(rows) < page:
-            return out
-        cursor = rows[-1].get(key)
-        if cursor is None:
-            return out
-
-
 def _today() -> date:
     return datetime.now(timezone.utc).date()
 
@@ -97,7 +76,7 @@ def _parse_as_of(as_of: Optional[str]) -> date:
 # ── The Python half's data fetch ─────────────────────────────────────────────
 
 def _fetch_receivables(db, firm_id: str, client_id: str, as_of: date) -> list:
-    rows = _paginate_all(lambda: db.table("client_sales_invoices")
+    rows = fetch_all(lambda: db.table("client_sales_invoices")
             .select("id, invoice_date, due_date, outstanding_paise, status, "
                     "is_disputed, considered_doubtful")
             .eq("firm_id", firm_id).eq("client_id", client_id)
@@ -122,13 +101,13 @@ def _fetch_receivables(db, firm_id: str, client_id: str, as_of: date) -> list:
 
 
 def _fetch_payables(db, firm_id: str, client_id: str, as_of: date) -> list:
-    rows = _paginate_all(lambda: db.table("purchase_bills")
+    rows = fetch_all(lambda: db.table("purchase_bills")
             .select("id, vendor_id, bill_date, due_date, outstanding_paise, status, is_disputed")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .is_("deleted_at", "null")
             .not_.in_("status", list(_DEAD_BILL))
             .gt("outstanding_paise", 0))
-    vendors = {v["id"]: v for v in _paginate_all(
+    vendors = {v["id"]: v for v in fetch_all(
         lambda: db.table("vendors").select("id, name, msme_status")
         .eq("firm_id", firm_id).eq("client_id", client_id))}
     out = []
@@ -169,7 +148,7 @@ def _fetch_unbilled(db, firm_id: str, client_id: str, as_of: date):
     # entries (CLAUDE.md), so a client-only filter here reads its unbilled
     # marking as absent for every client, silently — the same write-side bug
     # 862bf886 fixed on `target == "account"` above, on the read this feeds.
-    accounts = _paginate_all(lambda: db.table("chart_of_accounts")
+    accounts = fetch_all(lambda: db.table("chart_of_accounts")
             .select("id, account_code, account_name, unbilled_dues_side")
             .eq("firm_id", firm_id)
             .or_(f"client_id.eq.{client_id},client_id.is.null")
@@ -185,7 +164,7 @@ def _fetch_unbilled(db, firm_id: str, client_id: str, as_of: date):
     lines: list = []
     if marked:
         ids = [a.account_id for a in marked]
-        rows = _paginate_all(lambda: db.table("journal_entries")
+        rows = fetch_all(lambda: db.table("journal_entries")
                 .select("id, entry_date, journal_lines!inner(account_id, debit_paise, credit_paise)")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .eq("is_posted", True).is_("deleted_at", "null")

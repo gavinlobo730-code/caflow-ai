@@ -23,6 +23,7 @@ import { api } from "@/lib/api";
 import type { InventoryCostingPolicy } from "@/lib/api";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 export function CostFormulaPanel({ clientId }: { clientId: string }) {
   const [policy, setPolicy] = useState<InventoryCostingPolicy | null>(null);
@@ -159,10 +160,10 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
                     className="px-2.5 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
               Cancel
             </button>
-            <button onClick={save} disabled={saving || !method}
+            <Button variant="plain" size="none" onClick={save} disabled={saving || !method}
                     className="px-2.5 py-1.5 text-xs bg-brand-dark text-white rounded-lg hover:bg-brand disabled:opacity-50">
               {saving ? "Saving…" : "Record"}
-            </button>
+            </Button>
           </div>
         </div>
       )}

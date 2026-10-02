@@ -161,3 +161,10 @@ env/
 .vercel
 .turbo
 .claude/worktrees/
+
+# Coverage and property-test artefacts a local run of the backend CI step leaves in apps/api
+# (`pytest --cov ... --cov-report=json:coverage.json`; the CI job uploads the JSON, it is never committed).
+.coverage
+.coverage.*
+coverage.json
+.hypothesis/

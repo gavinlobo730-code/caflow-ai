@@ -29,6 +29,7 @@ from core.authz import assert_client_access, filter_by_client
 from services.audit_service import log_event
 from core.ist_clock import ist_today
 from domain.money_text import group_indian
+from core import db_provider
 
 _logger = logging.getLogger("caflow.engagement_letters")
 
@@ -42,12 +43,7 @@ _MOCK_ENGAGEMENTS: list[dict] = []
 _MOCK_EVENTS:      list[dict] = []
 
 
-def _db():
-    import os
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db_or_none
 
 
 # ── Client-assignment scope (M2) ──────────────────────────────────────────────

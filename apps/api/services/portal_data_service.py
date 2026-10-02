@@ -23,6 +23,7 @@ from fastapi import HTTPException
 from services import collections_service
 from core.ist_clock import ist_today
 from core.db_paging import fetch_all
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.portal_data")
@@ -32,10 +33,7 @@ _OPEN = ("issued", "partially_paid")
 
 
 def _db():
-    if _USE_MOCK:
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+    return None if _USE_MOCK else db_provider.request_db()
 
 
 def current_fy_range(today: Optional[date] = None) -> tuple[str, str]:

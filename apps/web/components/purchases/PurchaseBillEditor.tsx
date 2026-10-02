@@ -23,6 +23,12 @@ import { useServerTdsPreview } from "@/lib/purchases/serverTdsPreview";
 import { formatMoney } from "@/lib/services/formatting";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { DraftOffer } from "@/components/ui/draft-offer";
+import { useUnsentDraft } from "@/lib/drafts/useUnsentDraft";
+import {
+  applyBillDraft, billRestoreNote, draftLineOf, editorLineOf, linkCatalogue,
+  validateBillDraft, withoutDocument, type BillDraftFields,
+} from "@/lib/purchases/billDraft";
 import { apiCall, apiGet, getAuthToken, fmt, gstRateOptions, gstRateToPercent, type CurrencyOption } from "@/lib/invoices/shared";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
@@ -42,6 +48,7 @@ import {
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -434,6 +441,109 @@ export function PurchaseBillEditor({
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
   const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
 
+  // ── An unsent draft, offered back after a reload (frontend_ux-23) ─────────
+  // The RAW fields, in this tab's sessionStorage (lib/purchases/billDraft is the
+  // list of what is kept and what is not). "Dirty" here is against what THIS
+  // form opened with, and is its own comparison rather than `dirty` above: a
+  // duplicated bill opens with a vendor and lines already on it, so it is
+  // "unsaved" from the first render, and keeping that seed as a draft would
+  // offer a bill back to itself after every reload.
+  const draftFields: BillDraftFields = {
+    vendorId, billNo, ourReference, form15caAckNo, form15caFiledOn, form15cbUdin,
+    notes, billDate, dueDate, isReverseCharge, currency, exchangeRate,
+    documentAttached: !!documentUrl,
+    lines: lines.map(draftLineOf),
+  };
+  const [pristineDraft] = useState<BillDraftFields>(draftFields);
+  const draftDirty = !isLocked
+    && hasChanges(withoutDocument(pristineDraft), withoutDocument(draftFields));
+  const draft = useUnsentDraft<BillDraftFields>({
+    kind: "purchase-bill", clientId,
+    // A bill copied from another is a different starting point from a blank one.
+    entityId: existing?.id ?? (duplicateSeed ? `copy-${duplicateSeed.id}` : "new"),
+    fields: draftFields, dirty: draftDirty, validate: validateBillDraft,
+    // A received bill takes only a handful of soft fields; there is no form to keep.
+    enabled: !isLocked,
+  });
+  const [restoreNote, setRestoreNote] = useState<string | null>(null);
+
+  /** Called from the banner's button and from nowhere else. */
+  function restoreDraft() {
+    const offered = draft.restore();
+    if (!offered) return;
+    const applied = applyBillDraft(offered, {
+      isEdit,
+      current: { vendorId, currency, exchangeRate, isReverseCharge },
+      vendorIds: new Set(vendors.filter((v) => v.is_active !== false).map((v) => v.id)),
+      accountIds: new Set(accounts.map((a) => a.id).filter((id): id is string => !!id)),
+      // What the Currency picker offers right now: nothing while multi-currency
+      // is off for this client or its list has not arrived.
+      currencyCodes: new Set(mcActive
+        ? currencies.filter((c) => c.code !== "INR").map((c) => c.code) : []),
+    });
+    const f = applied.fields;
+    if (!isEdit) {
+      setVendorId(f.vendorId);
+      setSelectedVendor(vendors.find((v) => v.id === f.vendorId) ?? null);
+      setIsReverseCharge(f.isReverseCharge);
+      setCurrency(f.currency);
+      setExchangeRate(f.exchangeRate);
+    }
+    setBillNo(f.billNo);
+    setOurReference(f.ourReference);
+    setForm15caAckNo(f.form15caAckNo);
+    setForm15caFiledOn(f.form15caFiledOn);
+    setForm15cbUdin(f.form15cbUdin);
+    setNotes(f.notes);
+    setBillDate(f.billDate);
+    setDueDate(f.dueDate);
+    const restored: EditorLine[] = f.lines.length > 0
+      ? f.lines.map((l) => ({ ...editorLineOf(l), _k: nextKey() }))
+      : [{ ...EMPTY_LINE, _k: nextKey() }];
+    setLines(restored);
+    setShowCess(restored.some((l) => l.cessPercent || l.cessPerUnit));
+    setError(null);
+    setAttempted(false);
+    // The invoice file is NOT in a draft (billDraft says why). If the form in
+    // front of the CA has none attached, say so; if one is attached already —
+    // an edit of a saved draft, or a fresh upload — nothing was lost.
+    const noteWith = (catalogueMissing: number) => billRestoreNote(applied, {
+      catalogueMissing, documentAttached: offered.documentAttached && !documentUrl,
+    });
+    setRestoreNote(noteWith(0));
+    if (!applied.catalogueIds.length) return;
+    // The draft's catalogue ids are looked up ONCE, here: each line gets its
+    // product row back and one whose row is gone loses the link
+    // (billDraft.linkCatalogue). That is computed OUTSIDE the state updater,
+    // because an updater runs when React next renders and the count it finds is
+    // needed for the note now.
+    (async () => {
+      try {
+        const { data, error: lookupError } = await getSupabaseClient()
+          .from("service_catalogue")
+          .select("*")
+          .eq("client_id", clientId)
+          .in("id", applied.catalogueIds);
+        // A failed lookup says nothing about any id: leave the lines as restored.
+        if (lookupError || !data) return;
+        const byId = new Map((data as ServiceCatalogueItem[]).map((s) => [s.id, s]));
+        const linked = linkCatalogue(restored, byId);
+        const patch = new Map(linked.lines.map((l) => [
+          l._k, { product: l.product, service_catalogue_id: l.service_catalogue_id }]));
+        const restoredId = new Map(restored.map((l) => [l._k, l.service_catalogue_id]));
+        // Only a line still holding the id the restore gave it: a CA who has
+        // already picked something else on it has decided, and that stands.
+        setLines((prev) => prev.map((l) => {
+          const p = patch.get(l._k);
+          return p && l.service_catalogue_id === restoredId.get(l._k) ? { ...l, ...p } : l;
+        }));
+        if (linked.missing > 0) setRestoreNote(noteWith(linked.missing));
+      } catch {
+        // Best-effort, like the edit route's own rehydration: the lines stay as restored.
+      }
+    })();
+  }
+
   // ── Interstate preview (CGST Act §8) — server recomputes independently ──
   // `supplySplit.caption` says which side's state is unknown when the split is
   // a default rather than a decision (sweep-client-purchases-03).
@@ -778,6 +888,9 @@ export function PurchaseBillEditor({
             };
         const upd = await apiCall(`/api/purchase-bills/${existing.id}`, "PATCH", patchPayload, token);
         if (!upd.success) throw new Error(upd.error ?? "Failed to update bill");
+        // The server has the bill. Only now is the tab's copy of what was typed
+        // stale; a refusal above leaves it where it was (frontend_ux-23).
+        draft.clear();
       } else {
         const result = await apiCall(
           "/api/purchase-bills/",
@@ -802,6 +915,10 @@ export function PurchaseBillEditor({
           token,
         );
         if (!result.success) throw new Error(result.error ?? "Failed to create bill");
+        // Saved — including when the near-duplicate warning below keeps this
+        // screen open: a draft left behind would be offered back as a bill that
+        // was never recorded, and restoring it would record it twice.
+        draft.clear();
         const warned = (result.data as { near_duplicates?: NearDuplicate[] } | undefined)
           ?.near_duplicates;
         if (warned?.length) {
@@ -834,9 +951,9 @@ export function PurchaseBillEditor({
       <button onClick={handleCancel} disabled={busy} className="mr-auto text-xs px-3 py-1.5 text-ps-label hover:text-ps-body disabled:opacity-50">
         Cancel
       </button>
-      <button onClick={save} disabled={busy} className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
+      <Button variant="plain" size="none" spinner={false} onClick={save} disabled={busy} className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5">
         {saving && <Loader2 size={12} className="animate-spin" />} {isEdit ? "Save Changes" : "Save Draft"}
-      </button>
+      </Button>
     </>
   );
 
@@ -956,6 +1073,19 @@ export function PurchaseBillEditor({
       summary={summary}
     >
       <div className="space-y-5">
+        {/* An unsent draft is OFFERED, never applied (frontend_ux-23). */}
+        {draft.offer && (
+          <DraftOffer
+            what="purchase bill" savedAt={draft.offer.savedAt}
+            onRestore={restoreDraft} onDiscard={draft.discard}
+          />
+        )}
+        {restoreNote && (
+          <p role="status" className="text-xs text-state-attention bg-state-attention-surface rounded px-3 py-2">
+            {restoreNote}
+          </p>
+        )}
+
         {/* AI Upload — create-only; re-extracting into an already-saved draft
             would silently overwrite manually-corrected fields. */}
         {isEdit ? (
@@ -971,9 +1101,9 @@ export function PurchaseBillEditor({
             <p className="text-xs font-medium text-state-attention flex items-center gap-1.5"><Upload size={12} /> Upload Invoice (AI Extract)</p>
             <div className="flex items-center gap-2">
               <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
-              <button onClick={handleExtract} disabled={!uploadFile || extracting} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+              <Button variant="plain" size="none" onClick={handleExtract} disabled={!uploadFile || extracting} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {extracting ? "Extracting…" : "Extract"}
-              </button>
+              </Button>
             </div>
             {aiExtracted && (
               <div className="mt-1 text-3xs text-state-attention bg-state-attention-surface rounded px-2 py-1.5">

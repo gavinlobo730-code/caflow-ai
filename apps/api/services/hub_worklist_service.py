@@ -44,11 +44,11 @@ from typing import Optional
 from fastapi import HTTPException
 
 from core.authz import effective_client_ids
-from core.supabase_client import get_service_supabase
 from domain.banking import entry as bank_entry
 from domain.hub import worklist as worklist_rules
 from domain.hub.tiles import Unit
 from services.hub_service import _DEAD_DOCUMENT
+from core import db_provider
 
 logger = logging.getLogger("caflow.hub.worklist")
 
@@ -98,8 +98,7 @@ _POPULATION: dict[str, dict] = {
 }
 
 
-def _db():
-    return get_service_supabase()
+_db = db_provider.service_db
 
 
 def worklist(current_user: dict, tile_id: str) -> dict:

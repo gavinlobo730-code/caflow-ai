@@ -12,6 +12,7 @@ from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access
 from services.party_credit_service import party_credit_service
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.party_credits")
@@ -19,9 +20,7 @@ _logger = logging.getLogger("caflow.party_credits")
 router = APIRouter(prefix="/api/party-credits", tags=["party_credits"])
 
 
-def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_get_db = db_provider.request_db
 
 
 class ApplyPartyCreditIn(BaseModel):

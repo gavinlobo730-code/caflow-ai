@@ -41,6 +41,7 @@ from services import period_lock_service
 from services.audit_service import log_event
 from services.numbering import next_sequence
 from domain.money_text import whole_rupees
+from core import db_provider
 
 router = APIRouter(prefix="/api/fixed-assets", tags=["fixed_assets"])
 
@@ -127,20 +128,15 @@ _no_statutory_basis = schedule_ii.no_statutory_basis
 _PERIOD_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
-def _db():
-    import os
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    # Migration 245 deliberately REVOKEd INSERT/UPDATE/DELETE on fixed_assets
-    # from `authenticated` — a direct PostgREST write bypasses this router's
-    # own depreciation-schedule and GL-journal-linkage logic, which is exactly
-    # what migration 166 revoked it to stop. Every write below is already
-    # gated by rbac() and assert_client_access(), so it is the privileged path
-    # get_service_supabase()'s own docstring names; get_supabase() would be
-    # silently downgraded to the RLS-enforced, grant-revoked `authenticated`
-    # client under USE_USER_JWT and every write in this router would 500.
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# Migration 245 deliberately REVOKEd INSERT/UPDATE/DELETE on fixed_assets
+# from `authenticated` — a direct PostgREST write bypasses this router's
+# own depreciation-schedule and GL-journal-linkage logic, which is exactly
+# what migration 166 revoked it to stop. Every write below is already
+# gated by rbac() and assert_client_access(), so it is the privileged path
+# get_service_supabase()'s own docstring names; get_supabase() would be
+# silently downgraded to the RLS-enforced, grant-revoked `authenticated`
+# client under USE_USER_JWT and every write in this router would 500.
+_db = db_provider.service_db_or_none
 
 
 #: The three tiers a correction to an asset falls into. They are three

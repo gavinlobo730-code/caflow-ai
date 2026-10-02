@@ -60,6 +60,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
+import { Button } from "@/components/ui/button";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -388,13 +389,13 @@ function BulkMarkFiledModal({
           >
             Cancel
           </button>
-          <button
+          <Button variant="plain" size="none"
             onClick={handleSubmit}
             disabled={submitDisabled}
             className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
           >
             {loading ? "Saving…" : `Confirm Filing (${remaining.length})`}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -1346,13 +1347,13 @@ export default function IncomeTaxPage() {
               {/* Also waits on the due-date lookup: saving mid-fetch would
                   either store a blank date or store the one left over from the
                   previously-selected client. */}
-              <button
+              <Button variant="plain" size="none"
                 onClick={handleAddSubmit}
                 disabled={actionInFlight || dueDateLoading}
                 className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
               >
                 {addLoading ? "Adding…" : "Add Deadline"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1442,13 +1443,13 @@ export default function IncomeTaxPage() {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none"
                 onClick={handleMarkFiled}
                 disabled={actionInFlight}
                 className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50 transition-colors"
               >
                 {filedLoading ? "Saving…" : "Confirm Filing"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

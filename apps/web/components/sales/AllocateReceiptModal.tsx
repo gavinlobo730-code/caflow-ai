@@ -35,6 +35,7 @@ import {
   allocationProblems, ceilingFor as ceilingOf, settlementValue,
 } from "@/lib/sales/receiptAllocation";
 import { Callout } from "@/components/ui/callout";
+import { Button } from "@/components/ui/button";
 
 type OpenInvoice = {
   id: string;
@@ -247,10 +248,10 @@ export default function AllocateReceiptModal({
                 className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
                 Cancel
               </button>
-              <button onClick={save} disabled={saving || !problems.ok || loading}
+              <Button variant="plain" size="none" onClick={save} disabled={saving || !problems.ok || loading}
                 className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
                 {saving ? "Applying…" : "Apply"}
-              </button>
+              </Button>
             </div>
           </div>
 

@@ -43,9 +43,9 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Optional
 
 from core.authz import effective_client_ids
-from core.supabase_client import get_service_supabase
 from domain.banking import entry as bank_entry
 from domain.hub.tiles import describe, tiles_for_scope
+from core import db_provider
 
 logger = logging.getLogger("caflow.hub")
 
@@ -122,8 +122,7 @@ def _outstanding(table_key: str, done: tuple[str, ...]) -> list[str]:
     return [v for v in _ALL[table_key] if v not in done]
 
 
-def _db():
-    return get_service_supabase()
+_db = db_provider.service_db
 
 
 def _safely(name: str, fn: Callable[[], Optional[int]]) -> Optional[int]:

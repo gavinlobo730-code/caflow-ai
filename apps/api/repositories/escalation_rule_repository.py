@@ -2,13 +2,12 @@ import os
 from typing import Optional
 from datetime import date, datetime, timedelta
 from repositories.base import BaseRepository
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 
-def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_get_db = db_provider.request_db
 
 
 class EscalationRuleRepository(BaseRepository[dict]):

@@ -25,7 +25,8 @@ Watch the boot log for `CONFIG: missing REQUIRED environment variables: …`.
   This is a dashboard setting and cannot be set via migration.
 - **Confirm MFA (aal2)** is available to platform admins — destructive platform
   actions (firm purge) require it (`require_platform_admin_mfa`).
-- **Rotate the service-role key** if it was ever exposed; it bypasses RLS.
+- **Rotate the service-role key** if it was ever exposed; it bypasses RLS. The steps, and what else lives
+  beside it, are in `docs/operations/incident-runbook.md` §5.
 
 ## 3. Security posture (already enforced in code — for awareness)
 
@@ -46,6 +47,10 @@ Watch the boot log for `CONFIG: missing REQUIRED environment variables: …`.
   (`scripts/sentry_verify.py`) and the browser side (`NEXT_PUBLIC_SENTRY_DSN`).
 - Watch the database itself — advisors, slow statements, connections, disk — on a monthly routine:
   `docs/operations/database-monitoring.md`, with the queries in `apps/api/scripts/db/monthly_review.sql`.
+- When something is broken, start at `docs/operations/incident-runbook.md` (the first ten minutes, severity,
+  who owns what, key rotation, backups, alerts). Undoing a change is `docs/operations/release-and-rollback.md`;
+  what has gone wrong before is `docs/operations/post-mortems.md`; what the reports should take is
+  `docs/operations/service-levels.md`. **The runbook has not been table-tested and says so.**
 - Scheduler: set `ENABLE_SCHEDULER=true` or configure an external cron to POST
   `/api/scheduler/run`, else compliance reminders / recurring jobs never fire (the
   boot log states which mode is active).

@@ -53,14 +53,25 @@
  * Cloudflare rewrites a real id to (see generate-redirects.js) — so this walks
  * the same HTML a CA's browser gets.
  *
- * NOT A CI CHECK. It needs a Chromium and a completed build, and it is meant
- * to be run BEFORE and AFTER converting a module, by the person converting it.
+ * NOT A PULL-REQUEST CHECK, AND NOT A REQUIRED ONE. It needs a Chromium and a
+ * completed build, so it does not run on every PR. It is meant to be run BEFORE
+ * and AFTER converting a module, by the person converting it, and it ALSO runs
+ * by itself: nightly and on demand in `.github/workflows/smoke-walk.yml`
+ * (engineering-15), which builds the export, installs Playwright in that job
+ * only, and uploads the `--report` below. Thirteen screens crashed the first
+ * time this walk could render them (CLAUDE.md), and nothing had walked it since
+ * but a person: a blank screen could ship and wait for a CA to find it.
  *
  *   pnpm smoke:build && node scripts/smoke-walk.mjs
  *   node scripts/smoke-walk.mjs --only /clients --real-client --shots
  *   node scripts/smoke-walk.mjs --only /login --shots --anon
+ *   node scripts/smoke-walk.mjs --report .smoke/report.json
  *
  * --only <prefix>  walk just the routes under a prefix
+ * --report <file>  also write the verdict as JSON (every broken route and its
+ *                  errors, the herds, the redirects, how long each screen took),
+ *                  and, under GitHub Actions, a table on the run's summary page.
+ *                  The exit code is unchanged: 1 when any screen is broken.
  * --anon          do NOT sign in, so the sign-in screens render as
  *                 themselves. Looking only — see `anon` below.
  * --shots          write a PNG per route to .smoke/ (the visual baseline —
@@ -81,9 +92,11 @@ import { screenRoutes } from "./refresh-screen-snapshot.js";
 /**
  * Playwright is deliberately NOT a dependency of this package.
  *
- * It is a ~40MB install and CI never runs this walk, so adding it would put a
- * download on every frontend job to serve a tool only a developer converting a
- * module uses. Imported here instead, with the install instruction in the
+ * It is a ~40MB install, and the frontend CI job that runs on every pull request
+ * does not need it: adding it would put a download on every one of those jobs to
+ * serve a walk that runs nightly and on demand. The workflow that runs the walk
+ * (`.github/workflows/smoke-walk.yml`) installs it in its OWN job, with a pinned
+ * version, and the script imports it here with the install instruction in the
  * failure — which is also the honest shape: this script needs a browser on the
  * machine, and a package.json entry would not have provided one.
  */
@@ -360,6 +373,17 @@ const EXPECTED_LANDINGS = {
   "/platform": "/",
   // An index that has no page of its own.
   "/portal": "/portal/dashboard",
+  // Three more that were deliberate before this walk ran by itself and that the list had not
+  // caught up with (engineering-15: the first full run on a clean tree reported exactly these
+  // three and nothing else, which on a nightly would have been a red run on day one for a
+  // false alarm). Each is pinned to what its OWN file says:
+  //   /signup: a signed-in visitor who already has a firm is bounced, the mirror of /login
+  //     (lib/auth/guardDecision `shouldBounceFromSignup`; sweep-auth-and-public-02).
+  "/signup": "/",
+  //   the two redirect stubs, kept so a bookmark or an emailed link still lands somewhere (a
+  //   static export has no server-side redirect to issue).
+  "/onboarding/checklist": "/clients/onboarding",
+  "/team/work-allocation": "/team/workload",
   // The walk feeds every :id the string "_placeholder", which resolves to no
   // client, and the workspace index returns to the list rather than showing a
   // shell for a client that is not there. A seeded demo firm (T2) is what
@@ -370,6 +394,11 @@ const EXPECTED_LANDINGS = {
 const args = process.argv.slice(2);
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;
 const shots = args.includes("--shots");
+const reportPath = args.includes("--report") ? args[args.indexOf("--report") + 1] : null;
+if (args.includes("--report") && (!reportPath || reportPath.startsWith("--"))) {
+  console.error("--report needs a file path, e.g. --report .smoke/report.json");
+  process.exit(2);
+}
 /**
  * THE SIX SCREENS EVERY USER SEES FIRST ARE THE SIX THIS WALK COULD NOT SEE.
  *
@@ -515,9 +544,12 @@ if (anon) {
 if (shots) fs.mkdirSync(SHOT_DIR, { recursive: true });
 
 const broken = [];
+const timings = [];            // how long each screen took to settle, for --report
+const walkStarted = Date.now();
 let walked = 0;
 
 for (const route of routes) {
+  const routeStarted = Date.now();
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(`threw: ${e.message}`));
@@ -581,6 +613,7 @@ for (const route of routes) {
   }
   await page.close();
   walked++;
+  timings.push({ route, ms: Date.now() - routeStarted });
   if (errors.length) {
     broken.push({ route, errors: [...new Set(errors)] });
     process.stdout.write("X");
@@ -597,6 +630,14 @@ console.log(`\n\n${walked} screens walked, ${broken.length} with a problem.`);
 for (const b of broken) {
   console.log(`\n  ${b.route}`);
   for (const e of b.errors.slice(0, 4)) console.log(`      ${e}`);
+}
+if (process.env.GITHUB_ACTIONS === "true") {
+  // The route NAME on the run's summary page, not only in the log. GitHub shows
+  // ten annotations per step, so the first ten; --report's table has them all.
+  for (const b of broken.slice(0, 10)) {
+    const first = b.errors[0].replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+    console.log(`::error title=Smoke walk: ${b.route} is broken::${first.slice(0, 300)}`);
+  }
 }
 
 // THE CHECK NO SINGLE ROUTE CAN MAKE. See MAX_ROUTES_PER_DIGEST above.
@@ -658,4 +699,49 @@ if (shots) {
     `Click a card for the full page.</p><div class="grid">${cards}</div>`);
   console.log(`\n${captured.length} screenshots and a contact sheet in ${SHOT_DIR}`);
 }
-process.exit(broken.length || (!anon && herds.length) ? 1 : 0);
+const failed = Boolean(broken.length || (!anon && herds.length));
+
+if (reportPath) {
+  // The verdict as data, so a nightly run leaves something a person can open
+  // without scrolling a log, and a run a week later can be compared with it.
+  const report = {
+    generated_at: new Date().toISOString(),
+    commit: process.env.GITHUB_SHA || null,
+    mode: { only, anon, realClient, at },
+    routes_walked: walked,
+    ok: !failed,
+    broken: broken.map((b) => ({ route: b.route, errors: b.errors })),
+    herds: herds.map((h) => ({
+      count: h.length, sample: h[0].sample, routes: h.map((r) => r.route),
+    })),
+    redirected,
+    distinct_bodies: byDigest.size,
+    blocked_hosts: [...escaped],
+    duration_ms: Date.now() - walkStarted,
+    screen_ms: timings,
+  };
+  fs.mkdirSync(path.dirname(path.resolve(reportPath)), { recursive: true });
+  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + "\n");
+  console.log(`\nreport written to ${reportPath}`);
+
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const slowest = [...timings].sort((a, b) => b.ms - a.ms).slice(0, 5)
+      .map((t) => `${t.route} ${t.ms} ms`).join(", ");
+    const lines = [
+      `### Smoke walk: ${failed ? "FAILED" : "clean"}`,
+      "",
+      `${walked} screens walked, ${broken.length} broken, ${herds.length} herd(s) of identical bodies. ` +
+        `Slowest to settle: ${slowest}.`,
+      "",
+    ];
+    if (broken.length) {
+      lines.push("| route | first problem |", "|---|---|");
+      for (const b of broken) {
+        lines.push(`| \`${b.route}\` | ${b.errors[0].replace(/\|/g, "\\|").replace(/\s+/g, " ")} |`);
+      }
+    }
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+  }
+}
+
+process.exit(failed ? 1 : 0);

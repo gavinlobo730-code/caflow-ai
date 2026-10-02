@@ -173,16 +173,20 @@ def test_the_migration_puts_document_type_in_the_natural_key():
 # ── 3. the service paginates ────────────────────────────────────────────────
 
 def test_the_reconciliation_service_paginates_its_reads():
-    """Eleven sibling services carry _paginate_all; this one shipped without it,
-    so read_book_bills truncated a busy month at PostgREST's 1000 rows and every
-    2B document belonging to a dropped bill was reported as missing_in_books —
-    sending the CA to chase a document they already hold."""
+    """Eleven sibling services carried a private pager; this one shipped without
+    one, so read_book_bills truncated a busy month at PostgREST's 1000 rows and
+    every 2B document belonging to a dropped bill was reported as
+    missing_in_books — sending the CA to chase a document they already hold.
+    Since engineering-30 every one of them reads through core.db_paging.fetch_all
+    and none carries its own copy, so the rule is that these reads PAGE, through
+    the one pager."""
     import inspect
     src = inspect.getsource(svc)
-    assert "def _paginate_all" in src
+    assert "_paginate_all" not in src, "a private pager is back: use core.db_paging.fetch_all"
+    assert "from core.db_paging import" in src
     for fn in ("read_book_bills", "read_reconciliation"):
         body = inspect.getsource(getattr(svc, fn))
-        assert "_paginate_all(" in body, f"{fn} must page; a bare execute() caps at 1000"
+        assert "fetch_all(" in body, f"{fn} must page; a bare execute() caps at 1000"
 
 
 # ── 4. the rate registries do not claim a year they do not hold ─────────────

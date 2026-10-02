@@ -3,6 +3,7 @@ from typing import Optional
 from repositories.base import BaseRepository
 from core.exceptions import NotFoundError
 from services.task_service import compute_task_urgency
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -10,9 +11,7 @@ if _USE_MOCK:
     from mock_data import MOCK_TASKS, TASK_INDEX
 
 
-def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_get_db = db_provider.request_db
 
 
 class TaskRepository(BaseRepository[dict]):

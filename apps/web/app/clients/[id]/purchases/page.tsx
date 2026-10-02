@@ -60,6 +60,7 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 import { Callout } from "@/components/ui/callout";
 import { gstinProblem } from "@/lib/gst/gstin";
+import { Button } from "@/components/ui/button";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -1169,10 +1170,10 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
         rowActions={(b) => (
           <div className="flex items-center justify-end gap-2">
             {b.status === "draft" && (
-              <button onClick={() => handleReceive(b.id)} disabled={receivingId === b.id}
+              <Button variant="plain" size="none" onClick={() => handleReceive(b.id)} disabled={receivingId === b.id}
                 className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline">
                 <CheckCircle size={11} /> {receivingId === b.id ? "Receiving…" : "Receive"}
-              </button>
+              </Button>
             )}
             <button
               onClick={(e) => openMenuFor(e, b)}
@@ -1238,10 +1239,10 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
               {b.status === "received" && (
                 <>
                   <div className="my-1 border-t border-ps-border" />
-                  <button onClick={() => { setMenu(null); cancelBill(b); }}
+                  <Button variant="plain" size="none" onClick={() => { setMenu(null); return cancelBill(b); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Cancel bill
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
@@ -1957,13 +1958,13 @@ function Vendors({ clientId }: { clientId: string }) {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none"
                 onClick={confirmDeactivate}
                 disabled={actionInFlight}
                 className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50"
               >
                 {deactivating ? "Deactivating…" : "Deactivate"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1999,13 +2000,13 @@ function Vendors({ clientId }: { clientId: string }) {
                   >
                     Cancel
                   </button>
-                  <button
+                  <Button variant="plain" size="none"
                     onClick={confirmDelete}
                     disabled={actionInFlight}
                     className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50"
                   >
                     {deleteBusy ? "Deleting…" : "Delete permanently"}
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : (
@@ -2089,10 +2090,10 @@ function Vendors({ clientId }: { clientId: string }) {
                   <Ban size={13} /> Deactivate
                 </button>
               ) : (
-                <button onClick={() => { setMenu(null); reactivateVendor(v); }}
+                <Button variant="plain" size="none" onClick={() => { setMenu(null); return reactivateVendor(v); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-green-700">
                   <RotateCcw size={13} /> Reactivate
-                </button>
+                </Button>
               )}
               <button onClick={() => { setMenu(null); startDelete(v); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
@@ -2427,9 +2428,9 @@ function Vendors({ clientId }: { clientId: string }) {
 
           <div className="flex gap-3 justify-end">
             <button onClick={() => { setShowForm(false); setEditingVendor(null); }} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-            <button onClick={handleSave} disabled={actionInFlight} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+            <Button variant="plain" size="none" onClick={handleSave} disabled={actionInFlight} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
               {saving ? "Saving…" : editingVendor ? "Save Changes" : "Add Vendor"}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -3114,7 +3115,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
 
           <div className="flex gap-3 justify-end">
             <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-            <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">{saving ? "Saving…" : "Record Payment"}</button>
+            <Button variant="plain" size="none" onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">{saving ? "Saving…" : "Record Payment"}</Button>
           </div>
         </div>
       )}
@@ -3154,10 +3155,10 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                 Apply
               </button>
             )}
-            <button onClick={() => reversePayment(p)}
+            <Button variant="plain" size="none" onClick={() => reversePayment(p)}
               className="text-2xs text-red-600 hover:text-red-800 hover:underline">
               Reverse
-            </button>
+            </Button>
           </div>
         )}
       />
@@ -3564,10 +3565,10 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
               {d.status === "draft" && (
                 <>
                   <div className="my-1 border-t border-ps-border" />
-                  <button onClick={() => { setMenu(null); deleteDebitNote(d); }}
+                  <Button variant="plain" size="none" onClick={() => { setMenu(null); return deleteDebitNote(d); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
@@ -3640,13 +3641,13 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
         rowActions={(d) => (
           <div className="flex items-center justify-end gap-2">
             {d.status === "draft" && (
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={() => issueDebitNote(d.id)}
                 disabled={issuingId === d.id}
                 className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
               >
                 {issuingId === d.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
-              </button>
+              </Button>
             )}
             <button
               onClick={(e) => openMenuFor(e, d)}
@@ -4020,10 +4021,10 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
               {d.status === "draft" && (
                 <>
                   <div className="my-1 border-t border-ps-border" />
-                  <button onClick={() => { setMenu(null); deletePcn(d); }}
+                  <Button variant="plain" size="none" onClick={() => { setMenu(null); return deletePcn(d); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
                     Delete draft
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
@@ -4096,13 +4097,13 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
         rowActions={(d) => (
           <div className="flex items-center justify-end gap-2">
             {d.status === "draft" && (
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={() => issueCreditNote(d.id)}
                 disabled={issuingId === d.id}
                 className="text-xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:no-underline"
               >
                 {issuingId === d.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle size={11} />} Issue
-              </button>
+              </Button>
             )}
             <button
               onClick={(e) => openMenuFor(e, d)}

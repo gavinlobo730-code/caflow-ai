@@ -7,13 +7,12 @@ from core.authz import (
     assert_client_access, filter_by_client, effective_client_ids,
 )
 from repositories.assignment_rule_repository import assignment_rule_repo
+from core import db_provider
 
 router = APIRouter(prefix="/api/task-recurring", tags=["task-recurring"])
 
 
-def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_get_db = db_provider.request_db
 
 
 def _now_iso():

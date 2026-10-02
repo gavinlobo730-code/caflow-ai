@@ -14,15 +14,14 @@ from models.common import api_response
 from core.permissions import rbac
 from core.authz import effective_client_ids
 from repositories.client_repository import client_repo
+from core import db_provider
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db
 
 
 def _in_scope(eff, client_id) -> bool:

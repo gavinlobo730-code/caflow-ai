@@ -37,6 +37,7 @@ from services.internal_client_service import get_internal_client_id
 from services.numbering import draft_placeholder_invoice_no
 from core.ist_clock import ist_today
 from domain.billing import time_rate
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.billing")
@@ -49,9 +50,7 @@ MOCK_BILLING_SCHEDULES: list[dict] = []
 MOCK_CLIENT_LINKS: list[dict] = []
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db
 
 
 def _today_iso() -> str:

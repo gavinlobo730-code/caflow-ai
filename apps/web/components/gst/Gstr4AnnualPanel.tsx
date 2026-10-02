@@ -29,6 +29,7 @@ import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput
 import { objectOrNull, arrayOrEmpty } from "@/lib/api/shape";
 import { INDIAN_STATES } from "@/lib/constants/indianStates";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { Button } from "@/components/ui/button";
 
 const B2B_RUPEE_FIELDS = [
   ["taxable_value", "Taxable value"],
@@ -608,7 +609,7 @@ function B2BTable({ rows, onRemove }: { rows: Gstr4AnnualB2BSupply[]; onRemove: 
 function B2BForm({ form, setForm, onAdd, saving }: {
   form: ReturnType<typeof emptyB2BForm>;
   setForm: React.Dispatch<React.SetStateAction<ReturnType<typeof emptyB2BForm>>>;
-  onAdd: () => void;
+  onAdd: () => unknown;
   saving: boolean;
 }) {
   return (
@@ -644,11 +645,11 @@ function B2BForm({ form, setForm, onAdd, saving }: {
           </label>
         ))}
       </div>
-      <button onClick={onAdd} disabled={saving}
+      <Button variant="plain" size="none" spinner={false} onClick={onAdd} disabled={saving}
         className="text-2xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 inline-flex items-center gap-1.5">
         {saving ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
         Add supply
-      </button>
+      </Button>
     </div>
   );
 }

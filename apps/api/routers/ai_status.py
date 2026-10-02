@@ -29,12 +29,12 @@ point of the screen — it is not an error of the request.
 """
 from __future__ import annotations
 
-import os
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, StrictInt
 
+from core import db_provider
 from core.auth import mfa_guard
 from core.permissions import rbac
 from core.ist_clock import ist_today
@@ -48,14 +48,11 @@ from services.audit_service import log_event
 router = APIRouter(prefix="/api/ai-status", tags=["ai"])
 
 
-def _db():
-    """The privileged client, or None with no database. Every read carries the
-    caller's `firm_id`; the table's own policy would only show a Partner their own
-    firm, and this is the client the stored history is written with."""
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+# The privileged client, or None with no database (core.db_provider is the one door,
+# engineering-30). Every read carries the caller's `firm_id`; the table's own policy
+# would only show a Partner their own firm, and this is the client the stored history
+# is written with. Bound under the name tests patch (`mod._db`).
+_db = db_provider.service_db_or_none
 
 
 @router.get("", dependencies=[Depends(mfa_guard)])

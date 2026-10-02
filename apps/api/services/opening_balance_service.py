@@ -59,6 +59,7 @@ from typing import Optional
 
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.opening_balance")
@@ -74,9 +75,7 @@ OPENING_SOURCE = "Opening"
 OPENING_REFERENCE = "OPENING-BALANCE"
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db
 
 
 def _sum_opening(rows: list[dict]) -> int:

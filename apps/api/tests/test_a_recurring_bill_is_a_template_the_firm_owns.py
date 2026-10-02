@@ -302,7 +302,9 @@ def test_the_sweep_reaches_the_scheduler(monkeypatch):
     src = pathlib.Path(__file__).resolve().parents[1] / "jobs/scheduler.py"
     text = src.read_text()
     assert "generate_due_recurring_bills" in text
-    assert '_already_ran_today("recurring_purchase_bills"' in text
+    # The sweep's own gate: `_begin` asks "did it already run today" and then takes
+    # the atomic claim (ops-14). The rule is that the job is gated, not how.
+    assert '_begin("recurring_purchase_bills"' in text
 
 
 def test_one_cadence_engine_and_this_module_does_not_hold_a_second(monkeypatch):

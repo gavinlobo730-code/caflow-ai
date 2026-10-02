@@ -34,6 +34,7 @@ from services import purchase_payment_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
 from domain.money_text import rupees_paise, whole_rupees
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payments")
@@ -51,9 +52,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_get_db = db_provider.request_db
 
 
 def _is_unique_violation(err: Exception) -> bool:

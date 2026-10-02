@@ -42,8 +42,14 @@ def scheduler_status(current_user: dict = Depends(rbac("team", "read"))):
         except Exception:
             pass
 
+    from routers.scheduler_trigger import token_configured
+
     return api_response(True, {
         "enabled": health.get("enabled", False),
+        # Whether an external scheduler CAN call POST /api/internal/scheduler/run-pending
+        # here (ops-15): the human step of setting SCHEDULER_TRIGGER_TOKEN was done. A
+        # boolean and never the value.
+        "external_trigger_configured": token_configured(),
         "running": health.get("running", False),
         "stale": health.get("stale", False),
         "warnings": health.get("warnings", []),

@@ -23,6 +23,8 @@ from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from domain.reporting.party_advances import aging_bucket as _shared_aging_bucket
 from core.ist_clock import ist_today
 from domain.money_text import whole_rupees
+from core.db_paging import fetch_all, fetch_all_in
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.collections")
@@ -32,36 +34,7 @@ REMINDER_INTERVAL_DAYS = 7        # collections reminder cadence (anti-spam)
 _OPEN_STATUSES = ("issued", "partially_paid")
 
 
-def _db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
-
-
-def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
-    """Fetch EVERY row of a Supabase query via keyset paging on `key` (task
-    #221, same audit-C6 class as domain/reporting/sources.py's _fetch_all).
-    An un-paged .execute() is silently capped at PostgREST's ~1000-row limit —
-    an established firm invoicing many clients over several years can plausibly
-    cross it on its own fee-invoice/receipt history, understating the
-    Collections dashboard's cash-collected/AR totals with no error.
-    `make_query` returns a fresh query builder each call. Test doubles that
-    don't implement order/limit/gt just return their whole (small) fixture
-    from a single execute(), which is already correct."""
-    first = make_query()
-    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
-        return first.execute().data or []
-    out: list = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        rows = q.order(key).limit(page).execute().data or []
-        out.extend(rows)
-        if len(rows) < page:
-            break
-        cursor = rows[-1][key]
-    return out
+_db = db_provider.request_db
 
 
 def _today() -> date:
@@ -177,7 +150,7 @@ def _open_invoices(firm_id: str, internal_id: Optional[str]) -> list[dict]:
                 .eq("firm_id", firm_id).eq("client_id", internal_id)
                 .in_("status", list(_OPEN_STATUSES))
                 .gt("outstanding_paise", 0))
-    rows = _paginate_all(make_q)
+    rows = fetch_all(make_q)
     # Same outstanding formula as assess_invoice — a "partially_paid" invoice
     # whose debit note is the only thing still owed (paid_paise == total_paise)
     # must not be silently dropped from the sweep/aging/reminder pipeline.
@@ -248,7 +221,7 @@ def _collected_and_tds(firm_id: str, internal_id: Optional[str],
             if date_to:
                 q = q.lte("receipt_date", date_to)
             return q
-        rows = _paginate_all(make_q)
+        rows = fetch_all(make_q)
     if _USE_MOCK:
         if date_from:
             rows = [r for r in rows if str(r.get("receipt_date", "")) >= date_from]
@@ -316,7 +289,6 @@ def average_days_to_collect(firm_id: str, today: Optional[date] = None,
     Partner-only (G1). A caller who is not a Partner must not be handed it; the
     executive dashboard withholds it for them rather than narrowing it.
     """
-    from core.db_paging import fetch_all, fetch_all_in
     from domain.billing.collection_days import average_days_to_collect as rule
 
     today = today or _today()

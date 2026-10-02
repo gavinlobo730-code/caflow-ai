@@ -23,6 +23,7 @@ from core.authz import (
 from core.permissions import rbac
 from services.timeline_service import timeline_service
 from domain.money_text import whole_rupees
+from core import db_provider
 
 router = APIRouter(prefix="/api/relationships", tags=["relationships"])
 
@@ -88,12 +89,7 @@ LOANS_TABLE = "related_party_loans"
 TRANSFER_PRICING_THRESHOLD_PAISE = 1_00_00_000_00  # ₹1,00,00,000 in paise
 
 
-def _db():
-    import os
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_db = db_provider.request_db_or_none
 
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────

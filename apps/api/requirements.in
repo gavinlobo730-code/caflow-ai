@@ -1,0 +1,54 @@
+# THE BACKEND'S DIRECT RUNTIME DEPENDENCIES: what a person edits. requirements.txt is what is installed.
+#
+#     requirements.in   <- you edit this: the direct dependencies, and a range only where a range is the point
+#     requirements.txt  <- pip-compile's output: EVERY package, transitive ones included, pinned to one version
+#                          with the sha256 of each file, installed with `pip install --require-hashes`
+#
+# Why a lock (engineering-04, ops-27). This file was requirements.txt, with fifteen floating `>=` lines
+# among its pins and no lock, so a build next month could resolve to different versions from the ones the
+# suite passed on, and the audit workflow had to resolve the set itself to know what it was auditing. The
+# environment the review ran in had resolved pandas to a major (3.x) the `>=2.0.0` below was never written
+# against. Nothing here was pinned tighter; the ranges below are exactly the ones that were in the old
+# file, and the lock records what they resolve to today.
+#
+# TO CHANGE A DEPENDENCY: edit this file, then, from apps/api, on Python 3.11 (the image's version; the
+# lock is compiled for it):
+#
+#     pip install pip-tools
+#     pip-compile --generate-hashes --strip-extras --output-file=requirements.txt requirements.in
+#     pip-compile --generate-hashes --strip-extras --output-file=requirements-dev.txt requirements-dev.in
+#
+# and commit all four files together; tests/test_the_backend_installs_from_a_lock.py fails a lock that
+# disagrees with this file or with the dev lock. Dependabot understands the pair and opens the same change.
+#
+# The lock is compiled on LINUX for Python 3.11, the image's platform: a package only a Windows or macOS
+# machine would need is not in it, and its hashes cover every file of each version (so the same lock installs
+# on an arm64 container). To run the backend on another platform use the container or WSL. Every package in it
+# has a binary wheel for Linux x86_64 and Python 3.11, so the slim image needs no compiler (checked on
+# 01-10-2026 with `pip download --only-binary=:all:`; the arm64 wheels were not checked).
+#
+# NOT IN HERE: pytest and anything else only the test suite needs. That is requirements-dev.in, installed by
+# CI and never by the Docker image.
+fastapi==0.109.2
+uvicorn==0.27.1
+gunicorn==21.2.0
+httpx>=0.27.0,<0.28.0
+python-dotenv==1.0.1
+python-multipart==0.0.9
+pydantic>=2.0.0
+pydantic[email]>=2.0.0
+email-validator>=2.1.0
+supabase==2.10.0
+groq==1.5.0
+google-genai>=1.0.0,<2.0.0
+PyJWT[crypto]==2.8.0
+cryptography>=41.0.0
+python-dateutil>=2.8.2
+apscheduler>=3.10.0
+tzdata>=2024.1
+reportlab>=4.0.0
+xhtml2pdf>=0.2.16
+openpyxl>=3.1.0
+pandas>=2.0.0
+pdfplumber>=0.10.0
+sentry-sdk[fastapi]==2.22.0

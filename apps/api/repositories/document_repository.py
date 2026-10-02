@@ -2,6 +2,7 @@ import os
 from typing import Optional
 from repositories.base import BaseRepository
 from core.exceptions import NotFoundError
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -9,9 +10,7 @@ if _USE_MOCK:
     from mock_data import MOCK_DOCUMENTS
 
 
-def _get_db():
-    from core.supabase_client import get_supabase
-    return get_supabase()
+_get_db = db_provider.request_db
 
 
 class DocumentRepository(BaseRepository[dict]):

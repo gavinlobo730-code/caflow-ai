@@ -1,0 +1,133 @@
+# Opens every screen of the product in a real browser, nightly and on demand, and reports the broken ones
+# (engineering-15).
+#
+# WHY IT EXISTS
+#     apps/web/scripts/smoke-walk.mjs loads every route of the static export in Chromium against a stub
+#     server and fails on an uncaught exception, a console error, an empty body, an unexpected redirect, or
+#     a body that too many other routes also render. It was run by hand only, its header said so, and no
+#     workflow named it. CLAUDE.md records thirteen screens crashing the first time it could render them
+#     (16-09-2026) and two more components, written after that sweep, that did it again on 24-09-2026.
+#     Every static check in the repository was green on all of them, because none of them renders anything.
+#     So a blank screen could ship, and wait for a CA to find it.
+#
+# WHEN IT RUNS, AND WHY NOT ON EVERY PULL REQUEST
+#     * every night, at 02:00 IST (20:30 UTC), against main;
+#     * on demand (Actions > Smoke walk > Run workflow), against any branch;
+#     * on a pull request that carries the label `smoke-walk`, for a change that touches many screens (a
+#       redesign, a shared component) and wants the walk before merge. Adding any other label skips the job.
+#     It needs a build of the static export (several minutes) and a ~40 MB browser, which is the cost the
+#     header of the script gave for not running it on every PR, and that cost has not moved.
+#
+# NOT A REQUIRED CHECK, and it must not become one. It never runs on an ordinary pull request, so a required
+# check named here would be "pending forever" (CLAUDE.md, CI): the two required checks are the two jobs in
+# backend-ci.yml. A failure here means "go and look at that screen", on the run that found it.
+#
+# PLAYWRIGHT IS INSTALLED IN THIS JOB AND NOWHERE ELSE. It is not in apps/web/package.json, deliberately
+# (the script's own header says why), so the frontend CI job that every pull request runs pays nothing for it.
+# The version is pinned here and Dependabot does not watch an inline `pnpm add`: bump it by hand, and when
+# you do, re-run this workflow by hand once before trusting the next night's result. The browser comes from
+# `playwright install` for that version, so the script's /opt/pw-browsers fallback (a developer machine)
+# finds nothing on a runner and Playwright uses its own.
+#
+# WHAT IT LEAVES BEHIND
+#     * `smoke-walk-report`: .smoke/report.json on every run, 30 days. The verdict as data (every broken route
+#       with its errors, the herds, how long each screen took to settle), so a run can be compared with the
+#       one a week earlier;
+#     * `smoke-walk-screens`: the screenshots and contact sheet, only when the walk FAILED, 14 days;
+#     * the run's summary page: a table of the broken routes, and one error annotation per broken route (the
+#       first ten) naming it.
+name: Smoke walk
+
+on:
+  schedule:
+    - cron: "30 20 * * *"
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    # `labeled` ONLY: a push to the PR does not re-run it, and a PR without the label never does. To re-walk
+    # after a fix, remove the label and add it again, or run the workflow by hand against the branch.
+    types: [labeled]
+
+concurrency:
+  group: smoke-walk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Exact, and the one scripts/smoke-walk.mjs was written and run against.
+  PLAYWRIGHT_VERSION: "1.63.0"
+
+jobs:
+  walk:
+    name: walk every screen in Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # A pull request runs it only for the one label; every other trigger always runs.
+    if: github.event_name != 'pull_request' || github.event.label.name == 'smoke-walk'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      # In this job only. The edit to package.json and the lockfile lives and dies with this checkout.
+      - name: Add Playwright to THIS job
+        working-directory: apps/web
+        run: pnpm add --save-dev "@playwright/test@${PLAYWRIGHT_VERSION}"
+
+      # The same drop backend-ci.yml makes before any `apt-get update`: a runner image ships third-party
+      # sources, Google's Chrome repository served an inconsistent index on 2026-09-09, and `--with-deps`
+      # below runs apt. Only dl.google.com sources are removed; the Ubuntu archive is untouched and a real
+      # failure there is still fatal.
+      - name: Drop third-party apt sources
+        run: |
+          sudo grep -rlE 'dl\.google\.com' /etc/apt/sources.list.d/ 2>/dev/null \
+            | sudo xargs -r rm -f
+
+      - name: Install Chromium
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      # The export with the API and Supabase URLs pointed at the walk's own server, so every call is
+      # same-origin and no CORS preflight exists to defeat the stub (the script's header has the long
+      # version).
+      - name: Build the static export for the walk
+        working-directory: apps/web
+        run: pnpm smoke:build
+
+      - name: Walk every screen
+        working-directory: apps/web
+        run: node scripts/smoke-walk.mjs --report .smoke/report.json --shots
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-walk-report
+          path: apps/web/.smoke/report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Keep the screenshots of a failed walk
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-walk-screens
+          path: apps/web/.smoke/
+          if-no-files-found: ignore
+          retention-days: 14

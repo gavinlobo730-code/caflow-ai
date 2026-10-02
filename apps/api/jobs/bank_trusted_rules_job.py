@@ -32,6 +32,7 @@ import logging
 import os
 
 from core.db_paging import fetch_all
+from core import db_provider
 
 logger = logging.getLogger("caflow.bank_trusted_rules")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -42,9 +43,7 @@ MAX_PASSES_PER_CLIENT = 500
 MAX_REDRAFTS_PER_CLIENT = 2000
 
 
-def _get_db():
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+_get_db = db_provider.service_db
 
 
 def _clients_with_trusted_rules(db, firm_id: str) -> list[str]:

@@ -26,6 +26,7 @@ import os
 from typing import Callable, Optional
 
 from domain.onboarding import first_run as rule
+from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _log = logging.getLogger("caflow.onboarding")
@@ -34,9 +35,7 @@ _log = logging.getLogger("caflow.onboarding")
 _USER_READ_LIMIT = 50
 
 
-def _db():
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase()
+_db = db_provider.service_db
 
 
 def _client_fact(db, firm_id: str) -> rule.Fact:

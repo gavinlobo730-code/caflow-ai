@@ -20,6 +20,10 @@ import { openedAt } from "@/lib/accounting/sourceDocument";
 import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
+import { useUnsavedChanges } from "@/lib/invoices/dirtyState";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { omitKeys, useDirtyFields } from "@/lib/forms/useDirtyFields";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
 // `credentials` carries a COOKIE — which this API does not read. core/auth.py
@@ -542,6 +546,13 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
   // reverses and re-posts a real journal — twice, on the same typo fix, if
   // nothing guards it.
   const submittingRef = useRef(false);
+  // UNSAVED TYPING (frontend_ux-23): a click on the backdrop or Cancel used to
+  // throw a half-typed correction away, and a correction to a cost reverses and
+  // re-posts a real journal. The form was opened from `asset`, so "dirty" is
+  // simply what differs from it. A SUCCESSFUL save closes the drawer directly.
+  const { dirty } = useDirtyFields(form);
+  const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
+  const leave = async () => { if (await confirmLeave()) onClose(); };
 
   const set = (k: keyof CorrectionForm, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -577,7 +588,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex justify-end" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/30 z-50 flex justify-end" onClick={leave}>
       <div className="bg-white w-full max-w-md h-full overflow-y-auto p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Correct {asset.asset_code ?? asset.asset_name}</h3>
@@ -617,10 +628,10 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
         {error && <Callout tone="problem">{error}</Callout>}
 
         <div className="flex gap-2 pt-2">
-          <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
-          <button onClick={save} disabled={saving} className="flex-1 text-xs bg-brand text-white rounded-lg py-2 hover:bg-brand-dark disabled:opacity-50">
+          <button onClick={leave} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
+          <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 text-xs bg-brand text-white rounded-lg py-2 hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Save correction"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -666,9 +677,9 @@ function DeleteAssetDialog({ asset, onClose, onSaved }: { asset: Asset; onClose:
 
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
-          <button onClick={remove} disabled={working} className="flex-1 text-xs bg-red-600 text-white rounded-lg py-2 hover:bg-red-700 disabled:opacity-50">
+          <Button variant="plain" size="none" onClick={remove} disabled={working} className="flex-1 text-xs bg-red-600 text-white rounded-lg py-2 hover:bg-red-700 disabled:opacity-50">
             {working ? "Deleting…" : "Delete asset"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -742,6 +753,17 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   // set on the same synchronous tick as the call itself, so the second of two
   // back-to-back invocations sees it already set and returns immediately.
   const submittingRef = useRef(false);
+
+  // UNSAVED TYPING (frontend_ux-23). Everything the person typed or picked — and
+  // NOT the four fields the category list fills in when it arrives (category,
+  // class, rate, life), or the drawer would be "dirty" the instant it finished
+  // loading. The four are named and the rest is watched, so a field added to this
+  // form later is guarded without anybody remembering to say so.
+  const { dirty } = useDirtyFields(omitKeys(form, [
+    "asset_category", "schedule_ii_class", "wdv_rate_percent", "useful_life_years",
+  ]));
+  const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
+  const leave = async () => { if (await confirmLeave()) onClose(); };
 
   // Picking a category (or one of its Schedule II classes) pre-fills BOTH the
   // life and the rate from the same served row — they are one figure and its
@@ -914,11 +936,11 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && leave()}>
       <div className="bg-white w-[440px] h-full overflow-y-auto shadow-2xl flex flex-col">
         <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-ps-ink">Add Fixed Asset</h2>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
+          <button onClick={leave} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
         </div>
 
         <div className="flex-1 px-6 py-5 space-y-4 text-xs">
@@ -1208,10 +1230,10 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
         </div>
 
         <div className="px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
-          <button onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
+          <button onClick={leave} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
+          <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Asset"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -1391,13 +1413,13 @@ function DepreciationTab({ clientId }: { clientId: string }) {
             value={toPeriod}
             onChange={e => setToPeriod(e.target.value)}
           />
-          <button
+          <Button variant="plain" size="none"
             onClick={runDepreciation}
             disabled={running}
             className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark disabled:opacity-50"
           >
             <TrendingDown size={12} /> {running ? "Running…" : "Run depreciation"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -1492,13 +1514,13 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                       <span className="text-3xs text-state-attention">{r.statutory_gap}</span>
                     ) : r.annual_depreciation_paise > 0 ? (
                       <>
-                        <button
+                        <Button variant="plain" size="none"
                           onClick={() => postDepreciation(r.asset_id)}
                           disabled={posting === r.asset_id}
                           className="text-xs text-blue-600 hover:underline disabled:opacity-50"
                         >
                           {posting === r.asset_id ? "Posting…" : `Post ${period}`}
-                        </button>
+                        </Button>
                         {notices[r.asset_id] && (
                           <span className="block text-3xs text-state-attention mt-1 max-w-xs">{notices[r.asset_id]}</span>
                         )}
@@ -1514,13 +1536,13 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                       // had no way back. The refusal that names it — "reverse
                       // it a month at a time" — is only actionable because of
                       // this control.
-                      <button
+                      <Button variant="plain" size="none"
                         onClick={() => reverseLastMonth(r.asset_id, r.depreciation_posted_through!)}
                         disabled={posting === r.asset_id}
                         className="block text-3xs text-red-600 hover:underline disabled:opacity-50 mt-1"
                       >
                         Reverse {r.depreciation_posted_through}
-                      </button>
+                      </Button>
                     )}
                   </td>
                 </tr>
@@ -1945,9 +1967,9 @@ function DisposalTab({ clientId }: { clientId: string }) {
               setSelected(null); setProceeds(""); setGstRateBps("");
               setIsSupply(""); setInterstate(false); setPreview(null);
             }} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label">Cancel</button>
-            <button onClick={dispose} disabled={disposing} className="flex-1 py-2 rounded-lg bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50">
+            <Button variant="plain" size="none" onClick={dispose} disabled={disposing} className="flex-1 py-2 rounded-lg bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50">
               {disposing ? "Processing…" : "Confirm Disposal"}
-            </button>
+            </Button>
           </div>
         </div>
       )}

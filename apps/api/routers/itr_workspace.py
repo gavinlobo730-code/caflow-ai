@@ -19,6 +19,7 @@ from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
 from models.fy import AYLabel, FYLabel, OptionalAYLabel
+from core import db_provider
 
 router = APIRouter(prefix="/api/itr", tags=["itr_workspace"])
 _logger = logging.getLogger("caflow.itr.router")
@@ -86,19 +87,13 @@ def _assert_snapshot_scope(current_user: dict, snapshot_id: str) -> dict:
     return snap
 
 
-def _challan_db():
-    """The handle `services/self_assessment_service` reads §140A challans with.
-
-    Guarded rather than unconditional: this router otherwise touches no table
-    directly, and the keying sheet must still answer for a firm with no
-    database configured (mock mode, local dev) — where the service returns no
-    challans and the sheet says so.
-    """
-    import os
-    if not os.environ.get("SUPABASE_URL"):
-        return None
-    from core.supabase_client import get_supabase
-    return get_supabase()
+# The handle `services/self_assessment_service` reads §140A challans with.
+#
+# Guarded rather than unconditional: this router otherwise touches no table
+# directly, and the keying sheet must still answer for a firm with no
+# database configured (mock mode, local dev) — where the service returns no
+# challans and the sheet says so.
+_challan_db = db_provider.request_db_or_none
 
 
 def _assert_filing_scope(current_user: dict, filing_id: str) -> dict:

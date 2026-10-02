@@ -44,6 +44,13 @@ RUNNING IT
     SMOKE_CLIENT_ID=<a client uuid with a real ledger> \
         python3 scripts/smoke_api.py
 
+    With SMOKE_TIMINGS_FILE=<path> it also keeps the run's per-endpoint timings as a
+    small JSON file (ops-12; write_timings says what it holds and never holds).
+    .github/workflows/smoke.yml uploads it every run, and scripts/smoke_timings_report.py
+    turns a month of them into the table docs/operations/service-levels.md judges the
+    targets by. A BUDGET (below) fails one run; a TARGET (Check.target_s) is judged over
+    those runs and never fails anything.
+
     Exits non-zero if any check fails, and prints one line per endpoint so a
     regression says WHICH endpoint and by how much. With no credentials it
     exits 0 and says it was skipped — it is meant to be wired to a scheduled
@@ -55,10 +62,13 @@ CREDENTIALS
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -83,6 +93,13 @@ class Check:
     # True when main.py mounts this router behind _MFA_GUARD (assignments,
     # identity, practice, billing). See run_check for why it matters.
     mfa_guarded: bool = False
+    # Seconds. The SERVICE-LEVEL TARGET: what the 95th percentile of this endpoint's
+    # warm response time should stay under, read over 30 days of runs by
+    # scripts/smoke_timings_report.py (docs/operations/service-levels.md is the table
+    # and the reason). It is NOT a gate. A budget fails ONE run; a target is judged on
+    # the history, reported and never fails anything, so nothing here can flap. None
+    # means no target has been set for this check.
+    target_s: Optional[float] = None
 
 
 def checks(client_id: str, start: str, end: str) -> list[Check]:
@@ -95,14 +112,20 @@ def checks(client_id: str, start: str, end: str) -> list[Check]:
     q = f"?client_id={client_id}"
     period = f"{q}&start_date={start}&end_date={end}"
     return [
-        Check("health",                "/health",                                    5),
+        Check("health",                "/health",                                    5,
+              target_s=1),
         Check("identity/permissions",  "/api/identity/permissions",                  8,
-              mfa_guarded=True),
-        Check("clients/obligations",   f"/api/compliance/obligations{q}",           15),
-        Check("accounting/profit-loss", f"/api/accounting/profit-loss{period}",      20),
-        Check("accounting/cash-flow",  f"/api/accounting/cash-flow{period}",        20),
-        Check("accounting/trial-balance", f"/api/accounting/trial-balance{q}&as_of_date={end}", 20),
-        Check("currencies/policy",     f"/api/currencies/policy{q}",                 8),
+              mfa_guarded=True, target_s=2),
+        Check("clients/obligations",   f"/api/compliance/obligations{q}",           15,
+              target_s=3),
+        Check("accounting/profit-loss", f"/api/accounting/profit-loss{period}",      20,
+              target_s=3),
+        Check("accounting/cash-flow",  f"/api/accounting/cash-flow{period}",        20,
+              target_s=3),
+        Check("accounting/trial-balance", f"/api/accounting/trial-balance{q}&as_of_date={end}", 20,
+              target_s=3),
+        Check("currencies/policy",     f"/api/currencies/policy{q}",                 8,
+              target_s=2),
     ]
 
 
@@ -196,7 +219,14 @@ def failure_reason(r: httpx.Response) -> str:
     return ""
 
 
-def run_check(client: httpx.Client, base: str, c: Check, token: str) -> tuple[bool, str]:
+def run_check(client: httpx.Client, base: str, c: Check, token: str,
+              record: Optional[list] = None) -> tuple[bool, str]:
+    """Run one check. Returns (ok, the line to print).
+
+    `record`, when given, is a list the measurement is APPENDED to (see `_noted`) so
+    main() can keep a run's timings (ops-12). The return value is unchanged, because a
+    dozen tests and the printed output read it.
+    """
     started = time.monotonic()
     try:
         r = client.get(f"{base}{c.path}", headers={"Authorization": f"Bearer {token}"})
@@ -204,8 +234,46 @@ def run_check(client: httpx.Client, base: str, c: Check, token: str) -> tuple[bo
         status: Optional[int] = r.status_code
     except httpx.HTTPError as e:
         elapsed = time.monotonic() - started
-        return False, f"{c.name:28s} {elapsed:7.2f}s  TRANSPORT ERROR  {type(e).__name__}"
+        return _noted(record, c, False, False, elapsed, None,
+                      f"{c.name:28s} {elapsed:7.2f}s  TRANSPORT ERROR  {type(e).__name__}")
 
+    ok, answered, line = _judge(c, r, status, elapsed)
+    return _noted(record, c, ok, answered, elapsed, status, line)
+
+
+def _noted(record: Optional[list], c: Check, ok: bool, answered: bool, elapsed: float,
+           status: Optional[int], line: str) -> tuple[bool, str]:
+    """Append the measurement to `record` and hand back what run_check returns.
+
+    Only the endpoint's NAME is kept, never its path: the path carries the client
+    id the smoke account reads, and the file this feeds is uploaded from a public
+    repository.
+
+    `ok` is the verdict (a budget overrun is a failure); `answered` is a different
+    fact, whether the endpoint did what it exists to do (a 2xx, or the MFA guard
+    refusing an aal1 token, which is the policy working). The history's latency
+    figures are taken over ANSWERED samples only, because a 503 that comes back in
+    50 ms is not a fast response and would flatter the 95th percentile; an
+    over-budget answer is the most important latency sample there is and stays in.
+    `target_s` is copied onto the sample so a later change to a target does not
+    re-judge an old run.
+    """
+    if record is not None:
+        record.append({
+            "name": c.name,
+            "elapsed_s": round(elapsed, 3),
+            "budget_s": c.budget_s,
+            "target_s": c.target_s,
+            "status": status,
+            "answered": answered,
+            "ok": ok,
+        })
+    return ok, line
+
+
+def _judge(c: Check, r: httpx.Response, status: Optional[int],
+           elapsed: float) -> tuple[bool, bool, str]:
+    """(ok, answered, the line to print). See `_noted` for the difference."""
     over = elapsed > c.budget_s
     bad = status is None or not (200 <= status < 300)
 
@@ -230,14 +298,90 @@ def run_check(client: httpx.Client, base: str, c: Check, token: str) -> tuple[bo
         # endpoint then answers 200 and is checked normally, with no code change.
         if c.mfa_guarded and status == 403 and why == MFA_REQUIRED_DETAIL:
             if over:
-                return False, f"{c.name:28s} {elapsed:7.2f}s  OVER BUDGET of {c.budget_s:.0f}s"
-            return True, (f"{c.name:28s} {elapsed:7.2f}s  ok (MFA-guarded: policy "
-                          f"enforced; authorised response not covered)")
-        return False, (f"{c.name:28s} {elapsed:7.2f}s  HTTP {status}  (expected 2xx)"
-                       + (f"  — {why}" if why else ""))
+                return False, True, f"{c.name:28s} {elapsed:7.2f}s  OVER BUDGET of {c.budget_s:.0f}s"
+            return True, True, (f"{c.name:28s} {elapsed:7.2f}s  ok (MFA-guarded: policy "
+                                f"enforced; authorised response not covered)")
+        return False, False, (f"{c.name:28s} {elapsed:7.2f}s  HTTP {status}  (expected 2xx)"
+                              + (f"  — {why}" if why else ""))
     if over:
-        return False, f"{c.name:28s} {elapsed:7.2f}s  OVER BUDGET of {c.budget_s:.0f}s"
-    return True, f"{c.name:28s} {elapsed:7.2f}s  ok"
+        return False, True, f"{c.name:28s} {elapsed:7.2f}s  OVER BUDGET of {c.budget_s:.0f}s"
+    return True, True, f"{c.name:28s} {elapsed:7.2f}s  ok"
+
+
+# What counts as a cold start in the timings file. The wake is never timed against a
+# budget; it is recorded so the history can say how often the instance was asleep.
+COLD_START_FLAG_S = 5.0
+
+# The version of the file write_timings() writes. scripts/smoke_timings_report.py reads
+# only this one and counts any other as unreadable, so a change of shape is a change of
+# number rather than a silent misreading of last month's runs.
+TIMINGS_SCHEMA = 1
+
+
+def write_timings(path: str, *, awake: bool, wake_s: float, wake_detail: str,
+                  samples: list, now: Optional[datetime] = None) -> bool:
+    """Keep this run's measurements as a small JSON file (ops-12). Returns whether it was written.
+
+    WHAT THE FILE HOLDS, AND WHAT IT MUST NEVER HOLD
+        The endpoint NAME, how long it took, its budget and target, its status code, the
+        wake time, the commit and the run id. Never a URL, a path, a client id, an
+        address or a credential: the workflow uploads it as an artifact of a PUBLIC
+        repository, and a path carries the client id this script reads. `wake_detail` is
+        an exception class name or a status, never a message.
+
+    IT IS WRITTEN FOR A RUN THAT FAILED AS WELL
+        A budget overrun is the sample worth keeping. A run where the API never
+        answered is kept too, as an `awake: false` record with no checks, because
+        "nothing answered at 02:15" is also a reading.
+
+    IT NEVER FAILS THE RUN
+        The timings are telemetry about the check, not part of it. A disk that will not
+        take the file is reported on one line and the exit status is the checks' alone,
+        so a full runner cannot turn a green API red.
+    """
+    moment = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    body = {
+        "schema": TIMINGS_SCHEMA,
+        "generated_at": moment.isoformat(),
+        # Which deployment was measured. A manual run aimed at a candidate (the
+        # workflow's `base_url` input) is not the live service's history.
+        "deployment": os.environ.get("SMOKE_DEPLOYMENT", "live"),
+        "commit": os.environ.get("GITHUB_SHA") or None,
+        "run_id": os.environ.get("GITHUB_RUN_ID") or None,
+        "event": os.environ.get("GITHUB_EVENT_NAME") or None,
+        "awake": awake,
+        "wake_s": round(wake_s, 3),
+        "wake_detail": wake_detail,
+        "cold_start": wake_s > COLD_START_FLAG_S,
+        "checks": samples,
+        "all_passed": bool(awake and samples and all(s["ok"] for s in samples)),
+    }
+    try:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
+    except OSError as e:
+        print(f"smoke: could not write the timings file ({type(e).__name__}); "
+              f"the checks' result is unaffected")
+        return False
+    return True
+
+
+def targets_line(samples: list) -> str:
+    """One line on how this run's samples sit against the targets. Informational only.
+
+    A single sample is not a 95th percentile, so this says "over" and never "failed":
+    the verdict on a target is the history's (scripts/smoke_timings_report.py).
+    """
+    judged = [s for s in samples if s.get("target_s") is not None and s.get("answered")]
+    if not judged:
+        return "smoke: no endpoint answered with a target to compare against"
+    over = [s for s in judged if s["elapsed_s"] > s["target_s"]]
+    if not over:
+        return f"smoke: {len(judged)} of {len(judged)} answered endpoints were within their target this run"
+    named = ", ".join(f"{s['name']} {s['elapsed_s']:.2f}s > {s['target_s']:g}s" for s in over)
+    return (f"smoke: {len(judged) - len(over)} of {len(judged)} answered endpoints were within their "
+            f"target this run; over: {named} (a target is judged over 30 days, not on one run)")
 
 
 def main() -> int:
@@ -260,6 +404,11 @@ def main() -> int:
         print(f"smoke: skipped — not configured ({', '.join(missing)})")
         return 0
 
+    # Where to keep this run's timings (ops-12). Unset, nothing is written, which is
+    # what a developer's own run and the test suite want. The workflow sets it and
+    # uploads the file; see write_timings for what it holds and never holds.
+    timings_path = os.environ.get("SMOKE_TIMINGS_FILE", "").strip()
+
     # A financial year's worth of data, which is what the dashboard asks for.
     start = os.environ.get("SMOKE_START_DATE", "2026-04-01")
     end = os.environ.get("SMOKE_END_DATE", "2027-03-31")
@@ -278,14 +427,24 @@ def main() -> int:
         if not awake:
             print(f"\nsmoke: the API never answered /health ({detail}) — "
                   f"not running the remaining checks")
+            if timings_path:
+                write_timings(timings_path, awake=False, wake_s=wake_s, wake_detail=detail,
+                              samples=[])
             return 1
 
         token = sign_in(supabase_url, anon, email, password)
+        samples: list = []
         for c in checks(client_id, start, end):
-            ok, line = run_check(client, base, c, token)
+            ok, line = run_check(client, base, c, token, record=samples)
             print(("  PASS  " if ok else "  FAIL  ") + line)
             if not ok:
                 failures.append(line)
+
+    print(targets_line(samples))
+    if timings_path:
+        if write_timings(timings_path, awake=True, wake_s=wake_s, wake_detail=detail,
+                         samples=samples):
+            print(f"smoke: timings written to {timings_path}")
 
     if failures:
         print(f"\nsmoke: {len(failures)} check(s) failed")
