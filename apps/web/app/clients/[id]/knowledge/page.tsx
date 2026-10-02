@@ -151,7 +151,7 @@ export default function ClientKnowledgePage() {
           <button type="submit" disabled={saving} className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-50">Create</button>
         </form>
       )}
-      {loading ? <PageLoader /> : (
+      {loading ? <PageLoader onRetry={() => { void load(query); }} /> : (
         <div className="space-y-2">
           {articles.length === 0 && <p className="text-xs text-gray-400">No client-scoped articles.</p>}
           {articles.map((a) => (

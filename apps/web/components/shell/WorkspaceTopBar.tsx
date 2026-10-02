@@ -24,6 +24,14 @@ import { WorkspaceMegaMenu } from "@/components/shell/WorkspaceMegaMenu";
  * split means the surface itself still tells a CA which of the two they are
  * in, at a glance, which a redesign that made both bars identical would lose.
  */
+/**
+ * THE OPEN MENU IS A DISCLOSURE, NOT AN ARIA MENU (frontend_ux-03). `role="menu"` promises a list of
+ * `menuitem`s with arrow-key travel, and this panel is a navigation list of links and buttons, which is why axe
+ * reported `aria-required-children` (critical) on it and why a screen reader announced an empty menu. A button
+ * with `aria-expanded` and `aria-controls` over a labelled region says what it is: something that opens.
+ */
+const WORKSPACE_MENU_ID = "workspace-menu";
+
 export function WorkspaceTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
   const { activeWorkspace } = useWorkspace();
   const pathname = usePathname();
@@ -57,7 +65,7 @@ export function WorkspaceTopBar({ onOpenSearch }: { onOpenSearch: () => void }) 
         <button
           onClick={() => setMenuOpen((v) => !v)}
           aria-expanded={menuOpen}
-          aria-haspopup="menu"
+          aria-controls={WORKSPACE_MENU_ID}
           className={cn(
             "flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-white transition-colors",
             menuOpen ? "bg-white/20" : "bg-white/10 hover:bg-white/15",
@@ -80,8 +88,9 @@ export function WorkspaceTopBar({ onOpenSearch }: { onOpenSearch: () => void }) 
             onClick={() => setMenuOpen(false)}
           />
           <div
-            role="menu"
-            aria-label="Workspaces"
+            id={WORKSPACE_MENU_ID}
+            role="region"
+            aria-label="Workspace menu"
             className="absolute inset-x-0 top-full z-40 max-h-[calc(100vh-3rem)] overflow-hidden border-b border-ps-border bg-white shadow-xl"
           >
             <WorkspaceMegaMenu onOpenSearch={() => { setMenuOpen(false); onOpenSearch(); }} />

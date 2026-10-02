@@ -10,6 +10,15 @@
 #     Every static check in the repository was green on all of them, because none of them renders anything.
 #     So a blank screen could ship, and wait for a CA to find it.
 #
+# IT ALSO SCANS FOR ACCESSIBILITY AND DRIVES THE SLOW-SERVER NOTICE (frontend_ux-03, frontend_ux-05)
+#     * axe (`@axe-core/playwright`) scans every screen the walk renders. Sign in, sign up, the dashboard, a
+#       client's sales, the journal editor and the firm menu opened FAIL on any serious or critical WCAG A/AA
+#       violation, with no allowlist; every other screen is held by `apps/web/scripts/axe-baseline.json`, a
+#       ratchet that may only shrink (apps/web/scripts/axeAudit.mjs has the rules and the reasons). A walk that
+#       scanned no page exits 2, and a missing scanner here is a failure and never a silent skip;
+#     * the stub API is held for 24 s on /tasks and the run asserts the waking-up sentence appears once at about
+#       three seconds, a Retry at about twenty, and that both go with the data.
+#
 # WHEN IT RUNS, AND WHY NOT ON EVERY PULL REQUEST
 #     * every night, at 02:00 IST (20:30 UTC), against main;
 #     * on demand (Actions > Smoke walk > Run workflow), against any branch;
@@ -18,24 +27,42 @@
 #     It needs a build of the static export (several minutes) and a ~40 MB browser, which is the cost the
 #     header of the script gave for not running it on every PR, and that cost has not moved.
 #
+#     frontend_ux-01 ASKED WHETHER IT SHOULD RUN ON EVERY FRONTEND PULL REQUEST, AND THE MEASUREMENT SAYS NOT
+#     YET (02-10-2026). The rule it was given: run it on a change to apps/web/** (decided inside the job, not
+#     in `on:`, and never required) if build plus walk is under about twelve minutes and the walk is green on a
+#     clean tree. Measured on a shared four-CPU machine (load average about 3.3, so a runner may be quicker)
+#     with the build cache warm: the static export 3 min 18 s to 3 min 30 s; the walk of 170 routes 4 min 53 s
+#     WITHOUT the accessibility scan, and with the scan (about a second a page, 166 pages), the six named
+#     screens and the 24-second slow-server scenario 7 min 51 s to 9 min 49 s (the longest with `--shots`,
+#     which this workflow also passes). So 11 min 10 s to 13 min 20 s before a runner has installed a thing;
+#     add the dependency install, `pnpm add` of the packages and the browser with its system libraries (two
+#     to three minutes) and a cold build, and one run is fourteen to sixteen minutes: over the line. The walk
+#     IS green on this tree (170 routes, 0 broken, the six named screens clean, the baseline equal to what it
+#     finds, run twice), so the trigger stays as it is because of the length alone. What would move it is a
+#     walk that costs less, not a looser line: the scan is the part to cut, by scanning only the screens a
+#     change touched, which needs a map from a file to its routes that nothing holds today. Until then a
+#     frontend change that touches many screens takes the label.
+#
 # NOT A REQUIRED CHECK, and it must not become one. It never runs on an ordinary pull request, so a required
 # check named here would be "pending forever" (CLAUDE.md, CI): the two required checks are the two jobs in
 # backend-ci.yml. A failure here means "go and look at that screen", on the run that found it.
 #
-# PLAYWRIGHT IS INSTALLED IN THIS JOB AND NOWHERE ELSE. It is not in apps/web/package.json, deliberately
-# (the script's own header says why), so the frontend CI job that every pull request runs pays nothing for it.
-# The version is pinned here and Dependabot does not watch an inline `pnpm add`: bump it by hand, and when
-# you do, re-run this workflow by hand once before trusting the next night's result. The browser comes from
-# `playwright install` for that version, so the script's /opt/pw-browsers fallback (a developer machine)
-# finds nothing on a runner and Playwright uses its own.
+# PLAYWRIGHT AND THE AXE SCANNER ARE INSTALLED IN THIS JOB AND NOWHERE ELSE. Neither is in
+# apps/web/package.json, deliberately (the script's own header says why), so the frontend CI job that every pull
+# request runs pays nothing for them and the production bundle can never include them. The versions are pinned
+# here and Dependabot does not watch an inline `pnpm add`: bump them by hand, and when you do, re-run this
+# workflow by hand once before trusting the next night's result (a newer axe-core can add a rule and turn a
+# baselined page's count up). The browser comes from `playwright install` for that version, so the script's
+# /opt/pw-browsers fallback (a developer machine) finds nothing on a runner and Playwright uses its own.
 #
 # WHAT IT LEAVES BEHIND
 #     * `smoke-walk-report`: .smoke/report.json on every run, 30 days. The verdict as data (every broken route
-#       with its errors, the herds, how long each screen took to settle), so a run can be compared with the
-#       one a week earlier;
+#       with its errors, the herds, how long each screen took to settle, the axe verdict per named screen and
+#       every ratchet failure, the slow-server scenario's problems), so a run can be compared with the one a
+#       week earlier;
 #     * `smoke-walk-screens`: the screenshots and contact sheet, only when the walk FAILED, 14 days;
-#     * the run's summary page: a table of the broken routes, and one error annotation per broken route (the
-#       first ten) naming it.
+#     * the run's summary page: a table of the broken routes, the accessibility table and the slow-server
+#       verdict, and one error annotation per broken route or axe failure (the first ten of each) naming it.
 name: Smoke walk
 
 on:
@@ -58,6 +85,10 @@ permissions:
 env:
   # Exact, and the one scripts/smoke-walk.mjs was written and run against.
   PLAYWRIGHT_VERSION: "1.63.0"
+  # Exact, and the same number as AXE_PACKAGE_VERSION in apps/web/scripts/axeAudit.mjs (a test holds the two
+  # equal). Dependabot does not watch an inline `pnpm add`, so a bump is a by-hand edit of both followed by one
+  # by-hand run of this workflow: a newer axe-core can add a rule and turn a baselined page's count up.
+  AXE_PLAYWRIGHT_VERSION: "4.13.0"
 
 jobs:
   walk:
@@ -86,9 +117,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # In this job only. The edit to package.json and the lockfile lives and dies with this checkout.
-      - name: Add Playwright to THIS job
+      # `playwright-core` is named at the same version because @axe-core/playwright takes it as a peer, and an
+      # unnamed peer is resolved to whatever is newest on the day — a second Playwright beside the one the walk
+      # drives. @axe-core/playwright is the accessibility scan (frontend_ux-03): the product never depends on it.
+      - name: Add Playwright and the axe scanner to THIS job
         working-directory: apps/web
-        run: pnpm add --save-dev "@playwright/test@${PLAYWRIGHT_VERSION}"
+        run: >-
+          pnpm add --save-dev
+          "@playwright/test@${PLAYWRIGHT_VERSION}"
+          "playwright-core@${PLAYWRIGHT_VERSION}"
+          "@axe-core/playwright@${AXE_PLAYWRIGHT_VERSION}"
 
       # The same drop backend-ci.yml makes before any `apt-get update`: a runner image ships third-party
       # sources, Google's Chrome repository served an inconsistent index on 2026-09-09, and `--with-deps`

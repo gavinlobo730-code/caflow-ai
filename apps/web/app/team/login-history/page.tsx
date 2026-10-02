@@ -106,7 +106,7 @@ export default function LoginHistoryPage() {
       {notice && <div className="text-xs text-emerald-700 mb-2">{notice}</div>}
 
       {loading ? (
-        <PageLoader />
+        <PageLoader onRetry={() => { void load(); }} />
       ) : events.length === 0 ? (
         <div className="py-12 text-center text-xs text-gray-400">No login events recorded yet.</div>
       ) : (

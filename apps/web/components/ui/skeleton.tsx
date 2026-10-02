@@ -2,6 +2,7 @@ import * as React from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogoIcon } from "@/components/LogoIcon";
+import { SlowServerNotice } from "@/components/ui/slow-server-notice";
 
 /**
  * Shared loading primitives for PracticeSync. One source of truth so every
@@ -13,6 +14,17 @@ import { LogoIcon } from "@/components/LogoIcon";
  * what is loading (tables, cards, lists, forms). Use a *spinner / PageLoader*
  * only for short, shape-unknown waits. Skeletons should mirror the real layout
  * so there is no jump when data arrives.
+ *
+ * EVERY SKELETON THAT IS A LOADING REGION (it carries `role="status"`) ENDS WITH
+ * A `SlowServerNotice`, which is silent for three seconds and then says the
+ * server may be waking up (frontend_ux-05). They are mounted only while the
+ * region loads, so the notice's lifetime is the wait. A skeleton has nothing to
+ * read again, so none of them offers a Retry; `PageLoader` and `AsyncBoundary`
+ * take an `onRetry` where the screen has one. The pieces (`Skeleton`,
+ * `SkeletonText`, `MetricCardSkeleton`, `ClientHeaderSkeleton`) are parts of a
+ * region and carry none, and `Spinner` is an inline control indicator, not a
+ * region. `scripts/a-loading-region-says-when-the-server-is-slow.test.ts` holds
+ * that line.
  */
 
 /** Base shimmer block. Compose these for any bespoke skeleton. */
@@ -46,7 +58,16 @@ export function Spinner({ className, label = "Loading" }: { className?: string; 
  * Centered loading state for a whole page/route or a large region that has no
  * obvious content shape. Fills its container so the page never appears blank.
  */
-export function PageLoader({ label = "Loading…", className }: { label?: string; className?: string }) {
+export function PageLoader({
+  label = "Loading…",
+  className,
+  onRetry,
+}: {
+  label?: string;
+  className?: string;
+  /** Read the page again. Offered after twenty seconds, and only where the screen passes one. */
+  onRetry?: () => void;
+}) {
   return (
     <div
       role="status"
@@ -55,6 +76,7 @@ export function PageLoader({ label = "Loading…", className }: { label?: string
     >
       <LogoIcon size="lg" spin />
       <p className="text-sm font-medium">{label}</p>
+      <SlowServerNotice onRetry={onRetry} className="max-w-sm justify-center text-center" />
     </div>
   );
 }
@@ -98,6 +120,7 @@ export function TableSkeleton({
       <div role="status" aria-label="Loading table" className={className}>
         {header}
         {body}
+        <SlowServerNotice className="px-4" />
       </div>
     );
   }
@@ -109,6 +132,7 @@ export function TableSkeleton({
     >
       {header}
       {body}
+      <SlowServerNotice className="px-4" />
     </div>
   );
 }
@@ -134,6 +158,7 @@ export function DashboardSkeleton({ cards = 4, className }: { cards?: number; cl
       {Array.from({ length: cards }).map((_, i) => (
         <MetricCardSkeleton key={i} />
       ))}
+      <SlowServerNotice className="col-span-full" />
     </div>
   );
 }
@@ -151,6 +176,7 @@ export function ListSkeleton({ rows = 6, className }: { rows?: number; className
           </div>
         </div>
       ))}
+      <SlowServerNotice />
     </div>
   );
 }
@@ -170,6 +196,7 @@ export function CardGridSkeleton({ count = 6, className }: { count?: number; cla
           <SkeletonText lines={2} />
         </div>
       ))}
+      <SlowServerNotice className="col-span-full" />
     </div>
   );
 }
@@ -184,6 +211,7 @@ export function FormSkeleton({ fields = 4, className }: { fields?: number; class
           <Skeleton className="h-9 w-full rounded-lg" />
         </div>
       ))}
+      <SlowServerNotice />
     </div>
   );
 }
@@ -218,6 +246,7 @@ export function TimelineSkeleton({ rows = 5, className }: { rows?: number; class
           </div>
         </div>
       ))}
+      <SlowServerNotice />
     </div>
   );
 }
@@ -263,6 +292,7 @@ export function StatementSkeleton({
           </div>
         ))}
       </div>
+      <SlowServerNotice className="px-5" />
     </div>
   );
 }
@@ -288,6 +318,7 @@ export function TransactionListSkeleton({ rows = 4, className }: { rows?: number
           <Skeleton className="h-3 w-16 shrink-0" />
         </div>
       ))}
+      <SlowServerNotice className="px-4" />
     </div>
   );
 }
@@ -306,6 +337,7 @@ export function ChartSkeleton({ height = 240, className }: { height?: number; cl
           <Skeleton key={i} className="flex-1 rounded-t" style={{ height: `${h}%` }} />
         ))}
       </div>
+      <SlowServerNotice />
     </div>
   );
 }
