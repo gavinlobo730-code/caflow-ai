@@ -91,7 +91,7 @@ jobs:
     steps:
       # On `deployment_status` the default ref is the deployed commit, so the
       # rules read below are the ones that deployment was built from.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:

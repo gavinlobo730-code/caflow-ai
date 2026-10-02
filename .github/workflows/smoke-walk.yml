@@ -98,7 +98,7 @@ jobs:
     # A pull request runs it only for the one label; every other trigger always runs.
     if: github.event_name != 'pull_request' || github.event.label.name == 'smoke-walk'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 

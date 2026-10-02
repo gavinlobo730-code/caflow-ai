@@ -48,7 +48,7 @@ jobs:
       api: ${{ steps.detect.outputs.api }}
       web: ${{ steps.detect.outputs.web }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Both sides of the comparison have to be present locally.
           fetch-depth: 0
@@ -103,7 +103,7 @@ jobs:
     needs: scope
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - if: needs.scope.outputs.api == 'true'
         uses: actions/setup-python@v5
@@ -228,7 +228,7 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - if: needs.scope.outputs.api == 'true'
         uses: actions/setup-python@v5
@@ -372,7 +372,7 @@ jobs:
     if: needs.scope.outputs.web == 'true' && needs.scope.outputs.api != 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -432,7 +432,7 @@ jobs:
     needs: [scope, test, migrations]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
