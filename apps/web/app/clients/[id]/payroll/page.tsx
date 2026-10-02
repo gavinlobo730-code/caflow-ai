@@ -166,6 +166,10 @@ interface Slip {
   esi_employee_paise: number;
   pt_paise: number;
   tds_paise: number;
+  // True when this slip's PF was computed on ACTUAL wages above the ceiling by
+  // the employer's recorded election (payroll-22, migration 477). Stored on the
+  // slip by the server; this table only labels it.
+  pf_on_actual_wages?: boolean;
   payroll_employees?: { name: string; pan?: string; designation?: string };
   // apex-payroll-yearend-04 (code half): true when this employee's
   // attendance for this wage month was entered or corrected AFTER this slip
@@ -1049,7 +1053,13 @@ function RunsTab({ clientId, firmId, openDoc }:
                               )}
                             </td>
                             <td className="py-1.5 px-2 font-mono text-ps-ink">{fmt(s.gross_paise)}</td>
-                            <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.pf_employee_paise)}</td>
+                            <td className="py-1.5 px-2 font-mono text-ps-label">
+                              {fmt(s.pf_employee_paise)}
+                              {s.pf_on_actual_wages && (
+                                <span title="PF on actual wages (elected) — not limited to the wage ceiling"
+                                  className="ml-1 text-3xs text-ps-hint">actual</span>
+                              )}
+                            </td>
                             <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.esi_employee_paise)}</td>
                             <td className="py-1.5 px-2 font-mono text-ps-label">{fmt(s.pt_paise)}</td>
                             <td className="py-1.5 px-2 font-mono text-amber-600">{fmt(s.tds_paise)}</td>
@@ -2531,7 +2541,13 @@ function ReportsTab({ clientId, initialMonth }: { clientId: string; initialMonth
                   <td className="px-3 py-2 text-ps-ink font-medium">{s.payroll_employees?.name}</td>
                   <td className="px-3 py-2 font-mono text-ps-hint">{s.payroll_employees?.pan || "—"}</td>
                   <td className="px-3 py-2 font-mono">{fmt(s.gross_paise)}</td>
-                  <td className="px-3 py-2 font-mono text-ps-label">{fmt(s.pf_employee_paise)}</td>
+                  <td className="px-3 py-2 font-mono text-ps-label">
+                    {fmt(s.pf_employee_paise)}
+                    {s.pf_on_actual_wages && (
+                      <span title="PF on actual wages (elected) — not limited to the wage ceiling"
+                        className="ml-1 text-3xs text-ps-hint">actual</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 font-mono text-ps-label">{fmt(s.esi_employee_paise)}</td>
                   <td className="px-3 py-2 font-mono text-ps-label">{fmt(s.pt_paise)}</td>
                   <td className="px-3 py-2 font-mono text-amber-600">{fmt(s.tds_paise)}</td>

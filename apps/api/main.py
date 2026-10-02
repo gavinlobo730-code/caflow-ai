@@ -222,7 +222,7 @@ def _failure_response(request: Request, exc: Exception) -> JSONResponse:
 
 
 # Middleware ordering (Starlette applies the LAST-added as the OUTERMOST):
-#   _carry_user_token  ->  CORSMiddleware  ->  RequestContextMiddleware
+#   _carry_user_token  ->  SecurityHeadersMiddleware  ->  CORSMiddleware  ->  RequestContextMiddleware
 #                      ->  BodySizeLimitMiddleware  ->  _errors_with_cors  ->  routes
 # _errors_with_cors is INNERMOST, so any unhandled exception it converts to a
 # JSONResponse travels back OUT through CORSMiddleware and carries the CORS
@@ -273,6 +273,14 @@ app.add_middleware(
     expose_headers=["Content-Disposition", "X-Payslip-Problems", REQUEST_ID_HEADER],
 )
 
+# security_privacy-05: nosniff on every response, `Cache-Control: no-store` on JSON, and HSTS where the
+# request was secure and the deployment says production — each only if the route did not set it (see
+# middleware/security_headers.py). Added AFTER CORS so it is OUTSIDE it: unlike the two layers above it
+# generates no response of its own, so it has no CORS header to lose, and outside is what lets it cover the
+# preflight answers CORSMiddleware itself produces. Pure ASGI, for the same reason as the other two.
+from middleware.security_headers import SecurityHeadersMiddleware
+app.add_middleware(SecurityHeadersMiddleware)
+
 
 @app.middleware("http")
 async def _carry_user_token(request: Request, call_next):
@@ -295,6 +303,13 @@ async def permission_denied_handler(request: Request, exc: PermissionDeniedError
         status_code=403,
         content={"success": False, "data": None, "error": str(exc)},
     )
+
+
+# ops-30: a public route's 429 in the house envelope, with Retry-After (middleware/public_rate_limit.py).
+# `TooManyRequests` is an HTTPException, so this one is looked up first by its own class and every other
+# HTTPException keeps FastAPI's default answer.
+from middleware.public_rate_limit import TooManyRequests, too_many_requests_handler
+app.add_exception_handler(TooManyRequests, too_many_requests_handler)
 
 
 @app.exception_handler(Exception)

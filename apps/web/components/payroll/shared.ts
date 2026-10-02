@@ -65,6 +65,14 @@ export type Employee = {
   // shipped will not carry them and `?? true` is the column's own default.
   eps_eligible?: boolean;
   gratuity_act_covered?: boolean;
+  // The employer's recorded ELECTION to contribute PF on actual wages above the
+  // ceiling (payroll-22, migration 477; EPF Scheme para 26(6), an unverified
+  // reading). null / absent = never recorded, which is the ceiling; true =
+  // elected; false = recorded and withdrawn. The browser never decides whether
+  // it applies to a month — the server does, and stamps the slip.
+  pf_on_actual_wages?: boolean | null;
+  pf_on_actual_wages_from?: string | null;
+  pf_on_actual_wages_reference?: string | null;
   // PAY-13: the three the CLIENT workspace's own form held and this one's did
   // not, now on the single shared form. `aadhaar_last4` is four digits and
   // never twelve — models/payroll.py: "The full value must never reach the
@@ -117,6 +125,9 @@ export type PayrollSlip = {
   edli_paise?: number;
   pf_admin_paise?: number;
   esi_employer_paise?: number;
+  // True when this slip's PF was computed on ACTUAL wages above the ceiling by
+  // the employer's election (migration 477). Absent on rows written before it.
+  pf_on_actual_wages?: boolean;
   employee?: Employee;
   run?: PayrollRun;
 };

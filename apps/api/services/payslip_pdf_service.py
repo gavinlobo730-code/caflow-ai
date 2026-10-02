@@ -67,6 +67,13 @@ def deduction_lines(slip: dict) -> tuple[list[list[str]], int]:
         if value == 0 and key in _HIDE_WHEN_ZERO:
             continue
         total += value
+        if key == "pf_employee_paise" and slip.get("pf_on_actual_wages"):
+            # The employer elected to contribute on the whole PF wage rather
+            # than the statutory ceiling (payroll-22, migration 477). Said on the
+            # SAME row, never as an extra one: a payslip an employee reads
+            # against their EPF passbook has to explain why this is not 12% of
+            # Rs 15,000, and a new row would also move a page break.
+            label = f"{label} - on actual wages (employer's election)"
         rows.append([label, _paise_to_rupee_str(value)])
     return rows, total
 

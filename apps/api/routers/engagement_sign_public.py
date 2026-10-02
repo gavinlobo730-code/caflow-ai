@@ -24,17 +24,27 @@ import logging
 from datetime import datetime, timezone, timedelta, date
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from core.client_ip import client_ip, forwarded_for_evidence
+from middleware.public_rate_limit import public_limit
 from models.common import api_response
 # Reuse the canonical helpers so the public path shares the same audit-event and
 # forward-only lead-advance behaviour as the staff path.
 from routers.engagement_letters import _log_engagement_event, _advance_lead, _revert_lead
 from core import db_provider
 
-router = APIRouter(prefix="/api/public/engagement-letters", tags=["engagement_sign_public"])
+# ops-30: every route on this router answers a stranger holding a link, and each is a round trip to
+# Postgres. The limit is declared on the ROUTER so a route added here next year is covered by default.
+# 120 a minute per address (middleware/public_rate_limit.py says why that is generous for a real signer,
+# an office behind one address included, and useless for a loop). The token's 256 bits already make
+# guessing impractical; this is about capacity and abuse, not access.
+router = APIRouter(
+    prefix="/api/public/engagement-letters",
+    tags=["engagement_sign_public"],
+    dependencies=[Depends(public_limit("esign"))],
+)
 _logger = logging.getLogger("caflow.engagement_sign_public")
 
 # Statuses from which a recipient may still act on the letter.

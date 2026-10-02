@@ -325,6 +325,12 @@ export default function StatutoryPage() {
                             {r.esi_applicable && r.esi_employee_paise > 0 && (
                               <span className="text-3xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">ESIC</span>
                             )}
+                            {r.pf_applicable && r.pf_on_actual_wages && (
+                              <span className="text-3xs px-1.5 py-0.5 rounded bg-ps-muted text-ps-label"
+                                    title="The employer elected to contribute PF on actual wages above the ceiling. EPS wages and EDLI wages stay at the ceiling. The employer must hold the joint request; the legal reading is unverified.">
+                                PF on actual wages
+                              </span>
+                            )}
                             {r.pf_applicable && !r.eps_eligible && (
                               <span className="text-3xs px-1.5 py-0.5 rounded bg-ps-muted text-ps-label"
                                     title="Excluded from EPS by GSR 609(E) — the whole employer 12% goes to EPF">

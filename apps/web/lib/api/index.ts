@@ -878,6 +878,10 @@ export type StatutoryRow = {
   edli_paise: number;
   pf_admin_paise: number;
   eps_eligible: boolean;
+  /** PF is on ACTUAL wages above the ceiling by the employer's recorded
+   *  election (payroll-22) — read off the run's slip, never re-decided. Always
+   *  present from the server; optional here for the redeploy window. */
+  pf_on_actual_wages?: boolean;
   esi_employee_paise: number;
   esi_employer_paise: number;
   joining_date: string | null;

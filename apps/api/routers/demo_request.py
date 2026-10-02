@@ -46,21 +46,29 @@ WHY IT IS THE ONLY UNAUTHENTICATED WRITE SURFACE, AND WHAT GUARDS IT
 Registered in main.py WITHOUT _CLIENT_GUARD, like routers/engagement_sign_public.py.
 """
 import logging
+import math
 import os
 import re
 import time
 from collections import deque
 from typing import Deque, Dict, Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from core.client_ip import client_ip
+from middleware.public_rate_limit import public_limit
 from models.common import api_response
 from services import email_service
 
-router = APIRouter(prefix="/api/public", tags=["demo_request"])
+# ops-30: besides the handler's own caps below (three a quarter hour per address, sixty an hour for
+# everyone), the whole router sits behind the shared per-address valve for form traffic. The caps below
+# count only a request that got past the honeypot and the address check, so a flood of cheap, refused
+# requests was counted by nothing; this counts all of them. 120 a minute per address
+# (middleware/public_rate_limit.py gives the reasoning).
+router = APIRouter(prefix="/api/public", tags=["demo_request"],
+                   dependencies=[Depends(public_limit("form"))])
 _logger = logging.getLogger("caflow.demo_request")
 
 # Where a demo request lands. Declared in render.yaml; when it is unset the
@@ -163,6 +171,27 @@ def _rate_limited(ip: str) -> bool:
     return False
 
 
+def _retry_after_seconds(ip: str) -> int:
+    """Whole seconds until `ip` may submit again, for the `Retry-After` on a refusal.
+
+    Both caps can be spent at once, and then BOTH must clear, so the answer is the longer wait. Computed
+    from the same two windows `_rate_limited` read (a refused request is not recorded, so asking changes
+    nothing), rounded up and never below one. When neither window reads as full, which only a clock that
+    moved between the two calls could cause, it answers the per-address window rather than nothing.
+    """
+    now = time.monotonic()
+    waits = []
+    _prune(_global, now, _GLOBAL_WINDOW_S)
+    if len(_global) >= _GLOBAL_MAX:
+        waits.append(_global[0] + _GLOBAL_WINDOW_S - now)
+    dq = _by_ip.get(ip)
+    if dq is not None:
+        _prune(dq, now, _PER_IP_WINDOW_S)
+        if len(dq) >= _PER_IP_MAX:
+            waits.append(dq[0] + _PER_IP_WINDOW_S - now)
+    return max(1, math.ceil(max(waits))) if waits else _PER_IP_WINDOW_S
+
+
 def _esc(value: str) -> str:
     """Escape for the HTML email body.
 
@@ -203,7 +232,8 @@ def create_demo_request(body: DemoRequestIn, request: Request):
             content=api_response(False, None, "That doesn't look like an email address."),
         )
 
-    if _rate_limited(_client_ip(request)):
+    ip = _client_ip(request)
+    if _rate_limited(ip):
         _logger.warning("demo request rate-limited")
         return JSONResponse(
             status_code=429,
@@ -211,6 +241,7 @@ def create_demo_request(body: DemoRequestIn, request: Request):
                 False, None,
                 "Too many requests from here just now. Please email us instead.",
             ),
+            headers={"Retry-After": str(_retry_after_seconds(ip))},
         )
 
     if not _TO:

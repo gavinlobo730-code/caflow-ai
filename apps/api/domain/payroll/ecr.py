@@ -79,6 +79,19 @@ the round trip. These are checked here instead, and named per member:
   * NCP days negative or beyond the days in the month
   * a member with NCP equal to the whole month showing any contribution
   * the EPS/EPF split not summing to the employer contribution
+  * a member declared on ACTUAL wages (below) whose election is recorded for an
+    employee PF does not apply to, whose payslip holds no PF wage, or whose
+    employee contribution is not the contribution rate of the EPF wage declared
+
+PF ON ACTUAL WAGES (payroll-22, migration 477)
+
+A member whose payslip RECORDS that PF was contributed on actual wages above the
+ceiling — the employer's election, domain/payroll/pf_wage_election.py, EPF
+Scheme para 26(6), `[S]`: an unverified reading — is declared with the EPF WAGE
+column uncapped. EPS wages and EDLI wages stay at the ceiling for every member:
+the pension and EDLI schemes keep their own. The flag is read off the SLIP, not
+the employee row, which can change after a month is finalised; a member with no
+election produces exactly the line this module produced before.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This builds a file for a human to
 # upload to unifiedportal-emp.epfindia.gov.in. Nothing here transmits.
@@ -87,6 +100,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Optional
+
+from domain.payroll import pf_wage_election as pf_election
 
 DELIMITER = "#~#"
 # One copy, in domain/payroll/identity.py (PAY-30) — this module enforces it
@@ -131,6 +147,11 @@ class ECRMember:
     eps_contribution: int
     ncp_days: int
     refund_of_advances: int = 0
+    #: This member is declared on ACTUAL wages above the ceiling by the
+    #: employer's recorded election (payroll-22). Not a column of the file —
+    #: `to_line` never reads it — it exists so the totals and the handoff can
+    #: say how many such members the upload carries.
+    on_actual_wages: bool = False
 
     @property
     def epf_eps_difference(self) -> int:
@@ -164,8 +185,13 @@ class ECRFile:
             "gross_wages": sum(m.gross_wages for m in self.members),
             "epf_wages": sum(m.epf_wages for m in self.members),
             "eps_wages": sum(m.eps_wages for m in self.members),
+            # EDLI wages are their own ceiling and, for a member declared on
+            # actual wages, no longer the EPF wage — so the handoff cannot say
+            # "the portal computes A/c 21 from EPF wages" without this.
+            "edli_wages": sum(m.edli_wages for m in self.members),
             "epf_contribution": sum(m.epf_contribution for m in self.members),
             "eps_contribution": sum(m.eps_contribution for m in self.members),
+            "members_on_actual_wages": sum(1 for m in self.members if m.on_actual_wages),
         }
 
 
@@ -177,12 +203,70 @@ def _rupees(paise: int) -> int:
     return int(paise) // 100
 
 
+def _election_refusal(label: str, emp: dict, slip: dict) -> Optional[str]:
+    """Why a member whose PF is on ACTUAL wages cannot be filed, or None.
+
+    Two inconsistencies, both about the employer's recorded election
+    (domain/payroll/pf_wage_election.py, payroll-22) and neither reachable by a
+    member with no election, whose line is therefore byte-identical to before:
+
+      * the employee master carries an election for somebody PF does not apply
+        to — the database refuses that combination, so this is the second line
+        for a row that predates the constraint or arrived another way;
+      * the slip says the contribution was on actual wages but does not hold
+        the PF wage it was computed on (a slip older than migration 334 cannot
+        say so), so there is no figure to declare as the EPF wage.
+
+    Asked BEFORE the never-contributory skip: an election beside PF off is the
+    one case where "not a member" would hide it.
+    """
+    if emp.get(pf_election.ELECTION) is True and not emp.get("pf_applicable"):
+        return (f"{label}: an election to contribute PF on actual wages above "
+                f"the ceiling is recorded, but PF does not apply to this "
+                f"employee. Withdraw the election or switch PF on before "
+                f"filing.")
+    if slip.get("pf_on_actual_wages") and slip.get("pf_wages_paise") is None:
+        return (f"{label}: this payslip records PF on actual wages but does "
+                f"not hold the PF wage it was computed on, so the EPF wage "
+                f"cannot be declared. Recompute the month.")
+    return None
+
+
+def _elected_contribution_mismatch(label: str, member: "ECRMember",
+                                   employee_pf_paise: int,
+                                   rate_bps: Optional[int]) -> Optional[str]:
+    """A declared EPF wage the slip's own contribution does not follow, or None.
+
+    Only for a member declared on actual wages: that is the one line where the
+    EPF wage is above what a capped computation would have produced, so a slip
+    computed on the ceiling and flagged as elected — or edited afterwards —
+    would declare a wage 12% of which was never deducted. The check is one
+    rupee wide because the file carries whole rupees and the slip rounds the
+    contribution; it is a tie-out of two figures already on the slip, not a
+    second computation of the contribution. Skipped where the caller supplied
+    no rate, which is how every call written before payroll-22 behaves.
+    """
+    if not member.on_actual_wages or not rate_bps:
+        return None
+    expected = member.epf_wages * rate_bps // 10000
+    declared = _rupees(employee_pf_paise)
+    if abs(declared - expected) <= 1:
+        return None
+    # The rate as a sentence, in integer arithmetic: 1200 bps -> "12", 833 -> "8.33".
+    percent = f"{rate_bps // 100}.{rate_bps % 100:02d}".rstrip("0").rstrip(".")
+    return (f"{label}: declared on actual wages of {member.epf_wages}, but the "
+            f"employee's contribution {declared} is not {percent}% of "
+            f"that (about {expected}). The payslip's contribution and its PF "
+            f"wage disagree; recompute the month before filing.")
+
+
 def build_ecr(
     *,
     slips: list[dict],
     employees_by_id: dict[str, dict],
     days_in_month: int,
     wage_ceiling_paise: int,
+    employee_rate_bps: Optional[int] = None,
 ) -> ECRFile:
     """Assemble the return from finalised payslips.
 
@@ -205,6 +289,11 @@ def build_ecr(
         employer_total = int(slip.get("pf_employer_paise") or 0)
         eps = int(slip.get("pf_employer_eps_paise") or 0)
         epf_employer = int(slip.get("pf_employer_epf_paise") or 0)
+
+        election_problem = _election_refusal(label, emp, slip)
+        if election_problem:
+            out.problems.append(election_problem)
+            continue
 
         if not emp.get("pf_applicable") and employee_pf == 0 and employer_total == 0:
             continue                      # never contributory: not a member
@@ -265,22 +354,40 @@ def build_ecr(
         pf_wages += int(slip.get("one_time_pf_wages_paise") or 0)
         ncp = int(slip.get("lop_days") or 0)
 
+        # ONLY THE EPF WAGE COLUMN CAN EXCEED THE CEILING, and only for a member
+        # whose payslip RECORDS that the contribution was on actual wages
+        # (payroll-22, migration 477) — read off the slip like every other
+        # figure here, never off the employee row, which can change after a
+        # month is finalised. EPS wages and EDLI wages keep their own ceilings
+        # for everybody, elected or not: the pension scheme and the EDLI scheme
+        # each have one, and the portal validates both (see the module note).
+        on_actual_wages = bool(slip.get("pf_on_actual_wages"))
+        wage_rupees = _rupees(pf_wages)
+        at_ceiling = min(wage_rupees, ceiling_rupees)
+
         member = ECRMember(
             uan=uan,
             name=sanitise_name(name).upper(),
             gross_wages=_rupees(slip.get("gross_paise") or 0),
-            epf_wages=min(_rupees(pf_wages), ceiling_rupees),
+            epf_wages=wage_rupees if on_actual_wages else at_ceiling,
             # EPS wages are nil for a member excluded from the pension scheme —
             # otherwise the file claims pension wages against a zero pension
             # contribution and the portal rejects the line.
-            eps_wages=min(_rupees(pf_wages), ceiling_rupees) if eps > 0 else 0,
-            edli_wages=min(_rupees(pf_wages), ceiling_rupees),
+            eps_wages=at_ceiling if eps > 0 else 0,
+            edli_wages=at_ceiling,
             # The EMPLOYEE's 12% plus the employer's EPF half. This is what EPFO
             # means by "EPF contribution remitted" — not the employee's alone.
             epf_contribution=_rupees(employee_pf + epf_employer),
             eps_contribution=_rupees(eps),
             ncp_days=ncp,
+            on_actual_wages=on_actual_wages,
         )
+
+        mismatch = _elected_contribution_mismatch(
+            label, member, employee_pf, employee_rate_bps)
+        if mismatch:
+            out.problems.append(mismatch)
+            continue
 
         if member.eps_wages > ceiling_rupees:
             out.problems.append(f"{label}: EPS wages exceed the ceiling.")

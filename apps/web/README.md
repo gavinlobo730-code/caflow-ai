@@ -7,7 +7,7 @@ It is one of three apps in this repository: the FastAPI backend lives in `apps/a
 in `apps/marketing`. The design record for all three is [`CLAUDE.md`](../../CLAUDE.md) at the repository root; read the
 section for the thing you are changing before you change it.
 
-## What it is, and the three things that follow from that
+## What it is, and the four things that follow from that
 
 **A static export.** `next.config.mjs` sets `output: "export"`, so `pnpm build` writes plain files to `out/` and
 Cloudflare Pages serves them (the project is `practicesync-ai`, served at `caflow-ai.pages.dev`; the older
@@ -29,6 +29,11 @@ Cloudflare Pages serves them (the project is `practicesync-ai`, served at `caflo
    Cloudflare Pages allows 100 dynamic rules and drops the rest silently. Do not add a page under a dynamic
    prefix such as `/clients/[id]`; a new client section is a query parameter on an existing route. The budget and
    the reason are in `CLAUDE.md`, "Deployment".
+4. **The security headers are generated, not written.** `scripts/security-headers.mjs` writes `out/_headers` after
+   `next build`, and its `connect-src` names the API, Supabase and error-tracker hosts the bundle was built with.
+   A new kind of outbound connection (a socket, a worker, an iframe that loads a URL) needs a directive there first
+   (`scripts/the-sites-send-security-headers.test.ts` says which). The policy is sent `report-only` until `SECURITY_CSP_MODE=enforce` is set as a Pages
+   build variable by someone who has exercised the deployed app (`off` removes it); see `docs/operations/edge-protection.md`.
 
 ## Two ways to reach data
 
@@ -53,7 +58,7 @@ pnpm lint                             # next lint
 pnpm exec tsc --noEmit                # type-check the app
 pnpm exec tsc -p tsconfig.test.json   # type-check the test files too (the app config excludes them)
 pnpm test                             # node's built-in runner with --experimental-strip-types
-pnpm build                            # regenerates redirects and known routes, then next build -> out/
+pnpm build                            # regenerates redirects and known routes, runs next build -> out/, then writes out/_headers
 ```
 
 `pnpm test` runs the `*.test.ts` files under `scripts/`, `lib/` and `components/`. Most of `scripts/` is **guards**: tests that read

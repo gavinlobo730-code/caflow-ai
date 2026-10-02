@@ -489,7 +489,17 @@ function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => voi
                   ₹14,000 and the deduction is ₹1,680, not ₹1,200. A label
                   naming a base the number is not computed on is the thing a CA
                   would reconcile against and fail. */}
-              <td className="py-1 text-ps-label">PF Deduction (12% of PF wages)</td>
+              <td className="py-1 text-ps-label">
+                PF Deduction (12% of PF wages)
+                {/* Stored on the slip by the run (migration 477), so this says
+                    what THIS month's contribution was computed on and not what
+                    the employee row says today. */}
+                {slip.pf_on_actual_wages && (
+                  <span className="block text-3xs text-ps-hint">
+                    PF on actual wages (elected) — not limited to the wage ceiling
+                  </span>
+                )}
+              </td>
               <td className="py-1 text-right text-red-600">- {fmtRs(slip.pf_employee_paise)}</td>
             </tr>
             <tr>

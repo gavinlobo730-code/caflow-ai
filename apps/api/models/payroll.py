@@ -4,12 +4,13 @@ EPF Act §6: PF = 12% of (Basic + DA). ESI Act §2(9): employee 0.75%, employer 
 IT Act §192: TDS on salary (new regime slabs + 4% cess).
 All monetary amounts in integer paise.
 """
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 import re
 
 from core.validators import validate_pan
 from domain.payroll import identity as identity_domain
+from domain.payroll import pf_wage_election as pf_election_domain
 from models.fy import FYLabel
 
 
@@ -90,6 +91,19 @@ class EmployeeIn(BaseModel):
     #: different divisor — so a wrong value changes money actually paid to a
     #: leaver.
     gratuity_act_covered: bool = True
+    #: THE EMPLOYER'S ELECTION TO CONTRIBUTE PF ON ACTUAL WAGES ABOVE THE
+    #: CEILING (payroll-22, migration 477) — EPF Scheme 1952 para 26(6), a joint
+    #: request of employee and employer, `[S]`: the reading is unverified and the
+    #: product never checks that the request exists. NULL (the default, and every
+    #: employee that exists today) is "never recorded" and computes on the
+    #: ceiling, exactly as before; TRUE elects; FALSE withdraws. Per employee and
+    #: never inferred from wages. The date is when the election takes effect (a
+    #: month ending before it stays capped; none means every month); the
+    #: reference is the employer's own words about where the request is kept.
+    #: domain/payroll/pf_wage_election.py is the authority.
+    pf_on_actual_wages: Optional[bool] = None
+    pf_on_actual_wages_from: Optional[str] = None
+    pf_on_actual_wages_reference: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -97,6 +111,30 @@ class EmployeeIn(BaseModel):
         if not v.strip():
             raise ValueError("Employee name cannot be blank.")
         return v.strip()
+
+    @field_validator("pf_on_actual_wages_from")
+    @classmethod
+    def election_date_shape(cls, v: Optional[str]) -> Optional[str]:
+        return pf_election_domain.clean_effective_from(v)
+
+    @field_validator("pf_on_actual_wages_reference")
+    @classmethod
+    def election_reference_shape(cls, v: Optional[str]) -> Optional[str]:
+        return pf_election_domain.clean_reference(v)
+
+    @model_validator(mode="after")
+    def election_is_consistent(self):
+        # The same rule the PATCH door asks of the stored row merged with the
+        # request (domain.payroll.pf_wage_election.plan_update): a validator
+        # only at the create door is one PATCH from being none.
+        found = pf_election_domain.problems(
+            pf_applicable=self.pf_applicable,
+            election=self.pf_on_actual_wages,
+            effective_from=self.pf_on_actual_wages_from,
+            reference=self.pf_on_actual_wages_reference)
+        if found:
+            raise ValueError(" ".join(found))
+        return self
 
     # ── The two employee identifiers whose shape is settled (PAY-30) ────────
     #
@@ -260,6 +298,16 @@ class EmployeeUpdateIn(BaseModel):
     #: different divisor — so a wrong value changes money actually paid to a
     #: leaver.
     gratuity_act_covered: Optional[bool] = None
+    #: The PF election, on the update door as on the create door (payroll-22,
+    #: migration 477; see EmployeeIn). PATCH drops a null, so a BLANK date or
+    #: reference arrives as "" and means CLEAR; sending `pf_on_actual_wages:
+    #: false` withdraws the election and clears both with it. Whether the
+    #: request conflicts with what is STORED (PF switched off beside an
+    #: election) is asked in the router, which reads the row —
+    #: domain.payroll.pf_wage_election.plan_update.
+    pf_on_actual_wages: Optional[bool] = None
+    pf_on_actual_wages_from: Optional[str] = None
+    pf_on_actual_wages_reference: Optional[str] = None
     # THE DATE OF JOINING, which this model did not carry (PAY-12).
     #
     # components/payroll/AddEmployeeModal.tsx has always sent joining_date on
@@ -278,6 +326,41 @@ class EmployeeUpdateIn(BaseModel):
     # apps/web/scripts/employee-form-captures-what-filing-needs.test.ts asserts
     # joining_date is on the FORM, and passed throughout.
     joining_date: Optional[str] = None
+
+    @field_validator("pf_on_actual_wages_from")
+    @classmethod
+    def election_date_shape(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        # "" means CLEAR on a PATCH, so it is kept as "" and not turned into
+        # None (which exclude_none would drop, leaving the old date in place).
+        cleaned = pf_election_domain.clean_effective_from(v)
+        return cleaned if cleaned is not None else ""
+
+    @field_validator("pf_on_actual_wages_reference")
+    @classmethod
+    def election_reference_shape(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = pf_election_domain.clean_reference(v)
+        return cleaned if cleaned is not None else ""
+
+    @model_validator(mode="after")
+    def election_is_consistent_within_the_request(self):
+        # Only what the REQUEST alone can contradict. What it says against the
+        # stored row is the router's question (plan_update): an omitted
+        # election here may still be TRUE in the database.
+        if self.pf_on_actual_wages is True and self.pf_applicable is False:
+            raise ValueError(" ".join(pf_election_domain.problems(
+                pf_applicable=False, election=True,
+                effective_from=None, reference=None)))
+        if self.pf_on_actual_wages is False and (
+                self.pf_on_actual_wages_from or self.pf_on_actual_wages_reference):
+            raise ValueError(" ".join(pf_election_domain.problems(
+                pf_applicable=self.pf_applicable, election=False,
+                effective_from=self.pf_on_actual_wages_from,
+                reference=self.pf_on_actual_wages_reference)))
+        return self
 
     # task #229: EmployeeUpdateIn had NO numeric validation at all — not even
     # the non-negative check EmployeeIn applies on create. A PATCH with a

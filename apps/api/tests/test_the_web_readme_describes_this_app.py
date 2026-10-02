@@ -21,6 +21,7 @@ WHAT IT DOES NOT HOLD
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -72,6 +73,8 @@ def _named_paths(text: str) -> list[str]:
 #: cannot stay once the file is tracked, and a tracked file cannot hide here.
 IGNORED_ON_PURPOSE = {
     "apps/api/.env": "holds every secret the backend reads and is gitignored; the README says that is where they belong",
+    "out/_headers": "the Cloudflare Pages headers file scripts/security-headers.mjs writes AFTER `next build`; out/ is "
+                    "build output (gitignored) and exists only once a build has run, never in a checkout",
 }
 
 
@@ -84,10 +87,23 @@ def test_the_scan_finds_the_paths_the_readme_names_so_the_check_is_not_vacuous()
     assert len(_named_paths(_text())) >= 15, "the README names almost no paths; the existence check would pass over nothing"
 
 
+def _is_git_ignored(token: str) -> bool:
+    """Whether git ignores the path, asked of git itself (`check-ignore` reads every .gitignore that applies) from
+    either base the README's paths are resolved against. An ignored path need not exist for git to say so."""
+    for base in (WEB, REPO):
+        candidate = base / token.rstrip("/")
+        result = subprocess.run(["git", "check-ignore", "-q", str(candidate)], cwd=REPO, capture_output=True)
+        if result.returncode == 0:
+            return True
+    return False
+
+
 def test_a_path_exempted_from_the_check_is_ignored_by_git_and_still_named():
-    gitignore = (REPO / ".gitignore").read_text(encoding="utf-8").splitlines()
-    assert ".env" in gitignore, "the .gitignore no longer ignores .env, so apps/api/.env is no longer 'ignored on purpose'"
+    # The RULE, not the one .env line it used to read: an exemption is only for a path a checkout never holds, and
+    # that is exactly a path git ignores. A tracked file cannot hide here, and an entry cannot outlive the README
+    # naming it or the ignore rule that justified it.
     for path, why in IGNORED_ON_PURPOSE.items():
+        assert _is_git_ignored(path), f"{path} is exempted ({why}) but git does not ignore it; it belongs in the check"
         assert path in _named_paths(_text()), f"the README no longer names {path} ({why}); drop the exemption"
 
 

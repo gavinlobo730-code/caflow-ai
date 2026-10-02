@@ -195,6 +195,45 @@ wages per member, NCP days ≤ days in month.
 ⚠️ One source mentioned a `||` delimiter. **Believed wrong** — `#~#` is what the
 ECR 2.0 sources overwhelmingly say.
 
+### PF on wages above the ceiling — an employer's election, `[S]` (payroll-22)
+
+Many employers contribute 12% on the whole PF wage rather than on the ₹15,000
+ceiling. EPF Scheme 1952 **para 26(6)** is, as far as this pass could tell, the
+provision: a **joint request** of employee and employer to contribute on wages
+above the statutory ceiling. **Every statement here is `[S]`** — written from
+knowledge, egress being refused — and `domain/payroll/pf_wage_election.py` has
+`VERIFIED = False`.
+
+What the product does: it records the **employer's assertion** (migration 477 —
+`payroll_employees.pf_on_actual_wages`, an optional date it takes effect, an
+optional reference), per employee, never inferred from wages. With it on, the
+employee's 12%, the employer's 12% (so the EPF half) and the administrative
+charge follow the whole PF wage; the ECR's EPF-wage column is uncapped. **EPS
+wages, EPS contribution (₹1,250) and EDLI wages stay at the ceiling for
+everyone.** The wage BASE is the same one the capped path uses (Basic + DA
+before 21-11-2025, the Code on Social Security s.2(88) aggregate after).
+
+**What nobody has read, and a person must establish before offering this to a
+client:**
+
+1. Whether the joint request is **required** in law in every case, what form it
+   takes, and whether EPFO accepts it for a given member.
+2. Whether the **Code on Social Security 2020** carries para 26(6) forward in
+   the same words.
+3. Whether EPFO raises the **administrative charge** on the uncapped EPF wage
+   for these members (the product assumes it follows the EPF wage).
+4. The **higher-pension option** under EPS para 11(3) as the Supreme Court read
+   it in 2022 is a different joint option exercised with EPFO and is **not
+   modelled**; EPS wages are capped for every member, elected or not.
+
+⚠️ One thing seen on the way and **not changed**: `domain/payroll/ecr.py`
+declares `EPF_CONTRI_REMITTED` as the employee's 12% **plus** the employer's EPF
+half (so ₹2,350 / ₹1,250 / ₹1,100 for a ₹15,000 member) and its tests pin that.
+The sample line EPFO's material is RECALLED as carrying (by the author, from
+memory, `[S]` at best) reads ₹1,800 / ₹1,250 / ₹550 — the employee share, the
+pension share, the difference. This could not be checked here; read an actual
+EPFO sample before the next ECR is uploaded. An elected member's line follows the file's existing convention.
+
 ### ⭐ The revamped ECR — VERIFIED, effective wage month September 2025
 
 **VERIFIED 2026-09-04**, including a search for a deferral or relaxation. The

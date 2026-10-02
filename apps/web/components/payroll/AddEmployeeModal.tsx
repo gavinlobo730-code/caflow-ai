@@ -78,6 +78,13 @@ export function AddEmployeeModal({
     // ordinary case.
     eps_eligible: employee?.eps_eligible ?? true,
     gratuity_act_covered: employee?.gratuity_act_covered ?? true,
+    // THE EMPLOYER'S PF ELECTION (payroll-22, migration 477). Unticked is
+    // "never recorded" or "withdrawn" — the server tells them apart and so does
+    // `save()` below: it sends nothing for the first and `false` for the second.
+    // The date and the reference are text typed here and judged by the server.
+    pf_on_actual_wages: employee?.pf_on_actual_wages === true,
+    pf_on_actual_wages_from: employee?.pf_on_actual_wages_from ?? "",
+    pf_on_actual_wages_reference: employee?.pf_on_actual_wages_reference ?? "",
     // The identifiers three FINISHED statutory outputs need and no screen
     // collected. domain/payroll/ecr.py refuses a member whose UAN is absent or
     // not 12 digits; esic.py needs the IP number; the s.192 projection needs
@@ -156,10 +163,29 @@ export function AddEmployeeModal({
       return;
     }
 
+    // The PF election, as the server's three-state column needs it said. An
+    // election that is ticked with PF on is sent with its date and reference
+    // (blank text clears them on an edit); one that WAS recorded and is now
+    // unticked, or whose PF has been switched off, is sent as `false` — a
+    // withdrawal; and one never recorded sends nothing, so NULL stays NULL
+    // rather than becoming a recorded "no".
+    const priorElection = employee?.pf_on_actual_wages === true;
+    const electionFields =
+      form.pf_applicable && form.pf_on_actual_wages
+        ? {
+            pf_on_actual_wages: true,
+            pf_on_actual_wages_from: form.pf_on_actual_wages_from,
+            pf_on_actual_wages_reference: form.pf_on_actual_wages_reference.trim(),
+          }
+        : priorElection
+          ? { pf_on_actual_wages: false }
+          : {};
+
     setSaving(true);
     setErr("");
     try {
       const payload = {
+        ...electionFields,
         name: form.name,
         pan: form.pan.toUpperCase() || null,
         gender: form.gender || null,
@@ -329,6 +355,57 @@ export function AddEmployeeModal({
               </span>
             </label>
           </div>
+          {/* PF ON ACTUAL WAGES (payroll-22). Shown only where PF applies, because
+              the server refuses an election beside PF off. The paragraph below
+              is the SERVER'S own wording (domain/payroll/pf_wage_election
+              SCREEN_NOTICE), pinned here character for character by
+              tests/test_pf_on_actual_wages_is_an_election_the_employer_records.py:
+              the screen says the legal reading is unverified and that the
+              employer, not this product, has to establish the joint request. */}
+          {form.pf_applicable && (
+            <div className="col-span-2 rounded-lg border p-3">
+              <div className="flex items-start gap-2">
+                <input type="checkbox" id="pf-actual" className="mt-0.5"
+                  checked={form.pf_on_actual_wages}
+                  onChange={e => setForm(f => ({ ...f, pf_on_actual_wages: e.target.checked }))} />
+                <label htmlFor="pf-actual" className="text-sm text-ps-body">
+                  Contribute PF on actual wages above the ceiling (employer election)
+                  <span className="block text-2xs text-ps-hint">
+                    This records a statement by the employer that the employee and the
+                    employer have jointly asked to contribute on wages above the statutory
+                    ceiling (EPF Scheme 1952, para 26(6)). This product does not check that
+                    the request exists, whether it is required here, or whether EPFO will
+                    accept it: that is for the employer to establish. The reading of the
+                    paragraph is unverified. Pension (EPS) wages, EDLI wages and the EDLI
+                    limit stay at the ceiling, and the higher-pension option under the
+                    Pension Scheme is not modelled.
+                  </span>
+                </label>
+              </div>
+              {form.pf_on_actual_wages && (
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label htmlFor="pf-actual-from" className="block text-xs font-medium text-ps-body mb-1">Takes effect from</label>
+                    <input id="pf-actual-from" type="date" className="w-full border rounded-lg px-3 py-2 text-sm"
+                      value={form.pf_on_actual_wages_from}
+                      onChange={e => setForm(f => ({ ...f, pf_on_actual_wages_from: e.target.value }))} />
+                    <p className="text-3xs text-ps-hint mt-0.5">
+                      Blank means every month. A month that ends before this date stays on the ceiling.
+                    </p>
+                  </div>
+                  <div>
+                    <label htmlFor="pf-actual-ref" className="block text-xs font-medium text-ps-body mb-1">Reference for the joint request</label>
+                    <input id="pf-actual-ref" maxLength={200} className="w-full border rounded-lg px-3 py-2 text-sm"
+                      value={form.pf_on_actual_wages_reference}
+                      onChange={e => setForm(f => ({ ...f, pf_on_actual_wages_reference: e.target.value }))} />
+                    <p className="text-3xs text-ps-hint mt-0.5">
+                      Where the request is kept. Nothing is uploaded or checked.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div className="col-span-2 flex items-start gap-2">
             <input type="checkbox" id="gratuity" className="mt-0.5"
               checked={form.gratuity_act_covered}

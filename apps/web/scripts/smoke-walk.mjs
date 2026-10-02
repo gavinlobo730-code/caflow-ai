@@ -49,6 +49,15 @@
  * the numbers are right; the backend suite does that, and the two together are
  * the net.
  *
+ * WITH THE HEADERS IT SHIPS (security_privacy-05). `out/_headers` is applied to every static response exactly
+ * as Cloudflare Pages would apply it, and a `securitypolicyviolation` event (enforced OR report-only) is a
+ * broken screen, beside the console error an enforced violation also logs. A Content-Security-Policy that is
+ * wrong takes every screen down and says so only in a console nobody has open; this is the place it is caught.
+ * The build writes the file (`security-headers.mjs`, after `next build`); a build without it is refused,
+ * and `--no-headers` walks without one on purpose. Same-origin stubs mean the walk cannot prove that the
+ * REAL API and Supabase hosts are in connect-src — the generator's tests hold that, from the deployed
+ * configuration — only that nothing the screens do needs a directive the policy lacks.
+ *
  * A dynamic segment is walked as `_placeholder`, which is the literal value
  * Cloudflare rewrites a real id to (see generate-redirects.js) — so this walks
  * the same HTML a CA's browser gets.
@@ -72,6 +81,7 @@
  *                  errors, the herds, the redirects, how long each screen took),
  *                  and, under GitHub Actions, a table on the run's summary page.
  *                  The exit code is unchanged: 1 when any screen is broken.
+ * --no-headers    walk WITHOUT out/_headers (the build is then not the product as served)
  * --anon          do NOT sign in, so the sign-in screens render as
  *                 themselves. Looking only — see `anon` below.
  * --shots          write a PNG per route to .smoke/ (the visual baseline —
@@ -87,6 +97,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { screenRoutes } from "./refresh-screen-snapshot.js";
+import { headersFor, parseHeadersFile } from "./security-headers.mjs";
 
 
 /**
@@ -225,10 +236,14 @@ function sendJson(res, body, status = 200) {
  * breaks — a table that assumes at least one row, a total that divides by a
  * length, a chart handed an empty series.
  */
-function serve(root) {
+function serve(root, headerRules = []) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       const url = decodeURIComponent(req.url.split("?")[0]);
+      // The headers Cloudflare Pages would add to a static asset (security_privacy-05): the SAME file the
+      // deploy ships, parsed by the same function the generator's tests use, applied to every static
+      // response and not to the two stub prefixes (they stand in for other hosts, not for assets).
+      const siteHeaders = headersFor(headerRules, url);
 
       if (url.startsWith("/__supabase/auth/v1/")) {
         if (url.endsWith("/user")) return sendJson(res, FAKE_USER);
@@ -272,10 +287,10 @@ function serve(root) {
       let file = path.join(root, url.replace(CLIENT_UUID_SEG, "/clients/_placeholder/"));
       if (!path.extname(file)) file = path.join(file, "index.html");
       if (!file.startsWith(root) || !fs.existsSync(file)) {
-        res.writeHead(404, { "content-type": "text/plain" });
+        res.writeHead(404, { ...siteHeaders, "content-type": "text/plain" });
         return res.end("not found");
       }
-      res.writeHead(200, { "content-type": MIME[path.extname(file)] || "application/octet-stream" });
+      res.writeHead(200, { ...siteHeaders, "content-type": MIME[path.extname(file)] || "application/octet-stream" });
       fs.createReadStream(file).pipe(res);
     });
     server.listen(PORT, "127.0.0.1", () => resolve(server));
@@ -530,11 +545,46 @@ if (!fs.readFileSync(path.join(OUT, "404.html"), "utf8").includes("__api")
   process.exit(2);
 }
 
-const server = await serve(OUT);
+// THE PRODUCT IS WALKED WITH THE HEADERS IT SHIPS (security_privacy-05). A Content-Security-Policy that is
+// wrong takes every screen down and says so only in a console nobody has open, so the walk applies
+// out/_headers exactly as Cloudflare would and counts a policy violation as a broken screen (below).
+// `pnpm build` and `pnpm smoke:build` both write the file. A build without it is not the product as served,
+// so the walk refuses it rather than quietly walking something else; `--no-headers` is the explicit way out.
+let headerRules = [];
+let cspState = "not applied (--no-headers)";
+if (args.includes("--no-headers")) {
+  console.log("--no-headers: walking WITHOUT out/_headers. This is not the product as it is served.");
+} else {
+  const headersFile = path.join(OUT, "_headers");
+  if (!fs.existsSync(headersFile)) {
+    console.error(
+      "out/_headers does not exist, so this build is not the product as served.\n" +
+      "  pnpm smoke:build     (writes it after `next build`)\n" +
+      "or pass --no-headers to walk without them on purpose.");
+    process.exit(2);
+  }
+  headerRules = parseHeadersFile(fs.readFileSync(headersFile, "utf8"));
+  const served = headersFor(headerRules, "/");
+  cspState = served["content-security-policy"] ? "enforced"
+    : served["content-security-policy-report-only"] ? "REPORT-ONLY" : "ABSENT";
+  console.log(`Security headers: ${Object.keys(served).length} applied to every static response; CSP ${cspState}.`);
+}
+
+const server = await serve(OUT, headerRules);
 const chromium = await loadChromium();
 const browser = await chromium.launch({ executablePath: installedChromium() });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 if (!anon) await context.addInitScript(sessionScript());
+// A policy violation is an EVENT as well as a console line, and a report-only policy produces the event with
+// no console error at all, so the console listener below cannot be the only thing that sees one. Registered
+// before any page script runs, read back per route.
+await context.addInitScript(() => {
+  document.addEventListener("securitypolicyviolation", (e) => {
+    const w = /** @type {any} */ (window);
+    (w.__cspViolations = w.__cspViolations || []).push(
+      `${e.effectiveDirective} blocked ${e.blockedURI || "inline"} (${e.disposition})`);
+  });
+});
 if (anon) {
   console.log("--anon: signed out. Landing pins and the duplicate-body check " +
               "are skipped — see the comment on `anon`." +
@@ -574,6 +624,8 @@ for (const route of routes) {
     await page.waitForTimeout(400);
     const text = (await page.evaluate(() => document.body.innerText || "")).trim();
     if (!text) errors.push("rendered an empty body");
+    const violations = await page.evaluate(() => /** @type {any} */ (window).__cspViolations || []);
+    for (const v of violations) errors.push(`CSP violation: ${String(v).slice(0, 200)}`);
 
     // WHERE IT LANDED, not whether something rendered. AuthGuard, an
     // onboarding gate or a module index that bounces elsewhere all leave a
@@ -708,6 +760,7 @@ if (reportPath) {
     generated_at: new Date().toISOString(),
     commit: process.env.GITHUB_SHA || null,
     mode: { only, anon, realClient, at },
+    csp: cspState,
     routes_walked: walked,
     ok: !failed,
     broken: broken.map((b) => ({ route: b.route, errors: b.errors })),

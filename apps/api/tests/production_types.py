@@ -92,6 +92,12 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("gstr3b_returns", "credit_closing_cess_paise"): "migration 474",
     ("gstr3b_returns", "credit_closing_as_of"): "migration 474",
     ("gstr3b_returns", "credit_opening_source"): "migration 474",
+    # payroll-22. The employer's PF election on the employee master, and the
+    # record on each slip of whether its contribution was on actual wages.
+    ("payroll_employees", "pf_on_actual_wages"): "migration 477",
+    ("payroll_employees", "pf_on_actual_wages_from"): "migration 477",
+    ("payroll_employees", "pf_on_actual_wages_reference"): "migration 477",
+    ("payroll_slips", "pf_on_actual_wages"): "migration 477",
 }
 
 
