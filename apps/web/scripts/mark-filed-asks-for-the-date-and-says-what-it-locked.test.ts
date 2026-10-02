@@ -89,10 +89,13 @@ test("the screens say what the server did about the period", () => {
 
 test("the prompt defaults visibly and never sends a date the CA did not see", () => {
   const { code } = FILES.find((x) => x.file.endsWith("MarkFiledModal.tsx"))!;
-  assert.match(code, /type="date"/);
+  // The date a person types goes through <DateInput> (frontend_ux-19), which keeps
+  // the value contract of the native control: ISO in, ISO out.
+  assert.match(code, /<DateInput\b/);
   assert.match(code, /value=\{filedDate\}/);
   assert.match(code, /max=\{today\}/, "a return cannot have been filed tomorrow");
-  assert.match(code, /disabled=\{busy \|\| !filedDate\}/, "an empty date cannot be confirmed");
+  assert.match(code, /disabled=\{busy \|\| !filedDate \|\| !!dates\.first\}/,
+    "an empty date, or text that is not a date, cannot be confirmed");
 });
 
 test("no screen still marks an obligation filed without the prompt", () => {

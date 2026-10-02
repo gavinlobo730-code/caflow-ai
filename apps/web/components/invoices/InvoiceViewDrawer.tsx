@@ -36,6 +36,8 @@ import {
 import { CompliancePanel } from "@/components/invoices/CompliancePanel";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import {
   complianceTimelineItems, type EInvoiceRecord, type EWayRecord,
 } from "@/lib/invoices/compliance";
@@ -461,8 +463,12 @@ function RecordPaymentModal({ invoice, clientId, outstanding, onClose, onDone, o
   const [mode, setMode] = useState("bank");
   const [reference, setReference] = useState("");
   const [saving, setSaving] = useState(false);
+  // A date typed as text that is not a date reads as blank; the save has to
+  // know which it was (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function submit() {
+    if (dates.first) { onError(dates.first); return; }
     const amountPaise = paiseFromRupeeInput(amount);
     if (amountPaise === null) {
       onError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas.");
@@ -496,7 +502,7 @@ function RecordPaymentModal({ invoice, clientId, outstanding, onClose, onDone, o
     <ModalShell title={`Record Payment — ${invoice.invoice_no}`} onClose={onClose}>
       <Field label="Amount (₹)"><input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputCls} /></Field>
       <p className="text-3xs text-ps-hint -mt-2">Outstanding {fmt(outstanding)}</p>
-      <Field label="Date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
+      <Field label="Date"><DateInput value={date} onChange={setDate} onStateChange={dates.watch("date", "Payment date")} aria-label="Payment date" className={inputCls} /></Field>
       <Field label="Mode">
         <select value={mode} onChange={(e) => setMode(e.target.value)} className={inputCls}>
           {PAYMENT_MODE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -517,8 +523,12 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
   const [date, setDate] = useState(today);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  // A date typed as text that is not a date reads as blank; the save has to
+  // know which it was (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function submit() {
+    if (dates.first) { onError(dates.first); return; }
     // Re-entrancy guard, belt-and-braces alongside ModalActions' own
     // `disabled={saving}`: a fast double-click can fire this handler twice
     // before React re-renders the button disabled, and POST
@@ -568,7 +578,7 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
   return (
     <ModalShell title={`Credit Note — ${invoice.invoice_no}`} onClose={onClose}>
       <p className="text-2xs text-ps-label">Creates a full-value <strong>draft</strong> credit note copying this invoice&apos;s lines. Adjust or issue it from the Credit Notes tab.</p>
-      <Field label="Credit note date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
+      <Field label="Credit note date"><DateInput value={date} onChange={setDate} onStateChange={dates.watch("date", "Credit note date")} aria-label="Credit note date" className={inputCls} /></Field>
       <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the credit note" className={inputCls} /></Field>
       <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Credit Note" />
     </ModalShell>
@@ -586,8 +596,12 @@ function CreateSalesDebitNoteModal({ invoice, clientId, onClose, onDone, onError
   const [date, setDate] = useState(today);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  // A date typed as text that is not a date reads as blank; the save has to
+  // know which it was (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function submit() {
+    if (dates.first) { onError(dates.first); return; }
     // Re-entrancy guard, belt-and-braces alongside ModalActions' own
     // `disabled={saving}`: a fast double-click can fire this handler twice
     // before React re-renders the button disabled, and
@@ -630,7 +644,7 @@ function CreateSalesDebitNoteModal({ invoice, clientId, onClose, onDone, onError
   return (
     <ModalShell title={`Debit Note — ${invoice.invoice_no}`} onClose={onClose}>
       <p className="text-2xs text-ps-label">Creates a full-value <strong>draft</strong> debit note copying this invoice&apos;s lines — for when the customer was undercharged and owes more. Adjust or issue it from the Debit Notes tab (CGST Act §34(3)).</p>
-      <Field label="Debit note date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
+      <Field label="Debit note date"><DateInput value={date} onChange={setDate} onStateChange={dates.watch("date", "Debit note date")} aria-label="Debit note date" className={inputCls} /></Field>
       <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the debit note" className={inputCls} /></Field>
       <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Debit Note" />
     </ModalShell>

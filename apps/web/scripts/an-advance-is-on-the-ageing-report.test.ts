@@ -73,6 +73,9 @@ test("zero advances says so rather than hiding the section", () => {
 test("changing the as-at date clears the advances with the rows", () => {
   // A stale advances total beside a fresh document total is a tie-up that
   // silently does not tie.
-  assert.match(code, /setAsOf\(e\.target\.value\);[\s\S]{0,160}setArAdvances\(null\)/);
-  assert.match(code, /setAsOf\(e\.target\.value\);[\s\S]{0,160}setApAdvances\(null\)/);
+  // The handler's argument is whatever the date field names it: the native
+  // control handed an event and read `e.target.value`, <DateInput> hands the ISO
+  // date itself (frontend_ux-19). The rule is that setting it clears the totals.
+  assert.match(code, /setAsOf\((?:e\.target\.value|v)\);[\s\S]{0,160}setArAdvances\(null\)/);
+  assert.match(code, /setAsOf\((?:e\.target\.value|v)\);[\s\S]{0,160}setApAdvances\(null\)/);
 });

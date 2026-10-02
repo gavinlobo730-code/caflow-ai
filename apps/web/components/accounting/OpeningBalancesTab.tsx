@@ -35,6 +35,8 @@ import {
   openingDocumentColumns,
 } from "@/lib/accounting/openingDocumentImport";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 type Kind = "receivable" | "payable";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -73,6 +75,9 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
    *  the other. Read once for the client, not per side. */
   const [doubles, setDoubles] = useState<DoubleOpening[]>([]);
   const [msg, setMsg] = useState<Msg>(null);
+  // `due_date: form.due_date || null` below would turn text that is not a date
+  // into "no due date", so the save is refused over it instead (frontend_ux-19).
+  const dates = useDateProblems();
 
   const busy = saving || busyId !== null;
 
@@ -140,6 +145,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
     [kinds, kind]);
 
   async function handleSave() {
+    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
     const paise = paiseFromRupeeInput(form.amount);
     if (paise === null || paise <= 0) {
       setMsg({ type: "err", text: "Enter the amount still outstanding at the opening date." });
@@ -416,14 +422,17 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-xs block">
                   <span className="block text-ps-body font-medium mb-1">Document date *</span>
-                  <input type="date" value={form.document_date}
-                    onChange={(e) => setForm((f) => ({ ...f, document_date: e.target.value }))}
+                  <DateInput value={form.document_date}
+                    onChange={(iso) => setForm((f) => ({ ...f, document_date: iso }))}
+                    onStateChange={dates.watch("document_date", "Document date")}
                     className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
                 </label>
                 <label className="text-xs block">
                   <span className="block text-ps-body font-medium mb-1">Due date</span>
-                  <input type="date" value={form.due_date}
-                    onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
+                  <DateInput value={form.due_date}
+                    onChange={(iso) => setForm((f) => ({ ...f, due_date: iso }))}
+                    onStateChange={dates.watch("due_date", "Due date")}
+                    anchor={form.due_date || form.document_date}
                     className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
                 </label>
               </div>

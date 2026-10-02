@@ -31,6 +31,7 @@ import { UnbilledWorkPanel } from "@/components/time/UnbilledWorkPanel";
 import { BillingRatesPanel } from "@/components/time/BillingRatesPanel";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
 
 type Tab = "mine" | "unbilled" | "rates";
 
@@ -374,19 +375,17 @@ export default function TimeTrackingPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">From</label>
-            <input
-              type="date"
+            <DateInput aria-label="Export from"
               value={exportDateFrom}
-              onChange={e => setExportDateFrom(e.target.value)}
+              onChange={v => setExportDateFrom(v)}
               className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
             />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">To</label>
-            <input
-              type="date"
+            <DateInput aria-label="Export to"
               value={exportDateTo}
-              onChange={e => setExportDateTo(e.target.value)}
+              onChange={v => setExportDateTo(v)}
               className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
             />
           </div>

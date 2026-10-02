@@ -31,6 +31,8 @@ import {
 import { paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { Itc04Panel } from "@/components/gst/Itc04Panel";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 type Tab = "quotations" | "orders" | "challans";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -57,6 +59,8 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
   const [msg, setMsg] = useState<Msg>(null);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Text that is not a date reads as blank to the form (frontend_ux-19).
+  const dates = useDateProblems();
   const [detail, setDetail] = useState<ChallanParticulars | null>(null);
   const [position, setPosition] = useState<OrderPosition | null>(null);
 
@@ -130,6 +134,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
     }));
 
   async function save() {
+    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
     const body = buildLines();
     if (!body.length) {
       setMsg({ type: "err", text: "Add at least one line." });
@@ -380,10 +385,10 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
 
             <label className="text-sm">
               <span className="mb-1 block text-ps-label">Date</span>
-              <input
-                type="date"
+              <DateInput
                 value={form.document_date}
-                onChange={(e) => setForm({ ...form, document_date: e.target.value })}
+                onChange={(v) => setForm({ ...form, document_date: v })}
+                onStateChange={dates.watch("document_date", "Date")}
                 className="w-full rounded border border-ps-border px-2 py-1.5"
               />
             </label>
@@ -391,10 +396,10 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             {tab === "quotations" && (
               <label className="text-sm">
                 <span className="mb-1 block text-ps-label">Valid until</span>
-                <input
-                  type="date"
+                <DateInput
                   value={form.valid_until}
-                  onChange={(e) => setForm({ ...form, valid_until: e.target.value })}
+                  onChange={(v) => setForm({ ...form, valid_until: v })}
+                  onStateChange={dates.watch("valid_until", "Valid until")}
                   className="w-full rounded border border-ps-border px-2 py-1.5"
                 />
               </label>
@@ -414,10 +419,10 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                 </label>
                 <label className="text-sm">
                   <span className="mb-1 block text-ps-label">Expected delivery</span>
-                  <input
-                    type="date"
+                  <DateInput
                     value={form.expected_delivery_date}
-                    onChange={(e) => setForm({ ...form, expected_delivery_date: e.target.value })}
+                    onChange={(v) => setForm({ ...form, expected_delivery_date: v })}
+                    onStateChange={dates.watch("expected_delivery_date", "Expected delivery")}
                     className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>

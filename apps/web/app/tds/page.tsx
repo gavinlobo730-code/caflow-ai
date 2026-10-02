@@ -82,6 +82,8 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { panProblem } from "@/lib/identifiers/pan";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -277,6 +279,8 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
   const [quote, setQuote] = useState<Awaited<ReturnType<typeof previewTdsDeduction>> | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [quoteErr, setQuoteErr] = useState<string | null>(null);
+  // Text that is not a date reads as blank to the form (frontend_ux-19).
+  const dates = useDateProblems();
 
   // The FY the PAYMENT falls in decides which year's rates apply and which
   // quarter the row belongs to, and the server derives both from the date.
@@ -321,6 +325,7 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
   }, [clientId, section, grossPaise, paymentDate, partyPan, partyName]);
 
   async function handleSubmit() {
+    if (dates.first) { setErr(dates.first); return; }
     if (!partyName.trim() || !paymentDate) {
       setErr("Party name and payment date are required.");
       return;
@@ -430,8 +435,8 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
             {quoteErr && <p className="text-2xs text-red-600">{quoteErr}</p>}
           </div>
           <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">Payment Date</label>
-            <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
+            <label htmlFor="tds-payment-date" className="text-xs font-medium text-ps-body block mb-1">Payment Date</label>
+            <DateInput id="tds-payment-date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={paymentDate} onChange={setPaymentDate} onStateChange={dates.watch("paymentDate", "Payment date")} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Challan No.</label>
@@ -633,8 +638,11 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
   const [minorHead, setMinorHead] = useState<"200" | "400">("200");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Text that is not a date reads as blank to the form (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function handleAdd() {
+    if (dates.first) { setError(dates.first); return; }
     // Convert to paise — integer arithmetic, never float
     const amtPaise = paiseFromRupeeInput(amtRupees || "0");
     if (amtPaise === null) {
@@ -704,8 +712,8 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-ps-body block mb-1">Challan Date</label>
-              <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={challanDate} onChange={e => setChallanDate(e.target.value)} />
+              <label htmlFor="tds-challan-date" className="text-xs font-medium text-ps-body block mb-1">Challan Date</label>
+              <DateInput id="tds-challan-date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={challanDate} onChange={setChallanDate} onStateChange={dates.watch("challanDate", "Challan date")} />
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Serial No.</label>

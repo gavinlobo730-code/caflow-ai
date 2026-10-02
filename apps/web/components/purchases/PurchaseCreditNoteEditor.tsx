@@ -34,6 +34,8 @@ import {
 } from "@/lib/purchases/purchaseCreditNoteEditor";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const EMPTY_LINE: PurchaseCreditNoteEditorLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "NOS", service_catalogue_id: "" };
@@ -153,6 +155,9 @@ export function PurchaseCreditNoteEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
+  // A date typed as text that is not a date reads as blank to the form; the
+  // save has to know which it was (frontend_ux-19).
+  const dates = useDateProblems();
 
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -278,6 +283,7 @@ export function PurchaseCreditNoteEditor({
 
   async function save() {
     setAttempted(true);
+    if (dates.first) { setError(dates.first); return; }
     if (!validation.ok) {
       setError(validation.errors.vendor ?? validation.errors.creditNoteDate ?? validation.errors.lines ?? "Fix the highlighted fields.");
       return;
@@ -441,10 +447,10 @@ export function PurchaseCreditNoteEditor({
               {fieldErr(validation.errors.vendor)}
             </div>
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">CN Date *</label>
-              <input type="date" value={cnDate} onChange={(e) => setCnDate(e.target.value)} disabled={isLocked}
+              <label htmlFor="purchase-cn-date" className="block text-xs font-medium text-ps-label mb-1">CN Date *</label>
+              <DateInput id="purchase-cn-date" value={cnDate} onChange={setCnDate} onStateChange={dates.watch("cnDate", "Credit note date")} disabled={isLocked}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-hint" />
-              {fieldErr(validation.errors.creditNoteDate)}
+              {!dates.problems.cnDate && fieldErr(validation.errors.creditNoteDate)}
               {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once issued — issue a fresh credit note to correct (CGST Act §34).</p>}
             </div>
             <div>

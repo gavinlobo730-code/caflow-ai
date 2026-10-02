@@ -50,7 +50,9 @@ import {
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 type SaveAction = "draft" | "issue" | "send";
 
@@ -293,6 +295,9 @@ export function InvoiceEditor({
   const { flight } = useSingleFlight();
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
+  // A date typed as text that is not a date reads as blank to the form; the
+  // save has to know which it was (frontend_ux-19).
+  const dates = useDateProblems();
 
   // Multi-Currency (create-only) — mirrors the legacy form.
   const [currency, setCurrency] = useState(
@@ -682,6 +687,7 @@ export function InvoiceEditor({
   // ── Save flow: create/PATCH → (issue) → (send), reusing existing endpoints ─────
   async function save(action: SaveAction) {
     setAttempted(true);
+    if (dates.first) { setError(dates.first); return; }
     // Locked (issued) edit only touches soft fields — the frozen fields are the
     // already-saved invoice and needn't (and might not) satisfy current
     // create-time validation, e.g. a line saved before service_catalogue_id
@@ -1073,11 +1079,11 @@ export function InvoiceEditor({
               )}
             </div>
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">Invoice Date *</label>
-              <input type="date" value={invoiceDate} onChange={(e) => onInvoiceDateChange(e.target.value)}
+              <label htmlFor="inv-date" className="block text-xs font-medium text-ps-label mb-1">Invoice Date *</label>
+              <DateInput id="inv-date" value={invoiceDate} onChange={onInvoiceDateChange} onStateChange={dates.watch("invoiceDate", "Invoice date")}
                 disabled={isLocked}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-hint" />
-              {fieldErr(validation.errors.invoiceDate)}
+              {!dates.problems.invoiceDate && fieldErr(validation.errors.invoiceDate)}
               {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once issued — issue a Credit Note to correct (CGST Act §34).</p>}
             </div>
             <div>
@@ -1095,8 +1101,9 @@ export function InvoiceEditor({
               )}
             </div>
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
-              <input type="date" value={dueDate ?? ""} onChange={(e) => onDueDateChange(e.target.value)}
+              <label htmlFor="inv-due-date" className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
+              <DateInput id="inv-due-date" value={dueDate ?? ""} onChange={onDueDateChange} onStateChange={dates.watch("dueDate", "Due date")}
+                anchor={dueDate || invoiceDate}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               <p className="mt-1 text-3xs text-ps-hint">Auto-set from terms; edit for a custom date.</p>
             </div>
@@ -1206,8 +1213,9 @@ export function InvoiceEditor({
                 </div>
                 <div>
                   <label htmlFor="inv-sb-date" className="block text-xs font-medium text-ps-label mb-1">Shipping bill date</label>
-                  <input id="inv-sb-date" type="date" value={shippingBillDate}
-                    onChange={(e) => setShippingBillDate(e.target.value)}
+                  <DateInput id="inv-sb-date" value={shippingBillDate}
+                    onChange={setShippingBillDate} onStateChange={dates.watch("shippingBillDate", "Shipping bill date")}
+                    anchor={invoiceDate}
                     className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
                 </div>
                 <div>

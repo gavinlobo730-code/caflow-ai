@@ -10,6 +10,7 @@ import { getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { objectWithLists } from "@/lib/api/shape";
+import { DateInput } from "@/components/ui/date-input";
 
 /**
  * The supplier's account, as the client's books have it.
@@ -194,14 +195,14 @@ export function VendorStatementsTab({ clientId }: { clientId: string }) {
             </div>
             <div>
               <label htmlFor="vs-start" className="text-xs text-ps-label">From</label>
-              <input id="vs-start" type="date" value={start}
-                     onChange={(e) => setStart(e.target.value)}
+              <DateInput id="vs-start" value={start}
+                     onChange={(v) => setStart(v)}
                      className="mt-1 px-3 py-2 text-sm bg-white border border-ps-border rounded-md text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label htmlFor="vs-end" className="text-xs text-ps-label">To</label>
-              <input id="vs-end" type="date" value={end}
-                     onChange={(e) => setEnd(e.target.value)}
+              <DateInput id="vs-end" value={end}
+                     onChange={(v) => setEnd(v)}
                      className="mt-1 px-3 py-2 text-sm bg-white border border-ps-border rounded-md text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <button

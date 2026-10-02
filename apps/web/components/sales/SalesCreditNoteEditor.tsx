@@ -49,6 +49,8 @@ import { validateSalesCreditNoteEditor } from "@/lib/sales/salesCreditNoteEditor
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "NOS" };
 
 type EditorLine = InvoiceLine & { _k: number; product?: ServiceCatalogueItem | null };
@@ -165,6 +167,9 @@ export function SalesCreditNoteEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
+  // A date typed as text that is not a date reads as blank to the form; the
+  // save has to know which it was (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function loadOpenInvoices(custId: string) {
     if (!custId) { setOpenInvoices([]); return; }
@@ -270,6 +275,7 @@ export function SalesCreditNoteEditor({
     // ₹1,486 credit notes from what looked like one click.
     if (saving) return;
     setAttempted(true);
+    if (dates.first) { setError(dates.first); return; }
     if (!isLocked && !validation.ok) {
       setError(validation.errors.customer ?? validation.errors.creditNoteDate ?? validation.errors.lines ?? "Fix the highlighted fields.");
       return;
@@ -402,10 +408,10 @@ export function SalesCreditNoteEditor({
               {fieldErr(validation.errors.customer)}
             </div>
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">CN Date *</label>
-              <input type="date" value={cnDate} onChange={(e) => setCnDate(e.target.value)} disabled={isLocked}
+              <label htmlFor="sales-cn-date" className="block text-xs font-medium text-ps-label mb-1">CN Date *</label>
+              <DateInput id="sales-cn-date" value={cnDate} onChange={setCnDate} onStateChange={dates.watch("cnDate", "Credit note date")} disabled={isLocked}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-hint" />
-              {fieldErr(validation.errors.creditNoteDate)}
+              {!dates.problems.cnDate && fieldErr(validation.errors.creditNoteDate)}
               {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once issued — issue a fresh credit note to correct (CGST Act §34).</p>}
             </div>
             <div>

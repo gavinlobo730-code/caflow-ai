@@ -29,6 +29,8 @@ import { formatPaise as fmtPaise } from "@/lib/money/format";
 import { isOwedFeeInvoice, type FeeInvoiceStatus } from "@/lib/constants/feeInvoiceStatus";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -124,8 +126,11 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
   const [startDate, setStartDate] = useState(todayLocalISO());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Text that is not a date reads as blank to the form (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function handleSave() {
+    if (dates.first) { setError(dates.first); return; }
     // Integer paise through the one parser — never Math.round(parseFloat(x)*100),
     // which reads a fee typed "1,25,000" as ₹1 and a blank field as NaN.
     const feePaise = paiseFromRupeeInput(feeRs);
@@ -204,8 +209,8 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">Start Date</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+            <label htmlFor="engagement-start" className="text-xs font-medium text-ps-body block mb-1">Start Date</label>
+            <DateInput id="engagement-start" value={startDate} onChange={setStartDate} onStateChange={dates.watch("startDate", "Start date")}
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
           </div>
         </div>
@@ -242,8 +247,11 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
   const [referenceNo, setReferenceNo] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Text that is not a date reads as blank to the form (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function handleSave() {
+    if (dates.first) { setError(dates.first); return; }
     const amtPaise = paiseFromRupeeInput(amountRs || "0");
     if (amtPaise === null) { setError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas."); return; }
     if (!invoiceId || amtPaise <= 0) { setError("Select invoice and enter valid amount"); return; }
@@ -292,8 +300,8 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-ps-body block mb-1">Receipt Date</label>
-              <input type="date" value={receiptDate} onChange={e => setReceiptDate(e.target.value)}
+              <label htmlFor="fee-receipt-date" className="text-xs font-medium text-ps-body block mb-1">Receipt Date</label>
+              <DateInput id="fee-receipt-date" value={receiptDate} onChange={setReceiptDate} onStateChange={dates.watch("receiptDate", "Receipt date")}
                 className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
             </div>
             <div>
