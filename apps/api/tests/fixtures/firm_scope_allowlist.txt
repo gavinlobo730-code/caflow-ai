@@ -1,0 +1,170 @@
+# Every query on a table that carries a firm_id which the guard cannot see scoped, and why that is all right.
+# Read tests/test_every_query_on_a_firm_table_carries_its_firm_scope.py before touching this file.
+#
+#   file | function | table | operation | chains | category | note
+#
+# `table` is a real table, `<dynamic>` (named by a variable), `repo:<singleton>.<method>` or
+# `call:<function>` (a CALL the guard reads as the query it stands for). `chains` is how many
+# chains share the key; the figure is an EXACT equality in both directions, so a fix that
+# removes a chain must remove its line in the same commit, and a new unscoped chain fails
+# until somebody writes down why it is fine. `category` is one of the guard's CATEGORIES and
+# the note carries what that category's check reads (`route=`, `gate=`, `lookup=`, `source=`,
+# `token=`, `signature=`, `symbol=`, `via=`).
+#
+# Sorted by (file, function, table, operation).
+core/auth.py | _get_user_and_firm | call:_permission_overrides | read | 1 | principal-lookup
+core/auth.py | _get_user_and_firm | users | read | 1 | principal-lookup
+core/auth.py | _permission_overrides | user_permissions | read | 1 | principal-lookup
+core/auth.py | get_current_user | call:_get_user_and_firm | read | 1 | principal-lookup
+core/portal_auth.py | get_current_portal_client | call:list_portal_memberships | read | 1 | principal-lookup
+core/portal_auth.py | get_current_portal_employee | payroll_employees | read | 1 | principal-lookup
+domain/ai_copilot_service.py | AICopilotService._build_context | repo:client_repo.find_by_id | read | 1 | gated-by-route | route=routers/ai_copilot_v2.py::send_message via=chat
+domain/ai_copilot_service.py | AICopilotService.chat | repo:ai_copilot_repo.list_messages | read | 1 | gated-by-route | route=routers/ai_copilot_v2.py::send_message via=chat
+domain/automation_engine.py | evaluate_rules | repo:automation_repo.log_execution | insert | 1 | child-by-parent | source=domain/automation_engine.py::evaluate_rules
+domain/compliance_record_service.py | ComplianceRecordService.update_record | repo:compliance_records_repo.update | update | 1 | looked-up-first | lookup=get_record
+domain/inventory_service.py | _last_ledger_row | inventory_stock_ledger | read | 1 | helper-of-allowlisted-call
+domain/memory_pipeline.py | MemoryPipeline.compute_client_profile | repo:client_repo.find_by_id | read | 1 | gated-by-route | route=routers/memory_intelligence.py::compute_client_profile
+domain/task_service.py | TaskDomainService.create | repo:client_repo.get_or_raise | read | 1 | unreachable-code | symbol=TaskDomainService.create,transition_status
+domain/task_service.py | TaskDomainService.create | repo:task_repo.create | insert | 1 | unreachable-code | symbol=TaskDomainService.create,transition_status
+domain/task_service.py | TaskDomainService.transition_status | repo:task_repo.get_or_raise | read | 1 | unreachable-code | symbol=TaskDomainService.create,transition_status
+domain/task_service.py | TaskDomainService.transition_status | repo:task_repo.update | update | 1 | unreachable-code | symbol=TaskDomainService.create,transition_status
+jobs/scheduler.py | _all_runs_today | scheduler_runs | read | 1 | system-job
+jobs/scheduler.py | _last_run_for_job | scheduler_runs | read | 1 | system-job
+jobs/scheduler.py | _list_firm_ids | tasks | read | 1 | system-job
+jobs/scheduler.py | run_due_schedules | repo:workflow_repo.list_schedules_due | read | 1 | system-job
+jobs/scheduler.py | run_due_schedules | repo:workflow_repo.update_schedule_run | update | 2 | system-job
+repositories/ai_copilot_repository.py | AICopilotRepository.list_messages | ai_messages | read | 1 | repository-contract
+repositories/ai_copilot_repository.py | AICopilotRepository.update_conversation_title | ai_conversations | update | 1 | repository-contract
+repositories/ai_insights_repository.py | AIInsightsRepository.create | ai_insights | insert | 1 | repository-contract
+repositories/approval_repository.py | ApprovalRepository.create | approval_requests | insert | 1 | repository-contract
+repositories/assignment_repository.py | AssignmentRepository.create | user_client_assignments | read | 1 | repository-contract
+repositories/assignment_rule_repository.py | AssignmentRuleRepository.create | assignment_rules | insert | 1 | repository-contract
+repositories/assignment_rule_repository.py | AssignmentRuleRepository.delete | assignment_rules | delete | 1 | repository-contract
+repositories/assignment_rule_repository.py | AssignmentRuleRepository.delete_by_recurring_config | assignment_rules | delete | 1 | repository-contract
+repositories/assignment_rule_repository.py | AssignmentRuleRepository.find_by_id | assignment_rules | read | 1 | repository-contract
+repositories/assignment_rule_repository.py | AssignmentRuleRepository.find_by_recurring_config | assignment_rules | read | 1 | repository-contract
+repositories/assignment_rule_repository.py | AssignmentRuleRepository.update | assignment_rules | update | 1 | repository-contract
+repositories/automation_repository.py | AutomationRepository.log_execution | automation_executions | insert | 1 | repository-contract
+repositories/branding_repository.py | BrandingRepository.create_invoice_template | invoice_templates | insert | 1 | repository-contract
+repositories/branding_repository.py | BrandingRepository.delete_email_template | email_templates | delete | 1 | repository-contract
+repositories/branding_repository.py | BrandingRepository.delete_invoice_template | invoice_templates | delete | 1 | repository-contract
+repositories/branding_repository.py | BrandingRepository.get_email_template | email_templates | read | 1 | repository-contract
+repositories/branding_repository.py | BrandingRepository.get_invoice_template | invoice_templates | read | 1 | repository-contract
+repositories/branding_repository.py | BrandingRepository.update_email_template | email_templates | update | 1 | repository-contract
+repositories/branding_repository.py | BrandingRepository.update_invoice_template | invoice_templates | update | 1 | repository-contract
+repositories/client_repository.py | ClientRepository.create | clients | insert | 1 | repository-contract
+repositories/client_repository.py | ClientRepository.find_by_gstin | clients | read | 1 | repository-contract
+repositories/client_repository.py | ClientRepository.find_by_pan | clients | read | 1 | repository-contract
+repositories/client_repository.py | ClientRepository.soft_delete | clients | update | 1 | repository-contract
+repositories/client_repository.py | ClientRepository.update | clients | update | 1 | repository-contract
+repositories/compliance_records_repository.py | ComplianceRecordsRepository.create | compliance_records | insert | 1 | repository-contract
+repositories/compliance_records_repository.py | ComplianceRecordsRepository.find_by_id | compliance_records | read | 1 | repository-contract
+repositories/compliance_records_repository.py | ComplianceRecordsRepository.soft_delete | compliance_records | update | 1 | repository-contract
+repositories/compliance_records_repository.py | ComplianceRecordsRepository.update | compliance_records | update | 1 | repository-contract
+repositories/compliance_repository.py | ComplianceRepository.create | compliance_tasks | insert | 1 | repository-contract
+repositories/compliance_repository.py | ComplianceRepository.find_by_id | compliance_tasks | read | 1 | repository-contract
+repositories/compliance_repository.py | ComplianceRepository.update | compliance_tasks | update | 1 | repository-contract
+repositories/document_repository.py | DocumentRepository.create | documents | insert | 1 | repository-contract
+repositories/document_repository.py | DocumentRepository.find_by_id | documents | read | 1 | repository-contract
+repositories/document_repository.py | DocumentRepository.soft_delete | documents | update | 1 | repository-contract
+repositories/document_repository.py | DocumentRepository.update_review_status | documents | update | 1 | repository-contract
+repositories/document_repository.py | DocumentRepository.update_storage_path | documents | update | 1 | repository-contract
+repositories/dsc_repository.py | DSCRepository.create | dsc_records | insert | 1 | repository-contract
+repositories/dsc_repository.py | DSCRepository.soft_delete | dsc_records | update | 1 | repository-contract
+repositories/dsc_repository.py | DSCRepository.update | dsc_records | update | 1 | repository-contract
+repositories/engagement_repository.py | EngagementRepository.create | fee_engagements | insert | 1 | repository-contract
+repositories/engagement_repository.py | EngagementRepository.find_by_id | fee_engagements | read | 1 | repository-contract
+repositories/engagement_repository.py | EngagementRepository.soft_delete | fee_engagements | update | 1 | repository-contract
+repositories/engagement_repository.py | EngagementRepository.update | fee_engagements | update | 1 | repository-contract
+repositories/escalation_rule_repository.py | EscalationRuleRepository.create | escalation_rules | insert | 1 | repository-contract
+repositories/escalation_rule_repository.py | EscalationRuleRepository.delete | escalation_rules | delete | 1 | repository-contract
+repositories/escalation_rule_repository.py | EscalationRuleRepository.find_by_id | escalation_rules | read | 1 | repository-contract
+repositories/escalation_rule_repository.py | EscalationRuleRepository.update | escalation_rules | update | 1 | repository-contract
+repositories/invoice_repository.py | InvoiceRepository.create | fee_invoices | insert | 1 | repository-contract
+repositories/invoice_repository.py | InvoiceRepository.delete | fee_invoices | update | 1 | repository-contract
+repositories/invoice_repository.py | InvoiceRepository.find_by_id | fee_invoices | read | 1 | repository-contract
+repositories/invoice_repository.py | InvoiceRepository.soft_delete | fee_invoices | update | 1 | repository-contract
+repositories/invoice_repository.py | InvoiceRepository.update | fee_invoices | update | 1 | repository-contract
+repositories/notifications_repository.py | NotificationsRepository.create | notifications | insert | 1 | repository-contract
+repositories/reminders_repository.py | RemindersRepository.create | reminders | insert | 1 | repository-contract
+repositories/reminders_repository.py | RemindersRepository.find_by_id | reminders | read | 1 | repository-contract
+repositories/reminders_repository.py | RemindersRepository.update | reminders | update | 1 | repository-contract
+repositories/task_extras_repository.py | TaskExtrasRepository.find_events_by_type | task_timeline_events | read | 1 | repository-contract
+repositories/task_extras_repository.py | TaskExtrasRepository.get_dependencies | tasks | read | 1 | repository-contract
+repositories/task_extras_repository.py | TaskExtrasRepository.get_tags | task_tags | read | 1 | repository-contract
+repositories/task_extras_repository.py | TaskExtrasRepository.get_timeline | task_timeline_events | read | 1 | repository-contract
+repositories/task_repository.py | TaskRepository.create | tasks | insert | 1 | repository-contract
+repositories/task_repository.py | TaskRepository.update | tasks | update | 1 | repository-contract
+repositories/task_template_repository.py | TaskTemplateRepository.create | task_templates | insert | 1 | repository-contract
+repositories/time_tracking_repository.py | TimeTrackingRepository.create | time_entries | insert | 1 | repository-contract
+repositories/user_repository.py | UserRepository.create | users | insert | 1 | repository-contract
+repositories/user_repository.py | UserRepository.find_by_invite_token | users | read | 1 | repository-contract
+repositories/workflow_repository.py | WorkflowRepository.list_schedules_due | workflow_schedules | read | 1 | repository-contract
+repositories/workflow_repository.py | WorkflowRepository.update_schedule_run | workflow_schedules | read | 1 | repository-contract
+repositories/workflow_repository.py | WorkflowRepository.update_schedule_run | workflow_schedules | update | 1 | repository-contract
+routers/banking.py | _delete_blockers._rows | <dynamic> | read | 1 | from-scoped-row | source=routers/banking.py::delete_bank_account
+routers/compliance.py | seed_compliance_calendar | repo:compliance_repo.create | insert | 1 | payload-with-firm
+routers/engagement_sign_public.py | _load_by_token | engagements | read | 1 | bearer-token | token=sign_token
+routers/engagement_sign_public.py | reject_letter | engagements | update | 1 | bearer-token | token=sign_token
+routers/engagement_sign_public.py | sign_letter | engagements | update | 1 | bearer-token | token=sign_token
+routers/engagement_sign_public.py | view_letter | engagements | update | 1 | bearer-token | token=sign_token
+routers/identity.py | accept_invite | repo:user_repo.find_by_invite_token | read | 1 | bearer-token | token=invite_token
+routers/invoices.py | generate_from_engagement | repo:invoice_repo.find_by_id | read | 1 | own-insert-id | gate=_assert_engagement_scope
+routers/onboarding.py | create_firm | users | read | 1 | principal-lookup
+routers/platform.py | _count | <dynamic> | read | 1 | platform-admin
+routers/portal_self.py | portal_memberships | call:list_portal_memberships | read | 1 | principal-lookup
+routers/purchase_payments.py | create_purchase_payment | call:create_payment_core | read | 1 | gated-in-function | gate=assert_client_access
+routers/service_catalogue.py | _default_opening_balance_date | clients | read | 1 | helper-of-allowlisted-call
+routers/service_catalogue.py | _resolve_opening_balance_date | call:_default_opening_balance_date | read | 1 | helper-of-allowlisted-call
+routers/service_catalogue.py | bulk_create_services | call:_resolve_opening_balance_date | read | 1 | gated-in-function | gate=_assert_batch_scope
+routers/service_catalogue.py | bulk_create_services | clients | read | 1 | gated-in-function | gate=_assert_batch_scope
+services/compliance_obligation_service.py | _reconcile_stale_gst_obligations | repo:compliance_records_repo.soft_delete | update | 1 | from-scoped-row | source=services/compliance_obligation_service.py::generate_for_engagement
+services/email_events_service.py | _mark_deliveries_bounced | customer_statement_deliveries | update | 1 | provider-callback | signature=process
+services/email_events_service.py | _mark_deliveries_bounced | invoice_deliveries | update | 1 | provider-callback | signature=process
+services/email_events_service.py | handle | call:_mark_deliveries_bounced | update | 1 | provider-callback | signature=process
+services/email_events_service.py | process | call:handle | update | 1 | provider-callback | signature=process
+services/email_outbox_service.py | PostgrestOutboxStore.by_provider_message | email_outbox | read | 1 | system-job
+services/email_outbox_service.py | PostgrestOutboxStore.mark_final | email_outbox | update | 1 | system-job
+services/email_outbox_service.py | PostgrestOutboxStore.mark_retry | email_outbox | update | 1 | system-job
+services/email_outbox_service.py | PostgrestOutboxStore.mark_sent | email_outbox | update | 1 | system-job
+services/email_outbox_service.py | PostgrestOutboxStore.prune | email_outbox | delete | 1 | system-job
+services/email_outbox_service.py | PostgrestOutboxStore.set_delivery_event | email_outbox | update | 1 | system-job
+services/employee_portal_service.py | _find_pending_by_token | payroll_employees | read | 1 | bearer-token | token=portal_invite_token_hash
+services/employee_portal_service.py | _update | payroll_employees | update | 1 | helper-of-allowlisted-call
+services/employee_portal_service.py | accept_employee_invite | call:_update | update | 1 | bearer-token | token=portal_invite_token_hash
+services/employee_portal_service.py | revoke_employee_portal | call:_update | update | 1 | looked-up-first | lookup=_employee
+services/inventory_location_service.py | transfer | call:_last_ledger_row | read | 1 | gated-in-function | gate=position_detail
+services/invoice_generation_service.py | generate_invoice_from_engagement | repo:engagement_repo.get_or_raise | read | 1 | gated-by-route | route=routers/invoices.py::generate_from_engagement
+services/invoice_generation_service.py | generate_invoice_from_time_entries | repo:engagement_repo.get_or_raise | read | 1 | gated-by-route | route=routers/invoices.py::generate_from_time_entries
+services/invoice_generation_service.py | generate_recurring_invoice | repo:engagement_repo.get_or_raise | read | 1 | unreachable-code | symbol=generate_recurring_invoice
+services/invoice_generation_service.py | generate_recurring_invoice | repo:invoice_repo.list_for_engagement | read | 1 | unreachable-code | symbol=generate_recurring_invoice
+services/invoice_pdf_service.py | get_invoice_pdf | repo:client_repo.find_by_id | read | 1 | gated-by-route | route=routers/invoices.py::download_invoice_pdf
+services/invoice_pdf_service.py | get_invoice_pdf | repo:engagement_repo.find_by_id | read | 1 | gated-by-route | route=routers/invoices.py::download_invoice_pdf
+services/invoice_pdf_service.py | get_invoice_pdf | repo:invoice_repo.find_by_id_or_raise | read | 1 | gated-by-route | route=routers/invoices.py::download_invoice_pdf
+services/notification_service.py | NotificationService.notify_due_soon | repo:client_repo.find_by_id | read | 1 | from-scoped-row | source=routers/tasks.py::create_task
+services/notification_service.py | NotificationService.notify_overdue | repo:client_repo.find_by_id | read | 1 | from-scoped-row | source=routers/tasks.py::create_task
+services/notification_service.py | NotificationService.notify_recurring_generated | repo:client_repo.find_by_id | read | 1 | from-scoped-row | source=routers/tasks.py::create_task
+services/notification_service.py | NotificationService.notify_task_assigned | repo:client_repo.find_by_id | read | 1 | from-scoped-row | source=routers/tasks.py::create_task
+services/notification_service.py | NotificationService.notify_task_reassigned | repo:client_repo.find_by_id | read | 1 | from-scoped-row | source=routers/tasks.py::create_task
+services/numbering.py | insert_with_number | <dynamic> | insert | 1 | unreachable-code | symbol=insert_with_number
+services/numbering.py | next_sequence | <dynamic> | read | 1 | numbering-series
+services/payment_service.py | _apply_event | customer_payment_links | update | 1 | provider-callback | signature=process_webhook
+services/payment_service.py | _apply_event | customer_payments | update | 4 | provider-callback | signature=process_webhook
+services/payment_service.py | _event_seen | customer_payment_events | read | 1 | provider-callback | signature=process_webhook
+services/payment_service.py | _find_link | customer_payment_links | read | 2 | provider-callback | signature=process_webhook
+services/payment_service.py | _resolve_payment | call:_find_link | read | 1 | provider-callback | signature=process_webhook
+services/payment_service.py | _resolve_payment | customer_payments | read | 1 | provider-callback | signature=process_webhook
+services/payment_service.py | process_webhook | call:_apply_event | update | 1 | provider-callback | signature=process_webhook
+services/payment_service.py | process_webhook | call:_event_seen | read | 1 | provider-callback | signature=process_webhook
+services/payment_service.py | process_webhook | call:_resolve_payment | read | 1 | provider-callback | signature=process_webhook
+services/period_lock_service.py | reason_from_tables | filings | read | 1 | gated-by-route | route=routers/debit_notes.py::create_debit_note via=assert_open
+services/phase2_journal_service.py | Phase2JournalService._currency_kwargs | clients | read | 1 | helper-of-allowlisted-call
+services/phase2_journal_service.py | Phase2JournalService.journal_for_purchase_payment | call:_currency_kwargs | read | 1 | helper-of-allowlisted-call
+services/portal_access_service.py | _bind | client_portal_users | update | 1 | helper-of-allowlisted-call
+services/portal_access_service.py | _find_all_active_by_auth | client_portal_users | read | 1 | helper-of-allowlisted-call
+services/portal_access_service.py | _find_by_invite_token | client_portal_users | read | 1 | bearer-token | token=invite_token
+services/portal_access_service.py | _legacy_client | clients | read | 1 | helper-of-allowlisted-call
+services/portal_access_service.py | accept_portal_invite | call:_bind | update | 1 | bearer-token | token=invite_token
+services/portal_access_service.py | list_portal_memberships | call:_find_all_active_by_auth | read | 1 | principal-lookup
+services/portal_access_service.py | list_portal_memberships | call:_legacy_client | read | 1 | principal-lookup
+services/purchase_payment_service.py | create_payment_core | call:journal_for_purchase_payment | read | 2 | gated-by-route | route=routers/purchase_payments.py::create_purchase_payment via=create_payment_core

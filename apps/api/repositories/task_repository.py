@@ -113,20 +113,6 @@ class TaskRepository(BaseRepository[dict]):
         result = query.execute()
         return result.data or []
 
-    def find_due_today(self) -> list[dict]:
-        from datetime import date
-        today = date.today().isoformat()
-        if _USE_MOCK:
-            return [t for t in MOCK_TASKS if t.get("due_date") == today and t["status"] != "completed"]
-        result = (
-            _get_db().table("tasks").select("*")
-            .eq("due_date", today)
-            .neq("status", "completed")
-            .is_("deleted_at", None)
-            .execute()
-        )
-        return result.data or []
-
     def create(self, data: dict) -> dict:
         if _USE_MOCK:
             import uuid
@@ -147,9 +133,15 @@ class TaskRepository(BaseRepository[dict]):
         result = _get_db().table("tasks").update({**data, "updated_at": self.now_iso()}).eq("id", id).execute()
         return result.data[0] if result.data else None
 
-    def group_by_status(self) -> dict[str, list[dict]]:
+    def group_by_status(self, firm_id: str) -> dict[str, list[dict]]:
+        # The firm is required, and an empty one is refused: find_all() with no
+        # firm returns EVERY firm's tasks, and a board built from that would carry
+        # everybody else's cards. This had no firm parameter at all until
+        # engineering-28 and its only caller is get_kanban.
+        if not firm_id:
+            raise ValueError("group_by_status needs the firm: without one every firm's tasks are read")
         from services.task_service import group_tasks_by_status
-        return group_tasks_by_status(self.find_all())
+        return group_tasks_by_status(self.find_all(firm_id=firm_id))
 
 
 task_repo = TaskRepository()

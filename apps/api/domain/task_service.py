@@ -16,7 +16,10 @@ class TaskDomainService:
         clients = client_repo.find_all(firm_id=firm_id)
         client_map = {c["id"]: c["client_name"] for c in clients}
         enriched = [{**t, "client_name": client_map.get(t.get("client_id", ""), "Unknown")} for t in tasks]
-        return task_repo.group_by_status() if not client_id else _group(enriched)
+        # The firm is passed on: `group_by_status()` with no argument read every
+        # firm's tasks, so a kanban for one firm carried everybody else's cards
+        # whenever no client was named.
+        return task_repo.group_by_status(firm_id=firm_id) if not client_id else _group(enriched)
 
     def get_dashboard_summary(self, firm_id: Optional[str] = None) -> dict:
         from datetime import date, timedelta

@@ -54,13 +54,19 @@ _DEFAULT_ACCOUNT_TYPE_MAP = DEFAULT_ACCOUNT_TYPE_MAP
 _LINE_NORMAL_BALANCE      = LINE_NORMAL_BALANCE
 
 
-def _account_name(db, account_id: str) -> Optional[str]:
+def _account_name(db, account_id: str, firm_id: str) -> Optional[str]:
     """account_group_mappings.account_name is NOT NULL but the mapping request
     body only ever carries account_id -- look the display name up from the
-    chart of accounts rather than leaving it unpopulated."""
+    chart of accounts rather than leaving it unpopulated.
+
+    THE FIRM IS PART OF THE LOOKUP. `account_id` is a field of the request body,
+    and this used to read the account by id alone: a Partner of one firm naming
+    another firm's account id got that account's NAME written into their own
+    mapping row and returned in the response. An account that is not this firm's
+    is read as no account, exactly as an id that does not exist is."""
     row = (
         db.table("accounts").select("account_name")
-        .eq("id", account_id).maybe_single().execute().data
+        .eq("id", account_id).eq("firm_id", firm_id).maybe_single().execute().data
     )
     return (row or {}).get("account_name")
 
@@ -149,7 +155,7 @@ def create_or_update_mapping(
 
     from core.supabase_client import get_supabase
     db = get_supabase()
-    record["account_name"] = _account_name(db, data.account_id)
+    record["account_name"] = _account_name(db, data.account_id, firm_id)
 
     # Check if mapping already exists for this firm+account_id
     existing = (
@@ -225,7 +231,7 @@ def bulk_update_mappings(
     from core.supabase_client import get_supabase
     db = get_supabase()
     for record in records:
-        record["account_name"] = _account_name(db, record["account_id"])
+        record["account_name"] = _account_name(db, record["account_id"], firm_id)
 
     # Upsert all mappings
     for record in records:

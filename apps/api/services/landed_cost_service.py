@@ -73,7 +73,7 @@ def read_for_bill(db, *, firm_id: str, client_id: str, bill_id: str) -> dict:
     if goods_ids:
         items = fetch_all(
             lambda: db.table("service_catalogue").select("id, kind, name")
-            .in_("id", list({str(g) for g in goods_ids})),
+            .in_("id", list({str(g) for g in goods_ids})).eq("firm_id", firm_id),
             key="id", label="landed_cost.items")
         goods = {str(i["id"]) for i in items if i.get("kind") == "good"}
         names = {str(i["id"]): i.get("name") for i in items}
