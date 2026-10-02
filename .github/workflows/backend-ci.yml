@@ -280,6 +280,29 @@ jobs:
         working-directory: apps/api
         run: pip install --require-hashes -r requirements.txt -r requirements-dev.txt
 
+      # THE SERVER'S OWN LOG IS QUIETED SO A FAILURE IN THE STEP BELOW CAN BE READ.
+      # The log service that returns a job's output hands back only its last 5,000
+      # lines, and the service container's log is dumped AFTER every step. With
+      # checkpoints logged (the suite creates and drops hundreds of databases, and
+      # each one forces a CHECKPOINT) and every deliberate constraint violation the
+      # tests provoke logged as an ERROR, that dump is far longer than 5,000 lines,
+      # so the pytest summary above it was unreachable: on 2 October 2026 this job
+      # failed on two consecutive pushes to main while passing on the pull requests
+      # carrying the same tree, and the failing test could not be named from the
+      # log. Nothing here asserts on the server's log, so only what is not a FATAL
+      # is silenced; the test output is untouched and now sits inside the window.
+      - name: Quiet the Postgres server's own log
+        if: needs.scope.outputs.api == 'true'
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER SYSTEM SET log_checkpoints = off;
+          ALTER SYSTEM SET log_min_messages = fatal;
+          ALTER SYSTEM SET log_min_error_statement = fatal;
+          SELECT pg_reload_conf();
+          SQL
+
       # Applies the full migration set (with the Supabase-compat bootstrap) to a
       # throwaway database and asserts the set of migrations that fail to apply
       # equals the documented drift baseline (tests/test_migrations_apply.py).

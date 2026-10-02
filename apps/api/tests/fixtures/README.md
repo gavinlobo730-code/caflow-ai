@@ -552,3 +552,27 @@ tables**. The query, run in production:
 Every entry at or below the new mark was deleted from `ADDED_AFTER_THE_SNAPSHOT`;
 what remains is migration 474's ten `gstr3b_returns` columns, which is genuinely
 in flight.
+
+---
+
+# rls_expected_access.json
+
+NOT a snapshot of production. It is what the product INTENDS each of ten actors
+to be able to select, insert, update and delete in each of the 89 tables the
+browser reaches (plus the Storage buckets), one line per (table, actor), and it
+is read by `test_rls_role_by_table_matrix_pg.py`, which observes the same cells
+in a real Postgres and fails on any difference in either direction.
+
+The cells where the database does something the product does not intend are
+deliberately NOT in this file: it holds the intended value and
+`DEVIATION_CLASSES` in that module holds the observed one and the reason.
+
+Refresh it when a policy, a grant or a screen's table list changes on purpose:
+
+    HARNESS_PG="host=127.0.0.1 port=5432 user=postgres password=postgres" \
+      RLS_MATRIX_REGENERATE=1 pytest tests/test_rls_role_by_table_matrix_pg.py
+
+That rewrites the file from observation (known deviations replaced by their
+intended value) and skips. Then read `git diff` cell by cell: the file only means
+something if each changed cell was judged, not copied. `test_the_expectation_
+obeys_the_five_rules` refuses a file that waives one of the module's five rules.

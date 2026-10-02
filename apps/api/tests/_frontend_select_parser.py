@@ -469,6 +469,43 @@ def scan(web_root: Path) -> tuple[list[tuple[str, str, str]], int]:
     return found, unparsed
 
 
+def browser_tables(web_root: Path) -> dict[str, set[str]]:
+    """{table: the files naming it} for every table the frontend reaches directly.
+
+    A table is reached when it is the argument of a `.from("x")` (a read, an
+    insert, an update, a delete — whatever the chain does with it) OR when a
+    `.select(...)` embeds it (`payroll_slips(..., payroll_runs!inner(month))`
+    reads `payroll_runs` through its own row-level security although no
+    `.from("payroll_runs")` appears). The third source is a literal write
+    payload, which is only ever attached to a `.from()` and so adds nothing a
+    `.from()` does not already name, but is unioned anyway so that a future
+    change to either scanner cannot silently shrink the answer.
+
+    It is the table list the role-by-table access matrix
+    (test_rls_role_by_table_matrix_pg.py) is built over, and it is deliberately
+    this parser's own answer and not a second regex: the other checks in this
+    directory (columns, assignment scope) already agree with it about what the
+    browser reads, and a matrix over a different list would be a matrix about
+    something else.
+    """
+    out: dict[str, set[str]] = {}
+    for path in sorted(web_root.rglob("*.ts*")):
+        if set(path.parts) & SKIP_DIRS:
+            continue
+        try:
+            src = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        rel_path = path.relative_to(web_root).as_posix()
+        for m in _FROM.finditer(blank_comments(src)):
+            out.setdefault(m.group(1), set()).add(rel_path)
+    for rel_path, rel, _col in scan(web_root)[0]:
+        out.setdefault(rel, set()).add(rel_path)
+    for rel_path, rel, _col in scan_writes(web_root):
+        out.setdefault(rel, set()).add(rel_path)
+    return out
+
+
 # A `.select(` this parser reached but could not read. Anything matching this
 # and NOT matching _SELECT_AFTER is a column list going unchecked.
 #
