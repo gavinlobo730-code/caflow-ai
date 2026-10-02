@@ -38,8 +38,10 @@ import type {
 import { getFirmId } from "@/lib/data/getFirmId";
 import { MonthlyReview } from "@/components/payroll/MonthlyReview";
 import { toLocalISO, dueDateUrgency, fromLocalISO } from "@/lib/dateMath";
+import { formatDate, formatMonthYear } from "@/lib/dates/format";
 import { api, type PayrollDepositDueDates_FY, type PayrollTdsProjection } from "@/lib/api";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -107,12 +109,6 @@ function currentFy(): string {
   return fyLabel(m >= 4 ? y : y - 1);
 }
 
-/** Month display name e.g. "Apr 2025" */
-function monthLabel(yyyyMm: string): string {
-  const [y, m] = yyyyMm.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleString("en-IN", { month: "short", year: "numeric" });
-}
-
 // ── Statutory Dues Calendar helpers ──────────────────────────────────────
 
 // This was byte-identical to app/payroll/page.tsx's getDueDateStatus. The rule
@@ -166,7 +162,7 @@ function buildStatutoryCalendar(
     id: `esi-${start}-h1`,
     label: `ESI Return — Apr–Sep ${start}`,
     description: "Half-yearly ESI return — ESIC Portal (ESI Act; employees ≤ ₹21,000/month)",
-    dueDate: esiDue1.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+    dueDate: formatDate(toLocalISO(esiDue1)),
     dueDateObj: esiDue1,
     portal: "ESIC Portal",
     status: dueDateStatus(esiDue1, today),
@@ -177,7 +173,7 @@ function buildStatutoryCalendar(
     id: `esi-${start}-h2`,
     label: `ESI Return — Oct ${start}–Mar ${start + 1}`,
     description: "Half-yearly ESI return — ESIC Portal (ESI Act; employees ≤ ₹21,000/month)",
-    dueDate: esiDue2.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+    dueDate: formatDate(toLocalISO(esiDue2)),
     dueDateObj: esiDue2,
     portal: "ESIC Portal",
     status: dueDateStatus(esiDue2, today),
@@ -186,8 +182,7 @@ function buildStatutoryCalendar(
 
   // ── Everything the engine owns ──────────────────────────────────────────
   for (const m of served?.months ?? []) {
-    const periodLabel = new Date(m.year, m.month - 1, 1)
-      .toLocaleString("en-IN", { month: "short", year: "numeric" });
+    const periodLabel = formatMonthYear(toLocalISO(new Date(m.year, m.month - 1, 1)));
     for (const d of m.deposits) {
       const due = fromLocalISO(d.due_date);
       if (!due) continue;
@@ -195,8 +190,7 @@ function buildStatutoryCalendar(
         id: `deposit-${m.year}-${m.month}-${d.label}`,
         label: `${d.label} — ${periodLabel}`,
         description: `${d.statute} — ${d.authority}`,
-        dueDate: due.toLocaleDateString("en-IN",
-          { day: "numeric", month: "short", year: "numeric" }),
+        dueDate: formatDate(d.due_date),
         dueDateObj: due,
         portal: d.authority,
         status: dueDateStatus(due, today),
@@ -212,8 +206,7 @@ function buildStatutoryCalendar(
       id: `return-${r.quarter}`,
       label: `${r.label} — FY ${fy}`,
       description: `${r.statute} — quarterly TDS return on salary`,
-      dueDate: due.toLocaleDateString("en-IN",
-        { day: "numeric", month: "short", year: "numeric" }),
+      dueDate: formatDate(r.due_date),
       dueDateObj: due,
       portal: "e-filing portal (incometax.gov.in)",
       status: dueDateStatus(due, today),
@@ -353,7 +346,7 @@ function PayslipSummaryTab({
               {runOptions.length === 0 && <option value="">No payroll runs</option>}
               {runOptions.map(r => (
                 <option key={r.id} value={r.id}>
-                  {(clientNames[r.client_id] ?? "Client")} — {monthLabel(r.month)}
+                  {(clientNames[r.client_id] ?? "Client")} — {formatMonthYear(r.month)}
                 </option>
               ))}
             </select>
@@ -385,7 +378,7 @@ function PayslipSummaryTab({
       <CardContent className="p-0">
         {runSlips.length === 0 ? (
           <p className="text-center text-ps-hint py-12 text-sm">
-            {run ? `No payslips in the ${monthLabel(run.month)} run.` : "No payroll runs yet."}
+            {run ? `No payslips in the ${formatMonthYear(run.month)} run.` : "No payroll runs yet."}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -465,7 +458,7 @@ function MonthlyReviewTab({ runs, clientNames }: {
             {runOptions.length === 0 && <option value="">No payroll runs</option>}
             {runOptions.map(r => (
               <option key={r.id} value={r.id}>
-                {(clientNames[r.client_id] ?? "Client")} — {monthLabel(r.month)}
+                {(clientNames[r.client_id] ?? "Client")} — {formatMonthYear(r.month)}
               </option>
             ))}
           </select>
@@ -534,7 +527,7 @@ function YtdTab({ employees, runs, fyOptions }: {
     const header = "Month,Gross,PF,ESI,PT,TDS,Total Deductions,Net Pay,YTD Gross,YTD TDS,YTD Net";
     const csvRows = rows.map(r =>
       [
-        monthLabel(r.month),
+        formatMonthYear(r.month),
         (r.gross / 100).toFixed(2),
         (r.pf / 100).toFixed(2),
         (r.esi / 100).toFixed(2),
@@ -607,7 +600,7 @@ function YtdTab({ employees, runs, fyOptions }: {
                     key={r.month}
                     className={`border-b hover:bg-ps-bg ${r.gross === 0 ? "text-ps-disabled" : ""}`}
                   >
-                    <td className="py-3 px-4 font-medium text-ps-body">{monthLabel(r.month)}</td>
+                    <td className="py-3 px-4 font-medium text-ps-body">{formatMonthYear(r.month)}</td>
                     <td className="py-3 px-4 text-right font-mono">{r.gross > 0 ? fmtPaise(r.gross) : "—"}</td>
                     <td className="py-3 px-4 text-right font-mono text-red-600">{r.pf > 0 ? fmtPaise(r.pf) : "—"}</td>
                     <td className="py-3 px-4 text-right font-mono text-red-600">{r.esi > 0 ? fmtPaise(r.esi) : "—"}</td>
@@ -767,7 +760,7 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
             value={selectedMonth}
             onChange={e => setSelectedMonth(e.target.value)}
           >
-            {availableMonths.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+            {availableMonths.map(m => <option key={m} value={m}>{formatMonthYear(m)}</option>)}
           </select>
           <Button size="sm" variant="outline" onClick={exportCsv} disabled={ctcRows.length === 0} className="flex items-center gap-1.5">
             <Download size={13} />Export CSV
@@ -987,7 +980,7 @@ function TdsProjectionTab({ employees, fyOptions }: {
                       key={r.month}
                       className={`border-b hover:bg-ps-bg ${!r.hasActual ? "text-ps-hint" : ""}`}
                     >
-                      <td className="py-3 px-4 font-medium text-ps-body">{monthLabel(r.month)}</td>
+                      <td className="py-3 px-4 font-medium text-ps-body">{formatMonthYear(r.month)}</td>
                       <td className="py-3 px-4 text-center">
                         {r.hasActual ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">
@@ -1486,24 +1479,13 @@ export default function PayrollReportsPage() {
   return (
     <div className="min-h-screen bg-ps-bg p-8">
       <div className="max-w-ps-data mx-auto">
-        <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Link href="/payroll">
-                <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-ps-label hover:text-ps-ink -ml-2">
-                  <ArrowLeft size={14} />Payroll
-                </Button>
-              </Link>
-            </div>
-            <h1 className="text-2xl font-bold text-ps-ink flex items-center gap-2">
-              <BarChart2 size={22} className="text-blue-600" />
-              Payroll Reports
-            </h1>
-            <p className="text-sm text-ps-label mt-0.5">
-              IT Act Section 192 &middot; EPF Act &middot; ESI Act &middot; 234B/234C planning
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          back={{ href: "/payroll", label: "Payroll" }}
+          icon={<BarChart2 size={22} className="text-blue-600" />}
+          title="Payroll Reports"
+          subtitle="IT Act Section 192 &middot; EPF Act &middot; ESI Act &middot; 234B/234C planning"
+          className="mb-6"
+        />
 
         <Tabs defaultValue="payslip-summary">
           <TabsList className="mb-6 flex-wrap h-auto gap-1">

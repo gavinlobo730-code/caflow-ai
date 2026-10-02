@@ -33,6 +33,8 @@ async function apiFetch(path: string, opts?: RequestInit) {
 }
 import { Badge } from "@/components/ui/badge";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -373,34 +375,36 @@ export default function RelationshipsPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-brand">Entity Registry</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+      <PageHeader
+        title="Entity Registry"
+        subtitle={
+          <>
             {entities.length}{entitiesCapped ? "+" : ""} entities across all clients
             {entitiesCapped && " — refine your search to see more"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleDetectMatches}
-            disabled={actionInFlight}
-            className="text-sm text-brand border border-brand/30 px-3 py-1.5 rounded-md hover:bg-brand-light/20 disabled:opacity-50"
-          >
-            {detectLoading ? "Detecting…" : "Detect Matches"}
-          </button>
-          <button
-            onClick={() => {
-              setForm(EMPTY_FORM);
-              setSaveError(null);
-              setModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 text-sm bg-brand text-white px-3 py-1.5 rounded-md hover:bg-brand-dark"
-          >
-            <Plus size={14} /> Add Entity
-          </button>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDetectMatches}
+              disabled={actionInFlight}
+              className="text-sm text-brand border border-brand/30 px-3 py-1.5 rounded-md hover:bg-brand-light/20 disabled:opacity-50"
+            >
+              {detectLoading ? "Detecting…" : "Detect Matches"}
+            </button>
+            <button
+              onClick={() => {
+                setForm(EMPTY_FORM);
+                setSaveError(null);
+                setModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 text-sm bg-brand text-white px-3 py-1.5 rounded-md hover:bg-brand-dark"
+            >
+              <Plus size={14} /> Add Entity
+            </button>
+          </div>
+        }
+      />
 
       {/* Registry table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable
@@ -417,7 +421,15 @@ export default function RelationshipsPage() {
         exportFilename="entity-registry"
         persistKey="relationships.entities"
         emptyTitle="No entities found"
-        emptyDescription="Add an entity or run match detection to populate the registry."
+        emptyDescription="An entity is a person or a company that appears across your clients. Add one, or run match detection to find the ones your clients already share."
+        emptyAction={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["client", "write"]} icon={<Plus size={14} />} label="Add Entity"
+              onClick={() => { setForm(EMPTY_FORM); setSaveError(null); setModalOpen(true); }} />
+            <EmptyStateAction requires={["client", "write"]} variant="secondary" label="Detect Matches"
+              disabled={actionInFlight} onClick={() => handleDetectMatches()} />
+          </EmptyStateActions>
+        }
         rowActions={(e) => (
           <a href={`/relationships/${e.id}`} className="text-xs font-medium text-brand hover:underline">
             View →

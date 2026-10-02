@@ -5,7 +5,7 @@
 //   node --experimental-strip-types --test components/accounting/entryHistoryFields.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { describeChanges, istStamp, type AuditRowLike } from "./entryHistoryFields.ts";
+import { describeChanges, type AuditRowLike } from "./entryHistoryFields.ts";
 
 function row(over: Partial<AuditRowLike> = {}): AuditRowLike {
   return { action: "update", old_data: {}, new_data: {}, ...over };
@@ -61,7 +61,7 @@ test("known columns get a CA-facing label and their values formatted", () => {
 
   assert.equal(byKey.entry_date.label, "Date");
   assert.equal(byKey.entry_date.before, "31 Mar 2026");
-  assert.equal(byKey.entry_date.after, "1 Apr 2026");
+  assert.equal(byKey.entry_date.after, "01 Apr 2026");
 
   assert.equal(byKey.narration.label, "Narration");
   assert.equal(byKey.narration.before, "Rent");
@@ -104,9 +104,19 @@ test("a null value reads as an em dash, not the word null", () => {
   assert.equal(changes[0].after, "REF-9");
 });
 
-test("istStamp renders a stored UTC instant in IST", () => {
+test("posted_at renders a stored UTC instant in IST", () => {
   // 2026-03-31T18:35:00Z is 2026-04-01 00:05 IST (UTC+5:30).
-  const s = istStamp("2026-03-31T18:35:00Z");
-  assert.match(s, /2026/);
-  assert.match(s, /Apr/);
+  const changes = describeChanges(row({
+    old_data: { posted_at: null },
+    new_data: { posted_at: "2026-03-31T18:35:00Z" },
+  }));
+  assert.equal(changes[0].after, "01 Apr 2026, 12:05 am");
+});
+
+test("an unreadable date is shown as it was stored, not as a placeholder", () => {
+  const changes = describeChanges(row({
+    old_data: { entry_date: "2026-03-31" },
+    new_data: { entry_date: "31/03/2026" },
+  }));
+  assert.equal(changes[0].after, "31/03/2026");
 });

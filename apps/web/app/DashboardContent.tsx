@@ -13,10 +13,14 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/utils";
 import { toLocalISO, todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { formatDate, formatMonthYear, formatWeekdayDate } from "@/lib/dates/format";
 import { api } from "@/lib/api";
 import { mapComplianceKpis } from "@/lib/dashboard/complianceKpis";
 import { Hub } from "@/components/hub/Hub";
 import { FirstRunChecklist } from "@/components/onboarding/FirstRunChecklist";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -65,9 +69,9 @@ function getUpcomingDeadlines(today: Date): UpcomingDeadline[] {
     while (m > 11) { m -= 12; y++; }
     const gstr1Month = m + 1 > 11 ? 0 : m + 1;
     const gstr1Year = m + 1 > 11 ? y + 1 : y;
-    const monthLabel = new Date(y, m, 1).toLocaleString("default", { month: "short" });
-    deadlines.push({ name: `GSTR-1 (${monthLabel} ${y})`, date: new Date(gstr1Year, gstr1Month, 11) });
-    deadlines.push({ name: `GSTR-3B (${monthLabel} ${y})`, date: new Date(gstr1Year, gstr1Month, 20) });
+    const monthLabel = formatMonthYear(toLocalISO(new Date(y, m, 1)));
+    deadlines.push({ name: `GSTR-1 (${monthLabel})`, date: new Date(gstr1Year, gstr1Month, 11) });
+    deadlines.push({ name: `GSTR-3B (${monthLabel})`, date: new Date(gstr1Year, gstr1Month, 20) });
   }
 
   const fyStart = month >= 3 ? year : year - 1;
@@ -257,7 +261,7 @@ export default function DashboardContent() {
   }, [user, reloadKey]);
 
   const greeting = user?.email ? getGreeting(fullName, user.email) : "Good day";
-  const dateLabel = today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const dateLabel = formatWeekdayDate(toLocalISO(today));
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
@@ -295,18 +299,18 @@ export default function DashboardContent() {
       <FirstRunChecklist />
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink tracking-tight">{greeting}</h1>
-          <p className="text-sm text-ps-hint mt-1">{dateLabel}</p>
-        </div>
-        <Link href="/ai-assistant">
-          <div className="hidden sm:flex items-center gap-2 bg-brand hover:bg-brand-dark text-white text-sm font-medium px-3.5 py-2 rounded-lg shadow-[0_4px_12px_rgba(59,130,246,0.2)] transition-colors">
-            <Sparkles size={14} />
-            Ask AI
-          </div>
-        </Link>
-      </div>
+      <PageHeader
+        title={greeting}
+        subtitle={dateLabel}
+        actions={
+          <Link href="/ai-assistant">
+            <div className="hidden sm:flex items-center gap-2 bg-brand hover:bg-brand-dark text-white text-sm font-medium px-3.5 py-2 rounded-lg shadow-[0_4px_12px_rgba(59,130,246,0.2)] transition-colors">
+              <Sparkles size={14} />
+              Ask AI
+            </div>
+          </Link>
+        }
+      />
 
       {/* ── The hub — D1's fifteen tiles (Phase 2.2) ───────────────────────
           COMPOSED WITH THIS PAGE RATHER THAN REPLACING IT, and that is a
@@ -407,7 +411,7 @@ export default function DashboardContent() {
                     <div className="min-w-0">
                       <p className="text-sm text-ps-ink font-medium truncate">{d.name}</p>
                       <p className="text-2xs text-ps-hint mt-0.5">
-                        {new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                        {formatDate(d.date)}
                       </p>
                     </div>
                   </div>
@@ -462,11 +466,17 @@ export default function DashboardContent() {
                 </Link>
               ))
             ) : (
-              <div className="px-5 py-10 text-center">
-                <Users size={24} className="text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-ps-hint">No clients yet</p>
-                <Link href="/clients" className="text-xs text-blue-600 font-medium mt-1 inline-block">Add your first client →</Link>
-              </div>
+              <EmptyState
+                icon={<Users size={28} />}
+                className="py-10"
+                title="No clients yet"
+                description="Clients are the businesses and people whose books, returns and payroll you run here."
+                action={
+                  <EmptyStateActions>
+                    <EmptyStateAction requires={["client", "write"]} label="Add your first client" href="/clients" />
+                  </EmptyStateActions>
+                }
+              />
             )}
           </div>
         </div>
@@ -512,7 +522,7 @@ export default function DashboardContent() {
                       {t.client_name && <span className="text-2xs text-ps-hint truncate">{t.client_name}</span>}
                       {t.due_date && (
                         <span className="text-2xs text-ps-disabled">
-                          · {new Date(t.due_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                          · {formatDate(t.due_date)}
                         </span>
                       )}
                     </div>

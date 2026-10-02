@@ -2,6 +2,10 @@ import {
   formatPaise as formatPaiseAuthority,
   type PaiseInput,
 } from "@/lib/money/format";
+import {
+  formatDate as formatDateAuthority,
+  formatDateTime as formatDateTimeAuthority,
+} from "@/lib/dates/format";
 
 /**
  * Format paise (integer) to an Indian currency display string.
@@ -46,19 +50,26 @@ export function formatMoney(minor: number, currency = "INR", minorUnits = 2): st
   }
 }
 
-export function formatDate(isoString: string): string {
-  return new Date(isoString).toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+/**
+ * A calendar date, `05 Sep 2026`. DELEGATES to `lib/dates/format`, which is the
+ * one date format (frontend_ux-20) — the signature stays because 35 files
+ * import it, and re-exporting is what lets them move one at a time.
+ *
+ * The delegation fixes what the body did: `new Date("2026-03-31")
+ * .toLocaleDateString(...)` read a bare date as UTC midnight in the BROWSER's
+ * zone, so 31 March printed as 30 March west of Greenwich; the month was
+ * whatever ICU says ("Sept" today); and an empty or invalid value printed the
+ * literal "Invalid Date". An unreadable value is now "—".
+ */
+export function formatDate(isoString: string | null | undefined): string {
+  return formatDateAuthority(isoString);
 }
 
-/** Format an ISO timestamp as an Indian-locale date + time, or "—" when absent/invalid. */
+/** A moment in IST, `05 Sep 2026, 3:30 pm`, or "—" when absent/invalid. It
+ * printed `toLocaleString("en-IN")` — "5/9/2026, 10:00:00 am" in the BROWSER's
+ * zone, seconds and all — before it delegated to `lib/dates/format`. */
 export function formatDateTime(isoString: string | null | undefined): string {
-  if (!isoString) return "—";
-  const d = new Date(isoString);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleString("en-IN");
+  return formatDateTimeAuthority(isoString);
 }
 
 export function formatRelativeTime(isoString: string): string {

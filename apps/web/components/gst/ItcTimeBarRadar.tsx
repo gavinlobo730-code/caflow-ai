@@ -34,17 +34,9 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { ItcTimeBar, ItcTimeBarItem, ItcTimeBarStatus } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
-import { fromLocalISO } from "@/lib/dateMath";
+import { formatDate } from "@/lib/dates/format";
 import { gstPeriodLabel } from "@/lib/gst/period";
 import { formatPaise } from "@/lib/money/format";
-
-/** A calendar date, never read back through UTC. */
-function day(iso: string): string {
-  const d = fromLocalISO(iso);
-  return d
-    ? d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
-    : iso;
-}
 
 const TONE: Record<ItcTimeBarStatus, string> = {
   open: "text-ps-body",
@@ -135,7 +127,7 @@ export function ItcTimeBarRadar({ clientId }: { clientId: string }) {
               {radar.by_financial_year.map((y) => (
                 <li key={y.financial_year} className={TONE[y.status]}>
                   <span className="font-medium">FY {y.financial_year}</span>
-                  {" — "}credit lapses on {day(y.closes_on)} ({left(y.status, y.days_left)})
+                  {" — "}credit lapses on {formatDate(y.closes_on)} ({left(y.status, y.days_left)})
                   {y.shortened_by_annual_return && " · brought forward by the annual return"}
                   {" · "}{y.count} document(s), {formatPaise(y.credit_at_risk_paise)}
                 </li>
@@ -160,7 +152,7 @@ export function ItcTimeBarRadar({ clientId }: { clientId: string }) {
                     <tr key={`${it.document_id ?? it.label}-${i}`}
                       className="border-b last:border-0 align-top" data-status={it.status}>
                       <td className={`py-1.5 pr-3 ${TONE[it.status]}`}>
-                        <span className="font-medium">{day(it.closes_on)}</span>
+                        <span className="font-medium">{formatDate(it.closes_on)}</span>
                         <span className="block text-3xs">{left(it.status, it.days_left)}</span>
                       </td>
                       <td className="py-1.5 pr-3">
@@ -202,7 +194,7 @@ export function ItcTimeBarRadar({ clientId }: { clientId: string }) {
                 {radar.periods_not_reconciled.map((p) => (
                   <li key={p.period} className={TONE[p.status]}>
                     {gstPeriodLabel(p.period)} — credit on its invoices lapses on{" "}
-                    {day(p.closes_on)} ({left(p.status, p.days_left)})
+                    {formatDate(p.closes_on)} ({left(p.status, p.days_left)})
                   </li>
                 ))}
               </ul>

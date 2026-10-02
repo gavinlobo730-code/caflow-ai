@@ -8,11 +8,14 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { assessmentYearFor, financialYearChoicesAround } from "@/lib/dates/periods";
+import { formatDate } from "@/lib/dates/format";
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -583,10 +586,18 @@ export default function ITRFilingPage() {
           <button onClick={() => load()} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : filings.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-2">
-          <FileText size={28} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-ps-label">No ITR filings yet</p>
-          <p className="text-xs text-ps-hint">Click &quot;New Filing&quot; to start the ITR preparation workflow.</p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            icon={<FileText size={28} />}
+            title="No ITR filings yet"
+            description="A filing is one return for one assessment year, taken from draft through review. It is prepared here; you file it on the income tax portal."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["income_tax", "compute"]} icon={<Plus size={14} />} label="New Filing"
+                  onClick={() => setShowCreate(true)} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       ) : (
         <div className="space-y-2">
@@ -612,7 +623,7 @@ export default function ITRFilingPage() {
                   )}
                 </p>
                 <p className="text-3xs text-ps-hint">
-                  AY {f.assessment_year} · {new Date(f.created_at).toLocaleDateString("en-IN")}
+                  AY {f.assessment_year} · {formatDate(f.created_at)}
                   {f.acknowledgement_number && ` · Ack: ${f.acknowledgement_number}`}
                   {f.original_acknowledgement_number
                     && ` · supersedes ${f.original_acknowledgement_number}`}

@@ -16,6 +16,8 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { fmt, BankAccount } from "@/components/banking/shared";
 import { objectOrNull } from "@/lib/api/shape";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ── Bank register (Tier 1.1) ───────────────────────────────────────────────
 // The ledger view of one account. READ-ONLY by design: posted journals are
@@ -203,13 +205,18 @@ export function BankRegister({ clientId }: { clientId: string }) {
 
   if (accounts.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-ps-border p-10 text-center max-w-3xl mx-auto">
-        <Landmark size={24} className="mx-auto text-ps-disabled" />
-        <p className="text-sm text-ps-hint mt-2">No bank account yet.</p>
-        <p className="text-2xs text-ps-hint mt-1">
-          Add one from <strong>Bank › Entries › Accounts</strong>, then import a statement —
-          the register builds itself from what the bank sent.
-        </p>
+      <div className="bg-white rounded-xl border border-ps-border max-w-3xl mx-auto">
+        <EmptyState
+          icon={<Landmark size={28} />}
+          title="No bank account yet"
+          description="Add a bank account on the Bank screen and import a statement: the register builds itself from what the bank sent."
+          action={
+            <EmptyStateActions>
+              <EmptyStateAction requires={["banking", "write"]} icon={<Landmark size={14} />} label="Go to Bank"
+                href={`/clients/${clientId}/bank`} />
+            </EmptyStateActions>
+          }
+        />
       </div>
     );
   }

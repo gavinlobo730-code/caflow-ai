@@ -6,7 +6,11 @@ import { Users, UserPlus, Shield, Mail, MoreVertical, X, AlertCircle, Lock, Slid
 import MemberAccessDrawer from "@/components/team/MemberAccessDrawer";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import { formatDate } from "@/lib/dates/format";
 import { inviteEmailNotSentMessage, inviteEmailProblem } from "@/lib/auth/authErrorMessage";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // Module 9.0 / M1 — canonical staff roles (single source of truth = backend Role enum).
 // Client is external (uses the portal) and is not a team member here.
@@ -857,19 +861,19 @@ export default function TeamPage() {
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Team</h1>
-          <p className="text-sm text-ps-label mt-0.5">Manage your firm&apos;s team members and their roles</p>
-        </div>
-        <button
-          onClick={() => setShowInvite(true)}
-          className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark"
-        >
-          <UserPlus className="w-4 h-4" />
-          Invite Member
-        </button>
-      </div>
+      <PageHeader
+        title="Team"
+        subtitle="Manage your firm&apos;s team members and their roles"
+        actions={
+          <button
+            onClick={() => setShowInvite(true)}
+            className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark"
+          >
+            <UserPlus className="w-4 h-4" />
+            Invite Member
+          </button>
+        }
+      />
 
       {error && (
         <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3 flex gap-2 text-sm text-state-problem">
@@ -930,11 +934,18 @@ export default function TeamPage() {
           {loading ? (
             <div className="px-5 py-10 text-center text-sm text-ps-hint">Loading…</div>
           ) : members.length === 0 ? (
-            <div className="px-5 py-10 text-center">
-              <Users className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-              <p className="text-sm text-ps-hint">No team members yet</p>
-              <p className="text-xs text-ps-disabled mt-1">Invite someone to get started</p>
-            </div>
+            <EmptyState
+              icon={<Users size={32} />}
+              className="py-10"
+              title="No team members yet"
+              description="Invite the people who work in your practice and give each a role. They join from the link in their invitation."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction requires={["team", "write"]} icon={<UserPlus size={14} />} label="Invite Member"
+                    onClick={() => setShowInvite(true)} />
+                </EmptyStateActions>
+              }
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -959,9 +970,7 @@ export default function TeamPage() {
                       .map(n => n[0])
                       .join("")
                       .toUpperCase();
-                    const joinedDate = member.created_at
-                      ? new Date(member.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
-                      : "—";
+                    const joinedDate = formatDate(member.created_at);
 
                     return (
                       <tr key={member.id} className={`hover:bg-ps-bg/50 ${!isActive ? "opacity-60" : ""}`}>

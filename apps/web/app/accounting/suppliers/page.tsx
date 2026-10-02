@@ -45,8 +45,7 @@
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ChevronLeft, Plus, X, Users, IndianRupee } from "lucide-react";
+import { Plus, X, Users, IndianRupee } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -60,6 +59,9 @@ import { InterestThresholdClassSelect } from "@/components/tds/InterestThreshold
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -388,18 +390,16 @@ export default function SuppliersPage() {
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft className="w-4 h-4" />
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink">Supplier Master</h1>
-          <p className="text-sm text-ps-label mt-0.5">TDS section mapping &amp; credit terms</p>
-        </div>
-        <Button onClick={openAdd} size="sm" className="flex items-center gap-1" disabled={!selectedClientId}>
-          <Plus className="w-4 h-4" /> Add Supplier
-        </Button>
-      </div>
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        title="Supplier Master"
+        subtitle="TDS section mapping &amp; credit terms"
+        actions={
+          <Button onClick={openAdd} size="sm" className="flex items-center gap-1" disabled={!selectedClientId}>
+            <Plus className="w-4 h-4" /> Add Supplier
+          </Button>
+        }
+      />
 
       {error && <Callout tone="problem">{error}</Callout>}
       {/* PUR-32 — outside the modal, because the modal has closed and the
@@ -487,7 +487,21 @@ export default function SuppliersPage() {
                   </tr>
                 ))}
                 {vendors.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-ps-hint text-sm">No suppliers yet. Add your first supplier.</td></tr>
+                  <tr><td colSpan={8}>
+                    <EmptyState
+                      className="py-10"
+                      title="No suppliers yet"
+                      description={selectedClientId
+                        ? "Add the suppliers this client buys from. Bills, TDS and input credit are worked out per supplier."
+                        : "Choose a client above, then add the suppliers it buys from."}
+                      action={
+                        <EmptyStateActions>
+                          <EmptyStateAction requires={["client", "write"]} icon={<Plus size={14} />} label="Add Supplier"
+                            disabled={!selectedClientId} onClick={openAdd} />
+                        </EmptyStateActions>
+                      }
+                    />
+                  </td></tr>
                 )}
               </tbody>
             </table>

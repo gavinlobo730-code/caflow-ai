@@ -11,7 +11,9 @@ import { Shield, Plus, X, AlertCircle, AlertTriangle, CheckCircle, RefreshCw } f
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { daysBetweenLocalISO, todayLocalISO } from "@/lib/dateMath";
+import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -457,15 +459,15 @@ export default function DSCTrackerPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">DSC Tracker</h1>
-          <p className="text-sm text-ps-label mt-0.5">Digital Signature Certificate expiry tracker</p>
-        </div>
-        <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark">
-          <Plus className="w-4 h-4" /> Add DSC
-        </button>
-      </div>
+      <PageHeader
+        title="DSC Tracker"
+        subtitle="Digital Signature Certificate expiry tracker"
+        actions={
+          <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark">
+            <Plus className="w-4 h-4" /> Add DSC
+          </button>
+        }
+      />
 
       {/* Alert banner */}
       {expiringIn30 > 0 && (
@@ -540,8 +542,8 @@ export default function DSCTrackerPage() {
                       </td>
                       <td className="px-4 py-3 text-xs text-ps-label">{d.purpose}</td>
                       <td className="px-4 py-3 text-xs text-ps-label">{d.issued_by}</td>
-                      <td className="px-4 py-3 text-xs text-ps-label">{new Date(d.issued_date).toLocaleDateString("en-IN")}</td>
-                      <td className="px-4 py-3 text-xs text-ps-label font-medium">{new Date(d.expiry_date).toLocaleDateString("en-IN")}</td>
+                      <td className="px-4 py-3 text-xs text-ps-label">{formatDate(d.issued_date)}</td>
+                      <td className="px-4 py-3 text-xs text-ps-label font-medium">{formatDate(d.expiry_date)}</td>
                       <td className="px-4 py-3 text-xs font-medium">
                         <span className={days < 0 ? "text-red-600" : days <= 30 ? "text-amber-600" : days <= 90 ? "text-yellow-600" : "text-green-600"}>
                           {days < 0 ? `${Math.abs(days)}d overdue` : `${days} days`}

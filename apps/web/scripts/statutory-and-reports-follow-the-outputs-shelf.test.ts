@@ -80,7 +80,7 @@ test("StatutoryTab tells a loaded-and-empty month apart from a never-loaded one"
   assert.match(body, /const \[hasLoaded, setHasLoaded\] = useState\(false\)/);
   assert.match(body, /setHasLoaded\(true\)/,
     "hasLoaded must actually be set somewhere in load()");
-  assert.match(body, /No payroll run recorded for \{fmtMonth\(month\)\}/);
+  assert.match(body, /No payroll run recorded for \{formatMonthYear\(month\)\}/);
   assert.match(body, /hasLoaded \? \(/,
     "the empty-but-loaded branch must be reachable in the render");
   // The pre-Load prompt must still exist for the genuinely untouched case.

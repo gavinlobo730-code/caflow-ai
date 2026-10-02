@@ -27,8 +27,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ChevronLeft, Plus, Info } from "lucide-react";
+import { Plus, Info } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -42,6 +41,7 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, GapList, StatutoryNotes } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
+import { PageHeader } from "@/components/ui/page-header";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
@@ -166,19 +166,16 @@ export default function Section32Page() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-ps-hint hover:text-ps-label"><ChevronLeft size={18} /></Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink">Depreciation under §32</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            IT Act 1961 §32 — per block of assets, at the block&apos;s rate. Separate from
-            the Companies Act Schedule II charge the accounts carry.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setShowAdd(true)} disabled={!clientId}>
-          <Plus size={14} className="mr-1" /> Add block
-        </Button>
-      </div>
+      <PageHeader
+        back={{ href: "/income-tax", label: "Income Tax" }}
+        title="Depreciation under §32"
+        subtitle="IT Act 1961 §32 — per block of assets, at the block&apos;s rate. Separate from the Companies Act Schedule II charge the accounts carry."
+        actions={
+          <Button size="sm" onClick={() => setShowAdd(true)} disabled={!clientId}>
+            <Plus size={14} className="mr-1" /> Add block
+          </Button>
+        }
+      />
 
       <div className="flex flex-wrap gap-3 items-end">
         <div>

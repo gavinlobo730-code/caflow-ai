@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Calendar, AlertTriangle, Clock, CheckCircle, FileText,
-  ExternalLink, Users, ArrowRight,
+  ExternalLink, Users,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { Skeleton, DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { ExpiringEwayBills } from "@/components/gst/ExpiringEwayBills";
 import { MissingIrnPanel } from "@/components/gst/MissingIrnPanel";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── Type filter mapping ───────────────────────────────────────────────────
 // URL param → compliance_type predicate. TDS and MCA use prefix matching because
@@ -410,20 +412,14 @@ function DeadlinesContent() {
     : records.length === 0
     ? "Open a client and go to the Compliance tab to seed their filing schedule for this year."
     : "Adjust or clear the filters above to see more deadlines.";
-  const emptyAction = records.length === 0 && clients.length === 0 ? (
-    <Link
-      href="/clients"
-      className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-xs font-semibold rounded-lg hover:bg-brand-dark transition-colors"
-    >
-      Add First Client <ArrowRight size={13} />
-    </Link>
-  ) : (
-    <Link
-      href="/clients"
-      className="inline-flex items-center gap-1.5 px-4 py-2 border border-ps-border text-ps-label text-xs font-semibold rounded-lg hover:bg-ps-bg transition-colors"
-    >
-      View Clients <ArrowRight size={13} />
-    </Link>
+  const emptyAction = (
+    <EmptyStateActions>
+      {records.length === 0 && clients.length === 0 ? (
+        <EmptyStateAction requires={["client", "write"]} label="Add First Client" href="/clients" />
+      ) : (
+        <EmptyStateAction requires="anyone" variant="secondary" label="View Clients" href="/clients" />
+      )}
+    </EmptyStateActions>
   );
 
   if (loading) return <LoadingSpinner />;
@@ -437,12 +433,10 @@ function DeadlinesContent() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-ps-ink">{pageTitle}</h1>
-        <p className="text-sm text-ps-label mt-0.5">
-          Cross-client compliance calendar — triage here, file inside each client
-        </p>
-      </div>
+      <PageHeader
+        title={pageTitle}
+        subtitle="Cross-client compliance calendar — triage here, file inside each client"
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {STATS.map((s) => (

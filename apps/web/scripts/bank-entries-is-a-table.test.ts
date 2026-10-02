@@ -55,13 +55,22 @@ const BANK_BOOK_REPORT = path.join(__dirname, "..", "app", "clients", "[id]", "r
 const tab = () => fs.readFileSync(TAB, "utf8");
 const modal = () => fs.readFileSync(MODAL, "utf8");
 
+/** A button is a raw `<button>` or the guarded `<Button>` (components/ui/button.tsx) that every
+ *  control which writes now is: the same control with a repeat-click guard, so every selector in
+ *  this file reads both. Reading only the raw tag made the Pass button disappear from the list of
+ *  labels the day it moved onto the primitive, and a test that cannot find "Pass" is a test that
+ *  can no longer say the verb is Pass. */
+const BUTTON_CLOSE = /<\/(?:button|Button)>/;
+const lastButtonOpen = (chunk: string): number =>
+  Math.max(chunk.lastIndexOf("<button"), chunk.lastIndexOf("<Button"));
+
 /** Every button's visible text. A <button …> tag spans lines and its
  *  attributes contain `=>`, so the tag cannot be matched with `[^>]*`; the
- *  label is instead the tail of the chunk before each </button>, after the
- *  last tag close (`">`, `}>` or `/>`). Both plain text and the string
+ *  label is instead the tail of the chunk before each </button> (or </Button>),
+ *  after the last tag close (`">`, `}>` or `/>`). Both plain text and the string
  *  literals of a `{cond ? "…" : "Pass"}` expression count. */
 function buttonLabels(src: string): string[] {
-  const chunks = src.split("</button>").slice(0, -1);
+  const chunks = src.split(BUTTON_CLOSE).slice(0, -1);
   return chunks.flatMap((chunk) => {
     const cut = Math.max(chunk.lastIndexOf('">'), chunk.lastIndexOf("}>"), chunk.lastIndexOf("/>"));
     const tail = chunk.slice(cut + 2);
@@ -101,7 +110,7 @@ test("the action is the fixed trailing column, and no column renders a primary b
   assert.match(s, /rowActions=\{actionCell\}/, "the row's one control must be rowActions");
   const decl = s.slice(s.indexOf("const columns: Column<Entry>[]"));
   const body = decl.slice(0, decl.indexOf("\n  ];"));
-  assert.doesNotMatch(body, /<button/, "a column's render is producing a button");
+  assert.doesNotMatch(body, /<button|<Button\b/, "a column's render is producing a button");
 });
 
 test("one verb: Pass — on the row and in the modal; never Post, Match, Add or Record", () => {
@@ -127,8 +136,8 @@ test("the row offers no ranked candidate list; the modal does, behind opening th
 const TYPE_STEPS = ["text-3xs", "text-2xs", "text-xs", "text-sm", "text-base", "text-lg"];
 
 function buttonSizes(src: string): { label: string; step: number; pad: number }[] {
-  return src.split("</button>").slice(0, -1).map((chunk) => {
-    const at = chunk.lastIndexOf("<button");
+  return src.split(BUTTON_CLOSE).slice(0, -1).map((chunk) => {
+    const at = lastButtonOpen(chunk);
     const tag = chunk.slice(at, at + 800);
     const cls = (/className="([^"]*)"/.exec(tag) ?? /className=\{`([^`]*)`/.exec(tag))?.[1] ?? "";
     const step = TYPE_STEPS.findIndex((t) => new RegExp(`\\b${t}\\b`).test(cls));

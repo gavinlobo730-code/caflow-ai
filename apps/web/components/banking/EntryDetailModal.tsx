@@ -39,6 +39,7 @@ import {
   type Account, type QueueTxn, type MatchSuggestion, fmt, gstWhy, GST_WHY_LONG, GST_RATE_OPTIONS,
 } from "@/components/banking/shared";
 import type { Entry } from "@/components/banking/EntriesTab";
+import { Button } from "@/components/ui/button";
 
 interface EntryDetail extends Entry {
   suggestions: MatchSuggestion[];
@@ -325,11 +326,11 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
           )}
           <button onClick={onClose} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">Close</button>
           {editable && (
-            <button onClick={pass} disabled={busy || !canPass}
+            <Button variant="plain" size="none" onClick={pass} disabled={busy || !canPass}
               title={canPass ? "Pass this entry into the books" : t.draft_source === "document" ? "Settle it from the document below" : "Choose a ledger or a document first"}
               className="text-xs px-4 py-1.5 rounded-lg font-medium text-white bg-state-ready-solid hover:bg-state-ready disabled:opacity-40 disabled:cursor-not-allowed">
               {busy ? "…" : "Pass"}
-            </button>
+            </Button>
           )}
         </>
       }>

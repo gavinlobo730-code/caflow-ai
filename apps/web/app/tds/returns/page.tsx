@@ -16,7 +16,6 @@ import { useEffect, useState } from "react";
 import {
   FileText, CheckCircle, AlertTriangle, Download,
   Info, } from "lucide-react";
-import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
@@ -28,6 +27,7 @@ import {
   type TDSDeductee,
 } from "@/lib/data/tds";
 import { Callout, GapList } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 function r(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -210,10 +210,10 @@ export default function TDSReturnsPage() {
         />
       )}
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/tds" className="text-ps-hint hover:text-ps-label text-sm">← TDS</Link>
-        <h1 className="text-xl font-bold text-ps-ink">TDS Returns — 24Q / 26Q / 27Q</h1>
-      </div>
+      <PageHeader
+        back={{ href: "/tds", label: "TDS" }}
+        title="TDS Returns — 24Q / 26Q / 27Q"
+      />
 
       {/* CA Review Banner */}
       <div className="flex items-start gap-3 bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">

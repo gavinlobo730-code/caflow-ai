@@ -27,12 +27,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ChevronLeft, GitBranch } from "lucide-react";
+import { GitBranch } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface CoaRow {
   id: string;
@@ -182,23 +183,22 @@ export default function ScheduleIIIMappingPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-5">
-      <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft size={18} />
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink flex items-center gap-2">
-            <GitBranch size={18} className="text-blue-600" /> Schedule III Mapping
-          </h1>
-          <p className="text-xs text-ps-label mt-0.5">
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        icon={<GitBranch size={18} className="text-blue-600" />}
+        title="Schedule III Mapping"
+        subtitle={
+          <>
             {active.length - unmapped.length} of {active.length} active accounts mapped
             {" · "}a mapping here decides where the balance presents on the statutory statements
-          </p>
-        </div>
-        <Link href="/accounting/account-groups" className="text-xs text-blue-600 hover:underline">
-          View accounts →
-        </Link>
-      </div>
+          </>
+        }
+        actions={
+          <Link href="/accounting/account-groups" className="text-xs text-blue-600 hover:underline">
+            View accounts →
+          </Link>
+        }
+      />
 
       {saveError && <Callout tone="problem">{saveError}</Callout>}
 

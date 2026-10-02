@@ -7,6 +7,7 @@ import type { ClientSummary } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface Member { id: string; full_name?: string; email?: string; role?: string }
 // The row shape is `ClientSummary` from lib/api — the endpoint's own type.
@@ -91,14 +92,12 @@ export default function AssignmentsPage() {
 
   return (
     <div className="p-6 max-w-5xl">
-      <div className="flex items-center gap-2 mb-1">
-        <Link2 size={18} className="text-brand" />
-        <h1 className="text-lg font-semibold text-brand">Client Assignments</h1>
-      </div>
-      <p className="text-xs text-gray-500 mb-4">
-        Assign clients to staff. A user can only see, search, and be notified about clients assigned to them
-        (Partners have firm-wide access and are not listed here).
-      </p>
+      <PageHeader
+        icon={<Link2 size={18} className="text-brand" />}
+        title="Client Assignments"
+        subtitle="Assign clients to staff. A user can only see, search, and be notified about clients assigned to them (Partners have firm-wide access and are not listed here)."
+        className="mb-4"
+      />
 
       {!canAssign && (
         <div className="flex items-center gap-2 text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-4">

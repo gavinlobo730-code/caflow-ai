@@ -30,8 +30,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import Link from "next/link";
-import { ChevronLeft, CheckCircle, Info, Download } from "lucide-react";
+import { CheckCircle, Info, Download } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -51,6 +50,7 @@ import { Callout } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 import { objectWithLists } from "@/lib/api/shape";
+import { PageHeader } from "@/components/ui/page-header";
 
 export default function MSME43BHPage() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -129,19 +129,16 @@ export default function MSME43BHPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-ps-hint hover:text-ps-label"><ChevronLeft size={18} /></Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink">MSME §43B(h)</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            Sums payable to micro and small enterprises beyond the MSMED §15 limit,
-            read from the purchase ledger
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={exportExcel} disabled={rows.length === 0}>
-          <Download size={14} className="mr-1" /> Export
-        </Button>
-      </div>
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        title="MSME §43B(h)"
+        subtitle="Sums payable to micro and small enterprises beyond the MSMED §15 limit, read from the purchase ledger"
+        actions={
+          <Button variant="outline" size="sm" onClick={exportExcel} disabled={rows.length === 0}>
+            <Download size={14} className="mr-1" /> Export
+          </Button>
+        }
+      />
 
       <div className="flex flex-wrap gap-3">
         <div className="min-w-[240px]">

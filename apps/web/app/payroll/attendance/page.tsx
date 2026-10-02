@@ -22,8 +22,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ArrowLeft, Save, Upload, Download, Edit2, Check, X, Plus, Trash2, AlertTriangle } from "lucide-react";
+import { Save, Upload, Download, Edit2, Check, X, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -38,6 +37,7 @@ import { toCsv } from "@/lib/table/process";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
 import type { Column } from "@/lib/table/types";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -738,17 +738,12 @@ export default function AttendancePage() {
   return (
     <div className="min-h-screen bg-ps-bg p-8">
       <div className="max-w-ps-data mx-auto">
-        <div className="mb-6 flex items-center gap-3">
-          <Link href="/payroll">
-            <Button variant="outline" size="sm" className="flex items-center gap-1.5">
-              <ArrowLeft size={14} />Back to Payroll
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-ps-ink">Attendance &amp; Leave</h1>
-            <p className="text-sm text-ps-label mt-0.5">Track monthly attendance and leave balances</p>
-          </div>
-        </div>
+        <PageHeader
+          back={{ href: "/payroll", label: "Payroll" }}
+          title="Attendance &amp; Leave"
+          subtitle="Track monthly attendance and leave balances"
+          className="mb-6"
+        />
 
         <Tabs defaultValue="attendance">
           <TabsList className="mb-6">

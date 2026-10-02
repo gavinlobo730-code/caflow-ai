@@ -29,16 +29,14 @@
  * page shows the state of play and posts what the CA typed.
  */
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ChevronLeft, Plus, Trash2, Scale, X, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Scale, X, AlertTriangle } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type PTSlabRow } from "@/lib/api/index";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { TableSkeleton } from "@/components/ui/skeleton";
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+import { MONTH_ABBREVIATIONS as MONTHS } from "@/lib/dates/format";
+import { PageHeader } from "@/components/ui/page-header";
 
 function rupees(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -207,30 +205,28 @@ export default function StatutoryValuesPage() {
   return (
     <RoleGuard allowed={["Partner", "Manager"]}>
       <div className="p-6 max-w-ps-data mx-auto">
-        <Link href="/settings" className="inline-flex items-center gap-1 text-sm text-ps-label hover:text-ps-ink mb-4">
-          <ChevronLeft size={15} />Settings
-        </Link>
-
-        <div className="flex items-start justify-between mb-5">
-          <div className="flex items-start gap-3">
-            <Scale size={18} className="text-indigo-500 mt-0.5" />
-            <div>
-              <h1 className="text-lg font-semibold text-ps-ink">Statutory values</h1>
-              <p className="text-sm text-ps-label mt-0.5 max-w-2xl">
-                Your firm&apos;s reading of the state professional-tax notifications, recorded
-                once and used for every client with staff in that state. Twenty-two states levy
-                it; {modelled.length} are built in and verified against the state Act, and the
-                rest are reported as gaps on a run until you record them here.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => { reset(); setShowForm(true); }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
-          >
-            <Plus size={15} />Record a notification
-          </button>
-        </div>
+        <PageHeader
+          back={{ href: "/settings", label: "Settings" }}
+          icon={<Scale size={18} className="text-indigo-500" />}
+          title="Statutory values"
+          subtitle={
+            <>
+              Your firm&apos;s reading of the state professional-tax notifications, recorded
+              once and used for every client with staff in that state. Twenty-two states levy
+              it; {modelled.length} are built in and verified against the state Act, and the
+              rest are reported as gaps on a run until you record them here.
+            </>
+          }
+          actions={
+            <button
+              onClick={() => { reset(); setShowForm(true); }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
+            >
+              <Plus size={15} />Record a notification
+            </button>
+          }
+          className="mb-5"
+        />
 
         {msg && (
           <div className={`mb-4 px-3 py-2 rounded-lg text-sm ${

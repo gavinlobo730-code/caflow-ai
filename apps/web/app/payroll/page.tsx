@@ -14,12 +14,14 @@ import {
 } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { toLocalISO, dueDateUrgency, fromLocalISO } from "@/lib/dateMath";
+import { formatDate, formatMonthYear } from "@/lib/dates/format";
 import { useToast } from "@/components/ui/use-toast";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { api, type ApiResp, type PayrollRunSummary } from "@/lib/api";
+import { PageHeader } from "@/components/ui/page-header";
 // Moved into a shared module when the roster became its own screen (People).
 // One definition, two pages — copying them is how the salary register and the
 // ECR each ended up implemented twice, with only one of them right.
@@ -57,7 +59,7 @@ function getStatutoryDeadlines(today: Date): {
   const pfMonth = m === 0 ? 11 : m - 1;
   const pfYear = m === 0 ? y - 1 : y;
   const pfDue = new Date(y, m, 15);
-  const pfMonthName = new Date(pfYear, pfMonth, 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
+  const pfMonthName = formatMonthYear(toLocalISO(new Date(pfYear, pfMonth, 1)));
   deadlines.push({
     id: "pf-ecr",
     label: `PF ECR — ${pfMonthName}`,
@@ -577,8 +579,7 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
         const res = await api.compliance.payrollDepositDueDates(
           wageMonth.getFullYear(), wageMonth.getMonth() + 1);
         if (cancelled || !res?.success || !res.data) return;
-        const periodLabel = wageMonth.toLocaleString("en-IN",
-          { month: "long", year: "numeric" });
+        const periodLabel = formatMonthYear(toLocalISO(wageMonth));
         const rows = res.data.deposits.flatMap((d) => {
           const due = fromLocalISO(d.due_date);
           return due ? [{
@@ -800,11 +801,7 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
                   <p className="text-xs text-ps-label mt-0.5">{d.description}</p>
                   <p className="text-xs text-ps-label mt-0.5">
                     Portal: {d.portal} &middot; Due:{" "}
-                    {d.dueDate.toLocaleDateString("en-IN", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })}
+                    {formatDate(toLocalISO(d.dueDate))}
                   </p>
                 </div>
                 <div className="ml-4 flex-shrink-0">
@@ -1036,46 +1033,47 @@ export default function PayrollPage() {
       {viewSlip && <PayslipModal slip={viewSlip} onClose={() => setViewSlip(null)} />}
 
       <div className="max-w-ps-data mx-auto">
-        <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-ps-ink">Payroll</h1>
-            <p className="text-sm text-ps-label mt-0.5">IT Act Section 192 &middot; EPF Act &middot; ESI Act</p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* These five match the sidebar's "This month" / "Roster" /
-                "Statutory" groups (components/panels/PayrollPanel.tsx) —
-                the header used to show only three of them, which looked
-                arbitrary next to the fuller rail. */}
-            <Link href="/payroll/attendance">
-              <Button variant="outline" className="flex items-center gap-1.5">
-                <CalendarCheck size={15} />Attendance
-              </Button>
-            </Link>
-            <Link href="/payroll/declarations">
-              <Button variant="outline" className="flex items-center gap-1.5">
-                <Receipt size={15} />Declarations
-              </Button>
-            </Link>
-            {/* IT Act §192 / Rule 26C — what each employee declared, and what
-                their proofs support. Its own page rather than a tab: it is a
-                per-client, per-financial-year review, not part of a run. */}
-            <Link href="/payroll/people">
-              <Button variant="outline" className="flex items-center gap-1.5">
-                <Users size={15} />People
-              </Button>
-            </Link>
-            <Link href="/payroll/statutory">
-              <Button variant="outline" className="flex items-center gap-1.5">
-                <ShieldCheck size={15} />Deposits &amp; Filings
-              </Button>
-            </Link>
-            <Link href="/payroll/reports">
-              <Button variant="outline" className="flex items-center gap-1.5">
-                <BarChart2 size={15} />Reports
-              </Button>
-            </Link>
-          </div>
-        </div>
+        <PageHeader
+          title="Payroll"
+          subtitle="IT Act Section 192 &middot; EPF Act &middot; ESI Act"
+          actions={
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* These five match the sidebar's "This month" / "Roster" /
+                  "Statutory" groups (components/panels/PayrollPanel.tsx) —
+                  the header used to show only three of them, which looked
+                  arbitrary next to the fuller rail. */}
+              <Link href="/payroll/attendance">
+                <Button variant="outline" className="flex items-center gap-1.5">
+                  <CalendarCheck size={15} />Attendance
+                </Button>
+              </Link>
+              <Link href="/payroll/declarations">
+                <Button variant="outline" className="flex items-center gap-1.5">
+                  <Receipt size={15} />Declarations
+                </Button>
+              </Link>
+              {/* IT Act §192 / Rule 26C — what each employee declared, and what
+                  their proofs support. Its own page rather than a tab: it is a
+                  per-client, per-financial-year review, not part of a run. */}
+              <Link href="/payroll/people">
+                <Button variant="outline" className="flex items-center gap-1.5">
+                  <Users size={15} />People
+                </Button>
+              </Link>
+              <Link href="/payroll/statutory">
+                <Button variant="outline" className="flex items-center gap-1.5">
+                  <ShieldCheck size={15} />Deposits &amp; Filings
+                </Button>
+              </Link>
+              <Link href="/payroll/reports">
+                <Button variant="outline" className="flex items-center gap-1.5">
+                  <BarChart2 size={15} />Reports
+                </Button>
+              </Link>
+            </div>
+          }
+          className="mb-6"
+        />
 
         <Tabs defaultValue="month">
           <TabsList className="mb-6">

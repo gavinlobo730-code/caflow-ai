@@ -23,11 +23,11 @@
 // Relative, not "@/…": this module is pure and must stay importable under
 // `node --experimental-strip-types --test`, which does not resolve the alias.
 import { todayLocalISO, toLocalISO } from "../dateMath.ts";
+import { MONTH_ABBREVIATIONS } from "../dates/format.ts";
 
-export const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-] as const;
+// The one month table (lib/dates/format.ts). This module kept a private copy of
+// it, which is how two screens could spell the same month two ways.
+export const MONTH_NAMES = MONTH_ABBREVIATIONS;
 
 export interface PeriodOption {
   /** "YYYY-MM" — what the code reads. */

@@ -2,9 +2,10 @@
 
 import { useState, useRef } from "react";
 import Link from "next/link";
-import { ChevronLeft, Upload, CheckCircle, AlertCircle, X, FileText } from "lucide-react";
+import { Upload, CheckCircle, AlertCircle, X, FileText } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { PageHeader } from "@/components/ui/page-header";
 
 type AccountType = "Asset" | "Liability" | "Equity" | "Revenue" | "Expense";
 const VALID_TYPES = new Set<AccountType>(["Asset", "Liability", "Equity", "Revenue", "Expense"]);
@@ -180,15 +181,11 @@ export default function CoaImportPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-5">
-      <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft size={18} />
-        </Link>
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Import Chart of Accounts</h1>
-          <p className="text-xs text-ps-label mt-0.5">Import from Tally, Busy, Zoho Books, QuickBooks or any Excel/CSV</p>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        title="Import Chart of Accounts"
+        subtitle="Import from Tally, Busy, Zoho Books, QuickBooks or any Excel/CSV"
+      />
 
       {/* Format guide */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800 space-y-1">

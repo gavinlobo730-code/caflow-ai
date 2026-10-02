@@ -30,7 +30,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, History } from "lucide-react";
 import { api, type AuditEntry } from "@/lib/api";
-import { describeChanges, istStamp } from "@/components/accounting/entryHistoryFields";
+import { describeChanges } from "@/components/accounting/entryHistoryFields";
+import { formatIstLabelled } from "@/lib/dates/formatIst";
 
 /** A line's audit row is keyed to its parent entry, so one request covers both. */
 export const JOURNAL_HISTORY_TYPES = "journal_entry,journal_line";
@@ -129,7 +130,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
                       <span className="text-ps-body">{e.actor_email || "System"}</span>
                       <span className="text-ps-hint">·</span>
                       <span className="text-ps-label tabular-nums">
-                        {istStamp(e.created_at)} IST
+                        {formatIstLabelled(e.created_at, e.created_at)}
                       </span>
                     </div>
                     {changes.length > 0 && (

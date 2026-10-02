@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -110,15 +111,11 @@ export default function RelationshipExplorerPage() {
 
   return (
     <div className="p-6 space-y-5 bg-ps-bg min-h-full">
-      <div>
-        <h1 className="text-2xl font-bold text-brand flex items-center gap-2">
-          <Network size={20} className="text-brand" />
-          Relationship Explorer
-        </h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Select an entity to explore its roles and relationships
-        </p>
-      </div>
+      <PageHeader
+        icon={<Network size={20} className="text-brand" />}
+        title="Relationship Explorer"
+        subtitle="Select an entity to explore its roles and relationships"
+      />
 
       {error && <Callout tone="problem">{error}</Callout>}
 

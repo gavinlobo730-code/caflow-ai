@@ -28,6 +28,9 @@ import { api, type TreatyRateRow } from "@/lib/api/index";
 import { bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const NATURE_LABELS: Record<string, string> = {
   royalty: "Royalty",
@@ -148,28 +151,19 @@ export default function TreatyRatesPage() {
           <ChevronLeft size={14} /> Settings
         </Link>
 
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-lg font-semibold text-ps-ink flex items-center gap-2">
-              <Globe2 size={18} className="text-sky-500" /> DTAA Treaty Rates
-            </h1>
-            <p className="text-xs text-ps-label mt-1 max-w-2xl">
-              Your firm&apos;s reading of the agreements it withholds under, one row per country
-              and nature of income. Nothing is shipped or suggested here: India has agreements
-              with over ninety countries, MFN clauses need their own §90(1) notification, and a
-              wrong rate too low disallows the whole expenditure under §40(a)(i). §90(2) then
-              applies whichever comes to LESS IN TOTAL. Your treaty rate is a ceiling on
-              the whole tax, so it carries no surcharge and no cess; the Act rate does. A
-              treaty rate equal to the Act rate is therefore still the cheaper of the two.
-            </p>
-          </div>
-          <button
-            onClick={() => { reset(); setShowForm(true); }}
-            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark"
-          >
-            <Plus size={14} /> Add reading
-          </button>
-        </div>
+        <PageHeader
+          icon={<Globe2 size={18} className="text-sky-500" />}
+          title="DTAA Treaty Rates"
+          subtitle="Your firm&apos;s reading of the agreements it withholds under, one row per country and nature of income. Nothing is shipped or suggested here: India has agreements with over ninety countries, MFN clauses need their own §90(1) notification, and a wrong rate too low disallows the whole expenditure under §40(a)(i). §90(2) then applies whichever comes to LESS IN TOTAL. Your treaty rate is a ceiling on the whole tax, so it carries no surcharge and no cess; the Act rate does. A treaty rate equal to the Act rate is therefore still the cheaper of the two."
+          actions={
+            <button
+              onClick={() => { reset(); setShowForm(true); }}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark"
+            >
+              <Plus size={14} /> Add reading
+            </button>
+          }
+        />
 
         {msg && (
           <div className={`text-xs px-3 py-2 rounded-lg ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-state-problem-surface text-state-problem"}`}>
@@ -234,13 +228,18 @@ export default function TreatyRatesPage() {
         )}
 
         {loading ? <TableSkeleton /> : rows.length === 0 ? (
-          <div className="border border-dashed border-ps-border rounded-xl p-8 text-center">
-            <p className="text-sm text-ps-label">No treaty readings recorded.</p>
-            <p className="text-xs text-ps-hint mt-1 max-w-md mx-auto">
-              Until a country and nature are recorded here, a bill for a non-resident vendor
-              holding a Tax Residency Certificate is refused rather than withheld at the Act
-              rate — which would over-deduct on a payment a treaty already covers.
-            </p>
+          <div className="border border-dashed border-ps-border rounded-xl">
+            <EmptyState
+              className="py-10"
+              title="No treaty readings recorded"
+              description="Until a country and nature are recorded here, a bill for a non-resident vendor holding a Tax Residency Certificate is refused rather than withheld at the Act rate, which would over-deduct on a payment a treaty already covers."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction requires={["tds", "write"]} icon={<Plus size={14} />} label="Record a reading"
+                    onClick={() => { reset(); setShowForm(true); }} />
+                </EmptyStateActions>
+              }
+            />
           </div>
         ) : (
           <div className="border border-ps-border rounded-xl overflow-hidden bg-white">

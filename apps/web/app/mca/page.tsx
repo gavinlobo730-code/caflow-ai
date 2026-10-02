@@ -12,10 +12,9 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
-import Link from "next/link";
 import {
   Building2, FileText, CheckCircle, AlertTriangle, Clock,
-  Plus, X, AlertCircle, Users, Calendar, ArrowRight,
+  Plus, X, AlertCircle, Users, Calendar,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -26,10 +25,13 @@ import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, daysBetweenLocalISO, toLocalISO, computeOverdueStatus, currentFinancialYearLabel } from "@/lib/dateMath";
+import { formatDate, formatMonthYear } from "@/lib/dates/format";
 import { isCompaniesActCompany } from "@/lib/entityObligations";
 import { Callout } from "@/components/ui/callout";
 import { formatCroreLakh } from "@/lib/money/format";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -113,7 +115,9 @@ function _daysUntil(d: Date): number {
   return daysBetweenLocalISO(todayLocalISO(), toLocalISO(d)) ?? 0;
 }
 function _fmtShort(d: Date): string {
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  // `d` is a local-midnight anchor (new Date(y, m, day)), so it is read through
+  // toLocalISO — its LOCAL calendar day — and not as an instant.
+  return formatDate(toLocalISO(d));
 }
 function _agm(): Date {
   return _nextOccurrence(9, 30); // statutory-latest AGM (30 Sep)
@@ -161,10 +165,6 @@ const computeStatus = computeOverdueStatus;
 /** Days from today until a director's KYC due date (negative once overdue). */
 function daysUntilKyc(kycDueDate: string): number {
   return daysBetweenLocalISO(todayLocalISO(), kycDueDate) ?? 0;
-}
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
 // Capital is rendered by `formatCroreLakh` in lib/money/format — MOVED there
@@ -427,7 +427,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
                     <div className="text-sm text-ps-body">
                       <p className="font-medium">{f.client_name}</p>
                       <p className="text-xs text-ps-hint mt-0.5 font-mono">
-                        {f.company_cin} · {f.form_type} · Due {fmtDate(f.due_date)}
+                        {f.company_cin} · {f.form_type} · Due {formatDate(f.due_date)}
                       </p>
                     </div>
                     <div>
@@ -643,7 +643,7 @@ export default function MCAPage() {
     },
     {
       key: "incorp_date", header: "Incorp. Date", accessor: (c) => c.incorp_date, sortable: true,
-      render: (c) => <span className="text-xs text-ps-label">{c.incorp_date ? fmtDate(c.incorp_date) : "—"}</span>,
+      render: (c) => <span className="text-xs text-ps-label">{c.incorp_date ? formatDate(c.incorp_date) : "—"}</span>,
     },
     {
       key: "auth_capital_paise", header: "Auth. Capital", accessor: (c) => c.auth_capital_paise,
@@ -686,11 +686,11 @@ export default function MCAPage() {
     },
     {
       key: "due_date", header: "Due Date", accessor: (f) => f.due_date, sortable: true,
-      render: (f) => <span className="text-xs text-ps-label">{fmtDate(f.due_date)}</span>,
+      render: (f) => <span className="text-xs text-ps-label">{formatDate(f.due_date)}</span>,
     },
     {
       key: "filed_date", header: "Filed Date", accessor: (f) => f.filed_date ?? "", sortable: true,
-      render: (f) => <span className="text-xs text-ps-label">{f.filed_date ? fmtDate(f.filed_date) : "—"}</span>,
+      render: (f) => <span className="text-xs text-ps-label">{f.filed_date ? formatDate(f.filed_date) : "—"}</span>,
     },
     {
       key: "srn", header: "SRN", accessor: (f) => f.srn ?? "",
@@ -748,11 +748,11 @@ export default function MCAPage() {
     },
     {
       key: "appointment_date", header: "Appointment Date", accessor: (d) => d.appointment_date, sortable: true,
-      render: (d) => <span className="text-xs text-ps-label">{d.appointment_date ? fmtDate(d.appointment_date) : "—"}</span>,
+      render: (d) => <span className="text-xs text-ps-label">{d.appointment_date ? formatDate(d.appointment_date) : "—"}</span>,
     },
     {
       key: "kyc_due_date", header: "KYC Due Date", accessor: (d) => d.kyc_due_date, sortable: true,
-      render: (d) => <span className="text-xs text-ps-label">{d.kyc_due_date ? fmtDate(d.kyc_due_date) : "—"}</span>,
+      render: (d) => <span className="text-xs text-ps-label">{d.kyc_due_date ? formatDate(d.kyc_due_date) : "—"}</span>,
     },
     {
       key: "kyc_status", header: "KYC Status", accessor: (d) => {
@@ -774,17 +774,19 @@ export default function MCAPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">MCA / ROC Module</h1>
-          <p className="text-sm text-ps-label mt-0.5">Ministry of Corporate Affairs — Companies Act 2013 compliance tracker</p>
-        </div>
-        {activeTab === 1 && (
-          <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark">
-            <Plus className="w-4 h-4" /> Add Filing
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="MCA / ROC Module"
+        subtitle="Ministry of Corporate Affairs — Companies Act 2013 compliance tracker"
+        actions={
+          <>
+            {activeTab === 1 && (
+              <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark">
+                <Plus className="w-4 h-4" /> Add Filing
+              </button>
+            )}
+          </>
+        }
+      />
 
       {tableError && (
         <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3 flex items-start gap-2">
@@ -801,7 +803,7 @@ export default function MCAPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { icon: <Building2 className="w-4 h-4 text-blue-600" />,    bg: "bg-blue-50",   label: "Total Companies",       value: String(totalCompanies), sub: "Company clients" },
-          { icon: <Clock className="w-4 h-4 text-amber-600" />,       bg: "bg-state-attention-surface",  label: "Filings Due This Month", value: loading ? "—" : String(dueThisMonth), sub: new Date(todayLocalISO() + "T00:00:00").toLocaleDateString("en-IN", { month: "short", year: "numeric" }) },
+          { icon: <Clock className="w-4 h-4 text-amber-600" />,       bg: "bg-state-attention-surface",  label: "Filings Due This Month", value: loading ? "—" : String(dueThisMonth), sub: formatMonthYear(todayLocalISO()) },
           { icon: <AlertTriangle className="w-4 h-4 text-red-600" />, bg: "bg-state-problem-surface",    label: "Overdue Filings",       value: loading ? "—" : String(overdueCount), sub: "Past due date" },
           { icon: <Users className="w-4 h-4 text-purple-600" />,      bg: "bg-purple-50", label: "Directors KYC Due",     value: String(kycDueSoon), sub: "Within 30 days" },
         ].map(c => (
@@ -845,12 +847,9 @@ export default function MCAPage() {
             emptyTitle="No company clients yet"
             emptyDescription="This firm-wide view has no client picker of its own — add a company from a client's Compliance → MCA workspace tab."
             emptyAction={
-              <Link
-                href="/clients"
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-xs font-semibold rounded-lg hover:bg-brand-dark transition-colors"
-              >
-                Go to Clients <ArrowRight size={13} />
-              </Link>
+              <EmptyStateActions>
+                <EmptyStateAction requires={["client", "write"]} label="Go to Clients" href="/clients" />
+              </EmptyStateActions>
             }
           />
         </div>
@@ -875,7 +874,13 @@ export default function MCAPage() {
             exportFilename="mca-filings"
             persistKey="mca.filings"
             emptyTitle="No ROC filings yet"
-            emptyDescription={'Click "Add Filing" to start tracking ROC/MCA obligations.'}
+            emptyDescription="Track each ROC or MCA obligation of a company client here, with its due date, and mark it filed once you have filed it on the portal."
+            emptyAction={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["mca", "write"]} icon={<Plus size={14} />} label="Add Filing"
+                  onClick={() => setShowModal(true)} />
+              </EmptyStateActions>
+            }
             rowActions={(f) =>
               f.status !== "Filed" ? (
                 <button onClick={() => openMarkFiledModal(f)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
@@ -910,12 +915,9 @@ export default function MCAPage() {
             emptyTitle="No directors yet"
             emptyDescription="This firm-wide view has no client picker of its own — add a director from a client's Compliance → MCA workspace tab."
             emptyAction={
-              <Link
-                href="/clients"
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-xs font-semibold rounded-lg hover:bg-brand-dark transition-colors"
-              >
-                Go to Clients <ArrowRight size={13} />
-              </Link>
+              <EmptyStateActions>
+                <EmptyStateAction requires={["client", "write"]} label="Go to Clients" href="/clients" />
+              </EmptyStateActions>
             }
           />
         </div>

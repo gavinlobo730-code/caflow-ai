@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ChevronLeft, Hash, CreditCard, Save } from "lucide-react";
+import { Hash, CreditCard, Save } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface InvoiceSettings {
@@ -179,13 +179,11 @@ export default function InvoiceSettingsPage() {
       <div className="p-6 max-w-3xl mx-auto space-y-5">
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-        <div>
-          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label transition-colors mb-1">
-            <ChevronLeft size={13} /> Settings
-          </Link>
-          <h1 className="text-xl font-semibold text-ps-ink">Invoice Settings</h1>
-          <p className="text-sm text-ps-label mt-0.5">Configure invoice numbering, payment details, and footer text.</p>
-        </div>
+        <PageHeader
+          back={{ href: "/settings", label: "Settings" }}
+          title="Invoice Settings"
+          subtitle="Configure invoice numbering, payment details, and footer text."
+        />
 
         {loadError && !loading && (
           <div className="flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">

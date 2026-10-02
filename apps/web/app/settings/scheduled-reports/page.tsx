@@ -6,9 +6,8 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft, Plus, Trash2, Mail, Calendar, ToggleLeft, ToggleRight,
+  Plus, Trash2, Mail, Calendar, ToggleLeft, ToggleRight,
   AlertCircle, Loader2, X,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -16,6 +15,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -227,23 +227,19 @@ export default function ScheduledReportsPage() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/settings" className="text-ps-hint hover:text-ps-label">
-            <ArrowLeft size={16} />
-          </Link>
-          <div>
-            <h1 className="text-xl font-semibold text-ps-ink">Scheduled Reports</h1>
-            <p className="text-sm text-ps-hint mt-0.5">Automatically email reports to clients on a schedule</p>
-          </div>
-        </div>
-        <button
-          onClick={() => { setShowModal(true); setFormError(null); }}
-          className="flex items-center gap-1.5 text-sm bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand-dark"
-        >
-          <Plus size={14} /> New Schedule
-        </button>
-      </div>
+      <PageHeader
+        back={{ href: "/settings", label: "Settings" }}
+        title="Scheduled Reports"
+        subtitle="Automatically email reports to clients on a schedule"
+        actions={
+          <button
+            onClick={() => { setShowModal(true); setFormError(null); }}
+            className="flex items-center gap-1.5 text-sm bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand-dark"
+          >
+            <Plus size={14} /> New Schedule
+          </button>
+        }
+      />
 
       {/* Info Banner */}
       <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">

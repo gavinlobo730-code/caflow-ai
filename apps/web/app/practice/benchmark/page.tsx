@@ -9,6 +9,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { EmptyState, ErrorState } from "@/components/ui/states";
+import { PageHeader } from "@/components/ui/page-header";
 
 /**
  * Where each client sits in the firm's own tax and cost distribution —
@@ -178,22 +179,22 @@ export default function BenchmarkPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-5xl">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <BarChart3 size={18} className="text-ps-label" />
-          <h1 className="text-base font-semibold text-ps-ink">Client benchmark</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <FinancialYearPicker value={fy} onChange={setFy} />
-          <button
-            onClick={() => void load()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-ps-border bg-white px-3 py-1.5 text-sm text-ps-body hover:bg-ps-hover transition-colors"
-          >
-            <RefreshCw size={14} />
-            Refresh
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        icon={<BarChart3 size={18} className="text-ps-label" />}
+        title="Client benchmark"
+        actions={
+          <div className="flex items-center gap-2">
+            <FinancialYearPicker value={fy} onChange={setFy} />
+            <button
+              onClick={() => void load()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-ps-border bg-white px-3 py-1.5 text-sm text-ps-body hover:bg-ps-hover transition-colors"
+            >
+              <RefreshCw size={14} />
+              Refresh
+            </button>
+          </div>
+        }
+      />
 
       {error && <ErrorState message={error} onRetry={() => void load()} />}
 

@@ -27,8 +27,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ArrowLeft, Download, AlertCircle } from "lucide-react";
+import { Download, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -38,6 +37,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { api, type StatutoryRow, type StatutorySummary } from "@/lib/api";
 import { GapList } from "@/components/ui/callout";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { PageHeader } from "@/components/ui/page-header";
 
 type Client = { id: string; client_name: string };
 
@@ -152,19 +152,12 @@ export default function StatutoryPage() {
   return (
     <div className="min-h-screen bg-ps-bg p-8">
       <div className="max-w-ps-data mx-auto">
-        <div className="mb-6 flex items-center gap-3">
-          <Link href="/payroll">
-            <Button variant="outline" size="sm" className="flex items-center gap-1.5">
-              <ArrowLeft size={14} />Back to Payroll
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-ps-ink">Statutory Deductions</h1>
-            <p className="text-sm text-ps-label mt-0.5">
-              PF (EPF Act 1952) &middot; ESIC (ESI Act 1948) &middot; Gratuity (Gratuity Act 1972 Sec 4)
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          back={{ href: "/payroll", label: "Payroll" }}
+          title="Statutory Deductions"
+          subtitle="PF (EPF Act 1952) &middot; ESIC (ESI Act 1948) &middot; Gratuity (Gratuity Act 1972 Sec 4)"
+          className="mb-6"
+        />
 
         <Card className="mb-4">
           <CardContent className="pt-5">

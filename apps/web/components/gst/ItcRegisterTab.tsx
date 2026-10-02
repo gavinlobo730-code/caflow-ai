@@ -39,6 +39,7 @@ import { gstPeriodLabel, isGstPeriod } from "@/lib/gst/period";
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 function money(paise?: number | null) {
   const p = Number(paise ?? 0);
@@ -368,10 +369,10 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
                 <span className="text-ps-hint"> · a nil row declares nothing</span>
               )}
             </span>
-            <button onClick={record} disabled={busy !== null || !canRecord}
+            <Button variant="plain" size="none" onClick={record} disabled={busy !== null || !canRecord}
               className="px-3 py-1.5 text-xs rounded-lg bg-brand-dark text-white disabled:opacity-40">
               {busy === "record" ? "Recording…" : "Record"}
-            </button>
+            </Button>
           </div>
         </div>
       )}

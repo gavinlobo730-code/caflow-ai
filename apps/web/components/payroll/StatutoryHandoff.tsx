@@ -38,7 +38,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle, Check, Copy, Download, ExternalLink, Info, Link2, Lock,
+  AlertTriangle, Check, Copy, Download, ExternalLink, Info, Link2, Lock, Play,
 } from "lucide-react";
 
 import { api, request, type ApiResp, type HandoffObligation,
@@ -50,20 +50,13 @@ import { useToast } from "@/components/ui/use-toast";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { formatMonthYear } from "@/lib/dates/format";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 type PayrollRun = { id: string; month: string; status: string };
 
 type Note = { kind: "ok" | "warn" | "err"; text: string } | null;
-
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-function fmtMonth(month: string): string {
-  const [y, m] = month.split("-").map(Number);
-  return m >= 1 && m <= 12 ? `${MONTH_NAMES[m - 1]} ${y}` : month;
-}
 
 /** Integer paise to ₹, grouped the Indian way. Display only — every amount on
  *  the wire is paise and stays paise. */
@@ -641,11 +634,11 @@ function Retract({ clientId, remittanceId, onDone, onError }: {
         touch the ledger — if a bank entry paid this, that entry stays.
       </p>
       <div className="flex items-center gap-2">
-        <button type="button" onClick={go} disabled={busy}
+        <Button variant="plain" size="none" type="button" onClick={go} disabled={busy}
           className="text-2xs font-semibold text-white bg-red-600 hover:bg-red-700
                      disabled:opacity-50 rounded-md px-3 py-1.5">
           {busy ? "Retracting…" : "Yes, retract it"}
-        </button>
+        </Button>
         <button type="button" onClick={() => setConfirming(false)} disabled={busy}
           className="text-2xs text-ps-label hover:text-ps-ink px-2 py-1.5">
           Keep it
@@ -735,7 +728,7 @@ function UnmatchedRemittances({ clientId, onLinked }: {
               <span className="font-semibold">
                 {r.scheme === "esic" ? "ESI" : `Professional tax — ${r.state ?? ""}`}
               </span>
-              {" · "}{fmtMonth(r.wage_month)}
+              {" · "}{formatMonthYear(r.wage_month)}
               {r.challan_number ? ` · challan ${r.challan_number}` : ""}
             </p>
             <p className="text-xs font-mono text-ps-ink">
@@ -850,9 +843,20 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
     return <p className="p-5 text-xs text-ps-hint">Loading…</p>;
   }
   if (!runs.length) {
-    return <p className="p-5 text-center text-sm text-ps-hint py-10">
-      No payroll runs yet. Compute one under Register first.
-    </p>;
+    return (
+      <EmptyState
+        icon={<Play size={28} />}
+        className="py-10"
+        title="No payroll runs yet"
+        description="What is due on each portal is worked out from a run, so compute one on the Register tab first."
+        action={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["payroll", "write"]} icon={<Play size={14} />} label="Go to Register"
+              href={`/clients/${clientId}/payroll?tab=register`} />
+          </EmptyStateActions>
+        }
+      />
+    );
   }
 
   return (
@@ -863,7 +867,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
           className="border border-ps-border rounded-lg px-3 py-1.5 text-sm
                      outline-none focus:border-brand">
           {runs.map((r) => (
-            <option key={r.id} value={r.id}>{fmtMonth(r.month)} · {r.status}</option>
+            <option key={r.id} value={r.id}>{formatMonthYear(r.month)} · {r.status}</option>
           ))}
         </select>
       </div>

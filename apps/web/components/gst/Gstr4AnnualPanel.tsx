@@ -338,9 +338,9 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
                     <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(r.taxable_value_paise)}</td>
                     <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(r.igst_paise + r.cgst_paise + r.sgst_paise + r.cess_paise)}</td>
                     <td className="py-1.5 text-right">
-                      <button onClick={async () => { setStatement(null); await api.gstr4Annual.deleteUrpSupply(r.id, clientId); await loadRows(); }} title="Remove" className="text-state-problem hover:opacity-70">
+                      <Button variant="plain" size="none" onClick={async () => { setStatement(null); await api.gstr4Annual.deleteUrpSupply(r.id, clientId); await loadRows(); }} title="Remove" className="text-state-problem hover:opacity-70">
                         <Trash2 size={12} />
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -402,11 +402,11 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
               </label>
             ))}
           </div>
-          <button onClick={addUrp} disabled={saving}
+          <Button variant="plain" size="none" onClick={addUrp} disabled={saving}
             className="text-2xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 inline-flex items-center gap-1.5">
             {saving ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
             Add supply
-          </button>
+          </Button>
         </div>
       </Section>
 
@@ -431,9 +431,9 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
                     <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(r.igst_paise)}</td>
                     <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(r.cess_paise)}</td>
                     <td className="py-1.5 text-right">
-                      <button onClick={async () => { setStatement(null); await api.gstr4Annual.deleteImportOfService(r.id, clientId); await loadRows(); }} title="Remove" className="text-state-problem hover:opacity-70">
+                      <Button variant="plain" size="none" onClick={async () => { setStatement(null); await api.gstr4Annual.deleteImportOfService(r.id, clientId); await loadRows(); }} title="Remove" className="text-state-problem hover:opacity-70">
                         <Trash2 size={12} />
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -476,11 +476,11 @@ export function Gstr4AnnualPanel({ clientId, gstin }: { clientId: string; gstin:
                 className="px-2 py-1 border border-ps-border rounded w-20" />
             </label>
           </div>
-          <button onClick={addImps} disabled={saving}
+          <Button variant="plain" size="none" onClick={addImps} disabled={saving}
             className="text-2xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 inline-flex items-center gap-1.5">
             {saving ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
             Add import
-          </button>
+          </Button>
         </div>
       </Section>
 

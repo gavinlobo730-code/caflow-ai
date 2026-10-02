@@ -7,6 +7,8 @@ import { arrayOrEmpty } from "@/lib/api/shape";
 import { Skeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { useRefreshEngagement } from "../_engagementRefresh";
+import { formatDate } from "@/lib/dates/format";
+import { Button } from "@/components/ui/button";
 
 // ── Status cycle: pending → in_progress → complete ─────────────────────────
 const STATUS_CYCLE: Record<ChecklistItemStatus, ChecklistItemStatus> = {
@@ -226,7 +228,7 @@ export default function ChecklistPage() {
                 <div key={item.id} className="px-4 py-3 space-y-2">
                   <div className="flex items-start gap-3">
                     {/* Status toggle */}
-                    <button
+                    <Button variant="plain" size="none"
                       onClick={() => cycleStatus(item)}
                       disabled={!!updatingId}
                       className="mt-0.5 disabled:opacity-50"
@@ -237,7 +239,7 @@ export default function ChecklistPage() {
                       ) : (
                         <StatusIcon status={item.status} />
                       )}
-                    </button>
+                    </Button>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -260,7 +262,7 @@ export default function ChecklistPage() {
                             placeholder="Add notes…"
                             autoFocus
                           />
-                          <button onClick={() => saveNotes(item)} className="text-xs text-blue-600 hover:underline">Save</button>
+                          <Button variant="plain" size="none" onClick={() => saveNotes(item)} className="text-xs text-blue-600 hover:underline">Save</Button>
                         </div>
                       ) : noteValue ? (
                         <p
@@ -282,21 +284,21 @@ export default function ChecklistPage() {
                       {item.completed_by && (
                         <p className="text-3xs text-ps-hint mt-0.5">
                           Completed by {item.completed_by}
-                          {item.completed_at && ` · ${new Date(item.completed_at).toLocaleDateString("en-IN")}`}
+                          {item.completed_at && ` · ${formatDate(item.completed_at)}`}
                         </p>
                       )}
                     </div>
 
                     {/* Mark N/A */}
                     {item.status !== "not_applicable" && (
-                      <button
+                      <Button variant="plain" size="none"
                         onClick={() => markNA(item)}
                         disabled={!!updatingId}
                         className="text-3xs text-ps-hint hover:text-ps-label flex-shrink-0 disabled:opacity-50"
                         title="Mark N/A"
                       >
                         N/A
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -314,14 +316,14 @@ export default function ChecklistPage() {
       )}
 
       <div className="flex justify-end">
-        <button
+        <Button variant="plain" size="none"
           onClick={handleSubmitForReview}
           disabled={!allDone || submitting}
           className="flex items-center gap-1.5 text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40"
         >
           {submitting && <Loader2 size={12} className="animate-spin" />}
           Submit for Review <ChevronRight size={12} />
-        </button>
+        </Button>
       </div>
       {!allDone && (
         <p className="text-3xs text-ps-hint text-right">

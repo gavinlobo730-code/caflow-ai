@@ -28,6 +28,7 @@ import { usePermissions } from "@/lib/auth/AuthContext";
 import { api } from "@/lib/api";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { panProblem } from "@/lib/identifiers/pan";
+import { PageHeader } from "@/components/ui/page-header";
 
 const CLIENT_IMPORT_COLUMNS = [
   { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
@@ -512,52 +513,50 @@ export default function ClientsPage() {
     <div className="p-6 max-w-4xl mx-auto space-y-4">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ps-ink">Clients</h1>
-          <p className="text-ps-label text-sm mt-1">
-            {loading ? "Loading…" : `${filtered.length} client${filtered.length !== 1 ? "s" : ""}`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={load}
-            className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label"
-            title="Refresh"
-          >
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          </button>
-          <Link
-            href="/pipeline"
-            className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
-          >
-            <KanbanSquare size={15} />
-            Pipeline
-          </Link>
-          <button
-            onClick={() => setImportOpen(true)}
-            className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
-          >
-            <Upload size={15} />
-            Import CSV
-          </button>
-          <button
-            onClick={() => downloadCsv("clients.csv", toCsv(filtered, CLIENT_EXPORT_COLUMNS))}
-            disabled={filtered.length === 0}
-            className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Download size={15} />
-            Export
-          </button>
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
-          >
-            <Plus size={15} />
-            Add Client
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Clients"
+        subtitle={loading ? "Loading…" : `${filtered.length} client${filtered.length !== 1 ? "s" : ""}`}
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={load}
+              className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label"
+              title="Refresh"
+            >
+              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+            </button>
+            <Link
+              href="/pipeline"
+              className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
+            >
+              <KanbanSquare size={15} />
+              Pipeline
+            </Link>
+            <button
+              onClick={() => setImportOpen(true)}
+              className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
+            >
+              <Upload size={15} />
+              Import CSV
+            </button>
+            <button
+              onClick={() => downloadCsv("clients.csv", toCsv(filtered, CLIENT_EXPORT_COLUMNS))}
+              disabled={filtered.length === 0}
+              className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download size={15} />
+              Export
+            </button>
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
+            >
+              <Plus size={15} />
+              Add Client
+            </button>
+          </div>
+        }
+      />
 
       {/* Filter tabs */}
       <div className="flex border-b border-ps-border">

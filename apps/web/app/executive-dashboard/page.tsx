@@ -10,7 +10,9 @@ import {
 import { api } from "@/lib/api";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { gradeForScore } from "@/lib/health/vocabulary";
+import { formatDateTime, formatTime } from "@/lib/dates/format";
 import { ATTENTION, BRAND, GOLD, MUTED, PROBLEM, READY } from "@/lib/design/tokens";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -270,27 +272,26 @@ export default function ExecutiveDashboardPage() {
   const totalClients = risk
     ? risk.critical_clients + risk.at_risk_clients + risk.healthy_clients
     : 0;
-  const generatedAt = new Date(data.generated_at);
 
   return (
     <div className="min-h-screen bg-ps-bg">
       {/* Header */}
       <div className="bg-white border-b border-ps-border px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <PageHeader
+          icon={
             <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: BRAND }}>
               <BarChart2 size={18} className="text-white" />
             </div>
-            <div>
-              <h1 className="text-xl font-semibold text-brand">Executive Dashboard</h1>
-              <p className="text-xs text-ps-label">Computed from your practice records • {generatedAt.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-            </div>
-          </div>
-          <button onClick={load} disabled={loading}
-            className="flex items-center gap-1.5 text-sm text-ps-label hover:text-brand border border-ps-border px-3 py-2 rounded-lg bg-white">
-            <RefreshCw size={13} /> Refresh
-          </button>
-        </div>
+          }
+          title="Executive Dashboard"
+          subtitle={<>Computed from your practice records • {formatDateTime(data.generated_at)}</>}
+          actions={
+            <button onClick={load} disabled={loading}
+              className="flex items-center gap-1.5 text-sm text-ps-label hover:text-brand border border-ps-border px-3 py-2 rounded-lg bg-white">
+              <RefreshCw size={13} /> Refresh
+            </button>
+          }
+        />
       </div>
 
       <div className="px-6 py-6 max-w-[1400px] mx-auto space-y-6">
@@ -515,7 +516,7 @@ export default function ExecutiveDashboardPage() {
                 {summaryIsModel ? "AI Executive Summary" : "Summary"}
               </h3>
               <span className="ml-auto text-3xs text-ps-hint flex items-center gap-1">
-                <Clock size={9} /> Generated {generatedAt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                <Clock size={9} /> Generated {formatTime(data.generated_at)}
               </span>
             </div>
             <div className="prose prose-sm max-w-none text-ps-body text-sm leading-relaxed">

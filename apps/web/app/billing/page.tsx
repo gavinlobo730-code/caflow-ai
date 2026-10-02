@@ -18,6 +18,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { formatDate } from "@/lib/dates/format";
 import type { Client } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
 // A payload field is not a list until something has checked.
@@ -27,6 +28,9 @@ import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { formatPaise as fmtPaise } from "@/lib/money/format";
 import { isOwedFeeInvoice, type FeeInvoiceStatus } from "@/lib/constants/feeInvoiceStatus";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,13 +100,6 @@ type Tab = "dashboard" | "engagements" | "invoices" | "outstanding" | "receipts"
 const SERVICE_TYPES: ServiceType[] = ["GST Filing", "ITR Filing", "Accounting", "Payroll", "MCA", "Audit", "Advisory"];
 const BILLING_CYCLES: BillingCycle[] = ["Monthly", "Quarterly", "Annual"];
 const PAYMENT_MODES: PaymentMode[] = ["NEFT", "RTGS", "Cheque", "Cash", "UPI"];
-
-function fmtDate(date: string): string {
-  if (!date) return "—";
-  const [y, m, d] = date.split("-");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${d} ${months[parseInt(m) - 1]} ${y}`;
-}
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   Draft: "bg-ps-muted text-ps-label",
@@ -627,15 +624,15 @@ export default function BillingPage() {
 
   return (
     <div className="p-4 md:p-6 max-w-ps-data mx-auto space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg md:text-xl font-semibold text-ps-ink">Fee Billing</h1>
-          <p className="text-sm text-ps-label mt-0.5">Manage CA firm fee engagements and invoices</p>
-        </div>
-        <button onClick={() => load()} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
-          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-        </button>
-      </div>
+      <PageHeader
+        title="Fee Billing"
+        subtitle="Manage CA firm fee engagements and invoices"
+        actions={
+          <button onClick={() => load()} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
+            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+          </button>
+        }
+      />
 
       {error && (
         <div className="rounded-lg bg-state-attention-surface border border-state-attention-border px-4 py-3 text-sm text-amber-800">{error}</div>
@@ -749,7 +746,19 @@ export default function BillingPage() {
                 </thead>
                 <tbody className="divide-y divide-ps-border">
                   {engagements.length === 0 && (
-                    <tr><td colSpan={6} className="text-center py-8 text-ps-hint">No engagements yet</td></tr>
+                    <tr><td colSpan={6}>
+                      <EmptyState
+                        className="py-10"
+                        title="No engagements yet"
+                        description="An engagement is the work you do for a client and the fee agreed for it. Fee invoices are raised from engagements."
+                        action={
+                          <EmptyStateActions>
+                            <EmptyStateAction requires={["billing", "write"]} icon={<Plus size={14} />} label="Add Engagement"
+                              onClick={() => setShowEngModal(true)} />
+                          </EmptyStateActions>
+                        }
+                      />
+                    </td></tr>
                   )}
                   {engagements.map(e => (
                     <tr key={e.id} className="hover:bg-ps-bg">
@@ -757,7 +766,7 @@ export default function BillingPage() {
                       <td className="px-4 py-3 text-ps-label">{e.service_type}</td>
                       <td className="px-4 py-3 text-gray-800 font-mono">{fmtPaise(e.fee_paise)}</td>
                       <td className="px-4 py-3 text-ps-label">{e.billing_cycle}</td>
-                      <td className="px-4 py-3 text-ps-label">{fmtDate(e.start_date)}</td>
+                      <td className="px-4 py-3 text-ps-label">{formatDate(e.start_date)}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ENGAGEMENT_STATUS_BADGE[e.status] ?? "bg-ps-muted text-ps-label"}`}>
                           {e.status}
@@ -803,14 +812,14 @@ export default function BillingPage() {
           <div className="flex items-center justify-between">
             <p className="text-xs text-ps-label">GST @ 18% applied on CA services — SAC 998211</p>
             <div className="flex items-center gap-2">
-              <button onClick={handleRunOverdueCheck} disabled={actionInFlight}
+              <Button variant="plain" size="none" onClick={handleRunOverdueCheck} disabled={actionInFlight}
                 className="flex items-center gap-2 px-4 py-2 border border-ps-border text-ps-body text-sm rounded-lg hover:bg-ps-bg disabled:opacity-60">
                 <Clock size={15} /> {runningOverdueCheck ? "Checking…" : "Run Overdue Check"}
-              </button>
-              <button onClick={handleRaiseInvoice} disabled={actionInFlight}
+              </Button>
+              <Button variant="plain" size="none" onClick={handleRaiseInvoice} disabled={actionInFlight}
                 className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark disabled:opacity-60">
                 <IndianRupee size={15} /> {raisingInvoice ? "Raising…" : "Raise Invoice"}
-              </button>
+              </Button>
             </div>
           </div>
           {loading ? (
@@ -832,12 +841,26 @@ export default function BillingPage() {
                 </thead>
                 <tbody className="divide-y divide-ps-border">
                   {invoices.length === 0 && (
-                    <tr><td colSpan={8} className="text-center py-8 text-ps-hint">No invoices yet — click &quot;Raise Invoice&quot; to generate</td></tr>
+                    <tr><td colSpan={8}>
+                      <EmptyState
+                        className="py-10"
+                        title="No invoices yet"
+                        description="Fee invoices are raised from your engagements. Raise them once an engagement with a fee is in place."
+                        action={
+                          <EmptyStateActions>
+                            <EmptyStateAction requires={["billing", "write"]} icon={<IndianRupee size={14} />} label="Raise Invoice"
+                              disabled={actionInFlight} onClick={() => handleRaiseInvoice()} />
+                            <EmptyStateAction requires={["billing", "write"]} variant="secondary" icon={<Plus size={14} />} label="Add Engagement"
+                              onClick={() => setShowEngModal(true)} />
+                          </EmptyStateActions>
+                        }
+                      />
+                    </td></tr>
                   )}
                   {invoices.map(inv => (
                     <tr key={inv.id} className="hover:bg-ps-bg">
                       <td className="px-4 py-3 font-mono text-ps-body">{inv.invoice_no}</td>
-                      <td className="px-4 py-3 text-ps-label">{fmtDate(inv.invoice_date)}</td>
+                      <td className="px-4 py-3 text-ps-label">{formatDate(inv.invoice_date)}</td>
                       <td className="px-4 py-3 font-medium text-ps-ink">{inv.client_name ?? "—"}</td>
                       <td className="px-4 py-3 text-right font-mono text-ps-body">{fmtPaise(inv.amount_paise)}</td>
                       <td className="px-4 py-3 text-right font-mono text-ps-label">{fmtPaise(inv.gst_paise)}</td>
@@ -936,13 +959,25 @@ export default function BillingPage() {
               </thead>
               <tbody className="divide-y divide-ps-border">
                 {receipts.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-8 text-ps-hint">No receipts recorded</td></tr>
+                  <tr><td colSpan={6}>
+                    <EmptyState
+                      className="py-10"
+                      title="No receipts recorded"
+                      description="A receipt records money received against one of your fee invoices and clears it from what is owed."
+                      action={
+                        <EmptyStateActions>
+                          <EmptyStateAction requires={["billing", "write"]} icon={<Plus size={14} />} label="Record Receipt"
+                            onClick={() => setShowReceiptModal(true)} />
+                        </EmptyStateActions>
+                      }
+                    />
+                  </td></tr>
                 )}
                 {receipts.map(r => (
                   <tr key={r.id} className="hover:bg-ps-bg">
                     <td className="px-4 py-3 font-mono text-ps-body">{r.invoice_no ?? "—"}</td>
                     <td className="px-4 py-3 font-medium text-ps-ink">{r.client_name ?? "—"}</td>
-                    <td className="px-4 py-3 text-ps-label">{fmtDate(r.receipt_date)}</td>
+                    <td className="px-4 py-3 text-ps-label">{formatDate(r.receipt_date)}</td>
                     <td className="px-4 py-3 text-right font-mono font-semibold text-green-700">{fmtPaise(r.amount_paise)}</td>
                     <td className="px-4 py-3 text-ps-label">{r.payment_mode}</td>
                     <td className="px-4 py-3 font-mono text-ps-label text-xs">{r.reference_no || "—"}</td>

@@ -31,7 +31,9 @@ export function EmptyState({
       <div className="mb-3 text-ps-disabled">{icon ?? <Inbox size={32} />}</div>
       <p className="text-sm font-semibold text-ps-body">{title}</p>
       {description && <p className="mt-1 max-w-sm text-xs text-ps-hint">{description}</p>}
-      {action && <div className="mt-4">{action}</div>}
+      {/* `empty:hidden`: an action that renders nothing (EmptyStateActions for a
+          caller who may do none of them) must not leave its margin behind. */}
+      {action && <div className="mt-4 empty:hidden">{action}</div>}
     </div>
   );
 }

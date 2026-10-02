@@ -41,6 +41,7 @@ import {
   rupeesToPaise, filledLegs, unallocatedPaise, splitBlock, takeTheRestPaise,
   type SplitLeg, type SplitBlock,
 } from "@/lib/banking/splitLegs";
+import { Button } from "@/components/ui/button";
 
 interface SplitsResponse {
   splits?: { account_id: string; amount_paise: number; narration: string | null }[];
@@ -274,22 +275,22 @@ export function SplitAcrossLedgersModal({
           )}
           <div className="ml-auto flex items-center gap-2">
             {wasSplit && editable && (
-              <button onClick={clearSplit} disabled={saving}
+              <Button variant="plain" size="none" onClick={clearSplit} disabled={saving}
                 className="text-xs px-3 py-1.5 text-state-problem hover:underline disabled:opacity-50">
                 Clear the split
-              </button>
+              </Button>
             )}
             <button onClick={onClose} disabled={saving}
               className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
               Cancel
             </button>
-            <button
+            <Button variant="plain" size="none"
               onClick={save}
               disabled={!editable || saving || Boolean(blocked)}
               title={blocked ?? "Save this allocation"}
               className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed">
               {saving ? "Saving…" : "Save the split"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

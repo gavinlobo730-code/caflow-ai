@@ -36,7 +36,9 @@ test("the register can start a count, and reopens the one already open", () => {
   // Matched inside the BUTTON, not on the words: "Physical count — shortage
   // found" is one of the adjustment reasons and appears twice in this file,
   // so a bare search for the phrase would pass with no entry point at all.
-  const button = src.match(/<button onClick=\{startCount\}[\s\S]*?<\/button>/);
+  // A raw <button> or the guarded <Button>: opening a sheet is a server write, so it is the latter
+  // (scripts/a-button-that-writes-ignores-a-second-click.test.ts holds the register's page to that).
+  const button = src.match(/<(Button|button)\b[^>]*?onClick=\{startCount\}[\s\S]*?<\/\1>/);
   assert.ok(button, "the entry point exists on the register");
   assert.match(button![0], /"Physical count"/, "…and it says what it is");
   // Opening a sheet is a server WRITE. The label is allowed to change while

@@ -7,8 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ChevronLeft, Printer, AlertTriangle, Download } from "lucide-react";
+import { Printer, AlertTriangle, Download } from "lucide-react";
 // xlsx is fetched by the export click below and is NOT imported here: a static
 // `import * as XLSX from "xlsx"` put SheetJS (135 KB gzip) in this page's first
 // load for a button most visits never press. Namespace object, never `.default`
@@ -25,6 +24,7 @@ import { api } from "@/lib/api";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
+import { PageHeader } from "@/components/ui/page-header";
 
 // Financial year helpers — FY runs April 1 to March 31 (Indian fiscal year).
 //
@@ -379,17 +379,12 @@ export default function ScheduleIIIPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6 print:p-2 print:space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-3 print:hidden">
-        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft size={18} />
-        </Link>
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Schedule III — Financial Statements</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            As per Companies Act 2013, Schedule III — {fy.label}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        title="Schedule III — Financial Statements"
+        subtitle={<>As per Companies Act 2013, Schedule III — {fy.label}</>}
+        className="print:hidden"
+      />
 
       {/* Print heading */}
       <div className="hidden print:block text-center mb-4">

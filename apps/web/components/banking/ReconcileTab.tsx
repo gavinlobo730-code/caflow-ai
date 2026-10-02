@@ -14,6 +14,7 @@ import { StatementSkeleton } from "@/components/ui/skeleton";
 
 import { fmt } from "@/components/banking/shared";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 // ── Bank Reconciliation ────────────────────────────────────────────────────
 
@@ -462,7 +463,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
             </>
           )}
 
-          <button onClick={createSession} disabled={busy} className="text-xs px-4 py-1.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50">Open Reconciliation</button>
+          <Button variant="plain" size="none" onClick={createSession} disabled={busy} className="text-xs px-4 py-1.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50">Open Reconciliation</Button>
         </div>
       )}
 
@@ -647,10 +648,10 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                 <div className="flex gap-2 justify-end px-5 py-4 border-t border-ps-border">
                   <button onClick={() => { setReopening(false); setReopenReason(""); setError(null); }}
                     className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-                  <button onClick={doReopen} disabled={busy || reopenReason.trim().length < 10}
+                  <Button variant="plain" size="none" onClick={doReopen} disabled={busy || reopenReason.trim().length < 10}
                     className="text-xs px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">
                     {busy ? "Reopening…" : "Reopen"}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>

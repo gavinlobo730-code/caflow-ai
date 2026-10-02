@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { ChevronLeft, Download, FileText } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface CoaRow {
   account_code: string;
@@ -80,15 +80,11 @@ export default function CoaExportPage() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-5">
-      <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft size={18} />
-        </Link>
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Export Chart of Accounts</h1>
-          <p className="text-xs text-ps-label mt-0.5">Download your firm&apos;s master COA as CSV</p>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        title="Export Chart of Accounts"
+        subtitle="Download your firm&apos;s master COA as CSV"
+      />
 
       <div className="bg-white rounded-xl border border-ps-border p-6 space-y-5">
         <div className="flex items-center gap-3 p-4 bg-ps-bg rounded-lg">

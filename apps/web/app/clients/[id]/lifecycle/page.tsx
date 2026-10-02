@@ -7,12 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { formatDate } from "@/lib/dates/format";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { CardGridSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -77,13 +80,6 @@ const RENEWAL_STATUS_COLORS: Record<string, string> = {
   rejected: "bg-state-problem-surface text-state-problem",
   sent:     "bg-state-working-surface text-state-working",
 };
-
-function formatDate(d?: string | null) {
-  if (!d) return "—";
-  try {
-    return formatDateShared(d);
-  } catch { return d; }
-}
 
 function paiseToCurrency(p: number) {
   // D5: two decimals. `toLocaleString("en-IN")` with no options
@@ -280,19 +276,19 @@ export default function ClientLifecyclePage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-base font-semibold text-brand">Lifecycle</h1>
-          <p className="text-xs text-gray-500 mt-0.5">Onboarding workflows and renewals</p>
-        </div>
-        <button
-          onClick={handleCreateWorkflow}
-          disabled={actionInFlight}
-          className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-md hover:bg-brand-dark disabled:opacity-50"
-        >
-          <Plus size={12} /> New Onboarding
-        </button>
-      </div>
+      <PageHeader
+        title="Lifecycle"
+        subtitle="Onboarding workflows and renewals"
+        actions={
+          <button
+            onClick={handleCreateWorkflow}
+            disabled={actionInFlight}
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-md hover:bg-brand-dark disabled:opacity-50"
+          >
+            <Plus size={12} /> New Onboarding
+          </button>
+        }
+      />
 
       {error && <Callout tone="problem">{error}</Callout>}
 
@@ -304,15 +300,16 @@ export default function ClientLifecyclePage() {
         </h2>
         {workflows.length === 0 ? (
           <Card className="bg-white border border-gray-200">
-            <CardContent className="py-10 text-center">
-              <p className="text-sm text-gray-500">No onboarding workflows yet</p>
-              <button disabled={actionInFlight}
-                onClick={handleCreateWorkflow}
-                className="mt-3 text-xs text-brand hover:text-ps-ink underline"
-              >
-                Create one now
-              </button>
-            </CardContent>
+            <EmptyState
+              title="No onboarding workflows yet"
+              description="Start the standard 10-step onboarding checklist for this client and tick the steps off as they are done."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction requires={["client", "write"]} icon={<Plus size={14} />} label="New Onboarding"
+                    disabled={actionInFlight} onClick={() => handleCreateWorkflow()} />
+                </EmptyStateActions>
+              }
+            />
           </Card>
         ) : (
           workflows.map((wf) => {

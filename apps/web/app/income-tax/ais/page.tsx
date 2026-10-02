@@ -31,7 +31,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 // xlsx is fetched by the export click below and is NOT imported here: a static
 // `import * as XLSX from "xlsx"` put SheetJS (135 KB gzip) in this page's first
 // load for a button most visits never press. Namespace object, never `.default`
@@ -45,7 +44,6 @@ import { todayLocalISO } from "@/lib/dateMath";
 import {
   AlertCircle,
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   Download,
   FileText,
@@ -59,6 +57,7 @@ import { buildWorkbook } from "@/lib/export/xlsx";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
 
 function formatRupees(paise: number): string {
   const rupees = Math.floor(Math.abs(paise) / 100);
@@ -333,27 +332,25 @@ export default function AISPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <Link href="/income-tax" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label mb-2 transition-colors">
-            <ArrowLeft className="w-3.5 h-3.5" /> Income Tax
-          </Link>
-          <h1 className="text-xl font-semibold text-ps-ink">AIS review</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            Annual Information Statement — IT Act §285BB
-          </p>
-        </div>
-        {lines.length > 0 && (
-          <div className="flex gap-2">
-            <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-white border border-ps-border text-ps-body text-sm font-medium rounded-lg hover:bg-ps-bg transition-colors">
-              <Download className="w-4 h-4" /> CSV
-            </button>
-            <button onClick={exportXLSX} className="flex items-center gap-2 px-4 py-2 bg-white border border-ps-border text-ps-body text-sm font-medium rounded-lg hover:bg-ps-bg transition-colors">
-              <Download className="w-4 h-4" /> Excel
-            </button>
-          </div>
-        )}
-      </div>
+      <PageHeader
+        back={{ href: "/income-tax", label: "Income Tax" }}
+        title="AIS review"
+        subtitle="Annual Information Statement — IT Act §285BB"
+        actions={
+          <>
+            {lines.length > 0 && (
+              <div className="flex gap-2">
+                <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-white border border-ps-border text-ps-body text-sm font-medium rounded-lg hover:bg-ps-bg transition-colors">
+                  <Download className="w-4 h-4" /> CSV
+                </button>
+                <button onClick={exportXLSX} className="flex items-center gap-2 px-4 py-2 bg-white border border-ps-border text-ps-body text-sm font-medium rounded-lg hover:bg-ps-bg transition-colors">
+                  <Download className="w-4 h-4" /> Excel
+                </button>
+              </div>
+            )}
+          </>
+        }
+      />
 
       {/* Client and assessment year */}
       <div className="bg-white rounded-xl border border-ps-border px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">

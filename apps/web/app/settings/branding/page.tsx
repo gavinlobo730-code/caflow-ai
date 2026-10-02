@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import Link from "next/link";
 // `Image` is aliased: lucide's icon of that name shadows next/image, which made
 // jsx-a11y/alt-text flag this decorative SVG as a real image missing an alt.
-import { ChevronLeft, Palette, Image as ImageIcon, Globe, Save, Upload, Eye } from "lucide-react";
+import { Palette, Image as ImageIcon, Globe, Save, Upload, Eye } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Branding {
@@ -228,13 +228,11 @@ export default function BrandingPage() {
       <div className="p-6 max-w-5xl mx-auto space-y-5">
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-        <div>
-          <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label transition-colors mb-1">
-            <ChevronLeft size={13} /> Settings
-          </Link>
-          <h1 className="text-xl font-semibold text-ps-ink">Firm Branding</h1>
-          <p className="text-sm text-ps-label mt-0.5">Customize your firm&apos;s visual identity across all documents and client communications.</p>
-        </div>
+        <PageHeader
+          back={{ href: "/settings", label: "Settings" }}
+          title="Firm Branding"
+          subtitle="Customize your firm&apos;s visual identity across all documents and client communications."
+        />
 
         {loadError && !loading && (
           <div className="flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">

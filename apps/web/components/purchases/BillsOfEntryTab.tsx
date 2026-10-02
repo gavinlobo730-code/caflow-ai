@@ -31,6 +31,8 @@ import { AccountLookup, type AccountLike } from "@/components/lookups/AccountLoo
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -287,9 +289,18 @@ export function BillsOfEntryTab({ clientId, openDoc }:
       {loading ? (
         <p className="text-xs text-ps-hint">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="text-xs text-ps-hint">
-          No Bills of Entry recorded. Record one for every import so its IGST reaches the return.
-        </p>
+        <EmptyState
+          icon={<Ship size={28} />}
+          className="py-10"
+          title="No Bills of Entry recorded"
+          description="Record one for every import of goods so the IGST paid to customs reaches the return."
+          action={
+            <EmptyStateActions>
+              <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Record a Bill of Entry"
+                disabled={busy} onClick={() => { setForm(BLANK); setShowForm(true); }} />
+            </EmptyStateActions>
+          }
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">

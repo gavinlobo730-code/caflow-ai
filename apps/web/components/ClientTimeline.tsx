@@ -14,6 +14,7 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { TimelineSkeleton } from "@/components/ui/skeleton";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { formatDate } from "@/lib/dates/format";
 
 const CATEGORY_ICONS: Record<EventCategory, React.ElementType> = {
   accounting:  BookOpen,
@@ -68,7 +69,7 @@ function timeAgo(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  return formatDate(iso);
 }
 
 const PAGE_SIZE = 20;

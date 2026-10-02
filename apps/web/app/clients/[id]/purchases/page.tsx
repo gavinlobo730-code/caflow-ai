@@ -61,6 +61,7 @@ import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/p
 import { Callout } from "@/components/ui/callout";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { Button } from "@/components/ui/button";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -1138,7 +1139,16 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
         exportFilename="purchase-bills"
         persistKey="purchases.bills"
         emptyTitle="No purchase bills"
-        emptyDescription={`No purchase bills for ${periodOptionLabel(periodMode, financialYear)}.`}
+        emptyDescription={`Nothing is dated in ${periodOptionLabel(periodMode, financialYear)}. Enter a supplier's bill, or bring in earlier ones from a CSV file or a Tally export.`}
+        emptyAction={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="New Bill"
+              onClick={() => router.push(`/clients/${clientId}/purchases/bills/new/edit`)} />
+            <EmptyStateAction requires={["accounting", "write"]} variant="secondary" icon={<Upload size={14} />} label="Import from CSV"
+              onClick={() => setShowImport(true)} />
+            <EmptyStateAction requires={["accounting", "approve"]} variant="secondary" label="Migrate from Tally" href="/migration" />
+          </EmptyStateActions>
+        }
         toolbarExtra={
           <>
             <PeriodPicker
@@ -2450,7 +2460,16 @@ function Vendors({ clientId }: { clientId: string }) {
         exportFilename="vendors"
         persistKey="purchases.vendors"
         emptyTitle="No vendors"
-        emptyDescription="No vendors added yet."
+        emptyDescription="Add the suppliers this client buys from, or bring the list in from a CSV file or a Tally export. Bills, TDS and input credit are all worked out per vendor."
+        emptyAction={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["client", "write"]} icon={<Plus size={14} />} label="Add Vendor"
+              onClick={() => { setEditingVendor(null); setShowForm(true); }} />
+            <EmptyStateAction requires={["client", "write"]} variant="secondary" icon={<Upload size={14} />} label="Import from CSV"
+              onClick={() => setShowImport(true)} />
+            <EmptyStateAction requires={["accounting", "approve"]} variant="secondary" label="Migrate from Tally" href="/migration" />
+          </EmptyStateActions>
+        }
         bulkActions={vendorBulkActions}
         rowActions={(v) => (
           <button
@@ -3136,7 +3155,13 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
         exportFilename="purchase-payments"
         persistKey="purchases.payments"
         emptyTitle="No payments"
-        emptyDescription={`No payments for FY ${financialYear}.`}
+        emptyDescription={`No payment to a vendor is dated in FY ${financialYear}. A payment settles the bills it covers and clears them off what is owed.`}
+        emptyAction={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Record Payment"
+              onClick={() => setShowForm(true)} />
+          </EmptyStateActions>
+        }
         toolbarExtra={
           <>
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
@@ -3620,6 +3645,15 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
         exportFilename="debit-notes"
         persistKey="purchases.debit-notes"
         emptyTitle={`No debit notes in FY ${financialYear}`}
+        emptyDescription="A debit note reduces what you owe a supplier after a bill was entered: goods returned, a rate difference, a short supply."
+        emptyAction={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Create Debit Note"
+              onClick={() => router.push(`/clients/${clientId}/purchases/debit-notes/new/edit`)} />
+            <EmptyStateAction requires={["accounting", "write"]} variant="secondary" icon={<Upload size={14} />} label="Import from CSV"
+              onClick={() => setShowImport(true)} />
+          </EmptyStateActions>
+        }
         toolbarExtra={
           <>
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
@@ -4076,6 +4110,15 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
         exportFilename="purchase-credit-notes"
         persistKey="purchases.credit-notes"
         emptyTitle={`No credit notes in FY ${financialYear}`}
+        emptyDescription="A credit note adds to what you owe a supplier after a bill was entered: an extra charge, an under-billing put right (CGST Act §34(3))."
+        emptyAction={
+          <EmptyStateActions>
+            <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Create Credit Note"
+              onClick={() => router.push(`/clients/${clientId}/purchases/credit-notes/new/edit`)} />
+            <EmptyStateAction requires={["accounting", "write"]} variant="secondary" icon={<Upload size={14} />} label="Import from CSV"
+              onClick={() => setShowImport(true)} />
+          </EmptyStateActions>
+        }
         toolbarExtra={
           <>
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />

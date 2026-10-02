@@ -12,6 +12,9 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 interface Schedule {
   id: string; client_id: string; arrangement: string; cadence: string;
@@ -87,20 +90,21 @@ function Billing() {
 
   return (
     <div className="p-6 max-w-4xl">
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-2">
-          <Receipt size={18} className="text-brand" />
-          <h1 className="text-lg font-semibold text-brand">Billing Schedules</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white">
-            <Plus size={13} /> New schedule
-          </button>
-          <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
-            <RefreshCw size={13} /> Refresh
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Receipt size={18} className="text-brand" />}
+        title="Billing Schedules"
+        actions={
+          <div className="flex items-center gap-3">
+            <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white">
+              <Plus size={13} /> New schedule
+            </button>
+            <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
+              <RefreshCw size={13} /> Refresh
+            </button>
+          </div>
+        }
+        className="mb-5"
+      />
 
       {msg && <div className="mb-3 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700">{msg}</div>}
 
@@ -151,7 +155,19 @@ function Billing() {
           </thead>
           <tbody>
             {schedules.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">No billing schedules yet.</td></tr>
+              <tr><td colSpan={5}>
+                <EmptyState
+                  className="py-10"
+                  title="No billing schedules yet"
+                  description="A schedule bills a client a fixed fee on a cadence. Each run produces a draft invoice for you to check; nothing is issued on its own."
+                  action={
+                    <EmptyStateActions>
+                      <EmptyStateAction requires={["billing", "write"]} icon={<Plus size={14} />} label="New schedule"
+                        onClick={() => setShowForm(true)} />
+                    </EmptyStateActions>
+                  }
+                />
+              </td></tr>
             )}
             {schedules.map((s) => (
               <tr key={s.id} className="border-b border-ps-border last:border-0">

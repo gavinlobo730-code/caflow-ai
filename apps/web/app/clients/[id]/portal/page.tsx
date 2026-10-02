@@ -12,6 +12,7 @@ import type { Client } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
 import { portalStatusBadge } from "@/lib/portal/badge";
 import { portalInviteEmailFailureMessage } from "@/lib/portal/inviteError";
+import { formatDate } from "@/lib/dates/format";
 
 export default function PortalPage() {
   // A timeline event records WHEN SOMETHING HAPPENED, so its financial year is
@@ -191,7 +192,7 @@ export default function PortalPage() {
             <h2 className="text-sm font-semibold text-ps-ink">Client Portal</h2>
             <p className="text-xs text-ps-label mt-0.5">
               {enabled
-                ? `${active.length} active, ${invited.length} pending · Last invited ${mostRecentInvite?.invited_at ? new Date(mostRecentInvite.invited_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : ""}`
+                ? `${active.length} active, ${invited.length} pending · Last invited ${mostRecentInvite?.invited_at ? formatDate(mostRecentInvite.invited_at) : ""}`
                 : "Not enabled — client cannot log in yet"}
             </p>
           </div>

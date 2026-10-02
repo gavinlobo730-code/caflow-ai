@@ -20,6 +20,8 @@ import { panProblem } from "@/lib/identifiers/pan";
 import { dinProblem } from "@/lib/identifiers/din";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function getToken(): Promise<string> {
@@ -394,7 +396,19 @@ function DirectorsTab({ clientId }: { clientId: string }) {
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No directors added.</td></tr>
+              <tr><td colSpan={6}>
+                <EmptyState
+                  className="py-8"
+                  title="No directors added"
+                  description="Record each director with their DIN, PAN and KYC status."
+                  action={
+                    <EmptyStateActions>
+                      <EmptyStateAction requires={["mca", "write"]} label="Add Director"
+                        onClick={() => setShowNew(true)} />
+                    </EmptyStateActions>
+                  }
+                />
+              </td></tr>
             )}
           </tbody>
         </table>

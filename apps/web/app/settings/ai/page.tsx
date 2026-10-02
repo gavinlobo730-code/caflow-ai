@@ -31,10 +31,10 @@
  * configured with and spends the firm's AI allowance.
  */
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { ChevronLeft, Cpu, Loader2, RefreshCw } from "lucide-react";
+import { Cpu, Loader2, RefreshCw } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { AiUsagePanel } from "@/components/settings/AiUsagePanel";
 import {
@@ -47,6 +47,7 @@ import {
 } from "@/lib/api/index";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { formatIstLabelled } from "@/lib/dates/formatIst";
+import { Button } from "@/components/ui/button";
 
 const CHIP: Record<string, string> = {
   ready: "bg-state-ready-surface text-state-ready",
@@ -218,28 +219,25 @@ export default function AiStatusPage() {
   return (
     <RoleGuard allowed={["Partner"]}>
       <div className="mx-auto max-w-ps-data space-y-4 p-6">
-        <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-label hover:text-ps-body">
-          <ChevronLeft size={13} /> Settings
-        </Link>
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <Cpu size={17} className="text-blue-600" aria-hidden />
-            <h1 className="text-lg font-semibold text-ps-ink">AI status</h1>
-          </div>
-          {providers.some((p) => p.configured) && (
-            <button type="button" onClick={checkBoth} disabled={anyBusy}
+        <PageHeader
+          back={{ href: "/settings", label: "Settings" }}
+          icon={<Cpu size={17} className="text-blue-600" />}
+          title="AI status"
+          subtitle={
+            <>
+              Whether the assistant, the copilot and the invoice and notice readers can reach
+              their AI providers. &quot;Check now&quot; sends one short fixed request — nothing
+              about any client — and tells you in words if it did not answer.
+            </>
+          }
+          actions={providers.some((p) => p.configured) && (
+            <Button variant="plain" size="none" type="button" onClick={checkBoth} disabled={anyBusy}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-ps-border px-3 py-1.5 text-xs font-medium text-ps-body hover:bg-ps-bg disabled:opacity-50">
               {anyBusy ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <RefreshCw size={13} aria-hidden />}
               Check every provider
-            </button>
+            </Button>
           )}
-        </div>
-        <p className="max-w-2xl text-xs text-ps-label">
-          Whether the assistant, the copilot and the invoice and notice readers can reach
-          their AI providers. &quot;Check now&quot; sends one short fixed request — nothing
-          about any client — and tells you in words if it did not answer.
-        </p>
+        />
 
         {error && <Callout tone="problem">{error}</Callout>}
 

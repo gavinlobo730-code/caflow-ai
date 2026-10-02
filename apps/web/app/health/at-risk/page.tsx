@@ -6,16 +6,16 @@ import { AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { formatDate } from "@/lib/dates/format";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 type Grade = "A" | "B" | "C" | "D" | "F";
 interface ClientScore { id: string; client_id: string; client_name?: string; overall_score: number; health_grade: Grade; is_at_risk: boolean; last_calculated_at?: string; }
 
 function scoreColor(s: number) { return s >= 70 ? "text-green-600" : s >= 40 ? "text-amber-600" : "text-red-600"; }
 function gradeBadge(g: Grade) { const m: Record<Grade, string> = { A: "bg-green-100 text-green-700", B: "bg-blue-100 text-blue-700", C: "bg-yellow-100 text-yellow-700", D: "bg-orange-100 text-orange-700", F: "bg-state-problem-surface text-state-problem" }; return m[g] ?? "bg-gray-100 text-gray-600"; }
-function formatDate(d?: string | null) { if (!d) return "—"; try { return formatDateShared(d); } catch { return d; } }
 
 export default function AtRiskClientsPage() {
   const [clients, setClients] = useState<ClientScore[]>([]);
@@ -50,13 +50,11 @@ export default function AtRiskClientsPage() {
 
   return (
     <div className="p-6 space-y-5 bg-ps-bg min-h-full">
-      <div className="flex items-center gap-3">
-        <AlertTriangle size={20} className="text-amber-500" />
-        <div>
-          <h1 className="text-2xl font-bold text-brand">At-Risk Clients</h1>
-          <p className="text-sm text-gray-500">Health score 40–59 — monitor closely</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<AlertTriangle size={20} className="text-amber-500" />}
+        title="At-Risk Clients"
+        subtitle="Health score 40–59 — monitor closely"
+      />
       {error && <Callout tone="problem">{error}</Callout>}
       {loading ? (
         <TableSkeleton cols={5} rows={3} />

@@ -44,7 +44,10 @@ test("the error-only return sits between the loading guard and the main render",
   const s = src();
   const loadingAt = s.indexOf("if (loading) return <TableSkeleton />;");
   const errorGuardAt = s.indexOf("if (error && !godowns.length && !detail.length && !batches.length) {");
-  const godownsEmptyAt = s.indexOf("No godowns recorded.");
+  // The panel's own empty-state text. It was a bare paragraph ending in a full
+  // stop and is now the title of the shared EmptyState (frontend_ux-24), so the
+  // rule is asked of the WORDS, not of how the sentence happened to be punctuated.
+  const godownsEmptyAt = s.indexOf("No godowns recorded");
   assert.ok(loadingAt >= 0, "the loading guard must still exist");
   assert.ok(errorGuardAt > loadingAt,
     "the error guard must come after the loading guard, not before it");

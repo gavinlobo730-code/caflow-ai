@@ -36,6 +36,7 @@ import { toast } from "@/components/ui/use-toast";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { formatIstLabelled } from "@/lib/dates/formatIst";
+import { formatDate } from "@/lib/dates/format";
 import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
 import { VoucherImportButton } from "@/components/accounting/VoucherImport";
 import { PartyBreakdown } from "@/components/accounting/PartyBreakdown";
@@ -47,6 +48,7 @@ import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 import { objectWithLists } from "@/lib/api/shape";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
 type AccountingTab =
@@ -1286,7 +1288,15 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
               + "a bill, a bank line, a year-end close. Those are on Trial Balance and in "
               + "each account\u2019s ledger, and every change to them is in Settings \u2192 Audit Log. "
               + "This list is for entries you write yourself."
-            : "Use New Journal Entry to add one."
+            : "A manual journal entry is one you write yourself, for something no document records: an accrual, a correction, a transfer between ledgers."
+        }
+        emptyAction={
+          dayBook ? undefined : (
+            <EmptyStateActions>
+              <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="New Journal Entry"
+                onClick={() => router.push(journalEditorHref(clientId, "new"))} />
+            </EmptyStateActions>
+          )
         }
       />
     </div>
@@ -3794,13 +3804,13 @@ function VerifyBooks({ clientId }: { clientId: string }) {
                   onChange={(e) => setNoteDrafts((d) => ({ ...d, [f.id]: e.target.value }))}
                   className="flex-1 text-xs border border-ps-border rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-dark"
                 />
-                <button
+                <Button variant="plain" size="none"
                   onClick={() => resolveFinding(f.id)}
                   disabled={resolvingId === f.id}
                   className="flex-shrink-0 text-xs px-3 py-1.5 bg-ps-muted text-ps-body rounded-md hover:bg-ps-border disabled:opacity-50"
                 >
                   {resolvingId === f.id ? "Saving…" : "Mark Reviewed"}
-                </button>
+                </Button>
               </div>
             </div>
           ))}
@@ -4202,7 +4212,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                   <td className="px-5 py-2.5 font-medium text-ps-ink">{r.report_label}</td>
                   <td className="px-3 py-2.5 text-ps-label">FY {r.financial_year}</td>
                   <td className="px-3 py-2.5 text-ps-label font-mono text-3xs truncate max-w-[130px]">{r.file_name}</td>
-                  <td className="px-4 py-2.5 text-ps-hint">{new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</td>
+                  <td className="px-4 py-2.5 text-ps-hint">{formatDate(r.created_at)}</td>
                   <td className="px-3 py-2.5">
                     <button
                       onClick={async () => {

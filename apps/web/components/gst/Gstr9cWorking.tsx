@@ -29,6 +29,7 @@ import { Callout, GapList } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { objectOrNull, arrayOrEmpty } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 function money(paise: number | null | undefined): string {
   return paise == null ? "—" : formatPaise(paise);
@@ -397,11 +398,11 @@ export default function Gstr9cWorking({ clientId, financialYear }: { clientId: s
         lines={rateWiseLines["partv"]} onChange={(rows) => setRateWiseLines((r) => ({ ...r, "partv": rows }))} />
 
       <div className="flex items-center gap-2">
-        <button onClick={save} disabled={saving}
+        <Button variant="plain" size="none" onClick={save} disabled={saving}
           className="text-2xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 inline-flex items-center gap-1.5">
           {saving && <Loader2 size={11} className="animate-spin" />}
           Save reconciliation
-        </button>
+        </Button>
         {!reconciliationId && (
           <span className="text-3xs text-ps-hint">
             Save once to record the Table 9/11/14/Part V rows below it.
@@ -549,9 +550,9 @@ function RateWiseSection({ title, tableRef, clientId, reconciliationId, lines, o
                       <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(l.sgst_paise)}</td>
                       <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(l.cess_paise)}</td>
                       <td className="py-1.5 text-right">
-                        <button onClick={() => l.id && remove(l.id)} title="Remove" className="text-state-problem hover:opacity-70">
+                        <Button variant="plain" size="none" onClick={() => l.id && remove(l.id)} title="Remove" className="text-state-problem hover:opacity-70">
                           <Trash2 size={12} />
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -581,11 +582,11 @@ function RateWiseSection({ title, tableRef, clientId, reconciliationId, lines, o
                 </label>
               );
             })}
-            <button onClick={add} disabled={saving}
+            <Button variant="plain" size="none" onClick={add} disabled={saving}
               className="text-2xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 inline-flex items-center gap-1.5">
               {saving ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
               Add row
-            </button>
+            </Button>
           </div>
         </>
       )}
@@ -658,9 +659,9 @@ function ExpenseSection({ clientId, reconciliationId, lines, onChange }: {
                       <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(l.total_itc_paise)}</td>
                       <td className="py-1.5 pr-2 text-right font-mono">{formatPaise(l.eligible_itc_availed_paise)}</td>
                       <td className="py-1.5 text-right">
-                        <button onClick={() => l.id && remove(l.id)} title="Remove" className="text-state-problem hover:opacity-70">
+                        <Button variant="plain" size="none" onClick={() => l.id && remove(l.id)} title="Remove" className="text-state-problem hover:opacity-70">
                           <Trash2 size={12} />
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -690,11 +691,11 @@ function ExpenseSection({ clientId, reconciliationId, lines, onChange }: {
               <input value={eligible} inputMode="decimal" placeholder="0" onChange={(e) => setEligible(e.target.value)}
                 className="px-2 py-1 border border-ps-border rounded w-24" />
             </label>
-            <button onClick={add} disabled={saving}
+            <Button variant="plain" size="none" onClick={add} disabled={saving}
               className="text-2xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 inline-flex items-center gap-1.5">
               {saving ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
               Add row
-            </button>
+            </Button>
           </div>
         </>
       )}

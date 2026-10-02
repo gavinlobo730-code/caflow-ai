@@ -288,7 +288,10 @@ export function applyBillDraft(draft: BillDraftFields, ctx: BillDraftContext): A
  *  id, and the caller leaves the lines as they are. */
 export function linkCatalogue<P extends { id: string }, L extends { service_catalogue_id: string; product?: P | null }>(
   lines: L[], found: ReadonlyMap<string, P>,
-): { lines: L[]; missing: number } {
+// `L & { product?: P | null }` and not `L`: the result carries the catalogue row (or null) on every
+// line that named one, whether or not the caller's own line type declared the field, so a caller
+// reading `.product` off the result — as the test of this function does — type-checks.
+): { lines: Array<L & { product?: P | null }>; missing: number } {
   let missing = 0;
   const out = lines.map((l) => {
     if (!l.service_catalogue_id) return l;

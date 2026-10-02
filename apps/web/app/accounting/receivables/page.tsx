@@ -18,7 +18,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ChevronLeft, RefreshCw, Download, Bell } from "lucide-react";
+import { RefreshCw, Download, Bell } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -28,6 +28,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -210,27 +211,29 @@ export default function ReceivablesAgingPage() {
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft className="w-4 h-4" />
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink">Fee Receivables</h1>
-          <p className="text-sm text-ps-label mt-0.5">
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        title="Fee Receivables"
+        subtitle={
+          <>
             What your clients owe the practice — your own unpaid fee invoices, by age.
             For what a client&apos;s own customers owe it, open the{" "}
             <Link href="/accounting/invoices" className="text-brand hover:underline">
               Sales worklist
             </Link>
             .
-          </p>
-        </div>
-        {generated && (
-          <Button variant="outline" size="sm" onClick={exportExcel} className="flex items-center gap-1">
-            <Download className="w-4 h-4" /> Export CSV
-          </Button>
-        )}
-      </div>
+          </>
+        }
+        actions={
+          <>
+            {generated && (
+              <Button variant="outline" size="sm" onClick={exportExcel} className="flex items-center gap-1">
+                <Download className="w-4 h-4" /> Export CSV
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {error && <Callout tone="problem">{error}</Callout>}
 

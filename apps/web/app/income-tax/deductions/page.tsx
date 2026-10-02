@@ -28,6 +28,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getClients } from "@/lib/data/clients";
 import { computeITR, saveTaxPlanningRecord, type ITRComputeResult } from "@/lib/data/income-tax";
 import type { Client } from "@/lib/types";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -432,21 +433,21 @@ export default function DeductionsPage() {
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg md:text-xl font-semibold text-ps-ink">Section 80 Deductions Planner</h1>
-          <p className="text-sm text-ps-label mt-0.5">IT Act — Compute deductions and compare tax regimes</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <ClientLookup
-            clients={clients}
-            value={clientId}
-            onChange={setClientId}
-            ariaLabel="Client"
-            placeholder="Select client…"
-          />
-        </div>
-      </div>
+      <PageHeader
+        title="Section 80 Deductions Planner"
+        subtitle="IT Act — Compute deductions and compare tax regimes"
+        actions={
+          <div className="flex items-center gap-2">
+            <ClientLookup
+              clients={clients}
+              value={clientId}
+              onChange={setClientId}
+              ariaLabel="Client"
+              placeholder="Select client…"
+            />
+          </div>
+        }
+      />
 
       {!ratesVerified && fy && (
         <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 text-sm text-state-attention">

@@ -40,8 +40,7 @@
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ChevronLeft, Calculator, Info, BookOpen, Plus, X, Trash2, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Calculator, Info, BookOpen, Plus, X, Trash2, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -60,6 +59,9 @@ import { listingIsAsked, grandfatheringIsAsked } from "@/lib/income-tax/capitalG
 import { Callout, GapList } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 /** Anything the compute endpoint accepts. The calculator and the register
  *  have different vocabularies and the backend takes the union of both. */
@@ -473,15 +475,11 @@ export default function CapitalGainsPage() {
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/income-tax" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft className="w-4 h-4" />
-        </Link>
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Capital Gains</h1>
-          <p className="text-sm text-ps-label mt-0.5">IT Act Section 45 — Capital Gains Tax (Budget 2024 rates)</p>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: "/income-tax", label: "Income Tax" }}
+        title="Capital Gains"
+        subtitle="IT Act Section 45 — Capital Gains Tax (Budget 2024 rates)"
+      />
 
       {/* Tab switcher */}
       <div className="flex border-b border-ps-border">
@@ -917,7 +915,19 @@ export default function CapitalGainsPage() {
                       );
                     })}
                     {records.length === 0 && (
-                      <tr><td colSpan={11} className="px-4 py-8 text-center text-ps-hint text-sm">No capital gains transactions recorded yet.</td></tr>
+                      <tr><td colSpan={11}>
+                        <EmptyState
+                          className="py-10"
+                          title="No capital gains transactions recorded yet"
+                          description="Record each sale of a capital asset with its purchase and sale details. The holding period, the rate and any reinvestment exemption are worked out from them."
+                          action={
+                            <EmptyStateActions>
+                              <EmptyStateAction requires={["income_tax", "compute"]} icon={<Plus size={14} />} label="Add Transaction"
+                                onClick={() => { setRegForm(BLANK_REG); setRegError(null); setShowModal(true); }} />
+                            </EmptyStateActions>
+                          }
+                        />
+                      </td></tr>
                     )}
                   </tbody>
                 </table>

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { PageHeader } from "@/components/ui/page-header";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -116,15 +117,11 @@ export default function OwnershipMapPage() {
 
   return (
     <div className="p-6 space-y-6 bg-ps-bg min-h-full">
-      <div>
-        <h1 className="text-2xl font-bold text-brand flex items-center gap-2">
-          <PieChart className="w-6 h-6 text-brand" />
-          Ownership Map
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Visualise ownership and directorship relationships across all entities.
-        </p>
-      </div>
+      <PageHeader
+        icon={<PieChart className="w-6 h-6 text-brand" />}
+        title="Ownership Map"
+        subtitle="Visualise ownership and directorship relationships across all entities."
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Entity list */}

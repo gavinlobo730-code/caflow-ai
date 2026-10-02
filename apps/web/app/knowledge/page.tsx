@@ -6,6 +6,7 @@ import { Library, Search, Plus, History, RotateCcw, RefreshCw } from "lucide-rea
 import { api, type ApiResp } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface Article {
   id: string; scope: string; department?: string | null; client_id?: string | null;
@@ -85,17 +86,18 @@ function KnowledgeInner() {
 
   return (
     <div className="p-6 max-w-4xl">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Library size={18} className="text-brand" />
-          <h1 className="text-lg font-semibold text-brand">Knowledge Base{scope ? ` — ${scope}` : ""}</h1>
-          {!loading && !error && <span className="text-xs text-gray-400">{articles.length} article{articles.length === 1 ? "" : "s"}</span>}
-        </div>
-        <div className="flex items-center gap-3">
-          {canAuthor && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white"><Plus size={13} /> New article</button>}
-          <button onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Library size={18} className="text-brand" />}
+        title={`Knowledge Base${scope ? ` — ${scope}` : ""}`}
+        meta={!loading && !error ? <span className="text-xs text-ps-hint">{articles.length} article{articles.length === 1 ? "" : "s"}</span> : undefined}
+        actions={
+          <>
+            {canAuthor && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white"><Plus size={13} /> New article</button>}
+            <button onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
+          </>
+        }
+        className="mb-4"
+      />
 
       <div className="flex items-center gap-2 mb-4">
         <div className="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus-within:ring-2 focus-within:ring-brand">

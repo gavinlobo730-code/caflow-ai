@@ -6,7 +6,6 @@ import {
   Send,
   Copy,
   Check,
-  ChevronRight,
   Users,
   History,
   ExternalLink,
@@ -14,10 +13,11 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Client } from "@/lib/types/index";
+import { formatDateTime } from "@/lib/dates/format";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -471,23 +471,11 @@ export default function WhatsAppPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-5">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-ps-hint mb-1">
-            <Link href="/notifications" className="hover:text-ps-label">
-              Notifications
-            </Link>
-            <ChevronRight size={12} />
-            <span>WhatsApp Quick-Compose</span>
-          </div>
-          <h1 className="text-xl font-semibold text-ps-ink">
-            WhatsApp Quick-Compose
-          </h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            Opens WhatsApp Web with a pre-filled message. Requires the recipient to have WhatsApp.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumbs={[{ label: "Notifications", href: "/notifications" }, { label: "WhatsApp Quick-Compose" }]}
+        title="WhatsApp Quick-Compose"
+        subtitle="Opens WhatsApp Web with a pre-filled message. Requires the recipient to have WhatsApp."
+      />
 
       {/* Info banner */}
       <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
@@ -878,13 +866,7 @@ export default function WhatsAppPage() {
                       </p>
                     </div>
                     <p className="text-xs text-ps-hint shrink-0">
-                      {new Date(entry.sentAt).toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {formatDateTime(entry.sentAt)}
                     </p>
                   </div>
                   <pre className="text-xs text-ps-label bg-ps-bg rounded-lg p-3 whitespace-pre-wrap font-sans leading-relaxed">

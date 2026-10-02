@@ -3,8 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { History, LogOut, Loader2, ShieldAlert } from "lucide-react";
 import { api, type LoginEvent } from "@/lib/api";
+import { formatDateTime } from "@/lib/dates/format";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
 
 // M6 — administrative login history + global force-logout (Partner oversight).
 // Backend defaults to this many rows (routers/identity.py firm_login_history)
@@ -67,27 +70,32 @@ export default function LoginHistoryPage() {
 
   return (
     <div className="p-6 max-w-4xl">
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-2">
-          <History size={18} className="text-brand" />
-          <h1 className="text-lg font-semibold text-brand">Login History</h1>
-          {!loading && (
-            <span className="text-xs text-gray-400">
+      <PageHeader
+        icon={<History size={18} className="text-brand" />}
+        title="Login History"
+        meta={
+          !loading ? (
+            <span className="text-xs text-ps-hint">
               {events.length}{capped ? "+" : ""} event{events.length === 1 ? "" : "s"}
             </span>
-          )}
-        </div>
-        {canForceLogout && (
-          <button onClick={forceLogoutAll} disabled={busy}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-state-problem-hover disabled:opacity-60">
-            {busy ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />} Sign out all users
-          </button>
-        )}
-      </div>
-      <p className="text-xs text-gray-500 mb-4">
-        Login, logout, and forced-logout events for your firm (audited).
-        {capped && ` Showing the most recent ${LOGIN_HISTORY_DEFAULT_LIMIT} events.`}
-      </p>
+          ) : undefined
+        }
+        subtitle={
+          <>
+            Login, logout, and forced-logout events for your firm (audited).
+            {capped && ` Showing the most recent ${LOGIN_HISTORY_DEFAULT_LIMIT} events.`}
+          </>
+        }
+        actions={
+          canForceLogout ? (
+            <Button variant="plain" size="none" onClick={forceLogoutAll} disabled={busy}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-state-problem-hover disabled:opacity-60">
+              {busy ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />} Sign out all users
+            </Button>
+          ) : undefined
+        }
+        className="mb-4"
+      />
 
       {!canViewHistory && (
         <div className="flex items-center gap-2 text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-3">
@@ -113,7 +121,7 @@ export default function LoginHistoryPage() {
                 <span className={`px-2 py-0.5 rounded-full font-medium ${EVENT_STYLE[e.event] ?? "bg-gray-100 text-gray-500"}`}>
                   {e.event}
                 </span>
-                <span className="text-gray-400">{e.created_at ? new Date(e.created_at).toLocaleString("en-IN") : ""}</span>
+                <span className="text-gray-400">{formatDateTime(e.created_at, "")}</span>
               </div>
             </div>
           ))}

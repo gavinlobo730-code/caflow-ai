@@ -17,6 +17,8 @@ import { api } from "@/lib/api";
 import { formatDate } from "@/lib/services/formatting";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -184,7 +186,7 @@ function StepRow({
             )}
             {step.completed_at && (
               <p className="text-xs text-green-600 mt-1">
-                Completed {new Date(step.completed_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+                Completed {formatDate(step.completed_at)}
               </p>
             )}
           </div>
@@ -310,26 +312,20 @@ export default function OnboardingChecklistPage() {
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-ps-hint mb-1">
-            <Link href="/clients" className="hover:text-ps-label">Clients</Link>
-            <ChevronRight size={12} />
-            <span>Onboarding</span>
-          </div>
-          <h1 className="text-xl font-semibold text-ps-ink">Client Onboarding</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            10-step checklist to onboard new clients into your CA firm
-          </p>
-        </div>
-        <button
-          onClick={fetchWorkflows}
-          className="flex items-center gap-1.5 text-sm text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-3 py-1.5 hover:bg-ps-bg transition-colors"
-        >
-          <RefreshCw size={13} />
-          Refresh
-        </button>
-      </div>
+      <PageHeader
+        breadcrumbs={[{ label: "Clients", href: "/clients" }, { label: "Onboarding" }]}
+        title="Client Onboarding"
+        subtitle="10-step checklist to onboard new clients into your CA firm"
+        actions={
+          <button
+            onClick={fetchWorkflows}
+            className="flex items-center gap-1.5 text-sm text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-3 py-1.5 hover:bg-ps-bg transition-colors"
+          >
+            <RefreshCw size={13} />
+            Refresh
+          </button>
+        }
+      />
 
       {selected ? (
         /* ── Detail View ──────────────────────────────────────────────── */
@@ -388,7 +384,7 @@ export default function OnboardingChecklistPage() {
                 </p>
               </div>
               {goLiveError && <Callout tone="problem">{goLiveError}</Callout>}
-              <button
+              <Button variant="plain" size="none"
                 onClick={handleGoLive}
                 disabled={goLiveLoading || !allMandatoryDone}
                 className="flex items-center gap-2 rounded-lg bg-brand text-white px-5 py-2.5 text-sm font-semibold hover:bg-[#0f1a3d] disabled:opacity-40 transition-colors"
@@ -399,7 +395,7 @@ export default function OnboardingChecklistPage() {
                   <Rocket size={15} />
                 )}
                 {goLiveLoading ? "Verifying…" : "Activate Client (Go Live)"}
-              </button>
+              </Button>
               {!allMandatoryDone && (
                 <p className="text-xs text-ps-hint">
                   Complete all mandatory steps to activate.

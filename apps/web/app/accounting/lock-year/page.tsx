@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ChevronLeft, Lock, Unlock, Shield, AlertTriangle, KeyRound, X, Eye, EyeOff } from "lucide-react";
+import { Lock, Unlock, Shield, AlertTriangle, KeyRound, X, Eye, EyeOff } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { RoleGuard } from "@/components/RoleGuard";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -244,16 +244,12 @@ function LockYearContent() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/accounting" className="text-ps-hint hover:text-ps-label">
-          <ChevronLeft className="w-4 h-4" />
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-ps-ink">Lock Financial Year</h1>
-          <p className="text-sm text-ps-label mt-0.5">Partner-only — lock closed years to prevent accidental edits</p>
-        </div>
-        <Shield className="w-5 h-5 text-blue-600" />
-      </div>
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        icon={<Shield className="w-5 h-5 text-blue-600" />}
+        title="Lock Financial Year"
+        subtitle="Partner-only — lock closed years to prevent accidental edits"
+      />
 
       {/* Warning */}
       <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 flex gap-3">

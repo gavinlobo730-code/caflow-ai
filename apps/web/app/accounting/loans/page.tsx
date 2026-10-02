@@ -13,9 +13,7 @@
 
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Plus,
   X,
   AlertTriangle,
@@ -29,10 +27,12 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
 import { daysBetweenLocalISO, todayLocalISO } from "@/lib/dateMath";
+import { formatDate } from "@/lib/dates/format";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -173,14 +173,6 @@ function daysToDate(isoDate: string): number {
   // UTC offset (no Indian DST) cancels the same way whether both sides
   // are parsed as UTC midnight (the old inline version) or local midnight.
   return daysBetweenLocalISO(todayLocalISO(), isoDate) ?? 0;
-}
-
-function formatDate(isoDate: string): string {
-  return new Date(isoDate).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
 }
 
 const inputCls =
@@ -491,24 +483,20 @@ export default function LoansAndFDPage() {
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-3">
-          <Link href="/accounting" className="text-ps-hint hover:text-ps-label mt-0.5">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <div>
-            <h1 className="text-xl font-semibold text-ps-ink">Loans & Fixed Deposits</h1>
-            <p className="text-sm text-ps-label mt-0.5">Track client borrowings and FD investments</p>
-          </div>
-        </div>
-        <button
-          onClick={() => tab === "loans" ? setShowAddLoan(true) : setShowAddFD(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          {tab === "loans" ? "Add Loan" : "Add FD"}
-        </button>
-      </div>
+      <PageHeader
+        back={{ href: "/accounting", label: "Accounting" }}
+        title="Loans & Fixed Deposits"
+        subtitle="Track client borrowings and FD investments"
+        actions={
+          <button
+            onClick={() => tab === "loans" ? setShowAddLoan(true) : setShowAddFD(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            {tab === "loans" ? "Add Loan" : "Add FD"}
+          </button>
+        }
+      />
 
       {error && <Callout tone="problem">{error}</Callout>}
 

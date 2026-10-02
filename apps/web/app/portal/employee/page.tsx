@@ -13,6 +13,7 @@ import { User, FileText, Calendar, Download, Loader2, Receipt, TrendingUp } from
 import { TaxDeclarationTab } from "@/components/portal/TaxDeclarationTab";
 import { TdsProjectionTab } from "@/components/portal/TdsProjectionTab";
 import { PortalShell } from "@/components/portal/PortalShell";
+import { formatMonthYear } from "@/lib/dates/format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -80,11 +81,6 @@ function formatPaise(paise: number | null): string {
   const formatted = new Intl.NumberFormat("en-IN").format(rupees);
   return p > 0 ? `₹${formatted}.${String(p).padStart(2, "0")}` : `₹${formatted}`;
 }
-
-const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -363,7 +359,7 @@ export default function EmployeePortalPage() {
                     {payslips.map(slip => (
                       <tr key={slip.id} className="hover:bg-ps-bg">
                         <td className="px-5 py-3 font-medium text-ps-ink">
-                          {MONTH_NAMES[(slip.month ?? 1) - 1]} {slip.year}
+                          {formatMonthYear(`${slip.year}-${String(slip.month ?? 1).padStart(2, "0")}`)}
                         </td>
                         <td className="px-4 py-3 text-right text-ps-label font-mono text-xs">
                           {formatPaise(slip.gross_salary_paise)}

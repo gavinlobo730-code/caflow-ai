@@ -7,8 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Upload, Download, Trash2, AlertTriangle, ArrowLeft, X, RefreshCw } from "lucide-react";
-import Link from "next/link";
+import { Upload, Download, Trash2, AlertTriangle, X, RefreshCw } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId, getUserProfile } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
@@ -17,8 +16,10 @@ import { CardGridSkeleton } from "@/components/ui/skeleton";
 import type { Client } from "@/lib/types";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
 type DocCategory = "Identity" | "GST" | "Income Tax" | "MCA" | "Financials" | "Other";
 
 const CATEGORIES: DocCategory[] = ["Identity", "GST", "Income Tax", "MCA", "Financials", "Other"];
@@ -55,13 +56,6 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return bytes + " B";
   if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-}
-
-function fmtDate(d: string | null): string {
-  if (!d) return "—";
-  const [y, m, dd] = d.split("-");
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${dd} ${months[parseInt(m) - 1]} ${y}`;
 }
 
 // Whole days from today to the document's expiry, both anchored to local
@@ -285,26 +279,22 @@ export default function ClientDocumentsPage() {
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/clients" className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
-            <ArrowLeft size={15} />
-          </Link>
-          <div>
-            <h1 className="text-lg md:text-xl font-semibold text-ps-ink">Document Vault</h1>
-            <p className="text-sm text-ps-label mt-0.5">Organized client document storage</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={load} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          </button>
-          <button onClick={() => setShowUpload(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark">
-            <Upload size={15} /> Upload Document
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: "/clients", label: "Clients" }}
+        title="Document Vault"
+        subtitle="Organized client document storage"
+        actions={
+          <>
+            <button onClick={load} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
+              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+            </button>
+            <button onClick={() => setShowUpload(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark">
+              <Upload size={15} /> Upload Document
+            </button>
+          </>
+        }
+      />
 
       {/* Client selector */}
       <ClientLookup
@@ -324,7 +314,7 @@ export default function ClientDocumentsPage() {
               {expiringDocs.length} document{expiringDocs.length > 1 ? "s" : ""} expiring within 60 days
             </p>
             <p className="text-xs text-amber-600 mt-0.5">
-              {expiringDocs.map(d => `${d.description ?? d.file_name} (${fmtDate(d.expiry_date)})`).join(", ")}
+              {expiringDocs.map(d => `${d.description ?? d.file_name} (${formatDate(d.expiry_date)})`).join(", ")}
             </p>
           </div>
         </div>
@@ -381,10 +371,10 @@ export default function ClientDocumentsPage() {
               </div>
 
               <div className="text-xs text-ps-label space-y-1">
-                <div>Uploaded: {fmtDate(doc.created_at.split("T")[0])}</div>
+                <div>Uploaded: {formatDate(doc.created_at)}</div>
                 {doc.expiry_date && (
                   <div className={isExpired ? "text-red-600 font-medium" : isExpiringSoon ? "text-amber-600 font-medium" : ""}>
-                    Expires: {fmtDate(doc.expiry_date)}
+                    Expires: {formatDate(doc.expiry_date)}
                     {daysLeft !== null && daysLeft >= 0 && ` (${daysLeft} days)`}
                     {isExpired && " (EXPIRED)"}
                   </div>

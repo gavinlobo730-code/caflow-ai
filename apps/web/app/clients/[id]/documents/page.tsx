@@ -10,6 +10,9 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { formatDate } from "@/lib/dates/format";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 interface ClientDocument {
   id: string;
@@ -239,10 +242,18 @@ export default function DocumentsPage() {
           <button disabled={actionInFlight} onClick={loadDocuments} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : documents.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border px-5 py-12 text-center space-y-2">
-          <FolderOpen className="w-8 h-8 text-gray-200 mx-auto" />
-          <p className="text-sm text-ps-hint">No documents uploaded yet</p>
-          <p className="text-xs text-ps-hint">Upload returns, notices, Form 16, and other files for this client</p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            icon={<FolderOpen size={32} />}
+            title="No documents uploaded yet"
+            description="Keep this client's returns, notices, Form 16 and other files here, with a label so they can be found again."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["document", "write"]} icon={<Upload size={14} />} label="Upload Document"
+                  onClick={() => { setShowUploadModal(true); setUploadError(null); }} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       ) : (
         <Card>
@@ -279,9 +290,7 @@ export default function DocumentsPage() {
                       </td>
                       <td className="px-3 py-3 text-xs text-ps-label">{formatFileSize(doc.file_size)}</td>
                       <td className="px-3 py-3 text-xs text-ps-label whitespace-nowrap">
-                        {new Date(doc.created_at).toLocaleDateString("en-IN", {
-                          day: "numeric", month: "short", year: "numeric",
-                        })}
+                        {formatDate(doc.created_at)}
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -423,7 +432,7 @@ export default function DocumentsPage() {
                     <span className="text-xs text-ps-label">{v.file_name}</span>
                   </div>
                   <span className="text-xs text-ps-hint">
-                    {new Date(v.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                    {formatDate(v.created_at)}
                   </span>
                 </div>
               ))}

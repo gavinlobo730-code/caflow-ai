@@ -15,6 +15,7 @@ import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import type { Notification, InsightSeverity } from "@/lib/types";
 import { objectOrNull, arrayOrEmpty } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -270,26 +271,22 @@ export default function NotificationsPage() {
 
   return (
     <div className="p-6 space-y-5 max-w-ps-data mx-auto">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <Bell size={18} className="text-ps-body" />
-          <div>
-            <h1 className="text-xl font-semibold text-ps-ink">Notifications</h1>
-            {unreadCount > 0 && (
-              <p className="text-sm text-ps-label">{unreadCount} unread</p>
-            )}
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5 text-xs"
-          aria-expanded={showEmailSettings}
-          onClick={() => setShowEmailSettings(v => !v)}
-        >
-          <Mail size={13} /> Email settings
-        </Button>
-      </div>
+      <PageHeader
+        icon={<Bell size={18} className="text-ps-body" />}
+        title="Notifications"
+        subtitle={unreadCount > 0 ? `${unreadCount} unread` : undefined}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs"
+            aria-expanded={showEmailSettings}
+            onClick={() => setShowEmailSettings(v => !v)}
+          >
+            <Mail size={13} /> Email settings
+          </Button>
+        }
+      />
 
       {showEmailSettings && <EmailPreferencesPanel />}
 

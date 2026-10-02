@@ -6,6 +6,7 @@ import { IndianRupee, RefreshCw, Receipt, Wallet, ClipboardList } from "lucide-r
 import { api, type ApiResp } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
+import { PageHeader } from "@/components/ui/page-header";
 
 interface DashboardData {
   total_receivable_paise: number; overdue_paise: number; overdue_count: number;
@@ -48,15 +49,16 @@ function Revenue() {
 
   return (
     <div className="p-6 max-w-4xl">
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-2">
-          <IndianRupee size={18} className="text-brand" />
-          <h1 className="text-lg font-semibold text-brand">Revenue Dashboard</h1>
-        </div>
-        <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
-          <RefreshCw size={13} /> Refresh
-        </button>
-      </div>
+      <PageHeader
+        icon={<IndianRupee size={18} className="text-brand" />}
+        title="Revenue Dashboard"
+        actions={
+          <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
+            <RefreshCw size={13} /> Refresh
+          </button>
+        }
+        className="mb-5"
+      />
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
         {cards.map((c) => (
           <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">

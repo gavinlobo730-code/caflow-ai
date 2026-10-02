@@ -30,6 +30,8 @@ import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 interface Godown {
   id: string;
@@ -207,10 +209,18 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
           </button>
         </div>
         {godowns.length === 0 ? (
-          <p className="px-5 py-6 text-xs text-ps-hint">
-            No godowns recorded. Stock is tracked in one undifferentiated pile until
-            you add one.
-          </p>
+          <EmptyState
+            icon={<Warehouse size={28} />}
+            className="py-8"
+            title="No godowns recorded"
+            description="Stock is tracked in one undifferentiated pile until you add a godown. Add one for each place stock is held."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Add godown"
+                  onClick={() => setAdding(true)} />
+              </EmptyStateActions>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -334,9 +344,18 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
           </button>
         </div>
         {batches.length === 0 ? (
-          <p className="px-5 py-6 text-xs text-ps-hint">
-            No lots recorded. Add one to track expiry or to trace a recall.
-          </p>
+          <EmptyState
+            icon={<Boxes size={28} />}
+            className="py-8"
+            title="No lots recorded"
+            description="Add a lot to track an expiry date or to trace a recall."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Add lot"
+                  onClick={() => setAddingBatch(true)} />
+              </EmptyStateActions>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">

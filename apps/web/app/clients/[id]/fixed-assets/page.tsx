@@ -13,6 +13,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { formatDate } from "@/lib/dates/format";
 import { fyRangeFor } from "@/lib/dates/periods";
 import { CwipTab } from "@/components/fixed-assets/CwipTab";
 import { OpeningRegisterImportButton } from "@/components/fixed-assets/OpeningRegisterImport";
@@ -24,6 +25,9 @@ import { Button } from "@/components/ui/button";
 import { useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { omitKeys, useDirtyFields } from "@/lib/forms/useDirtyFields";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
 // `credentials` carries a COOKIE — which this API does not read. core/auth.py
@@ -203,11 +207,6 @@ function fmt(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-function fmtDate(d: string) {
-  try { return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }); }
-  catch { return d; }
-}
-
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function FixedAssetsPage() {
@@ -244,15 +243,14 @@ export default function FixedAssetsPage() {
   return (
     <div className="flex flex-col h-full bg-ps-bg">
       {/* Header */}
-      <div className="bg-white border-b border-ps-border px-6 py-4 flex items-center justify-between shrink-0">
-        <div>
-          <h1 className="text-base font-semibold text-ps-ink">Fixed Assets</h1>
-          <p className="text-2xs text-ps-hint mt-0.5">
-            Companies Act 2013, Schedule II — WDV &amp; SL depreciation
-          </p>
-        </div>
-        <FinancialYearPicker value={financialYear} onChange={setFinancialYear} />
-      </div>
+      <PageHeader
+        title="Fixed Assets"
+        subtitle="Companies Act 2013, Schedule II — WDV &amp; SL depreciation"
+        actions={
+          <FinancialYearPicker value={financialYear} onChange={setFinancialYear} />
+        }
+        className="bg-white border-b border-ps-border px-6 py-4 shrink-0"
+      />
 
       {/* Tabs */}
       <div className="bg-white border-b border-ps-border px-6 shrink-0">
@@ -415,10 +413,18 @@ function RegisterTab({ clientId, openDoc }:
           <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : assets.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-3">
-          <TrendingDown size={32} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-ps-label">No assets added yet</p>
-          <button onClick={() => setShowAdd(true)} className="text-xs text-blue-600 hover:underline">Add your first asset</button>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            icon={<TrendingDown size={32} />}
+            title="No assets added yet"
+            description="Record each fixed asset once: its cost, the date it was put to use and how it is depreciated. Depreciation, the asset register and the fixed-asset note are worked out from that."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Add Asset"
+                  onClick={() => setShowAdd(true)} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
@@ -453,7 +459,7 @@ function RegisterTab({ clientId, openDoc }:
                     <td className="px-2 py-2.5 font-mono text-3xs text-ps-hint">{a.asset_code ?? "—"}</td>
                     <td className="px-3 py-2.5 font-medium text-ps-ink">{a.asset_name}</td>
                     <td className="px-3 py-2.5 text-ps-label">{a.asset_category}</td>
-                    <td className="px-3 py-2.5 text-ps-label">{fmtDate(a.purchase_date)}</td>
+                    <td className="px-3 py-2.5 text-ps-label">{formatDate(a.purchase_date)}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-ps-ink">{fmt(a.purchase_cost_paise)}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-state-attention">{fmt(a.accumulated_depreciation_paise)}</td>
                     <td className="px-3 py-2.5 text-right font-mono font-semibold text-ps-ink">

@@ -5,6 +5,7 @@ import { Copy, CheckCircle, XCircle, Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { PageHeader } from "@/components/ui/page-header";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -117,15 +118,11 @@ export default function CrossClientMatchesPage() {
 
   return (
     <div className="p-6 space-y-6 bg-ps-bg min-h-full">
-      <div>
-        <h1 className="text-2xl font-bold text-brand flex items-center gap-2">
-          <Copy className="w-6 h-6 text-brand" />
-          Cross-Client Matches
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Entities appearing across multiple clients — confirm or reject each match.
-        </p>
-      </div>
+      <PageHeader
+        icon={<Copy className="w-6 h-6 text-brand" />}
+        title="Cross-Client Matches"
+        subtitle="Entities appearing across multiple clients — confirm or reject each match."
+      />
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">

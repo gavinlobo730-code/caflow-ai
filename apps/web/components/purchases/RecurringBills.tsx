@@ -31,6 +31,8 @@ import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const FREQUENCIES = ["weekly", "monthly", "quarterly", "half_yearly", "yearly"] as const;
 type Frequency = (typeof FREQUENCIES)[number];
@@ -293,12 +295,18 @@ export function RecurringBills({ clientId }: { clientId: string }) {
           </button>
         </div>
       ) : templates.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border text-center py-16">
-          <Clock size={32} className="text-ps-disabled mx-auto mb-3" />
-          <p className="text-sm text-ps-label">No recurring bills yet</p>
-          <p className="text-xs text-ps-hint mt-1">
-            Set one up for the rent or a monthly retainer and the draft appears on schedule.
-          </p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            icon={<Clock size={32} />}
+            title="No recurring bills yet"
+            description="Set one up for the rent or a monthly retainer and the draft appears on schedule. Each one arrives as a draft; nothing is received without you."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="New Template"
+                  onClick={() => setEditor("new")} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">

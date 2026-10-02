@@ -20,6 +20,9 @@ import type { TaskTemplate, Client } from "@/lib/types";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: "bg-sev-low-surface text-sev-low",
@@ -178,15 +181,15 @@ export default function TaskTemplatesPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Task Templates</h1>
-          <p className="text-sm text-ps-label mt-0.5">Reusable templates for recurring work types</p>
-        </div>
-        <Button onClick={openCreate} size="sm" className="gap-1.5">
-          <Plus size={14} /> New Template
-        </Button>
-      </div>
+      <PageHeader
+        title="Task Templates"
+        subtitle="Reusable templates for recurring work types"
+        actions={
+          <Button onClick={openCreate} size="sm" className="gap-1.5">
+            <Plus size={14} /> New Template
+          </Button>
+        }
+      />
 
       {error && <Callout tone="problem">{error}</Callout>}
 
@@ -196,14 +199,17 @@ export default function TaskTemplatesPage() {
         </div>
       ) : templates.length === 0 ? (
         <Card>
-          <CardContent className="py-16 text-center text-ps-hint">
-            <CheckSquare size={32} className="mx-auto mb-3 opacity-30" />
-            <p className="font-medium">No templates yet</p>
-            <p className="text-sm mt-1">Create reusable task templates for common work types</p>
-            <Button onClick={openCreate} size="sm" className="mt-4 gap-1.5">
-              <Plus size={14} /> Create Template
-            </Button>
-          </CardContent>
+          <EmptyState
+            icon={<CheckSquare size={32} />}
+            title="No templates yet"
+            description="A template is a reusable task for a common piece of work, so it is set up once and not typed again for every client."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["task", "write"]} icon={<Plus size={14} />} label="Create Template"
+                  onClick={openCreate} />
+              </EmptyStateActions>
+            }
+          />
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

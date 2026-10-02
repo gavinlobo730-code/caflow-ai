@@ -31,6 +31,8 @@ import { fmt, BankAccount } from "@/components/banking/shared";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
@@ -189,10 +191,18 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
         {loading ? (
           <TableSkeleton cols={6} rows={2} />
         ) : accounts.length === 0 ? (
-          <div className="text-center py-8 px-4 space-y-1">
-            <p className="text-sm text-ps-label">No bank accounts yet.</p>
-            <p className="text-xs text-ps-hint">Add a bank account to import its statements and run reconciliations.</p>
-          </div>
+          <EmptyState
+            icon={<Landmark size={28} />}
+            className="py-10"
+            title="No bank accounts yet"
+            description="Add a bank account to import its statements and run reconciliations."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["banking", "write"]} icon={<Plus size={14} />} label="Add Account"
+                  onClick={() => setAccountModal("new")} />
+              </EmptyStateActions>
+            }
+          />
         ) : (
           <table className="w-full text-xs">
             <thead><tr className="border-b border-ps-border text-ps-hint"><th className="px-4 py-2.5 text-left font-semibold">Bank</th><th className="px-3 py-2.5 text-left font-semibold">Account No.</th><th className="px-3 py-2.5 text-left font-semibold">Type</th><th className="px-3 py-2.5 text-left font-semibold">Ledger Account</th><th className="px-3 py-2.5 text-right font-semibold">Opening Bal.</th><th className="px-4 py-2.5 text-right font-semibold">Actions</th></tr></thead>
@@ -280,10 +290,18 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
          per-statement counts. The Entries tab already answers the same question
          for the client as a whole. */
       ) : statements.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border text-center py-16 space-y-3">
-          <FileText size={32} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-ps-label">No bank statements imported yet</p>
-          <button onClick={() => setShowImport(true)} className="text-xs text-blue-600 hover:underline">Import your first statement</button>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            icon={<FileText size={32} />}
+            title="No bank statements imported yet"
+            description="Import a statement from the bank (CSV, Excel or PDF). Each line becomes an entry to review and pass to the books."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["banking", "write"]} icon={<Upload size={14} />} label="Import Statement"
+                  onClick={() => (activeAccounts.length === 0 ? setAccountModal("new") : setShowImport(true))} />
+              </EmptyStateActions>
+            }
+          />
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">

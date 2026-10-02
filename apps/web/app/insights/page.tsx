@@ -14,6 +14,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { cn } from "@/lib/utils";
 import { recommendationHref, recommendationLabel } from "@/lib/insights/recommendationActions";
 import { DigestPanel } from "@/components/insights/DigestPanel";
+import { PageHeader } from "@/components/ui/page-header";
 
 /**
  * Insights — Phase 3a-5, and the destination D1's `insights` tile has been
@@ -149,22 +150,19 @@ export default function InsightsPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Insights</h1>
-          <p className="text-xs text-ps-hint mt-1">
-            What needs attention across the clients you can see — computed from
-            their own records, never estimated.
-          </p>
-        </div>
-        <button
-          onClick={load}
-          aria-label="Refresh"
-          className="shrink-0 p-1.5 rounded-lg border border-ps-border text-ps-hint hover:text-brand hover:bg-ps-bg transition-colors"
-        >
-          <RefreshCw size={13} />
-        </button>
-      </div>
+      <PageHeader
+        title="Insights"
+        subtitle="What needs attention across the clients you can see — computed from their own records, never estimated."
+        actions={
+          <button
+            onClick={load}
+            aria-label="Refresh"
+            className="shrink-0 p-1.5 rounded-lg border border-ps-border text-ps-hint hover:text-brand hover:bg-ps-bg transition-colors"
+          >
+            <RefreshCw size={13} />
+          </button>
+        }
+      />
 
       {/* ai-25. Its own reads and its own failure states: a digest that cannot
           load must not blank the three tables below, and the reverse. */}

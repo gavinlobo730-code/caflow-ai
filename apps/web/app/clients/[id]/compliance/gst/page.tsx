@@ -33,6 +33,8 @@ import { Probable2BMatches } from "@/components/gst/Probable2BMatches";
 import { CreateDraftBillFrom2B } from "@/components/gst/CreateDraftBillFrom2B";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -908,7 +910,21 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : returns.length === 0 && (
-              <tr><td colSpan={5} className="px-3 py-4 text-center text-ps-hint">No GSTR-1 returns yet.</td></tr>
+              <tr><td colSpan={5}>
+                <EmptyState
+                  className="py-8"
+                  title="No GSTR-1 returns yet"
+                  description="A GSTR-1 lists a period's outward supplies. Compute it from the books, then take the prepared figures to the GST portal; nothing is filed from here."
+                  action={
+                    <EmptyStateActions>
+                      <EmptyStateAction requires={["gst", "compute"]} label="Compute from Books"
+                        onClick={() => setShowCompute(true)} />
+                      <EmptyStateAction requires={["gst", "compute"]} variant="secondary" label="New GSTR-1"
+                        onClick={() => setShowNew(true)} />
+                    </EmptyStateActions>
+                  }
+                />
+              </td></tr>
             )}
           </tbody>
         </table>
@@ -1603,7 +1619,21 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : returns.length === 0 && (
-              <tr><td colSpan={8} className="px-3 py-4 text-center text-ps-hint">No GSTR-3B returns yet.</td></tr>
+              <tr><td colSpan={8}>
+                <EmptyState
+                  className="py-8"
+                  title="No GSTR-3B returns yet"
+                  description="A GSTR-3B is a period's summary return with the tax payable. Compute it from the books, then take the prepared figures to the GST portal; nothing is filed from here."
+                  action={
+                    <EmptyStateActions>
+                      <EmptyStateAction requires={["gst", "compute"]} label="Compute from Books"
+                        onClick={() => setShowCompute(true)} />
+                      <EmptyStateAction requires={["gst", "compute"]} variant="secondary" label="New GSTR-3B"
+                        onClick={() => setShowNew(true)} />
+                    </EmptyStateActions>
+                  }
+                />
+              </td></tr>
             )}
           </tbody>
         </table>

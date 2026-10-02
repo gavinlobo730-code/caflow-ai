@@ -22,6 +22,7 @@ import { api } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { Button } from "@/components/ui/button";
 
 interface PlanRow {
   currency: string;
@@ -217,14 +218,14 @@ export default function FxRevaluationPanel({
           Re-running after a rate is corrected posts only the difference, never a
           second entry.
         </p>
-        <button
+        <Button variant="plain" size="none"
           type="button"
           onClick={post}
           disabled={posting || missing || blocked || plan.would_post === 0}
           className="px-3 py-1.5 rounded bg-brand-dark text-white text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {posting ? "Posting…" : plan.would_post === 0 ? "Nothing to post" : `Post ${plan.would_post} entr${plan.would_post === 1 ? "y" : "ies"}`}
-        </button>
+        </Button>
       </div>
     </div>
   );

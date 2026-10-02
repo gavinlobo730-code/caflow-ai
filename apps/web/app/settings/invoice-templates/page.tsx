@@ -9,6 +9,9 @@ import { api, type ApiResp } from "@/lib/api/index";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface InvoiceTemplate {
@@ -317,18 +320,18 @@ export default function InvoiceTemplatesPage() {
           <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-ps-hint hover:text-ps-label transition-colors mb-1">
             <ChevronLeft size={13} /> Settings
           </Link>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-semibold text-ps-ink">Invoice Templates</h1>
-              <p className="text-sm text-ps-label mt-0.5">Choose a layout style for your invoices and engagement documents.</p>
-            </div>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
-            >
-              <Plus size={14} /> New Template
-            </button>
-          </div>
+          <PageHeader
+            title="Invoice Templates"
+            subtitle="Choose a layout style for your invoices and engagement documents."
+            actions={
+              <button
+                onClick={() => setShowCreate(true)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
+              >
+                <Plus size={14} /> New Template
+              </button>
+            }
+          />
         </div>
 
         {loading ? (
@@ -344,15 +347,17 @@ export default function InvoiceTemplatesPage() {
             </button>
           </div>
         ) : templates.length === 0 ? (
-          <div className="py-12 text-center space-y-3">
-            <p className="text-sm text-ps-label">No invoice templates yet.</p>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
-            >
-              <Plus size={14} /> Create your first template
-            </button>
-          </div>
+          <EmptyState
+            className="py-12"
+            title="No invoice templates yet"
+            description="A template sets the layout of the invoices you send: where the logo and signature sit and what the footer says. It never removes a particular the law requires."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["branding", "write"]} icon={<Plus size={14} />} label="Create your first template"
+                  onClick={() => setShowCreate(true)} />
+              </EmptyStateActions>
+            }
+          />
         ) : (
           <div className="space-y-3">
             {noDefaultNote && !templates.some((t) => t.is_default) && (

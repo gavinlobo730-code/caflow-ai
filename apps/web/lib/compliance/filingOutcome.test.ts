@@ -13,14 +13,14 @@ test("a recorded filing says the period is locked, from when to when", () => {
   }, "GSTR-3B");
   assert.equal(o.locked, true);
   assert.match(o.title, /period locked/);
-  assert.match(o.description, /1 Jun 2026 – 30 Jun 2026/);
+  assert.match(o.description, /01 Jun 2026 – 30 Jun 2026/);
 });
 
 test("a quarter reads as a quarter", () => {
   const o = describeFilingOutcome({
     ...OBL, filing_recorded: true, period_locked_from: "2026-04-01", period_locked_to: "2026-06-30",
   }, "GSTR-1");
-  assert.match(o.description, /1 Apr 2026 – 30 Jun 2026/);
+  assert.match(o.description, /01 Apr 2026 – 30 Jun 2026/);
 });
 
 test("a filing that locked nothing says the server's reason, verbatim", () => {

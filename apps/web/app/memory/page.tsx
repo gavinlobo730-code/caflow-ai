@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { formatDate } from "@/lib/dates/format";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   Brain,
   AlertTriangle,
@@ -15,6 +17,7 @@ import {
   Loader2,
   ChevronRight,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -213,22 +216,22 @@ function TriggersTab() {
           </div>
 
           <div className="mt-4 flex items-center gap-2">
-            <button
+            <Button variant="plain" size="none"
               onClick={() => acknowledge(t.id)}
               disabled={acting === t.id}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-50"
             >
               {acting === t.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
               Acknowledge
-            </button>
-            <button
+            </Button>
+            <Button variant="plain" size="none"
               onClick={() => dismiss(t.id)}
               disabled={acting === t.id}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
               <XCircle size={13} />
               Dismiss
-            </button>
+            </Button>
           </div>
         </div>
       ))}
@@ -310,7 +313,7 @@ function ProfilesTab() {
               <div>
                 <p className="text-sm font-semibold text-slate-800 truncate">{p.client_id}</p>
                 <p className="text-2xs text-slate-400">
-                  Updated {new Date(p.last_computed_at).toLocaleDateString("en-IN")}
+                  Updated {formatDate(p.last_computed_at)}
                 </p>
               </div>
             </div>
@@ -485,14 +488,14 @@ function AnomaliesTab() {
             )}
 
             <div className="mt-4">
-              <button
+              <Button variant="plain" size="none"
                 onClick={() => markReviewed(a.id)}
                 disabled={acting === a.id}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-50"
               >
                 {acting === a.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
                 Mark Reviewed
-              </button>
+              </Button>
             </div>
           </div>
         );
@@ -533,41 +536,42 @@ export default function MemoryPage() {
   return (
     <div className="min-h-screen bg-ps-bg p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-        <div className="flex items-center gap-3">
+      {/* Rule-based, and said so (ai-10). These profiles are aggregates of
+          the firm's own records and the triggers and anomalies are
+          threshold rules over them; no AI model reads them and nothing
+          here feeds a prompt. "Semantic memory" described something that
+          does not exist. */}
+      <PageHeader
+        icon={
           <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center shadow">
             <Brain size={20} className="text-brand-light" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-brand">Practice Memory</h1>
-            {/* Rule-based, and said so (ai-10). These profiles are aggregates of
-                the firm's own records and the triggers and anomalies are
-                threshold rules over them; no AI model reads them and nothing
-                here feeds a prompt. "Semantic memory" described something that
-                does not exist. */}
-            <p className="text-sm text-slate-500">Client profiles, pattern triggers and anomaly checks — rule-based, computed from your own records</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {pipelineMsg && (
-            <p className="text-sm text-slate-600 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
-              {pipelineMsg}
-            </p>
-          )}
-          <button
-            onClick={runPipeline}
-            disabled={running}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-60"
-          >
-            {running ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : (
-              <RefreshCw size={15} />
+        }
+        title="Practice Memory"
+        subtitle="Client profiles, pattern triggers and anomaly checks — rule-based, computed from your own records"
+        actions={
+          <>
+            {pipelineMsg && (
+              <p className="text-sm text-slate-600 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+                {pipelineMsg}
+              </p>
             )}
-            {running ? "Running..." : "Run Pipeline"}
-          </button>
-        </div>
-      </div>
+            <Button variant="plain" size="none"
+              onClick={runPipeline}
+              disabled={running}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-60"
+            >
+              {running ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <RefreshCw size={15} />
+              )}
+              {running ? "Running..." : "Run Pipeline"}
+            </Button>
+          </>
+        }
+        className="mb-6"
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 bg-white border border-slate-200 rounded-xl p-1 w-fit mb-6 shadow-sm">

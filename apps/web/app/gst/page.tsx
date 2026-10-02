@@ -28,12 +28,15 @@ import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, computeOverdueStatus } from "@/lib/dateMath";
+import { formatDate, formatMonthYear } from "@/lib/dates/format";
 import { MONTH_NAMES, buildMonthOptions, parsePeriodOption, periodBounds } from "@/lib/gst/filingPeriod";
 import { useToast } from "@/components/ui/use-toast";
 import { api, type GstDueDates } from "@/lib/api";
 import { Callout } from "@/components/ui/callout";
 import { BulkGstr2bPanel } from "@/components/gst/BulkGstr2bPanel";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -80,13 +83,6 @@ const DUE_DATE_FIELD: Record<ReturnType, keyof GstDueDates> = {
   "GSTR-3B": "gstr3b_due_date",
   "GSTR-9": "gstr9_due_date",
 };
-
-/** Format ISO date to readable string */
-function fmtDate(iso: string): string {
-  if (!iso) return "—";
-  const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-}
 
 /** Determine status — Overdue only once a full calendar day has passed the due date */
 const computeStatus = computeOverdueStatus;
@@ -246,7 +242,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
         client_name: selectedClient?.client_name ?? "",
         gstin: selectedClient?.gstin ?? null,
         return_type: returnTypeMap[r.compliance_type as string] ?? returnType,
-        period: new Date((r.period_start as string) + "T00:00:00").toLocaleString("default", { month: "short", year: "numeric" }),
+        period: formatMonthYear(r.period_start as string),
         due_date: r.due_date as string,
         status: computeStatus(r.due_date as string, r.filed_date as string | null),
         filed_date: r.filed_date as string | null,
@@ -626,7 +622,7 @@ export default function GSTPage() {
                 client_name: client?.client_name ?? "",
                 gstin: client?.gstin ?? null,
                 return_type: returnTypeMap[r.compliance_type as string] ?? (r.compliance_type as ReturnType),
-                period: new Date((r.period_start as string) + "T00:00:00").toLocaleString("default", { month: "short", year: "numeric" }),
+                period: formatMonthYear(r.period_start as string),
                 due_date: r.due_date as string,
                 status: computeStatus(r.due_date as string, r.filed_date as string | null),
                 filed_date: r.filed_date as string | null,
@@ -793,14 +789,14 @@ export default function GSTPage() {
       render: (f) => (
         <div className="flex items-center gap-1.5">
           <Clock className="w-3 h-3 text-ps-disabled" />
-          <span className="text-xs text-ps-label">{fmtDate(f.due_date)}</span>
+          <span className="text-xs text-ps-label">{formatDate(f.due_date)}</span>
         </div>
       ),
     },
     {
       key: "filed_date", header: "Filed Date", accessor: (f) => f.filed_date ?? "",
       sortable: true, defaultHidden: true,
-      render: (f) => <span className="text-xs text-ps-label">{f.filed_date ? fmtDate(f.filed_date) : "—"}</span>,
+      render: (f) => <span className="text-xs text-ps-label">{f.filed_date ? formatDate(f.filed_date) : "—"}</span>,
     },
     {
       key: "status", header: "Status", accessor: (f) => f.status, sortable: true,
@@ -830,37 +826,35 @@ export default function GSTPage() {
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">GST</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            GSTR Filing Tracker — CGST Act Sections 37, 39, 44
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/gst/gstr1"
-            className="flex items-center gap-1.5 text-xs bg-white border border-ps-border text-ps-body px-3 py-2 rounded-lg hover:bg-ps-bg"
-          >
-            <FileText className="w-3.5 h-3.5" />
-            GSTR-1
-          </Link>
-          <Link
-            href="/gst/gstr3b"
-            className="flex items-center gap-1.5 text-xs bg-white border border-ps-border text-ps-body px-3 py-2 rounded-lg hover:bg-ps-bg"
-          >
-            <Receipt className="w-3.5 h-3.5" />
-            GSTR-3B
-          </Link>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add GST Filing
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="GST"
+        subtitle="GSTR Filing Tracker — CGST Act Sections 37, 39, 44"
+        actions={
+          <div className="flex items-center gap-2">
+            <Link
+              href="/gst/gstr1"
+              className="flex items-center gap-1.5 text-xs bg-white border border-ps-border text-ps-body px-3 py-2 rounded-lg hover:bg-ps-bg"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              GSTR-1
+            </Link>
+            <Link
+              href="/gst/gstr3b"
+              className="flex items-center gap-1.5 text-xs bg-white border border-ps-border text-ps-body px-3 py-2 rounded-lg hover:bg-ps-bg"
+            >
+              <Receipt className="w-3.5 h-3.5" />
+              GSTR-3B
+            </Link>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add GST Filing
+            </button>
+          </div>
+        }
+      />
 
       {/* Error banner */}
       {error && <Callout tone="problem">{error}</Callout>}
@@ -961,12 +955,10 @@ export default function GSTPage() {
           emptyTitle="No GST filings found"
           emptyDescription="Add your first GST filing to start tracking GSTR-1, GSTR-3B and GSTR-9 deadlines."
           emptyAction={
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="mt-2 text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
-            >
-              <Plus className="w-3 h-3" /> Add GST Filing
-            </button>
+            <EmptyStateActions>
+              <EmptyStateAction requires={["compliance_record", "write"]} icon={<Plus size={14} />} label="Add GST Filing"
+                onClick={() => setShowAddModal(true)} />
+            </EmptyStateActions>
           }
           rowActions={(f) =>
             f.status !== "Filed" ? (
@@ -980,7 +972,7 @@ export default function GSTPage() {
               <div className="flex items-center justify-end gap-1 text-green-600">
                 <CheckCircle className="w-3.5 h-3.5" />
                 <span className="text-xs">
-                  {f.filed_date ? fmtDate(f.filed_date) : "Filed"}
+                  {f.filed_date ? formatDate(f.filed_date) : "Filed"}
                 </span>
               </div>
             )

@@ -18,8 +18,7 @@
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import Link from "next/link";
-import { ArrowLeft, AlertCircle, CheckCircle2, Info, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Info, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -27,6 +26,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { api, type DeclarationRow, type DeclarationItemRow } from "@/lib/api";
+import { PageHeader } from "@/components/ui/page-header";
 
 type Client = { id: string; client_name: string };
 type Employee = { id: string; name: string };
@@ -129,17 +129,11 @@ export default function DeclarationsPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-5">
-      <div className="flex items-center gap-3">
-        <Link href="/payroll" className="text-ps-label hover:text-ps-ink">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Tax declarations</h1>
-          <p className="text-sm text-ps-label">
-            What each employee declared under §192, and what their proofs support.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: "/payroll", label: "Payroll" }}
+        title="Tax declarations"
+        subtitle="What each employee declared under §192, and what their proofs support."
+      />
 
       <Card>
         <CardContent className="pt-5 flex flex-wrap items-end gap-3">

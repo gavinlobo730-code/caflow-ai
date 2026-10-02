@@ -11,6 +11,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { assessmentYearFor } from "@/lib/dates/periods";
+import { formatDate } from "@/lib/dates/format";
 import { errorMessage } from "@/lib/api";
 import RegimeElectionPanel from "@/components/tax/RegimeElectionPanel";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -2595,7 +2596,7 @@ export default function TaxComputationPage() {
                 <div key={s.id} className="flex items-center justify-between p-3 bg-ps-bg rounded-lg">
                   <div>
                     <p className="text-xs font-medium text-ps-ink">Version {s.version} — {regimeLabel(s.regime)}</p>
-                    <p className="text-3xs text-ps-hint">{new Date(s.created_at).toLocaleDateString("en-IN")}</p>
+                    <p className="text-3xs text-ps-hint">{formatDate(s.created_at)}</p>
                   </div>
                   <div className="text-right flex items-center gap-2">
                     {s.status !== "reviewed" && (

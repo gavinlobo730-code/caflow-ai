@@ -6,7 +6,6 @@ import {
   Plus,
   X,
   AlertCircle,
-  ChevronRight,
   Users,
   TrendingUp,
   Phone,
@@ -21,11 +20,12 @@ import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { formatDate } from "@/lib/dates/format";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -305,15 +305,6 @@ function nextStage(stage: Stage): Stage | null {
   const idx = STAGES.indexOf(stage);
   if (idx < 0 || idx >= STAGES.length - 1) return null;
   return STAGES[idx + 1];
-}
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return "—";
-  try {
-    return formatDateShared(dateStr);
-  } catch {
-    return dateStr;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1024,30 +1015,20 @@ export default function PipelinePage() {
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-4">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-ps-hint mb-1">
-            <Link href="/clients" className="hover:text-ps-label">
-              Clients
-            </Link>
-            <ChevronRight size={12} />
-            <span>Pipeline</span>
-          </div>
-          <h1 className="text-xl font-semibold text-ps-ink">
-            Prospect Pipeline
-          </h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            Track and convert prospective clients through your sales funnel
-          </p>
-        </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
-        >
-          <Plus size={15} />
-          Add Lead
-        </button>
-      </div>
+      <PageHeader
+        breadcrumbs={[{ label: "Clients", href: "/clients" }, { label: "Pipeline" }]}
+        title="Prospect Pipeline"
+        subtitle="Track and convert prospective clients through your sales funnel"
+        actions={
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
+          >
+            <Plus size={15} />
+            Add Lead
+          </button>
+        }
+      />
 
       {/* Summary bar */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

@@ -22,7 +22,7 @@ import {
 } from "@/lib/data/timeTracking";
 import { getClients } from "@/lib/data/clients";
 import type { TimeEntry, Client } from "@/lib/types";
-import { formatDate as fmt } from "@/lib/services/formatting";
+import { formatDate, formatTime } from "@/lib/dates/format";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/money/format";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -30,11 +30,7 @@ import { EngagementPicker } from "@/components/time/EngagementPicker";
 import { UnbilledWorkPanel } from "@/components/time/UnbilledWorkPanel";
 import { BillingRatesPanel } from "@/components/time/BillingRatesPanel";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-
-function fmtTime(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-}
+import { PageHeader } from "@/components/ui/page-header";
 
 type Tab = "mine" | "unbilled" | "rates";
 
@@ -251,22 +247,22 @@ export default function TimeTrackingPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Time Tracking</h1>
-          <p className="text-sm text-ps-label mt-0.5">Track billable and non-billable hours</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowManual(true)} className="gap-1.5">
-            <Plus size={14} /> Manual Entry
-          </Button>
-          {!isRunning && (
-            <Button size="sm" onClick={() => setShowStart(true)} className="gap-1.5 bg-green-600 hover:bg-green-700">
-              <Play size={14} /> Start Timer
+      <PageHeader
+        title="Time Tracking"
+        subtitle="Track billable and non-billable hours"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowManual(true)} className="gap-1.5">
+              <Plus size={14} /> Manual Entry
             </Button>
-          )}
-        </div>
-      </div>
+            {!isRunning && (
+              <Button size="sm" onClick={() => setShowStart(true)} className="gap-1.5 bg-green-600 hover:bg-green-700">
+                <Play size={14} /> Start Timer
+              </Button>
+            )}
+          </div>
+        }
+      />
 
       {error && (
         <div role="alert" className="flex items-center gap-2 text-sm text-state-problem bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3">
@@ -439,8 +435,8 @@ export default function TimeTrackingPage() {
                       <p className="text-xs text-ps-label truncate mt-0.5">{e.description}</p>
                     )}
                     <p className="text-2xs text-ps-hint mt-0.5">
-                      {fmt(e.started_at)} {fmtTime(e.started_at)}
-                      {e.ended_at ? ` → ${fmtTime(e.ended_at)}` : ""}
+                      {formatDate(e.started_at)} {formatTime(e.started_at)}
+                      {e.ended_at ? ` → ${formatTime(e.ended_at)}` : ""}
                     </p>
                   </div>
                   <div className="text-right shrink-0 flex items-center gap-3">

@@ -11,6 +11,7 @@ import type {
 import { objectWithLists } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/services/formatting";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/ui/page-header";
 
 /**
  * Which clients make the practice money — Phase 3a-2.
@@ -140,32 +141,30 @@ export default function ProfitabilityPage() {
 
   return (
     <div className="p-6 max-w-ps-data space-y-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Profitability</h1>
-          <p className="text-xs text-ps-hint mt-1">
-            Revenue less what the time cost, per client · {profit?.period ?? realization?.period ?? "—"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <select
-            value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-            className="text-xs border border-ps-border rounded-lg px-2.5 py-1.5 bg-white text-ps-body outline-none focus:border-brand"
-          >
-            {PERIODS.map((p) => (
-              <option key={p.id} value={p.id}>{p.label}</option>
-            ))}
-          </select>
-          <button
-            onClick={load}
-            aria-label="Refresh"
-            className="p-1.5 rounded-lg border border-ps-border text-ps-hint hover:text-brand hover:bg-ps-bg transition-colors"
-          >
-            <RefreshCw size={13} />
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Profitability"
+        subtitle={<>Revenue less what the time cost, per client · {profit?.period ?? realization?.period ?? "—"}</>}
+        actions={
+          <div className="flex items-center gap-2 shrink-0">
+            <select
+              value={period}
+              onChange={(e) => setPeriod(e.target.value)}
+              className="text-xs border border-ps-border rounded-lg px-2.5 py-1.5 bg-white text-ps-body outline-none focus:border-brand"
+            >
+              {PERIODS.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
+            <button
+              onClick={load}
+              aria-label="Refresh"
+              className="p-1.5 rounded-lg border border-ps-border text-ps-hint hover:text-brand hover:bg-ps-bg transition-colors"
+            >
+              <RefreshCw size={13} />
+            </button>
+          </div>
+        }
+      />
 
       {loading && <p className="text-xs text-ps-hint">Loading…</p>}
 

@@ -24,12 +24,15 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
-import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { formatDate, formatDateTime } from "@/lib/dates/format";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { formatPaise as formatPaiseINR } from "@/lib/services/formatting";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -106,22 +109,6 @@ function formatPaise(paise: number): string {
   // front of it, as ₹1,18,000 with the paise gone. A column where some rows
   // carry paise and some do not cannot be added up by eye.
   return formatPaiseINR(paise);
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  return formatDateShared(iso);
-}
-
-function formatDateTime(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 // Template content is stored HTML (the seeded templates start with `<h2>…`),
@@ -1499,31 +1486,31 @@ function EngagementsPageInner() {
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-5">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ps-ink">Engagement Letters</h1>
-          <p className="text-sm text-ps-label mt-0.5">
-            Create, send and track engagement letters for clients and prospects
-          </p>
-        </div>
-        {activeTab === "templates" ? (
-          <button
-            onClick={() => { setEditTemplate(null); setShowCreateTemplate(true); }}
-            className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
-          >
-            <Plus size={15} />
-            New Template
-          </button>
-        ) : (
-          <button
-            onClick={() => setShowCreateEngagement(true)}
-            className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
-          >
-            <Plus size={15} />
-            New Engagement
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Engagement Letters"
+        subtitle="Create, send and track engagement letters for clients and prospects"
+        actions={
+          <>
+            {activeTab === "templates" ? (
+              <button
+                onClick={() => { setEditTemplate(null); setShowCreateTemplate(true); }}
+                className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
+              >
+                <Plus size={15} />
+                New Template
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowCreateEngagement(true)}
+                className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
+              >
+                <Plus size={15} />
+                New Engagement
+              </button>
+            )}
+          </>
+        }
+      />
 
       {/* Summary bar */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -1583,11 +1570,17 @@ function EngagementsPageInner() {
       {!loading && activeTab === "templates" && (
         <div>
           {templates.length === 0 ? (
-            <div className="text-center py-16 text-ps-hint">
-              <FileText size={32} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-medium">No templates yet</p>
-              <p className="text-xs mt-1">Create a template to quickly generate engagement letters</p>
-            </div>
+            <EmptyState
+              icon={<FileText size={32} />}
+              title="No templates yet"
+              description="A template holds the wording of an engagement letter, so a new letter is generated from it and not written from scratch."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction requires={["engagement", "write"]} icon={<Plus size={14} />} label="New Template"
+                    onClick={() => { setEditTemplate(null); setShowCreateTemplate(true); }} />
+                </EmptyStateActions>
+              }
+            />
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {templates.map((t) => (
@@ -1653,8 +1646,16 @@ function EngagementsPageInner() {
           emptyTitle="No engagement letters found"
           emptyDescription={
             activeTab === "all"
-              ? "Create your first engagement letter to get started"
+              ? "An engagement letter sets out the work and the fee agreed with a client or a prospect. Create the first one, or generate it from a template."
               : `No letters in "${activeTab}" status`
+          }
+          emptyAction={
+            activeTab === "all" ? (
+              <EmptyStateActions>
+                <EmptyStateAction requires={["engagement", "write"]} icon={<Plus size={14} />} label="New Engagement"
+                  onClick={() => setShowCreateEngagement(true)} />
+              </EmptyStateActions>
+            ) : undefined
           }
           rowActions={letterRowActions}
         />
