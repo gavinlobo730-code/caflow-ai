@@ -43,6 +43,8 @@ import { validateSalesDebitNoteEditor } from "@/lib/sales/salesDebitNoteEditor";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "NOS" };
 
 type EditorLine = InvoiceLine & { _k: number; product?: ServiceCatalogueItem | null };
@@ -153,6 +155,9 @@ export function SalesDebitNoteEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
+  // A date typed as text that is not a date reads as blank to the form; the
+  // save has to know which it was (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function loadOpenInvoices(custId: string) {
     if (!custId) { setOpenInvoices([]); return; }
@@ -257,6 +262,7 @@ export function SalesDebitNoteEditor({
     // ₹7,080 debit notes from what looked like one click.
     if (saving) return;
     setAttempted(true);
+    if (dates.first) { setError(dates.first); return; }
     if (!isLocked && !validation.ok) {
       setError(validation.errors.customer ?? validation.errors.debitNoteDate ?? validation.errors.lines ?? "Fix the highlighted fields.");
       return;
@@ -384,10 +390,10 @@ export function SalesDebitNoteEditor({
               {fieldErr(validation.errors.customer)}
             </div>
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">DN Date *</label>
-              <input type="date" value={dnDate} onChange={(e) => setDnDate(e.target.value)} disabled={isLocked}
+              <label htmlFor="sales-dn-date" className="block text-xs font-medium text-ps-label mb-1">DN Date *</label>
+              <DateInput id="sales-dn-date" value={dnDate} onChange={setDnDate} onStateChange={dates.watch("dnDate", "Debit note date")} disabled={isLocked}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-hint" />
-              {fieldErr(validation.errors.debitNoteDate)}
+              {!dates.problems.dnDate && fieldErr(validation.errors.debitNoteDate)}
               {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once issued — issue a fresh debit note to correct (CGST Act §34).</p>}
             </div>
             <div>

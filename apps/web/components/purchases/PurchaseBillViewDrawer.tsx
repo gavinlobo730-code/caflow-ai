@@ -26,6 +26,8 @@ import { FormSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { todayLocalISO } from "@/lib/dateMath";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 // Vendor-payment modes — must match the purchase_payments.payment_mode CHECK
 // constraint (migration 050, widened by 161: bank/cash/cheque/upi/neft/rtgs/
 // online). Identical to the sales-side receipt modes.
@@ -488,8 +490,12 @@ function RecordVendorPaymentModal({ bill, clientId, outstanding, onClose, onDone
   // ACC-03 — the second vendor-payment door, and it had no account either.
   const [payFromAccountId, setPayFromAccountId] = useState("");
   const [saving, setSaving] = useState(false);
+  // A date typed as text that is not a date reads as blank; the save has to
+  // know which it was (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function submit() {
+    if (dates.first) { onError(dates.first); return; }
     const amountPaise = paiseFromRupeeInput(amount);
     if (amountPaise === null) {
       onError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas.");
@@ -526,7 +532,7 @@ function RecordVendorPaymentModal({ bill, clientId, outstanding, onClose, onDone
     <ModalShell title={`Record Payment — ${bill.bill_no || "Purchase Bill"}`} onClose={onClose}>
       <Field label="Amount (₹)"><input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputCls} /></Field>
       <p className="text-3xs text-ps-hint -mt-2">Outstanding {fmt(outstanding)}</p>
-      <Field label="Date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
+      <Field label="Date"><DateInput value={date} onChange={setDate} onStateChange={dates.watch("date", "Payment date")} aria-label="Payment date" className={inputCls} /></Field>
       <Field label="Mode">
         <select value={mode} onChange={(e) => setMode(e.target.value)} className={inputCls}>
           {PAYMENT_MODE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -557,8 +563,12 @@ function CreateDebitNoteModal({ bill, clientId, onClose, onDone, onError }: {
   const [date, setDate] = useState(today);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  // A date typed as text that is not a date reads as blank; the save has to
+  // know which it was (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function submit() {
+    if (dates.first) { onError(dates.first); return; }
     setSaving(true);
     try {
       const token = await getAuthToken();
@@ -593,7 +603,7 @@ function CreateDebitNoteModal({ bill, clientId, onClose, onDone, onError }: {
   return (
     <ModalShell title={`Debit Note — ${bill.bill_no || "Purchase Bill"}`} onClose={onClose}>
       <p className="text-2xs text-ps-label">Creates a full-value <strong>draft</strong> debit note copying this bill&apos;s lines. Adjust or issue it from the Debit Notes tab (CGST Act §34).</p>
-      <Field label="Debit note date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
+      <Field label="Debit note date"><DateInput value={date} onChange={setDate} onStateChange={dates.watch("date", "Debit note date")} aria-label="Debit note date" className={inputCls} /></Field>
       <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the debit note (return, rate correction…)" className={inputCls} /></Field>
       <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Debit Note" />
     </ModalShell>
@@ -611,8 +621,12 @@ function CreatePurchaseCreditNoteModal({ bill, clientId, onClose, onDone, onErro
   const [date, setDate] = useState(today);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  // A date typed as text that is not a date reads as blank; the save has to
+  // know which it was (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function submit() {
+    if (dates.first) { onError(dates.first); return; }
     setSaving(true);
     try {
       const token = await getAuthToken();
@@ -647,7 +661,7 @@ function CreatePurchaseCreditNoteModal({ bill, clientId, onClose, onDone, onErro
   return (
     <ModalShell title={`Credit Note — ${bill.bill_no || "Purchase Bill"}`} onClose={onClose}>
       <p className="text-2xs text-ps-label">Creates a full-value <strong>draft</strong> credit note copying this bill&apos;s lines — for when the vendor undercharged us and we owe more. Adjust or issue it from the Credit Notes tab (CGST Act §34(3)).</p>
-      <Field label="Credit note date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
+      <Field label="Credit note date"><DateInput value={date} onChange={setDate} onStateChange={dates.watch("date", "Credit note date")} aria-label="Credit note date" className={inputCls} /></Field>
       <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the credit note" className={inputCls} /></Field>
       <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Credit Note" />
     </ModalShell>

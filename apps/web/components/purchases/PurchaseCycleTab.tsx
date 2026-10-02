@@ -35,6 +35,8 @@ import { paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 type Tab = "orders" | "receipts";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -158,6 +160,8 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
   const [matchBillId, setMatchBillId] = useState("");
   const [matched, setMatched] = useState<ThreeWayMatch | null>(null);
   const [matchSelected, setMatchSelected] = useState<BillMatchOption | null>(null);
+  // Text that is not a date reads as blank to the form (frontend_ux-19).
+  const dates = useDateProblems();
 
   const [form, setForm] = useState({
     vendor_id: "",
@@ -249,6 +253,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
   }
 
   async function save() {
+    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
     const body = buildLines();
     if (!body.length) {
       setMsg({ type: "err", text: "Add at least one line." });
@@ -412,19 +417,19 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
               <>
                 <label className="text-sm">
                   <span className="mb-1 block text-ps-label">Order date</span>
-                  <input
-                    type="date"
+                  <DateInput
                     value={form.document_date}
-                    onChange={(e) => setForm({ ...form, document_date: e.target.value })}
+                    onChange={(v) => setForm({ ...form, document_date: v })}
+                    onStateChange={dates.watch("document_date", "Order date")}
                     className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
                 <label className="text-sm">
                   <span className="mb-1 block text-ps-label">Expected by</span>
-                  <input
-                    type="date"
+                  <DateInput
                     value={form.expected_date}
-                    onChange={(e) => setForm({ ...form, expected_date: e.target.value })}
+                    onChange={(v) => setForm({ ...form, expected_date: v })}
+                    onStateChange={dates.watch("expected_date", "Expected by")}
                     className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>
@@ -435,10 +440,10 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                   <span className="mb-1 block text-ps-label">
                     Goods arrived on
                   </span>
-                  <input
-                    type="date"
+                  <DateInput
                     value={form.received_on}
-                    onChange={(e) => setForm({ ...form, received_on: e.target.value })}
+                    onChange={(v) => setForm({ ...form, received_on: v })}
+                    onStateChange={dates.watch("received_on", "Goods arrived on")}
                     className="w-full rounded border border-ps-border px-2 py-1.5"
                   />
                 </label>

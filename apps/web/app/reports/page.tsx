@@ -30,6 +30,7 @@ import type { ComplianceEntry } from "@/lib/data/compliance";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type ReportId = "gst_summary" | "pl_statement" | "compliance_status" | "outstanding_invoices";
@@ -797,19 +798,17 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
             <>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-ps-label font-medium">From</label>
-                <input
-                  type="date"
+                <DateInput aria-label="Report from"
                   value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
+                  onChange={(v) => setFromDate(v)}
                   className="text-sm border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-white"
                 />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-ps-label font-medium">To</label>
-                <input
-                  type="date"
+                <DateInput aria-label="Report to"
                   value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
+                  onChange={(v) => setToDate(v)}
                   className="text-sm border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-white"
                 />
               </div>

@@ -13,6 +13,8 @@ import { toLocalISO } from "@/lib/dateMath";
 import { fmtRs } from "@/components/payroll/shared";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 /** Only what the modal actually needs. Narrower than the pages' own PayrollRun
  *  types, deliberately: a shared component that demanded every column would
@@ -41,6 +43,10 @@ export function DisburseModal({ run, onClose, onDone }: {
   const [reference, setReference] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // `payment_date: payDate || undefined` below turns text that is not a date into
+  // "no date", which the server answers with TODAY — so the save is refused over
+  // it instead (frontend_ux-19).
+  const dates = useDateProblems();
 
   useEffect(() => {
     (async () => {
@@ -56,6 +62,7 @@ export function DisburseModal({ run, onClose, onDone }: {
   }, [run.client_id]);
 
   async function save() {
+    if (dates.first) { setError(dates.first); return; }
     if (!accountId) { setError("Select a bank account."); return; }
     setSaving(true); setError(null);
     try {
@@ -104,8 +111,8 @@ export function DisburseModal({ run, onClose, onDone }: {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-ps-label mb-1">Payment date</label>
-                <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className={inputCls} />
+                <label htmlFor="disburse-date" className="block text-xs font-medium text-ps-label mb-1">Payment date</label>
+                <DateInput id="disburse-date" value={payDate} onChange={setPayDate} onStateChange={dates.watch("payDate", "Payment date")} className={inputCls} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Reference</label>

@@ -18,6 +18,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { useDataTable } from "@/lib/table/useDataTable";
 import { emptyKind, FILTERED_EMPTY } from "@/lib/table/emptyKind";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { DateInput } from "@/components/ui/date-input";
 import { toCsv } from "@/lib/table/process";
 import { isFromInteractiveControl, rowKeyAction, stepIndex } from "@/lib/table/rowKeyboard";
 import type { BulkAction, Column, FilterDef, SortState } from "@/lib/table/types";
@@ -748,9 +749,9 @@ function FilterControl<T>({
     const v = (value as { from?: string; to?: string }) ?? {};
     return (
       <span className="inline-flex items-center gap-1" title={def.label}>
-        <input type="date" aria-label={`${def.label} from`} className={sel} value={v.from ?? ""} onChange={(e) => onChange({ ...v, from: e.target.value })} />
+        <DateInput aria-label={`${def.label} from`} className={sel} value={v.from ?? ""} onChange={(iso) => onChange({ ...v, from: iso })} />
         <span className="text-ps-disabled">–</span>
-        <input type="date" aria-label={`${def.label} to`} className={sel} value={v.to ?? ""} onChange={(e) => onChange({ ...v, to: e.target.value })} />
+        <DateInput aria-label={`${def.label} to`} className={sel} value={v.to ?? ""} onChange={(iso) => onChange({ ...v, to: iso })} />
       </span>
     );
   }

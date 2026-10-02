@@ -1,6 +1,7 @@
 "use client";
 
 import { periodChoices, encodePeriodChoice, decodePeriodChoice, GRANULARITY_OPTIONS, type PeriodMode, type Granularity } from "@/lib/dates/periods";
+import { DateInput } from "@/components/ui/date-input";
 
 /**
  * Period dropdown: Today / Yesterday / This Week / Last 3 Months / each of
@@ -65,18 +66,16 @@ export default function PeriodPicker({
       </select>
       {mode === "custom" && (
         <>
-          <input
-            type="date"
+          <DateInput
             value={customFrom}
-            onChange={(e) => onCustomFromChange(e.target.value)}
+            onChange={onCustomFromChange}
             aria-label="From date"
             className="px-2 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-ps-label"
           />
           <span className="text-xs text-ps-hint">to</span>
-          <input
-            type="date"
+          <DateInput
             value={customTo}
-            onChange={(e) => onCustomToChange(e.target.value)}
+            onChange={onCustomToChange}
             aria-label="To date"
             className="px-2 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-ps-label"
           />

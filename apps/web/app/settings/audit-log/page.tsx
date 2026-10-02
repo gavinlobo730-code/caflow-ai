@@ -10,6 +10,7 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { Skeleton } from "@/components/ui/skeleton";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
 
 // ── Formatting helpers ─────────────────────────────────────────────────────────
 // The audit_log table stores backend vocabulary: entity_type is snake_case
@@ -329,12 +330,12 @@ function AuditLogContent() {
       <div className="bg-white border border-ps-border rounded-xl px-5 py-4 grid grid-cols-2 md:grid-cols-5 gap-3">
         <div>
           <label className="text-xs text-ps-label">From Date</label>
-          <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
+          <DateInput aria-label="Audit log from date" value={filterDateFrom} onChange={(v) => setFilterDateFrom(v)}
             className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
         </div>
         <div>
           <label className="text-xs text-ps-label">To Date</label>
-          <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
+          <DateInput aria-label="Audit log to date" value={filterDateTo} onChange={(v) => setFilterDateTo(v)}
             className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
         </div>
         <div>

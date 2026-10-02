@@ -32,6 +32,8 @@ import { ReorderPanel } from "@/components/inventory/ReorderPanel";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 interface StockItem {
   id: string;
   name: string;
@@ -418,7 +420,7 @@ export default function InventoryPage() {
             <label htmlFor="stock-as-at" className="block text-3xs font-medium text-ps-hint mb-1">
               As at
             </label>
-            <input id="stock-as-at" type="date" value={asAt} onChange={(e) => setAsAt(e.target.value)}
+            <DateInput id="stock-as-at" value={asAt} onChange={(v) => setAsAt(v)}
               className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           {asAt ? (
@@ -626,12 +628,12 @@ function StockLedgerDrillDown({
         <div className="px-5 py-3 border-b border-ps-border flex items-end gap-3 flex-wrap shrink-0">
           <div>
             <label className="block text-3xs font-medium text-ps-hint mb-1">From</label>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+            <DateInput aria-label="Stock ledger from" value={startDate} onChange={(v) => setStartDate(v)}
               className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           <div>
             <label className="block text-3xs font-medium text-ps-hint mb-1">To</label>
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+            <DateInput aria-label="Stock ledger to" value={endDate} onChange={(v) => setEndDate(v)}
               className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           <button onClick={() => { setStartDate(fyRange.start); setEndDate(fyRange.end); }} className="text-xs text-blue-600 hover:underline pb-1.5">
@@ -759,6 +761,8 @@ function AdjustStockModal({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Text that is not a date reads as blank to the form (frontend_ux-19).
+  const dates = useDateProblems();
 
   const reasonOptions = ADJUSTMENT_REASONS.filter((r) => r.direction === "both" || r.direction === direction);
 
@@ -780,6 +784,7 @@ function AdjustStockModal({
   }
 
   async function submit() {
+    if (dates.first) { setError(dates.first); return; }
     const qty = parseFloat(quantity);
     if (!(qty > 0)) { setError("Enter a quantity greater than 0."); return; }
     setSaving(true);
@@ -852,8 +857,8 @@ function AdjustStockModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">Date *</label>
-              <input type="date" value={adjustmentDate} onChange={(e) => setAdjustmentDate(e.target.value)}
+              <label htmlFor="stock-adjust-date" className="block text-xs font-medium text-ps-label mb-1">Date *</label>
+              <DateInput id="stock-adjust-date" value={adjustmentDate} onChange={setAdjustmentDate} onStateChange={dates.watch("adjustmentDate", "Date")}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
@@ -900,6 +905,8 @@ function NrvWritedownModal({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Text that is not a date reads as blank to the form (frontend_ux-19).
+  const dates = useDateProblems();
 
   // Through the one parser, and the comparison stays in paise. What was here
   // read the NRV with parseFloat and compared it against a cost divided back
@@ -913,6 +920,7 @@ function NrvWritedownModal({
       : 0;
 
   async function submit() {
+    if (dates.first) { setError(dates.first); return; }
     if (nrvPaise === null || nrvPaise < 0) { setError("Enter a valid net realisable value per unit."); return; }
     setSaving(true);
     setError(null);
@@ -954,8 +962,8 @@ function NrvWritedownModal({
                 placeholder="0.00" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">Date *</label>
-              <input type="date" value={writedownDate} onChange={(e) => setWritedownDate(e.target.value)}
+              <label htmlFor="writedown-date" className="block text-xs font-medium text-ps-label mb-1">Date *</label>
+              <DateInput id="writedown-date" value={writedownDate} onChange={setWritedownDate} onStateChange={dates.watch("writedownDate", "Date")}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
           </div>

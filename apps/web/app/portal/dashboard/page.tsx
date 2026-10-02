@@ -28,6 +28,7 @@ import {
   PortalShell, PortalPanel, PortalTable, PortalRow, PortalEmpty,
 } from "@/components/portal/PortalShell";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
+import { DateInput } from "@/components/ui/date-input";
 
 interface Section {
   key: string;
@@ -486,11 +487,11 @@ export default function PortalDashboardPage() {
             <Panel title="Account Statement">
               <div className="flex flex-wrap items-end gap-2 mb-3">
                 <label className="text-xs text-ps-label">From
-                  <input type="date" value={stmtStart} onChange={(e) => setStmtStart(e.target.value)}
+                  <DateInput value={stmtStart} onChange={(v) => setStmtStart(v)}
                     className="ml-1 block sm:inline border border-ps-border rounded px-2 py-1 text-xs" />
                 </label>
                 <label className="text-xs text-ps-label">To
-                  <input type="date" value={stmtEnd} onChange={(e) => setStmtEnd(e.target.value)}
+                  <DateInput value={stmtEnd} onChange={(v) => setStmtEnd(v)}
                     className="ml-1 block sm:inline border border-ps-border rounded px-2 py-1 text-xs" />
                 </label>
                 <button disabled={busy} onClick={reloadStatement}

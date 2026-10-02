@@ -20,6 +20,8 @@
  */
 import { useState } from "react";
 import { Modal } from "@/components/ui/modal";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { todayLocalISO } from "@/lib/dateMath";
 
 export interface MarkFiledValues { filedDate: string; arn: string }
@@ -50,6 +52,9 @@ export function MarkFiledModal({
   const today = todayLocalISO();
   const [filedDate, setFiledDate] = useState(today);
   const [arn, setArn] = useState(initialArn);
+  // The filing date locks a period, so text that is not a date must not read as
+  // "no date" and quietly leave the button to the server (frontend_ux-19).
+  const dates = useDateProblems();
 
   return (
     <Modal title={title} onClose={onClose} maxWidthClass="max-w-md"
@@ -59,12 +64,12 @@ export function MarkFiledModal({
           <label htmlFor="mark-filed-date" className="text-xs font-medium text-ps-body block mb-1">
             Filed on
           </label>
-          <input
+          <DateInput
             id="mark-filed-date"
-            type="date"
             value={filedDate}
             max={today}
-            onChange={(e) => setFiledDate(e.target.value)}
+            onChange={setFiledDate}
+            onStateChange={dates.watch("filedDate", "Filed on")}
             className="w-full px-3 py-1.5 text-sm border border-state-working-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand bg-white"
           />
           <p className="text-3xs text-ps-hint mt-1">
@@ -105,7 +110,7 @@ export function MarkFiledModal({
           <button
             type="button"
             onClick={() => onConfirm({ filedDate, arn: arn.trim() })}
-            disabled={busy || !filedDate}
+            disabled={busy || !filedDate || !!dates.first}
             className="text-xs px-3 py-1.5 bg-brand text-white rounded-md hover:bg-brand-dark disabled:opacity-50"
           >
             {busy ? "Saving…" : "Confirm Filed"}

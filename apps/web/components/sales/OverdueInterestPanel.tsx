@@ -40,6 +40,7 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 import { EmptyState } from "@/components/ui/states";
 import type { SingleFlight } from "@/lib/async/singleFlight";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
+import { DateInput } from "@/components/ui/date-input";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -192,10 +193,9 @@ export default function OverdueInterestPanel({
         <div className="ml-auto flex items-end gap-2">
           <label className="text-2xs text-ps-label">
             As at
-            <input
-              type="date"
+            <DateInput
               value={asOf}
-              onChange={(e) => setAsOf(e.target.value)}
+              onChange={(v) => setAsOf(v)}
               className="mt-0.5 block rounded-lg border border-ps-border px-2 py-1.5 text-xs"
             />
           </label>

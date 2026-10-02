@@ -19,6 +19,7 @@ import { Callout, GapList } from "@/components/ui/callout";
 import { DataTable } from "@/components/ui/data-table";
 import ReportExportButtons from "@/components/accounting/ReportExportButtons";
 import type { Column } from "@/lib/table/types";
+import { DateInput } from "@/components/ui/date-input";
 /**
  * Trade Receivables and Trade Payables ageing schedules — the notes to the
  * balance sheet required by Schedule III to the Companies Act 2013 as amended
@@ -351,10 +352,9 @@ export default function ClientAgeingSchedulePage() {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <label className="text-2xs text-ps-label">As at</label>
-          <input
-            type="date"
+          <DateInput aria-label="Ageing as at"
             value={asOf}
-            onChange={(e) => { setAsOf(e.target.value); setInvoices(null); setBills(null); setArAdvances(null); setApAdvances(null); }}
+            onChange={(v) => { setAsOf(v); setInvoices(null); setBills(null); setArAdvances(null); setApAdvances(null); }}
             className="text-2xs border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body"
           />
           <button

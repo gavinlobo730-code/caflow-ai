@@ -36,9 +36,11 @@ import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { QuickAddLedger } from "@/components/journal/QuickAddLedger";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { DateInput } from "@/components/ui/date-input";
 import { DraftOffer } from "@/components/ui/draft-offer";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { useUnsentDraft } from "@/lib/drafts/useUnsentDraft";
 import {
   applyJournalDraft, validateJournalDraft, type JournalDraftFields,
@@ -170,6 +172,9 @@ export function JournalEditor({
   const [attachName, setAttachName] = useState("");
   const [attachUrl, setAttachUrl] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  // A date typed as text that is not a date reads as blank to the form, so the
+  // save has to be told which it was (frontend_ux-19).
+  const dates = useDateProblems();
 
   // One guard over Save Draft, Post Entry and Save Correction: two of them
   // pressed on the same tick are two vouchers, and `disabled={saving}` — React
@@ -335,6 +340,7 @@ export function JournalEditor({
    *  guard until it settles. */
   function handleSave(mode: JournalSaveMode): Promise<void> | void {
     setLocalError(null);
+    if (dates.first) { setLocalError(dates.first); return; }
     if (hasUnparseable) { setLocalError("One of the amounts isn't a number. Check the highlighted cells."); return; }
     if (!narration.trim()) { setLocalError("Narration is required."); return; }
     if (!isBalanced) { setLocalError("Debits must equal credits before saving."); return; }
@@ -412,8 +418,8 @@ export function JournalEditor({
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label htmlFor="je-date" className="block text-xs font-medium text-ps-label mb-1">Date *</label>
-            <input id="je-date" type="date" value={entryDate} disabled={readOnly}
-                   onChange={(e) => setEntryDate(e.target.value)} className={field} />
+            <DateInput id="je-date" value={entryDate} disabled={readOnly}
+                       onChange={setEntryDate} onStateChange={dates.watch("entryDate", "Date")} className={field} />
           </div>
           <div>
             <label htmlFor="je-type" className="block text-xs font-medium text-ps-label mb-1">Type</label>

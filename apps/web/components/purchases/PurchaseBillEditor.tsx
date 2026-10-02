@@ -49,6 +49,8 @@ import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -326,6 +328,9 @@ export function PurchaseBillEditor({
   // a click on one of the chips below (see lib/purchases/vendorHistory.ts).
   const [history, setHistory] = useState<VendorHistory | null>(null);
   const [attempted, setAttempted] = useState(false);
+  // A date typed as text that is not a date reads as blank to the form; the
+  // save has to know which it was (frontend_ux-19).
+  const dates = useDateProblems();
 
   // AI Upload (Extract) — create-only; re-extracting into an already-saved
   // draft would silently overwrite manually-corrected fields.
@@ -839,6 +844,7 @@ export function PurchaseBillEditor({
   // ── Save ─────────────────────────────────────────────────────────────────
   async function save() {
     setAttempted(true);
+    if (dates.first) { setError(dates.first); return; }
     if (!validation.ok) {
       setError(validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.unread ?? validation.errors.lines ?? validation.errors.exchangeRate ?? "Fix the highlighted fields.");
       return;
@@ -1224,15 +1230,16 @@ export function PurchaseBillEditor({
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">Bill Date *</label>
-              <input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} disabled={isLocked}
+              <label htmlFor="bill-date" className="block text-xs font-medium text-ps-label mb-1">Bill Date *</label>
+              <DateInput id="bill-date" value={billDate} onChange={setBillDate} onStateChange={dates.watch("billDate", "Bill date")} disabled={isLocked}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-hint" />
-              {fieldErr(validation.errors.billDate)}
+              {!dates.problems.billDate && fieldErr(validation.errors.billDate)}
               {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once received — issue a Debit Note to correct (CGST Act §34).</p>}
             </div>
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+              <label htmlFor="bill-due-date" className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
+              <DateInput id="bill-due-date" value={dueDate} onChange={setDueDate} onStateChange={dates.watch("dueDate", "Due date")}
+                anchor={dueDate || billDate}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div className="flex flex-col justify-end pb-1.5">
@@ -1313,11 +1320,12 @@ export function PurchaseBillEditor({
                   className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-ps-label mb-1">
+                <label htmlFor="bill-15ca-date" className="block text-xs font-medium text-ps-label mb-1">
                   Form 15CA filed on
                 </label>
-                <input type="date" value={form15caFiledOn}
-                  onChange={(e) => setForm15caFiledOn(e.target.value)}
+                <DateInput id="bill-15ca-date" value={form15caFiledOn}
+                  onChange={setForm15caFiledOn} onStateChange={dates.watch("form15caFiledOn", "Form 15CA filed on")}
+                  anchor={form15caFiledOn || billDate}
                   className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               </div>
               <div>

@@ -61,6 +61,8 @@ import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/p
 import { Callout } from "@/components/ui/callout";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -2574,6 +2576,9 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
   // is "nothing against this bill", which is NOT the same as a typed 0.
   const [alloc, setAlloc] = useState<Record<string, string>>({});
   const [payDate, setPayDate] = useState(toDate());
+  // A date typed as text that is not a date reads as blank to the form; the
+  // save has to know which it was (frontend_ux-19).
+  const dates = useDateProblems();
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState("bank");
   // WHICH ACCOUNT THE MONEY LEFT (ACC-03). `PurchasePaymentIn.bank_account_id`
@@ -2734,6 +2739,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
   }
 
   async function handleSave() {
+    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
     if (!vendorId) { setMsg({ type: "err", text: "Select a vendor" }); return; }
     const amtPaise = paiseFromRupeeInput(amount || "0");
     if (amtPaise === null) {
@@ -3011,8 +3017,8 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
               </div>
             )}
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">Date *</label>
-              <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
+              <label htmlFor="vendor-payment-date" className="block text-xs font-medium text-ps-label mb-1">Date *</label>
+              <DateInput id="vendor-payment-date" value={payDate} onChange={setPayDate} onStateChange={dates.watch("payDate", "Payment date")} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Amount ({isForeign ? currency : "₹"}) *</label>

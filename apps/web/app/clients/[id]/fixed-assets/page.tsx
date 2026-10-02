@@ -22,6 +22,8 @@ import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { omitKeys, useDirtyFields } from "@/lib/forms/useDirtyFields";
@@ -759,6 +761,8 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   // set on the same synchronous tick as the call itself, so the second of two
   // back-to-back invocations sees it already set and returns immediately.
   const submittingRef = useRef(false);
+  // Text that is not a date reads as blank to the form (frontend_ux-19).
+  const dates = useDateProblems();
 
   // UNSAVED TYPING (frontend_ux-23). Everything the person typed or picked — and
   // NOT the four fields the category list fills in when it arrives (category,
@@ -847,6 +851,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
 
   async function save() {
     if (submittingRef.current) return;
+    if (dates.first) { setError(dates.first); return; }
     if (!form.asset_name || !form.purchase_cost_paise) { setError("Asset name and cost are required."); return; }
     if (!form.asset_category) { setError("Pick a category."); return; }
     // The field names still say _paise (they are the payload keys); what the CA
@@ -1002,7 +1007,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
             </Field>
           )}
           <Field label="Purchase Date">
-            <input type="date" className={INPUT} value={form.purchase_date} onChange={e => setForm(f => ({ ...f, purchase_date: e.target.value }))} />
+            <DateInput className={INPUT} value={form.purchase_date} onChange={iso => setForm(f => ({ ...f, purchase_date: iso }))} onStateChange={dates.watch("purchase_date", "Purchase date")} aria-label="Purchase date" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Purchase Cost (₹) *">
@@ -1621,6 +1626,8 @@ function DisposalTab({ clientId }: { clientId: string }) {
   const [disposalDate, setDisposalDate] = useState(todayLocalISO());
   const [disposing, setDisposing] = useState(false);
   const [error, setError] = useState("");
+  // Text that is not a date reads as blank to the form (frontend_ux-19).
+  const dates = useDateProblems();
   // WHAT THE DISPOSAL DID NOT CHARGE, which the server has always said and no
   // screen ever showed. The engine posts WHOLE months (Schedule II Note 3
   // makes the purchase month the single pro-rated exception), so the days
@@ -1718,6 +1725,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
 
   async function dispose() {
     if (!selected) return;
+    if (dates.first) { setError(dates.first); return; }
     if (proceedsPaise === null) {
       setError("Sale proceeds must be an amount in rupees, e.g. 125000 or "
                + "125000.50 — without commas.");
@@ -1843,7 +1851,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
           {error && <Callout tone="problem">{error}</Callout>}
           <div className="grid grid-cols-2 gap-4">
             <Field label="Disposal Date">
-              <input type="date" className={INPUT} value={disposalDate} onChange={e => setDisposalDate(e.target.value)} />
+              <DateInput className={INPUT} value={disposalDate} onChange={setDisposalDate} onStateChange={dates.watch("disposalDate", "Disposal date")} aria-label="Disposal date" />
             </Field>
             <Field label="Sale Proceeds (₹)">
               <input type="number" className={INPUT} value={proceeds} onChange={e => setProceeds(e.target.value)} placeholder="0" />

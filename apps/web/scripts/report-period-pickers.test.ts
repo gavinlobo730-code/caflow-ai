@@ -72,10 +72,11 @@ export function dateScopedReports(src: string): Report[] {
         name: starts[i].name,
         calls,
         hasPicker,
-        // Own date inputs count. The question this file asks is whether the
-        // USER can change the range, not whether one particular component was
-        // used to ask them.
-        datesChangeable: hasPicker || body.includes('type="date"'),
+        // Own date inputs count — the native control or <DateInput>
+        // (frontend_ux-19). The question this file asks is whether the USER can
+        // change the range, not whether one particular component was used to
+        // ask them.
+        datesChangeable: hasPicker || body.includes('type="date"') || body.includes("<DateInput"),
       });
     }
   }
@@ -108,6 +109,18 @@ function Drill({ x }: P) {
   assert.deepEqual(found.map((r) => [r.name, r.hasPicker, r.datesChangeable]), [["Drill", false, true]]);
 });
 
+
+test("a report whose own range is a <DateInput> is not a finding either", () => {
+  // The same shape after frontend_ux-19: the typed date field replaces the
+  // native control, and the user can still change the window.
+  const found = dateScopedReports(`
+function Drill({ x }: P) {
+  api.accounting.ledger({ account_id: a, start_date: s, end_date: e });
+  return <DateInput value={startDate} onChange={setStartDate} aria-label="From" />;
+}
+`);
+  assert.deepEqual(found.map((r) => [r.name, r.hasPicker, r.datesChangeable]), [["Drill", false, true]]);
+});
 
 test("a namespaced report call is still seen", () => {
   // api.accounting.fxReports.realized(...) — the nested form the first draft of

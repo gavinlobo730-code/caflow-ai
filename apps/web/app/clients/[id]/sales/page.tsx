@@ -78,6 +78,8 @@ import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/states";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -1277,12 +1279,12 @@ function Statements({ clientId }: { clientId: string }) {
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">From</label>
-            <input type="date" value={start} onChange={(e) => setStart(e.target.value)}
+            <DateInput aria-label="Statement from" value={start} onChange={(v) => setStart(v)}
               className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">To</label>
-            <input type="date" value={end} onChange={(e) => setEnd(e.target.value)}
+            <DateInput aria-label="Statement to" value={end} onChange={(v) => setEnd(v)}
               className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
         </div>
@@ -3707,6 +3709,9 @@ function ReceiptForm({
   const today = todayLocalISO();
   const [customerId, setCustomerId] = useState("");
   const [receiptDate, setReceiptDate] = useState(today);
+  // A date typed as text that is not a date reads as blank to the form; the
+  // save has to know which it was (frontend_ux-19).
+  const dates = useDateProblems();
   const [amount, setAmount] = useState("");
   // TDS THE CUSTOMER WITHHELD (SALES-07). `ReceiptIn.tds_paise` and
   // `receipt_service` have handled this since the model was written — the
@@ -3871,6 +3876,7 @@ function ReceiptForm({
     .reduce<number>((s, v) => s + (v ?? 0), 0);
 
   async function handleSave() {
+    if (dates.first) { setError(dates.first); return; }
     if (!customerId) { setError("Select a customer"); return; }
     if (amountPaise === null) {
       setError("Amount must be a number of rupees, e.g. 125000 or 125000.50 — without commas.");
@@ -3984,11 +3990,12 @@ function ReceiptForm({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-ps-label mb-1">Receipt Date *</label>
-          <input
-            type="date"
+          <label htmlFor="receipt-date" className="block text-xs font-medium text-ps-label mb-1">Receipt Date *</label>
+          <DateInput
+            id="receipt-date"
             value={receiptDate}
-            onChange={(e) => setReceiptDate(e.target.value)}
+            onChange={setReceiptDate}
+            onStateChange={dates.watch("receiptDate", "Receipt date")}
             className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </div>

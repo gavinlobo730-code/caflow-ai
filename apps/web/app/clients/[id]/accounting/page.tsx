@@ -49,6 +49,7 @@ import { objectWithLists } from "@/lib/api/shape";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { DateInput } from "@/components/ui/date-input";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
 type AccountingTab =
@@ -1478,12 +1479,12 @@ function LedgerDrillDown({
           </div>
           <div>
             <label className="block text-3xs font-medium text-ps-hint mb-1">From</label>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+            <DateInput aria-label="Ledger from" value={startDate} onChange={(v) => setStartDate(v)}
               className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           <div>
             <label className="block text-3xs font-medium text-ps-hint mb-1">To</label>
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+            <DateInput aria-label="Ledger to" value={endDate} onChange={(v) => setEndDate(v)}
               className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           <button onClick={() => { setStartDate(fyRange.start); setEndDate(fyRange.end); }} className="text-xs text-blue-600 hover:underline pb-1.5">

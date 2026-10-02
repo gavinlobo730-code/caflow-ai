@@ -31,6 +31,8 @@ import { AccountLookup, type AccountLike } from "@/components/lookups/AccountLoo
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -69,6 +71,8 @@ export function BillsOfEntryTab({ clientId, openDoc }:
   const [postingId, setPostingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [msg, setMsg] = useState<Msg>(null);
+  // Text that is not a date reads as blank to the form (frontend_ux-19).
+  const dates = useDateProblems();
 
   // One action at a time — every button that starts a write waits for
   // whichever is already running.
@@ -124,6 +128,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
   }), { credit: 0, cost: 0, paid: 0 }), [rows]);
 
   async function handleSave() {
+    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
     if (!form.be_number.trim()) {
       setMsg({ type: "err", text: "The Bill of Entry number is required." });
       return;
@@ -406,8 +411,9 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                 </label>
                 <label className="text-xs">
                   <span className="block text-ps-body font-medium mb-1">Date *</span>
-                  <input type="date" value={form.be_date}
-                    onChange={(e) => setForm(f => ({ ...f, be_date: e.target.value }))}
+                  <DateInput value={form.be_date}
+                    onChange={(iso) => setForm(f => ({ ...f, be_date: iso }))}
+                    onStateChange={dates.watch("be_date", "Bill of Entry date")}
                     className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
                 </label>
               </div>
