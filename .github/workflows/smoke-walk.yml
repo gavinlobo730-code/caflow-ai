@@ -98,15 +98,15 @@ jobs:
     # A pull request runs it only for the one label; every other trigger always runs.
     if: github.event_name != 'pull_request' || github.event.label.name == 'smoke-walk'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: "10"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "pnpm"
@@ -154,7 +154,7 @@ jobs:
 
       - name: Keep the report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-walk-report
           path: apps/web/.smoke/report.json
@@ -163,7 +163,7 @@ jobs:
 
       - name: Keep the screenshots of a failed walk
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-walk-screens
           path: apps/web/.smoke/

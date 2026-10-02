@@ -105,7 +105,7 @@ def test_it_builds_the_smoke_export_then_walks_it_with_a_report():
 
 def test_the_report_is_uploaded_even_when_the_walk_fails_and_the_screens_only_then():
     text = WORKFLOW.read_text(encoding="utf-8")
-    report = re.search(r"- name: Keep the report\n\s+if: always\(\)\n\s+uses: actions/upload-artifact@v4\n"
+    report = re.search(r"- name: Keep the report\n\s+if: always\(\)\n\s+uses: actions/upload-artifact@v\d+\n"
                        r"(?:.*\n)*?\s+path: apps/web/\.smoke/report\.json", text)
     assert report, "the report must be uploaded with `if: always()`, or the run that fails leaves no report"
     screens = re.search(r"- name: Keep the screenshots of a failed walk\n\s+if: failure\(\)", text)

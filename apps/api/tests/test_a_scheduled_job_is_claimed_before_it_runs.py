@@ -412,7 +412,11 @@ def test_a_heartbeat_that_loses_the_claim_says_so_and_stops(caplog):
     with caplog.at_level("ERROR", logger="caflow.jobs.claims"):
         mine.start_heartbeat(interval=0.02)
         deadline = time.time() + 3
-        while not mine.lost and time.time() < deadline:
+        # `_beat` sets `lost` and THEN logs, on its own thread, so the flag alone is not the moment
+        # the record exists: stopping the wait on it read `caplog.records` in the gap between the
+        # two lines (one failure in a CI run, 2 Oct 2026). Wait for what is asserted.
+        while time.time() < deadline and not (
+                mine.lost and any("running twice" in r.getMessage() for r in caplog.records)):
             time.sleep(0.02)
     assert mine.lost is True
     assert any("running twice" in r.getMessage() for r in caplog.records)

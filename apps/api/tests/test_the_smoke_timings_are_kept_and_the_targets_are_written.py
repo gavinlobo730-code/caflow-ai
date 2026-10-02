@@ -476,7 +476,7 @@ def _step(name: str) -> str:
 
 def test_every_run_uploads_its_timings_even_a_failed_one_for_ninety_days():
     step = _step("Keep this run's timings")
-    assert "if: always()" in step and "actions/upload-artifact@v4" in step
+    assert "if: always()" in step and re.search(r"actions/upload-artifact@v\d+", step)
     assert "retention-days: 90" in step
     assert "if-no-files-found: ignore" in step, "a skipped run measures nothing and leaves no file"
     assert "github.run_id" in step and "github.run_attempt" in step, "two artifacts of one name would collide"

@@ -185,7 +185,7 @@ def test_the_floor_is_checked_after_the_tests_and_only_when_the_backend_changed(
 
 def test_the_report_is_kept_with_the_run_and_the_workflow_still_has_no_paths_filter():
     job = _job("pytest — mock mode (Python 3.11)")
-    assert "actions/upload-artifact@v4" in job and "apps/api/coverage.json" in job
+    assert re.search(r"actions/upload-artifact@v\d+", job) and "apps/api/coverage.json" in job
     assert not re.search(r"^\s+paths(-ignore)?:", WORKFLOW.read_text(encoding="utf-8"), re.MULTILINE)
 
 
