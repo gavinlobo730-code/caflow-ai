@@ -1,0 +1,525 @@
+{
+  "comment": "The accessibility ratchet (frontend_ux-03). Serious and critical axe violations on every screen the walk visits EXCEPT the six named ones, which fail outright. It may only shrink: a fix deletes its own line (or lowers its count) in the same commit. See scripts/axeAudit.mjs.",
+  "tags": [
+    "wcag2a",
+    "wcag2aa",
+    "wcag21a",
+    "wcag21aa"
+  ],
+  "impacts": [
+    "serious",
+    "critical"
+  ],
+  "entries": [
+    {
+      "route": "/accounting/account-groups",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/budget",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/coa-export",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/coa-import",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/loans",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/lock-year",
+      "rule": "color-contrast",
+      "nodes": 2
+    },
+    {
+      "route": "/accounting/lock-year",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/msme-tracker",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/receivables",
+      "rule": "link-in-text-block",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/receivables",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/recurring",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/retainer",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/schedule-iii",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/schedule-iii",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/schedule-iii-mapping",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/suppliers",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/accounting/trial-balance-import",
+      "rule": "label",
+      "nodes": 1
+    },
+    {
+      "route": "/ai-assistant",
+      "rule": "button-name",
+      "nodes": 1
+    },
+    {
+      "route": "/ai-assistant",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/approvals",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/billing",
+      "rule": "button-name",
+      "nodes": 1
+    },
+    {
+      "route": "/client-portal",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/clients/documents",
+      "rule": "button-name",
+      "nodes": 1
+    },
+    {
+      "route": "/clients/documents",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/copilot",
+      "rule": "button-name",
+      "nodes": 1
+    },
+    {
+      "route": "/copilot",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/gst/gstr1",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/gst/gstr1",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/gst/gstr3b",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/gst/gstr3b",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/health",
+      "rule": "color-contrast",
+      "nodes": 6
+    },
+    {
+      "route": "/income-tax/advance-tax",
+      "rule": "label",
+      "nodes": 1
+    },
+    {
+      "route": "/income-tax/advance-tax",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/income-tax/ais",
+      "rule": "select-name",
+      "nodes": 2
+    },
+    {
+      "route": "/income-tax/book-to-tax",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/income-tax/capital-gains",
+      "rule": "label",
+      "nodes": 2
+    },
+    {
+      "route": "/income-tax/capital-gains",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/income-tax/capital-gains",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/income-tax/deductions",
+      "rule": "label",
+      "nodes": 1
+    },
+    {
+      "route": "/income-tax/notices",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/income-tax/notices",
+      "rule": "select-name",
+      "nodes": 2
+    },
+    {
+      "route": "/income-tax/section-32",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/income-tax/tax-audit",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/income-tax/tax-audit/form-3cd",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/income-tax/tax-audit/form-3cd",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/insights",
+      "rule": "link-in-text-block",
+      "nodes": 1
+    },
+    {
+      "route": "/knowledge",
+      "rule": "button-name",
+      "nodes": 1
+    },
+    {
+      "route": "/knowledge",
+      "rule": "color-contrast",
+      "nodes": 2
+    },
+    {
+      "route": "/memory",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/notifications/whatsapp",
+      "rule": "label",
+      "nodes": 1
+    },
+    {
+      "route": "/payroll",
+      "rule": "label",
+      "nodes": 1
+    },
+    {
+      "route": "/payroll/attendance",
+      "rule": "label",
+      "nodes": 1
+    },
+    {
+      "route": "/payroll/attendance",
+      "rule": "select-name",
+      "nodes": 2
+    },
+    {
+      "route": "/payroll/declarations",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/payroll/declarations",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/payroll/reports",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/payroll/statutory",
+      "rule": "label",
+      "nodes": 1
+    },
+    {
+      "route": "/payroll/statutory",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/pipeline",
+      "rule": "color-contrast",
+      "nodes": 2
+    },
+    {
+      "route": "/pipeline",
+      "rule": "scrollable-region-focusable",
+      "nodes": 1
+    },
+    {
+      "route": "/portal/login",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/practice/billing",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/practice/collections",
+      "rule": "color-contrast",
+      "nodes": 4
+    },
+    {
+      "route": "/practice/compliance",
+      "rule": "color-contrast",
+      "nodes": 5
+    },
+    {
+      "route": "/practice/compliance",
+      "rule": "select-name",
+      "nodes": 2
+    },
+    {
+      "route": "/practice/profitability",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/relationships/_placeholder",
+      "rule": "color-contrast",
+      "nodes": 2
+    },
+    {
+      "route": "/relationships/cross-client",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/relationships/intelligence",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/relationships/ownership-map",
+      "rule": "color-contrast",
+      "nodes": 2
+    },
+    {
+      "route": "/reports/cash-flow",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/reports/cash-flow",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/risks",
+      "rule": "color-contrast",
+      "nodes": 5
+    },
+    {
+      "route": "/settings",
+      "rule": "label",
+      "nodes": 1
+    },
+    {
+      "route": "/settings",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/settings/audit-log",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/settings/audit-log",
+      "rule": "label",
+      "nodes": 2
+    },
+    {
+      "route": "/settings/audit-log",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/settings/audit-log",
+      "rule": "select-name",
+      "nodes": 2
+    },
+    {
+      "route": "/settings/branding",
+      "rule": "color-contrast",
+      "nodes": 2
+    },
+    {
+      "route": "/settings/branding",
+      "rule": "label",
+      "nodes": 3
+    },
+    {
+      "route": "/settings/branding",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/settings/email-templates",
+      "rule": "label",
+      "nodes": 1
+    },
+    {
+      "route": "/settings/firm-hsn-library",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/settings/invoice-settings",
+      "rule": "button-name",
+      "nodes": 3
+    },
+    {
+      "route": "/settings/invoice-settings",
+      "rule": "label",
+      "nodes": 1
+    },
+    {
+      "route": "/settings/invoice-settings",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/settings/scheduled-reports",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/settings/scheduled-reports",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/settings/security",
+      "rule": "label",
+      "nodes": 2
+    },
+    {
+      "route": "/sign",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/tasks",
+      "rule": "color-contrast",
+      "nodes": 5
+    },
+    {
+      "route": "/tds/returns",
+      "rule": "select-name",
+      "nodes": 2
+    },
+    {
+      "route": "/team",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/team/assignments",
+      "rule": "color-contrast",
+      "nodes": 3
+    },
+    {
+      "route": "/team/login-history",
+      "rule": "color-contrast",
+      "nodes": 2
+    },
+    {
+      "route": "/time",
+      "rule": "color-contrast",
+      "nodes": 1
+    },
+    {
+      "route": "/time",
+      "rule": "label",
+      "nodes": 2
+    },
+    {
+      "route": "/time",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/workflows",
+      "rule": "select-name",
+      "nodes": 1
+    },
+    {
+      "route": "/workflows/approvals",
+      "rule": "link-name",
+      "nodes": 1
+    },
+    {
+      "route": "/workflows/approvals",
+      "rule": "select-name",
+      "nodes": 1
+    }
+  ]
+}

@@ -76,6 +76,20 @@
  *   node scripts/smoke-walk.mjs --only /login --shots --anon
  *   node scripts/smoke-walk.mjs --report .smoke/report.json
  *
+ * ACCESSIBILITY AND THE SLOW SERVER (frontend_ux-03, frontend_ux-05). The walk also scans pages with axe and
+ * drives the slow-server notice, and both change the verdict:
+ *
+ *   * axe (`scripts/axeAudit.mjs` has the rules): the SIX NAMED SCREENS — sign in, sign up, the dashboard,
+ *     a client's sales, the journal editor, the firm menu opened — fail on any serious or critical WCAG A/AA
+ *     violation, with no allowlist; every other walked route is held by `scripts/axe-baseline.json`, a ratchet
+ *     that may only shrink. It needs `@axe-core/playwright`, which the workflow adds to the walk's own job
+ *     (never a dependency of the product). Missing locally it is SKIPPED WITH A LOUD LINE; missing in CI it
+ *     exits 2; a run that scanned no page exits 2. `--no-axe` turns it off, `--axe-init` writes the first
+ *     baseline (and refuses to overwrite one), `--axe-shrink` lowers it and never raises it.
+ *   * the slow-server notice: on a full walk the stub API is held for 24 s on /tasks and the run asserts the
+ *     waking-up sentence appears once at about three seconds, a Retry at about twenty, and that both go with
+ *     the data. `--slow-server` forces it on a partial walk, `--no-slow-server` skips it (about half a minute).
+ *
  * --only <prefix>  walk just the routes under a prefix
  * --report <file>  also write the verdict as JSON (every broken route and its
  *                  errors, the herds, the redirects, how long each screen took),
@@ -98,6 +112,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { screenRoutes } from "./refresh-screen-snapshot.js";
 import { headersFor, parseHeadersFile } from "./security-headers.mjs";
+import {
+  AXE_PACKAGE_VERSION, NAMED_ROUTE_PATHS, auditPage, axeMode, compareToBaseline, describeFailure,
+  initialBaseline, loadAxeBuilder, parseBaseline, serialiseBaseline, settleVerdict, shrinkBaseline,
+  summaryMarkdown,
+} from "./axeAudit.mjs";
+import { auditNamedScreens, slowServerScenario } from "./walkAudits.mjs";
 
 
 /**
@@ -227,6 +247,24 @@ function sendJson(res, body, status = 200) {
 }
 
 /**
+ * What the slow-server scenario turns up and reads back (frontend_ux-05).
+ *
+ * `apiDelayMs` holds back every DATA answer — the API and the PostgREST reads — by that long, which is what a
+ * sleeping Render instance does to a screen. It is 0 for the whole route walk. The two reads the sign-in guard
+ * needs (`users`, `firms`) and the auth endpoints are never held, so the screen itself renders and only its
+ * data is slow, which is the case being tested. `requests` is every data request seen, so the scenario can
+ * say that pressing Retry really asked the server again.
+ */
+const stub = { apiDelayMs: 0, requests: [] };
+
+/** Answer a data request, after the scenario's delay if it has set one. A request the browser has already
+ *  abandoned (the page closed) is not answered. */
+function sendData(res, body, status = 200) {
+  if (stub.apiDelayMs <= 0) return sendJson(res, body, status);
+  setTimeout(() => { if (!res.destroyed && !res.writableEnded) sendJson(res, body, status); }, stub.apiDelayMs);
+}
+
+/**
  * Serve out/ the way Cloudflare Pages does (/a/b/ -> out/a/b/index.html), and
  * answer the two stub prefixes the smoke build points the app at.
  *
@@ -268,12 +306,17 @@ function serve(root, headerRules = []) {
         // one a developer with a seeded database never looks at and the one a
         // redesign most often breaks — see the note above `serve`. This row
         // exists to get past the guard, not to seed the product.
-        return sendJson(res, wantsObject ? null : []);
+        stub.requests.push(url);
+        return sendData(res, wantsObject ? null : []);
       }
       if (url.startsWith("/__supabase/storage/")) return sendJson(res, []);
       if (url.startsWith("/__supabase/")) return sendJson(res, {});
       if (url.startsWith("/__api/")) {
-        return sendJson(res, { success: true, data: [], error: null });
+        stub.requests.push(url);
+        // /health is the keep-alive's own ping and must stay instant whatever the scenario is doing.
+        return url.startsWith("/__api/health")
+          ? sendJson(res, { success: true, data: [], error: null })
+          : sendData(res, { success: true, data: [], error: null });
       }
 
       // Cloudflare serves EVERY /clients/<uuid>/… from the one _placeholder
@@ -284,9 +327,12 @@ function serve(root, headerRules = []) {
       // this tool it rendered the FIRM chrome over every client screen and so
       // could not see the client workspace at all — the half its own header
       // says it exists for. Mirroring the rewrite is what `--real-client` needs.
-      let file = path.join(root, url.replace(CLIENT_UUID_SEG, "/clients/_placeholder/"));
-      if (!path.extname(file)) file = path.join(file, "index.html");
-      if (!file.startsWith(root) || !fs.existsSync(file)) {
+      // …and so does every OTHER dynamic segment (an entry id, an invoice id): a
+      // static export builds one page per route SHAPE, and `_redirects` sends any
+      // real id to it. The named-screen scan asks for `/journal/new/edit`, the
+      // create-mode sentinel, and that has to land on the one built page.
+      const file = resolveBuiltFile(root, url);
+      if (!file) {
         res.writeHead(404, { ...siteHeaders, "content-type": "text/plain" });
         return res.end("not found");
       }
@@ -409,6 +455,20 @@ const EXPECTED_LANDINGS = {
 const args = process.argv.slice(2);
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;
 const shots = args.includes("--shots");
+/** `--no-axe` skips the accessibility scan; `--axe-init` / `--axe-shrink` write scripts/axe-baseline.json (see
+ *  axeAudit.mjs). `--slow-server` / `--no-slow-server` force or skip the slow-server scenario. */
+const noAxe = args.includes("--no-axe");
+const axeInit = args.includes("--axe-init");
+const axeShrink = args.includes("--axe-shrink");
+const BASELINE_FILE = path.join(__dirname, "axe-baseline.json");
+if (axeInit && axeShrink) {
+  console.error("--axe-init and --axe-shrink are two different writes; pass one.");
+  process.exit(2);
+}
+if ((axeInit || axeShrink) && noAxe) {
+  console.error("--axe-init and --axe-shrink need the scan; drop --no-axe.");
+  process.exit(2);
+}
 const reportPath = args.includes("--report") ? args[args.indexOf("--report") + 1] : null;
 if (args.includes("--report") && (!reportPath || reportPath.startsWith("--"))) {
   console.error("--report needs a file path, e.g. --report .smoke/report.json");
@@ -502,6 +562,18 @@ const routes = at.length
       .map((r) => r.replace(/:[^/]+/g, "_placeholder"))
       .filter((r) => (only ? r.startsWith(only) : true));
 
+/** A walk of part of the product: nothing that needs the whole set (the floor, the duplicate-body check, the
+ *  baseline's writes) is judged on it. */
+const partial = Boolean(only) || at.length > 0;
+if ((axeInit || axeShrink) && (partial || anon)) {
+  console.error("--axe-init and --axe-shrink rewrite the baseline from what was found, so they need a full signed-in " +
+    "walk: no --only, no --at, no --anon.");
+  process.exit(2);
+}
+/** The slow-server scenario holds the API for ~25 s, so it runs on a full walk and on request, not on a spot check. */
+const runSlowServer = args.includes("--slow-server") ||
+  (!args.includes("--no-slow-server") && !partial && !anon);
+
 // A truncated tree makes every assertion below vacuous, the same floor the
 // snapshot guard keeps. 120 was its number on a tree of 159.
 if (!only && !at.length && allRoutes.length < 120) {
@@ -516,6 +588,26 @@ if (!only && !at.length && allRoutes.length < 120) {
  *  _placeholder page exactly as Cloudflare does. */
 const CLIENT_UUID_SEG =
   /^\/clients\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\//i;
+
+/** Each dynamic route shape and the one page the export built for it (`:id` -> `_placeholder`). */
+const DYNAMIC_ROUTES = allRoutes.filter((r) => r.includes(":")).map((r) => ({
+  shape: new RegExp(`^${r.replace(/:[^/]+/g, "[^/]+")}/?$`),
+  built: r.replace(/:[^/]+/g, "_placeholder"),
+}));
+
+/** The file the export serves for `url`, as Cloudflare would: the page as asked, then the client-uuid rewrite,
+ *  then any dynamic route's placeholder page. null is a 404. */
+function resolveBuiltFile(root, url) {
+  const attempts = [url.replace(CLIENT_UUID_SEG, "/clients/_placeholder/")];
+  const shaped = DYNAMIC_ROUTES.find((d) => d.shape.test(url));
+  if (shaped) attempts.push(shaped.built);
+  for (const attempt of attempts) {
+    let file = path.join(root, attempt);
+    if (!path.extname(file)) file = path.join(file, "index.html");
+    if (file.startsWith(root) && fs.existsSync(file)) return file;
+  }
+  return null;
+}
 
 const escaped = new Set();
 const captured = [];
@@ -573,7 +665,29 @@ if (args.includes("--no-headers")) {
 const server = await serve(OUT, headerRules);
 const chromium = await loadChromium();
 const browser = await chromium.launch({ executablePath: installedChromium() });
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const VIEWPORT = { width: 1440, height: 900 };
+const context = await browser.newContext({ viewport: VIEWPORT });
+
+// The accessibility scan (frontend_ux-03; scripts/axeAudit.mjs has the rules). Decided BEFORE the walk so a run
+// that cannot scan says so first, and in CI says so by failing.
+const axeLoaded = noAxe ? { error: "--no-axe" } : await loadAxeBuilder();
+const axe = axeMode({
+  disabled: noAxe, loaded: Boolean(axeLoaded.AxeBuilder), ci: process.env.GITHUB_ACTIONS === "true",
+});
+console.log(axe.line);
+if (axe.fatal) {
+  await browser.close();
+  server.close();
+  process.exit(2);
+}
+// Signed out, every protected route is the sign-in page, so a route-by-route scan would be a scan of one page
+// 170 times. The six named screens are scanned in their own contexts either way.
+const scanRoutes = axe.run && !anon;
+if (axe.run && anon) console.log("axe: the route walk is signed out, so only the six named screens are scanned.");
+/** route -> serious/critical findings, for every walked route axe scanned. */
+const axeFound = new Map();
+/** Pages axe could not scan, which make the run unable to certify anything about them. */
+const axeUnaudited = [];
 if (!anon) await context.addInitScript(sessionScript());
 // A policy violation is an EVENT as well as a console line, and a report-only policy produces the event with
 // no console error at all, so the console listener below cannot be the only thing that sees one. Registered
@@ -648,6 +762,14 @@ for (const route of routes) {
     // among the duplicates would report the allowlist back to us as a herd.
     if (landed === trim(new URL(url).pathname)) {
       rendered.push({ route, digest: digestOf(text), sample: text.slice(0, 60) });
+      // The accessibility scan, on the page as it stands: only where it STAYED PUT (a redirect is the
+      // destination's page, scanned under its own route) and not on a route a named screen covers (that scan is
+      // stricter and its own).
+      if (scanRoutes && text && !NAMED_ROUTE_PATHS.has(trim(routePath))) {
+        const scan = await auditPage(axeLoaded.AxeBuilder, page);
+        if (scan.error) axeUnaudited.push({ route: trim(routePath), error: scan.error });
+        else axeFound.set(trim(routePath), scan.findings);
+      }
     }
     if (shots) {
       // JPEG rather than PNG, and the reason is not disk: a full-page PNG of a
@@ -673,6 +795,27 @@ for (const route of routes) {
     process.stdout.write(".");
   }
   if (walked % 60 === 0) process.stdout.write(` ${walked}\n`);
+}
+
+// The six named screens, each on a page of its own and in the context it needs (signed out for the two
+// sign-in screens). They are scanned whatever the route walk did, and a screen that did not land where it was
+// asked is a failure, not a clean row.
+let axeNamed = [];
+if (axe.run) {
+  process.stdout.write("\n\naxe: scanning the six named screens … ");
+  axeNamed = await auditNamedScreens({
+    browser, AxeBuilder: axeLoaded.AxeBuilder, port: PORT, clientId: CLIENT_UUID, viewport: VIEWPORT,
+    sessionScript, sealOff, escaped,
+  });
+  console.log("done.");
+}
+
+// The slow-server notice, against an API that takes 24 s (frontend_ux-05). Holds the walk for about half a minute.
+let slowProblems = null;
+if (runSlowServer) {
+  process.stdout.write("slow-server notice: holding the API for 24 s on /tasks … ");
+  slowProblems = await slowServerScenario({ context, port: PORT, stub, sealOff, escaped });
+  console.log(slowProblems.length ? "FAILED." : "held.");
 }
 
 await browser.close();
@@ -751,7 +894,72 @@ if (shots) {
     `Click a card for the full page.</p><div class="grid">${cards}</div>`);
   console.log(`\n${captured.length} screenshots and a contact sheet in ${SHOT_DIR}`);
 }
-const failed = Boolean(broken.length || (!anon && herds.length));
+// ── The accessibility verdict (frontend_ux-03; scripts/axeAudit.mjs) ─────────────────────────────────────
+//
+// The six named screens fail outright. Every other walked route is held by scripts/axe-baseline.json, a
+// ratchet that may only shrink. `--axe-init` writes the first one and refuses to overwrite; `--axe-shrink`
+// lowers counts and deletes fixed lines and never adds or raises.
+let axeVerdict = null;
+if (axe.run) {
+  let entries = [];
+  const baselineText = fs.existsSync(BASELINE_FILE) ? fs.readFileSync(BASELINE_FILE, "utf8") : null;
+  if (baselineText !== null) {
+    try { entries = parseBaseline(baselineText); } catch (e) {
+      console.error(`axe: ${e.message}`);
+      process.exit(2);
+    }
+  }
+  if (axeInit) {
+    if (baselineText !== null) {
+      console.error("axe: --axe-init refuses to overwrite scripts/axe-baseline.json. Delete it on purpose if a " +
+        "fresh baseline is what you mean (it should only ever shrink).");
+      process.exit(2);
+    }
+    if (axeUnaudited.length) {
+      console.error(`axe: --axe-init needs every page scanned, and ${axeUnaudited.length} could not be.`);
+      process.exit(2);
+    }
+    entries = initialBaseline(axeFound);
+    fs.writeFileSync(BASELINE_FILE, serialiseBaseline(entries));
+    console.log(`axe: wrote ${entries.length} baseline line(s) to scripts/axe-baseline.json.`);
+  } else if (axeShrink) {
+    const shrunk = shrinkBaseline(axeFound, entries);
+    fs.writeFileSync(BASELINE_FILE, serialiseBaseline(shrunk));
+    console.log(`axe: baseline ${entries.length} -> ${shrunk.length} line(s); counts only ever lowered.`);
+    entries = shrunk;
+  } else if (baselineText === null && scanRoutes) {
+    console.log("axe: scripts/axe-baseline.json is missing, so every finding on a route counts as new.");
+  }
+  axeVerdict = settleVerdict({
+    named: axeNamed,
+    comparison: scanRoutes ? compareToBaseline(axeFound, entries) : null,
+    auditedRoutes: axeFound.size,
+    unaudited: axeUnaudited,
+    partial: partial || anon,
+  });
+  console.log(`\naxe: ${axeVerdict.audited} page(s) scanned — ${axeVerdict.ok ? "no failures" : `${axeVerdict.failures.length} failure(s)`}.`);
+  for (const f of axeVerdict.failures) console.log(`  ${describeFailure(f)}`);
+  if (axeVerdict.lowerable.length) {
+    console.log(`  ${axeVerdict.lowerable.length} baseline count(s) can be lowered with --axe-shrink.`);
+  }
+  if (axeVerdict.nothingAudited) console.log("  NO PAGE WAS AUDITED — that is not a clean run.");
+  if (process.env.GITHUB_ACTIONS === "true") {
+    for (const f of axeVerdict.failures.slice(0, 10)) {
+      const msg = describeFailure(f).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+      console.log(`::error title=axe: ${(f.screen ?? f.route).replace(/[,:]/g, " ")}::${msg.slice(0, 300)}`);
+    }
+  }
+}
+if (slowProblems) {
+  for (const p of slowProblems) console.log(`  slow-server notice: ${p}`);
+  if (process.env.GITHUB_ACTIONS === "true") {
+    for (const p of slowProblems.slice(0, 5)) console.log(`::error title=Slow-server notice::${p.replace(/[%\r\n]/g, " ").slice(0, 300)}`);
+  }
+}
+
+const failed = Boolean(
+  broken.length || (!anon && herds.length) || (axeVerdict && !axeVerdict.ok) || (slowProblems && slowProblems.length),
+);
 
 if (reportPath) {
   // The verdict as data, so a nightly run leaves something a person can open
@@ -772,6 +980,23 @@ if (reportPath) {
     blocked_hosts: [...escaped],
     duration_ms: Date.now() - walkStarted,
     screen_ms: timings,
+    // frontend_ux-03. `ran: false` carries the reason, so an absent scan is never read as a clean one.
+    axe: axe.run
+      ? {
+        ran: true,
+        package_version: AXE_PACKAGE_VERSION,
+        ok: axeVerdict.ok,
+        pages_scanned: axeVerdict.audited,
+        named: axeNamed.map((n) => ({
+          id: n.id, route: n.route, error: n.error ?? null,
+          findings: n.findings.map((f) => ({ rule: f.rule, impact: f.impact, nodes: f.nodes })),
+        })),
+        failures: axeVerdict.failures.map((f) => ({ ...f, description: describeFailure(f) })),
+        lowerable: axeVerdict.lowerable,
+      }
+      : { ran: false, reason: axe.line },
+    // frontend_ux-05. null means the scenario was not asked for on this run.
+    slow_server: slowProblems === null ? null : { ok: slowProblems.length === 0, problems: slowProblems },
   };
   fs.mkdirSync(path.dirname(path.resolve(reportPath)), { recursive: true });
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + "\n");
@@ -793,8 +1018,14 @@ if (reportPath) {
         lines.push(`| \`${b.route}\` | ${b.errors[0].replace(/\|/g, "\\|").replace(/\s+/g, " ")} |`);
       }
     }
+    lines.push(axeVerdict ? summaryMarkdown(axeVerdict, `${axeNamed.length} named screens + ${axeFound.size} routes`) : `### Accessibility (axe): NOT RUN\n\n${axe.line}\n`);
+    if (slowProblems) {
+      lines.push(`### Slow-server notice: ${slowProblems.length ? "FAILED" : "held"}`, "",
+        ...(slowProblems.length ? slowProblems.map((p) => `- ${p}`) : ["The sentence appeared once at about three seconds, Retry at about twenty, and both went with the data."]), "");
+    }
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
   }
 }
 
-process.exit(failed ? 1 : 0);
+// 2, the repository's "I could not tell" code, for a walk that was asked for accessibility and audited no page.
+process.exit(axeVerdict?.nothingAudited ? 2 : failed ? 1 : 0);

@@ -116,21 +116,25 @@ function Skeleton({ className }: { className?: string }) {
   return <div className={cn("skeleton-shimmer rounded-md", className)} />;
 }
 
+// The ink on each surface is the state token's own, which clears WCAG 1.4.3 (problem 5.30:1, attention 4.51:1,
+// ready on its surface above 4.5:1). The 600-weight Tailwind inks this used — emerald-600 on emerald-50 is
+// 3.57:1, red-600 on red-50 4.41:1, amber-600 on amber-50 about 3:1 — did not, which the accessibility scan
+// of the walk (frontend_ux-03) found on the dashboard, a screen that fails outright.
 function DeadlineBadge({ daysLeft }: { daysLeft: number }) {
   if (daysLeft === 0) return (
-    <span className="text-2xs px-2 py-0.5 rounded-full bg-state-problem-surface text-red-600 font-bold ring-1 ring-red-500/20">Today</span>
+    <span className="text-2xs px-2 py-0.5 rounded-full bg-state-problem-surface text-state-problem font-bold ring-1 ring-state-problem-border">Today</span>
   );
   if (daysLeft <= 3) return (
-    <span className="text-2xs px-2 py-0.5 rounded-full bg-state-problem-surface text-red-600 font-semibold">{daysLeft}d</span>
+    <span className="text-2xs px-2 py-0.5 rounded-full bg-state-problem-surface text-state-problem font-semibold">{daysLeft}d</span>
   );
   if (daysLeft <= 7) return (
-    <span className="text-2xs px-2 py-0.5 rounded-full bg-state-attention-surface text-amber-600 font-semibold">{daysLeft}d</span>
+    <span className="text-2xs px-2 py-0.5 rounded-full bg-state-attention-surface text-state-attention font-semibold">{daysLeft}d</span>
   );
   if (daysLeft <= 14) return (
     <span className="text-2xs px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 font-medium">{daysLeft}d</span>
   );
   return (
-    <span className="text-2xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-medium">{daysLeft}d</span>
+    <span className="text-2xs px-2 py-0.5 rounded-full bg-state-ready-surface text-state-ready font-medium">{daysLeft}d</span>
   );
 }
 

@@ -71,6 +71,10 @@ before(async () => {
     'export const jsx = wrap(real.jsx);\nexport const jsxs = wrap(real.jsxs);\n');
   fs.writeFileSync(path.join(dir, "skeleton.mjs"), "export const Spinner = () => null;\n");
   fs.writeFileSync(path.join(dir, "async.mjs"), 'export const resolveAsyncState = () => "ready";\n');
+  // states.tsx also draws the slow-server notice in its loading branch; this file is about EmptyState, which never
+  // loads, so the notice is a stand-in that renders nothing and passes its children through.
+  fs.writeFileSync(path.join(dir, "slow-notice.mjs"),
+    "export const SlowServerNotice = () => null;\nexport const SlowServerScope = ({ children }) => children;\n");
   fs.writeFileSync(path.join(dir, "auth.mjs"),
     "export function usePermissions() {\n" +
     "  const granted = globalThis.__granted ?? new Set();\n" +
@@ -100,6 +104,7 @@ before(async () => {
     "lucide-react": '"./icons.mjs"',
     "@/lib/utils": utils,
     "@/components/ui/skeleton": '"./skeleton.mjs"',
+    "@/components/ui/slow-server-notice": '"./slow-notice.mjs"',
     "@/components/ui/async-state": '"./async.mjs"',
   }));
   const a = await import(pathToFileURL(path.join(dir, "empty-state-action.mjs")).href);

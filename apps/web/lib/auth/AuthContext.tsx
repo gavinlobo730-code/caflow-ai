@@ -13,6 +13,7 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase, getSupabaseClient } from "@/lib/supabase/client";
 import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 import { browserSessionStorage, clearAllDrafts } from "@/lib/drafts/unsentDraft";
+import { browserKeepAwake, type KeepAwake } from "@/lib/api/keepAwake";
 import {
   can as canDo,
   normalizeRole,
@@ -244,6 +245,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const permissionsGate = useRef(latestWins());
   const policyGate = useRef(latestWins());
   const factorGate = useRef(latestWins());
+  // The warm-up ping and the ten-minute keep-alive are one controller (lib/api/keepAwake).
+  const keepAwake = useRef<KeepAwake | null>(null);
 
   function refreshFactorState(s: Session | null) {
     const apply = factorGate.current.begin<boolean | null>(setHasVerifiedFactor);
@@ -335,9 +338,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Perf: fire a no-op warm-up ping at the backend as early as possible so a
     // sleeping Render instance starts cold-starting while the user authenticates,
     // rather than on the first data request. Fire-and-forget; ignore all errors.
+    //
+    // The ping is `lib/api/keepAwake`'s, and the effect below REUSES the same
+    // controller to repeat it every ten minutes while somebody is signed in and
+    // looking at the tab (frontend_ux-05) — one controller, one timer, one
+    // `/health` URL, no credentials. It is started below, not here, because this
+    // warm-up deliberately runs before anyone has signed in.
     const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "";
     if (apiBase) {
-      fetch(`${apiBase}/health`, { method: "GET", mode: "cors" }).catch(() => {});
+      const awake = browserKeepAwake(apiBase);
+      keepAwake.current = awake;
+      awake.warmUp();
     }
 
     // Safety timeout — if Supabase doesn't respond in 5s, unblock the UI
@@ -384,8 +395,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       clearTimeout(timeout);
       subscription.unsubscribe();
+      keepAwake.current?.stop();
+      keepAwake.current = null;
     };
   }, []);
+
+  // Keep the API awake while a signed-in person has the tab open (frontend_ux-05).
+  // Started when there is a signed-in user and stopped when there is not (a
+  // sign-out is a state change here, not an unmount) — a signed-out visitor got the
+  // one warm-up above and nothing more. `keepAwake` pings only while the tab is
+  // visible, never sends a credential, and fails silently.
+  const signedIn = user !== null;
+  useEffect(() => {
+    const awake = keepAwake.current;
+    if (!signedIn || !awake) return undefined;
+    awake.start();
+    return () => awake.stop();
+  }, [signedIn]);
 
   // Awaitable re-resolution — onboarding calls this right after creating a firm
   // so the guard sees hasFirm=true before navigating to the dashboard.

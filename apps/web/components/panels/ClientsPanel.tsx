@@ -59,7 +59,7 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-1">
+        <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-ps-hint px-2 mb-1.5 mt-1">
           Navigate
         </p>
         <div className="space-y-0.5">

@@ -91,7 +91,9 @@ export function HealthBadge({ score, size = "sm", showLabel = false, trend, href
   const body = (
     <>
       <span>{score}</span>
-      {showLabel && <span className="opacity-70">{label}</span>}
+      {/* Weight, not opacity, tells the band from the score: a 70% wash over the pill's own ink took the label
+          below 4.5:1 on every band (frontend_ux-03), and the pill's ink is the audited one. */}
+      {showLabel && <span className="font-normal">{label}</span>}
       {trend && (
         <span className={cn("text-3xs", TREND_COLOR[trend])} aria-hidden="true">
           {TREND_ARROW[trend]}

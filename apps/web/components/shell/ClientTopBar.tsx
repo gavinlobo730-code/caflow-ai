@@ -222,7 +222,7 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
           ref={triggerRef}
           onClick={() => setGridOpen((v) => !v)}
           aria-expanded={gridOpen}
-          aria-haspopup="menu"
+          aria-controls="client-module-menu"
           className={cn(
             "flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-semibold transition-colors shrink-0",
             gridOpen ? "bg-brand text-white" : "text-ps-ink hover:bg-ps-bg"
@@ -252,8 +252,11 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
             className="fixed inset-0 top-12 z-30 bg-brand/20 backdrop-blur-[2px]"
             onClick={() => setGridOpen(false)}
           />
+          {/* A disclosure, not role="menu": the panel is a grid of links, not menuitems (frontend_ux-03; the
+              same reasoning is on WorkspaceTopBar's menu). */}
           <div
-            role="menu"
+            id="client-module-menu"
+            role="region"
             aria-label="Modules"
             className="module-grid-overlay absolute inset-x-0 top-full z-40 max-h-[calc(100vh-3rem)] overflow-y-auto border-b border-ps-border bg-white shadow-xl"
           >

@@ -75,11 +75,16 @@ def test_playwright_is_installed_in_the_walks_job_only_and_pinned():
         "Playwright is a ~40 MB install that every frontend CI job would then pay for")
     code = _code(WORKFLOW)
     assert 'PLAYWRIGHT_VERSION: "1.' in code, "the version is not pinned to an exact release"
-    assert re.search(r'pnpm add --save-dev "@playwright/test@\$\{PLAYWRIGHT_VERSION\}"', code)
+    # The rule is "added to THIS job, at the pinned version", not one spelling of the command: the walk's job now
+    # adds the axe scanner (frontend_ux-03) and playwright-core in the same `pnpm add`, so the install line is
+    # asked for the pinned package inside a `pnpm add --save-dev`, wherever the other packages sit.
+    assert re.search(r'pnpm add --save-dev[\s\S]*?"@playwright/test@\$\{PLAYWRIGHT_VERSION\}"', code)
+    assert not deps.get("@axe-core/playwright") and not deps.get("axe-core"), (
+        "the accessibility scanner is the walk's job's, never the product's")
     assert "playwright install --with-deps chromium" in code
     # The frontend job every PR runs must not have grown it.
     frontend = _code(WORKFLOWS / "frontend-ci.yml")
-    assert "playwright" not in frontend.lower()
+    assert "playwright" not in frontend.lower() and "axe-core" not in frontend.lower()
 
 
 def test_the_apt_sources_that_broke_a_required_check_are_dropped_before_apt_runs():
@@ -123,10 +128,13 @@ def test_the_script_writes_a_report_and_names_every_broken_route():
 
 def test_the_exit_code_is_still_one_for_a_broken_screen_and_the_report_does_not_change_it():
     src = SCRIPT.read_text(encoding="utf-8")
-    assert "const failed = Boolean(broken.length || (!anon && herds.length));" in src
-    assert "process.exit(failed ? 1 : 0);" in src
-    # The report is written BEFORE the exit, or a failing run would exit without leaving one.
-    assert src.index("fs.writeFileSync(reportPath") < src.index("process.exit(failed ? 1 : 0);")
+    # The rule, not one spelling of it: a broken screen and a herd of identical bodies still fail the run (the
+    # accessibility scan and the slow-server scenario added further terms to the same `failed`, frontend_ux-03/05),
+    # and a failed run still exits non-zero.
+    assert re.search(r"const failed = Boolean\(\s*broken\.length \|\| \(!anon && herds\.length\)", src)
+    assert "failed ? 1 : 0" in src
+    # The report is written BEFORE the final exit, or a failing run would exit without leaving one.
+    assert src.index("fs.writeFileSync(reportPath") < src.rindex("process.exit(")
 
 
 def test_the_script_no_longer_calls_itself_not_a_ci_check_and_says_where_it_runs():

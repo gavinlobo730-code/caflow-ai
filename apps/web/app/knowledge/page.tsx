@@ -124,7 +124,7 @@ function KnowledgeInner() {
         </form>
       )}
 
-      {loading ? <PageLoader /> : (
+      {loading ? <PageLoader onRetry={() => { void load(); }} /> : (
         <div className="space-y-2">
           {articles.length === 0 && <p className="text-xs text-gray-400">No articles found.</p>}
           {articles.map((a) => (

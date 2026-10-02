@@ -122,7 +122,7 @@ function DeadlinesPanelInner() {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-2">
+        <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-ps-hint px-2 mb-1.5 mt-2">
           By Type
         </p>
         <div className="space-y-0.5">
@@ -153,7 +153,7 @@ function DeadlinesPanelInner() {
         </div>
 
         <div className="mt-4">
-          <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5">
+          <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-ps-hint px-2 mb-1.5">
             Filing Workspaces
           </p>
           <div className="space-y-0.5">
@@ -209,7 +209,7 @@ function DeadlinesPanelInner() {
         </div>
 
         <div className="mt-4">
-          <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5">
+          <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-ps-hint px-2 mb-1.5">
             Critical Tools
           </p>
           <Link

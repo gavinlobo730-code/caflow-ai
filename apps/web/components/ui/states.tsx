@@ -2,6 +2,7 @@ import * as React from "react";
 import { AlertCircle, Inbox, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/skeleton";
+import { SlowServerNotice, SlowServerScope } from "@/components/ui/slow-server-notice";
 import { resolveAsyncState } from "@/components/ui/async-state";
 
 export { resolveAsyncState } from "@/components/ui/async-state";
@@ -78,6 +79,11 @@ export function ErrorState({
  * Drop-in for the common `if (loading) … if (error) … if (empty) …` ladder so
  * every async region behaves identically.
  *
+ * WHILE IT LOADS it says when the server is slow: after three seconds a sentence that the server may be
+ * waking up, and after twenty a Retry when `onRetry` was given (frontend_ux-05; `lib/async/slowServer.ts`
+ * has the rules). `onRetry` is the region's own read-again — the same function the error state's "Try again"
+ * calls — and without one there is no Retry at all. Nothing here retries by itself.
+ *
  *   <AsyncBoundary
  *     loading={loading} error={error} isEmpty={rows.length === 0}
  *     onRetry={reload}
@@ -107,14 +113,19 @@ export function AsyncBoundary({
   const state = resolveAsyncState({ loading, error, isEmpty });
   if (state === "error") return <ErrorState message={error ?? undefined} onRetry={onRetry} />;
   if (state === "loading") {
+    // The skeleton is wrapped in a scope so it does not also say the waking-up sentence: this boundary's own
+    // notice speaks for the region and is the one that knows what a retry would call (frontend_ux-05).
     return (
-      <>
-        {skeleton ?? (
-          <div className="flex min-h-[30vh] items-center justify-center text-ps-hint">
-            <Spinner className="h-5 w-5" />
-          </div>
-        )}
-      </>
+      <div>
+        <SlowServerScope>
+          {skeleton ?? (
+            <div className="flex min-h-[30vh] items-center justify-center text-ps-hint">
+              <Spinner className="h-5 w-5" />
+            </div>
+          )}
+        </SlowServerScope>
+        <SlowServerNotice onRetry={onRetry} />
+      </div>
     );
   }
   if (state === "empty" && empty) return <>{empty}</>;
