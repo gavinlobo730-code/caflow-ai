@@ -241,3 +241,32 @@ def test_blanking_handles_a_block_comment_and_keeps_the_newlines():
     assert out.count("\n") == src.count("\n"), (
         "a lost newline moves every line number the failure message prints")
     assert "one" not in out and "two" not in out
+
+
+# ── the table list the role-by-table matrix is built over ───────────────────
+def test_browser_tables_names_a_write_only_table_and_an_embedded_one(tmp_path):
+    """A table the browser only ever INSERTs into has no `.select()` for the
+    select scanner to read, and one it only EMBEDS has no `.from()` of its own.
+    Both are reached through row-level security, so a list built from either
+    scanner alone would leave the matrix blind to exactly them."""
+    from _frontend_select_parser import browser_tables
+    (tmp_path / "a.ts").write_text(
+        'await db.from("write_only").insert(payload);\n'
+        'await db.from("parent").select("id, child(x, grandchild(y))");\n'
+        '// db.from("commented_out").select("id")\n')
+    found = browser_tables(tmp_path)
+    assert set(found) == {"write_only", "parent", "child", "grandchild"}, set(found)
+    assert found["write_only"] == {"a.ts"}
+
+
+def test_browser_tables_finds_the_real_frontend():
+    """Not vacuous: the real apps/web yields the ~83 tables CLAUDE.md quotes,
+    `journal_lines` among them only because it is embedded."""
+    from _frontend_select_parser import browser_tables
+    web = Path(__file__).resolve().parents[2] / "web"
+    if not web.is_dir():
+        import pytest
+        pytest.skip("needs apps/web")
+    found = browser_tables(web)
+    assert 75 <= len(found) <= 120, len(found)
+    assert {"clients", "payroll_slips", "journal_lines", "tasks"} <= set(found)
