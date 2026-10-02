@@ -253,7 +253,12 @@ def test_two_drainers_racing_get_disjoint_rows(db):
         assert p.returncode == 0, err
         claimed.append({json.loads(l)["id"] for l in out.splitlines() if l.startswith("{")})
     assert claimed[0].isdisjoint(claimed[1]), "two drainers were handed the same message"
-    assert len(claimed[0] | claimed[1]) == 10 and sorted(len(c) for c in claimed) == [4, 6], (
+    # The two claims start together, so how the ten rows split is the interleaving's to decide: 6/4
+    # when one locks all it wants first, 5/5 when they take alternate rows (a CI run of 2 Oct 2026 saw
+    # 5/5 and failed an exact [4, 6]). What SKIP LOCKED guarantees, and so what is asserted, is that
+    # nothing is handed out twice, nothing is left behind, and neither passes its own batch of six;
+    # a drainer that skipped nothing would have taken rows the other held and shown up in the first line.
+    assert len(claimed[0] | claimed[1]) == 10 and all(len(c) <= 6 for c in claimed), (
         "SKIP LOCKED must give the second drainer what the first did not take, not make it wait for it")
     assert _scalar(db, "SELECT count(*) FROM public.email_outbox WHERE status = 'sending' AND attempts = 1;") == "10"
 

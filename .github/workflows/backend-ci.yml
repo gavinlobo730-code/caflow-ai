@@ -48,7 +48,7 @@ jobs:
       api: ${{ steps.detect.outputs.api }}
       web: ${{ steps.detect.outputs.web }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Both sides of the comparison have to be present locally.
           fetch-depth: 0
@@ -103,10 +103,10 @@ jobs:
     needs: scope
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - if: needs.scope.outputs.api == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: "pip"
@@ -195,7 +195,7 @@ jobs:
 
       - name: Keep the coverage report with the run
         if: needs.scope.outputs.api == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: apps/api/coverage.json
@@ -228,10 +228,10 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - if: needs.scope.outputs.api == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: "pip"
@@ -372,9 +372,9 @@ jobs:
     if: needs.scope.outputs.web == 'true' && needs.scope.outputs.api != 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: "pip"
@@ -432,9 +432,9 @@ jobs:
     needs: [scope, test, migrations]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 

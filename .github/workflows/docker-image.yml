@@ -50,7 +50,7 @@ jobs:
     outputs:
       build: ${{ steps.detect.outputs.build }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -92,7 +92,7 @@ jobs:
     needs: scope
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
