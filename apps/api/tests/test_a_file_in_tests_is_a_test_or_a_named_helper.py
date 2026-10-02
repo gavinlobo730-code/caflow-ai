@@ -126,6 +126,12 @@ HELPERS = {
     # PostgreSQL by `test_471_a_scheduled_job_is_claimed_before_it_runs_pg.py`. Shared on purpose: two
     # copies of the table would be two suites agreeing with themselves, not with each other.
     "_claim_scenarios.py",
+    # engineering-28. The reader behind `test_every_query_on_a_firm_table_carries_its_firm_scope.py`:
+    # it walks every PostgREST chain in apps/api as a unit (its table, its operation, its filters
+    # and the statements around it) and says whether it carries its firm's scope. Kept apart from
+    # the guard so the guard's negative controls, and the reader's own tests, can run it over a
+    # synthetic source and over a real file with one line removed.
+    "_firm_scope_scan.py",
 }
 
 _EXITS = {"exit", "quit", "_exit"}

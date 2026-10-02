@@ -54,6 +54,24 @@ from domain.inventory import landed_cost as landed
 _logger = logging.getLogger("caflow.inventory")
 
 
+def _note_unresolved_catalogue_ids(document: str, wanted: list, resolved: list) -> None:
+    """Say, in the log, that a document line named an item this firm does not hold.
+
+    Since the lookup is made under the firm (engineering-28) an id that is not this
+    firm's, or no longer exists, resolves to nothing and the line is not a goods
+    line here: it moves no stock and earns no cost-of-goods entry. That is the right
+    outcome and it used to be invisible, because the same id was silently processed
+    against whichever firm owned it. Only the COUNT is logged: an id the firm does
+    not own is not the firm's to be told about, and a service line, which does
+    resolve, is not counted.
+    """
+    missing = len(wanted) - len(resolved)
+    if missing > 0:
+        _logger.warning(
+            "%s: %d line item id(s) did not resolve to an item of this firm "
+            "and moved no stock", document, missing)
+
+
 def _round_paise(value) -> int:
     return int(Decimal(value).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
@@ -1199,10 +1217,17 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
         catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
         if not catalogue_ids:
             return
+        # A line's `service_catalogue_id` is a field of the REQUEST that created
+        # the document, and nothing at create time checks it belongs to the
+        # caller's firm. Resolved WITHOUT the firm, a line naming another firm's
+        # item moved that firm's stock, wrote the movement under this one and
+        # priced the COGS off the other firm's average cost. An item that is not
+        # this firm's is simply not a goods line here.
         items = (
             db.table("service_catalogue").select("id, kind, name")
-            .in_("id", catalogue_ids).execute().data
+            .in_("id", catalogue_ids).eq("firm_id", firm_id).execute().data
         ) or []
+        _note_unresolved_catalogue_ids("sale", catalogue_ids, items)
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
         invoice_no = invoice.get("invoice_no") or invoice["id"]
         total_value = 0
@@ -1403,10 +1428,13 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
         catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
         if not catalogue_ids:
             return
+        # The firm filter is what keeps a line naming another firm's item out;
+        # see apply_sale_to_inventory for why.
         items = (
             db.table("service_catalogue").select("id, kind, name")
-            .in_("id", catalogue_ids).execute().data
+            .in_("id", catalogue_ids).eq("firm_id", firm_id).execute().data
         ) or []
+        _note_unresolved_catalogue_ids("purchase", catalogue_ids, items)
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
         # AS-2 paragraph 6 — freight inward, insurance and non-creditable duty
         # are part of what the goods cost (INV-05). Read and split BEFORE the
@@ -1719,10 +1747,13 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
         catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
         if not catalogue_ids:
             return
+        # The firm filter is what keeps a line naming another firm's item out;
+        # see apply_sale_to_inventory for why.
         items = (
             db.table("service_catalogue").select("id, kind, name")
-            .in_("id", catalogue_ids).execute().data
+            .in_("id", catalogue_ids).eq("firm_id", firm_id).execute().data
         ) or []
+        _note_unresolved_catalogue_ids("credit note", catalogue_ids, items)
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
         total_value = 0
         movement_ids = []
@@ -1786,10 +1817,13 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
         catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
         if not catalogue_ids:
             return
+        # The firm filter is what keeps a line naming another firm's item out;
+        # see apply_sale_to_inventory for why.
         items = (
             db.table("service_catalogue").select("id, kind, name")
-            .in_("id", catalogue_ids).execute().data
+            .in_("id", catalogue_ids).eq("firm_id", firm_id).execute().data
         ) or []
+        _note_unresolved_catalogue_ids("debit note", catalogue_ids, items)
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
         total_value = 0
         movement_ids = []
