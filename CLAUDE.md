@@ -62,11 +62,19 @@ guard that states the rule rather than a spelling of it:
   `Client A` / `Vendor 3` layer is unbuilt. **Document extraction is exempt by name**,
   not by silence: the supplier's GSTIN is printed on the invoice being read.
   `tests/test_no_model_call_site_sends_an_identifier.py` lists every sender to Groq and
-  fails a new one. ⚠️ **The assistant's client brief still sends the client's NAME and entity
-  type**, by design — `domain/ai/client_brief` says "the model needs to know WHO it is
-  answering about, not enough to impersonate them" — which sits beside the firm-level
-  copilot's "names go" decision and has never been reconciled with it. That is an open
-  question for the owner, and it is not changed here.
+  fails a new one. **The assistant's client brief carries NO NAME — the client is "this client" plus its
+  entity type** (02-10-2026, the owner's decision, which ends the one place the two
+  features disagreed: the firm-level copilot sends counts and never a name, and the
+  brief used to open with the client's legal name). `build_client_brief(entity_type,
+  hub_payload)` has no name parameter, so there is nothing to forget to leave out (the
+  signature is asserted), `routers/assistant._client_brief` reads no name column (an
+  AST check), and a behavioural test drives the real handler with a distinctively
+  named client and reads every message handed to the model. ⚠️ **What a CA TYPES into
+  the question or the conversation is sent as typed**: a client's name written there is
+  not removed, because redaction covers a PAN or GSTIN shape and not a name, and the
+  reversible `Client A` layer is still unbuilt. Nothing was found to send a name
+  elsewhere: the firm copilot's context is counts, the client-level copilot is a 410,
+  and the dashboard and digest narration are given counts and labels.
 - **A PDF with no text layer is a SCAN and is never sent to the text model.** It was
   sent as "[PDF content — base64 prefix, no extractable text layer]: …" under an
   "extract invoice fields" prompt, and since confidence is presence-based a plausible

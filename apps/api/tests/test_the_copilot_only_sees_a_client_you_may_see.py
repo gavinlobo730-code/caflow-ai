@@ -116,7 +116,7 @@ def test_a_nil_an_unreadable_and_a_destination_read_differently():
     """The hub's own three states, carried into words. Flattening the second
     to "0" would have the model tell a CA there is nothing outstanding in a
     module nobody could read."""
-    brief = build_client_brief("Acme", "Private Limited", {"tiles": [
+    brief = build_client_brief("Private Limited", {"tiles": [
         {"id": "gst", "label": "GST", "question": "q", "unit": "count",
          "answerable": True, "signal": 0},
         {"id": "bank", "label": "Banking", "question": "q", "unit": "count",
@@ -131,7 +131,7 @@ def test_a_nil_an_unreadable_and_a_destination_read_differently():
 
 def test_money_is_grouped_by_the_one_authority():
     from domain.money_text import whole_rupees
-    brief = build_client_brief("Acme", None, {"tiles": [
+    brief = build_client_brief(None, {"tiles": [
         {"id": "p", "label": "Purchases", "question": "owed", "unit": "paise",
          "answerable": True, "signal": 12_34_567_00},
     ]})
@@ -142,31 +142,101 @@ def test_money_is_grouped_by_the_one_authority():
 def test_nothing_to_say_answers_none_rather_than_an_empty_heading():
     """A heading with no figures under it invites the model to fill the
     silence, which is the one thing it must not do."""
-    assert build_client_brief("Acme", None, None) is None
-    assert build_client_brief("Acme", None, {}) is None
-    assert build_client_brief("Acme", None, {"tiles": []}) is None
+    assert build_client_brief(None, None) is None
+    assert build_client_brief(None, {}) is None
+    assert build_client_brief(None, {"tiles": []}) is None
 
 
 def test_the_brief_tells_the_model_it_may_not_compute():
     """Phase 3's rule travels WITH the figures rather than only in the system
     prompt, so a later prompt edit cannot separate them."""
-    brief = build_client_brief("Acme", None, _hub(gst=3))
+    brief = build_client_brief(None, _hub(gst=3))
     assert "Do NOT" in brief and "ratio" in brief
     assert "computed by the application" in brief
 
 
 def test_the_brief_says_what_it_is_not():
-    brief = build_client_brief("Acme", None, _hub(gst=3))
+    brief = build_client_brief(None, _hub(gst=3))
     for owed in ("not the books", "no document", "no employee record",
                  "no tax identifier"):
         assert owed in brief, owed
 
 
 def test_no_identifier_and_no_third_party_name_can_reach_the_prompt():
-    """BEHAVIOURAL. The builder takes three arguments — a name, an entity type
-    and a hub payload — so there is no parameter through which a GSTIN, a PAN,
-    a bank counterparty or an employee could arrive. Asserted on the SIGNATURE
-    so a fourth argument fails here rather than becoming a way in."""
+    """BEHAVIOURAL. The builder takes two arguments — an entity type and a hub
+    payload — so there is no parameter through which a NAME, a GSTIN, a PAN, a
+    bank counterparty or an employee could arrive. Asserted on the SIGNATURE so
+    a further argument fails here rather than becoming a way in."""
     import inspect
     params = list(inspect.signature(build_client_brief).parameters)
-    assert params == ["client_name", "entity_type", "hub_payload"], params
+    assert params == ["entity_type", "hub_payload"], params
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 02-10-2026: the assistant's client brief carries no NAME
+# ══════════════════════════════════════════════════════════════════════════
+
+def test_no_message_the_assistant_sends_carries_the_clients_name(monkeypatch):
+    """BEHAVIOURAL, through the real handler. The brief used to open with the
+    client's legal name beside the entity type, while the firm-level copilot
+    sends counts and never a name — two rules about one fact. The owner's
+    decision is one rule: a name never leaves in anything the service attaches.
+
+    A client is given two distinctive names (legal and trading) and the request
+    is sent as the HTTP request a browser makes; every message handed to the
+    model is read. The entity type IS still there — it is what makes the
+    figures readable — and so are the figures."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import core.authz as authz
+    import services.hub_service as hub_service
+    from core.auth import get_current_user
+    from repositories.client_repository import client_repo
+
+    legal, trading = "Zyxwvu Holdings Private Limited", "Quibble Traders"
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    monkeypatch.setattr(authz, "assert_client_access", lambda *a, **k: None)
+    monkeypatch.setattr(client_repo, "find_by_id", lambda *a, **k: {
+        "id": MINE, "legal_name": legal, "client_name": trading,
+        "entity_type": "Private Limited"})
+    monkeypatch.setattr(hub_service, "hub", lambda *a, **k: _hub(gst=3))
+
+    seen: list = []
+
+    async def fake_chat(messages, **kw):
+        seen.append(messages)
+        return "answer\nSource: CGST Act, Section 39", 5
+
+    monkeypatch.setattr(asst.groq_text, "chat", fake_chat)
+
+    app = FastAPI()
+    app.include_router(asst.router)
+    app.dependency_overrides[get_current_user] = lambda: USER
+    r = TestClient(app, raise_server_exceptions=False).post(
+        "/api/assistant", json={"question": "What is outstanding?", "client_id": MINE})
+    assert r.status_code == 200, r.text
+
+    assert seen, "the model was never called, so nothing was proved"
+    everything = "\n".join(m["content"] for m in seen[0])
+    for name in (legal, trading, "Zyxwvu", "Quibble"):
+        assert name not in everything, f"the client's name reached the model: {name}"
+    briefs = [m["content"] for m in seen[0]
+              if m["role"] == "system" and m["content"].startswith("CLIENT CONTEXT")]
+    assert len(briefs) == 1, "the client brief was not attached, so the check above is vacuous"
+    assert briefs[0].startswith("CLIENT CONTEXT — this client (Private Limited)"), briefs[0]
+    assert "Gst (gst question): 3" in briefs[0], "the figures must still be there"
+
+
+def test_the_brief_has_no_way_to_be_given_a_name():
+    """STRUCTURAL: the one place the router builds the brief reads no name column.
+    The behavioural test above proves today's answer; this fails the day somebody
+    re-reads a name there, before it can be passed anywhere."""
+    src = (API / "routers" / "assistant.py").read_text()
+    tree = ast.parse(src)
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "_client_brief")
+    strings = {c.value for c in ast.walk(fn)
+               if isinstance(c, ast.Constant) and isinstance(c.value, str)}
+    assert not ({"legal_name", "client_name", "name", "trade_name"} & strings), (
+        "_client_brief reads a name column; the brief is 'this client' by decision")

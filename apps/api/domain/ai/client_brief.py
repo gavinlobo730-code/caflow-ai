@@ -47,10 +47,20 @@ Named, so the next reader does not add them by accident:
     nothing here has a lawful basis for.
   · **No employee record.** Salary is §17(1) data about a person who is not
     the CA's client.
-  · **No identifier beyond the client's own name and entity type** — no GSTIN,
-    no PAN, no TAN. The model needs to know WHO it is answering about, not
-    enough to impersonate them, and a PAN in a prompt is a PAN in somebody's
-    logs.
+  · **No name and no identifier — the client is "this client", plus its entity
+    type** (02-10-2026, the owner's decision). The brief used to carry the
+    client's legal name beside the entity type, on the reasoning that the model
+    needs to know WHO it is answering about; the firm-level copilot had already
+    decided the opposite (counts only, never a name — ICAI client
+    confidentiality, and a client list is exactly what a practice must not hand
+    to a third-party processor), so the two features followed different rules
+    about the same fact. One rule now: a name never leaves in anything THIS
+    SERVICE ATTACHES. The figures are about one client whose id was validated,
+    so nothing is lost by calling it "this client", and a PAN or GSTIN is
+    removed by `domain/ai/redaction` from every request regardless. ⚠️ What a CA
+    TYPES into the question or the conversation is theirs and is sent as typed:
+    a name written there is not removed (that is the reversible `Client A`
+    layer, unbuilt).
   · **No figure from another client**, which is structural rather than
     checked: `build_client_brief` takes ONE hub payload, and that payload is
     produced for one validated client id.
@@ -91,13 +101,16 @@ def _figure(unit: str, signal: int) -> str:
     return f"Rs {whole_rupees(signal)}" if unit == "paise" else str(signal)
 
 
-def build_client_brief(client_name: Optional[str],
-                       entity_type: Optional[str],
+def build_client_brief(entity_type: Optional[str],
                        hub_payload: Optional[dict]) -> Optional[str]:
     """The prompt block, or None where there is nothing worth sending.
 
     None rather than an empty block: a heading with no figures under it invites
     the model to fill the silence, which is the one thing it must not do.
+
+    There is deliberately NO name parameter: a name that cannot be passed cannot
+    reach the prompt, which is a stronger guarantee than a caller remembering to
+    leave it out (the signature is asserted).
     """
     if not isinstance(hub_payload, dict):
         return None
@@ -105,7 +118,7 @@ def build_client_brief(client_name: Optional[str],
     if not isinstance(tiles, list) or not tiles:
         return None
 
-    who = client_name or "this client"
+    who = "this client"
     if entity_type:
         who = f"{who} ({entity_type})"
 
