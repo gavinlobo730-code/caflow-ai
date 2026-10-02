@@ -154,7 +154,7 @@ jobs:
 
       - name: Keep the report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-walk-report
           path: apps/web/.smoke/report.json
@@ -163,7 +163,7 @@ jobs:
 
       - name: Keep the screenshots of a failed walk
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-walk-screens
           path: apps/web/.smoke/

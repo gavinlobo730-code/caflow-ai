@@ -122,7 +122,7 @@ jobs:
       # which is why a missing file is not a warning.
       - name: Keep this run's timings
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-timings-${{ inputs.base_url && 'candidate' || 'live' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: apps/api/timings/smoke-timings.json
