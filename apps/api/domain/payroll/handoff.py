@@ -50,6 +50,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+from domain.payroll import pf_wage_election as pf_election
+
 EPF = "epf"
 ESIC = "esic"
 PROFESSIONAL_TAX = "professional_tax"
@@ -264,10 +266,19 @@ def epf_obligation(
         "does not carry it — so this is here to tell you which establishment "
         "this file belongs to.")]
 
+    # Members declared on ACTUAL wages above the ceiling by the employer's
+    # recorded election (payroll-22). With none, every line below reads exactly
+    # as it always did; with some, EPF wages are no longer the base A/c 21 is
+    # raised on, and saying so is the point of the extra figure and the warning.
+    on_actual = int(file_totals.get("members_on_actual_wages") or 0)
+
     confirm = [
         Figure("Members in the file", count=int(file_totals.get("members") or 0)),
         Figure("Total EPF wages", rupees=int(file_totals.get("epf_wages") or 0),
-               note="what the portal computes A/c 1 and A/c 21 from"),
+               note=("what the portal computes A/c 1 from; EDLI (A/c 21) is "
+                     "raised on the EDLI wages below, which stay at the ceiling"
+                     if on_actual else
+                     "what the portal computes A/c 1 and A/c 21 from")),
         Figure("Total EPS wages", rupees=int(file_totals.get("eps_wages") or 0),
                note="capped at the ₹15,000 ceiling per member"),
         Figure("EPF contribution (A/c 1)",
@@ -281,6 +292,13 @@ def epf_obligation(
                note="not in the file — the portal raises it on the challan. "
                     "Subject to the ₹500-per-establishment minimum."),
     ]
+
+    if on_actual:
+        # Right after the EPS line, where the EDLI base belongs.
+        confirm.insert(3, Figure(
+            "Total EDLI wages", rupees=int(file_totals.get("edli_wages") or 0),
+            note="what the portal computes A/c 21 from; capped at the ceiling "
+                 "per member"))
 
     blocking: list[str] = []
     if blocking_months:
@@ -301,6 +319,8 @@ def epf_obligation(
             + " and a ".join(r.title() for r in beyond_regular)
             + " return"
             + (f" — {return_type_reason}" if return_type_reason else "."))
+    if on_actual:
+        warnings.append(pf_election.ECR_WARNING.format(n=on_actual))
     if identity_gaps:
         warnings.extend(identity_gaps)
     if interest_note:

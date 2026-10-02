@@ -30,6 +30,17 @@ def _practice_mail_is_on_for_the_suite(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _the_public_rate_windows_are_fresh_for_every_test():
+    """The per-address windows on the routes that need no login (middleware/public_rate_limit, ops-30) are
+    process-wide, and every TestClient request comes from the same address. Without this a test that spends
+    a bucket would starve whichever test happens to use it next, in a worker that ran both."""
+    from middleware import public_rate_limit
+    public_rate_limit.reset()
+    yield
+    public_rate_limit.reset()
+
+
+@pytest.fixture(autouse=True)
 def _no_schema_drift_watch_outlives_its_test():
     """The schema-drift re-check (core/schema_guard.start_drift_watch, ops-19) is a
     daemon thread that asks the database again every two minutes. Under test it only

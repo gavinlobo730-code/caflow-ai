@@ -51,6 +51,9 @@ Watch the boot log for `CONFIG: missing REQUIRED environment variables: …`.
   who owns what, key rotation, backups, alerts). Undoing a change is `docs/operations/release-and-rollback.md`;
   what has gone wrong before is `docs/operations/post-mortems.md`; what the reports should take is
   `docs/operations/service-levels.md`. **The runbook has not been table-tested and says so.**
+- The security headers on both sites and the API, the per-address limits on the routes that need no login,
+  the one build variable that rolls the Content-Security-Policy back (`SECURITY_CSP_MODE`), and the Cloudflare
+  rules that are written down and **not applied** are in `docs/operations/edge-protection.md`.
 - Scheduler: set `ENABLE_SCHEDULER=true` or configure an external cron to POST
   `/api/scheduler/run`, else compliance reminders / recurring jobs never fire (the
   boot log states which mode is active).

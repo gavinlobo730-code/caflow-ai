@@ -12,6 +12,7 @@ from domain.gst.gstin import problem_with as gstin_problem
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from typing import Optional
+from middleware.public_rate_limit import public_limit
 from models.common import api_response
 from core.supabase_client import get_service_supabase
 from core.auth import get_jwt_user
@@ -49,7 +50,7 @@ class InviteUser(BaseModel):
     role: str
 
 
-@router.post("/firm")
+@router.post("/firm", dependencies=[Depends(public_limit("signup"))])
 def create_firm(
     body: FirmCreate,
     jwt_user: dict = Depends(get_jwt_user),

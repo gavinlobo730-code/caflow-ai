@@ -104,3 +104,22 @@ jobs:
           # empty, so the schedule always watches the real site.
           LIVE_BASE_URL: ${{ inputs.base_url || github.event.deployment_status.environment_url || 'https://caflow-ai.pages.dev' }}
         run: node apps/web/scripts/check-live-redirects.mjs
+
+      # security_privacy-05. The same question for the response headers: apps/web/scripts/security-headers.mjs
+      # writes out/_headers, and whether Cloudflare Pages built it, accepted it and APPLIED it is only
+      # knowable by asking the site (a line over 2,000 characters is dropped without a word, and a dashboard
+      # build command that calls `next build` directly never runs the generator). It runs even when the step
+      # above failed, because the two failures are independent. The marketing site is checked on a schedule or
+      # a dispatch only: a product deployment changes nothing there. A missing header is a failure; a CSP
+      # that is off or report-only, and headers absent on a /clients/<id> page Pages serves through a rewrite,
+      # are printed as warnings (docs/operations/edge-protection.md says why neither is red).
+      - name: Check the security headers on the live sites
+        if: always()
+        env:
+          LIVE_BASE_URL: ${{ inputs.base_url || github.event.deployment_status.environment_url || 'https://caflow-ai.pages.dev' }}
+          # `cond && 'flag' || ''`, in that order: the other way round, an empty string is falsy and the `||`
+          # would hand back the flag on a deployment_status run too. The marketing host is the SCRIPT's
+          # constant and not written here: this workflow's redirect probe must never be pointed at it
+          # (check-live-redirects.test.ts holds that).
+          LIVE_CHECK_MARKETING: ${{ github.event_name != 'deployment_status' && '--marketing' || '' }}
+        run: node apps/web/scripts/check-live-headers.mjs "$LIVE_BASE_URL" $LIVE_CHECK_MARKETING

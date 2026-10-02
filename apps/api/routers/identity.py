@@ -16,6 +16,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from middleware.public_rate_limit import public_limit
 from models.common import api_response
 from core.auth import get_current_user, get_jwt_user
 from core.permissions import rbac, Role, canonical_role, get_accessible_resources
@@ -97,7 +98,7 @@ class AcceptInviteBody(BaseModel):
     token: str
 
 
-@invite_router.post("/accept-invite")
+@invite_router.post("/accept-invite", dependencies=[Depends(public_limit("invite"))])
 def accept_invite(body: AcceptInviteBody, jwt_user: dict = Depends(get_jwt_user)):
     """Complete a staff invite (F21 fix). JWT-only auth — the caller has no
     `users` row yet (that is exactly what this endpoint creates by linking).

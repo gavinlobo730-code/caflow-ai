@@ -63,6 +63,10 @@ export type PayrollSlip = {
   esi_employer_paise?: number;
   edli_paise?: number;
   pf_admin_paise?: number;
+  /** True when this slip's PF was computed on ACTUAL wages above the ceiling by
+   *  the employer's recorded election (payroll-22, migration 477). Stored on the
+   *  slip by the server; the browser only labels it. */
+  pf_on_actual_wages?: boolean;
   employee?: Employee;
   run?: PayrollRun;
 };

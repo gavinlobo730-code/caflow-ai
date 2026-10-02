@@ -9,6 +9,7 @@ yet — those land in Phase 4.5.2+. Strict client isolation; no staff privilege.
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from middleware.public_rate_limit import public_limit
 from models.common import api_response
 from core.auth import get_jwt_user
 from core.portal_auth import get_current_portal_client
@@ -34,7 +35,7 @@ class AcceptPortalInviteBody(BaseModel):
     token: str
 
 
-@router.post("/accept-invite")
+@router.post("/accept-invite", dependencies=[Depends(public_limit("invite"))])
 def accept_portal_invite(body: AcceptPortalInviteBody, jwt_user: dict = Depends(get_jwt_user)):
     """Accept ONE portal invite by its single-use token (F22 fix). Must be called
     once per client relationship before that client appears in /memberships."""
@@ -108,7 +109,7 @@ class MintEmployeeActivationSessionBody(BaseModel):
     token: str
 
 
-@router.post("/employee/activation-session")
+@router.post("/employee/activation-session", dependencies=[Depends(public_limit("invite"))])
 def mint_employee_activation_session(body: MintEmployeeActivationSessionBody):
     """Turn a bare invite token into a real Supabase session — no Authorization
     header, no prior session. This is deliberately the one endpoint in this
@@ -133,7 +134,7 @@ class AcceptEmployeeInviteBody(BaseModel):
     token: str
 
 
-@router.post("/employee/accept-invite")
+@router.post("/employee/accept-invite", dependencies=[Depends(public_limit("invite"))])
 def accept_employee_invite(body: AcceptEmployeeInviteBody,
                            jwt_user: dict = Depends(get_jwt_user)):
     """Bind the caller's Supabase identity to the employee they were invited as.

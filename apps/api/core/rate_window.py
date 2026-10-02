@@ -22,10 +22,11 @@ BOUNDED MEMORY
 """
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections import deque
-from typing import Callable, Deque, Dict
+from typing import Callable, Deque, Dict, Optional
 
 
 class SlidingWindowLimiter:
@@ -53,6 +54,17 @@ class SlidingWindowLimiter:
         hammering extend their own lockout for ever, which turns a rate limit
         into a ban.
         """
+        return self.hit_or_wait(key) is None
+
+    def hit_or_wait(self, key: str) -> Optional[int]:
+        """`hit`, but a refusal says how long to wait.
+
+        None means the event was recorded and is within budget. A number is the
+        whole seconds (never below 1, rounded UP so the caller is not told to come
+        back a moment too early) until the OLDEST event in the window ages out and
+        a place opens: exactly what `Retry-After` should carry. The same rules as
+        `hit` otherwise, and a refused event is likewise not recorded.
+        """
         now = self._clock()
         with self._lock:
             bucket = self._events.get(key)
@@ -64,9 +76,9 @@ class SlidingWindowLimiter:
             while bucket and bucket[0] <= cutoff:
                 bucket.popleft()
             if len(bucket) >= self.max_events:
-                return False
+                return max(1, math.ceil(bucket[0] + self.window_seconds - now))
             bucket.append(now)
-            return True
+            return None
 
     def reset(self) -> None:
         with self._lock:

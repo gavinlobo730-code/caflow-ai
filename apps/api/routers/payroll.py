@@ -73,6 +73,7 @@ from domain.payroll import settlement as settlement_domain
 from domain.payroll import arrears as arrears_domain
 from domain.payroll import one_time_earnings as one_time_domain
 from domain.payroll import perquisites as perq_domain
+from domain.payroll import pf_wage_election as pf_election
 from domain.reporting.amount_words import indian_rupees
 from dataclasses import replace as _replace
 from core import db_provider
@@ -1140,7 +1141,8 @@ def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
 
 
 def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
-                eps_eligible: bool = True) -> dict:
+                eps_eligible: bool = True,
+                on_actual_wages: bool = False) -> dict:
     """
     PF per EPF & MP Act 1952 §6, SPLIT as the Employees' Pension Scheme requires.
 
@@ -1174,9 +1176,25 @@ def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
     01-04-2017.
 
     Rates and ceilings come from domain/payroll/statutory.py, versioned by FY.
+
+    `on_actual_wages` (payroll-22) is the employer's recorded ELECTION to
+    contribute on the whole PF wage rather than on the ceiling — EPF Scheme 1952
+    para 26(6), a joint request of employee and employer, `[S]`: the reading is
+    unverified and nothing here checks the request exists. It is decided by
+    domain/payroll/pf_wage_election.applies and never inferred from the wage.
+    ONLY THE EPF BASE MOVES with it: the employee's 12%, the employer's 12% (so
+    the EPF half, which absorbs everything above the pension diversion) and the
+    administrative charge, whose base follows the EPF wage `[S]`. The EPS wage
+    and its Rs 1,250 diversion, and the EDLI wage, keep their OWN ceilings —
+    they are separate figures in the statute — and the rounding is the same
+    line it always was. With the flag False nothing below differs from before.
     """
     r = payroll_rates_for(fy).pf
-    capped = min(pf_wages_paise, r.wage_ceiling_paise)
+    # The wage the EPF contributions and the administrative charge are computed
+    # on. Everything that follows reads this and not `capped`, so the election
+    # cannot reach EPS or EDLI by a stray use of the uncapped figure.
+    capped = (pf_wages_paise if on_actual_wages
+              else min(pf_wages_paise, r.wage_ceiling_paise))
 
     # Employee's whole share is EPF.
     employee = _to_nearest_rupee(capped * r.employee_rate_bps // 10000)
@@ -1214,6 +1232,30 @@ def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
         "edli": edli,
         "admin": admin,
     }
+
+
+_NO_PF = {"employee": 0, "employer": 0, "employer_eps": 0,
+          "employer_epf": 0, "edli": 0, "admin": 0}
+
+
+def _pf_for_slip(emp: dict, pf_wages_paise: int, fy: Optional[str],
+                 month: Optional[int]) -> tuple[dict, bool]:
+    """(PF figures, whether they are on ACTUAL wages by the employer's election).
+
+    ONE place that turns an employee row and a PF wage into contributions, for
+    the payroll run (`_compute_slip`) and the Statutory Deductions projection
+    alike — two copies of "does this employee's election apply this month" are
+    two answers for one employee, the drift `_pf_wage_base` records for the
+    wage itself. The election is read from the EMPLOYEE ROW at compute time and
+    cached on nothing, so a draft run recomputed (PAY-21) after an election was
+    recorded, withdrawn or dated picks up exactly what the row says now.
+    """
+    if not emp.get("pf_applicable"):
+        return dict(_NO_PF), False
+    elected = pf_election.applies(emp, fy_label=fy, month=month)
+    return _compute_pf(pf_wages_paise, fy,
+                       eps_eligible=emp.get("eps_eligible", True),
+                       on_actual_wages=elected), elected
 
 
 def _compute_esi(gross_paise: int, fy: Optional[str] = None,
@@ -1439,10 +1481,7 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     # from basic wages, so an incentive or a festival bonus does not belong here
     # however large it is.
     pf_wages = _wb.wages_paise + ot.pf_wages_paise
-    pf   = (_compute_pf(pf_wages, fy, eps_eligible=emp.get("eps_eligible", True))
-            if emp.get("pf_applicable")
-            else {"employee": 0, "employer": 0, "employer_eps": 0,
-                  "employer_epf": 0, "edli": 0, "admin": 0})
+    pf, pf_elected = _pf_for_slip(emp, pf_wages, fy, pt_month)
     # ESI Act §2(22) includes additional remuneration "paid at intervals not
     # exceeding two months", so the ESI wage base takes only the one-time
     # earnings that pass that INTERVAL test — a monthly incentive does, an
@@ -1611,6 +1650,12 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         "pf_wages_paise":              _wb.wages_paise,
         "pf_wages_addback_paise":      _wb.deemed_addback_paise,
         "pf_wages_rule_applied":       _wb.rule_applied,
+        # THE ELECTION THAT WAS APPLIED, stored with the contribution it
+        # produced (migration 477). The ECR reads THIS and not the employee row:
+        # it declares what was remitted, and the row can be edited or the
+        # election withdrawn after a month is finalised. False on every slip
+        # written before 477, which is true of all of them — nothing could elect.
+        "pf_on_actual_wages": pf_elected,
         "pf_employee_paise":  pf["employee"],
         "pf_employer_paise":  pf["employer"],
         # Stored, not recomputed at ECR time: the return must agree with the
@@ -1844,11 +1889,44 @@ def create_employee(
     payload = data.model_dump()
     payload["firm_id"] = current_user["firm_id"]
     payload["status"] = "active"
+    # An employee created with NO election never names the election columns, so
+    # the insert is the one it always was and its NULL is left for the column to
+    # hold (migration 477). Only an election somebody actually made is written.
+    if payload.get(pf_election.ELECTION) is None:
+        for key in pf_election.ALL_KEYS:
+            payload.pop(key, None)
     row = db.table("payroll_employees").insert(payload).execute()
     emp = (row.data or [{}])[0]
+    if payload.get(pf_election.ELECTION) is not None:
+        _log_pf_election_change(current_user, emp.get("id"), None, payload)
     timeline_service.log(data.client_id, "work", "Employee Added",
         f"{data.name} added to payroll", "info")
     return api_response(True, emp)
+
+
+def _log_pf_election_change(current_user: dict, employee_id, old: Optional[dict],
+                            new: dict) -> None:
+    """Write the employer's PF election to the edit log, old values beside new.
+
+    The election is the EMPLOYER'S ASSERTION that a joint request exists (EPF
+    Scheme para 26(6), `[S]`), and it decides money in somebody's pay and the
+    EPF wage on a statutory return. WHO recorded it and WHEN is the fact an
+    inspector asks for, and the withdrawal clears the date and reference from
+    the row (the database holds them only beside an election that is true), so
+    the edit log is where the earlier values survive. The auth id is the actor,
+    as `audit_log.actor_id` takes (tests/test_the_audit_log_names_one_kind_of_actor).
+    """
+    from services.audit_service import log_event
+    keys = pf_election.ALL_KEYS
+    log_event(
+        current_user["firm_id"], "payroll_employee", str(employee_id or ""),
+        "create" if old is None else "update",
+        actor_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
+        old_data=None if old is None else {k: old.get(k) for k in keys},
+        new_data={k: new.get(k) for k in keys},
+        metadata={"what": "pf_on_actual_wages_election"},
+    )
 
 
 @router.post("/employees/import")
@@ -1907,6 +1985,13 @@ def import_employees(
             "message": f"{len(result.problems)} problem(s); nothing was imported.",
             "problems": result.problems,
         })
+    conflicts = _pf_election_conflicts_in_import(
+        db, current_user["firm_id"], result.to_update)
+    if conflicts:
+        raise HTTPException(status_code=422, detail={
+            "message": f"{len(conflicts)} problem(s); nothing was imported.",
+            "problems": conflicts,
+        })
     if data.dry_run:
         return api_response(True, {**result.summary(), "dry_run": True})
 
@@ -1934,6 +2019,34 @@ def import_employees(
         f"{created} added, {updated} updated from a bulk import", "info")
     return api_response(True, {"ok": True, "problems": [],
                                "created": created, "updated": updated})
+
+
+def _pf_election_conflicts_in_import(db, firm_id: str,
+                                     to_update: list) -> list[str]:
+    """Rows that would switch PF off for an employee with a recorded election.
+
+    The import never sets the election (payroll-22: it is the employer's
+    assertion of a joint request and is recorded one employee at a time), but an
+    UPDATE row always writes `pf_applicable`, and the database refuses PF off
+    beside an election. Left to Postgres that is a CHECK violation halfway
+    through a file whose whole contract is all-or-nothing, so it is refused up
+    front, row by row, in the importer's own voice. Reads only when some row
+    switches PF off.
+    """
+    off = {emp_id: payload for emp_id, payload in to_update
+           if payload.get("pf_applicable") is False}
+    if not off:
+        return []
+    stored = (db.table("payroll_employees")
+              .select("id, name, employee_code, pf_on_actual_wages")
+              .eq("firm_id", firm_id).in_("id", list(off)).execute().data) or []
+    return [
+        f"{row.get('employee_code') or row.get('name') or row['id']}: PF is "
+        f"switched off in the file but this employee has an election to "
+        f"contribute on actual wages above the ceiling. Withdraw the election "
+        f"on the employee first."
+        for row in stored if row.get(pf_election.ELECTION) is True
+    ]
 
 
 @router.get("/employees/import-template.csv")
@@ -1974,7 +2087,29 @@ def update_employee(
     update = data.model_dump(exclude_none=True)
     if not db:
         return api_response(True, update)
+    # The PF election (payroll-22) is judged against the row it lands on: a
+    # request that switches PF off beside a recorded election, or hangs a date
+    # on an election that is not made, is refused in a sentence rather than by
+    # the database's CHECK. The row is read only when the request touches the
+    # election or switches PF OFF, so every other edit is the one it was.
+    stored = None
+    if pf_election.needs_stored_row(update):
+        stored = (db.table("payroll_employees")
+                  .select("pf_applicable, pf_on_actual_wages, "
+                          "pf_on_actual_wages_from, pf_on_actual_wages_reference")
+                  .eq("id", employee_id).eq("firm_id", current_user["firm_id"])
+                  .maybe_single().execute().data) or {}
+        plan = pf_election.plan_update(stored, update)
+        if plan.problems:
+            raise HTTPException(status_code=422, detail=" ".join(plan.problems))
+        update.update(plan.changes)
     row = db.table("payroll_employees").update(update).eq("id", employee_id).eq("firm_id", current_user["firm_id"]).execute()
+    if stored is not None and any(k in update for k in pf_election.ALL_KEYS):
+        after = (row.data or [{}])[0]
+        before = {k: stored.get(k) for k in pf_election.ALL_KEYS}
+        now = {k: after.get(k, update.get(k)) for k in pf_election.ALL_KEYS}
+        if before != now:
+            _log_pf_election_change(current_user, employee_id, before, now)
     return api_response(True, (row.data or [{}])[0])
 
 
@@ -5031,6 +5166,7 @@ def _finalised_run_inputs(db, current_user: dict, run_id: str, *, what: str):
     if emp_ids:
         employees = (db.table("payroll_employees")
                      .select("id, name, uan, pf_applicable, eps_eligible, "
+                             "pf_on_actual_wages, "
                              "esi_number, esi_applicable, pt_applicable, pt_state")
                      .eq("firm_id", current_user["firm_id"])
                      .in_("id", emp_ids).execute().data) or []
@@ -5063,10 +5199,11 @@ def _build_run_ecr(db, current_user: dict, run_id: str, inputs=None):
     run, month, days_in_month, slips, by_id = (
         inputs or _finalised_run_inputs(db, current_user, run_id, what="ECR"))
 
-    ceiling = payroll_rates_for(_fy_for_month(month)).pf.wage_ceiling_paise
+    pf_rates = payroll_rates_for(_fy_for_month(month)).pf
     return run, month, build_ecr(slips=slips, employees_by_id=by_id,
                                  days_in_month=days_in_month,
-                                 wage_ceiling_paise=ceiling)
+                                 wage_ceiling_paise=pf_rates.wage_ceiling_paise,
+                                 employee_rate_bps=pf_rates.employee_rate_bps)
 
 
 def _build_run_esic(db, current_user: dict, run_id: str, inputs=None):
@@ -6950,6 +7087,10 @@ def statutory_position(
             wb_wages_paise = int(slip.get("pf_wages_paise") or 0)
             wb_addback_paise = int(slip.get("pf_wages_addback_paise") or 0)
             wb_rule_applied = bool(slip.get("pf_wages_rule_applied"))
+            # What the run applied, read off the slip like every other figure
+            # here — never re-decided from the employee row, which may have
+            # changed since the month was computed.
+            pf_elected = bool(slip.get("pf_on_actual_wages"))
         else:
             basic = int(emp.get("basic_paise") or 0)
             da = _percent_of(basic, emp.get("da_percent", 0))
@@ -6976,10 +7117,7 @@ def statutory_position(
                 other_allowances_paise=other,
                 fy=fy, month=m,
             )
-            pf = (_compute_pf(_wb.wages_paise, fy, eps_eligible=emp.get("eps_eligible", True))
-                  if emp.get("pf_applicable")
-                  else {"employee": 0, "employer": 0, "employer_eps": 0,
-                        "employer_epf": 0, "edli": 0, "admin": 0})
+            pf, pf_elected = _pf_for_slip(emp, _wb.wages_paise, fy, m)
             esi = (_compute_esi(gross, fy,
                                 covered_at_period_start=emp["id"] in esi_covered_earlier)
                    if emp.get("esi_applicable") else {"employee": 0, "employer": 0})
@@ -7014,6 +7152,11 @@ def statutory_position(
             "pf_wages_addback_paise": wb_addback_paise,
             "pf_wages_rule_applied": wb_rule_applied,
             "pf_applicable": bool(emp.get("pf_applicable")),
+            # Always present (a screen cannot tell an absent key from a false
+            # one): PF is on ACTUAL wages above the ceiling by the employer's
+            # recorded election (payroll-22). The screen labels the row; it
+            # decides nothing.
+            "pf_on_actual_wages": pf_elected,
             "esi_applicable": bool(emp.get("esi_applicable")),
             "pf_employee_paise": pf["employee"],
             "pf_employer_paise": pf["employer"],

@@ -171,6 +171,10 @@ services:
       # CONFIRM IT WITH ONE REQUEST: send `X-Forwarded-For: 203.0.113.9` to the
       # API and look at the `forwarded_for` on the next signing event; if the
       # chain ends in a proxy's address, set this to 2. (SECURITY-PRIVACY-25.)
+      # ⚠️ The per-address limits on the public routes (middleware/public_rate_limit.py, ops-30) key on
+      # this too. If Cloudflare is ever put in front of this service the chain gains a hop: raise this to 2
+      # in the SAME change, or every caller keys on a Cloudflare edge address and shares one window.
+      # docs/operations/edge-protection.md §3.2 has the order of steps.
       - key: TRUSTED_PROXY_HOPS
         sync: false
 

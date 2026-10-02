@@ -142,6 +142,30 @@ def _last_day_of(fy_label: str, month: int) -> date:
     return date(year, month, calendar.monthrange(year, month)[1])
 
 
+def month_end(fy_label: str | None, month: int | None) -> date | None:
+    """The last day of a payroll month, or None where the period cannot be read.
+
+    Public because a second reader asks the same question of the same pair: the
+    PF election (domain/payroll/pf_wage_election.py) decides whether a month is
+    on or after the date an employer's election takes effect, and a month is
+    paid as ONE thing, so it is tested on its END exactly as `rule_in_force`
+    tests it. Two copies of "which day does this payroll month end on" would be
+    two answers about a month that straddles a boundary.
+
+    None, never a guess, for an unknown or malformed period — the caller decides
+    what an unreadable month means for its own question.
+    """
+    if not fy_label or not month:
+        return None
+    try:
+        month = int(month)
+        if not 1 <= month <= 12:
+            return None
+        return _last_day_of(fy_label, month)
+    except (ValueError, TypeError, IndexError):
+        return None
+
+
 def rule_in_force(fy_label: str | None, month: int | None) -> bool:
     """Whether s.2(y) governs the PF base for this payroll month.
 
