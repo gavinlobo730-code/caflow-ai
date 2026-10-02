@@ -118,11 +118,15 @@ def test_every_direct_dependency_is_in_the_lock_at_a_version_the_range_allows():
 
 def test_the_ranges_the_old_file_had_are_the_ranges_the_in_file_has():
     """The lock records what the ranges resolve to; it must not quietly tighten or loosen them. The old file's
-    `>=`/`<` lines are quoted here from before the change."""
+    `>=`/`<` lines are quoted here from before the change. Only RANGES are held: this list also quoted three exact
+    pins (fastapi, gunicorn, python-multipart) as "this change bumps nothing", which was true on the day the lock
+    was introduced and made every later bump of those three, Dependabot's included, fail a guard that is about
+    ranges (2 Oct 2026). An exact pin moves by editing the file and recompiling; a range moving is the thing
+    worth stopping."""
     text = "\n".join(_logical_lines(API / "requirements.in"))
     for line in ("httpx>=0.27.0,<0.28.0", "pydantic>=2.0.0", "pandas>=2.0.0", "reportlab>=4.0.0",
-                 "google-genai>=1.0.0,<2.0.0", "fastapi==0.109.2", "gunicorn==21.2.0", "python-multipart==0.0.9"):
-        assert line in text, f"{line} changed: this change adds a lock and bumps nothing"
+                 "google-genai>=1.0.0,<2.0.0"):
+        assert line in text, f"{line} changed: a range the lock was introduced with moved"
 
 
 def test_the_runtime_set_holds_no_test_only_package():
