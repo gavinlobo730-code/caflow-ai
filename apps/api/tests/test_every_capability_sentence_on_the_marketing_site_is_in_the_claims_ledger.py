@@ -43,7 +43,11 @@ API_ROOT = Path(__file__).resolve().parents[1]
 
 # What the owner has still to decide. A claim leaves this list when it is built, proved
 # or removed from the site — in the same commit — and joins it only by being written here.
-UNPROVEN_CLAIMS = {"sso", "database-encrypted", "sla-and-account-manager"}
+# EMPTY since 02-10-2026: SSO, "SLA & account manager" and "and encrypted" were the three,
+# and each was taken off the pricing page on the owner's go-ahead (the commercial terms
+# are to be decided) rather than kept as a promise nothing backs. A fourth joins this set
+# only by being written here, with the decision it waits on.
+UNPROVEN_CLAIMS: set[str] = set()
 
 # Facts no test can read. Frozen for the same reason: "commitment" must not become the
 # place a hard-to-test claim goes to stop being tested.
