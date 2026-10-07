@@ -6,6 +6,11 @@ Naming: the product is **PracticeSync**. The repo, the Supabase project, log pre
 is known cosmetic legacy — do not "tidy" it opportunistically. It appears in import
 paths, env keys and migration history, and a careless rename breaks all three.
 
+**What is still open lives in `docs/open-items/README.md`** (one line per item,
+before or after the demo, by who must act). Read it, not the audit documents,
+for any "what is left" question; see the paragraph near the end of this file
+that supersedes `docs/audits/findings-status.md`.
+
 ## Repo layout
 
 Three apps, not two:
@@ -4701,6 +4706,29 @@ types every pattern, and the widest case was always reachable (an empty pattern
 matches everything). Both doors validate — a validator only on create is one
 PATCH from being none — and both read the ENGINE's own maps rather than a third
 list.
+
+**`docs/open-items/` NOW ANSWERS "WHAT IS LEFT", AND THE PARAGRAPH BELOW IS
+SUPERSEDED BY IT** (2-7 October 2026). Start at `docs/open-items/README.md`:
+six files of one-line items, split by WHEN (before or after the demo) and by
+WHO must act (`A` Claude alone, `B` the owner decides or a live session is
+needed and Claude builds, `C` only the owner or someone outside this
+container), with stable ids (`PRE-A-001`, `POST-B-017`; never renumbered, a
+closed item's line is deleted and its id is not reused). It was built from
+every raw open item in the audit, finding, plan and compliance documents and
+in this file, merged where they described one task and checked against the
+code on the date the README states; `checked-closed.md` lists what the sweep
+found already done so nobody reopens it, `decisions-and-strategy.md` holds the
+15 owner decisions and the staged roadmap, and `deletion-plan.md` says which
+audit documents can go and which must stay (it proposes; nothing has been
+deleted). `apps/api/tests/test_the_open_items_ledger_is_well_formed.py` keeps
+it one line per item with unique ids, no dangling citation and current counts
+(`python3 scripts/open_items_counts.py`). **Close an item by deleting its line
+in the same commit as the change, then rerun that script**; an item's facts go
+stale like any snapshot, so read the code before acting on one. The ids here
+(`PRE-A-001`) are another namespace beside `rm/area-NN`, the UPPERCASE audit
+ids and the `D<n>` decisions: never equate them. The audit tables and the
+paragraph that follows describe files that still exist until the owner accepts
+the deletion plan.
 
 **`docs/audits/findings-status.md` is where to start on any "what is left"
 question, and it is the ONLY status record that is kept up to date.** Every
