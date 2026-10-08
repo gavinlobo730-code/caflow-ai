@@ -53,6 +53,12 @@ PERIOD_RE = re.compile(r"^(0[1-9]|1[0-2])\d{4}$")
 TAX_TOLERANCE_PAISE = 1
 
 
+# compute_line_gst halves a line's full tax and gives SGST the remainder, so one
+# line can leave SGST at most one paisa above CGST. A construction fact about
+# the line engine (domain/sales/line_tax.py), not a tolerance.
+ODD_PAISA_PER_LINE = 1
+
+
 @dataclass
 class ValidationError:
     field: str
@@ -87,6 +93,42 @@ class InvoiceToValidate:
     # read as the plain domestic taxable sale the columns default to.
     supply_type: str | None = None
     is_reverse_charge: bool = False
+    #: How many tax lines the document's CGST and SGST were summed over, when
+    #: the caller built those figures from this product's own line engine.
+    #: ``None`` (every raw-payload caller, whose CGST and SGST were typed or
+    #: computed elsewhere) keeps the strict rule: the two halves are equal.
+    #: See ``odd_paisa_allowance``.
+    line_count: int | None = None
+
+
+def odd_paisa_allowance(line_count: int | None) -> int:
+    """The most SGST may exceed CGST on an intra-State document, in paise.
+
+    CGST Act s.8 charges an intra-State supply CGST and SGST at the same rate,
+    so the two halves are the same amount. ``domain/sales/line_tax.
+    compute_line_gst`` computes a line's full tax first and halves it: CGST is
+    the floor of the half and SGST carries the odd paisa. A line whose tax is
+    an odd number of paise therefore leaves SGST one paisa above CGST, and a
+    document is the sum of its lines, so its gap is the number of odd-tax lines
+    and can never exceed the number of lines (0 <= SGST - CGST <= lines).
+
+    The strict rule called that gap an ERROR on every GSTR-1 build with such an
+    invoice (31 distinct messages across the demo firm's twelve months, some of
+    2 paise on a two-line invoice) -- an error on the engine's own correct
+    output, which teaches a CA to stop reading the validator. ``None`` is
+    strict equality. A document with no line rows still has one tax
+    computation, the header's, so it gets the one paisa.
+
+    [S] The portal's own tolerance between ``camt`` and ``samt`` could not be
+    confirmed here (egress to gst.gov.in is refused). If the portal rejects
+    unequal halves the right fix is the engine's split rule, not this
+    validator. The one paisa a line can carry is the engine's construction,
+    not a tolerance, so this does not read ``TAX_TOLERANCE_PAISE``: widening
+    that constant must not widen what CGST and SGST may differ by.
+    """
+    if line_count is None:
+        return 0
+    return max(int(line_count), 1) * ODD_PAISA_PER_LINE
 
 
 class GSTValidator:
@@ -169,8 +211,12 @@ class GSTValidator:
                     ref,
                 ))
 
-        # CGST must equal SGST for intra-state supplies
-        if not inv.is_interstate and inv.cgst_paise != inv.sgst_paise:
+        # CGST must equal SGST for intra-state supplies (CGST Act s.8 with the
+        # SGST Acts) -- to within the odd paisa per line the line engine puts on
+        # SGST, and only in that direction (see odd_paisa_allowance).
+        gap = inv.sgst_paise - inv.cgst_paise
+        if not inv.is_interstate and not (
+                0 <= gap <= odd_paisa_allowance(inv.line_count)):
             errors.append(ValidationError(
                 "cgst_sgst",
                 f"CGST ({inv.cgst_paise}p) must equal SGST ({inv.sgst_paise}p) for intra-state supply",
