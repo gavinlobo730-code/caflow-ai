@@ -7,9 +7,9 @@ is known cosmetic legacy — do not "tidy" it opportunistically. It appears in i
 paths, env keys and migration history, and a careless rename breaks all three.
 
 **What is still open lives in `docs/open-items/README.md`** (one line per item,
-before or after the demo, by who must act). Read it, not the audit documents,
-for any "what is left" question; see the paragraph near the end of this file
-that supersedes `docs/audits/findings-status.md`.
+before or after the demo, by who must act). Read it for any "what is left"
+question; the audit documents that used to answer it were deleted on 8 October
+2026 (see the paragraph near the end of this file).
 
 ## Repo layout
 
@@ -4707,67 +4707,43 @@ matches everything). Both doors validate — a validator only on create is one
 PATCH from being none — and both read the ENGINE's own maps rather than a third
 list.
 
-**`docs/open-items/` NOW ANSWERS "WHAT IS LEFT", AND THE PARAGRAPH BELOW IS
-SUPERSEDED BY IT** (2-7 October 2026). Start at `docs/open-items/README.md`:
-six files of one-line items, split by WHEN (before or after the demo) and by
-WHO must act (`A` Claude alone, `B` the owner decides or a live session is
-needed and Claude builds, `C` only the owner or someone outside this
-container), with stable ids (`PRE-A-001`, `POST-B-017`; never renumbered, a
-closed item's line is deleted and its id is not reused). It was built from
-every raw open item in the audit, finding, plan and compliance documents and
-in this file, merged where they described one task and checked against the
-code on the date the README states; `checked-closed.md` lists what the sweep
-found already done so nobody reopens it, `decisions-and-strategy.md` holds the
-15 owner decisions and the staged roadmap, and `deletion-plan.md` says which
-audit documents can go and which must stay (it proposes; nothing has been
-deleted). `apps/api/tests/test_the_open_items_ledger_is_well_formed.py` keeps
-it one line per item with unique ids, no dangling citation and current counts
-(`python3 scripts/open_items_counts.py`). **Close an item by deleting its line
-in the same commit as the change, then rerun that script**; an item's facts go
-stale like any snapshot, so read the code before acting on one. The ids here
-(`PRE-A-001`) are another namespace beside `rm/area-NN`, the UPPERCASE audit
-ids and the `D<n>` decisions: never equate them. The audit tables and the
-paragraph that follows describe files that still exist until the owner accepts
-the deletion plan.
+**`docs/open-items/` ANSWERS "WHAT IS LEFT", AND THE AUDIT DOCUMENTS THAT USED TO
+ARE DELETED** (2-8 October 2026). Start at `docs/open-items/README.md`: six
+files of one-line items, split by WHEN (before or after the demo) and by WHO
+must act (`A` Claude alone, `B` the owner decides or a live session is needed
+and Claude builds, `C` only the owner or someone outside this container), with
+stable ids (`PRE-A-001`, `POST-B-017`; never renumbered, a closed item's line
+is deleted and its id is not reused). It was built from every raw open item in
+the audit, finding, plan and compliance documents and in this file, merged
+where they described one task; `checked-closed.md` lists what the sweep found
+already done so nobody reopens it, `decisions-and-strategy.md` holds the 15
+owner decisions and the staged roadmap, and `deletion-plan.md` records what was
+deleted and what was kept and why. `apps/api/tests/test_the_open_items_ledger_is_well_formed.py`
+keeps it one line per item with unique ids, no dangling citation and current
+counts (`python3 scripts/open_items_counts.py`). **Close an item by deleting
+its line in the same commit as the change, then rerun that script**; an item's
+facts go stale like any snapshot, so read the code before acting on one. The
+ids here (`PRE-A-001`) are another namespace beside `rm/area-NN`, the UPPERCASE
+audit ids and the `D<n>` decisions: never equate them.
 
-**`docs/audits/findings-status.md` is where to start on any "what is left"
-question, and it is the ONLY status record that is kept up to date.** Every
-other document below is a SNAPSHOT taken on a date and never amended, which is
-why each successive pass found the one before it stale — 10% on 11 September,
-then 38-59% by subsystem on 12 September, then another nineteen by hand the
-same evening. `findings-status.json` is the record and is amended in the same
-commit that closes a finding; `findings-status.md` is it made readable, and
-`scripts/findings_status_md.py` regenerates it. **Amend the JSON in the commit
-that closes the finding** — a status only ever written by an audit is wrong by
-the time it is read.
-
-Read its four states before quoting a number: `closed` was re-read against the
-code, `closed_by_commit` was named in a merged commit and NOT re-read (usually
-fixed, occasionally only cited), `unverified` means a probe was inconclusive
-and is NOT the same as open, and `open` was re-read and is still true. Nearly
-every open item is blocked on a migration or on a statutory document a person
-has to read, and the table says which.
-
-**The rest of `docs/audits/` — the passes below, all from 7-12 September 2026 —
-are the ANALYSIS behind those verdicts. They are still worth reading for WHY a
-finding is what it is and whether its suggested fix is sound; they are no
-longer to be trusted for WHETHER it is open:**
-
-| File | What it is |
-|---|---|
-| `2026-09-07-where-we-are-against-the-one-platform-goal.md` | the full platform audit against the one-platform goal: 278 findings, the module scorecard, the market comparison, and the staged plan. §13 records the verification pass |
-| `2026-09-07-findings/` | the 278 findings as JSON, one file per subsystem. **Sort by `verification.corrected_severity`, not `severity`** — the raw severity is the reader's first impression, the corrected one survived an adversarial check |
-| `2026-09-07-a-plus-roadmap.md` | what each of the 14 modules needs to reach A+, defined as five testable properties, in a seven-stage order that starts by proving correctness |
-| `2026-09-08c-the-phase-plan.md` | **the plan being worked to.** All 254 remaining items in twelve phases grouped by FIX SHAPE rather than by module, so each phase teaches one pattern and ends with one guard test. Every critical and high is assigned; two duplicate pairs are named (PUR-07≡TDS-13, IT-09≡FA-06) |
-| `2026-09-11-the-verification-pass.md` | **the current remaining-work list. Start here.** All 163 medium/low findings re-checked against the code by nine read-only agents: 131 still open, 15 partial, 17 closed — so the backlog is ~10% stale, not the ~73% a spot-check had suggested. §2 is the part that matters: **seven findings whose severity went UP** because Phase 7 built the screens that had been holding them latent, and nothing re-scored them. §3 carries two live defects with no finding at all. §6 is the build order |
-| `2026-09-12-the-probe-pass/` | **read this before scheduling any of the above.** All 213 findings re-read against the code by nine read-only agents — one slice file per subsystem — asking the one question the 11 September pass did not: *is the finding's own suggested FIX sound?* **It was not, thirteen times.** Two would break working, test-pinned behaviour (**ACC-23** a balance sheet that is currently self-correcting, **ACC-25** the expiring-signed-URL and stored-XSS hole `domain/banking/attachments.py` exists to close); eleven more would break something smaller (**SALES-13** prints the CA practice's UPI ID on the client's own outward invoice, **TDS-23** turns a visible 422 into a silently mis-routed 26Q row, **TDS-19** drops a genuine §194-IA credit, **FA-14**'s `is None` divides by zero). Also five materially false premises (PUR-28's fix might DROP the four live policies it claims are absent), and **sixteen defects with no finding at all**. **Stale rates far above the 10% the 11 September pass measured** — sales 59%, payroll 53%, fixed assets 50%, TDS 44% — so the finding JSONs are no longer a usable work list on their own and these ten slice files are |
-| `2026-09-08b-what-is-left.md` | the previous remaining-work list, re-scored against `9fbe40d`. **Superseded by the 11 September pass** — its severities predate the screens Phase 7 shipped. Kept because its §2 is the record of what the last tranche introduced |
-
-`docs/audits/2026-09-07-market-research/` holds the statutory re-check behind
-them. **Nothing in it is graded `[P]`** — direct egress is refused at the proxy
-(`curl https://example.com` → CONNECT 403), which is this environment's network
-policy rather than a gov.in block, so every claim rests on a search engine's
-summary of a page nobody opened. Each file ends with a ranked re-verify list.
+**Deleted on 8 October 2026, with the owner's approval:** everything under
+`docs/audits/` (the 2026-07 to 2026-09 audits, `findings-status.json` and `.md`
+with the script that rendered it, the 278 finding JSON files, the market
+research, the probe pass, the phase plans and the question files), four log and
+question files under `docs/plan/` and nineteen early completion, hardening,
+E2E and audit reports at the top of `docs/`. Every one is recoverable exactly
+as it stood at merge commit `315e6a1980053c5db5e00646d16624d48e358907`
+(`git show 315e6a19:docs/audits/<file>`; the full list is in
+`deletion-plan.md`; a tag could not be pushed from the session that did it).
+**A finding id quoted in this file or in a source comment (`GST-18`, `PAY-27`,
+`TDS-16`) names a finding in that deleted record**, and a comment or document
+that cites `docs/audits/...` is now a historical reference. What is still open
+from them is a ledger line, and what they proved closed is in
+`checked-closed.md`. The statutory readings they graded are graded `[S]` or
+`[P]` where this file states them; the market research behind them never
+reached `[P]`, because egress to the government sites is refused from this
+container, so every claim in it rested on a search engine's summary of a page
+nobody opened.
 
 ## Scope
 
@@ -4781,7 +4757,8 @@ Don't infer scope from this list — ask. It is a description of what exists, no
 licence to extend any of it.
 
 **Payroll specifically** is walked end to end in
-`docs/audits/2026-09-01-payroll-can-it-run-a-year.md` — what works for a full
+the 1 September 2026 payroll audit (deleted on 8 October 2026; `git show
+315e6a19:docs/audits/2026-09-01-payroll-can-it-run-a-year.md`) — what works for a full
 year, what does not, and what each remaining gap would cost. The short version:
 the monthly cycle, the leaver and the statutory returns all work; what the
 software still cannot do is FILE anything, which is deliberate and needs
