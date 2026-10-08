@@ -81,7 +81,16 @@ def assess_invoice(inv: dict, today: Optional[date] = None,
                    - int(inv.get("paid_paise", 0))
                    - int(inv.get("credited_paise", 0) or 0))
     ref = reference_due_date(inv, credit_days)
-    days_overdue = (today - ref).days if ref else 0
+    # NEVER NEGATIVE (PRE-A-010). `today - ref` is negative for an invoice that
+    # is not yet due, and this value is persisted by `sweep_overdue` into
+    # client_sales_invoices.days_overdue (migration 077: NOT NULL DEFAULT 0, no
+    # CHECK), shown by the sales screen as "(Nd overdue)" and passed to the
+    # client by the portal's safe_invoice - so -12 read "-12d overdue" to all
+    # three. A count of days LATE has no negative: "not yet due" is
+    # `is_overdue` false and the `not_due` bucket, which the clamp leaves as it
+    # was (aging_bucket treats <= 0 as not_due, as the statement services'
+    # `max(days, 0)` already assumed). `is_overdue` stays the only overdue flag.
+    days_overdue = max((today - ref).days, 0) if ref else 0
     is_open = inv.get("status") in _OPEN_STATUSES and outstanding > 0
     is_overdue = bool(is_open and days_overdue > 0)
     return {
