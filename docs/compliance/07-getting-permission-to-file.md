@@ -466,11 +466,14 @@ And what is still missing, which is why nobody should plan against it yet:
 > first real filing API on the direct-tax side.
 
 **One thing the registration would not fix.** `apps/api/domain/tds/vocabulary.py`
-deliberately does not hold the s. 393 **payment-code table**, and an API makes
-that worse rather than better: a wrong payment code is *accepted* and then wrong.
-The 7 September research also found the range is **1001–1092, not 1001–1067** —
-1068–1092 are the s. 394 TCS codes, so **anything that range-checks a code at
-≤1067 rejects every valid TCS code.** `[S]` The table remains a human step.
+holds only a confirmed subset of the s. 393 **payment-code table** (14 sections,
+read from Protean's specification on 25-09-2026: `payment_code_for`) and names the
+rest as gaps, and an API makes that worse rather than better: a wrong payment code
+is *accepted* and then wrong. The 7 September research reported the range as
+**1001–1092, not 1001–1067** — 1068–1092 being the s. 394 TCS codes, so anything
+that range-checks a code at ≤1067 would reject every valid TCS code — while
+`vocabulary.PAYMENT_CODE_RANGE` holds `(1001, 1067)`. Which is right is unverified
+either way. `[S]` The rest of the table remains a human step.
 
 ### 3.6 TDS certificates — Form 16 → 130, Form 16A → 131
 

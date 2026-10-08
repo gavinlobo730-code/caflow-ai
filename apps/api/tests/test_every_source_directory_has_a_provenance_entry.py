@@ -6,7 +6,7 @@ WHY THIS EXISTS
     sources in its last sentence: "A file with no provenance is worth less than no
     file, because it reads as authoritative." It documented two directories
     (`e-invoice/`, `gst-notifications/`) and was silent about a third,
-    `gst-offline-utilities/` - twenty extracted VBA modules that four domain
+    `gst-offline-utilities/` - twenty-one extracted VBA modules that four domain
     modules and two tests cite as their primary source. A reader following any of
     those citations arrived at a directory the index did not mention.
 

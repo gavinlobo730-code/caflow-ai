@@ -523,7 +523,7 @@ def test_the_2023_amnesty_window_is_honoured_and_has_closed():
 
 
 def test_an_unknown_return_type_is_still_refused_rather_than_defaulted():
-    """GSTR-4, GSTR-7 and GSTR-8 each carry their own fee and none is held.
+    """No fee is held for GSTR-4, GSTR-7, GSTR-8 or CMP-08, so each is refused.
     Falling back to the 3B ladder would charge one anyway."""
     for rt in ("gstr4", "gstr7", "gstr8", "cmp08"):
         out = late_fee(return_type=rt, financial_year="2025-26",

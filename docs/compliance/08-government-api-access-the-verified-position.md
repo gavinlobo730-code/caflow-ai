@@ -4,7 +4,7 @@ title: Government Filing Access
 subtitle: What PracticeSync can file today, what it cannot, why — and what we are building instead
 meta: Prepared by | PracticeSync engineering
 meta: Date | 11 September 2026
-meta: Revised | 8 October 2026 — cross-references reconciled; no finding changed
+meta: Revised | 8 October 2026 — cross-references reconciled and two statements about what the code holds corrected (the payment-code subset, the registrations table); no finding changed
 meta: Status | For information. One decision recorded, none requested.
 meta: Supersedes | docs/compliance/07-getting-permission-to-file.md (retained as the underlying playbook)
 footer: PracticeSync — Government filing access — 11 September 2026
@@ -764,9 +764,10 @@ would settle it and cost nothing** — see §6.4 row 3 and Email 2 in Appendix C
 confirmed subset of the s.393 **payment-code table** (14 sections, read from
 Protean's specification on 25-09-2026: `payment_code_for`) and names the rest as
 gaps, and an API makes that worse: a wrong payment code is *accepted* and then
-wrong. The range is **1001–1092, not
-1001–1067** — 1068–1092 are the s.394 TCS codes, so anything range-checking at
-≤ 1067 rejects every valid TCS code. `[S]`
+wrong. The 7 September research reported the range as **1001–1092, not
+1001–1067** (1068–1092 being the s.394 TCS codes, so anything range-checking at
+≤ 1067 would reject every valid TCS code), while `vocabulary.PAYMENT_CODE_RANGE`
+holds `(1001, 1067)`: which is right is unverified either way. `[S]`
 
 ### A.6 TDS certificates — Form 16 → 130, Form 16A → 131 · **NO API, AND THERE WILL NOT BE ONE**
 
@@ -1364,7 +1365,7 @@ employer login page carries a standing notice:
 > employer codes are rendered useless."*
 
 **We already model this and no change is needed.** Migration 325 gives
-`client_statutory_registrations` a `lin` column alongside
+`client_statutory_identity` a `lin` column alongside
 `esic_employer_code` and `epf_establishment_code`, and `routers/payroll.py`
 reads all three. Recorded so that nobody reads the notice later and starts a
 migration that already happened.
