@@ -301,7 +301,7 @@ guard that states the rule rather than a spelling of it:
 - GSTR-9 (annual): 31st December
 - TDS return (24Q salary / 26Q residents / 27Q non-residents — Rule 31A(2) sets one due date per quarter regardless of form): Q1 31 Jul, Q2 31 Oct, Q3 31 Jan, Q4 31 May. Q4 is the exception — it is NOT the end of the month following quarter end (that would be 30 Apr). services/compliance_engine.py::tds_return_due_date is the authority; keep any prose in step with it. **The DUE DATES above survive the 2025 Act unchanged. The FORM AND SECTION NUMBERS do not — see the next bullet.**
 - **From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it.** The Income-tax Act 2025 with the Income-tax Rules 2026 (CBDT Notification 22/2026, 20-03-2026, G.S.R. 198(E), plus a corrigendum) renumbered the statements — **24Q→138, 26Q→140, 27Q→144, 27EQ→143** — and the certificates — **Form 16→130** (three parts now), **16A→131** (quarterly now), **26AS→168**, **15G/15H→121**. It also collapsed the sections: **192→392**, the whole **194-series→393(1)**, **195→393(2)** (NOT 400 — one widely-copied source has that wrong), TCS→394, and returns now carry numeric payment codes 1001–1067. **Rates and thresholds are unchanged**, so `section_rates.py` holds right numbers under 1961-Act keys — and it stays that way. **This is a FORK, not a migration.** The transition is **by EVENT — credit or payment, whichever is earlier** — so periods up to 31-03-2026 keep the old forms and sections indefinitely, including belated and revised returns; both vocabularies are permanent. `act_for_date` is the definition and `act_for_fy` is derived from it, sound because commencement is exactly an FY boundary. **Translate at the boundary, never rekey a store**: ask the module where a form number or section code is emitted, and leave every rate lookup, stored challan and test on the 1961 keys. **There are TWO such boundaries on a quarterly statement and for a while only one was translated** — `tds_return_service` resolved the FORM through the vocabulary and left every deductee line's `section` as stored, so a FY 2026-27 26Q came back as Form 140 with each line citing 194J, a section that Act does not contain (TDS-17). The label now goes out as `section` and the stored 1961 code travels beside it as `section_1961`, which is load-bearing rather than decorative: s. 393(1) has no reverse, so a reader given only the label cannot recover the section that produced it — and `lib/data/tds.ts` writes the whole payload into `tds_returns.fvu_json`. A section the 2025 Act has no code for (s. 192A, say) keeps its stored code and is named in `statutory_gaps`; it is never guessed into 393(1). Challan matching accepts BOTH labels in every period — a challan records what somebody typed, not which Act governs the quarter. Three refusals are deliberate: the **s. 393 payment-code table is not FULLY held** (a wrong code is accepted and then wrong — a human step, like the ITR schemas — see the next bullet for what changed), **s. 393(1) has no reverse**, and **a form cannot be asked for without a period**. ITR-1..7 are NOT renumbered — AY 2026-27 is still the 1961 Act. Verified 2026-09-04; see `docs/compliance/03-income-tax-and-tds.md`.
-- **A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD** (25-09-2026), from a **primary source**: the file-format specification Protean (formerly NSDL) publishes for the RENUMBERED statements themselves (Form 138/140/144, current version, "for Tax Year 2026-27 onwards"), whose own Annexure 2 tables state "Nature of Payment | Section | Section code to be used in the return" against every s. 393 table entry — a `[P]`-graded read of the government's own document, the same grade GST-32's IRP validations carry, not the Act's text and not a search-engine summary of either. `domain/tds/vocabulary.payment_code_for()` answers fourteen of the sections `section_rates.py` already holds: s.192 (by a stated default — non-Government, since no client here is modelled as a government department), s.193, s.194, s.194B, s.194C (by which rate applied — its own two rows split on exactly `TDSSectionRule`'s individual/company rates, so no new fact is needed), s.194D, s.194G, s.194H, s.194I(a)/(b), s.194J(a), s.194LA, s.194Q, s.194T. **Several sections turned out to split FURTHER under the new table on a fact no rate difference had exposed**, and recording either half would be the exact guess this module exists to refuse: s.194A splits into three codes by the payee's age and the payer's kind, none of which this registry's single rate distinguishes; s.194J(b) — the professional-fee limb — shares its own citation (Table Sl. No. 6(iii).D(b)) with a DIRECTOR's remuneration under a DIFFERENT code, and s.194J(b) cannot tell a professional fee from a director's fee apart. Both stay named gaps. `payment_code_gap()` still names the whole table's incompleteness at the return level; `Vocabulary.payment_code()` is the per-line answer where one now exists, and is deliberately NOT yet wired into `tds_return_service.py`'s per-line deductee output — that needs the payload shape itself to carry a `payment_code` field, which is a separate, call-site-touching change against a live, tested return-building pipeline and is recorded as the next step rather than rushed alongside this one.
+- **A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD** (25-09-2026), from a **primary source**: the file-format specification Protean (formerly NSDL) publishes for the RENUMBERED statements themselves (Form 138/140/144, current version, "for Tax Year 2026-27 onwards"), whose own Annexure 2 tables state "Nature of Payment | Section | Section code to be used in the return" against every s. 393 table entry — a `[P]`-graded read of the government's own document, the same grade GST-32's IRP validations carry, not the Act's text and not a search-engine summary of either. `domain/tds/vocabulary.payment_code_for()` answers fourteen of the sections `section_rates.py` already holds: s.192 (by a stated default — non-Government, since no client here is modelled as a government department), s.193, s.194, s.194B, s.194C (by which rate applied — its own two rows split on exactly `TDSSectionRule`'s individual/company rates, so no new fact is needed), s.194D, s.194G, s.194H, s.194I(a)/(b), s.194J(a), s.194LA, s.194Q, s.194T. **Several sections turned out to split FURTHER under the new table on a fact no rate difference had exposed**, and recording either half would be the exact guess this module exists to refuse: s.194A splits into three codes by the payee's age and the payer's kind, none of which this registry's single rate distinguishes; s.194J(b) — the professional-fee limb — shares its own citation (Table Sl. No. 6(iii).D(b)) with a DIRECTOR's remuneration under a DIFFERENT code, and s.194J(b) cannot tell a professional fee from a director's fee apart. Both stay named gaps. `payment_code_gap()` still names the whole table's incompleteness at the return level; `Vocabulary.payment_code()` is the per-line answer where one now exists, and it IS wired onto the 24Q/26Q/27Q deductee rows since TDS-INCOME-TAX-31 (`domain/tds/deductee_payment_code.py`; that bullet says which sections get a code and which are named gaps).
 - **THE RPU/FVU FILE ITSELF IS NOT BUILT, AND THAT IS A DECISION, NOT A GAP LEFT
   OPEN BY ACCIDENT** (TDS-16, 25-09-2026). The natural next step after a 24Q/26Q/27Q
   statement is computed is a file a CA can run through NSDL/Protean's File
@@ -883,6 +883,49 @@ guard that states the rule rather than a spelling of it:
   returns for every period the registration was live are still owed and the rows
   already filed under it are keyed on its GSTIN; `withdraw` is for a
   registration recorded in ERROR and is refused once any return exists under it.
+- **FOUR RETURNS A REGULAR REGISTRATION NEVER FILES NOW HAVE A BUILDER, AND
+  THREE OF THEM CHECK WHAT A CA RECORDS RATHER THAN COMPUTING IT** (GST-25,
+  migrations 420-423). `files_gstr1_and_3b` has refused a composition dealer
+  and an e-commerce operator the GSTR-1/3B screens since GST-20; the returns
+  they owe instead are `domain/gst/composition.py` (CMP-08),
+  `domain/gst/gstr8.py`, `domain/gst/gstr4_annual.py` and
+  `domain/gst/gstr9c.py`. All four are prepare-only, `VERIFIED = False` with
+  every rate and window `[S]` and pinned exactly, and transcribed from the
+  GSTN offline utilities' own VBA under
+  `docs/compliance/sources/gst-offline-utilities/`, which fixes the form and
+  not the rate or the law. **CMP-08 is the one the books answer**
+  (`gst_return_service.cmp08_statement`, `GET /api/gst-workspace/cmp08/compute`):
+  row 1 is the quarter's WHOLE turnover, exempt included, from the
+  `outward_turnover` GSTR-3B already reads, at the §10 rate and split CGST/SGST
+  because §10(2)(c) bars an inter-State outward supply; row 2 is the posted
+  reverse-charge bills; row 3 their sum; row 4 (interest) is the caller's
+  figure and zero here. Which rate applies (1%, 5% or 6%; the restaurant limb
+  is the least certain) is a fact about the dealer, so `composition_category`
+  (migration 420, on `clients` and `client_gst_registrations`) is nullable with
+  NO default and a missing one is REFUSED, while `clients.gst_registration_type`
+  defaults to `regular` because every earlier client was filed as one. It is
+  resolved QUARTERLY (Rule 62) whatever the QRMP field says.
+  **GSTR-8** (`ecommerce_operator_supplies` and the Table 3.1 twin, 421),
+  **GSTR-4 Annual Tables 4A-4D** (422) and **GSTR-9C** (three tables, 423) hold
+  facts no ledger of the client carries, so a CA RECORDS them and the module
+  VALIDATES, the utility's own posture: findings are reported beside the figures
+  and the statement is not refused. CGST must equal SGST; tax is collected
+  exactly when the net is positive; GSTR-8's rate band forks on July 2024
+  (exactly 1% before, 0.5% to 1% from); a GSTR-4 row's place of supply is the
+  filer's own State. GSTR-4's Table 5 is the one derived figure (four quarterly
+  CMP-08s summed; a quarter that fails is named, never read as nil). GSTR-9C
+  derives only a table's own total and plain subtractions, reads the declared
+  side from the GSTR-9 already built, and never derives Table 5P or 7E (a
+  signed sum whose signs the VBA does not carry), the 26 expense heads or a
+  multi-GSTIN apportionment; its two bindings to GSTR-9 (12E to Table 6O,
+  Table 9 to row 9d) are `[S]`, and `THRESHOLD_TABLE` is display data that never
+  places a client in a band. **Not built**: GSTR-6 and GSTR-7, GSTR-8 Tables
+  4/4.1, GSTR-4 Table 7 and the outward summary, the GSTR-9C Part B
+  certification, and a due date for any of the four
+  (`compliance_obligation_service._gst_obligations` takes no registration type,
+  so a composition client still sees GSTR-1/3B/9 and none of these);
+  `late_filing.late_fee` refuses all four forms. What is left is in
+  `docs/open-items/`.
 - **A PLACE OF SUPPLY HAS FOUR SOURCES AND ONE RESOLVER**, and the invoice
   declares the field TWICE. `domain/gst/place_of_supply.recipient_place_of_supply`
   is the chain — what the caller stated (CGST Rule 46(n) makes it the
@@ -1000,11 +1043,12 @@ guard that states the rule rather than a spelling of it:
   **GST-32's REFUSAL OF THE PAYLOAD STANDS AND IS NARROWED, NOT REVERSED** — a
   wrong field NAME fails visibly at the portal while a misremembered field
   MEANING generates a real document with wrong figures — so this checks VALUES
-  in named fields and builds no JSON. Five things are NAMED as not held, each
-  with its own reason: the HSN master behind error 2176, `IsServc` against the
-  HSN class and the goods-only quantity rule (both need an `is_service` that
-  `client_sales_invoice_lines` does not have), the payload's own field
-  expressions, and the arithmetic the IRP recomputes.
+  in named fields and builds no JSON. Four things are NAMED as not held
+  (`irp_validations.NOT_HELD`, pinned at four), each with its own reason: the
+  HSN master behind error 2176, `IsServc` against the HSN class (refused on
+  the MASTER and not on the flag: migration 411 gave the line an `is_service`
+  and `goods_unit_finding` now asks the goods-only quantity and UQC rule), the
+  payload's own field expressions, and the arithmetic the IRP recomputes.
   **`VERIFIED` is True here and it is a claim about PROVENANCE** — every
   expression is transcribed character for character from
   `docs/compliance/sources/e-invoice/`, fetched by hand on 18-09-2026, and a

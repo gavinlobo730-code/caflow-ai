@@ -220,3 +220,53 @@ def test_the_page_does_not_say_the_revised_and_updated_return_is_unbuilt():
     assert not re.search(r"need a `return_type` and a migration replacing migration 319", page), (
         "CLAUDE.md still says the revised return needs a migration replacing migration 319's key; migration 381 "
         "is that migration.")
+
+
+_NUMBER_WORDS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8}
+
+
+def test_the_page_counts_what_the_irp_module_names_as_not_held():
+    """GST-32 names the things `irp_validations` does not hold, and the page gave a COUNT. Migration 411 gave a sales
+    invoice line an `is_service` and `goods_unit_finding` now asks the goods-only quantity rule, so the module's
+    `NOT_HELD` went from five entries to four while the page went on saying five and on saying the goods-only rule
+    "needs an `is_service` that `client_sales_invoice_lines` does not have". The number is what is held to the code;
+    the clause is the known contradiction."""
+    from domain.gst import irp_validations
+
+    hit = _found(r"(\w+) things are NAMED as not held", "how many things the IRP validations name as not held")
+    stated = _NUMBER_WORDS.get(hit.group(1).lower())
+    assert stated is not None, f"CLAUDE.md gives the count as {hit.group(1)!r}, which this test cannot read as a number"
+    assert stated == len(irp_validations.NOT_HELD), (
+        f"CLAUDE.md says {hit.group(1)} things are named as not held and domain/gst/irp_validations.py `NOT_HELD` "
+        f"has {len(irp_validations.NOT_HELD)}. The code is the authority: fix the page.")
+    assert hasattr(irp_validations, "goods_unit_finding"), "premise: the goods-only quantity rule is built"
+    assert not re.search(r"goods-only quantity rule \(both need an `is_service`", _page()), (
+        "CLAUDE.md still says the goods-only quantity rule needs an `is_service` that "
+        "`client_sales_invoice_lines` does not have; migration 411 added it and `goods_unit_finding` asks it.")
+
+
+#: The four returns GST-25 built for a registration that does not file GSTR-1 and GSTR-3B, each the module that
+#: decides it. `registrations.files_gstr1_and_3b` has refused such a registration those screens since GST-20; these
+#: are the returns it owes instead, and the design record has to say they exist or the next reader concludes the
+#: product still has nothing to offer a composition dealer or an e-commerce operator.
+GST_25_BUILDERS = ("composition", "gstr8", "gstr4_annual", "gstr9c")
+
+
+@pytest.mark.parametrize("module", GST_25_BUILDERS)
+def test_the_page_names_each_return_builder_for_a_registration_that_does_not_file_gstr1_and_3b(module):
+    path = API / "domain" / "gst" / f"{module}.py"
+    assert path.is_file(), f"premise: {path} exists; if it was renamed, update GST_25_BUILDERS and the page together"
+    assert f"domain/gst/{module}.py" in _page(), (
+        f"CLAUDE.md does not name `domain/gst/{module}.py`, the builder GST-25 added for a registration that "
+        "does not file GSTR-1 and GSTR-3B. Add it to the GST-25 bullet (after the multi-registration one).")
+
+
+def test_the_page_does_not_say_the_payment_code_is_unwired_from_the_deductee_rows():
+    """`Vocabulary.payment_code()` was "deliberately NOT yet wired into `tds_return_service.py`'s per-line deductee
+    output" when it was written. `domain/tds/deductee_payment_code.py` wires it onto the 24Q/26Q/27Q rows
+    (TDS-INCOME-TAX-31), and `tds_return_service` imports it; the later bullet says so and the earlier one did not."""
+    wired = (API / "services" / "tds_return_service.py").read_text(encoding="utf-8")
+    assert "deductee_payment_code" in wired, "premise: tds_return_service uses deductee_payment_code"
+    assert not re.search(r"deliberately NOT yet wired into `tds_return_service\.py`", _page()), (
+        "CLAUDE.md still says the s.393 payment code is not wired into tds_return_service.py's deductee rows; "
+        "domain/tds/deductee_payment_code.py does that. Point the sentence at the TDS-INCOME-TAX-31 bullet.")
