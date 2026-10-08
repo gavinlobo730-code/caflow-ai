@@ -19,8 +19,19 @@ import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
+import Link from "next/link";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// WHAT THE PAYABLE FIGURE IS CALLED. The engine sets payable.net_payable_paise
+// to total_tax_paise - tds_and_advance_paise (domain/income_tax/itr_engine.py):
+// the tax less TDS and advance tax already paid, and nothing else. It carries
+// no §234A/B/C interest and no §234F fee, which are worked on the Advance Tax
+// screen, so a bare "Net Payable" reads as what the client pays with the return
+// and is short by exactly those (IT-13). Every place this figure is shown uses
+// these two labels; the figure itself is unchanged.
+const PAYABLE_LABEL = "Net payable, before interest and fee";
+const REFUND_LABEL = "Refund, before interest";
+
+const BASE =process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // The years this build can actually compute are the server's to state — see
 // GET /api/income-tax/financial-years. Hard-coding them here is what let the
@@ -1169,7 +1180,7 @@ export default function TaxComputationPage() {
             </div>
             <div>
               <p className="text-3xs text-ps-hint">
-                {latestSnap.is_refund ? "Refund" : "Payable"}
+                {latestSnap.is_refund ? REFUND_LABEL : PAYABLE_LABEL}
               </p>
               <p className={`text-sm font-semibold ${latestSnap.is_refund ? "text-green-600" : "text-red-600"}`}>
                 {paise(Math.abs(latestSnap.net_payable_paise))}
@@ -2084,12 +2095,30 @@ export default function TaxComputationPage() {
                     </div>
                   )}
                   <div>
-                    <p className="text-ps-hint">{computeResult.payable?.is_refund ? "Refund" : "Net Payable"}</p>
+                    <p className="text-ps-hint">{computeResult.payable?.is_refund ? REFUND_LABEL : PAYABLE_LABEL}</p>
                     <p className={`font-medium ${computeResult.payable?.is_refund ? "text-green-600" : "text-red-600"}`}>
                       {paise(Math.abs(computeResult.payable?.net_payable_paise ?? 0))}
                     </p>
                   </div>
                 </div>
+                {/* The figure above is tax less TDS and advance tax, nothing
+                    more. Where the rest is worked is stated, and linked with
+                    the client, because the Advance Tax screen is a firm-level
+                    page that preselects from ?client_id= (as the tax hub's
+                    own tool links do). The fee is said to be absent because
+                    nothing in the product computes a §234F fee. */}
+                <p className="text-3xs text-ps-hint">
+                  This is the tax less TDS and advance tax paid. It carries no
+                  §234A/B/C interest and no §234F fee: the interest and the
+                  §140A self-assessment challan are worked on the{" "}
+                  <Link
+                    href={`/income-tax/advance-tax?client_id=${encodeURIComponent(clientId)}`}
+                    className="text-brand underline"
+                  >
+                    Advance Tax screen
+                  </Link>
+                  ; a §234F fee is not computed by PracticeSync.
+                </p>
                 {/* §115JB / §115JC. The CREDIT is the reason this is on the
                     screen at all: §115JAA and §115JD carry the excess forward
                     for fifteen assessment years, and a floor charged without
@@ -2615,7 +2644,7 @@ export default function TaxComputationPage() {
                         {s.is_refund ? "+" : ""}{paise(Math.abs(s.net_payable_paise))}
                       </p>
                       <p className={`text-3xs ${s.is_refund ? "text-green-600" : "text-state-problem"}`}>
-                        {s.is_refund ? "Refund" : "Payable"}
+                        {s.is_refund ? REFUND_LABEL : PAYABLE_LABEL}
                       </p>
                     </div>
                   </div>
