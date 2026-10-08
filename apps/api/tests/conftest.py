@@ -41,6 +41,16 @@ def _the_public_rate_windows_are_fresh_for_every_test():
 
 
 @pytest.fixture(autouse=True)
+def _the_year_lock_pin_attempt_windows_are_fresh_for_every_test():
+    """The attempts counted against the year-lock PIN (services/year_lock_service, POST-A-004) are process-wide:
+    a test that spends them on purpose would otherwise leave a worker's next test refused with a 429."""
+    from services import year_lock_service
+    year_lock_service.reset_pin_attempts()
+    yield
+    year_lock_service.reset_pin_attempts()
+
+
+@pytest.fixture(autouse=True)
 def _no_schema_drift_watch_outlives_its_test():
     """The schema-drift re-check (core/schema_guard.start_drift_watch, ops-19) is a
     daemon thread that asks the database again every two minutes. Under test it only

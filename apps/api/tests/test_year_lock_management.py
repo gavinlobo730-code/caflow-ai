@@ -8,10 +8,16 @@ firms.locked_financial_years) and its year-end integration:
   * a wrong PIN is rejected (403); trusted system callers may bypass the PIN
   * get_state never leaks the PIN
   * completing a year-end engagement (→ locked) locks that financial year
+
+WHERE THE PIN LIVES (POST-A-004, migration 480): not in `firms`. It is a salted hash in `firm_lock_pins`,
+which no signed-in session can read, and `firms.lock_pin` stays NULL. The tests below seed and read the
+table the code actually uses; tests/test_the_year_lock_pin_is_hashed_limited_and_unreadable.py is the
+fuller statement of the storage, the limiter and the audit trail.
 """
 import pytest
 from fastapi import HTTPException
 
+from domain.firm import lock_pin
 from services import year_lock_service as yls
 import routers.year_end as ye
 from routers.year_end import EngagementStatusIn
@@ -22,9 +28,15 @@ PARTNER = {"firm_id": FIRM, "auth_user_id": "u1", "email": "p@firma.test", "role
 
 
 def _setup(monkeypatch, pin=None, mods=None):
+    """A firm; with `pin`, one that has already set it, as migration 480 and the service store it."""
+    # A cheap hash: these tests are about who is let through, not about how slow the KDF is (the real figure
+    # is pinned in the PIN test module, which does not patch it).
+    monkeypatch.setattr(lock_pin, "ITERATIONS", 1_000)
     db = FakeDB()
     wire_e2e(monkeypatch, db, mods or [yls])
-    db.seed("firms", {"id": FIRM, "locked_financial_years": [], "lock_pin": pin})
+    db.seed("firms", {"id": FIRM, "locked_financial_years": [], "lock_pin": None})
+    if pin is not None:
+        db.seed("firm_lock_pins", {"firm_id": FIRM, "pin_hash": lock_pin.hash_pin(pin)})
     return db
 
 
@@ -52,8 +64,12 @@ def test_first_lock_sets_pin(monkeypatch):
     db = _setup(monkeypatch, pin=None)
     s = yls.set_lock(db, FIRM, "2024-25", lock=True, pin="1234")
     assert s["pin_set"] is True
+    # The PIN is adopted — as a hash, in the table no signed-in session can read, never in `firms`.
     row = next(r for r in db.rows("firms") if r["id"] == FIRM)
-    assert row["lock_pin"] == "1234"
+    assert row["lock_pin"] is None
+    stored = [r for r in db.rows("firm_lock_pins") if r["firm_id"] == FIRM]
+    assert len(stored) == 1 and "1234" not in stored[0]["pin_hash"]
+    assert lock_pin.verify("1234", stored[0]["pin_hash"]).ok
 
 
 def test_wrong_pin_blocked(monkeypatch):

@@ -112,6 +112,12 @@ _DEFAULTS: dict[str, dict] = {
     # would have supplied false.
     "fixed_assets": {"is_disposed": False, "accumulated_depreciation_paise": 0,
                      "corrections_count": 0},
+    # NOT NULL DEFAULT 'moving_average' (migration 394). A writer that omits the stamp gets the weighted
+    # average whatever the client's policy is, and the Significant Accounting Policies note counts that column
+    # to say which formula priced the year: the godown transfer omitted it, and a FIFO client with one transfer
+    # was told it had changed its accounting policy. Fixtures that stamp every row by hand cannot see that, so
+    # the double supplies what Postgres would (the suite's own `_moved` helper seeds, and seeding is untouched).
+    "inventory_stock_ledger": {"costing_method": "moving_average"},
 }
 
 

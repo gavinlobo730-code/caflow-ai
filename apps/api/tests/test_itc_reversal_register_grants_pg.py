@@ -76,6 +76,10 @@ NOT_FOR_THE_API = {
                              # other person's queued mail.
     "email_suppressions",    # addresses the provider reported as a hard bounce or a complaint: personal data
                              # about people who are not the firm's users, read only by the sender.
+    # Migration 480 (POST-A-004): the firm's year-lock PIN as a salted hash. It lives here and not in `firms`
+    # precisely because every member of the firm can read `firms` over PostgREST; row-level security is on with
+    # no policy and `authenticated` holds no privilege, which the deny-list test below proves for this name.
+    "firm_lock_pins",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.
