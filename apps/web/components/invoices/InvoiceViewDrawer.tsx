@@ -85,7 +85,7 @@ export function InvoiceViewDrawer({
   clientId: string;
   onClose: () => void;
   onEdit: (inv: SalesInvoice) => void;
-  onIssue: (id: string) => void;
+  onIssue: (id: string) => unknown;
   onSend: (inv: SalesInvoice) => void;
   onDelete: (inv: SalesInvoice) => void;
   onDuplicate: (inv: InvoiceDetail) => void;
@@ -439,16 +439,21 @@ function Badge({ children, tone, title }: { children: React.ReactNode; tone: "gr
   return <span title={title} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-3xs font-medium border ${cls}`}>{children}</span>;
 }
 
+/** One action in a drawer's action bar. It is a `<Button>` and not a raw `<button>` because EVERY caller hands it a
+ *  write that posts something (Issue and Receive post a journal, Delete removes a draft), and the repeat-click
+ *  guard lives in Button: a raw button here let two clicks in one tick send two requests. `onClick` is typed
+ *  `() => unknown` so that the caller's promise reaches the guard. */
 function Action({ children, onClick, icon, primary, danger }: {
-  children: React.ReactNode; onClick: () => void; icon: React.ReactNode; primary?: boolean; danger?: boolean;
+  children: React.ReactNode; onClick: () => unknown; icon: React.ReactNode; primary?: boolean; danger?: boolean;
 }) {
   const cls = primary ? "bg-brand text-white hover:bg-brand-dark border-brand"
     : danger ? "border-ps-border text-red-600 hover:bg-state-problem-hover"
     : "border-ps-border text-ps-label hover:bg-ps-bg";
   return (
-    <button onClick={onClick} className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1 ${cls}`}>
-      {icon} {children}
-    </button>
+    <Button variant="plain" size="none" icon={icon} onClick={onClick}
+      className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1 disabled:opacity-60 ${cls}`}>
+      {children}
+    </Button>
   );
 }
 

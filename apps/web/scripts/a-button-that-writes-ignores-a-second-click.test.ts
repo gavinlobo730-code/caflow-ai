@@ -30,7 +30,8 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
-  analyseButtons, API_CLIENTS, findDroppedPromises, findRawAsyncButtons, GUARDED_PRIMITIVES, READS_BY_POST, writingClientMethods,
+  analyseButtons, API_CLIENTS, findAwaitedPropCallbacks, findDroppedPromises, findDroppedPropPromises,
+  findForwardedClicks, findRawAsyncButtons, GUARDED_PRIMITIVES, READS_BY_POST, writingClientMethods,
 } from "./rawAsyncButtons.ts";
 import { stripComments } from "./stripComments.ts";
 
@@ -498,4 +499,166 @@ test("a submit control that takes its handler as a PROP is a Button too", () => 
     "a raw <button> whose handler is a prop named onSubmit/onSave/onAdd… is a write somebody else wrote. Use " +
     "<Button variant=\"plain\" size=\"none\" onClick={onSubmit}> and type the prop `() => unknown` so the caller's " +
     "promise reaches it. The table may only shrink.");
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// WHERE THE WRITE IS SOMEBODY ELSE'S (the money-editor drive, PRE-A-015)
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// Everything above reads a handler declared in the SAME file. Driving the money editors in a real browser found
+// eight places where a click reaches a write that is in a CALLER, and in every one a second click in the same tick
+// sent a second request: the Issue of an invoice (which posts its journal) and of each of the four notes, the
+// Receive of a purchase bill (which posts its journal, withholds the TDS and claims the credit), and the Delete
+// Draft of an invoice and of a bill. The source guard had read all of them as clean, because:
+//
+//   * a drawer's `Action` was a raw `<button onClick={onClick}>` typed `() => void`, six copies of it, and every
+//     caller's write reached a button that held nothing;
+//   * a confirmation dialog's handler `await onConfirm()`s the caller's delete, and `onConfirm` is a prop, not a
+//     function the analysis can open;
+//   * the page handed the drawer `onIssue={(id) => { setDetailId(null); issueInvoice(id); }}`, which STARTS the
+//     write and drops its promise, so even a button that held would have been released on the same tick.
+//
+// The three rules below are stated on those SHAPES, derived from the syntax tree of every file, so a seventh copy
+// of the primitive or a fourth dialog is caught by the check that caught the first.
+
+test("a raw button handed its component's own onClick is found, and a Button doing the same is not", () => {
+  const forwarded = (src: string) => findForwardedClicks("t.tsx", src);
+  assert.equal(forwarded(`function Action({ children, onClick }) { return <button onClick={onClick}>{children}</button>; }`).length, 1,
+    "the destructured prop");
+  assert.equal(forwarded(`function Action(props) { return <button onClick={props.onClick}>x</button>; }`).length, 1, "props.onClick");
+  assert.equal(forwarded(`function Action({ onClick: go }) { return <button onClick={go}>x</button>; }`).length, 1, "a renamed binding");
+  assert.equal(forwarded(`function List({ rows, onClick }) { return rows.map((r) => <button key={r} onClick={onClick}>x</button>); }`).length, 1,
+    "a button inside a .map callback sits inside the component all the same");
+  // what it must leave alone
+  assert.equal(forwarded(`function Action({ onClick }) { return <Button onClick={onClick}>x</Button>; }`).length, 0, "a Button holds it");
+  assert.equal(forwarded(`function A({ onClose }) { return <button onClick={onClose}>x</button>; }`).length, 0, "another prop is not this rule's");
+  assert.equal(forwarded(`function A() { const onClick = () => 1; return <button onClick={onClick}>x</button>; }`).length, 0,
+    "a local function named onClick is not a prop");
+  assert.equal(forwarded(`function A({ onClick }) { return <button onClick={() => onClick()}>x</button>; }`).length, 0,
+    "wrapped in an arrow it is the existing rules' business");
+});
+
+test("a raw button whose handler awaits a callback its component was handed is found", () => {
+  const awaited = (src: string) => findAwaitedPropCallbacks("t.tsx", src);
+  const dialog = (handler: string) => `
+    function Dialog({ onConfirm, onClose }) {
+      ${handler}
+      return <button onClick={handle}>Delete</button>;
+    }`;
+  assert.equal(awaited(dialog(`async function handle() { setBusy(true); try { await onConfirm(); } finally { setBusy(false); } }`)).length, 1,
+    "the confirmation dialog");
+  assert.equal(awaited(dialog(`const handle = async () => { await onConfirm(); };`)).length, 1, "an async arrow");
+  assert.equal(awaited(dialog(`async function handle() { await somethingLocal(); }`)).length, 0, "awaiting a local function is not a prop");
+  assert.equal(awaited(dialog(`function handle() { onConfirm(); }`)).length, 0, "a sync handler is not async");
+  assert.equal(awaited(`function D({ onConfirm }) { async function handle() { await onConfirm(); } return <Button onClick={handle}>x</Button>; }`).length, 0,
+    "a Button holds it");
+});
+
+test("a function handed to a component's on… prop that starts a write and drops the promise is found", () => {
+  const dropped = (src: string) => findDroppedPropPromises("t.tsx", src);
+  const page = (prop: string) => `
+    function Page() {
+      async function issueInvoice(id) { await apiCall("/api/x/" + id, "POST"); }
+      return <Drawer ${prop} />;
+    }`;
+  assert.equal(dropped(page(`onIssue={(id) => { setDetailId(null); issueInvoice(id); }}`)).length, 1, "a statement");
+  assert.equal(dropped(page(`onIssue={(id) => void issueInvoice(id)}`)).length, 1, "void");
+  assert.equal(dropped(page(`onIssue={(id) => { setDetailId(null); return issueInvoice(id); }}`)).length, 0, "returned");
+  assert.equal(dropped(page(`onIssue={(id) => issueInvoice(id)}`)).length, 0, "an expression body is returned");
+  assert.equal(dropped(page(`onIssue={(id) => { setDetailId(null); }}`)).length, 0, "no write");
+  assert.equal(dropped(page(`onIssue={issueInvoice}`)).length, 0, "a named function is handed over whole");
+  assert.equal(dropped(`function P(){ async function load(){ await api.accounting.list(); } return <Drawer onDone={() => { load(); }} />; }`).length, 0,
+    "a READ dropped is not this rule's");
+  assert.equal(dropped(`function P(){ async function issue(){ await apiCall("/x", "POST"); } return <div onClick={() => { issue(); }} />; }`).length, 0,
+    "a DOM event on a native tag is the raw-button rule's, not this one's");
+  assert.equal(dropped(`function P(){ async function issue(){ await apiCall("/x", "POST"); } return <Button onClick={() => { issue(); }}>x</Button>; }`).length, 0,
+    "a guarded primitive's own onClick is the dropped-promise rule's");
+});
+
+/**
+ * The raw buttons that await a prop callback and are NOT on a money screen, each with why a second click costs
+ * nothing a person cannot see. A table that may only shrink; a money screen may not be on it.
+ */
+const AWAITS_A_PROP_CALLBACK: Record<string, { count: number; why: string }> = {
+  "app/settings/email-templates/page.tsx": { count: 1, why: "saves a template by key: a second save writes the same row again" },
+  "app/team/page.tsx": { count: 1, why: "changes a member's role to the value shown: a second change is the same change" },
+  "components/CsvImportModal.tsx": {
+    count: 1,
+    why: "NOT harmless: a second Import in one tick imports the file twice. It is shared by ten screens and is "
+      + "the upload screens' to convert (PRE-A-001); named here so the rule does not read it as clean",
+  },
+};
+
+/** `on…` props given a function that starts a write and drops the promise, where nothing holds a click. */
+const DROPS_A_PROP_PROMISE: Record<string, { count: number; why: string }> = {
+  "app/copilot/page.tsx": { count: 1, why: "a thumbs rating on a reply: nothing is posted and a repeat records the same rating" },
+  "app/settings/ai/page.tsx": { count: 1, why: "the provider check spends a few tokens and is rate limited by the server (3 a minute)" },
+};
+
+function treeFinds(finder: (f: string, s: string) => Array<{ line: number }>): Record<string, number> {
+  const found: Record<string, number> = {};
+  for (const f of FILES) {
+    const n = finder(f, source(f)).length;
+    if (n > 0) found[f] = n;
+  }
+  return found;
+}
+
+function assertEqualToTable(found: Record<string, number>, table: Record<string, { count: number; why: string }>, what: string) {
+  const grew: string[] = [];
+  const fell: string[] = [];
+  for (const f of new Set([...Object.keys(found), ...Object.keys(table)])) {
+    const a = found[f] ?? 0, b = table[f]?.count ?? 0;
+    if (a > b) grew.push(`${f}: ${a} (table allows ${b})`);
+    if (a < b) fell.push(`${f}: ${a} (table says ${b}) — good: lower the entry${a === 0 ? " (delete it)" : ""}`);
+  }
+  assert.deepEqual(grew, [], what + "\n  " + grew.join("\n  "));
+  assert.deepEqual(fell, [], "the table may only shrink, and an entry that stopped being true must be deleted:\n  " + fell.join("\n  "));
+}
+
+test("no raw button forwards its component's onClick: a generic button primitive is a Button", () => {
+  const found = treeFinds((f, s) => findForwardedClicks(f, s));
+  assert.deepEqual(found, {},
+    "a component that takes `onClick` and hands it to a raw <button> holds nothing: every caller's write, an Issue or a " +
+    "Receive that posts a journal included, reaches a button that lets a second click through. Render " +
+    "<Button variant=\"plain\" size=\"none\" onClick={onClick}> and type the prop `() => unknown`:\n  " +
+    Object.keys(found).join("\n  "));
+});
+
+test("no raw button awaits a callback its component was handed, outside the table", () => {
+  assertEqualToTable(treeFinds((f, s) => findAwaitedPropCallbacks(f, s)), AWAITS_A_PROP_CALLBACK,
+    "a raw <button> whose handler `await`s a prop callback (`await onConfirm()`) performs a write the same-file analysis " +
+    "cannot see, and a second click in the same tick performs it twice. Use <Button …> (the handler already returns the " +
+    "promise):");
+  for (const [f, { why }] of Object.entries(AWAITS_A_PROP_CALLBACK)) {
+    assert.ok(why.length > 20, `${f} needs its reason written down`);
+    assert.equal(MONEY_SCREENS.includes(f), false, `${f} is a money screen: it may not be on the table`);
+  }
+});
+
+test("nothing hands a component an on… function that starts a write and drops the promise, outside the table", () => {
+  assertEqualToTable(treeFinds((f, s) => findDroppedPropPromises(f, s)), DROPS_A_PROP_PROMISE,
+    "`onIssue={(id) => { setDetailId(null); issueInvoice(id); }}` starts the write and discards the promise, so the " +
+    "receiving component has nothing to hold a repeat click on. Return it: `{ setDetailId(null); return issueInvoice(id); }` " +
+    "(and type the prop `=> unknown`):");
+  for (const [f, { why }] of Object.entries(DROPS_A_PROP_PROMISE)) {
+    assert.ok(why.length > 20, `${f} needs its reason written down`);
+    assert.equal(MONEY_SCREENS.includes(f), false, `${f} is a money screen: it may not be on the table`);
+  }
+});
+
+test("the drawers that take a caller's write type the prop so the promise reaches the button", () => {
+  // A prop typed `=> void` tells the caller nobody reads the result; typed `=> unknown` it says the opposite.
+  for (const [file, prop] of [
+    ["components/invoices/InvoiceViewDrawer.tsx", "onIssue"],
+    ["components/purchases/PurchaseBillViewDrawer.tsx", "onReceive"],
+    ["components/sales/SalesCreditNoteViewDrawer.tsx", "onIssue"],
+    ["components/sales/SalesDebitNoteViewDrawer.tsx", "onIssue"],
+    ["components/purchases/DebitNoteViewDrawer.tsx", "onIssue"],
+    ["components/purchases/PurchaseCreditNoteViewDrawer.tsx", "onIssue"],
+  ] as const) {
+    const declared = new RegExp(`\\b${prop}: \\([^)]*\\) => (\\w+);`).exec(stripComments(source(file)));
+    assert.ok(declared, `${file} no longer declares ${prop}`);
+    assert.equal(declared![1], "unknown", `${file}: ${prop} is typed => ${declared![1]}; the caller's promise has nowhere to go`);
+  }
 });

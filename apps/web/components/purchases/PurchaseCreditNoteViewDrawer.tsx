@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Pencil, Trash2, CheckCircle, Paperclip, BookOpen, Clock, Loader2, ChevronDown, ChevronUp, AlertCircle, Copy } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
+import { Button } from "@/components/ui/button";
 import { apiGet, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { formatDateTime } from "@/lib/services/formatting";
 import type { PurchaseCreditNoteDetail } from "@/components/purchases/PurchaseCreditNoteEditor";
@@ -34,16 +35,21 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
   );
 }
 
+/** One action in a drawer's action bar. It is a `<Button>` and not a raw `<button>` because EVERY caller hands it a
+ *  write that posts something (Issue and Receive post a journal, Delete removes a draft), and the repeat-click
+ *  guard lives in Button: a raw button here let two clicks in one tick send two requests. `onClick` is typed
+ *  `() => unknown` so that the caller's promise reaches the guard. */
 function Action({ children, onClick, icon, primary, danger }: {
-  children: React.ReactNode; onClick: () => void; icon: React.ReactNode; primary?: boolean; danger?: boolean;
+  children: React.ReactNode; onClick: () => unknown; icon: React.ReactNode; primary?: boolean; danger?: boolean;
 }) {
   const cls = primary ? "bg-brand text-white hover:bg-brand-dark border-brand"
     : danger ? "border-ps-border text-state-problem hover:bg-state-problem-hover"
     : "border-ps-border text-ps-label hover:bg-ps-bg";
   return (
-    <button onClick={onClick} className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1 ${cls}`}>
-      {icon} {children}
-    </button>
+    <Button variant="plain" size="none" icon={icon} onClick={onClick}
+      className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1 disabled:opacity-60 ${cls}`}>
+      {children}
+    </Button>
   );
 }
 
@@ -55,7 +61,7 @@ export function PurchaseCreditNoteViewDrawer({
   vendorName: string;
   onClose: () => void;
   onEdit: (pcnId: string) => void;
-  onIssue: (pcn: PurchaseCreditNoteDetail) => void;
+  onIssue: (pcn: PurchaseCreditNoteDetail) => unknown;
   onDelete: (pcn: PurchaseCreditNoteDetail) => void;
   onDuplicate: (pcn: PurchaseCreditNoteDetail) => void;
 }) {

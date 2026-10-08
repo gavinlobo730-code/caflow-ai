@@ -1273,7 +1273,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
           }
           onClose={() => setDetailId(null)}
           onEdit={(id) => router.push(`/clients/${clientId}/purchases/bills/${id}/edit`)}
-          onReceive={(id) => { setDetailId(null); handleReceive(id); }}
+          onReceive={(id) => { setDetailId(null); return handleReceive(id); }}
           onDelete={(bill) => { setDetailId(null); setDeleteTarget(bill); }}
           onDuplicate={duplicateBill}
           onCancelBill={cancelBill}
@@ -1356,13 +1356,16 @@ function DeleteBillModal({
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button
+          {/* A Button, not a raw <button>: `handle` AWAITS the caller's delete, which the same-file analysis
+              cannot see, so a second click in the same tick sent a second DELETE. */}
+          <Button
+            variant="plain" size="none" spinner={false}
             onClick={handle}
             disabled={deleting}
             className="text-xs px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-1.5"
           >
             {deleting ? "Deleting…" : <><Trash2 size={12} /> Delete Draft</>}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -3618,7 +3621,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
           }
           onClose={() => setDetailId(null)}
           onEdit={(id) => router.push(`/clients/${clientId}/purchases/debit-notes/${id}/edit`)}
-          onIssue={(dn) => { setDetailId(null); issueDebitNote(dn.id); }}
+          onIssue={(dn) => { setDetailId(null); return issueDebitNote(dn.id); }}
           onDelete={deleteDebitNote}
           onDuplicate={duplicateDebitNote}
         />
@@ -4083,7 +4086,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
           }
           onClose={() => setDetailId(null)}
           onEdit={(id) => router.push(`/clients/${clientId}/purchases/credit-notes/${id}/edit`)}
-          onIssue={(pcn) => { setDetailId(null); issueCreditNote(pcn.id); }}
+          onIssue={(pcn) => { setDetailId(null); return issueCreditNote(pcn.id); }}
           onDelete={deletePcn}
           onDuplicate={duplicatePcn}
         />
