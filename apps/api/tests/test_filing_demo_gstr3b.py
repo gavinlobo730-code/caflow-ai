@@ -15,12 +15,15 @@ WHAT IS SPECIFIC TO GSTR-3B AND PINNED HERE
       Circular 170/02/2022-GST): 4(A) GROSS, 4(B)(1) absolute reversals,
       4(B)(2) reclaimable ones, 4(C) = 4(A) − 4(B), and §17(5) in 4(B)(1) and
       not repeated in 4(D).
-    - IMS, BETWEEN 3.1 AND 4. CGST Act §38 was substituted with effect from
-      01-10-2025 and the ITC statement it describes is the Invoice Management
-      System one, so what the CA does on that dashboard — including nothing,
-      which is deemed acceptance — decides GSTR-2B and therefore Table 4(A).
-      The stage is pinned here, and so are the two trade-press claims it must
-      NOT repeat.
+    - IMS, BETWEEN 3.1 AND 4. Supplier documents land on the recipient's
+      Invoice Management System dashboard, so what the CA does there decides
+      GSTR-2B and therefore Table 4(A). The stage is pinned here as a RULE, not
+      as a spelling: the practical advice (open IMS before Table 4, the four
+      actions, the link to 4(A)) is present; every statement of how IMS behaves
+      carries a hedge ("as reported in GSTN's advisory and FAQs", "confirm on
+      the portal") because none was read from a primary source; no rule,
+      notification, section or effective date is cited for it; and the two
+      trade-press claims it must NOT repeat stay out.
     - The demo is gated on the SAME status the screen gates its button on:
       ca_approved. A submitted return already carries its real ARN.
     - Every figure is integer paise read off the saved gstr3b_returns record —
@@ -31,6 +34,8 @@ held for this module automatically by tests/test_filing_demo_framework.py,
 whose scans walk the whole services/filing_demo package. Run the two together.
 """
 from __future__ import annotations
+
+import re
 
 import pytest
 
@@ -189,43 +194,134 @@ def test_follows_the_portal_sequence_including_the_payment_stage():
 
 
 # ── IMS: where Table 4 actually comes from ──────────────────────────────────
+#
+# THE RULE, NOT A SPELLING. How IMS behaves (what silence does, when the draft
+# 2B is generated, recomputing, how long Pending waits, what a rejected credit
+# note does to the supplier) was graded [S-gov]/[S]/[U] from search summaries
+# of GSTN's advisory and FAQs and never read from a primary source, so the
+# walk-through shown to practising CAs must not state it as fact. What these
+# tests hold is therefore (1) the practical advice is there, (2) every
+# statement of a portal mechanic carries a hedge, and (3) no rule,
+# notification, section or effective date is cited for IMS. They do not pin
+# any sentence, so a reworded hedge passes and an unhedged new sentence fails.
 
-def test_the_ims_stage_teaches_the_four_actions_and_the_default():
-    """CGST Act §38 was substituted with effect from 01-10-2025 (Notification
-    16/2025-Central Tax) and the ITC statement it describes is the IMS one.
-    A walk-through that opens on the saved return skips the step the month
-    now turns on — and the load-bearing half is the DEFAULT: no action is
-    deemed accepted, so silence takes in whatever every supplier filed."""
+HEDGE_MARKERS = ("as reported in", "as reported,", "confirm on the portal")
+# A portal mechanic: what IMS or GSTR-2B generation DOES, as opposed to the
+# advice to open it. Stems, so "recomputed", "generated" and "waits" all count.
+MECHANIC = re.compile(
+    r"deem|recomput|generat|\b14th\b|window|\bwait|stays on|kept out|"
+    r"treated as|reaches", re.IGNORECASE)
+# A statutory citation or effective date: the things this stage may not carry
+# until a person has read them.
+CITATION = re.compile(
+    r"\bRule\s+\d|\bNotification\s+\d|\b\d+/20\d\d\b|§\s*\d|\bsection\s+\d|"
+    r"\bwith effect from\b|\bsubstituted\b|\b\d{2}-\d{2}-\d{4}\b",
+    re.IGNORECASE)
+
+
+def _hedged(text: str) -> bool:
+    low = text.lower()
+    return any(m in low for m in HEDGE_MARKERS)
+
+
+def _sentences(text: str) -> list[str]:
+    return [s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s]
+
+
+def _ims_units(ims: dict) -> list[str]:
+    """Every piece of the IMS stage the user reads as a statement: the note and
+    each row's effect cell (the first column is only the action's name)."""
+    return [ims["note"]] + [r[1]["text"] for r in ims["rows"]]
+
+
+def _unhedged_mechanics(units: list[str]) -> list[str]:
+    return [s for u in units for s in _sentences(u)
+            if MECHANIC.search(s) and not _hedged(s)]
+
+
+def _citations(units: list[str]) -> list[str]:
+    return [m.group(0) for u in units for m in CITATION.finditer(u)]
+
+
+def test_the_ims_stage_teaches_the_four_actions_and_the_practical_advice():
+    """The part that survives hedging is the advice: supplier documents are
+    Accepted, Rejected or kept Pending on the IMS dashboard, that decides
+    GSTR-2B and so Table 4(A), and the CA opens IMS BEFORE Table 4.
+    PracticeSync itself does not act on IMS, and the stage says so."""
     out = _build()
     ims = _stage(out, "Before Table 4")
     actions = [r[0]["text"] for r in ims["rows"]]
     assert actions == ["Accept", "Reject", "Pending", "No action"]
     effects = {r[0]["text"]: r[1]["text"] for r in ims["rows"]}
-    assert "DEEMED ACCEPTED" in effects["No action"], (
-        "silence accepting everything is the fact a CA has to know before "
-        "deciding whether opening IMS is optional in practice")
-    assert "Rule 67B" in effects["Reject"], (
-        "rejecting a credit note pushes the liability back to the supplier")
     assert "4(A)" in effects["Accept"], "the link to Table 4 is the point"
+    assert "silence" in effects["No action"].lower(), (
+        "what doing nothing amounts to is why a CA opens IMS at all; it may "
+        "be hedged but it may not be dropped")
+    note = ims["note"]
+    assert "open IMS before Table 4" in note
+    assert "PracticeSync does not act on IMS" in note
 
 
-def test_the_ims_stage_states_the_recompute_trap_not_just_the_14th():
-    """The 14th is when the DRAFT 2B is cut; the operative deadline is the
-    filing of GSTR-3B. An action taken after the 14th reaches Table 4 only if
-    GSTR-2B is recomputed — which is the step that silently loses an ITC
-    decision, so the note must not stop at the date."""
-    note = _stage(_build(), "Before Table 4")["note"]
-    assert "14th" in note
-    assert "RECOMPUTED" in note
-    assert "§38" in note and "16/2025-Central Tax" in note
+def test_every_statement_of_how_ims_behaves_is_hedged():
+    """The rule: a sentence that states a portal mechanic carries a hedge
+    ("as reported in GSTN's advisory and FAQs", "confirm on the portal"), and
+    so does every row's effect cell, however short. The note must still carry
+    the recompute advice (the step that silently loses an ITC decision)
+    rather than dropping it to be safe."""
+    ims = _stage(_build(), "Before Table 4")
+    unhedged = _unhedged_mechanics(_ims_units(ims))
+    assert not unhedged, (
+        "these sentences state how IMS behaves with no hedge; say 'as "
+        "reported in GSTN's advisory and FAQs' or 'confirm on the portal': "
+        f"{unhedged}")
+    for unit in _ims_units(ims):
+        assert _hedged(unit), f"an IMS statement with no hedge at all: {unit!r}"
+    assert "recomput" in ims["note"].lower(), (
+        "the timing advice (an action after the draft is generated reaches "
+        "Table 4 only if GSTR-2B is recomputed) is the practical half")
+    assert "14th" in ims["note"]
+
+
+def test_the_ims_stage_cites_no_rule_notification_section_or_effective_date():
+    """None of the section substitution, the notification that brought it into
+    force, the rule on a rejected credit note or the dates attached to them
+    has been read from a primary source here, so the walk-through names none
+    of them. When a person reads them, this is the test they delete."""
+    ims = _stage(_build(), "Before Table 4")
+    assert _citations(_ims_units(ims)) == []
+
+
+def test_the_ims_detectors_catch_the_copy_that_was_removed():
+    """The negative control, kept: the rule's two detectors must flag the
+    sentences the stage used to carry, or the tests above could pass on a
+    stage that states everything as fact."""
+    old_units = [
+        "CGST Act §38 was substituted with effect from 01-10-2025 "
+        "(Notification 16/2025-Central Tax) and this is now the route by "
+        "which input tax credit is communicated.",
+        "Rejecting a supplier's credit note adds the liability back to the "
+        "SUPPLIER's next GSTR-3B (CGST Rule 67B).",
+        "Neither accepted nor rejected: it reaches no return this period and "
+        "waits on the dashboard. Deferred, not lost — but the window is "
+        "finite, and it is narrower for credit notes than for invoices.",
+        "DEEMED ACCEPTED when GSTR-2B is generated. Silence takes in "
+        "everything every supplier filed.",
+        "The draft GSTR-2B is cut on the 14th of the following month, and "
+        "there is no limit on recomputing before filing.",
+    ]
+    assert len(_unhedged_mechanics(old_units)) >= 4
+    assert len(_citations(old_units)) >= 5
+    hedged_version = (
+        "As reported in GSTN's advisory and FAQs, a record with no action is "
+        "treated as accepted when GSTR-2B is generated; confirm on the portal.")
+    assert _unhedged_mechanics([hedged_version]) == []
 
 
 def test_the_ims_stage_does_not_repeat_the_trade_presss_two_wrong_claims():
     """docs/audits/2026-09-07-market-research/gst-primary.md §1d grades "IMS
     became mandatory" [U] and believes "from 01-04-2026 silence is deemed
-    REJECTION" false — the official advisory still says no-action records are
-    deemed accepted, which is the direct evidence that no duty to act exists.
-    A demo shown to CAs must not launder either claim into confidence."""
+    REJECTION" false. A demo shown to CAs must not launder either claim into
+    confidence."""
     ims = _stage(_build(), "Before Table 4")
     text = str(ims)
     assert "deemed rejection" not in text.lower()

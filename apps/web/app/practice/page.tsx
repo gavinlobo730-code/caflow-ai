@@ -4,9 +4,12 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Building2, RefreshCw, Loader2 } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
+import { objectOrNull } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/services/formatting";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
+import { EmptyStateAction } from "@/components/ui/empty-state-action";
 
 /** What the practice client's own tax identity is, as the server holds it. */
 interface PracticeIdentity {
@@ -166,16 +169,32 @@ function PracticeOverview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [provisioning, setProvisioning] = useState(false);
+  // What the server said about WHETHER the Practice can be set up now
+  // (`can_provision`: the firm has a PAN and nothing is provisioned yet). `null`
+  // is "the server did not say" (an API not yet redeployed) and is not "no":
+  // only an explicit `false` disables the button.
+  const [canProvision, setCanProvision] = useState<boolean | null>(null);
+  // The server's own sentence for why the last attempt did not provision, and
+  // whether the attempt was refused (answered, but nothing provisioned) as
+  // opposed to failing to get an answer at all.
+  const [provisionNotice, setProvisionNotice] = useState<string | null>(null);
+  const [provisionRefused, setProvisionRefused] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const p = await api.practice.get() as ApiResp<{
-        provisioned: boolean; identity?: PracticeIdentity | null;
-      }>;
-      setProvisioned(p.data?.provisioned ?? false);
-      setIdentity(p.data?.identity ?? null);
-      if (p.data?.provisioned) {
+      const p = await api.practice.get() as ApiResp<unknown>;
+      // This router answers a refusal as HTTP 200 with {success: false}; an
+      // unchecked read would fall through to the "Set up your Practice" screen
+      // below for a request the server declined.
+      if (!p?.success) { setError(p?.error ?? "Failed to load Practice"); return; }
+      const status = objectOrNull<{
+        provisioned?: boolean; can_provision?: boolean; identity?: PracticeIdentity | null;
+      }>(p.data);
+      setProvisioned(status?.provisioned ?? false);
+      setCanProvision(typeof status?.can_provision === "boolean" ? status.can_provision : null);
+      setIdentity(status?.identity ?? null);
+      if (status?.provisioned) {
         const d = await api.billing.dashboard() as ApiResp<DashboardData>;
         setDash(d.data);
       }
@@ -190,9 +209,31 @@ function PracticeOverview() {
 
   async function provision() {
     setProvisioning(true);
-    try { await api.practice.provision(); await load(); }
-    catch (e) { setError(e instanceof Error ? e.message : "Provisioning failed"); }
-    finally { setProvisioning(false); }
+    setProvisionNotice(null);
+    setProvisionRefused(false);
+    try {
+      const r = await api.practice.provision() as ApiResp<unknown>;
+      // THE RESPONSE IS READ. `POST /api/practice/provision` answers a firm with
+      // no valid PAN as success with `provisioned: false` and a sentence saying
+      // what to do; awaiting the call and reloading showed the "Set up your
+      // Practice" screen again with no word of why (PRE-A-003). Nothing is
+      // decided here: the sentence is the server's, shown as it came.
+      if (!r?.success) {
+        setProvisionNotice(r?.error ?? "Couldn't set up the Practice.");
+        return;
+      }
+      const result = objectOrNull<{ provisioned?: boolean; message?: string | null }>(r.data);
+      if (!result?.provisioned) {
+        setProvisionRefused(true);
+        setProvisionNotice(result?.message ?? "The Practice could not be set up.");
+        return;
+      }
+      await load();
+    } catch (e) {
+      setProvisionNotice(e instanceof Error ? e.message : "Provisioning failed");
+    } finally {
+      setProvisioning(false);
+    }
   }
 
   if (loading) return <div className="p-8 text-sm text-gray-500">Loading Practice…</div>;
@@ -209,10 +250,28 @@ function PracticeOverview() {
           Provision the firm-as-internal-client to start Revenue Operations
           (billing, collections, AR) for your own firm.
         </p>
-        <button onClick={provision} disabled={provisioning}
-          className="mt-4 px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50">
-          {provisioning ? "Setting up…" : "Set up Practice"}
-        </button>
+        {provisionNotice ? (
+          <p role="alert" className="mt-3 max-w-sm text-sm text-state-problem">{provisionNotice}</p>
+        ) : canProvision === false ? (
+          // The server's own `can_provision` is false on this screen only when the
+          // firm has no PAN (nothing is provisioned here), and sign-up does not
+          // collect one. Said before the click rather than after a refusal.
+          <p role="status" className="mt-3 max-w-sm text-sm text-ps-body">
+            Your firm has no PAN on record yet, and the Practice is set up under
+            it. Set the firm PAN in Settings, then come back.
+          </p>
+        ) : null}
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <Button variant="plain" size="none" onClick={() => provision()}
+            disabled={canProvision === false}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50">
+            {provisioning ? "Setting up…" : "Set up Practice"}
+          </Button>
+          {(canProvision === false || provisionRefused) && (
+            <EmptyStateAction href="/settings" requires={["firm", "write"]}
+              variant="secondary" label="Set the firm PAN in Settings" />
+          )}
+        </div>
       </div>
     );
   }

@@ -285,7 +285,7 @@ export default function AttendancePage() {
       // Names for the clients this firm actually runs payroll for. Firm-scoped
       // like every other read on this page — RLS is the control here, but the
       // filter is the primary one and omitting it is what CLAUDE.md forbids.
-      const cliRes = await selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", fid).order("id"));
+      const cliRes = await selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("id"));
       setClientNames(Object.fromEntries(
         (cliRes.data ?? []).map((c: { id: string; client_name: string }) =>
           [c.id, c.client_name])));

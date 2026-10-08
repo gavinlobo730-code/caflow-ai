@@ -23,19 +23,27 @@ THE REAL CHANNEL THIS MIMICS
 
 WHERE TABLE 4 ACTUALLY COMES FROM — IMS
     A walk-through that opens on the saved return skips the step a recipient's
-    month now turns on. CGST Act §38 was substituted with effect from
-    01-10-2025 (Notification 16/2025-Central Tax), and the ITC statement it
-    describes is the Invoice Management System one: supplier documents land on
-    the recipient's IMS dashboard and are Accepted, Rejected or kept Pending,
-    with NO ACTION deemed accepted at GSTR-2B generation. GSTR-2B is what
-    auto-populates Table 4(A). The draft is cut on the 14th of the following
-    month, but the operative deadline is the FILING of this return — an action
-    taken after the 14th reaches Table 4 only if GSTR-2B is RECOMPUTED first.
-    A stage before Table 4 carries this; it teaches what a CA must do, and
+    month now turns on: supplier documents land on the recipient's Invoice
+    Management System (IMS) dashboard and are Accepted, Rejected or kept
+    Pending, and GSTR-2B, which auto-populates Table 4(A), reflects what was
+    done there. A stage before Table 4 carries this. It teaches what a CA must
+    do (open IMS before Table 4) and asserts nothing this repository has read
+    from a primary source.
+
+    EVERY MECHANIC BEYOND THAT IS HEDGED, NOT ASSERTED. What silence does, when
+    the draft GSTR-2B is generated, whether it can be recomputed and how often,
+    how long a Pending record can wait, and what a rejected credit note does to
+    the supplier are all graded [S-gov], [S] or [U] in
+    docs/audits/2026-09-07-market-research/gst-primary.md (deleted on
+    08-10-2026, recoverable at 315e6a19), from search summaries of GSTN's
+    advisory and FAQs that were never fetched. So the stage says each one as
+    "as reported in GSTN's advisory and FAQs" with "confirm on the portal", and
+    it names NO section, notification or rule number for IMS and no effective
+    date: the section substitution, the notification that brought it into
+    force and the rule on a rejected credit note are unread. It also
     deliberately does not repeat the trade press's "IMS is mandatory" or
-    "silence is deemed rejection from 01-04-2026", both of which
-    docs/audits/2026-09-07-market-research/gst-primary.md §1d finds
-    unsupported (the second, it believes, false).
+    "silence is deemed rejection from 01-04-2026" (§1d of the same research
+    finds the first unestablished and the second, it believes, false).
 
 TABLE 4, AS THE PORTAL HAS LAID IT OUT SINCE 01-09-2022
     Notification 14/2022-Central Tax read with Circular 170/02/2022-GST:
@@ -288,58 +296,72 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     # ── Stage 3: IMS, which is where Table 4 actually comes from ─────────────
     #
     # The step a recipient's month now turns on, and the one a walk-through
-    # that starts at "the saved return" silently skips. CGST Act §38 was
-    # SUBSTITUTED with effect from 01-10-2025 (Finance Act 2025, brought into
-    # force by Notification 16/2025-Central Tax of 17-09-2025), and the ITC
-    # statement it describes is the IMS-shaped one — so IMS is the route by
-    # which credit is communicated, not an optional dashboard.
+    # that starts at "the saved return" silently skips. The practical advice is
+    # the point and stands: open IMS before Table 4, because what is done there
+    # shapes GSTR-2B, which auto-populates 4(A).
     #
-    # WHAT THIS DELIBERATELY DOES NOT SAY. The trade press says "IMS became
-    # mandatory on 01-10-2025" and that "from 01-04-2026 silence is deemed
-    # REJECTION". Neither is supported: the research in
-    # docs/audits/2026-09-07-market-research/gst-primary.md §1d grades the
-    # first [U] and believes the second FALSE — GSTN's own advisory still says
-    # no-action records are DEEMED ACCEPTED at GSTR-2B generation, which is
-    # the direct evidence that no duty to act exists. The mechanics below are
-    # [S-gov] (the search index's rendering of GSTN's advisory and FAQs; no
-    # primary fetch was possible), and the stage teaches what a CA must DO
-    # rather than a compulsion nobody has shown.
+    # WHAT THIS DOES NOT ASSERT. Every mechanic below (what silence does, when
+    # the draft 2B is generated, recomputing, how long Pending can wait, what a
+    # rejected credit note does to the supplier) is a reading of GSTN's
+    # advisory and FAQs taken from search summaries, never from a fetched
+    # primary document: [S-gov]/[S]/[U] in
+    # docs/audits/2026-09-07-market-research/gst-primary.md (deleted on
+    # 08-10-2026, recoverable at 315e6a19). So each is said as "as reported in
+    # GSTN's advisory and FAQs" with "confirm on the portal", and the Pending
+    # window, the section substitution, and the notification and rule numbers
+    # are not stated at all. tests/test_filing_demo_gstr3b.py holds that as a
+    # rule (a hedge in every unit of the stage, no rule, notification or
+    # section citation), not as a spelling.
+    #
+    # The trade press says "IMS became mandatory on 01-10-2025" and that "from
+    # 01-04-2026 silence is deemed REJECTION". Neither is established (the
+    # research grades the first [U] and believes the second FALSE), so neither
+    # is repeated, and the stage teaches what a CA must DO rather than a
+    # compulsion nobody has shown.
     stages.append(common.table_stage(
         "Before Table 4 — IMS and GSTR-2B",
         "Where the credit below comes from. Every supplier document lands on "
-        "the recipient's Invoice Management System dashboard, and what the CA "
-        "does there — or does not do — decides GSTR-2B, which auto-populates "
-        "Table 4(A). CGST Act §38 was substituted with effect from 01-10-2025 "
-        "(Notification 16/2025-Central Tax) and this is now the route by "
-        "which input tax credit is communicated. THE TIMING IS THE TRAP: the "
-        "draft GSTR-2B is cut on the 14th of the following month from the "
-        "actions standing then, but the operative deadline is the filing of "
-        "THIS return — an action taken after the 14th reaches Table 4 only if "
-        "GSTR-2B is RECOMPUTED from the IMS dashboard first, and there is no "
-        "limit on recomputing before filing. Two cases generate no GSTR-2B at "
-        "all: a QRMP filer's first two months of a quarter, and any period "
-        "whose PREVIOUS GSTR-3B is unfiled. PracticeSync does not act on IMS "
-        "— this happens on the portal, and this step is here so it is not "
-        "skipped by accident.",
+        "the recipient's Invoice Management System (IMS) dashboard, and what "
+        "the CA does there, or does not do, shapes GSTR-2B, which "
+        "auto-populates Table 4(A). So open IMS before Table 4. How IMS "
+        "behaves is described here as reported in GSTN's advisory and FAQs, "
+        "not verified by PracticeSync; confirm on the portal. THE TIMING IS "
+        "THE THING TO CHECK: as reported, the draft GSTR-2B is generated "
+        "around the 14th of the following month from the actions standing "
+        "then, and an action taken after that reaches Table 4 only if "
+        "GSTR-2B is RECOMPUTED from the IMS dashboard before this return is "
+        "filed; confirm on the portal how and how often it can be "
+        "recomputed. Whether a GSTR-2B has been generated for a given period "
+        "(under QRMP, for instance) is also for the portal to show; confirm "
+        "on the portal. PracticeSync does not act on IMS: this happens on "
+        "the portal, and this step is here so it is not skipped by "
+        "accident.",
         ["Action on the record", "What it does to this return"],
         [
             [{"text": "Accept"},
-             {"text": "The document enters GSTR-2B and its credit lands in "
-                      "Table 4(A) below."}],
+             {"text": "As reported in GSTN's advisory and FAQs, the document "
+                      "enters GSTR-2B and its credit lands in Table 4(A) "
+                      "below. Confirm on the portal."}],
             [{"text": "Reject"},
-             {"text": "Kept out of GSTR-2B and out of 4(A). Rejecting a "
-                      "supplier's credit note adds the liability back to the "
-                      "SUPPLIER's next GSTR-3B (CGST Rule 67B)."}],
+             {"text": "As reported in GSTN's advisory and FAQs, kept out of "
+                      "GSTR-2B and so out of 4(A). Rejecting a supplier's "
+                      "credit note has consequences on the supplier's side "
+                      "that this walk-through does not describe; confirm on "
+                      "the portal and in GSTN's IMS FAQs."}],
             [{"text": "Pending"},
-             {"text": "Neither accepted nor rejected: it reaches no return "
-                      "this period and waits on the dashboard. Deferred, not "
-                      "lost — but the window is finite, and it is narrower "
-                      "for credit notes than for invoices."}],
+             {"text": "Neither accepted nor rejected. As reported in GSTN's "
+                      "advisory and FAQs, it reaches no return this period "
+                      "and stays on the dashboard. How long it can wait is "
+                      "set out in those FAQs and is not stated here; "
+                      "confirm on the portal before relying on a later "
+                      "period."}],
             [{"text": "No action"},
-             {"text": "DEEMED ACCEPTED when GSTR-2B is generated. Silence "
-                      "takes in everything every supplier filed, including "
-                      "what should have been rejected. This is the default, "
-                      "and it is the reason to open IMS at all."}],
+             {"text": "As reported in GSTN's advisory and FAQs, a record with "
+                      "no action is treated as deemed accepted when GSTR-2B "
+                      "is generated, so silence takes in whatever every "
+                      "supplier filed, including what should have been "
+                      "rejected. That is the reason to open IMS at all. "
+                      "Confirm on the portal."}],
         ],
     ))
 
@@ -544,8 +566,10 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
             {"key": "evc", "label": "File with EVC", "otp": True,
              "note": "OTP to the authorised signatory's registered mobile and email"},
             {"key": "dsc", "label": "File with DSC", "otp": False,
-             "note": "Class 3 digital signature via emSigner; mandatory for "
-                     "companies and LLPs"},
+             "note": "Class 3 digital signature via emSigner. Companies and "
+                     "LLPs are generally expected to use DSC rather than "
+                     "EVC; confirm the current requirement for this "
+                     "registration on the GST portal"},
         ]),
         common.otp_stage(
             "An OTP would now be sent to the authorised signatory's mobile "

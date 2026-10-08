@@ -326,7 +326,7 @@ const BASELINE: Record<string, number> = {
   "app/sign/page.tsx": 2,
   "components/portal/TaxDeclarationTab.tsx": 1,
   // ── platform administration and the practice's own profile ──
-  "app/practice/page.tsx": 2,
+  "app/practice/page.tsx": 1,
 };
 
 /** The screens that post, settle, pay, issue, run payroll or record a filing. A

@@ -118,6 +118,7 @@ export default function ScheduledReportsPage() {
           .from("clients")
           .select("id, name:client_name")
           .eq("firm_id", firmId)
+          .eq("is_internal", false)
           .order("client_name"),
       ]);
       if (srError) throw new Error(srError.message);

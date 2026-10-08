@@ -132,6 +132,7 @@ export default function GSTR3BPage() {
     sb.from("clients")
       .select("id,name:client_name,gstin")
       .eq("status", "active")
+      .eq("is_internal", false)
       .order("client_name")
       .then(({ data }) => setClients((data ?? []) as { id: string; name: string; gstin: string | null }[]));
   }, []);

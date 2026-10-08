@@ -1595,7 +1595,11 @@ function SalesInvoices({
         supply_state_code: r.supply_state_code,
         is_interstate: r.is_interstate,
         is_overdue: r.is_overdue ?? false,
-        days_overdue: r.days_overdue ?? 0,
+        // A count of days LATE has no negative. The sweep wrote one for an
+        // invoice not yet due until PRE-A-010 and nothing rewrote those rows,
+        // so a stored -12 must not reach "(-12d overdue)" below (the server
+        // clamps at the writer; this is the read-side backstop for old rows).
+        days_overdue: Math.max(r.days_overdue ?? 0, 0),
         reminder_count: r.reminder_count ?? 0,
         last_reminded_at: r.last_reminded_at,
       }));
@@ -2025,7 +2029,7 @@ function SalesInvoices({
       render: (i) => (
         <span className={`whitespace-nowrap ${isOverdueForUi(i) ? "text-red-600 font-medium" : "text-ps-label"}`}>
           {i.due_date ?? "—"}
-          {isOverdueForUi(i) && i.days_overdue ? <span className="ml-1 text-3xs">({i.days_overdue}d)</span> : null}
+          {isOverdueForUi(i) && (i.days_overdue ?? 0) > 0 ? <span className="ml-1 text-3xs">({i.days_overdue}d)</span> : null}
         </span>
       ) },
     { key: "status", header: "Status", accessor: (i) => i.status, sortable: true,
@@ -2623,7 +2627,7 @@ function RemindInvoiceModal({
             <div className="flex justify-between">
               <span className="text-ps-label">Due date</span>
               <span className="text-red-600 font-medium">
-                {invoice.due_date ?? "—"}{invoice.days_overdue ? ` (${invoice.days_overdue}d overdue)` : ""}
+                {invoice.due_date ?? "—"}{(invoice.days_overdue ?? 0) > 0 ? ` (${invoice.days_overdue}d overdue)` : ""}
               </span>
             </div>
             <div className="flex justify-between">

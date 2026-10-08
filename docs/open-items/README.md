@@ -29,7 +29,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 
 | file | items | what it holds |
 |---|---|---|
-| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 17 | before the demo: Claude can do alone |
+| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 10 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 16 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 212 | after the demo: Claude can do alone |
@@ -39,7 +39,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 
-**786 open items** (39 before the demo, 747 after); 17 after-demo items are `high` priority; 35 are UNSURE.
+**779 open items** (32 before the demo, 747 after); 17 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 
@@ -59,14 +59,7 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 10. **PRE-B-013** (decision) — Look at which tier the Gemini and Groq keys are on
 11. **PRE-C-006** (you) — Check the website's support and onboarding promises are staffed
 12. **PRE-A-007** (Claude) — Require the filed date when marking a GST return filed
-13. **PRE-A-008** (Claude) — Qualify the IMS demo copy so it asserts no unverified reading
-14. **PRE-A-013** (Claude) — Qualify demo copy on DSC and MCA signers; assert no unverified rule
-15. **PRE-A-014** (Claude) — Reword the XBRL screen so 'Package validated' does not mean MCA-validated
-16. **PRE-A-009** (Claude) — Label Net Payable on the Tax Computation as before interest and fee
-18. **PRE-A-003** (Claude) — Make 'Set up Practice' explain a missing firm PAN
-19. **PRE-A-017** (Claude) — Hide the internal practice client from eleven client pickers
 20. **PRE-A-011** (Claude) — Fix invoice and bill importers accepting rows the server refuses
-21. **PRE-A-010** (Claude) — Clamp negative days_overdue on not-yet-due fee invoices
 22. **PRE-A-016** (Claude) — Fix on-screen printing: /reports prints blank, others unstyled
 23. **PRE-A-018** (Claude) — Link Practice Billing and AR to the practice client's invoices
 24. **PRE-A-006** (Claude) — Name the AI provider on the extract and scan screens

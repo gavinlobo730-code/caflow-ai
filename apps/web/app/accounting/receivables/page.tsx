@@ -113,6 +113,7 @@ export default function ReceivablesAgingPage() {
       // (CHECK: active | inactive | archived).
       const { data } = await selectAll(() => sb.from("clients")
         .select("id, client_name").eq("firm_id", fid).eq("status", "active")
+        .eq("is_internal", false)
         .order("client_name").order("id"));
       setClients((data ?? []) as Client[]);
     }).catch(() => setError("Failed to load clients"));

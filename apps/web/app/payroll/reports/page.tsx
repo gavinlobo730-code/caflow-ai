@@ -1401,7 +1401,7 @@ export default function PayrollReportsPage() {
       const [empRes, runsRes, clientsRes] = await Promise.all([
         selectAll(() => sb.from("payroll_employees").select("*").eq("firm_id", firmId).order("id")),
         selectAll(() => sb.from("payroll_runs").select("*").eq("firm_id", firmId).order("id")),
-        selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", firmId).order("id")),
+        selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", firmId).eq("is_internal", false).order("id")),
       ]);
       runsRes.data.sort((a: { month: string }, b: { month: string }) =>
         String(b.month).localeCompare(String(a.month)));
