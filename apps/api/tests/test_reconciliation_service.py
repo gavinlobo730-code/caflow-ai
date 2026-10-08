@@ -196,6 +196,81 @@ def test_ar_subledger_mismatch_detected():
     assert findings[0]["severity"] == "critical"  # off by >= 1000 rupees
 
 
+def _ar_db(*invoices):
+    db = FakeDB()
+    db.seed("chart_of_accounts", {
+        "id": "AR-1", "firm_id": FIRM, "client_id": None,
+        "account_name": "Trade Receivables", "is_active": True,
+    })
+    for inv in invoices:
+        db.seed("client_sales_invoices", {
+            "firm_id": FIRM, "client_id": CLIENT,
+            "credited_paise": 0, "debit_note_paise": 0, **inv,
+        })
+    return db
+
+
+def _ar_entries(open_paise):
+    return {"j1": _entry("j1", lines=[_line("AR-1", debit=open_paise), _line("sales", credit=open_paise)])}
+
+
+def test_a_part_paid_invoice_is_in_the_receivables_sub_ledger():
+    """CGST Act s.31 invoices stay receivable until paid: the ledger carries the
+    open balance of a part-paid invoice, so the sub-ledger must too. The check
+    read ``issued`` alone and reported the balance as a critical difference."""
+    db = _ar_db(
+        {"status": "issued", "total_paise": 100000, "paid_paise": 0},
+        {"status": "partially_paid", "total_paise": 5_000_000, "paid_paise": 1_200_000},
+    )
+    entries = _ar_entries(100000 + 3_800_000)
+    assert rs.check_ar_subledger_vs_gl(db, FIRM, CLIENT, entries) == []
+
+
+def test_a_real_difference_on_a_book_with_part_paid_invoices_is_still_critical():
+    db = _ar_db({"status": "partially_paid", "total_paise": 5_000_000, "paid_paise": 1_200_000})
+    findings = rs.check_ar_subledger_vs_gl(db, FIRM, CLIENT, _ar_entries(3_800_000 + 500_000))
+    assert [f["check_name"] for f in findings] == ["ar_subledger_vs_gl"]
+    assert findings[0]["severity"] == "critical"
+    assert findings[0]["amount_paise"] == 500_000
+
+
+def test_a_paid_invoice_with_a_later_debit_note_still_owes_what_the_note_added():
+    """A debit note raised after settlement (CGST Act s.34(3)) reopens a balance
+    on an invoice whose status is ``paid``; the ledger carries it."""
+    db = _ar_db({
+        "status": "paid", "total_paise": 100000, "paid_paise": 100000, "debit_note_paise": 18000,
+    })
+    assert rs.check_ar_subledger_vs_gl(db, FIRM, CLIENT, _ar_entries(18000)) == []
+
+
+def test_a_draft_or_cancelled_invoice_carries_no_receivable():
+    db = _ar_db(
+        {"status": "draft", "total_paise": 700000, "paid_paise": 0},
+        {"status": "cancelled", "total_paise": 900000, "paid_paise": 0},
+        {"status": "issued", "total_paise": 100000, "paid_paise": 0},
+    )
+    assert rs.check_ar_subledger_vs_gl(db, FIRM, CLIENT, _ar_entries(100000)) == []
+
+
+def test_the_invoice_statuses_the_check_reads_are_the_live_ones_the_table_allows():
+    """The rule, not a list: every status the invoices table allows, except the
+    two that carry no receivable (``draft`` posted nothing, ``cancelled``
+    reversed it), is read -- so a status added to the CHECK later and left out
+    of the sub-ledger fails here rather than as a critical finding on a book."""
+    import re
+    from pathlib import Path
+
+    sql = (Path(__file__).resolve().parents[1] / "migrations" / "050_sales_purchase_cycle.sql").read_text()
+    allowed = None
+    for m in re.finditer(r"CHECK \(status IN \(([^)]*)\)\)", sql):
+        vals = re.findall(r"'([a-z_]+)'", m.group(1))
+        if "issued" in vals and "partially_paid" in vals:
+            allowed = set(vals)
+            break
+    assert allowed is not None, "could not find the invoice status CHECK in migration 050"
+    assert set(rs._LIVE_INVOICE_STATUSES) == allowed - {"draft", "cancelled"}
+
+
 def test_ap_subledger_matches_gl_is_not_flagged():
     db = FakeDB()
     db.seed("chart_of_accounts", {

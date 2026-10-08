@@ -276,9 +276,20 @@ def check_inventory_cache_drift(db, firm_id: str, client_id: str, entries) -> li
     )]
 
 
+# An invoice carries a receivable in every status from the day it is issued:
+# ``issued``, ``partially_paid`` and ``paid`` (migration 050's CHECK allows no
+# other live one; ``draft`` has posted nothing and ``cancelled`` has reversed
+# it). The purchase side has always read its three live statuses; the sales
+# side read ``issued`` alone, so a PART-PAID invoice -- whose open balance the
+# ledger still carries -- was left out of the sub-ledger sum and the check
+# reported the part-paid balance as a critical difference on every book that
+# had taken a part payment.
+_LIVE_INVOICE_STATUSES = ["issued", "partially_paid", "paid"]
+
+
 def check_ar_subledger_vs_gl(db, firm_id: str, client_id: str, entries) -> list[dict]:
-    """GL Trade Receivables balance must equal the sum of outstanding issued
-    sales invoices (total - paid - credited + debit notes)."""
+    """GL Trade Receivables balance must equal the sum of what is still open on
+    the client's live sales invoices (total - paid - credited + debit notes)."""
     account_id = _find_account_id(db, firm_id, client_id, "Trade Receivables")
     if not account_id:
         return []
@@ -287,7 +298,8 @@ def check_ar_subledger_vs_gl(db, firm_id: str, client_id: str, entries) -> list[
     invoices = fetch_all(lambda: (
         db.table("client_sales_invoices")
         .select("id, total_paise, paid_paise, credited_paise, debit_note_paise")
-        .eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "issued")
+        .eq("firm_id", firm_id).eq("client_id", client_id)
+        .in_("status", _LIVE_INVOICE_STATUSES)
     ))
     subledger_paise = sum(
         int(i.get("total_paise") or 0) - int(i.get("paid_paise") or 0)
