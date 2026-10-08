@@ -29,7 +29,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 
 | file | items | what it holds |
 |---|---|---|
-| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 18 | before the demo: Claude can do alone |
+| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 17 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 16 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 212 | after the demo: Claude can do alone |
@@ -39,7 +39,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 
-**787 open items** (40 before the demo, 747 after); 17 after-demo items are `high` priority; 35 are UNSURE.
+**786 open items** (39 before the demo, 747 after); 17 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 
@@ -63,7 +63,6 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 14. **PRE-A-013** (Claude) — Qualify demo copy on DSC and MCA signers; assert no unverified rule
 15. **PRE-A-014** (Claude) — Reword the XBRL screen so 'Package validated' does not mean MCA-validated
 16. **PRE-A-009** (Claude) — Label Net Payable on the Tax Computation as before interest and fee
-17. **PRE-A-012** (Claude) — Fix document upload: documents.uploaded_by foreign key refuses every row
 18. **PRE-A-003** (Claude) — Make 'Set up Practice' explain a missing firm PAN
 19. **PRE-A-017** (Claude) — Hide the internal practice client from eleven client pickers
 20. **PRE-A-011** (Claude) — Fix invoice and bill importers accepting rows the server refuses
@@ -141,6 +140,6 @@ Each has its own line in the ledger (search `docs-hygiene`); this is the short l
 
 Twenty-eight read-only passes extracted every still-open item from CLAUDE.md (read in four parts), every file under `docs/audits/`, `docs/plan/`, `docs/compliance/`, `docs/operations/` and `docs/architecture/`, the top-level `docs/*.md`, the code's own markers and render.yaml, and the 337-point improvement roadmap of 30 Sep 2026 — which existed only in session data and is now captured here (195 points were Claude's alone and are mostly built; the other 142 need the owner or someone outside, and the roughly 60 of the 195 still unbuilt are included). That gave 1,306 raw items; fourteen group passes and two cross-group passes merged them to 788 with every raw item accounted for by a script. Each reader re-checked its items against the code on 2 Oct 2026 and recorded what it found already done in `checked-closed.md`.
 
-**Second pass, 8 October 2026.** After the ledger was committed, the before-demo items and the high-priority after-demo items were each re-read against the code (files, functions, columns, routes, env vars, the matrix classes, the Actions API for CI state, the repository's own grep results) by one session and no sub-agents. 64 items were checked; 5 needed their text corrected (the fixes are in the lines), the rest held, and the who/when buckets of all 64 stood. Two facts for planning that this pass produced: the nightly smoke walk is red only because axe-baseline entries no longer fire (PRE-A-005, hours, Claude alone), and the documents-upload defect (PRE-A-012) is real.
+**Second pass, 8 October 2026.** After the ledger was committed, the before-demo items and the high-priority after-demo items were each re-read against the code (files, functions, columns, routes, env vars, the matrix classes, the Actions API for CI state, the repository's own grep results) by one session and no sub-agents. 64 items were checked; 5 needed their text corrected (the fixes are in the lines), the rest held, and the who/when buckets of all 64 stood. Two facts for planning that this pass produced: the nightly smoke walk is red only because axe-baseline entries no longer fire (PRE-A-005, hours, Claude alone), and the documents-upload defect was real (closed by migration 479 on 8 October 2026).
 
 Limits: **nothing was exercised against production** except one read-only query (it confirmed the documents-upload defect); dashboard state is unreadable from here, hence UNSURE; nothing was clicked in a browser; about 30 statutory readings are graded `[S]` (a search summary, not the primary text) and need a person with a browser; the pre-demo list is Claude's judgement of the demo's needs; and effort figures are estimates. Source references point at documents that were deleted on 8 October 2026 — recover them with `git show 315e6a19:<path>` (see `deletion-plan.md`).
