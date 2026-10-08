@@ -47,6 +47,20 @@ Opening balances post automatically — no manual "post to ledger" step:
 - On failure the master write is rolled back and the caller returns a friendly error.
 - `POST /api/accounting/opening-balances` remains as an internal/backfill re-post.
 
+## Bill-wise opening documents and the opening register
+
+The family above is **three totals** (aggregate Trade Receivables, aggregate Trade Payables, each bank), which is right for the general ledger and useless for ageing: every AR/AP ageing screen and the Schedule III ageing note bucket by the due date of each open document, and a control-account total has no dates. Two further doors take an opening position in the shape the rest of the product needs. **Neither posts a journal**, and each says so on every answer.
+
+**Opening documents** (migration 391; `domain/accounting/opening_documents.py`, `services/opening_document_service.py`, `routers/opening_documents.py`, `POST /api/opening-documents` and `/bulk`):
+- An opening document is an ordinary row in `client_sales_invoices` or `purchase_bills` carrying the **old system's own number and date**, with `is_opening` true. A receipt allocates against it, a statement lists it and the bank match queue offers it, all unchanged.
+- It is the **bill-wise breakup** of `customers.opening_balance_paise`, which stays the single source of the ledger's AR leg, so it posts nothing. `reconcile()` names the difference between the documents and the master rather than absorbing it.
+- It declares no tax and withholds nothing (the GST was declared where the document was issued): every tax field is zero. Every reader that feeds a statutory output excludes it with `without_carried_over`.
+- `double_openings` reports an account opened by **both** mechanisms (the masters and an imported trial balance), because nothing else compares them; it offers no difference, since which of the two is the mistake is the CA's answer.
+
+**The fixed-asset opening register** (migration 456; `services/opening_register_service.py`, `POST /api/fixed-assets/opening-register`): states where each asset stands on one 31 March (cost and accumulated depreciation), recorded as `fixed_assets.opening_position_date`. It posts no journal, because the ledger already carries the asset through the opening balances; the register-to-ledger tie-out is named, not computed.
+
+**A trial balance import** (`services/trial_balance_import_service.py`, `POST /api/accounting/trial-balance/import`) is a third door and posts, under `source_type = 'TrialBalance'`, deliberately separate from `'Opening'` so the delta model never touches it.
+
 ## Design note — why deltas (not delete-recreate, not reverse-and-repost)
 
 - **Delete-and-recreate** (original) conflicted with immutability — deleting the posted opening journal is blocked by `prevent_posted_journal_delete`, so regeneration failed whenever a journal already existed (this was the true, recurring "Unable to save customer" cause).
@@ -55,7 +69,7 @@ Opening balances post automatically — no manual "post to ledger" step:
 
 ## Multi-currency note
 
-In Phase 1+ each master gains a currency and opening entries record the INR-equivalent (base) alongside the foreign amount (`06-multi-currency-phase0.md`); the delta model carries over unchanged.
+**Opening balances are INR only today.** The multi-currency design (`06-multi-currency-phase0.md`) anticipated each master gaining a currency with the opening entry recording the foreign amount, and that was not built for opening balances: `customers` and `vendors` carry no currency, `bank_accounts.currency` exists (migration 150) but `opening_balance_service` reads no currency at all, and the opening family posts INR at rate 1 through the kernel. The delta model is unchanged.
 
 ## Tests
 

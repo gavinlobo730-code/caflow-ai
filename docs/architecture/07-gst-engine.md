@@ -6,12 +6,12 @@ Indian GST is **statutory and filed in INR**. The engine computes tax at source 
 
 ## Identifiers
 
-- **GSTIN**: 2-digit state code + PAN (10) + entity digit + `Z` + check digit. Regex enforced (`routers/customers.py`, CGST Act §25).
+- **GSTIN**: 2-digit state code + PAN (10) + entity digit + `Z` + check digit. The shape regex does not test the check digit, so `domain/gst/gstin.py` (`problem_with`) is the authority and is asked wherever a human types a GSTIN and on the paths that file with one (CGST Act §25); `apps/web/lib/gst/gstin.ts` mirrors it for keystroke feedback, pinned by `tests/fixtures/gstin.json`.
 - **PAN**: `AAAAA9999A`.
 
 ## Tax computation (at source)
 
-`_compute_line_gst` (`routers/sales_invoices.py`) — pure integer-paise math, no float in stored values:
+`compute_line_gst` (`domain/sales/line_tax.py`, re-exported by `routers/sales_invoices.py` as `_compute_line_gst`; pinned by `shared/gst-parity-vectors.json`) — pure integer-paise math, no float in stored values:
 - Rate held as **basis points** (`gst_rate_bps`); `igst = (taxable_paise * gst_rate_bps) // 10000` (floor division).
 - **CGST Act §8** place-of-supply split: **intra-state → CGST + SGST** (half each); **inter-state → IGST**. Determined by comparing supplier vs customer state code.
 - Stored on the invoice: `taxable_amount_paise, cgst_paise, sgst_paise, igst_paise, total_gst_paise, total_paise` (and per line).
@@ -43,7 +43,7 @@ GSTN accepts only INR; the whole engine is INR by definition. Every rule cites t
 
 ## Multi-currency note
 
-GST **stays INR** (`06-multi-currency-phase0.md`). For a foreign-currency invoice, the system must compute and persist the **INR-equivalent taxable value at the CGST Rule 34 notified rate** on the invoice date and feed *that* into `_compute_line_gst` and the return builders. The engines' integer math is unchanged; the work is the upstream conversion (a Phase 2 concern). Exports are typically zero-rated (LUT / with payment).
+GST **stays INR** (`06-multi-currency-phase0.md`), and the upstream conversion is built (`06c`): a foreign-currency document freezes its rate and carries authoritative **base (INR)** amounts, which the GL, GST and the return builders read, so `compute_line_gst` and the engines' integer math are unchanged. A rate type `gst_notified` (the CGST Rule 34 notified rate) exists in `domain/currency/rate_types.py`. Exports are typically zero-rated (LUT / with payment).
 
 ## Tests
 
