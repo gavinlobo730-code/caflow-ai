@@ -54,6 +54,9 @@ NOT_A_PORTAL_CREDENTIAL: dict[str, str] = {
         "the FIRM's own PIN, which authorises locking a financial year. It "
         "authenticates a partner to PracticeSync; no government portal has "
         "ever seen it",
+    "pin_hash":
+        "firm_lock_pins (migration 480) — a salted PBKDF2 HASH of the firm's own year-lock PIN, in a table "
+        "only the API's service role can touch. Never the PIN, and no government portal has ever seen it",
     "token_no":
         "dsc_records — the SERIAL NUMBER printed on the USB crypto token the "
         "certificate lives on. An inventory label for a physical object, not a "

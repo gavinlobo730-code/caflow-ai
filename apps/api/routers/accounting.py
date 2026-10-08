@@ -4,7 +4,7 @@ Accounting router — Chart of Accounts, Journal Entries, Ledger, Trial Balance,
 import os
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Annotated, Literal, Optional
 from datetime import datetime, timezone
 from models.common import api_response
@@ -626,7 +626,9 @@ def import_vouchers_endpoint(
 class YearLockIn(BaseModel):
     financial_year: FYLabel           # e.g. "2025-26"
     lock: bool                    # True = lock, False = unlock
-    pin: Optional[str] = None     # firm lock PIN (verified server-side)
+    # The firm lock PIN, verified server-side against a salted hash (domain/firm/lock_pin). Bounded because
+    # it is hashed on every attempt; the same ceiling is what a PIN may be when it is SET.
+    pin: Optional[str] = Field(default=None, max_length=128)
 
 
 @router.get("/journal/{entry_id}")
