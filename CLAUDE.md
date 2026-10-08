@@ -5371,10 +5371,10 @@ not parse, so `"1200abc"` passed at 1200 while `toPaise` returned NaN, and
   marked filed past the review and partner review the tax screen promises are
   mandatory. The permitted states are derived from `_TRANSITIONS`, and an
   already-filed return is REFUSED rather than silently re-acknowledged — the
-  acknowledgement number is a fact about what the portal did. **Still not
-  built: the §139(5) revised and §139(8A) updated return**, which need a
-  `return_type` and a migration replacing migration 319's
-  `UNIQUE (firm_id, client_id, financial_year, itr_form)`.
+  acknowledgement number is a fact about what the portal did. The §139(5)
+  revised and §139(8A) updated return are built since (migration 381,
+  `domain/income_tax/return_type.py`, `GET /api/itr/return-kinds`): see the
+  IT-23 return-kinds bullet above.
 
 ## A screen says what it read, what it did not, and what it will not do
 

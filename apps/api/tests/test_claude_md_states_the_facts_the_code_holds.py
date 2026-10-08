@@ -196,3 +196,27 @@ def test_a_variable_the_page_names_as_read_is_read_by_the_backend(name):
         f"CLAUDE.md tells a reader `{name}` matters ({NAMED_AS_READ[name]}) and nothing in apps/api reads it. "
         "Either the code stopped honouring it, or the scan's reading of how it is read needs extending "
         "(tests/test_render_manifest_matches_code.py `_READ`).")
+
+
+# ═══ Known contradictions between a sentence on the page and a thing the code now holds ══════════════════════════
+#
+# There is NO generic detector for a prose rule, and this file does not pretend to be one: a sentence that says
+# "X is not built" goes stale the day X is built, and nothing can tell from the sentence alone. What can be pinned
+# is each contradiction that has actually been found, in the direction that cannot be satisfied by deleting the
+# test: the page must not say the thing WHILE the code that makes it false is still in the tree. Each case names
+# both halves, so a reader who trips it sees what changed.
+
+def test_the_page_does_not_say_the_revised_and_updated_return_is_unbuilt():
+    """IT-23 built the §139(5) revised and §139(8A) updated return (migration 381 gave `itr_filings` a
+    `return_type`; `domain/income_tax/return_type.py` is the authority; `GET /api/itr/return-kinds` serves it). The
+    seven-forms bullet went on saying they were "Still not built" and that they "need a migration replacing
+    migration 319's UNIQUE", which is the opposite of the IT-23 bullet far above it."""
+    assert (API / "domain" / "income_tax" / "return_type.py").is_file(), "premise: the return-kind authority exists"
+    assert list((API / "migrations").glob("381_*.sql")), "premise: migration 381 exists"
+    page = _page()
+    assert not re.search(r"Still not built: the §139\(5\) revised and §139\(8A\) updated return", page), (
+        "CLAUDE.md still says the §139(5) revised and §139(8A) updated return are not built; "
+        "domain/income_tax/return_type.py and migration 381 build them. See the IT-23 return-kinds bullet.")
+    assert not re.search(r"need a `return_type` and a migration replacing migration 319", page), (
+        "CLAUDE.md still says the revised return needs a migration replacing migration 319's key; migration 381 "
+        "is that migration.")
