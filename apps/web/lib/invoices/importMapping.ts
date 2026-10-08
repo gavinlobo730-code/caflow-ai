@@ -17,20 +17,28 @@
  * Rule 46(b)) and rejects a duplicate for this client exactly as a manually
  * typed one would — same endpoint, same check, no separate import-only path.
  *
- * product_service is optional: when a row names an existing Product/Service,
- * hsn_sac/rate/gst_rate become OPTIONAL OVERRIDES (blank = use the catalogue
- * item's own values) — mirroring how picking a preset pre-fills a manually-
- * created line. description works the same way EXCEPT it never falls back to
- * the product's Name (matching the manual editor's serviceToLine): a row
- * still needs an explicit description, either in its own column or on the
- * matched preset. The values are copied onto the line AND the line is linked
- * via service_catalogue_id (InvoiceLineIn.service_catalogue_id,
- * migration 184) — a matched "good" line is what makes an issued invoice
- * actually draw down inventory (domain/inventory_service.py's
- * apply_sale_to_inventory is gated on this field being set per line; it used
- * to be left unset here, so a bulk-imported sale of a stock-tracked item
- * silently never moved stock even though the manual editor's product picker
- * always has).
+ * product_service is REQUIRED on every row, exactly as it is on the four
+ * credit/debit-note importers: InvoiceLineIn / SalesInvoiceLineIn
+ * (apps/api/models/invoices.py) make service_catalogue_id mandatory on every
+ * line, so a row with no Product/Service passes any browser-side check that
+ * does not ask for it and then fails at POST with "Product/Service is required
+ * on every line item" in the final report, after the CA has already read a
+ * clean preview. The mapper refuses it here instead, and a name that is not in
+ * the catalogue yet is the "+ Add" action of the Resolve step. It does NOT
+ * create a catalogue item from a spreadsheet cell: an item needs an HSN from the
+ * firm library, a kind and a GST rate, which a cell cannot supply.
+ *
+ * A row that names an existing Product/Service gets hsn_sac/rate/gst_rate as
+ * OPTIONAL OVERRIDES (blank = use the catalogue item's own values) — mirroring
+ * how picking a preset pre-fills a manually-created line. description works
+ * the same way EXCEPT it never falls back to the product's Name (matching the
+ * manual editor's serviceToLine): a row still needs an explicit description,
+ * either in its own column or on the matched preset. The values are copied
+ * onto the line AND the line is linked via service_catalogue_id
+ * (InvoiceLineIn.service_catalogue_id, migration 184) — the link is also what
+ * makes an issued invoice actually draw down inventory
+ * (domain/inventory_service.py's apply_sale_to_inventory is gated on this field
+ * being set per line).
  *
  * unit has no import column — like the manual editor, it's never surfaced to
  * the CA at all (nobody sets it explicitly). It's still read silently from a
@@ -68,8 +76,10 @@ export interface BuiltLine {
   gst_rate_percent: number;  // e.g. 18 for 18%
   unit?: string;
   /** Links this line to the matched Product/Service catalogue item — see
-   * the module docstring above. Undefined when no product_service matched. */
-  service_catalogue_id?: string;
+   * the module docstring above. REQUIRED, as BuiltNoteLine's is: the server
+   * refuses a line without it, so a mapper edit that let an unlinked line
+   * through would be a type error here rather than a row that fails at POST. */
+  service_catalogue_id: string;
 }
 
 export interface BuiltInvoice {
@@ -133,12 +143,12 @@ export const SALES_INVOICE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "invoice_date", label: "Invoice Date", required: true, hint: "YYYY-MM-DD — must match across rows sharing an invoice number" },
   { key: "due_date", label: "Due Date", required: false, hint: "YYYY-MM-DD (optional) — must match across rows sharing an invoice number" },
   { key: "supply_state_code", label: "Supply State Code", required: false, hint: "2-digit GST state code, e.g. 27 (optional)" },
-  { key: "product_service", label: "Product/Service", required: false, hint: "Existing catalogue item name (optional) — pre-fills description/HSN/rate/GST/unit" },
-  { key: "description", label: "Description", required: false, hint: "Required unless Product/Service is given" },
+  { key: "product_service", label: "Product/Service", required: true, hint: "REQUIRED on every line — existing catalogue item name (the server rejects a line with no catalogue item); pre-fills description/HSN/rate/GST/unit" },
+  { key: "description", label: "Description", required: false, hint: "Required unless the Product/Service has its own description" },
   { key: "hsn_sac", label: "HSN/SAC", required: false, hint: "HSN or SAC code (optional; overrides the Product/Service's own)" },
   { key: "quantity", label: "Quantity", required: true, hint: "e.g. 1" },
-  { key: "rate", label: "Rate (₹)", required: false, hint: "Per-unit rate in rupees, e.g. 1500.00 — required unless Product/Service is given" },
-  { key: "gst_rate", label: "GST %", required: false, hint: "e.g. 18 (for 18%) — required unless Product/Service is given" },
+  { key: "rate", label: "Rate (₹)", required: false, hint: "Per-unit rate in rupees, e.g. 1500.00 — required unless the Product/Service has a default price" },
+  { key: "gst_rate", label: "GST %", required: false, hint: "e.g. 18 (for 18%) — required unless the Product/Service has a default rate" },
   // GSTR-1 classification (task #157). Header-level, like invoice_date — the
   // classifier branches on the invoice, not the line. Left blank, each falls to
   // migration 268's column default, which is a plain domestic taxable sale.
@@ -182,7 +192,12 @@ export function buildSalesInvoices(
     if (!customerId) { errors.push(`Row ${rowNo}: unknown customer "${customerName}" — create the customer first`); return; }
     if (!DATE_RE.test(invoiceDate)) { errors.push(`Row ${rowNo}: invoice_date must be YYYY-MM-DD`); return; }
     if (dueDate && !DATE_RE.test(dueDate)) { errors.push(`Row ${rowNo}: due_date must be YYYY-MM-DD`); return; }
-    if (productName && !service) { errors.push(`Row ${rowNo}: unknown product/service "${productName}" — create it first`); return; }
+    // Mandatory on every line (InvoiceLineIn.require_service_catalogue_id), asked
+    // in the two steps parseSalesNoteRows asks it: nothing named, then named but
+    // not in the catalogue. A name the catalogue lacks is the Resolve step's
+    // "+ Add"; a blank cell has nothing to resolve and is the CA's to fill.
+    if (!productName) { errors.push(`Row ${rowNo}: product_service is required on every line (Product/Service is mandatory on every invoice line)`); return; }
+    if (!service) { errors.push(`Row ${rowNo}: unknown product/service "${productName}" — create it first`); return; }
 
     // GSTR-1 classification. Blank means "the default", a value that is present
     // but unrecognised is a typo the CA must see — importing "exemtp" as
@@ -200,28 +215,28 @@ export function buildSalesInvoices(
     if (parsedReverse === null) { errors.push(`Row ${rowNo}: reverse_charge must be yes or no, not "${reverseRaw}"`); return; }
     const isReverseCharge = parsedReverse;
 
-    const description = (r.description ?? "").trim() || (service?.description?.trim() ?? "");
+    const description = (r.description ?? "").trim() || (service.description?.trim() ?? "");
     if (!description) { errors.push(`Row ${rowNo}: description is required (or use a Product/Service that has its own description set)`); return; }
 
     const qty = toQty(r.quantity);
     if (!Number.isFinite(qty) || qty <= 0) { errors.push(`Row ${rowNo}: quantity must be a positive number`); return; }
 
     const rateRaw = (r.rate ?? "").trim();
-    const ratePaise = rateRaw ? toPaise(r.rate) : (service?.default_rate_paise ?? NaN);
+    const ratePaise = rateRaw ? toPaise(r.rate) : (service.default_rate_paise ?? NaN);
     if (!Number.isFinite(ratePaise) || ratePaise < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or give a Product/Service with a default price)`); return; }
 
     const gstRaw = (r.gst_rate ?? "").trim();
-    const gstBps = gstRaw ? toBps(r.gst_rate) : (service?.gst_rate_bps ?? NaN);
+    const gstBps = gstRaw ? toBps(r.gst_rate) : (service.gst_rate_bps ?? NaN);
     if (!Number.isFinite(gstBps) || gstBps < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or give a Product/Service with a default rate)`); return; }
 
     const line: BuiltLine = {
       description,
-      hsn_sac: (r.hsn_sac ?? "").trim() || service?.hsn_sac?.trim() || undefined,
+      hsn_sac: (r.hsn_sac ?? "").trim() || service.hsn_sac?.trim() || undefined,
       quantity: qty,
       rate_paise: ratePaise,   // integer paise — never float
       gst_rate_percent: gstBps / 100,
-      unit: service?.unit?.trim() || undefined,
-      service_catalogue_id: service?.id,
+      unit: service.unit?.trim() || undefined,
+      service_catalogue_id: service.id,
     };
 
     const existing = groups.get(invoiceNo);

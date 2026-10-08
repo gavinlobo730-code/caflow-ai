@@ -13,7 +13,6 @@ IDs `PRE-A-NNN` are stable: never renumber; add new items at the next free numbe
 
 ## AI
 
-- **PRE-A-006** · `ai` · normal · hours — **Name the AI provider on the extract and scan screens.** No screen a CA uses to send content to AI names the provider in its visible text: not the invoice Extract screen (PurchaseBillEditor), not the statement scan opt-in (AccountsPanel) and not the AI Assistant page (app/ai-assistant/page.tsx names Groq only in a code comment); only the Partner-only AI status screen (/settings/ai) shows the providers, from the server's sentences (re-checked 8 October 2026 by searching apps/web for Groq and Gemini). Add a plain-language notice on the Extract screen, the statement scan opt-in and the Assistant saying which provider receives the content and that it leaves India, stated factually without any claim about training or retention until the provider-terms item is settled. Hours of work; the roadmap itself (ai-14) flags it as doable before the demo. _When: A CA uploading a client bill will ask where it goes; the on/off switch and per-call audit rows are post-demo._ — _Sources:_ roadmap ai-14: Tell the CA what leaves the building at every upload, add an AI on/off switch, and log each AI call — _Refs:_ rm/ai-14
 
 ## GST returns
 
@@ -23,7 +22,6 @@ IDs `PRE-A-NNN` are stable: never renumber; add new items at the next free numbe
 
 ## Sales and purchase documents
 
-- **PRE-A-011** · `sales-purchase-docs` · normal · hours — **Fix invoice and bill importers accepting rows the server refuses.** SALES_INVOICE_IMPORT_COLUMNS (apps/web/lib/invoices/importMapping.ts, product_service required: false) and the purchase-bill columns mark product_service optional and description required only when it is blank, and a unit test pins that a row with no product_service yields a free-text line (importMapping.test.ts ~line 128). But InvoiceLineIn / SalesInvoiceLineIn / PurchaseBillLineIn make service_catalogue_id mandatory on every line (models/invoices.py:183 and :550), so every description-only row passes validation and the preview, then fails at POST with 'Product/Service is required on every line' in the final report (still open at HEAD; docs/BULK_IMPORT.md named it a pre-existing gap the importer does not repeat). Fix: make product_service required in both mappers (as the four credit/debit-note importers already do), or auto-create/resolve the catalogue item at the Resolve step, and correct the templates' hint text (docs/SALES_INVOICE_IMPORT.md 'Template columns') and the pinned test. _When: Bulk import is a headline onboarding feature; a template filled as documented fails every row at the end of the run._ — _Sources:_ docs/BULK_IMPORT.md 'Credit & Debit Notes' paragraph on service_catalogue_id; docs/SALES_INVOICE_IMPORT.md 'Template columns'
 
 ## Banking
 

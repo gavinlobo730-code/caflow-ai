@@ -12,14 +12,19 @@ const CUSTOMERS: CustomerRef[] = [
 const SERVICES: ServiceRef[] = [
   { id: "svc-1", name: "Statutory Audit", description: "Annual statutory audit", hsn_sac: "998221", gst_rate_bps: 1800, default_rate_paise: 5000000, unit: "OTH" },
   { id: "svc-2", name: "No Price Service", hsn_sac: "998222", gst_rate_bps: null, default_rate_paise: null, unit: null },
+  // A catalogue item that carries NOTHING of its own (no description, no price, no
+  // rate, no unit). Every line now names a Product/Service, because the server
+  // refuses a line with no catalogue item; this is the one a test uses when it is
+  // about something else and wants the row to supply every other field itself.
+  { id: "svc-3", name: "General Service", hsn_sac: null, gst_rate_bps: null, default_rate_paise: null, unit: null },
 ];
 
 function row(o: Record<string, string>) { return o; }
 
 test("rupees → integer paise and GST rate passed through as gst_rate_percent", () => {
   const { invoices, errors } = buildSalesInvoices(
-    [row({ invoice_no: "INV-0001", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Consulting", quantity: "1", rate: "1500.50", gst_rate: "18" })],
-    "client-1", CUSTOMERS);
+    [row({ product_service: "General Service", invoice_no: "INV-0001", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Consulting", quantity: "1", rate: "1500.50", gst_rate: "18" })],
+    "client-1", CUSTOMERS, SERVICES);
   assert.equal(errors.length, 0);
   assert.equal(invoices.length, 1);
   assert.equal(invoices[0].invoice_no, "INV-0001");
@@ -31,42 +36,42 @@ test("rupees → integer paise and GST rate passed through as gst_rate_percent",
 
 test("rows sharing invoice_no group into one multi-line invoice", () => {
   const { invoices } = buildSalesInvoices([
-    row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Line A", quantity: "1", rate: "100", gst_rate: "18" }),
-    row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Line B", quantity: "2", rate: "200", gst_rate: "18" }),
-  ], "client-1", CUSTOMERS);
+    row({ product_service: "General Service", invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Line A", quantity: "1", rate: "100", gst_rate: "18" }),
+    row({ product_service: "General Service", invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Line B", quantity: "2", rate: "200", gst_rate: "18" }),
+  ], "client-1", CUSTOMERS, SERVICES);
   assert.equal(invoices.length, 1);
   assert.equal(invoices[0].lines.length, 2);
 });
 
 test("different invoice_no → separate invoices even for the same customer/date", () => {
   const { invoices } = buildSalesInvoices([
-    row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "A", quantity: "1", rate: "100", gst_rate: "18" }),
-    row({ invoice_no: "INV-2", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "B", quantity: "1", rate: "100", gst_rate: "18" }),
-  ], "client-1", CUSTOMERS);
+    row({ product_service: "General Service", invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "A", quantity: "1", rate: "100", gst_rate: "18" }),
+    row({ product_service: "General Service", invoice_no: "INV-2", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "B", quantity: "1", rate: "100", gst_rate: "18" }),
+  ], "client-1", CUSTOMERS, SERVICES);
   assert.equal(invoices.length, 2);
 });
 
 test("missing invoice_no is reported and skipped", () => {
   const { invoices, errors } = buildSalesInvoices(
-    [row({ customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "X", quantity: "1", rate: "100", gst_rate: "18" })],
-    "client-1", CUSTOMERS);
+    [row({ product_service: "General Service", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "X", quantity: "1", rate: "100", gst_rate: "18" })],
+    "client-1", CUSTOMERS, SERVICES);
   assert.equal(invoices.length, 0);
   assert.match(errors[0], /invoice_no is required/i);
 });
 
 test("unknown customer is reported and skipped", () => {
   const { invoices, errors } = buildSalesInvoices(
-    [row({ invoice_no: "INV-1", customer: "Ghost Co", invoice_date: "2026-04-10", description: "X", quantity: "1", rate: "100", gst_rate: "18" })],
-    "client-1", CUSTOMERS);
+    [row({ product_service: "General Service", invoice_no: "INV-1", customer: "Ghost Co", invoice_date: "2026-04-10", description: "X", quantity: "1", rate: "100", gst_rate: "18" })],
+    "client-1", CUSTOMERS, SERVICES);
   assert.equal(invoices.length, 0);
   assert.match(errors[0], /unknown customer/i);
 });
 
 test("bad date and bad amount are reported", () => {
   const { errors } = buildSalesInvoices([
-    row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "10-04-2026", description: "X", quantity: "1", rate: "100", gst_rate: "18" }),
-    row({ invoice_no: "INV-2", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Y", quantity: "0", rate: "100", gst_rate: "18" }),
-  ], "client-1", CUSTOMERS);
+    row({ product_service: "General Service", invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "10-04-2026", description: "X", quantity: "1", rate: "100", gst_rate: "18" }),
+    row({ product_service: "General Service", invoice_no: "INV-2", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Y", quantity: "0", rate: "100", gst_rate: "18" }),
+  ], "client-1", CUSTOMERS, SERVICES);
   assert.equal(errors.length, 2);
   assert.match(errors[0], /invoice_date/i);
   assert.match(errors[1], /quantity/i);
@@ -74,9 +79,9 @@ test("bad date and bad amount are reported", () => {
 
 test("invoice_no reused across customers is rejected (group keeps its first customer)", () => {
   const { invoices, errors } = buildSalesInvoices([
-    row({ invoice_no: "INV-9", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "A", quantity: "1", rate: "100", gst_rate: "18" }),
-    row({ invoice_no: "INV-9", customer: "Beta LLP", invoice_date: "2026-04-10", description: "B", quantity: "1", rate: "100", gst_rate: "18" }),
-  ], "client-1", CUSTOMERS);
+    row({ product_service: "General Service", invoice_no: "INV-9", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "A", quantity: "1", rate: "100", gst_rate: "18" }),
+    row({ product_service: "General Service", invoice_no: "INV-9", customer: "Beta LLP", invoice_date: "2026-04-10", description: "B", quantity: "1", rate: "100", gst_rate: "18" }),
+  ], "client-1", CUSTOMERS, SERVICES);
   assert.match(errors.join(" "), /different customer/i);
   assert.equal(invoices.length, 1);
   assert.equal(invoices[0].lines.length, 1); // only the first (consistent) row survives
@@ -84,23 +89,23 @@ test("invoice_no reused across customers is rejected (group keeps its first cust
 
 test("invoice_no reused with a different invoice_date or due_date is rejected", () => {
   const { errors: dateErrors } = buildSalesInvoices([
-    row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "A", quantity: "1", rate: "100", gst_rate: "18" }),
-    row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-11", description: "B", quantity: "1", rate: "100", gst_rate: "18" }),
-  ], "client-1", CUSTOMERS);
+    row({ product_service: "General Service", invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "A", quantity: "1", rate: "100", gst_rate: "18" }),
+    row({ product_service: "General Service", invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-11", description: "B", quantity: "1", rate: "100", gst_rate: "18" }),
+  ], "client-1", CUSTOMERS, SERVICES);
   assert.match(dateErrors.join(" "), /different invoice_date/i);
 
   const { errors: dueDateErrors } = buildSalesInvoices([
-    row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", due_date: "2026-05-10", description: "A", quantity: "1", rate: "100", gst_rate: "18" }),
-    row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", due_date: "2026-06-10", description: "B", quantity: "1", rate: "100", gst_rate: "18" }),
-  ], "client-1", CUSTOMERS);
+    row({ product_service: "General Service", invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", due_date: "2026-05-10", description: "A", quantity: "1", rate: "100", gst_rate: "18" }),
+    row({ product_service: "General Service", invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", due_date: "2026-06-10", description: "B", quantity: "1", rate: "100", gst_rate: "18" }),
+  ], "client-1", CUSTOMERS, SERVICES);
   assert.match(dueDateErrors.join(" "), /different due_date/i);
 });
 
 test("invoice_no reused with a different supply_state_code is rejected", () => {
   const { errors } = buildSalesInvoices([
-    row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", supply_state_code: "27", description: "A", quantity: "1", rate: "100", gst_rate: "18" }),
-    row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", supply_state_code: "07", description: "B", quantity: "1", rate: "100", gst_rate: "18" }),
-  ], "client-1", CUSTOMERS);
+    row({ product_service: "General Service", invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", supply_state_code: "27", description: "A", quantity: "1", rate: "100", gst_rate: "18" }),
+    row({ product_service: "General Service", invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", supply_state_code: "07", description: "B", quantity: "1", rate: "100", gst_rate: "18" }),
+  ], "client-1", CUSTOMERS, SERVICES);
   assert.match(errors.join(" "), /different supply_state_code/i);
 });
 
@@ -125,12 +130,55 @@ test("a known product_service links the line (service_catalogue_id) so an issued
   assert.equal(invoices[0].lines[0].service_catalogue_id, SERVICES.find((s) => s.name === "Statutory Audit")?.id);
 });
 
-test("no product_service leaves service_catalogue_id unset (free-text line, no inventory linkage)", () => {
-  const { invoices, errors } = buildSalesInvoices(
-    [row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Freeform", rate: "500", gst_rate: "18", quantity: "1" })],
-    "client-1", CUSTOMERS, SERVICES);
-  assert.equal(errors.length, 0);
-  assert.equal(invoices[0].lines[0].service_catalogue_id, undefined);
+// PRE-A-011. This used to be "no product_service leaves service_catalogue_id unset
+// (free-text line)". InvoiceLineIn makes service_catalogue_id mandatory on every
+// line, so that row passed the preview and failed at POST in the final report; a row
+// with no Product/Service is refused HERE now, before anything is uploaded.
+test("a row with no product_service is refused, naming product_service, and nothing is built", () => {
+  const free = { invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Freeform", rate: "500", gst_rate: "18", quantity: "1" };
+  for (const blank of [undefined, "", "   "]) {
+    const r = blank === undefined ? row(free) : row({ ...free, product_service: blank });
+    const { invoices, errors } = buildSalesInvoices([r], "client-1", CUSTOMERS, SERVICES);
+    assert.equal(invoices.length, 0, `product_service ${JSON.stringify(blank)} must build nothing`);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /^Row 1: product_service is required on every line/);
+  }
+});
+
+test("a blank product_service on one row of a multi-row invoice refuses only that row", () => {
+  const head = { invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", quantity: "1", rate: "100", gst_rate: "18" };
+  const { invoices, errors } = buildSalesInvoices([
+    row({ ...head, product_service: "General Service", description: "Line A" }),
+    row({ ...head, description: "Line B" }),
+    row({ ...head, product_service: "General Service", description: "Line C" }),
+  ], "client-1", CUSTOMERS, SERVICES);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /^Row 2: product_service is required/);
+  assert.equal(invoices.length, 1);
+  assert.deepEqual(invoices[0].lines.map((l) => l.description), ["Line A", "Line C"]);
+});
+
+// The rule the server states, held from this side: whatever the mapper builds, every
+// line carries the catalogue id the server will demand. Over a mixed file, so a
+// future "free-text line" branch cannot hide behind the easy case.
+test("every built line carries a non-empty service_catalogue_id", () => {
+  const head = { customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", quantity: "2", rate: "100", gst_rate: "18" };
+  const { invoices } = buildSalesInvoices([
+    row({ ...head, invoice_no: "INV-1", product_service: "Statutory Audit" }),
+    row({ ...head, invoice_no: "INV-1", product_service: "General Service", description: "Extra" }),
+    row({ ...head, invoice_no: "INV-2", product_service: "statutory audit" }),   // the catalogue name is matched case-insensitively
+    row({ ...head, invoice_no: "INV-3", description: "No product at all" }),    // refused, never built
+  ], "client-1", CUSTOMERS, SERVICES);
+  const lines = invoices.flatMap((inv) => inv.lines);
+  assert.equal(lines.length, 3);
+  for (const l of lines) assert.ok(typeof l.service_catalogue_id === "string" && l.service_catalogue_id.length > 0);
+  assert.deepEqual(lines.map((l) => l.service_catalogue_id), ["svc-1", "svc-3", "svc-1"]);
+});
+
+test("the template marks product_service REQUIRED, and says why in its hint", () => {
+  const col = SALES_INVOICE_IMPORT_COLUMNS.find((c) => c.key === "product_service")!;
+  assert.equal(col.required, true);
+  assert.match(col.hint ?? "", /REQUIRED/);
 });
 
 test("row's own fields override the matched product_service's defaults", () => {
@@ -164,10 +212,12 @@ test("a product_service with no default price still requires a rate", () => {
   assert.match(errors[0], /rate.*non-negative/i);
 });
 
-test("no product_service still requires description, rate and gst_rate directly", () => {
+// A product with nothing of its own (no description, price or rate) leaves all
+// three to the row, and the first one missing is the one the CA is told about.
+test("a product_service that carries nothing still requires description, rate and gst_rate on the row", () => {
   const { invoices, errors } = buildSalesInvoices(
-    [row({ invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", quantity: "1" })],
-    "client-1", CUSTOMERS);
+    [row({ product_service: "General Service", invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", quantity: "1" })],
+    "client-1", CUSTOMERS, SERVICES);
   assert.equal(invoices.length, 0);
   assert.match(errors[0], /description is required/i);
 });
@@ -199,12 +249,12 @@ test("a product_service with no description of its own still requires a row-leve
 // every bulk-imported nil-rated, exempt or SEZ supply landed as an ordinary
 // domestic taxable B2B sale.
 
-const BASE = { invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Consulting", quantity: "1", rate: "1000", gst_rate: "18" };
+const BASE = { product_service: "General Service", invoice_no: "INV-1", customer: "Acme Pvt Ltd", invoice_date: "2026-04-10", description: "Consulting", quantity: "1", rate: "1000", gst_rate: "18" };
 
 test("classification columns reach the payload", () => {
   const { invoices, errors } = buildSalesInvoices(
     [row({ ...BASE, supply_type: "exempt", invoice_type: "SEZ_without_payment", reverse_charge: "yes" })],
-    "client-1", CUSTOMERS);
+    "client-1", CUSTOMERS, SERVICES);
   assert.equal(errors.length, 0);
   assert.equal(invoices[0].supply_type, "exempt");
   assert.equal(invoices[0].invoice_type, "SEZ_without_payment");
@@ -212,7 +262,7 @@ test("classification columns reach the payload", () => {
 });
 
 test("omitted classification falls to migration 268's defaults, explicitly", () => {
-  const { invoices } = buildSalesInvoices([row({ ...BASE })], "client-1", CUSTOMERS);
+  const { invoices } = buildSalesInvoices([row({ ...BASE })], "client-1", CUSTOMERS, SERVICES);
   // Sent as resolved values rather than left absent — same reasoning as
   // toClassificationPayload: never leave the server to fall back.
   assert.equal(invoices[0].supply_type, "taxable");
@@ -223,7 +273,7 @@ test("omitted classification falls to migration 268's defaults, explicitly", () 
 // The whole point of the fix. Before it, this row imported as `taxable`.
 test("a typo'd supply_type is rejected, NOT silently defaulted to taxable", () => {
   const { invoices, errors } = buildSalesInvoices(
-    [row({ ...BASE, supply_type: "exemtp" })], "client-1", CUSTOMERS);
+    [row({ ...BASE, supply_type: "exemtp" })], "client-1", CUSTOMERS, SERVICES);
   assert.equal(invoices.length, 0);
   assert.match(errors[0], /unknown supply_type "exemtp"/);
   assert.match(errors[0], /nil_rated/);   // the error lists what IS accepted
@@ -231,14 +281,14 @@ test("a typo'd supply_type is rejected, NOT silently defaulted to taxable", () =
 
 test("a typo'd invoice_type is rejected, NOT silently defaulted to Regular", () => {
   const { invoices, errors } = buildSalesInvoices(
-    [row({ ...BASE, invoice_type: "SEZ maybe" })], "client-1", CUSTOMERS);
+    [row({ ...BASE, invoice_type: "SEZ maybe" })], "client-1", CUSTOMERS, SERVICES);
   assert.equal(invoices.length, 0);
   assert.match(errors[0], /unknown invoice_type/);
 });
 
 test("an unparseable reverse_charge is rejected rather than read as no", () => {
   const { invoices, errors } = buildSalesInvoices(
-    [row({ ...BASE, reverse_charge: "N/A" })], "client-1", CUSTOMERS);
+    [row({ ...BASE, reverse_charge: "N/A" })], "client-1", CUSTOMERS, SERVICES);
   assert.equal(invoices.length, 0);
   assert.match(errors[0], /reverse_charge must be yes or no/);
 });
@@ -246,7 +296,7 @@ test("an unparseable reverse_charge is rejected rather than read as no", () => {
 test("spreadsheet spellings are accepted — case and separators", () => {
   const { invoices, errors } = buildSalesInvoices(
     [row({ ...BASE, supply_type: "Zero Rated", invoice_type: "sez with payment", reverse_charge: "TRUE" })],
-    "client-1", CUSTOMERS);
+    "client-1", CUSTOMERS, SERVICES);
   assert.equal(errors.length, 0);
   assert.equal(invoices[0].supply_type, "zero_rated");
   assert.equal(invoices[0].invoice_type, "SEZ_with_payment");
@@ -256,7 +306,7 @@ test("spreadsheet spellings are accepted — case and separators", () => {
 test("reverse_charge no / 0 / false all read as false", () => {
   for (const spelling of ["no", "0", "false", "N"]) {
     const { invoices, errors } = buildSalesInvoices(
-      [row({ ...BASE, reverse_charge: spelling })], "client-1", CUSTOMERS);
+      [row({ ...BASE, reverse_charge: spelling })], "client-1", CUSTOMERS, SERVICES);
     assert.equal(errors.length, 0, `"${spelling}" should parse`);
     assert.equal(invoices[0].is_reverse_charge, false, `"${spelling}" should be false`);
   }
@@ -269,7 +319,7 @@ test("rows of one invoice disagreeing on classification is an error, not a silen
   const { invoices, errors } = buildSalesInvoices([
     row({ ...BASE, description: "Line A", supply_type: "exempt" }),
     row({ ...BASE, description: "Line B", supply_type: "taxable" }),
-  ], "client-1", CUSTOMERS);
+  ], "client-1", CUSTOMERS, SERVICES);
   assert.equal(invoices[0].lines.length, 1);       // the disagreeing row is dropped
   assert.match(errors[0], /different supply_type/);
 });
@@ -278,7 +328,7 @@ test("consistent classification across rows still groups into one invoice", () =
   const { invoices, errors } = buildSalesInvoices([
     row({ ...BASE, description: "Line A", supply_type: "nil_rated", reverse_charge: "yes" }),
     row({ ...BASE, description: "Line B", supply_type: "nil_rated", reverse_charge: "yes" }),
-  ], "client-1", CUSTOMERS);
+  ], "client-1", CUSTOMERS, SERVICES);
   assert.equal(errors.length, 0);
   assert.equal(invoices.length, 1);
   assert.equal(invoices[0].lines.length, 2);

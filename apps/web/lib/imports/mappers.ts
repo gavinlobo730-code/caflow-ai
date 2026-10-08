@@ -406,9 +406,11 @@ export interface BuiltBillLine {
   // actually restocks inventory — domain/inventory_service.py's
   // apply_purchase_to_inventory only moves stock for lines carrying this
   // (see PurchaseBillLineIn.service_catalogue_id). Mirrors
-  // lib/invoices/importMapping.ts's BuiltLine.service_catalogue_id, which
-  // has the identical gap on the sales side.
-  service_catalogue_id?: string;
+  // lib/invoices/importMapping.ts's BuiltLine.service_catalogue_id. REQUIRED:
+  // the server refuses a bill line with no catalogue item, so a mapper edit that
+  // let an unlinked line through would be a type error here and not a row that
+  // fails at POST in the final report.
+  service_catalogue_id: string;
 }
 
 export interface BuiltBill {
@@ -440,14 +442,20 @@ export const PURCHASE_BILL_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "bill_no", label: "Bill No", required: false, hint: "Vendor's bill number (also groups multiple line rows into one bill)" },
   { key: "bill_date", label: "Bill Date", required: true, hint: "YYYY-MM-DD" },
   { key: "due_date", label: "Due Date", required: false, hint: "YYYY-MM-DD (optional)" },
-  { key: "product_service", label: "Product/Service", required: false, hint: "Existing catalogue item name (optional) — links this line so a received bill restocks inventory, and pre-fills HSN/rate/GST/unit" },
-  { key: "description", label: "Description", required: false, hint: "Required unless Product/Service is given" },
+  { key: "product_service", label: "Product/Service", required: true, hint: "REQUIRED on every line — existing catalogue item name (the server rejects a line with no catalogue item); links this line so a received bill restocks inventory, and pre-fills HSN/rate/GST/unit" },
+  { key: "description", label: "Description", required: false, hint: "Required unless the Product/Service has its own description" },
   { key: "hsn_sac", label: "HSN/SAC", required: false, hint: "HSN or SAC code (optional; overrides the Product/Service's own)" },
   { key: "quantity", label: "Quantity", required: true, hint: "e.g. 1" },
-  { key: "rate", label: "Rate (₹)", required: false, hint: "Per-unit rate in rupees — required unless Product/Service has a purchase price" },
-  { key: "gst_rate", label: "GST %", required: false, hint: "e.g. 18 (for 18%) — required unless Product/Service is given" },
+  { key: "rate", label: "Rate (₹)", required: false, hint: "Per-unit rate in rupees — required unless the Product/Service has a purchase price" },
+  { key: "gst_rate", label: "GST %", required: false, hint: "e.g. 18 (for 18%) — required unless the Product/Service has a default rate" },
 ];
 
+// product_service is REQUIRED here for the reason it is on the credit/debit-note
+// importers below: PurchaseBillLineIn makes service_catalogue_id mandatory on
+// every line, and a row that names none used to pass the preview and fail at
+// POST in the final report. A missing catalogue item is created at the Resolve
+// step ("+ Add"), never from a spreadsheet cell (an item needs an HSN, a kind and
+// a GST rate that a cell cannot supply).
 export function buildPurchaseBills(
   rows: Record<string, string>[],
   clientId: string,
@@ -472,32 +480,33 @@ export function buildPurchaseBills(
     if (!vendorId) { errors.push(`Row ${rowNo}: unknown vendor "${vendorName}" — create the vendor first`); return; }
     if (!DATE_RE.test(billDate)) { errors.push(`Row ${rowNo}: bill_date must be YYYY-MM-DD`); return; }
     if (dueDate && !DATE_RE.test(dueDate)) { errors.push(`Row ${rowNo}: due_date must be YYYY-MM-DD`); return; }
-    if (productName && !service) { errors.push(`Row ${rowNo}: unknown product/service "${productName}" — create it first`); return; }
+    if (!productName) { errors.push(`Row ${rowNo}: product_service is required on every line (Product/Service is mandatory on every bill line)`); return; }
+    if (!service) { errors.push(`Row ${rowNo}: unknown product/service "${productName}" — create it first`); return; }
 
-    const description = str(r.description) || (service?.description?.trim() ?? "");
+    const description = str(r.description) || (service.description?.trim() ?? "");
     if (!description) { errors.push(`Row ${rowNo}: description is required (or use a Product/Service that has its own description set)`); return; }
 
     const qty = toQty(r.quantity);
     if (!Number.isFinite(qty) || qty <= 0) { errors.push(`Row ${rowNo}: quantity must be a positive number`); return; }
 
     const rateRaw = str(r.rate);
-    const ratePaise = rateRaw ? toPaise(r.rate) : (service?.purchase_price_paise ?? NaN);
+    const ratePaise = rateRaw ? toPaise(r.rate) : (service.purchase_price_paise ?? NaN);
     if (!Number.isFinite(ratePaise) || ratePaise < 0) { errors.push(`Row ${rowNo}: rate (₹) must be a non-negative number (or give a Product/Service with a purchase price)`); return; }
 
     const gstRaw = str(r.gst_rate);
-    const gstBps = gstRaw ? toBps(r.gst_rate) : (service?.gst_rate_bps ?? NaN);
+    const gstBps = gstRaw ? toBps(r.gst_rate) : (service.gst_rate_bps ?? NaN);
     if (!Number.isFinite(gstBps) || gstBps < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or give a Product/Service with a default rate)`); return; }
     const gst = gstBps / 100;
 
     const ref = billNo || `${vendorName.toLowerCase()}|${billDate}`;
     const line: BuiltBillLine = {
       description,
-      hsn_sac: str(r.hsn_sac) || service?.hsn_sac?.trim() || undefined,
+      hsn_sac: str(r.hsn_sac) || service.hsn_sac?.trim() || undefined,
       quantity: qty,
       rate_paise: ratePaise,
       gst_rate_percent: gst,
-      unit: service?.unit?.trim() || undefined,
-      service_catalogue_id: service?.id,
+      unit: service.unit?.trim() || undefined,
+      service_catalogue_id: service.id,
     };
 
     const existing = groups.get(ref);
@@ -656,10 +665,11 @@ export const EMPLOYEE_IMPORT_COLUMNS: ImportColumn[] = [
 //
 // All four share InvoiceLineIn (apps/api/models/invoices.py), whose
 // model_validator makes service_catalogue_id MANDATORY on every line ("Product/
-// Service is required on every line item") — unlike buildSalesInvoices/
-// buildPurchaseBills above, which still treat product_service as an optional
-// pre-fill even though the same backend model now rejects a line with no
-// catalogue link. product_service is therefore a REQUIRED column here.
+// Service is required on every line item"). buildSalesInvoices and
+// buildPurchaseBills above ask for it on the same terms (PRE-A-011: they used
+// to treat product_service as an optional pre-fill and let a row through that
+// the server then refused), so all six line importers now say the same thing:
+// product_service is a REQUIRED column.
 //
 // is_interstate is handled per-endpoint by the backend, and inconsistently:
 // - routers/credit_notes.py IGNORES any client-sent is_interstate and always

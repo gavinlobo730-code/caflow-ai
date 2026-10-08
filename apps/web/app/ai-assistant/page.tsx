@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Sparkles, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
+import { AiDisclosure } from "@/components/ai/AiDisclosure";
 
 interface Message {
   role: "user" | "assistant";
@@ -232,8 +233,9 @@ export default function AIAssistantPage() {
         <div className="px-6 py-2 border-b border-ps-border bg-ps-bg shrink-0">
           <p className="text-3xs text-ps-hint">
             Answers for this client are given the figures the hub computes —
-            how much is outstanding in each module. No document, no ledger
-            line, no employee record and no GSTIN or PAN is sent.
+            how much is outstanding in each module — and those figures go to
+            Groq with your question. No document, no ledger line, no employee
+            record and no GSTIN or PAN is sent.
           </p>
         </div>
       )}
@@ -338,6 +340,9 @@ export default function AIAssistantPage() {
 
       {/* ── Input bar ───────────────────────────────────────────────────────── */}
       <div className="shrink-0 px-6 py-4 border-t border-ps-border bg-white">
+        {/* WHO RECEIVES WHAT IS TYPED HERE, said every time, whether or not a client
+            is chosen (PRE-A-006). */}
+        <AiDisclosure surface="assistant" className="max-w-4xl mx-auto mb-2" />
         <div className="flex gap-2 items-end max-w-4xl mx-auto">
           <textarea
             ref={textareaRef}

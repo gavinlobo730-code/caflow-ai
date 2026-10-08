@@ -72,13 +72,14 @@ Unknown names are reported per-row and skipped, never silently created.
 
 ### Sales Invoices (multi-line)
 `invoice_no`* · `customer`* · `invoice_date`* (YYYY-MM-DD) · `due_date` ·
-`supply_state_code` · `product_service` · `description`* · `hsn_sac` ·
+`supply_state_code` · `product_service`* · `description`* · `hsn_sac` ·
 `quantity`* · `rate`* (₹) · `gst_rate`* (%) ·
 `supply_type` · `invoice_type` · `reverse_charge`.
 
-Rows sharing an `invoice_no` group into one multi-line invoice. `description`,
-`rate` and `gst_rate` are each required only when the row names no
-`product_service` to inherit them from.
+Rows sharing an `invoice_no` group into one multi-line invoice. `product_service`
+is required on every line (see below). `description`, `rate` and `gst_rate` are
+each required only when the row's `product_service` has none of its own to
+inherit.
 
 **The last three are the GSTR-1 classification** (task #157), and they decide
 which table of the return the supply lands in:
@@ -108,8 +109,11 @@ GSTIN/PAN format-validated when present; duplicate names within the file are ski
 When `tds_applicable` is yes, a valid section and a positive rate are required.
 
 ### Purchase Bills (multi-line)
-`vendor`* · `bill_no` · `bill_date`* (YYYY-MM-DD) · `due_date` · `description`* ·
-`hsn_sac` · `quantity`* · `rate`* (₹) · `gst_rate`* (%).
+`vendor`* · `bill_no` · `bill_date`* (YYYY-MM-DD) · `due_date` · `product_service`* ·
+`description`* · `hsn_sac` · `quantity`* · `rate`* (₹) · `gst_rate`* (%).
+`product_service` is required on every line (see below); `description`, `rate`
+and `gst_rate` are required only when the row's `product_service` has none of its
+own to inherit.
 Rows sharing a `bill_no` group into one multi-line bill (absent a `bill_no`,
 rows group by `vendor` + `bill_date`). A `bill_no` reused across two vendors is rejected.
 
@@ -138,11 +142,14 @@ backend rejects any `aadhaar_last4` that is not exactly 4 digits.
 `note_ref` (optional grouping key) · `product_service`* · `description` · `hsn_sac` · `quantity`* · `rate` (₹) ·
 `gst_rate` (%).
 
-Unlike Sales Invoices/Purchase Bills, **`product_service` is REQUIRED on every line, not optional** — the
-shared `InvoiceLineIn`/`PurchaseBillLineIn` backend model makes `service_catalogue_id` mandatory on every
-line item, so a line with no matched Product/Service is rejected at import time (this also means a
-description-only Sales Invoice/Purchase Bill import row is silently invalid today — a pre-existing gap this
-importer does not repeat).
+**`product_service` is REQUIRED on every line of every document importer — Sales Invoices, Purchase Bills and
+all four notes.** The backend line models (`InvoiceLineIn`, `SalesInvoiceLineIn`, `PurchaseBillLineIn`) make
+`service_catalogue_id` mandatory on every line item, so a row with no matched Product/Service is refused in the
+preview (the column is marked required and the mapper refuses a blank one) instead of passing it and failing
+at POST in the final report, as a description-only invoice or bill row used to (PRE-A-011). A name the catalogue
+does not hold yet is the Resolve step's **"+ Add"**; the importer never creates a catalogue item from a
+spreadsheet cell, because an item needs an HSN from the firm library, a kind and a GST rate that a cell cannot
+supply.
 
 Rows group into one note by `note_ref` if given, else by `invoice_no`/`bill_no`, else by
 `customer`/`vendor` + note date (same fallback `purchase_bills` uses for a blank `bill_no`).

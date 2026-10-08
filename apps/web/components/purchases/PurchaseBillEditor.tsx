@@ -51,6 +51,7 @@ import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { AiDisclosure } from "@/components/ai/AiDisclosure";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1106,11 +1107,14 @@ export function PurchaseBillEditor({
           <section className="bg-state-attention-surface border border-state-attention-border rounded-lg p-3 space-y-2">
             <p className="text-xs font-medium text-state-attention flex items-center gap-1.5"><Upload size={12} /> Upload Invoice (AI Extract)</p>
             <div className="flex items-center gap-2">
-              <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
+              <input type="file" accept=".pdf,.png,.jpg,.jpeg" aria-label="Invoice file to extract" aria-describedby="ai-disclosure-invoice-extraction" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
               <Button variant="plain" size="none" onClick={handleExtract} disabled={!uploadFile || extracting} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {extracting ? "Extracting…" : "Extract"}
               </Button>
             </div>
+            {/* WHO RECEIVES THE FILE, said before the button is pressed (PRE-A-006).
+                Colour is the sibling notes' own on this tinted box. */}
+            <AiDisclosure id="ai-disclosure-invoice-extraction" surface="invoice_extraction" className="text-state-attention" />
             {aiExtracted && (
               <div className="mt-1 text-3xs text-state-attention bg-state-attention-surface rounded px-2 py-1.5">
                 ✓ AI extracted data pre-filled below. <strong>Review before saving.</strong>

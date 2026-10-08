@@ -7,6 +7,7 @@ import {
   buildVendors,
   buildServices,
   buildPurchaseBills,
+  PURCHASE_BILL_IMPORT_COLUMNS,
   buildReceipts,
   type NameRef,
   type PurchaseServiceRef,
@@ -279,11 +280,19 @@ test("services: three decimals are kept exactly, and a grouped number is not rea
 // ── Purchase bills ─────────────────────────────────────────────────────────
 const VENDORS: NameRef[] = [{ id: "v1", name: "Supplier A" }, { id: "v2", name: "Supplier B" }];
 
+const PURCHASE_SERVICES: PurchaseServiceRef[] = [
+  { id: "s1", name: "TMT Steel Rod 12mm", description: "Steel bar", hsn_sac: "7214", gst_rate_bps: 1800, purchase_price_paise: 5800, unit: "KGS" },
+  // A catalogue item that carries nothing of its own. Every bill line names a
+  // Product/Service (PurchaseBillLineIn refuses one without), so a test that is
+  // about something else names this and gives the row every other field itself.
+  { id: "s2", name: "General Purchase", description: null, hsn_sac: null, gst_rate_bps: null, purchase_price_paise: null, unit: null },
+];
+
 test("purchase bills: rows sharing bill_no group into one multi-line bill", () => {
   const { bills, errors } = buildPurchaseBills([
-    row({ vendor: "Supplier A", bill_no: "B-1", bill_date: "2026-04-10", description: "L1", quantity: "1", rate: "100", gst_rate: "18" }),
-    row({ vendor: "Supplier A", bill_no: "B-1", bill_date: "2026-04-10", description: "L2", quantity: "2", rate: "200.25", gst_rate: "18" }),
-  ], "c1", VENDORS);
+    row({ vendor: "Supplier A", bill_no: "B-1", bill_date: "2026-04-10", product_service: "General Purchase", description: "L1", quantity: "1", rate: "100", gst_rate: "18" }),
+    row({ vendor: "Supplier A", bill_no: "B-1", bill_date: "2026-04-10", product_service: "General Purchase", description: "L2", quantity: "2", rate: "200.25", gst_rate: "18" }),
+  ], "c1", VENDORS, PURCHASE_SERVICES);
   assert.equal(errors.length, 0);
   assert.equal(bills.length, 1);
   assert.equal(bills[0].lines.length, 2);
@@ -294,18 +303,14 @@ test("purchase bills: rows sharing bill_no group into one multi-line bill", () =
 
 test("purchase bills: unknown vendor and bill_no reused across vendors reported", () => {
   const { bills, errors } = buildPurchaseBills([
-    row({ vendor: "Ghost", bill_date: "2026-04-10", description: "X", quantity: "1", rate: "10", gst_rate: "5" }),
-    row({ vendor: "Supplier A", bill_no: "B-9", bill_date: "2026-04-10", description: "A", quantity: "1", rate: "10", gst_rate: "5" }),
-    row({ vendor: "Supplier B", bill_no: "B-9", bill_date: "2026-04-10", description: "B", quantity: "1", rate: "10", gst_rate: "5" }),
-  ], "c1", VENDORS);
+    row({ vendor: "Ghost", bill_date: "2026-04-10", product_service: "General Purchase", description: "X", quantity: "1", rate: "10", gst_rate: "5" }),
+    row({ vendor: "Supplier A", bill_no: "B-9", bill_date: "2026-04-10", product_service: "General Purchase", description: "A", quantity: "1", rate: "10", gst_rate: "5" }),
+    row({ vendor: "Supplier B", bill_no: "B-9", bill_date: "2026-04-10", product_service: "General Purchase", description: "B", quantity: "1", rate: "10", gst_rate: "5" }),
+  ], "c1", VENDORS, PURCHASE_SERVICES);
   assert.match(errors.join(" "), /unknown vendor/i);
   assert.match(errors.join(" "), /different vendor/i);
   assert.equal(bills.length, 1); // only B-9 for Supplier A
 });
-
-const PURCHASE_SERVICES: PurchaseServiceRef[] = [
-  { id: "s1", name: "TMT Steel Rod 12mm", description: "Steel bar", hsn_sac: "7214", gst_rate_bps: 1800, purchase_price_paise: 5800, unit: "KGS" },
-];
 
 test("purchase bills: product_service links the line (service_catalogue_id) so a received bill can restock inventory", () => {
   const { bills, errors } = buildPurchaseBills([
@@ -342,9 +347,59 @@ test("purchase bills: unknown product_service is reported, not silently ignored"
   assert.match(errors.join(" "), /unknown product\/service/i);
 });
 
-test("purchase bills: no product_service still requires description/rate/gst_rate (unlinked, free-text line)", () => {
+// PRE-A-011. This used to be "no product_service still requires description/rate/
+// gst_rate (unlinked, free-text line)": a description-only row built an UNLINKED line,
+// which PurchaseBillLineIn refuses ("Product/Service is required on every line
+// item"), so it passed the preview and failed at POST in the final report. It is
+// refused here now, before anything is uploaded.
+test("purchase bills: a row with no product_service is refused, naming product_service, and nothing is built", () => {
+  const free = { vendor: "Supplier A", bill_date: "2026-04-10", description: "Freeform", quantity: "1", rate: "10", gst_rate: "18" };
+  for (const blank of [undefined, "", "   "]) {
+    const r = blank === undefined ? row(free) : row({ ...free, product_service: blank });
+    const { bills, errors } = buildPurchaseBills([r], "c1", VENDORS, PURCHASE_SERVICES);
+    assert.equal(bills.length, 0, `product_service ${JSON.stringify(blank)} must build nothing`);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /^Row 1: product_service is required on every line/);
+  }
+});
+
+test("purchase bills: a blank product_service on one row of a multi-row bill refuses only that row", () => {
+  const head = { vendor: "Supplier A", bill_no: "B-5", bill_date: "2026-04-10", quantity: "1", rate: "10", gst_rate: "18" };
   const { bills, errors } = buildPurchaseBills([
-    row({ vendor: "Supplier A", bill_date: "2026-04-10", quantity: "1" }),
+    row({ ...head, product_service: "General Purchase", description: "Line A" }),
+    row({ ...head, description: "Line B" }),
+    row({ ...head, product_service: "General Purchase", description: "Line C" }),
+  ], "c1", VENDORS, PURCHASE_SERVICES);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /^Row 2: product_service is required/);
+  assert.equal(bills.length, 1);
+  assert.deepEqual(bills[0].lines.map((l) => l.description), ["Line A", "Line C"]);
+});
+
+test("purchase bills: every built line carries a non-empty service_catalogue_id", () => {
+  const head = { vendor: "Supplier A", bill_date: "2026-04-10", quantity: "1", rate: "10", gst_rate: "18" };
+  const { bills } = buildPurchaseBills([
+    row({ ...head, bill_no: "B-1", product_service: "TMT Steel Rod 12mm" }),
+    row({ ...head, bill_no: "B-1", product_service: "General Purchase", description: "Extra" }),
+    row({ ...head, bill_no: "B-2", product_service: "tmt steel rod 12mm" }),   // matched case-insensitively
+    row({ ...head, bill_no: "B-3", description: "No product at all" }),         // refused, never built
+  ], "c1", VENDORS, PURCHASE_SERVICES);
+  const lines = bills.flatMap((b) => b.lines);
+  assert.equal(lines.length, 3);
+  for (const l of lines) assert.ok(typeof l.service_catalogue_id === "string" && l.service_catalogue_id.length > 0);
+  assert.deepEqual(lines.map((l) => l.service_catalogue_id), ["s1", "s2", "s1"]);
+});
+
+test("purchase bills: the template marks product_service REQUIRED, and says why in its hint", () => {
+  const col = PURCHASE_BILL_IMPORT_COLUMNS.find((c) => c.key === "product_service")!;
+  assert.equal(col.required, true);
+  assert.match(col.hint ?? "", /REQUIRED/);
+});
+
+// A product with nothing of its own leaves description, rate and GST to the row.
+test("purchase bills: a product_service that carries nothing still requires description, rate and gst_rate on the row", () => {
+  const { bills, errors } = buildPurchaseBills([
+    row({ vendor: "Supplier A", bill_date: "2026-04-10", product_service: "General Purchase", quantity: "1" }),
   ], "c1", VENDORS, PURCHASE_SERVICES);
   assert.equal(bills.length, 0);
   assert.match(errors.join(" "), /description is required/i);
