@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { ClipboardList, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
+import { practiceSalesHref } from "@/lib/invoices/workspaceNav";
+import { readPracticeBooks, type PracticeBooks } from "@/lib/invoices/practiceBooks";
 import { formatPaise } from "@/lib/services/formatting";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { PageHeader } from "@/components/ui/page-header";
@@ -27,15 +30,28 @@ function ARDashboard() {
   const [aging, setAging] = useState<Aging | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Where the practice's own invoices are worked (PRE-A-018). Three answers kept
+  // apart (see lib/invoices/practiceBooks): the practice client, "there is
+  // none", and "could not find out". Starts as the third, so nothing claims the
+  // practice is not set up before the server has said so.
+  const [books, setBooks] = useState<PracticeBooks>({ state: "unknown" });
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
+    // A separate read, started alongside and tolerated on its own: the ageing
+    // is the page, and a failed lookup of where its invoices live must never
+    // blank it. It is awaited before the page is shown so that "could not look
+    // up" is never displayed for a lookup still in flight.
+    const lookup = api.practice.get().catch(() => undefined);
     try {
       const r = await api.billing.arAging() as ApiResp<Aging>;
       setAging(r.data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load AR aging");
-    } finally { setLoading(false); }
+    } finally {
+      setBooks(readPracticeBooks(await lookup));
+      setLoading(false);
+    }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -43,6 +59,8 @@ function ARDashboard() {
   if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
 
   const buckets = aging?.buckets ?? {};
+  const practiceInvoicesHref = books.state === "known" ? practiceSalesHref(books.clientId) : null;
+  const practiceReceiptsHref = books.state === "known" ? practiceSalesHref(books.clientId, { tab: "receipts" }) : null;
   return (
     <div className="p-6 max-w-3xl">
       <PageHeader
@@ -86,6 +104,23 @@ function ARDashboard() {
         Overdue: <span className="font-medium text-red-600">{formatPaise(aging?.overdue_paise ?? 0)}</span>
         {" "}across {aging?.overdue_count ?? 0} invoice(s). Aging is due-date based, computed server-side.
       </p>
+      <div className="text-xs text-gray-500 mt-3">
+        {practiceInvoicesHref && practiceReceiptsHref ? (
+          <p>
+            The invoices behind these figures are worked in the practice&apos;s own books:{" "}
+            <Link href={practiceInvoicesHref} className="underline hover:text-brand">open the Sales invoices</Link>
+            {" "}to issue or chase one, or{" "}
+            <Link href={practiceReceiptsHref} className="underline hover:text-brand">record a receipt</Link>.
+          </p>
+        ) : books.state === "not_provisioned" ? (
+          <p>
+            The practice has not been set up yet, so its invoices have nowhere to be issued.{" "}
+            <Link href="/practice" className="underline hover:text-brand">Set up the practice</Link>.
+          </p>
+        ) : (
+          <p>Could not look up the practice&apos;s books, so the link to its invoices is not shown. Refresh to try again.</p>
+        )}
+      </div>
     </div>
   );
 }

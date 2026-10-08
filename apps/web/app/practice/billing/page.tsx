@@ -2,8 +2,10 @@
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
-import { Receipt, RefreshCw, Plus, CheckCircle2 } from "lucide-react";
-import { api, type ApiResp } from "@/lib/api";
+import Link from "next/link";
+import { Receipt, RefreshCw, Plus, CheckCircle2, FileText } from "lucide-react";
+import { api, type ApiResp, type BillingGenerateResult } from "@/lib/api";
+import { practiceSalesHref } from "@/lib/invoices/workspaceNav";
 import { formatPaise } from "@/lib/services/formatting";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
@@ -27,6 +29,12 @@ function Billing() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  // The invoice a "Generate draft" press produced or found, when the message
+  // above is about one: the message links to it in the practice's own sales
+  // workspace, where it is checked, numbered, issued and paid (PRE-A-018).
+  // `created` tells a draft this press made from one that was already there
+  // (which may have been issued since, so it is not called a draft).
+  const [msgInvoice, setMsgInvoice] = useState<{ id: string; created: boolean } | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ client_id: "", arrangement: "retainer", cadence: "monthly", amount_rupees: "", gst_rate: "18" });
   const [product, setProduct] = useState<ServiceCatalogueItem | null>(null);
@@ -54,10 +62,17 @@ function Billing() {
 
   const clientName = (id: string) => clients.find((c) => c.id === id)?.client_name ?? id.slice(0, 8);
 
+  // One place the banner is set, so a message about a schedule can never keep
+  // the previous run's invoice link.
+  function say(text: string | null, invoice: { id: string; created: boolean } | null = null) {
+    setMsg(text);
+    setMsgInvoice(invoice);
+  }
+
   async function createSchedule(e: React.FormEvent) {
     e.preventDefault();
-    setMsg(null);
-    if (!product) { setMsg("Select a Product/Service for this fee"); return; }
+    say(null);
+    if (!product) { say("Select a Product/Service for this fee"); return; }
     // A billing schedule bills this amount every cadence until somebody stops
     // it, so an amount read wrong is wrong repeatedly.
     const amountPaise = paiseFromRupeeInput(form.amount_rupees || "0");
@@ -70,23 +85,39 @@ function Billing() {
         service_id: product.id,
       });
       setShowForm(false); setForm({ ...form, client_id: "", amount_rupees: "" }); setProduct(null); await load();
-    } catch (e) { setMsg(e instanceof Error ? e.message : "Create failed"); }
+    } catch (e) { say(e instanceof Error ? e.message : "Create failed"); }
   }
 
   async function generate(scheduleId: string) {
     setRowBusy(true);
     try {
-    setMsg(null);
+    say(null);
     try {
-      const r = await api.billing.generate(scheduleId) as ApiResp<{ invoice?: { id: string; invoice_no?: string }; created: boolean }>;
-      setMsg(r.data?.created ? `Draft invoice generated (${r.data.invoice?.invoice_no ?? r.data.invoice?.id})` : "Already generated for this period");
+      const r = await api.billing.generate(scheduleId);
+      const result: BillingGenerateResult | undefined = r.data;
+      const invoiceId = result?.invoice?.id ?? null;
+      // A billing run numbers its draft with a placeholder (the CA is not
+      // present in an unattended run), and Issue accepts it as a number — so
+      // the one thing the CA must do before issuing is said where they are
+      // sent to do it.
+      say(
+        result?.created
+          ? `Draft invoice generated (${result.invoice?.invoice_no ?? invoiceId}). Replace its placeholder number in Edit before you issue it.`
+          : "Already generated for this period",
+        invoiceId ? { id: invoiceId, created: result?.created === true } : null,
+      );
       await load();
-    } catch (e) { setMsg(e instanceof Error ? e.message : "Generate failed"); }
+    } catch (e) { say(e instanceof Error ? e.message : "Generate failed"); }
   } finally { setRowBusy(false); }
   }
 
   if (loading) return <div className="p-8 text-sm text-gray-500">Loading billing…</div>;
   if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
+
+  // Where the practice's own fee invoices are checked, numbered, issued and paid.
+  // Null until the server has named the practice client: a null renders no link.
+  const practiceInvoicesHref = practiceSalesHref(internalClientId);
+  const draftHref = practiceSalesHref(internalClientId, { invoiceId: msgInvoice?.id });
 
   return (
     <div className="p-6 max-w-4xl">
@@ -98,6 +129,11 @@ function Billing() {
             <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white">
               <Plus size={13} /> New schedule
             </button>
+            {practiceInvoicesHref && (
+              <Link href={practiceInvoicesHref} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
+                <FileText size={13} /> Practice invoices
+              </Link>
+            )}
             <button onClick={load} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand">
               <RefreshCw size={13} /> Refresh
             </button>
@@ -106,7 +142,19 @@ function Billing() {
         className="mb-5"
       />
 
-      {msg && <div className="mb-3 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700">{msg}</div>}
+      {msg && (
+        <div className="mb-3 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700">
+          {msg}
+          {draftHref && msgInvoice && (
+            <>
+              {" "}
+              <Link href={draftHref} className="font-medium underline">
+                {msgInvoice.created ? "Open the draft" : "Open the invoice"}
+              </Link>
+            </>
+          )}
+        </div>
+      )}
 
       {showForm && (
         <form onSubmit={createSchedule} className="mb-4 bg-white border border-gray-200 rounded-xl p-4 grid grid-cols-2 gap-3 text-sm">
@@ -185,7 +233,13 @@ function Billing() {
       </div>
       <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">
         <CheckCircle2 size={13} className="text-gray-400" />
-        Generation creates a DRAFT only. Confirm &amp; issue each draft from the invoice (CA-confirm gate) before despatch.
+        <span>
+          Generation creates a DRAFT only. Confirm &amp; issue each draft from{" "}
+          {practiceInvoicesHref
+            ? <Link href={practiceInvoicesHref} className="underline hover:text-brand">the practice&apos;s Sales invoices</Link>
+            : "the invoice"}
+          {" "}(CA-confirm gate) before despatch.
+        </span>
       </p>
     </div>
   );
