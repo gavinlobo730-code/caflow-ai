@@ -34,7 +34,8 @@ from services.compliance_engine import (
     gst_state_category, gst_period_month_in_quarter, MONTHLY, QUARTERLY,
 )
 from services.gst_filing_record_service import (
-    FILING_TYPE_GSTR1, FILING_TYPE_GSTR3B, record_filing, return_status_patch,
+    FILING_TYPE_GSTR1, FILING_TYPE_GSTR3B, FiledDateRefused, checked_filed_date,
+    record_filing, return_status_patch,
 )
 from domain.money_text import rupees_paise
 
@@ -173,9 +174,12 @@ class UpdateStatusRequest(BaseModel):
     # the GST portal and may not have it to hand when they mark it submitted
     # here; recorded on both the return and the filings row when supplied.
     arn: Optional[str] = None
-    # When the return was actually filed, if that is not today — marking it in
-    # this app can lag the portal by days, and the period lock keys on the real
-    # filing date, not on when someone got round to recording it.
+    # When the return was actually filed on the portal. REQUIRED when `status`
+    # is "submitted" (PRE-A-007) and read on no other status: marking it in this
+    # app can lag the portal by days, and the period lock and the s.37(3)
+    # correction window key on the real filing date, not on when someone got
+    # round to recording it. It is Optional in the model only because every
+    # other status leaves it out; the route refuses a submit without it.
     filed_date: Optional[str] = None
 
 
@@ -282,6 +286,70 @@ def _load_return_or_none(current_user: dict, table: str, mock_store: dict,
                 .execute().data)
         rec = rows[0] if rows else None
     return _visible_or_none(current_user, rec)
+
+
+def _filed_date_or_refusal(status: str, firm_id: str, filing_type: str,
+                           filed_date: Optional[str], rec: dict):
+    """(date, refusal, registration) for a return about to be marked submitted.
+    Any other status files nothing and is not judged: (None, None, None).
+
+    PRE-A-007. The date a return was filed on is the CA's statement, never the
+    clock's: `record_filing` used to fall back to today, so a return filed on
+    the portal on the 11th and recorded on the 14th was stamped the 14th, and
+    that is the date the period lock quotes and the s.37(3)/39(9)/16(4)
+    correction window is measured from.
+
+    It is asked HERE, before the status moves, and not left to `record_filing`:
+    the call to that function sits in a `try` that logs and carries on (the
+    return IS filed; failing the request would leave the CA unable to record
+    reality), so a refusal raised inside it would be swallowed after the status
+    had already moved to submitted, leaving a return Filed with no `filings` row
+    and so no lock. A refusal is returned as a sentence, in the envelope every
+    other refusal in these two routes uses.
+
+    The registration is resolved once and handed back, because its filing
+    frequency decides whether the period the date is judged against is a month
+    or a QRMP quarter (Rule 61A with the proviso to CGST s.39(1)), and the
+    filing record that follows needs the same answer. None in mock mode, which
+    has no registrations table."""
+    if status != "submitted":
+        return None, None, None
+    reg = None
+    if not _USE_MOCK:
+        from core.supabase_client import get_supabase
+        reg = _registration_for(get_supabase(), firm_id, rec)
+    try:
+        filed = checked_filed_date(
+            filing_type, filed_date, period=rec.get("period") or "",
+            frequency=(reg.filing_frequency if reg else None))
+    except FiledDateRefused as e:
+        return None, e.sentence, reg
+    return filed, None, reg
+
+
+def _registration_refusal(status: str, firm_id: str, rec: dict) -> Optional[str]:
+    """GST-20: the sentence refusing an approval or a filing under a GSTIN this
+    client no longer holds, or None.
+
+    The return's own GSTIN must still be one this client holds before a CA
+    rubber-stamps it. save_gstr3b already refuses this at save time, but a
+    registration recorded in error and corrected afterwards, or a return written
+    before that check existed, would otherwise reach approval/filing unchecked.
+    Same registrations service the compute paths use; the HTTPException is
+    turned into the same api_response(False, ...) shape every other refusal in
+    update_gstr3b_status already returns, rather than the generic message there.
+    (Moved out of that function unchanged, because it may not grow: the lint
+    ratchet holds a function already over the complexity limit to its size.)"""
+    if status not in ("ca_approved", "submitted") or _USE_MOCK:
+        return None
+    from core.supabase_client import get_supabase
+    from services import client_gst_registration_service as regs
+    try:
+        regs.resolve(get_supabase(), firm_id, rec.get("client_id") or "",
+                     rec.get("gstin") or None)
+    except HTTPException as e:
+        return str(e.detail)
+    return None
 
 
 # ── Filing demos live in services/filing_demo/, not here ─────────────────────
@@ -552,8 +620,17 @@ def update_gstr1_status(
         # Read first. Moving a return to "submitted" is the write this router
         # exists to gate (CGST §37/§39) — a check that happens after it has
         # already moved is not a check.
-        if _load_return_or_none(current_user, "gstr1_returns", _MOCK_GSTR1, return_id) is None:
+        existing = _load_return_or_none(current_user, "gstr1_returns", _MOCK_GSTR1, return_id)
+        if existing is None:
             return api_response(False, None, "Not found")
+
+        # PRE-A-007: the date it was filed on the portal is the CA's to state
+        # and is refused before anything moves. Asked after the read, so a
+        # return the caller may not see is "Not found" and nothing else.
+        filed_date, refusal, _reg = _filed_date_or_refusal(
+            body.status, firm_id, FILING_TYPE_GSTR1, body.filed_date, existing)
+        if refusal:
+            return api_response(False, None, refusal)
 
         # Record WHAT was filed, not merely that the status moved. submitted_at,
         # the approver and the ARN are columns migration 036 created and nothing
@@ -583,12 +660,12 @@ def update_gstr1_status(
                 # months, so a `filings` row derived as ONE would leave the
                 # other two editable after a return declaring them was filed —
                 # and journal_period_lock_reason reads nothing but this row.
-                _reg = _registration_for(_db, firm_id, rec)
+                # (`_reg` was resolved above, with the filed date it judges.)
                 record_filing(
                     _db, firm_id=firm_id,
                     client_id=rec.get("client_id") or "",
                     filing_type=FILING_TYPE_GSTR1, period=rec.get("period") or "",
-                    filed_date=body.filed_date, arn=body.arn,
+                    filed_date=filed_date, arn=body.arn,
                     tax_payable_paise=rec.get("total_taxable_paise"),
                     summary=rec.get("summary_json"),
                     frequency=(_reg.filing_frequency if _reg else None),
@@ -800,22 +877,15 @@ def update_gstr3b_status(
         if existing is None:
             return api_response(False, None, "Not found")
 
-        # GST-20: the return's own GSTIN must still be one this client holds
-        # before a CA rubber-stamps it. save_gstr3b already refuses this at
-        # save time, but a registration recorded in error and corrected
-        # afterwards, or a return written before that check existed, would
-        # otherwise reach approval/filing unchecked. Same registrations
-        # service the compute paths use; the HTTPException is turned into the
-        # same api_response(False, ...) shape every other refusal in this
-        # function already returns, rather than the generic message below.
-        if body.status in ("ca_approved", "submitted") and not _USE_MOCK:
-            from core.supabase_client import get_supabase
-            from services import client_gst_registration_service as regs
-            try:
-                regs.resolve(get_supabase(), firm_id, existing.get("client_id") or "",
-                             existing.get("gstin") or None)
-            except HTTPException as e:
-                return api_response(False, None, str(e.detail))
+        # PRE-A-007: the date it was filed on the portal is the CA's to state
+        # and is refused before anything moves, ahead of the more expensive
+        # checks below.
+        filed_date, refusal, _reg = _filed_date_or_refusal(
+            body.status, firm_id, FILING_TYPE_GSTR3B, body.filed_date, existing)
+        # GST-20 follows, and only when the date was acceptable.
+        refusal = refusal or _registration_refusal(body.status, firm_id, existing)
+        if refusal:
+            return api_response(False, None, refusal)
 
         # ── The books may have moved since this return was computed ──────────
         #
@@ -874,12 +944,11 @@ def update_gstr3b_status(
             try:
                 _db = get_supabase()
                 # See the GSTR-1 path above — a QRMP quarter locks three months.
-                _reg = _registration_for(_db, firm_id, rec)
                 record_filing(
                     _db, firm_id=firm_id,
                     client_id=rec.get("client_id") or "",
                     filing_type=FILING_TYPE_GSTR3B, period=rec.get("period") or "",
-                    filed_date=body.filed_date, arn=body.arn,
+                    filed_date=filed_date, arn=body.arn,
                     frequency=(_reg.filing_frequency if _reg else None),
                     # WHAT WAS PAID, not what the set-off left. §49(4) with
                     # §2(82) makes reverse-charge tax payable in cash on top of

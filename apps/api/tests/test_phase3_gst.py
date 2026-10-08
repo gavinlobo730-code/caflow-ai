@@ -190,9 +190,12 @@ def test_filing_history_only_submitted(client):
         "client_id": _CLIENT_ID, "period": "052025", "gstin": "27AABCU9603R1ZN",
     }, headers=_HEADERS).json()["data"]["id"]
 
-    # Submit r2
+    # Submit r2. The date it was filed on the portal is the CA's to state and
+    # is never defaulted (PRE-A-007), so the request carries one; May 2025 ends
+    # on 31 May, so any later date is a possible filing.
     client.patch(f"/api/gst-workspace/gstr1/{r2}/status",
-                 json={"status": "submitted", "ca_approved": True}, headers=_HEADERS)
+                 json={"status": "submitted", "ca_approved": True,
+                       "filed_date": "2025-06-11"}, headers=_HEADERS)
 
     history = client.get(f"/api/gst-workspace/filing-history?client_id={_CLIENT_ID}",
                          headers=_HEADERS).json()["data"]

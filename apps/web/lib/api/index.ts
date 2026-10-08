@@ -3232,15 +3232,27 @@ export interface TreatyRateRow {
  * since the return was computed — it is never defaulted true, since the whole
  * point is that the refusal gets seen.
  * `filed_date` matters because marking a return here can lag the portal by
- * days and the period lock keys on the REAL filing date.
+ * days and the period lock keys on the REAL filing date. It is REQUIRED when
+ * `status` is "submitted" (PRE-A-007) and the type says so: the server stamped
+ * today when it was left out, so a request to mark a return filed that carries
+ * no date is a type error here rather than a wrong date in the lock message.
+ * It means nothing on any other status, where nothing has been filed.
  */
-export type GSTStatusUpdate = {
-  status: "draft" | "validated" | "ca_approved" | "submitted";
+type GSTStatusUpdateBase = {
   ca_approved?: boolean;
   acknowledge_stale?: boolean;
   arn?: string;
-  filed_date?: string;
 };
+export type GSTStatusUpdate =
+  | (GSTStatusUpdateBase & {
+      status: "draft" | "validated" | "ca_approved";
+      filed_date?: string;
+    })
+  | (GSTStatusUpdateBase & {
+      status: "submitted";
+      /** The date the CA filed it on the portal, YYYY-MM-DD, as they typed it. */
+      filed_date: string;
+    });
 
 /**
  * gst-12 — a PROBABLE pair the 2B reconciliation could not tie together.
