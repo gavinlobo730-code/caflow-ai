@@ -4,7 +4,7 @@
  * TDS Module — Tax Deducted at Source
  * IT Act Chapter XVII-B: Deduction and Collection of Tax at Source
  * Section 192: TDS on Salary
- * Section 194A: TDS on Interest (threshold ₹40,000 bank, ₹5,000 others)
+ * Section 194A: TDS on Interest (the limit depends on who pays, who is paid and the financial year; the engine holds it)
  * Section 194C: TDS on Contractor Payments
  * Section 194D: TDS on Insurance Commission
  * Section 194H: TDS on Commission/Brokerage
@@ -17,6 +17,10 @@
  * rate cannot honestly sit beside a section anyway: §194C is 1% or 2% by payee
  * type, every rate is floored at 20% by §206AA with no PAN, and below the
  * threshold it is nil. domain/tds/section_rates.py is the one rate table.
+ * NO THRESHOLDS EITHER, for the same reason: they are versioned by financial
+ * year per section, and §194A alone has three (who pays and who is paid decide
+ * which). This header carried the pre-Finance-Act-2025 §194A figures after the
+ * registry had moved on; the registry is the authority, not this comment.
  * Section 200: TDS deposit and return filing obligations
  * Section 203: Issuance of TDS certificates
  */
