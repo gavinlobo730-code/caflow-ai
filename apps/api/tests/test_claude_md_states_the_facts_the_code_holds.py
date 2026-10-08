@@ -261,6 +261,32 @@ def test_the_page_names_each_return_builder_for_a_registration_that_does_not_fil
         "does not file GSTR-1 and GSTR-3B. Add it to the GST-25 bullet (after the multi-registration one).")
 
 
+def test_the_years_the_page_says_the_gst_late_fee_is_held_for_are_the_years_the_table_holds():
+    """The table-3b row for the section 47 late fee said the code refuses a year before 2021-22 and refuses GSTR-9,
+    after the same page's section 47 paragraph had said both are computed (`LATE_FEE_RATES` from FY 2017-18,
+    `_annual_late_fee` from FY 2022-23). The row now states the held range, and a year added to the table (or the
+    first year of the annual fee moving) fails here instead of leaving the row to age."""
+    from domain.gst import late_filing
+
+    hit = _found(r"GSTR-1 and GSTR-3B are HELD for FY (\d{4}-\d{2}) to (\d{4}-\d{2})",
+                 "the financial years the GSTR-1 and GSTR-3B late fee is held for")
+    first, last = hit.groups()
+    held = sorted({fy for (_rt, fy) in late_filing.LATE_FEE_RATES})
+    assert len(held) >= 10, "premise: the late-fee table holds a run of years, not a stub"
+    assert (first, last) == (held[0], held[-1]), (
+        f"CLAUDE.md says the GSTR-1 and GSTR-3B late fee is held for FY {first} to {last}; "
+        f"domain/gst/late_filing.py LATE_FEE_RATES holds FY {held[0]} to {held[-1]}. "
+        "The code is the authority: fix the page.")
+    assert late_filing.LATE_FEE_FIRST_HELD_FY == held[0], (
+        "LATE_FEE_FIRST_HELD_FY is the year the refusal sentence quotes; it has drifted from the table's first year")
+    annual = _found(r"GSTR-9 from FY (\d{4}-\d{2}) \(7/2023-CT", "the first financial year the GSTR-9 late fee is held for")
+    assert annual.group(1) == late_filing.GSTR9_FEE_FIRST_HELD_FY, (
+        f"CLAUDE.md says the GSTR-9 late fee is held from FY {annual.group(1)} and late_filing.py "
+        f"GSTR9_FEE_FIRST_HELD_FY is {late_filing.GSTR9_FEE_FIRST_HELD_FY}")
+    assert "the §47 late fee for a year BEFORE 2021-22" not in _page(), (
+        "the table-3b row still describes the late fee as refused for a year before 2021-22 and for GSTR-9")
+
+
 def test_the_page_does_not_say_the_payment_code_is_unwired_from_the_deductee_rows():
     """`Vocabulary.payment_code()` was "deliberately NOT yet wired into `tds_return_service.py`'s per-line deductee
     output" when it was written. `domain/tds/deductee_payment_code.py` wires it onto the 24Q/26Q/27Q rows
