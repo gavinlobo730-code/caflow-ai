@@ -23,6 +23,6 @@ pytest>=8.0.0
 #   pytest-xdist  the backend job runs the suite in parallel (`-n auto --dist loadfile`, see backend-ci.yml for
 #                 why that mode and what was measured before it was turned on).
 ruff==0.16.10
-hypothesis==6.168.3
+hypothesis==6.168.4
 pytest-cov==7.1.0
 pytest-xdist==3.8.0
