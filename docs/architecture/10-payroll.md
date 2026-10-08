@@ -169,7 +169,7 @@ Six sections.
 
 | entry | scope | what it is | state, 8 October 2026 |
 |---|---|---|---|
-| **Month** (`/payroll`) | firm | The client-month queue. The bureau's screen on the 3rd and the 10th. | Built as the firm payroll screen with a client picker. The graded queue, one row per client with a ready, check or blocked grade, is **not built**. |
+| **Month** (`/payroll`) | firm | The client-month queue. The bureau's screen on the 3rd and the 10th. | Built as the client-month queue. The default and first tab (`MonthQueueTab` in `apps/web/app/payroll/page.tsx`) reads `GET /api/payroll/client-states` and shows one row per client the caller may see (`filter_by_client`): the run's state (Not run, Not started, Draft, Finalised or Paid), headcount, net pay, the inputs-due day and a link into the client's payroll workspace; a client with payroll switched off is reported as Not run, and a client the queue has no row for is listed beneath it as not yet started. It computes and writes nothing. What is **not built** is the ready, check or blocked grade on each row, and "Approve N ready". |
 | **People** (`/payroll/people`) | firm | Roster across every client, one employee form, one bulk import, the exception index. | Built. |
 | **Declarations** (`/payroll/declarations`) | firm | Kept exactly as it is — see below. | Built, as it was. |
 | **Statutory** (`/payroll/statutory`) | firm | Deposits · Filings · Year-end. | Built as the statutory deductions screen; it computes nothing in the browser. |
@@ -428,11 +428,12 @@ never a redesign: it was the wrong numbers, and every item was verified above.
 | 11 | Payroll dates in the deadline view, and a payroll column on the client list | `services/compliance_engine.py::payroll_deposit_due_dates`; `payroll_enabled` in `apps/web/app/clients/page.tsx` |
 | 12 | Per-client payroll enablement, the cost brake | migration 332; `payroll:enable` in `core/permissions.py` |
 
-Shipped beyond the twelve: bank advice, the month-on-month variance and department
-cost reports (`domain/payroll/bank_advice.py`, `month_on_month.py`,
-`department_cost.py`, served under `/api/payroll/reports/`), the bonus register
-(`domain/payroll/bonus_register.py`) and an employee-portal door for a payslip PDF and
-the §192 projection (`routers/portal_employee.py`).
+Shipped beyond the twelve: the client-month queue on `/payroll`
+(`GET /api/payroll/client-states`, scoped to the caller's clients), bank advice, the
+month-on-month variance and department cost reports (`domain/payroll/bank_advice.py`,
+`month_on_month.py`, `department_cost.py`, served under `/api/payroll/reports/`), the
+bonus register (`domain/payroll/bonus_register.py`) and an employee-portal door for a
+payslip PDF and the §192 projection (`routers/portal_employee.py`).
 
 Defects 1–4 above shipped inside items 5, 6 and 1; defect 5 is item 3.
 
@@ -443,8 +444,10 @@ Defects 1–4 above shipped inside items 5, 6 and 1; defect 5 is item 3.
   them §192 withholds from a position that omits what came before.
 - **The client portal's payroll surface**: register to review, statutory dues, approve
   or return.
-- **The graded client-month queue** (ready, check, blocked per client and per slip)
-  and "Approve N ready".
+- **The grade on the client-month queue.** The queue itself shipped (`MonthQueueTab`,
+  `GET /api/payroll/client-states`) and says where each client's run stands; what is
+  not built is a ready, check or blocked grade per client and per slip, and
+  "Approve N ready".
 
 Not on this list because it was decided against: the FVU-validated 24Q file
 (`domain/tds/keying_sheet.py` instead) and a Form 16 Part B generator.
