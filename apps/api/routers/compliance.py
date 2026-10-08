@@ -21,7 +21,7 @@ from services.compliance_engine import (
 )
 from services.gst_filing_record_service import (
     FILING_TYPE_FOR_RETURN, NO_FILING_ROW_DEFAULT, NO_FILING_ROW_REASON,
-    record_filing)
+    FiledDateRefused, checked_filed_date, record_filing)
 from datetime import date
 from core.ist_clock import ist_today
 from domain.compliance_record_service import clean_filed_date
@@ -584,6 +584,19 @@ def mark_calendar_entry_filed(
 
     ctype = str(row.get("compliance_type") or "")
     arn = (body.arn or "").strip() or None
+    filing_type = _CALENDAR_TYPE_TO_FILING_TYPE.get(ctype)
+    start = str(row.get("period_start") or "")[:10]
+    end = str(row.get("period_end") or "")[:10]
+    # PRE-A-007: `record_filing` refuses a GSTR-1 or GSTR-3B filed before the
+    # period it declares ended, as the obligation door always has. It is asked
+    # HERE too, before the calendar row is written, because the refusal from
+    # inside `record_filing` would arrive after `filing_status` had already
+    # moved to filed: a tick recorded and a period not locked.
+    if filing_type and len(start) == 10 and len(end) == 10:
+        try:
+            checked_filed_date(filing_type, body.filed_date, bounds=(start, end))
+        except FiledDateRefused as e:
+            raise HTTPException(status_code=422, detail=e.sentence) from None
     # The payload is written INLINE rather than built into a variable, because
     # test_backend_columns_exist_pg.py can only read the column names out of a
     # literal dict — an .update(variable) is counted as an unreadable reference
@@ -597,9 +610,6 @@ def mark_calendar_entry_filed(
         **row, "filing_status": "filed",
         "filed_date": body.filed_date, "arn_number": arn}
 
-    filing_type = _CALENDAR_TYPE_TO_FILING_TYPE.get(ctype)
-    start = str(row.get("period_start") or "")[:10]
-    end = str(row.get("period_end") or "")[:10]
     filing_row = None
     # Both bounds, or no filings row. compliance_calendar has them NOT NULL, so
     # this cannot happen against the real schema — but record_filing would

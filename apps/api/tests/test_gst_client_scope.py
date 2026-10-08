@@ -188,7 +188,12 @@ def test_your_own_return_still_reads(fn, pfx, rows, deny):
 # ── Moving a return to "submitted" — the write these endpoints exist to gate ──
 
 def _submit():
-    return gw.UpdateStatusRequest(status="submitted", ca_approved=True)
+    # The date it was filed on the portal is the CA's to state (PRE-A-007);
+    # January 2026 ended on 31 January. These tests are about WHOSE return may
+    # be submitted, so they state one; the date rule itself is asserted in
+    # test_a_gst_return_is_filed_on_the_date_the_ca_stated.py.
+    return gw.UpdateStatusRequest(status="submitted", ca_approved=True,
+                                  filed_date="2026-02-11")
 
 
 STATUS = [("update_gstr1_status", gw._MOCK_GSTR1, "G1"),

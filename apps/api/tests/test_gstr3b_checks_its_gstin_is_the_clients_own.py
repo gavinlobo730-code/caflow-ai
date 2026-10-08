@@ -70,9 +70,16 @@ def _approve(db, return_id, status="ca_approved", acknowledge_stale=True):
     # behind the saved figures, so the pre-existing "books have moved since
     # this was computed" check would otherwise refuse every approval here —
     # a different, unrelated guard this file is not about.
+    #
+    # A submit carries the date the CA filed it on (PRE-A-007). Without one the
+    # route refuses on the date before it reaches the registration check this
+    # file is about, and a test asserting only "refused" would pass for the
+    # wrong reason.
+    filed_date = "2026-07-11" if status == "submitted" else None
     return gw.update_gstr3b_status(
         return_id, gw.UpdateStatusRequest(
-            status=status, ca_approved=True, acknowledge_stale=acknowledge_stale),
+            status=status, ca_approved=True, acknowledge_stale=acknowledge_stale,
+            filed_date=filed_date),
         current_user=USER)
 
 
@@ -142,6 +149,8 @@ def test_submitting_is_checked_too_not_only_ca_approved(db):
     result = _approve(db, saved["id"], status="submitted")
 
     assert result["success"] is False
+    assert PRIMARY in result["error"], \
+        "refused for the registration, and not for some other reason"
     row = [r for r in db.rows("gstr3b_returns") if r["id"] == saved["id"]][0]
     assert row["status"] == "draft"
 

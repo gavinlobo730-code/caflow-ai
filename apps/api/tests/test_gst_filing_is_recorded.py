@@ -57,6 +57,10 @@ def _save(db):
 
 
 def _submit(db, return_id, **kw):
+    # The date it was filed on the portal is the CA's to state and the route
+    # refuses a submit without one (PRE-A-007), so these tests state one unless
+    # they are explicitly about its absence (pass filed_date=None).
+    kw.setdefault("filed_date", "2026-07-11")
     return gw.update_gstr1_status(
         return_id,
         gw.UpdateStatusRequest(status="submitted", ca_approved=True, **kw),

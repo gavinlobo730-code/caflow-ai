@@ -53,7 +53,10 @@ import { periodEndDate, splitRule37Bills } from "@/lib/gst/rule37Period";
 import { financialYearOfMonth } from "@/lib/dates/periods";
 import { formatMonthYear } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
+import { DateInput } from "@/components/ui/date-input";
 import { PageHeader } from "@/components/ui/page-header";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { todayLocalISO } from "@/lib/dateMath";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -125,6 +128,15 @@ export default function GSTR3BPage() {
   // Mark as Filed modal
   const [showFiledModal, setShowFiledModal] = useState(false);
   const [arn, setArn] = useState("");
+  // The date the CA filed it on the portal (PRE-A-007). Starts EMPTY and is
+  // typed: it is what the period lock quotes and what the s.39(9)/s.16(4)
+  // correction window is measured from, so the software does not offer one.
+  // The server refuses a submit without it in its own words, shown in the modal.
+  const [filedDate, setFiledDate] = useState("");
+  const [filedError, setFiledError] = useState<string | null>(null);
+  // Text that is not a date must not read as "no date" and leave the answer to
+  // the server (frontend_ux-19).
+  const dates = useDateProblems();
   const [filingStatus, setFilingStatus] = useState<GSTReturnStatus | null>(null);
 
   useEffect(() => {
@@ -209,15 +221,25 @@ export default function GSTR3BPage() {
   }
 
   async function handleMarkFiled() {
-    if (!clientId || !yearMonth || !arn.trim()) return;
+    if (!clientId || !yearMonth || !arn.trim() || dates.first) return;
+    setFiledError(null);
     try {
-      await markGSTR3BFiled(clientId, toPeriod(yearMonth), arn.trim(), result?.gstin);
+      await markGSTR3BFiled(clientId, toPeriod(yearMonth), arn.trim(), filedDate, result?.gstin);
       setFilingStatus("submitted");
-      setShowFiledModal(false);
-      setArn("");
+      closeFiledModal();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to mark as filed");
+      // Shown in the modal, which is still open and covers the page: the
+      // server's sentence (a missing, future or pre-period date) is the thing
+      // the CA has to read next to the field it is about.
+      setFiledError(e instanceof Error ? e.message : "Failed to mark as filed");
     }
+  }
+
+  function closeFiledModal() {
+    setShowFiledModal(false);
+    setArn("");
+    setFiledDate("");
+    setFiledError(null);
   }
 
   function handleDownload() {
@@ -1350,13 +1372,14 @@ export default function GSTR3BPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-ps-ink">Mark GSTR-3B as Filed</h3>
-              <button onClick={() => { setShowFiledModal(false); setArn(""); }}>
+              <button onClick={closeFiledModal}>
                 <X className="w-5 h-5 text-ps-hint hover:text-ps-label" />
               </button>
             </div>
             <p className="text-sm text-ps-label mb-4">
               After uploading the JSON to <strong>gst.gov.in</strong> and receiving the Acknowledgment
-              Reference Number (ARN), enter it below to record the filing in PracticeSync.
+              Reference Number (ARN), enter it and the date you filed it below to record the
+              filing in PracticeSync.
             </p>
             <div className="mb-4">
               <label className="block text-sm font-medium text-ps-body mb-1">
@@ -1370,16 +1393,39 @@ export default function GSTR3BPage() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-brand"
               />
             </div>
+            <div className="mb-4">
+              <label htmlFor="gstr3b-filed-date" className="block text-sm font-medium text-ps-body mb-1">
+                Date filed on the portal
+              </label>
+              <DateInput
+                id="gstr3b-filed-date"
+                value={filedDate}
+                max={todayLocalISO()}
+                onChange={setFiledDate}
+                onStateChange={dates.watch("filedDate", "Date filed")}
+                className="w-full"
+              />
+              <p className="text-xs text-ps-hint mt-1">
+                Required: the date on the portal acknowledgement. Recording a GSTR-3B as
+                filed locks that period against new entries, and the lock message quotes
+                this date.
+              </p>
+            </div>
+            {filedError && (
+              <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-2 py-1.5 mb-4">
+                {filedError}
+              </p>
+            )}
             <div className="flex gap-3 justify-end">
               <button
-                onClick={() => { setShowFiledModal(false); setArn(""); }}
+                onClick={closeFiledModal}
                 className="px-4 py-2 text-sm text-ps-label hover:text-ps-ink border border-gray-300 rounded-lg"
               >
                 Cancel
               </button>
               <button
                 onClick={handleMarkFiled}
-                disabled={!arn.trim()}
+                disabled={!arn.trim() || !!dates.first}
                 className="px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-lg"
               >
                 Confirm Filed

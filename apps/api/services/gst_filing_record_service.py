@@ -42,6 +42,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from core.exceptions import ValidationError
 from core.ist_clock import ist_today
 from domain.gst import return_period
 
@@ -98,6 +99,78 @@ NO_FILING_ROW_DEFAULT = (
 def not_recorded_reason(obligation_type: str) -> str:
     """Why an obligation of this type recorded no `filings` row."""
     return NO_FILING_ROW_REASON.get(obligation_type, NO_FILING_ROW_DEFAULT)
+
+
+# The `filings.filing_type` values whose DATE is asked for and never assumed:
+# the two returns of supplies, the ones that close a period. Derived from
+# FILING_TYPE_FOR_RETURN so the set of returns that lock and the set whose date
+# is required cannot drift apart.
+FILING_TYPES_THAT_LOCK_A_PERIOD = frozenset(FILING_TYPE_FOR_RETURN.values())
+
+
+class FiledDateRefused(ValidationError):
+    """The date a GSTR-1 or GSTR-3B was filed on is missing, malformed, in the
+    future or before the period it declares ended.
+
+    A `ValidationError` on field `filed_date`, so a router that already maps
+    that to a 422 (the compliance obligation door) treats this identically;
+    `sentence` is the text alone, for a router that answers a refusal in its
+    own envelope and does not want the "Validation error on filed_date:"
+    prefix in front of a CA."""
+
+    def __init__(self, sentence: str):
+        super().__init__("filed_date", sentence)
+        self.sentence = sentence
+
+
+def checked_filed_date(
+    filing_type: str, filed_date: Optional[str], *, period: str = "",
+    bounds: Optional[tuple[str, str]] = None, frequency: Optional[str] = None,
+) -> str:
+    """The date a GSTR-1 or GSTR-3B was filed on, as the CA stated it, or a
+    `FiledDateRefused` saying what is wrong with it.
+
+    WHAT WAS WRONG (PRE-A-007)
+        `record_filing` did `filed_date = filed_date or ist_today()`, and the
+        two GST workspace screens sent none. `filings.filed_date` is what
+        `journal_period_lock_reason` quotes in its lock message and what the
+        s.37(3)/39(9)/16(4) correction window is measured from, so a return
+        filed on the portal on the 11th and recorded here on the 14th was
+        stamped the 14th: a date the software made up, because nobody typed
+        one, presented as a fact about the portal. The compliance door
+        (`domain/compliance_record_service._filed_date_for`, gst-27) has
+        required it since; this is the same rule for the workspace doors.
+
+    The date is required, a real YYYY-MM-DD, not in the future (IST) — all
+    three through `clean_filed_date`, the one function the other two doors ask —
+    and not before the period it declares has ended: a June GSTR-3B cannot have
+    been filed in May. The period is the registration's own when `bounds` or
+    `frequency` say so, so a QRMP quarter is judged on the QUARTER's end
+    (Rule 61A with the proviso to CGST s.39(1)); a period that cannot be read is
+    not judged here, and building the row refuses it as it always did.
+
+    Asked BEFORE any write by every caller: a refusal after the return's status
+    has moved leaves it Filed and unlocked, which is the defect this exists to
+    stop."""
+    from domain.compliance_record_service import clean_filed_date  # lazy: see its imports
+    if not str(filed_date or "").strip():
+        raise FiledDateRefused(
+            f"Say the date this {filing_type} was filed on the portal. Recording it "
+            f"closes the period for new entries, and the lock message quotes the "
+            f"date — so it is asked for, not assumed.")
+    try:
+        filed = clean_filed_date(filed_date)
+    except ValueError as e:
+        raise FiledDateRefused(str(e)) from None
+    try:
+        _start, end = bounds if bounds else period_bounds(period, frequency)
+    except ValueError:
+        return filed
+    if filed < str(end)[:10]:
+        raise FiledDateRefused(
+            f"A return cannot have been filed on {filed}, before the period it "
+            f"declares ended on {str(end)[:10]}.")
+    return filed
 
 
 def record_obligation_filing(
@@ -226,10 +299,25 @@ def record_filing(
     earliest filed_date of whatever it finds, so duplicates are not fatal — but
     two rows for one filing is a lie about the world, and the CA reads this
     table.
+
+    For a GSTR-1 or GSTR-3B `filed_date` is REQUIRED and is never defaulted:
+    a missing, malformed, future or pre-period date raises `FiledDateRefused`
+    (PRE-A-007). A caller that must not fail after it has moved a status asks
+    `checked_filed_date` first. Any other filing type keeps today's behaviour.
     """
+    if filing_type in FILING_TYPES_THAT_LOCK_A_PERIOD:
+        # CGST s.37(3)/39(9): the date is the CA's statement of when the return
+        # reached the portal and is NEVER defaulted to today. See
+        # checked_filed_date.
+        filed = checked_filed_date(
+            filing_type, filed_date, period=period, bounds=bounds,
+            frequency=frequency)
+    else:
+        # Any other filing type closes no period and the date is a convenience.
+        filed = filed_date or ist_today().isoformat()
     row = build_filings_row(
         firm_id=firm_id, client_id=client_id, filing_type=filing_type,
-        period=period, filed_date=filed_date or ist_today().isoformat(),
+        period=period, filed_date=filed,
         arn=arn, tax_payable_paise=tax_payable_paise, summary=summary,
         bounds=bounds, frequency=frequency,
     )

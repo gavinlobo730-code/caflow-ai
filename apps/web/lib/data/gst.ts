@@ -1368,14 +1368,26 @@ function triggerDownload(content: string, filename: string, mimeType: string): v
  *          ca_approved, and it also records the approver, submitted_at and the
  *          ARN on the return row.
  *
- *     The signatures are unchanged, so the two screens calling them do not
- *     move. The (client, period) → return id lookup is a READ and stays on
+ *     The (client, period) → return id lookup is a READ and stays on
  *     PostgREST; it is the WRITE that had to move.
+ *
+ * WHY `filedDate` IS A REQUIRED ARGUMENT (PRE-A-007)
+ *     The date the return was filed on the PORTAL is what the period lock
+ *     quotes and what the §37(3)/§39(9)/§16(4) correction window is measured
+ *     from. These two used to send none, and the server stamped today, so a
+ *     return filed on the 11th and recorded on the 14th was dated the 14th. The
+ *     date is now a parameter with no default and no fallback in here: the
+ *     caller passes what the CA typed, and a screen that cannot supply one does
+ *     not compile. The server is still the authority and refuses a missing,
+ *     malformed, future or pre-period date in its own words, which this
+ *     surfaces through the `success` check below. Nothing here computes a date.
  */
 export async function markGSTR3BFiled(
   clientId: string,
   period: string,
   arn: string,
+  /** The date the CA filed it on the portal, YYYY-MM-DD, as they typed it. */
+  filedDate: string,
   /** Which registration's return (GST-17). */
   gstin?: string,
 ): Promise<void> {
@@ -1391,16 +1403,20 @@ export async function markGSTR3BFiled(
     status: "submitted",
     ca_approved: true,
     arn,
+    filed_date: filedDate,
   });
   // This router answers a refusal as HTTP 200 with { success: false, error },
   // so an unchecked call reports "filed" for a request the server declined.
   if (!res.success) throw new Error(res.error ?? "Failed to mark GSTR-3B as filed");
 }
 
+/** See markGSTR3BFiled, including why `filedDate` is required (PRE-A-007). */
 export async function markGSTR1Filed(
   clientId: string,
   period: string,
   arn: string,
+  /** The date the CA filed it on the portal, YYYY-MM-DD, as they typed it. */
+  filedDate: string,
   /** Which registration's return (GST-17). */
   gstin?: string,
 ): Promise<void> {
@@ -1415,6 +1431,7 @@ export async function markGSTR1Filed(
     status: "submitted",
     ca_approved: true,
     arn,
+    filed_date: filedDate,
   });
   if (!res.success) throw new Error(res.error ?? "Failed to mark GSTR-1 as filed");
 }
