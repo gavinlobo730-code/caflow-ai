@@ -29,6 +29,9 @@ import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
 import type { CreditLedgerBlock, ProbableMatch2B } from "@/lib/api";
 import { readGstr2bText } from "@/lib/gst/gstr2bFile";
+import {
+  RECON_2B_BUCKETS, savedReconciliationBreakdown, supplierLines,
+} from "@/lib/gst/recon2bBuckets";
 import { Probable2BMatches } from "@/components/gst/Probable2BMatches";
 import { CreateDraftBillFrom2B } from "@/components/gst/CreateDraftBillFrom2B";
 import { Button } from "@/components/ui/button";
@@ -1717,22 +1720,15 @@ interface Recon2BResult {
   portal_document_count?: number;
   summary: Recon2BSummary | null;
   matches: Recon2BMatch[];
-  defaulters: { supplier_gstin: string; unfiled_count: number;
+  defaulters: { supplier_gstin: string; supplier_name?: string | null;
+                unfiled_count: number;
                 itc_at_risk_paise: number; bill_ids: string[] }[];
   /** gst-12 — suggestions only; they change no verdict and no credit. */
   probable_matches: ProbableMatch2B[];
 }
 
-const RECON_2B_BUCKETS: { status: string; label: string; hint: string; tone: string }[] = [
-  { status: "matched", label: "Matched", tone: "text-state-ready",
-    hint: "The bill and the 2B document agree, to the paisa." },
-  { status: "amount_mismatch", label: "Amount mismatch", tone: "text-state-attention",
-    hint: "Both exist and the tax differs — one of the two documents is wrong." },
-  { status: "missing_in_2b", label: "Supplier has not filed", tone: "text-state-problem",
-    hint: "We hold the bill; §16(2)(aa) makes the credit unavailable until the supplier files. Chase the SUPPLIER." },
-  { status: "missing_in_books", label: "No bill in the books", tone: "text-blue-700",
-    hint: "The supplier filed it and we have no bill — credit that may be available and is not being claimed. Chase the DOCUMENT." },
-];
+// The four buckets and their words live in lib/gst/recon2bBuckets.ts, so the
+// bucket buttons and the "last reconciled" line below say the same thing.
 
 function GSTR2BTab({ clientId }: { clientId: string }) {
   // THE FILE IS THE INPUT, AND THE MONTH IS NOT (gst-09). There is no period box
@@ -1916,7 +1912,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
         {saved && saved.record_count > 0 && (
           <p className="text-xs text-ps-label">
             Last reconciled for this period: {saved.record_count} document(s) —{" "}
-            {Object.entries(saved.by_status).map(([k, v]) => `${k}: ${v}`).join(", ")}.
+            {savedReconciliationBreakdown(saved.by_status)}.
           </p>
         )}
         {error && <p role="alert" className="text-state-problem text-sm">{error}</p>}
@@ -1973,9 +1969,10 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
           </div>
           {summary.itc_blocked_by_2b_paise > 0 && (
             <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded p-2">
-              {rupees(summary.itc_blocked_by_2b_paise)} of matched credit is marked
-              UNAVAILABLE by GSTR-2B itself — the figures agreeing does not make it
-              claimable (§16(2)(aa)).
+              {rupees(summary.itc_blocked_by_2b_paise)} of the credit on this GSTR-2B is
+              marked UNAVAILABLE by GSTR-2B itself, whether or not the books hold
+              the bill — the figures agreeing does not make it claimable
+              (§16(2)(aa)).
             </p>
           )}
 
@@ -2022,8 +2019,15 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
                 {shown.map((m, i) => (
                   <tr key={i} className="border-b last:border-0">
                     <td className="py-1.5 pr-3">
-                      {m.supplier_name || m.supplier_gstin || "—"}
-                      <span className="block text-3xs text-ps-hint">{m.supplier_gstin}</span>
+                      {(() => {
+                        // The name with the GSTIN under it, or the GSTIN ONCE
+                        // where nobody holds a name for the supplier.
+                        const s = supplierLines(m.supplier_name, m.supplier_gstin);
+                        return (<>
+                          {s.primary}
+                          {s.secondary && <span className="block text-3xs text-ps-hint">{s.secondary}</span>}
+                        </>);
+                      })()}
                     </td>
                     <td className="py-1.5 pr-3">
                       {m.document_number || m.bill_no || "—"}
@@ -2075,7 +2079,10 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
               <ul className="text-xs space-y-1">
                 {result.defaulters.map((d) => (
                   <li key={d.supplier_gstin} className="flex justify-between">
-                    <span>{d.supplier_gstin || "(no GSTIN recorded)"} — {d.unfiled_count} bill(s)</span>
+                    <span>
+                      {d.supplier_name ? `${d.supplier_name} · ` : ""}
+                      {d.supplier_gstin || "(no GSTIN recorded)"} — {d.unfiled_count} bill(s)
+                    </span>
                     <span className="font-mono text-state-problem">{rupees(d.itc_at_risk_paise)}</span>
                   </li>
                 ))}

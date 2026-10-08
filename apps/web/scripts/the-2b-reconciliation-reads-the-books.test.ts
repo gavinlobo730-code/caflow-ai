@@ -18,6 +18,7 @@ import path from "node:path";
 
 const ROOT = path.join(import.meta.dirname, "..");
 const GST_TAB = "app/clients/[id]/compliance/gst/page.tsx";
+const BUCKETS = "lib/gst/recon2bBuckets.ts";
 const PURCHASES = "app/clients/[id]/purchases/page.tsx";
 const OLD_SCREEN = "app/gst/reconciliation/page.tsx";
 
@@ -56,12 +57,18 @@ test("a parse that failed is not shown as a clean reconciliation", () => {
 });
 
 test("the four buckets are four, and each says which party to chase", () => {
-  const src = code(GST_TAB);
+  // The buckets and their words live in one map (PRE-A-001), so the buttons and
+  // the "last reconciled" line say the same thing; the rule is that the map holds
+  // the four and the screen renders from it.
+  const map = code(BUCKETS);
   for (const s of ["matched", "amount_mismatch", "missing_in_2b", "missing_in_books"]) {
-    assert.match(src, new RegExp(s), `${s} must be its own bucket`);
+    assert.match(map, new RegExp(s), `${s} must be its own bucket`);
   }
-  assert.match(src, /Chase the SUPPLIER/);
-  assert.match(src, /Chase the DOCUMENT/);
+  assert.match(map, /Chase the SUPPLIER/);
+  assert.match(map, /Chase the DOCUMENT/);
+  const src = code(GST_TAB);
+  assert.match(src, /from "@\/lib\/gst\/recon2bBuckets"/);
+  assert.match(src, /RECON_2B_BUCKETS\.map\(/, "the buttons are drawn from the map");
 });
 
 test("the Purchases tab can say whether a bill's supplier filed it", () => {
