@@ -982,7 +982,8 @@ def _audit_timeline_generate(firm_id: str, rec: dict, actor: Optional[dict]) -> 
 
 
 def _reconcile_stale_gst_obligations(firm_id: str, client_id: str, financial_year: str,
-                                     specs: list[dict], existing: list[dict]) -> tuple[set, set, list[str]]:
+                                     specs: list[dict], existing: list[dict],
+                                     *, owns_the_gst_leg: bool) -> tuple[set, set, list[str]]:
     """A GST filing-frequency switch (Rule 61A) reuses the SAME period_start
     keys the OLD frequency's obligations already occupy — a monthly and a
     quarterly GSTR-1/GSTR-3B/PMT-06 both start on the 1st of a month — so the
@@ -1026,7 +1027,22 @@ def _reconcile_stale_gst_obligations(firm_id: str, client_id: str, financial_yea
     soft-deleted here — the partial unique index only applies WHERE
     deleted_at IS NULL, so this is what frees the period_start for the new,
     differently-shaped spec to be inserted at.
+
+    ONLY AN ENGAGEMENT THAT OWNS THE GST LEG MAY RECONCILE IT.
+    ``specs`` is what ONE engagement implies, and "a GST row that matches no
+    current spec is stale" is true only of the engagement that was supposed to
+    produce GST rows. An engagement for the return, the TDS statements or
+    payroll has no GST specs at all, so to it every GST row of the client
+    "matched no current spec" and every Not Started one was soft-deleted --
+    the GST engagement's rows too. Measured on a client with a GST and an ITR
+    engagement: 26 obligations, generate the ITR engagement, 2 left (24 GST
+    rows gone); the next sweep (``generate_due``) deleted and recreated them
+    on every run, and which rows survived depended on engagement order. The
+    caller says whether this is the GST leg (``owns_the_gst_leg``) and, when
+    it is not, nothing is read or deleted. No default: a caller must decide.
     """
+    if not owns_the_gst_leg:
+        return set(), set(), []
     fy_start, fy_end = fy_bounds(financial_year)
     gst_specs = [s for s in specs if s["obligation_type"] in _GST_FREQUENCY_SENSITIVE_TYPES]
     spec_keys3 = {(s["obligation_type"], s["period_start"], s["period_end"]) for s in gst_specs}
@@ -1094,8 +1110,12 @@ def generate_for_engagement(firm_id: str, engagement: dict, financial_year: str,
     # frequency switch left behind is soft-deleted here (freeing its
     # period_start for the correctly-shaped spec below); a row with real work
     # on it is left alone and named in reconciliation_gaps instead.
+    # Only an engagement that names GST reconciles the client's GST rows: to an
+    # ITR, TDS or payroll engagement they belong to somebody else, not to a
+    # frequency it no longer implies.
     seen3, blocked_ps, reconciliation_gaps = _reconcile_stale_gst_obligations(
-        firm_id, client_id, financial_year, specs, existing)
+        firm_id, client_id, financial_year, specs, existing,
+        owns_the_gst_leg=_names((engagement.get("service_type") or "").lower(), "gst"))
     generated: list[str] = []
     skipped = 0
     now = _now_iso()
@@ -1177,7 +1197,7 @@ def generate_default_for_client(firm_id: str, client_id: str, financial_year: st
     # spec set is GST (GSTR9 aside, which never collides across a frequency
     # switch), so nearly every row generated here goes through it.
     seen3, blocked_ps, reconciliation_gaps = _reconcile_stale_gst_obligations(
-        firm_id, client_id, financial_year, specs, existing)
+        firm_id, client_id, financial_year, specs, existing, owns_the_gst_leg=True)
     generated: list[str] = []
     skipped = 0
     for s in specs:
