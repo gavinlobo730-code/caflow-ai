@@ -48,6 +48,30 @@ const STATUS_COLOR: Record<string, string> = {
   filed: "bg-state-ready-surface text-state-ready",
 };
 
+// WHAT THE STORED STATUS IS CALLED ON SCREEN. The stored value stays
+// `validated` / `validation_pending` / `validation_failed`: the server gates
+// XBRL generation on `validated`, so changing the value would change what is
+// allowed. But the check that sets it is PracticeSync's OWN
+// (domain/income_tax/xbrl_service.validate_xbrl_package: mandatory tags present,
+// values numeric, assets equal equity and liabilities), and MCA's pre-scrutiny
+// is a separate step run only in MCA's desktop XBRL Validation Tool
+// (docs/compliance/04-mca-epfo-esic.md section 1, XBRL). A bare "validated"
+// reads as "MCA's validator passed", so a CA shown this screen could file on
+// it. The words below say whose check it is.
+const STATUS_LABEL: Record<string, string> = {
+  validation_pending: "PracticeSync check pending",
+  validation_failed: "PracticeSync check failed",
+  validated: "Passed PracticeSync check",
+};
+
+// Said wherever a package is shown as having passed. MCA's own tool and
+// pre-scrutiny are not run by this product and cannot be (pre-scrutiny is a
+// server-side MCA step exposed only through MCA's desktop tool).
+const PRACTICESYNC_CHECK_ONLY =
+  "This is PracticeSync's own completeness check of mandatory tags, numeric " +
+  "values and the balance sheet equation. MCA's XBRL Validation Tool and " +
+  "pre-scrutiny have not been run on this package; run both before filing.";
+
 interface XBRLPackage {
   id: string;
   financial_year: string;
@@ -246,7 +270,7 @@ export default function XBRLPage() {
                 <p className="text-3xs text-ps-hint">v{pkg.version} · {formatDate(pkg.created_at)}</p>
               </div>
               <span className={`text-3xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[pkg.status]}`}>
-                {pkg.status.replace(/_/g, " ")}
+                {STATUS_LABEL[pkg.status] ?? pkg.status.replace(/_/g, " ")}
               </span>
             </button>
           ))}
@@ -262,7 +286,7 @@ export default function XBRLPage() {
 
           {selected.validation_errors.length > 0 && (
             <div className="space-y-1">
-              <p className="text-3xs font-semibold text-red-600">Validation Errors</p>
+              <p className="text-3xs font-semibold text-red-600">PracticeSync check errors</p>
               {selected.validation_errors.map((e, i) => (
                 <div key={i} className="flex items-start gap-1.5">
                   <XCircle size={10} className="text-state-problem mt-0.5 flex-shrink-0" />
@@ -288,9 +312,12 @@ export default function XBRLPage() {
           )}
 
           {selected.status === "validated" && selected.validation_errors.length === 0 && (
-            <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-lg p-3">
-              <CheckCircle size={14} className="text-green-500" />
-              <p className="text-xs text-green-700">Package validated — ready for review</p>
+            <div className="flex items-start gap-2 bg-green-50 border border-green-100 rounded-lg p-3">
+              <CheckCircle size={14} className="text-green-500 mt-0.5 flex-shrink-0" />
+              <div className="space-y-1">
+                <p className="text-xs text-green-700">Passed PracticeSync&apos;s completeness check — ready for review</p>
+                <p className="text-3xs text-green-700">{PRACTICESYNC_CHECK_ONLY}</p>
+              </div>
             </div>
           )}
 
@@ -301,7 +328,7 @@ export default function XBRLPage() {
               className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg disabled:opacity-50 flex items-center gap-1 hover:bg-brand-dark"
             >
               {validating && <Loader2 size={10} className="animate-spin" />}
-              Run Validation
+              Run PracticeSync check
             </Button>
           </div>
         </div>
