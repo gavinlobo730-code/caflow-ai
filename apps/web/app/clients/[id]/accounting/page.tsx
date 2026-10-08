@@ -330,7 +330,7 @@ export default function AccountingPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Sub-tab bar */}
-      <div className="flex-shrink-0 overflow-x-auto px-6 pt-5 pb-0">
+      <div className="flex-shrink-0 overflow-x-auto px-6 pt-5 pb-0 print:hidden">
         <div className="flex gap-0.5 bg-ps-bg rounded-lg p-1 w-fit">
           {TABS.map((t) => (
             <button
@@ -2433,7 +2433,7 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
     <div className="space-y-4 max-w-ps-data mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-ps-body">Statement of Profit & Loss</p>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap print:hidden">
           <PeriodPicker
             mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
             onFinancialYearChange={onFinancialYearChange}
@@ -2781,7 +2781,7 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
     <div className="space-y-4 max-w-ps-data mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-ps-body">Balance Sheet</p>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap print:hidden">
           <PeriodPicker
             mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
             onFinancialYearChange={onFinancialYearChange}
@@ -3239,7 +3239,7 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange, ledgerSpan }
     <div className="space-y-4 mx-auto max-w-ps-data">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-ps-body">Cash Flow Statement — {overall.label}</p>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap print:hidden">
           <PeriodPicker
             mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
             onFinancialYearChange={onFinancialYearChange}
@@ -4107,13 +4107,12 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                 <p className="text-3xs text-ps-hint mt-0.5">{r.description}</p>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label"
-                  title="Print as PDF"
-                >
-                  <Printer size={12} />
-                </button>
+                {/* No print button on these rows (PRE-A-016). It called window.print(),
+                    which prints the screen it is pressed on, so three rows each
+                    printed this LIST and not the statement their row names. The
+                    statements print from their own tabs (P&L, Balance Sheet,
+                    Cash Flow carry a Print button there) and the Trial Balance
+                    has a server PDF on its tab. */}
                 <button
                   onClick={() => exportXLSX(r.id)}
                   disabled={exporting === r.id}

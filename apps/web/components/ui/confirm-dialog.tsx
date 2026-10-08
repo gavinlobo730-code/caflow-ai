@@ -201,7 +201,7 @@ export function ConfirmDialogHost() {
   if (!state) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-brand-dark/60 p-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-brand-dark/60 p-4 print:hidden">
       <div
         role="alertdialog"
         aria-modal="true"

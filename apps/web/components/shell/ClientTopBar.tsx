@@ -129,7 +129,9 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
   }, [clientId]);
 
   return (
-    <div className="relative shrink-0">
+    // `print:hidden` on the WRAPPER, for the reason WorkspaceTopBar gives: the
+    // module grid is an overlay hung off this div. See ClientShell.
+    <div className="relative shrink-0 print:hidden">
       {/* DESIGN FIX (audit finding §1): with the firm rail gone inside a
           client, this bar was the only chrome a CA sees all day and it read
           as a different, thinner product — plain white, no brand colour,

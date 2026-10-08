@@ -391,6 +391,12 @@ export default function ScheduleIIIPage() {
       <div className="hidden print:block text-center mb-4">
         <h1 className="text-2xl font-bold">Schedule III Financial Statements</h1>
         <p className="text-sm text-ps-label mt-1">As per Companies Act 2013, Schedule III | {fy.label}</p>
+        {/* Whose statements these are. The page is firm-level and the shell's
+            print header names a client only inside a client workspace, so a
+            printout of "All Clients" or of one client said so nowhere. */}
+        <p className="text-sm font-medium text-ps-ink mt-1">
+          {clientId === "all" ? "All clients (consolidated)" : (clients.find((c) => c.id === clientId)?.name ?? "")}
+        </p>
       </div>
 
       {/* Controls */}

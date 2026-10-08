@@ -160,3 +160,33 @@ body {
     transform: rotate(-50deg);
   }
 }
+
+/* ─── Print ───────────────────────────────────────────────────────────────────
+   THE ONLY PRINT RULE IN THE APP, AND IT IS FOR ONE CASE (PRE-A-016).
+
+   What makes a page print is NOT here: both shells carry `print:` classes that
+   turn the `h-screen overflow-hidden` frame into ordinary flow and hide the top
+   bar, the account banner, the toasts and the dialogs (see `ClientShell`), so an
+   ordinary screen prints as itself, in as many sheets as it takes.
+
+   This block is for a screen that wants to print ONE REGION of itself and not
+   the rest (the ITR keying sheet is a table in the middle of a long filing
+   screen). It marks that region `data-print-scope`, and everything inside
+   `<main>` that is neither the region, nor on the way to it, nor inside it, is
+   dropped: the elements that CONTAIN the region keep their place, which is why
+   this is written with `:has()` and not as "hide the siblings" — a rule that
+   hid the document and re-showed a part (this file's predecessor did, on
+   /reports) prints a blank page, because `display: none` on an ancestor cannot
+   be undone by a descendant. `data-print-header` is the client's name and the
+   print date (`PrintHeader`), which the region needs and is not part of it.
+
+   It changes nothing on screen: the whole block is inside `@media print`. */
+@media print {
+  main:has([data-print-scope])
+    *:not(:has([data-print-scope])):not([data-print-scope]):not([data-print-scope] *):not([data-print-header]):not([data-print-header] *) {
+    display: none !important;
+  }
+  /* A table row is not cut across two sheets. (A <thead> already repeats on
+     each sheet by the browser's own default.) */
+  tr { break-inside: avoid; }
+}
