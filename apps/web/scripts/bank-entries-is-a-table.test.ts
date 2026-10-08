@@ -16,11 +16,15 @@
 //     the same ones the old queue test held, re-pointed at the new files.
 //
 //     Later the same day the module was collapsed from five tabs to THREE —
-//     Entries · Reconcile · Rules. Accounts was setup wearing a tab (it is a
-//     panel and an Import button on Entries now), Bank Book was a report (it
-//     is under Reports now), and the six state chips were the CA classifying
-//     their own queue (three filters and one line of text now). Tests 8-11
-//     hold that shape, because "just add a tab for it" is the drift.
+//     Entries · Reconcile · Rules — and on 2026-09-17 Worth a Look joined as a
+//     FOURTH, on the owner's decision (the test of the tab list says so).
+//     Accounts was setup wearing a tab (it is a panel and an Import button on
+//     Entries now), Bank Book was a report (it is under Reports now), and the
+//     six state chips were the CA classifying their own queue (three filters
+//     and one line of text now). The tests of the tab list, of Worth a Look
+//     being unable to act, of Accounts and Bank Book being reached from Entries
+//     and not from a tab, and of the three filters hold that shape, because
+//     "just add a tab for it" is the drift.
 //
 // WHAT IS ASSERTED
 //     1. The list renders the shared DataTable with the six columns, in order —

@@ -208,10 +208,11 @@ can undo any of it.
 
 ## The screens
 
-Three tabs: **Entries · Reconcile · Rules**. The module shipped on
-2026-09-03 with five — Accounts · Entries · Bank Book · Reconcile · Rules —
-and was collapsed to three the same day after first use. The reasoning, so it
-is not rebuilt: *Accounts* is setup, done once and then occasionally, and a
+Four tabs: **Entries · Reconcile · Worth a Look · Rules**. The module shipped
+on 2026-09-03 with five — Accounts · Entries · Bank Book · Reconcile · Rules —
+was collapsed to three the same day after first use, and gained **Worth a Look**
+as a fourth on 17-09-2026, an owner decision. The reasoning for the collapse, so
+it is not rebuilt: *Accounts* is setup, done once and then occasionally, and a
 tab put it in the month's working sequence; *Bank Book* is a report — something
 a CA opens to look a figure up, not a step — and the workspace has a Reports
 section for exactly that; and the six state chips on Entries (*To do · Needs
@@ -240,6 +241,15 @@ queue before working it, when the row already carries the colour.
   narration, and the history evidence sentence.
 - **Reconcile** — labelled BRS. Unchanged in substance; it was already to
   accountant standard.
+- **Worth a Look** — risk-based review: which *posted* lines carry a reason
+  for a partner to test, and why. `domain/banking/exceptions.py` decides and
+  writes each sentence, `GET /api/banking/worth-a-look` serves it, and the tab
+  renders it and decides nothing. **Read-only by construction**: it has no
+  verb, and the one thing a row does is open the line on Entries, because a
+  flag is advice and an action here would turn it into a gate. It opens on the
+  previous whole month and the server requires both dates, so no path asks for
+  the whole ledger. The reason a CA would give for the extra tab is that a
+  partner tests what is unusual rather than re-performing the junior's work.
 - **Rules** — each rule shows what it matches now (*N open lines*), what it
   has passed, and the Trusted switch with who trusted it.
 
@@ -248,18 +258,32 @@ Reached from Entries rather than tabs:
 - **Accounts panel** (`components/banking/AccountsPanel.tsx`) — the bank
   accounts and imported statements, add/edit/deactivate, the import modal
   and the column mapper. Unchanged in substance from the old tab.
-- **Bank Book** (`app/clients/[id]/reports/bank-book/page.tsx`, rendering
-  `components/banking/BankBook.tsx`) — the register, renamed to what it is:
-  the bank ledger with a running balance, cleared status (C/R), and the
-  self-check against the bank's own balance column. Read-only, as before.
-  Listed in the Reports directory under Operational.
+- **Cash & Bank Book** (`app/clients/[id]/reports/bank-book/page.tsx`) — the
+  page keeps the URL it was given as the Bank Book, and now holds two
+  registers: the cash book above (`components/banking/CashBook.tsx`,
+  `GET /api/accounting/cash-book`) and the **bank book** below
+  (`components/banking/BankBook.tsx`): the bank ledger with a running
+  balance, cleared status (C/R), and the self-check against the bank's own
+  balance column. Read-only, as before. Listed in the Reports directory under
+  Operational.
+
+**Not in this module: post-dated cheques.** A cheque dated ahead is a
+memorandum until it is presented, so it lives on the screens where the
+document it settles lives, as a **Post-dated Cheques** tab on client Sales
+(cheques received) and on Purchases (cheques issued), not here
+(`components/banking/PostDatedChequesPanel.tsx`, `/api/post-dated-cheques`,
+migration 460, the rule in `domain/banking/pdc.py`). Presenting one is an
+ordinary receipt or vendor payment (`receipt_service.create_receipt_core` or
+`purchase_payment_service.create_payment_core`), **not**
+`bank_posting_service.post`, which settles an imported statement line and a
+cheque has none.
 
 `app/clients/[id]/bank/page.tsx` is the shell only; each tab is its own file
 under `components/banking/`. The 4,964-line page was the reason "make the
 row a bit more flexible" changes went unreviewed.
-`scripts/bank-entries-is-a-table.test.ts` holds the three-tab shape, the
-three filters and the working line, because "just add a tab for it" is the
-drift.
+`scripts/bank-entries-is-a-table.test.ts` holds the four-tab shape, the
+three filters, the working line, and that Worth a Look cannot act, because
+"just add a tab for it" is the drift.
 
 ## What this deliberately does not do
 
@@ -284,3 +308,6 @@ drift.
 4. Collapsed from five tabs to three after first use: Accounts became a
    panel and an Import button on Entries, Bank Book moved under Reports,
    and the six chips became three filters and a line of text.
+5. Worth a Look added as a fourth tab (17-09-2026, owner decision): the rules
+   deciding which posted lines carry a reason to test already existed in
+   `domain/banking/exceptions.py` and had no reader.
