@@ -30,8 +30,9 @@ to trust least until someone has tried to break the guard.
 
 * **Defects found by audits** are not incidents, and their long accounts are the bold-headed paragraphs of
   `CLAUDE.md`. Each ends with what was deliberately not done, and most name the test that now holds the rule.
-* **Which findings are open or closed** is `docs/audits/findings-status.md`, the only status record kept up to
-  date. The dated audit documents beside it are snapshots and were never amended.
+* **What is open** is `docs/open-items/README.md`, the only status record kept up to date. The dated audit
+  documents that used to sit beside it were snapshots, were never amended and were deleted on 8 October 2026
+  (recoverable at merge commit `315e6a19`, see `docs/audits/README.md`).
 * **What was measured and what could not be** for the monitoring work is in `docs/operations/error-tracking.md`
   and `docs/operations/database-monitoring.md`.
 
@@ -47,7 +48,7 @@ Add a row to §1 in the same pull request that fixes it, and fill the five colum
 * **what guards it now**: **a test or a check that fails if it recurs**, by path. "Be more careful" is not a
   guard. The repository's habit is a test that states the rule rather than one that pins today's spelling of it,
   because a guard that names a location breaks on a move that does not break the rule.
-* If something was found that was **not** fixed, say so in the account and in `docs/audits/findings-status.md`.
+* If something was found that was **not** fixed, say so in the account and as a line in `docs/open-items/`.
 
 The incident itself is handled with `docs/operations/incident-runbook.md`, and undone with
 `docs/operations/release-and-rollback.md`.
