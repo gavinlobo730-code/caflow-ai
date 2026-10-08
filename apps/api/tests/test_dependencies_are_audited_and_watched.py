@@ -123,11 +123,42 @@ def test_every_entry_is_weekly_and_none_is_left_on_the_default():
     assert len(re.findall(r'timezone:\s*"Asia/Kolkata"', text)) == n_entries
 
 
+def _blocks(text: str, key: str) -> list[str]:
+    """The body of every `key:` mapping in the file: the lines indented deeper than the key itself."""
+    lines, out, i = text.split("\n"), [], 0
+    while i < len(lines):
+        m = re.match(rf"^(\s*){key}:\s*$", lines[i])
+        if not m:
+            i += 1
+            continue
+        indent, body = len(m.group(1)), []
+        i += 1
+        while i < len(lines) and (not lines[i].strip() or len(lines[i]) - len(lines[i].lstrip()) > indent):
+            body.append(lines[i])
+            i += 1
+        out.append("\n".join(body))
+    return out
+
+
 def test_minor_and_patch_are_grouped_and_a_major_is_left_to_arrive_alone():
+    """The rule is about GROUPS: a major update is never folded into the weekly group, because it is the
+    one that can break the build and wants its own review. An `ignore` entry that holds a named
+    dependency's major back is a different thing (a decision somebody wrote down, with the date and the
+    ledger item in the file's header) and is allowed; a wildcard that would hide every major is not."""
     text = _code(DEPENDABOT)
     assert text.count('update-types: ["minor", "patch"]') == len(_entries())
-    assert "major" not in text.replace("major version", ""), (
-        "a MAJOR update must not be grouped: it is the one that can break the build and wants its own review")
+    groups = _blocks(text, "groups")
+    assert len(groups) == len(_entries()), "an entry without a groups block would not group anything"
+    for body in groups:
+        assert "major" not in body, (
+            "a MAJOR update must not be grouped: it is the one that can break the build and wants its own review")
+    assert 'dependency-name: "*"' not in text, (
+        "a wildcard ignore hides every major, including the ones nobody has decided about")
+    for body in _blocks(text, "ignore"):
+        for entry in re.split(r"\n\s*- ", "\n" + body.strip()):
+            if entry.strip():
+                assert re.search(r'dependency-name:\s*"[^"*]+"', entry) and "update-types:" in entry, (
+                    f"an ignore entry must name one dependency and the update types it holds back: {entry!r}")
 
 
 # ── the audit workflow ──────────────────────────────────────────────────────────

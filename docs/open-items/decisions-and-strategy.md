@@ -40,7 +40,8 @@ Written on 30 Sep 2026 from the per-area improvement plans. Each decision gates 
 - **Why it matters:** The app is served from a pages.dev address under the old name and the website from another pages.dev address. A firm handing over client books judges by the address and the email. Keep the old name in code; only the public address changes.
 - **Cost or time:** Domain and mailbox cost: unsure, small. Time: days, with a staged cutover because sign-in redirects and emailed links change.
 - **Roadmap points it unlocks:** market_and_trust-11, ops-20, security_privacy-10, better invite deliverability
-- **Open ledger items carrying them:** POST-B-053, POST-B-054, POST-B-018
+- **8 Oct 2026:** the sending-domain half is no longer parked. The Render dashboard shows the mail sender is Resend's shared test address, so mail cannot reach a client or a stranger; buying the domain and verifying it for mail is PRE-B-016 and comes before the 1 November demo. The hostname cutover (app, site and API on the new domain) stays after the demo.
+- **Open ledger items carrying them:** PRE-B-016, POST-B-053, POST-B-054, POST-B-018
 
 ### Decision 7. Decide whether to start the free registrations now and, separately, whether to reverse the 'no registrations' and prepare-only decisions for scoped API access only
 - **Why it matters:** The repo's own notes disagree: one says start this week, the plan says after a CA demo, the compliance document says none are being pursued. The free steps (software-developer registration on the income-tax portal, the e-invoice sandbox, the drafted enquiries) commit to nothing. Renting read access to the GST portal through an existing licensed provider needs a stored access token and an OTP step entered in the product, which current never-do tests forbid. Keep never-auto-submit.
