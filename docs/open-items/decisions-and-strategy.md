@@ -34,7 +34,7 @@ Written on 30 Sep 2026 from the per-area improvement plans. Each decision gates 
 - **Why it matters:** Image extraction and scanned statements use a key the code calls free-tier. As recalled (not verified here), the unpaid Gemini terms allow the vendor to use submitted content to improve its products. Client invoices carry third-party GSTINs and amounts.
 - **Cost or time:** Usage-based; per-document cost is unmeasured, so meter it before promising unlimited AI. Time: days.
 - **Roadmap points it unlocks:** ai-13, security_privacy-13, market_and_trust-04, ai-14, ai-11 later, a truthful sub-processor list
-- **Open ledger items carrying them:** PRE-B-013, POST-B-080, PRE-A-006
+- **Open ledger items carrying them:** PRE-B-013, POST-B-080 (the in-app provider notice is built: it names the provider and says content leaves India, and says nothing about training or retention until this decision is made)
 
 ### Decision 6. Choose the domain, one brand for app and website, and the sending domain
 - **Why it matters:** The app is served from a pages.dev address under the old name and the website from another pages.dev address. A firm handing over client books judges by the address and the email. Keep the old name in code; only the public address changes.
