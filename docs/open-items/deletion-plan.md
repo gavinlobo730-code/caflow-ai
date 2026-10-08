@@ -1,32 +1,132 @@
-# Deletion plan for the audit, finding and plan documents
+# What was deleted on 8 October 2026, and what was kept
 
-**Nothing here has been done.** This is the proposal, written so the decision can be made once. Deleting is cheap to reverse (git history keeps everything) but it is not free: tests, scripts and hundreds of code comments name some of these files, and a handful of the "audit" documents are in fact the only written record of a design decision. Where this plan says KEEP it says why.
+**Done.** The owner approved the plan in conversation on 8 October 2026 ("if you are sure about both, go ahead") and it was carried out in one pull request. This file is now the record: what was deleted, what was kept and why, and how to get any deleted file back. Deleting was cheap to reverse (git history keeps everything) but not free, because source comments and prose still name some of these files; where this file says KEEP it says why.
 
-## Verdict in one paragraph
+## How to recover a file
 
-Delete the **status snapshots** — everything under `docs/audits/` (4.0 MB, including 1.9 MB of finding JSON), the overnight-run log and the stale question files under `docs/plan/`, and the early completion and audit reports at the top of `docs/` — once the ledger is accepted. Their open items are in `docs/open-items/`; what they proved closed is in `checked-closed.md`; their history stays in git under a tag. **Do not** delete `docs/compliance/` (the statutory playbook and the committed primary-source texts), `docs/architecture/`, `docs/operations/`, `docs/deploy-migrations.md`, `docs/schema-drift.md`, `docs/plan/THE-PLAN.md` (a required test reads it and it holds decisions D1–D27), or the design-record documents listed under KEEP: they answer "why is it built this way?", which the ledger deliberately does not.
+Every deleted file is in git exactly as it stood at merge commit `315e6a1980053c5db5e00646d16624d48e358907` (the commit that added this ledger, the last one to contain all of them):
 
-## What must happen first
+    git show 315e6a19:docs/audits/<file>
+    git ls-tree -r --name-only 315e6a19 docs/audits      # every file that was there
 
-1. **The owner reads and accepts the ledger** (or asks for changes). Nothing below should be done before that.
-2. **Tag the history**: `git tag audit-archive-2026-10-02 <main sha>` and push the tag, so any deleted file is recoverable with `git show audit-archive-2026-10-02:docs/audits/<file>`. Pushing a tag is outward-facing, so it needs the owner's go-ahead.
-3. **Preserve the Amendment v1.1 design record** (it is a ledger item): `BATCH_6_*`, `BATCH_7_*`, `REVENUE_OPS_BRIDGE.md` and `PRACTICE_CLIENT_VISIBILITY_DECISION.md` are the only design record of the internal practice client, guardrails G1–G4, the billing lifecycle and idempotency keys, collections and AR rules and knowledge-base versioning; CLAUDE.md carries almost none of it. Fold it into `docs/architecture/` first; then the four BATCH_6/7 files can go.
-4. **Remove `scripts/findings_status_md.py`** together with the findings files it reads, and replace the audit table and the "`docs/audits/findings-status.*` is where to start" paragraph in CLAUDE.md with a pointer to `docs/open-items/README.md`.
-5. **Do not edit migration files** to repair comments that name a deleted document (a migration's checksum is its identity). About 45 source files, test docstrings and migration headers mention `docs/audits/…`; they are comments, not reads, and will simply dangle. Checked on 2 Oct 2026: **no test or script opens any file under `docs/audits/`** (the only reader is `scripts/findings_status_md.py`). Optionally sweep the source-file comments afterwards.
-6. Run the full backend and web suites on the branch that deletes, and ship it as an ordinary pull request.
+An archive **tag** named `audit-archive-2026-10-02` was planned and could not be created: the session that did this work may push only its own branch, and the push of a tag was refused with HTTP 403. The commit hash recovers the same files and cannot be deleted by accident; the owner may add the tag name on that commit in GitHub if a friendlier name is wanted.
 
-## DELETE after the ledger is accepted
+## What happened, step by step
 
-| path | size | why it is safe |
+1. **The owner accepted the ledger** (8 October 2026).
+2. **Tag**: not pushed, see above; the merge commit stands in for it.
+3. **Amendment v1.1 design record**: still open as POST-A-177. The four `BATCH_6_*` and `BATCH_7_*` files are the only record of the internal practice client, guardrails G1-G4, the billing lifecycle and idempotency design, collections and AR rules and knowledge-base versioning, so they were **not deleted** (see HELD below).
+4. **`scripts/findings_status_md.py` was removed** with the findings files it read, and CLAUDE.md's audit table and its "`docs/audits/findings-status.*` is where to start" paragraph were replaced by a pointer to `docs/open-items/README.md` and a note of the deletion. `docs/plan/THE-PLAN.md` (three rows that named the findings record) and `docs/operations/post-mortems.md` (two bullets that called it the live status record) were repointed to the ledger.
+5. **Comments were not repaired.** About 45 source files, test docstrings and migration headers, and prose in KEEP documents, still name `docs/audits/...`. They are comments, not reads (checked on 2 and 8 October 2026: no test, script or workflow opens any deleted file), and a migration's checksum is its identity, so none was edited. `docs/audits/README.md` was left behind as a one-page stub saying where the files went, so a reader who follows a dangling reference lands on the explanation.
+6. **The full backend suite and the web checks ran on the branch** that deleted, as for any pull request.
+
+## DELETED on 8 October 2026
+
+84 files and one script. The size column is the size at the recovery commit.
+
+| path | size | why it was safe |
 |---|---|---|
-| `docs/audits/` (everything: the 2026-07 to 2026-09 audits, `2026-09-07-findings/`, `2026-09-07-market-research/`, `2026-09-12-the-probe-pass/`, `findings-status.json` and `.md`, `WHERE-WE-STOPPED.md`, `OPEN-QUESTIONS.md`, `questions-for-the-owner.md`, `what-to-fetch-for-me.md`, the checkpoint, the phase plans, the verification pass) | 3883 KB | Dated snapshots, each already measured stale. Their open items were extracted into the ledger (every raw item accounted for by a script); closed items and answered questions are recorded in `checked-closed.md`. The 2026-09-07 market research is search-engine summaries (nothing in it is graded primary) and its re-verify lists are ledger items. |
-| `docs/plan/2026-09-24-overnight-run.md` | 48 KB | Log or question file; open questions are ledger items and answered ones are in `checked-closed.md`. |
-| `docs/plan/QUESTIONS.md` | 4 KB | Log or question file; open questions are ledger items and answered ones are in `checked-closed.md`. |
-| `docs/plan/STUCK.md` | 11 KB | Log or question file; open questions are ledger items and answered ones are in `checked-closed.md`. |
-| `docs/plan/2026-09-13-questions-for-the-owner.md` | 7 KB | Log or question file; open questions are ledger items and answered ones are in `checked-closed.md`. |
-| top-level early reports: `BATCH_1_COMPLETION_REPORT.md`, `BATCH_2_COMPLETION_REPORT.md`, `BATCH_2_1_HARDENING_REPORT.md`, `BATCH_3_COMPLETION_REPORT.md`, `BATCH_3_1_HARDENING_REPORT.md`, `BATCH_4_COMPLETION_REPORT.md`, `BATCH_5_COMPLETION_REPORT.md`, `PHASE_5_1_SECURITY_REMEDIATION_REPORT.md`, `PHASE_5_2_E2E_TEST_REPORT.md`, `PHASE_5_2_E2E_UAT_PLAN.md`, `PHASE_5_2_WS1_E2E_COVERAGE_REPORT.md`, `PHASE_5_2_WS4_RELEASE_READINESS.md`, `DEAD_CODE_AUDIT.md`, `DEPLOYMENT_READINESS_AUDIT_v1_1.md`, `LOADING_UX_AUDIT.md`, `ENGAGEMENT_ARCHITECTURE_AUDIT.md`, `PRACTICESYNC_AUDIT_v1.md`, `QUICKBOOKS_ACCOUNTING_ROADMAP.md`, `security_audit_phase13b.md` | 142 KB | Completion, hardening, E2E and audit reports of the early build; closed or superseded, with the open residue in the ledger. `security_audit_phase13b.md` is now factually wrong (migration 154 replaced its RLS predicate). |
+| `docs/audits/` (61 files: the 2026-07 to 2026-09 audits, `2026-09-07-findings/`, `2026-09-07-market-research/`, `2026-09-12-the-probe-pass/`, `findings-status.json` and `.md`, `WHERE-WE-STOPPED.md`, `OPEN-QUESTIONS.md`, `questions-for-the-owner.md`, `what-to-fetch-for-me.md`, the checkpoint, the phase plans, the verification pass) | 3883 KB | Dated snapshots, each already measured stale. Their open items were extracted into the ledger (every raw item accounted for by a script); closed items and answered questions are recorded in `checked-closed.md`. The 2026-09-07 market research is search-engine summaries (nothing in it is graded primary) and its re-verify lists are ledger items. |
+| `docs/plan/2026-09-24-overnight-run.md`, `QUESTIONS.md`, `STUCK.md`, `2026-09-13-questions-for-the-owner.md` | 70 KB | Log or question files; open questions are ledger items and answered ones are in `checked-closed.md`. |
+| 19 top-level early reports (`BATCH_1` to `BATCH_5` completion and hardening reports, `PHASE_5_1` and `PHASE_5_2` reports and E2E plan, `DEAD_CODE_AUDIT.md`, `DEPLOYMENT_READINESS_AUDIT_v1_1.md`, `LOADING_UX_AUDIT.md`, `ENGAGEMENT_ARCHITECTURE_AUDIT.md`, `PRACTICESYNC_AUDIT_v1.md`, `QUICKBOOKS_ACCOUNTING_ROADMAP.md`, `security_audit_phase13b.md`) | 142 KB | Completion, hardening, E2E and audit reports of the early build; closed or superseded, with the open residue in the ledger. `security_audit_phase13b.md` was factually wrong (migration 154 replaced its RLS predicate). |
+| `scripts/findings_status_md.py` | 6 KB | Rendered `docs/audits/findings-status.md` from the JSON; both are gone. |
 
-## HOLD until a named prerequisite is done
+### Every deleted path
+
+`docs/audits/` (61 files):
+
+    docs/audits/2026-07-01-combobox-smart-lookup-audit.md
+    docs/audits/2026-07-01-combobox-smart-lookup-migration-summary.md
+    docs/audits/2026-07-01-search-sort-filter-migration-summary.md
+    docs/audits/2026-07-01-search-sort-filter-premerge-audit.md
+    docs/audits/2026-07-01-search-sort-filter-ux-audit.md
+    docs/audits/2026-07-02-executive-product-audit.md
+    docs/audits/2026-07-04-navigation-routing-investigation.md
+    docs/audits/2026-07-05-invoice-workspace-competitive-design.md
+    docs/audits/2026-07-05-sales-invoice-ux-workflow-review.md
+    docs/audits/2026-07-06-sales-invoice-workspace-density-audit.md
+    docs/audits/2026-08-02-bank-module-quickbooks-gap-audit.md
+    docs/audits/2026-08-02-migration-ledger-drift-audit.md
+    docs/audits/2026-09-01-can-a-ca-run-a-client-for-a-full-year.md
+    docs/audits/2026-09-01-payroll-can-it-run-a-year.md
+    docs/audits/2026-09-02-foreign-vendor-walkthrough.md
+    docs/audits/2026-09-03-client-profiles-nine-columns-not-twentynine.md
+    docs/audits/2026-09-03-converging-the-last-guard-differences.md
+    docs/audits/2026-09-03-declaring-what-production-enforces.md
+    docs/audits/2026-09-03-guard-drift-first-run.md
+    docs/audits/2026-09-03-rls-off-on-eight-granted-tables.md
+    docs/audits/2026-09-03-three-writes-production-refuses.md
+    docs/audits/2026-09-07-a-plus-roadmap.md
+    docs/audits/2026-09-07-findings/README.md
+    docs/audits/2026-09-07-findings/accounting-core-posting-kernel-journal.json
+    docs/audits/2026-09-07-findings/banking-statement-import-csv-xlsx-pd.json
+    docs/audits/2026-09-07-findings/fixed-assets-and-inventory.json
+    docs/audits/2026-09-07-findings/gst-gstr-1-builder-gstr-3b-computer.json
+    docs/audits/2026-09-07-findings/income-tax-and-itr-computation-works.json
+    docs/audits/2026-09-07-findings/payroll-employee-master-salary-struc.json
+    docs/audits/2026-09-07-findings/purchase-cycle-vendors-purchase-bill.json
+    docs/audits/2026-09-07-findings/sales-cycle-customers-sales-invoices.json
+    docs/audits/2026-09-07-findings/tds-tcs-section-rates-and-thresholds.json
+    docs/audits/2026-09-07-findings/verification-verdicts.json
+    docs/audits/2026-09-07-market-research/README.md
+    docs/audits/2026-09-07-market-research/gst-primary.md
+    docs/audits/2026-09-07-market-research/income-tax-tds-primary.md
+    docs/audits/2026-09-07-market-research/payroll-primary.md
+    docs/audits/2026-09-07-where-we-are-against-the-one-platform-goal.md
+    docs/audits/2026-09-08-what-is-left.md
+    docs/audits/2026-09-08b-what-is-left.md
+    docs/audits/2026-09-08c-the-phase-plan.md
+    docs/audits/2026-09-11-the-verification-pass.md
+    docs/audits/2026-09-12-the-probe-pass/README.md
+    docs/audits/2026-09-12-the-probe-pass/accounting-and-inventory.md
+    docs/audits/2026-09-12-the-probe-pass/banking.md
+    docs/audits/2026-09-12-the-probe-pass/fixed-assets.md
+    docs/audits/2026-09-12-the-probe-pass/gst.md
+    docs/audits/2026-09-12-the-probe-pass/income-tax.md
+    docs/audits/2026-09-12-the-probe-pass/payroll.md
+    docs/audits/2026-09-12-the-probe-pass/purchases.md
+    docs/audits/2026-09-12-the-probe-pass/sales.md
+    docs/audits/2026-09-12-the-probe-pass/tds.md
+    docs/audits/2026-09-14-what-needs-both-of-us.md
+    docs/audits/2026-09-15-the-unreachable-sweep.md
+    docs/audits/2026-09-19-checkpoint.md
+    docs/audits/OPEN-QUESTIONS.md
+    docs/audits/WHERE-WE-STOPPED.md
+    docs/audits/findings-status.json
+    docs/audits/findings-status.md
+    docs/audits/questions-for-the-owner.md
+    docs/audits/what-to-fetch-for-me.md
+
+`docs/plan/` (4 files):
+
+    docs/plan/2026-09-24-overnight-run.md
+    docs/plan/QUESTIONS.md
+    docs/plan/STUCK.md
+    docs/plan/2026-09-13-questions-for-the-owner.md
+
+`docs/` top level (19 files):
+
+    docs/BATCH_4_COMPLETION_REPORT.md
+    docs/PHASE_5_2_E2E_UAT_PLAN.md
+    docs/security_audit_phase13b.md
+    docs/BATCH_5_COMPLETION_REPORT.md
+    docs/PRACTICESYNC_AUDIT_v1.md
+    docs/BATCH_2_1_HARDENING_REPORT.md
+    docs/DEPLOYMENT_READINESS_AUDIT_v1_1.md
+    docs/BATCH_3_COMPLETION_REPORT.md
+    docs/PHASE_5_2_E2E_TEST_REPORT.md
+    docs/ENGAGEMENT_ARCHITECTURE_AUDIT.md
+    docs/DEAD_CODE_AUDIT.md
+    docs/LOADING_UX_AUDIT.md
+    docs/QUICKBOOKS_ACCOUNTING_ROADMAP.md
+    docs/BATCH_1_COMPLETION_REPORT.md
+    docs/BATCH_2_COMPLETION_REPORT.md
+    docs/BATCH_3_1_HARDENING_REPORT.md
+    docs/PHASE_5_1_SECURITY_REMEDIATION_REPORT.md
+    docs/PHASE_5_2_WS1_E2E_COVERAGE_REPORT.md
+    docs/PHASE_5_2_WS4_RELEASE_READINESS.md
+
+## HELD, not deleted: waiting on a named prerequisite
 
 | path | size | prerequisite |
 |---|---|---|

@@ -53,7 +53,7 @@ block a track.
 
 | what | now | was 24 Sep | how it was measured |
 |---|---|---|---|
-| Audit findings closed | **269 of 279** | 265 | `docs/audits/findings-status.json` |
+| Audit findings closed | **269 of 279** (the 2 Oct snapshot; that record was deleted on 8 Oct, open items are in `docs/open-items/`) | 265 | `git show 315e6a19:docs/audits/findings-status.json` |
 | — partial | 3 | 6 | FA-11, IT-11, PAY-27 |
 | — open | 2 | 2 | TDS-16, GST-25 — both blocked on a document |
 | — not a defect as stated | 5 | 5 | including **PAY-28**, re-read after the redesign |
@@ -375,7 +375,7 @@ registration. Months of lead time; the demo is what justifies starting them.
 | Named-palette judgement pass | ongoing, one module per PR. **25 Sep: purchases 154→15, sales 100→11, compliance 145→39** — every one mapped by ROLE, and the residues NAMED in the code rather than flattened (a `text-blue-600` link, because 1.3d left those alone at 64 sites; a derived cost column the state set has no word for; a suggestion chip whose base is blue-50, for which mapping to `working-surface` would make it the same colour as its own hover; a `cancelled` badge that is neither `problem` nor `done`). **Next by count**: `components` 97, `memory` 96, `clients/[id]/accounting` 93, `clients/[id]/tax` 90 |
 | ~~1,009 invisible dividers~~ | **done 25 Sep** ✅ Not the 95 this row claimed: 136 in the Tailwind families and **873 more written in the product's OWN surface tokens** (`border-ps-muted`, `divide-ps-bg`), which T3-a's pure hex→token rename had faithfully preserved. The guard states a CONTRAST against `ps.border`, read out of the token file, in both vocabularies — its first version knew one and was silently wrong about the other, over the larger population |
 | The six documents (D18) | 2 of 8 fetched. Each is NAMED as a gap in the product, which is the safe direction |
-| Findings status hygiene | `findings-status.json` is amended in the commit that closes a finding. The only rule that keeps it honest |
+| Findings status hygiene | Now `docs/open-items/`: delete an item's line in the commit that closes it and rerun `python3 scripts/open_items_counts.py`. The only rule that keeps it honest |
 
 ---
 
@@ -394,7 +394,7 @@ registration. Months of lead time; the demo is what justifies starting them.
 ```sh
 cd /path/to/caflow-ai
 
-python3 -c "import json,collections; d=json.load(open('docs/audits/findings-status.json'))['findings']; print(collections.Counter(v['status'] for v in d.values()))"
+python3 scripts/open_items_counts.py                                              # open items by bucket
 ls apps/api/migrations/*.sql | sed 's/.*\///' | cut -d_ -f1 | sort -n | tail -1   # highest migration
 find apps/web/app -name page.tsx | wc -l                                          # routes
 md5sum apps/web/.smoke/*.jpg | awk '{print $1}' | sort -u | wc -l                  # distinct shots
