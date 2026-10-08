@@ -245,8 +245,10 @@ queue before working it, when the row already carries the colour.
   for a partner to test, and why. `domain/banking/exceptions.py` decides and
   writes each sentence, `GET /api/banking/worth-a-look` serves it, and the tab
   renders it and decides nothing. **Read-only by construction**: it has no
-  verb, and the one thing a row does is open the line on Entries, because a
-  flag is advice and an action here would turn it into a gate. It opens on the
+  verb and a row does nothing when clicked, because a flag is advice and an
+  action here would turn it into a gate. A row shows the payee, the date, the
+  amount, the matched document number where there is one and the reasons; it
+  does not open the line on Entries, which is not built. It opens on the
   previous whole month and the server requires both dates, so no path asks for
   the whole ledger. The reason a CA would give for the extra tab is that a
   partner tests what is unusual rather than re-performing the junior's work.

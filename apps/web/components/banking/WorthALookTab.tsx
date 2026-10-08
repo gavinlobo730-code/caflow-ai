@@ -16,8 +16,10 @@
  *   `blocking` says so in words — that is the rules' judgement about what a
  *   gate WOULD stop, shown so a firm can see it, never acted on.
  *
- *   The one thing a row does is OPEN the line on Entries, because a partner who
- *   wants to look needs the line, not a copy of it.
+ *   A row is text only: payee, date, amount, the matched document number where
+ *   there is one, and the reasons. It does NOT open the line on Entries (that
+ *   link is not built), so a partner who wants the line finds it on Entries by
+ *   its date and amount.
  *
  * THE PERIOD IS A CONTROL, NOT A DEFAULT THAT DRIFTS
  *   It opens on the previous whole month — the thing a partner actually
