@@ -423,6 +423,39 @@ def _payroll(api: Api, c, client_id: str, bank_id: Optional[str],
             written["payroll_disbursed"] += 1
 
 
+def _engagements(api: Api, c, client_id: str, fy: str, fy_start: str,
+                 written: dict) -> None:
+    """The services the practice provides, and the obligations each implies.
+
+    OBLIGATIONS ARE NOT CREATED WITH A CLIENT. They come from the 06:00 IST
+    sweep for the current year, lazily when somebody opens a client's overview
+    for GST only, and for everything else (the return, TDS, payroll, advance
+    tax, the company's filings) from a fee engagement's service type -- so a
+    seeded client had a compliance calendar of nothing, and one with no GSTIN
+    had no obligation of any kind. The engagement is the door, and
+    `generate-obligations` is the same call a CA presses; it is idempotent, and
+    the financial year is passed because the default is the one the clock is
+    in, which is not the books'.
+
+    Fee engagements are also what billing reads, so this populates those
+    screens too. The fees are the fixture's, in whole rupees.
+    """
+    for e in c.engagements:
+        engagement = api.post("/api/engagements", {
+            "client_id": client_id,
+            "service_type": e.service_type,
+            "fee_paise": e.fee_paise,
+            "billing_cycle": e.billing_cycle,
+            "start_date": fy_start,
+            "status": "Active",
+        })
+        written["engagements"] += 1
+        out = api.post(
+            f"/api/engagements/{_id(engagement)}/generate-obligations"
+            f"?financial_year={fy}", {}).get("data") or {}
+        written["obligations"] += int(out.get("generated") or 0)
+
+
 def _statement(api: Api, c, client_id: str, bank_id: str,
                open_credits: list[dict], written: dict) -> None:
     """One statement for the year, and a queue with real work in it.
@@ -635,7 +668,8 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "fixed_assets": 0, "depreciation_months": 0,
                "employees": 0, "payroll_runs": 0, "payroll_finalized": 0,
                "payroll_disbursed": 0,
-               "bank_lines": 0, "bank_drafts": 0, "tans": 0}
+               "bank_lines": 0, "bank_drafts": 0, "tans": 0,
+               "engagements": 0, "obligations": 0}
 
     # ── THE FIRM'S HSN LIBRARY COMES FIRST, AND IT IS A GATE ─────────────────
     #
@@ -824,6 +858,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
 
         _fixed_assets(api, c, client_id, bank_id, firm.financial_year, written)
         _payroll(api, c, client_id, bank_id, written)
+        _engagements(api, c, client_id, firm.financial_year, fy_start, written)
         # LAST, because the credits above are known only once every invoice
         # has been written and the engine has told us what each one came to.
         if bank_id and c.banks[0].import_statement:

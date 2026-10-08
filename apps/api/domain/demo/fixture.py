@@ -405,6 +405,26 @@ _OUTSIDE_THE_DUTY_TO_DEDUCT = frozenset({"Individual", "Proprietorship", "HUF"})
 
 
 @dataclass(frozen=True)
+class DemoEngagement:
+    """One service the practice is engaged to provide a client, and what it
+    charges for it.
+
+    THE `service_type` IS A KEYWORD, NOT A LABEL. `compliance_obligation_service.
+    obligations_for_service` reads the statutory obligations an engagement
+    implies off the words in it ("GST" -> GSTR-1, GSTR-3B, GSTR-9; "TDS" ->
+    the quarterly statements and the monthly deposits; "Income Tax Return";
+    "Advance Tax"; "ROC"/"MCA"; "payroll"), so the string is what makes the
+    compliance calendar non-empty. The seeder generated none: a client with no
+    engagement and no GSTIN had no obligation of any kind, and the deadline
+    screens of a practice with eight clients were empty."""
+    service_type: str
+    fee_paise: int
+    #: Monthly | Quarterly | Half-Yearly | Annually | One-time (the CHECK on
+    #: `fee_engagements.billing_cycle`).
+    billing_cycle: str
+
+
+@dataclass(frozen=True)
 class DemoClient:
     name: str
     legal_name: str
@@ -446,6 +466,9 @@ class DemoClient:
     #: inventing one for a client that deducts no tax would be a demo of a
     #: number nobody holds.
     tan: Optional[str] = None
+    #: What the practice does for this client. Derived from what the client
+    #: files -- see `engagements_for`.
+    engagements: tuple[DemoEngagement, ...] = ()
 
     @property
     def deducts_tax(self) -> bool:
@@ -900,16 +923,58 @@ def tan_for(client: "DemoClient") -> str:
     return f"{city}{client.name[0].upper()}{client.pan[5:9]}0{client.pan[-1]}"
 
 
+def engagements_for(client: "DemoClient") -> tuple[DemoEngagement, ...]:
+    """The services the practice provides this client, from what the client
+    FILES -- so the compliance calendar holds exactly the obligations the books
+    behind it imply, and no client has a deadline for a return it does not owe.
+
+      * GST returns for a client with a GSTIN (CGST ss.25, 37, 39, 44), monthly
+        or quarterly as the client files them; an unregistered client owes none
+        and is given none (`obligations_for_service` says the same);
+      * the income tax return for every client;
+      * advance tax for everyone but an individual -- s.208 reaches a person
+        whose estimated liability for the year is Rs 10,000 or more, which this
+        fixture's salaried individual is not assumed to have [S];
+      * TDS statements for a client that deducts (`DemoClient.deducts_tax`);
+      * payroll deposits for a client that runs payroll;
+      * the company's annual MCA filings for a Private Limited company.
+
+    Each `service_type` is a KEYWORD string the obligation generator reads; one
+    service is one engagement because "Advance Tax" and "Income Tax Return" in
+    one string would generate only the first (`obligations_for_service` takes
+    one branch of the two)."""
+    out: list[DemoEngagement] = []
+    if client.gstin:
+        quarterly = client.gst_filing_frequency == "quarterly"
+        out.append(DemoEngagement(
+            "GST Returns", 6_000_00 if quarterly else 2_500_00,
+            "Quarterly" if quarterly else "Monthly"))
+    out.append(DemoEngagement(
+        "Income Tax Return",
+        4_000_00 if client.entity_type == "Individual" else 12_000_00, "Annually"))
+    if client.entity_type != "Individual":
+        out.append(DemoEngagement("Advance Tax", 3_000_00, "Quarterly"))
+    if client.deducts_tax:
+        out.append(DemoEngagement("TDS Returns", 5_000_00, "Quarterly"))
+    if client.employees:
+        out.append(DemoEngagement("Payroll Processing", 6_000_00, "Monthly"))
+    if client.entity_type == "Private Limited":
+        out.append(DemoEngagement("ROC and MCA Annual Filings", 18_000_00, "Annually"))
+    return tuple(out)
+
+
 def _finished(client: "DemoClient", financial_year: str) -> "DemoClient":
     """What is derived from a client's whole year once its documents exist:
-    the stock each item must open with, and the TAN of a client that deducts
-    tax. Pure and draws nothing from the random stream, which is what keeps it
-    from reshuffling a document (the trap `_documents` and `_employees` record)."""
-    return replace(
+    the stock each item must open with, the TAN of a client that deducts tax,
+    and the services the practice provides. Pure and draws nothing from the
+    random stream, which is what keeps it from reshuffling a document (the trap
+    `_documents` and `_employees` record)."""
+    finished = replace(
         client,
         catalogue=_opened_for_the_year(client, financial_year),
         tan=tan_for(client) if client.deducts_tax else None,
     )
+    return replace(finished, engagements=engagements_for(finished))
 
 
 def build(financial_year: str = "2025-26") -> DemoFirm:

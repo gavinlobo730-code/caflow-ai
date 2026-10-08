@@ -223,6 +223,30 @@ def test_the_statement_is_imported_after_every_invoice_is_known(api):
             "its open-invoice credits cannot be the engine's own totals")
 
 
+def test_every_seeded_client_has_obligations_in_the_compliance_calendar(api):
+    """The ledger's own ask: the seeder calls the generator for each client
+    and a test asserts each has obligations. They come from an engagement's
+    service type, not from creating a client, and a client with no GSTIN gets
+    none from the GST fallback -- so the seeded Priya Sharma had none at all
+    before the seeder created engagements."""
+    from scripts.seed_demo_firm import seed
+
+    firm = a_firm_mock_mode_can_carry()
+    written = seed(api, firm, add_to_existing=True)
+    assert written["engagements"] == sum(len(c.engagements) for c in firm.clients) > 0
+    assert written["obligations"] > 0
+
+    rows = api.get("/api/clients").get("data") or []
+    rows = rows.get("clients") if isinstance(rows, dict) else rows
+    by_name = {r["client_name"]: r["id"] for r in rows}
+    for c in firm.clients:
+        records = api.get(f"/api/compliance-records?client_id={by_name[c.name]}").get("data") or []
+        assert records, f"{c.name} has no compliance obligation after the seed"
+        types = {r["obligation_type"] for r in records}
+        if not c.gstin:
+            assert not ({"GSTR1", "GSTR3B", "GSTR9"} & types), f"{c.name} has no GSTIN yet owes GST returns"
+
+
 def test_a_firm_with_clients_is_refused_without_the_flag(api):
     """The one refusal that protects a real book. Asserted because it is the
     difference between a demo and an unrecoverable merge: a posted journal

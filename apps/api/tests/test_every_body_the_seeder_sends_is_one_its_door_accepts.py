@@ -101,7 +101,9 @@ class _Recorder:
         at all; a model of None means the route exists and declares no body
         this test can check."""
         for m, rx, model in self.models:
-            if m == method and rx.fullmatch(path):
+            # A route is matched on its PATH: `generate-obligations` takes the
+            # financial year as a query parameter, which no route regex holds.
+            if m == method and rx.fullmatch(path.split("?", 1)[0]):
                 return True, model
         return False, None
 
@@ -175,6 +177,8 @@ _DOORS_THIS_SEEDER_MUST_WALK = [
     ("POST", "/api/fixed-assets"),
     ("POST", "/api/fixed-assets/run-depreciation"),
     ("PUT", "/api/payroll/enablement"),
+    # The services the practice provides -- and the obligations they imply.
+    ("POST", "/api/engagements"),
     # The deductor's TAN -- without it no TDS statement can be built.
     ("PUT", "/api/payroll/statutory-identity"),
     ("POST", "/api/payroll/employees"),
@@ -471,6 +475,24 @@ def test_a_tan_is_recorded_for_every_client_that_deducts_and_for_no_other(_run):
     sent = _sent(_run, "PUT", "/api/payroll/statutory-identity")
     assert sorted(b["tan"] for b in sent) == sorted(c.tan for c in firm.clients if c.tan)
     assert sent and all(set(b) == {"client_id", "tan"} for b in sent)
+
+
+def test_every_engagement_has_its_obligations_generated_for_the_books_year(_run):
+    """Obligations are not created with a client; an engagement's service type
+    is the door, and the call that generates them defaults to the financial
+    year the CLOCK is in, which is not the books'. So the year is sent, once
+    per engagement, and names the fixture's own."""
+    firm = fixture.build()
+    engagements = [(p, b) for m, p, b in _run.requests
+                   if (m, p) == ("POST", "/api/engagements")]
+    generated = [p for m, p, _ in _run.requests
+                 if m == "POST" and "/generate-obligations" in p]
+    assert len(engagements) == sum(len(c.engagements) for c in firm.clients) > 0
+    assert len(generated) == len(engagements), "an engagement had no obligations generated"
+    assert all(p.endswith(f"?financial_year={firm.financial_year}") for p in generated), generated[:3]
+    assert {b["billing_cycle"] for _, b in engagements} <= {
+        "Monthly", "Quarterly", "Half-Yearly", "Annually", "One-time"}
+    assert all(b["fee_paise"] > 0 and b["fee_paise"] % 100 == 0 for _, b in engagements)
 
 
 def test_a_payment_settles_a_fraction_of_what_is_owed_and_not_of_the_face_total():
