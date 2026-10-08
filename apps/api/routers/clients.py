@@ -237,10 +237,36 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
     })
 
 
+# Fields of ClientCreate that mean "not stated" when None and whose column is
+# NOT NULL DEFAULT: PostgREST inserts exactly the keys it is sent, so a JSON null
+# is written as NULL and the column's default never applies. The key is left
+# out instead, and the database says what the default is.
+_OMITTED_WHEN_NOT_STATED = ("gst_registration_type",)
+
+
+def _new_client_row(body: ClientCreate, firm_id: str) -> dict:
+    """The row POST /api/clients inserts.
+
+    ``gst_registration_type`` is None on a body that does not name one, and
+    migration 420 made the column ``NOT NULL DEFAULT 'regular'`` -- so sending
+    the null answered every create that did not state a registration type
+    with 400 "A required value was missing" (found by driving the demo
+    seeder, whose clients all omit it). The web inserts clients over
+    PostgREST and never meets this door; only the API client and the seeder
+    do. The class is "a model default of None over a NOT NULL DEFAULT column";
+    this door has the one such field.
+    """
+    data = {**body.model_dump(), "firm_id": firm_id}
+    for key in _OMITTED_WHEN_NOT_STATED:
+        if data.get(key) is None:
+            data.pop(key, None)
+    return data
+
+
 @router.post("")
 def create_client(body: ClientCreate, current_user: dict = Depends(rbac("client", "write"))):
     firm_id = current_user.get("firm_id")
-    data = {**body.model_dump(), "firm_id": firm_id}
+    data = _new_client_row(body, firm_id)
     client = client_repo.create(data)
     log_event(firm_id, "client", client.get("id",""), "create",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
