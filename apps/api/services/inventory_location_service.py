@@ -31,6 +31,7 @@ from typing import Optional
 from core.db_paging import fetch_all
 from domain.inventory import batches as batch_domain
 from domain.inventory import location as loc
+from services.inventory_costing_policy_service import formula_in_force
 from core.ist_clock import ist_today
 
 _logger = logging.getLogger("caflow.inventory")
@@ -366,6 +367,18 @@ def transfer(db, *, firm_id: str, client_id: str, service_catalogue_id: str,
     # figures on one row that do not multiply out.
     unit_cost = int(Decimal(value) / qty) if qty else 0
 
+    # THE ROW IS STAMPED WITH THE FORMULA IN FORCE, though a transfer prices
+    # nothing. `costing_method` is NOT NULL DEFAULT 'moving_average' (migration
+    # 394), so an unstamped transfer by a client on FIFO read as a movement
+    # priced on the weighted average, and the Significant Accounting Policies
+    # note announced a change of accounting policy that never happened. The
+    # stamp is the POLICY, as it is on a cancellation reversal, and not a claim
+    # that the formula assigned this movement a cost: every reader that tells
+    # the formulas apart skips `costing.MOVEMENT_TYPES_THAT_PRICE_NOTHING`
+    # anyway, because the transfers already on file carry the default and
+    # nothing back-fills them. Resolved ONCE for the pair of rows below.
+    costing_method = formula_in_force(db, firm_id=firm_id, client_id=client_id)
+
     # BOTH ROWS SPELLED OUT IN FULL, and the repetition is deliberate. A
     # `**stamp` spread reads better and is invisible to
     # `tests/test_backend_inserts_supply_every_required_column_pg.py`, which
@@ -384,6 +397,7 @@ def transfer(db, *, firm_id: str, client_id: str, service_catalogue_id: str,
         "notes": notes,
         "created_by": actor_id,
         "godown_id": from_godown_id,
+        "costing_method": costing_method,
         "quantity_delta": str(-qty),
         "value_delta_paise": -value,
         "unit_cost_paise": unit_cost,
@@ -402,6 +416,7 @@ def transfer(db, *, firm_id: str, client_id: str, service_catalogue_id: str,
         "notes": notes,
         "created_by": actor_id,
         "godown_id": to_godown_id,
+        "costing_method": costing_method,
         "quantity_delta": str(qty),
         "value_delta_paise": value,
         "unit_cost_paise": unit_cost,

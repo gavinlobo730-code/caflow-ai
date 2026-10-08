@@ -205,6 +205,13 @@ def _formula_name(method: str) -> str:
     return _INVENTORY_BASIS_NAME.get(method) or costing.METHOD_LABELS.get(method, method)
 
 
+def _only_movements_a_formula_priced(query):
+    """The query without the movement types no cost formula priced (`costing.MOVEMENT_TYPES_THAT_PRICE_NOTHING`)."""
+    for movement_type in costing.MOVEMENT_TYPES_THAT_PRICE_NOTHING:
+        query = query.neq("movement_type", movement_type)
+    return query
+
+
 def _movement_dates_by_formula(
     db, firm_id: str, client_id: str, fy_start: str, fy_end: str,
 ) -> dict:
@@ -216,12 +223,20 @@ def _movement_dates_by_formula(
     because what a note needs is a date and not the movements: the first date for each formula, and the last
     only when more than one formula appears (to tell a clean change from documents dated either side of it).
     The table is named in each query as a literal, for tests/test_backend_columns_exist_pg.
+
+    A MOVEMENT NO FORMULA PRICED IS NOT COUNTED. "Stamped on every row" is true of the column and not of the
+    pricing: a godown transfer (migration 398) issues nothing, and its two rows carry whatever the column holds,
+    which for every transfer on file is the NOT NULL DEFAULT 'moving_average' (the writer did not stamp one).
+    Counting them read a FIFO client with one transfer in the year as having changed its accounting policy, in
+    a note a CA signs (AS-5 paragraphs 29 and 32). They are left out of both reads by movement type, which
+    protects history as well as new rows, because nothing is back-filled.
     """
     seen: dict = {}
     for method in costing.METHODS:
-        first = (db.table("inventory_stock_ledger").select("movement_date")
-                 .eq("firm_id", firm_id).eq("client_id", client_id)
-                 .eq("costing_method", method)
+        first = (_only_movements_a_formula_priced(
+                     db.table("inventory_stock_ledger").select("movement_date")
+                     .eq("firm_id", firm_id).eq("client_id", client_id)
+                     .eq("costing_method", method))
                  .gte("movement_date", fy_start).lte("movement_date", fy_end)
                  .order("movement_date").limit(1)
                  .execute().data or [])
@@ -229,9 +244,10 @@ def _movement_dates_by_formula(
             seen[method] = [str(first[0].get("movement_date"))[:10], None]
     if len(seen) > 1:
         for method in seen:
-            last = (db.table("inventory_stock_ledger").select("movement_date")
-                    .eq("firm_id", firm_id).eq("client_id", client_id)
-                    .eq("costing_method", method)
+            last = (_only_movements_a_formula_priced(
+                        db.table("inventory_stock_ledger").select("movement_date")
+                        .eq("firm_id", firm_id).eq("client_id", client_id)
+                        .eq("costing_method", method))
                     .gte("movement_date", fy_start).lte("movement_date", fy_end)
                     .order("movement_date", desc=True).limit(1)
                     .execute().data or [])

@@ -60,6 +60,18 @@ METHOD_LABELS = {
     FIFO: "First-in, first-out (AS-2 paragraph 14)",
 }
 
+#: Stock-ledger `movement_type`s that NO cost formula priced, so the formula stamped on one of them says nothing
+#: about which formula was in force. A godown transfer (migration 398) moves value at the SOURCE godown's own
+#: cost, between two shelves of one entity, and posts no journal: nothing was issued, so neither AS-2 paragraph 14
+#: formula assigned it a cost. `inventory_stock_ledger.costing_method` is NOT NULL DEFAULT 'moving_average'
+#: (migration 394), so a transfer row written without a stamp reads, to anything that tells the formulas apart by
+#: that column, as a movement priced on the weighted average, and a client on FIFO looks as if it had switched.
+#: Every reader that asks which formula priced the books skips these (`year_end_notes._movement_dates_by_formula`,
+#: `inventory_costing_policy_service.ledger_methods_used`). That is a read-side rule on purpose: a transfer already
+#: on file by a client on FIFO carries the default and no migration rewrites it, and the rule holds even for a
+#: transfer stamped correctly, because what a transfer was "priced on" is not a fact the ledger has.
+MOVEMENT_TYPES_THAT_PRICE_NOTHING = ("transfer",)
+
 #: What a client with nothing recorded is on. NOT a default in the "we had to
 #: pick something" sense: every client's books in this product HAVE been kept
 #: on the moving average, because it was the only formula there was. NULL

@@ -515,6 +515,48 @@ def test_which_formulas_priced_the_ledger_is_DERIVED_not_remembered():
     assert spans[1]["first_movement"] == "2026-05-10"
 
 
+def test_the_formula_in_force_is_read_under_the_firm_and_a_failed_read_is_not_swallowed():
+    """The reader a non-posting writer stamps with (`inventory_location_service.transfer`): one firm-scoped
+    read, the weighted average for a client with nothing recorded, and an error when the client cannot be read
+    rather than the column's default dressed up as an answer."""
+    assert svc.formula_in_force(_DB(method="fifo"), firm_id=FIRM, client_id=CLIENT) == costing.FIFO
+    assert svc.formula_in_force(_DB(method="moving_average"), firm_id=FIRM, client_id=CLIENT) == costing.MOVING_AVERAGE
+    assert svc.formula_in_force(_DB(), firm_id=FIRM, client_id=CLIENT) == costing.MOVING_AVERAGE
+    # Another firm naming this client's id reads nothing, so it is not told the client's FIFO.
+    assert svc.formula_in_force(_DB(method="fifo"), firm_id="firm-2", client_id=CLIENT) == costing.MOVING_AVERAGE
+
+    class _Down(_DB):
+        def table(self, name):
+            raise RuntimeError("network")
+
+    with pytest.raises(RuntimeError):
+        svc.formula_in_force(_Down(method="fifo"), firm_id=FIRM, client_id=CLIENT)
+
+
+def test_a_godown_transfer_is_not_a_span_of_either_formula():
+    """A transfer issues nothing, and a row written before the writer stamped one carries the column's NOT NULL
+    DEFAULT. On a FIFO client that is 'moving_average' on the day of a transfer, and the costing-policy screen's
+    AS-5 paragraph 32 disclosure listed the weighted average as a formula that had priced the books."""
+    db = _DB(method="fifo")
+    _in(db, 5, 500_00, date="2026-04-10")                                  # stamped 'fifo' by the engine
+    db.store["inventory_stock_ledger"].append({
+        "id": "transfer-1", "firm_id": FIRM, "client_id": CLIENT, "movement_type": "transfer",
+        "movement_date": "2026-05-02", "costing_method": "moving_average"})
+    spans = svc.ledger_methods_used(db, firm_id=FIRM, client_id=CLIENT)
+    assert [s["method"] for s in spans] == ["fifo"]
+    assert spans[0]["first_movement"] == spans[0]["last_movement"] == "2026-04-10"
+
+
+def test_a_row_with_no_movement_type_is_still_a_priced_movement_in_the_spans():
+    db = _DB(method="fifo")
+    _in(db, 5, 500_00, date="2026-04-10")
+    db.store["inventory_stock_ledger"].append({
+        "id": "legacy-1", "firm_id": FIRM, "client_id": CLIENT,
+        "movement_date": "2026-03-01", "costing_method": "moving_average"})
+    assert [s["method"] for s in svc.ledger_methods_used(db, firm_id=FIRM, client_id=CLIENT)] == [
+        "moving_average", "fifo"]
+
+
 def test_an_opening_balance_is_stamped_too_so_the_span_starts_where_it_should():
     db = _DB(method="fifo")
     seed_opening_balance(

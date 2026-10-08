@@ -26,6 +26,7 @@ import pytest
 
 import routers.year_end_notes as yen
 from domain.inventory import costing
+from services import inventory_location_service as locsvc
 from tests.e2e_harness import FakeDB, wire_e2e
 
 FIRM = "firm-1"
@@ -503,3 +504,117 @@ def test_generate_notes_hands_the_engagements_own_year_to_the_policies_note(db):
     assert "first-in, first-out (FIFO)" in policies["content"]
     assert "changed during the year" not in policies["content"]
     assert policies["note_data"]["inventory_cost_formula"] == costing.FIFO
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# A GODOWN TRANSFER PRICES NOTHING, AND A FIFO CLIENT WITH ONE HAS NOT CHANGED ITS FORMULA
+#
+# `inventory_stock_ledger.costing_method` is NOT NULL DEFAULT 'moving_average' (migration 394) and the transfer
+# writer did not stamp it, so a FIFO client's transfer row read as a movement priced on the weighted average.
+# The note counted every row, and a signed Significant Accounting Policies note announced a change of accounting
+# policy (AS-5 paragraphs 29 and 32) that never happened. The fixtures above stamp every row by hand through
+# `_moved`, which is why none of them could see it: these drive the REAL writer, on a double that supplies the
+# column default the way Postgres does (tests/e2e_harness `_DEFAULTS`).
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _seed_two_godowns_under_one_registration(d):
+    for gid, name, default in (("g1", "Bhiwandi", True), ("g2", "Pune", False)):
+        d.seed("godowns", {"id": gid, "firm_id": FIRM, "client_id": CLIENT, "name": name, "state_code": "27",
+                           "gstin": "27AAACA1234A1Z5", "is_default": default, "is_active": True})
+
+
+def _fifo_stock_in_godown(d, on, method=costing.FIFO):
+    """A stamped purchase and a stamped sale: what `domain/inventory_service` writes, which does stamp."""
+    d.seed("inventory_stock_ledger", {
+        "firm_id": FIRM, "client_id": CLIENT, "service_catalogue_id": "s1", "movement_type": "purchase",
+        "movement_date": on, "quantity_delta": "100", "value_delta_paise": 10_000_00, "godown_id": "g1",
+        "batch_id": None, "costing_method": method,
+        "running_qty_units": "100", "running_value_paise": 10_000_00, "running_avg_cost_paise": 100_00})
+    d.seed("inventory_stock_ledger", {
+        "firm_id": FIRM, "client_id": CLIENT, "service_catalogue_id": "s1", "movement_type": "sale",
+        "movement_date": "2026-03-20", "quantity_delta": "-5", "value_delta_paise": -500_00, "godown_id": "g1",
+        "batch_id": None, "costing_method": method,
+        "running_qty_units": "95", "running_value_paise": 9_500_00, "running_avg_cost_paise": 100_00})
+
+
+def _transfer(d, on):
+    out = locsvc.transfer(d, firm_id=FIRM, client_id=CLIENT, service_catalogue_id="s1", from_godown_id="g1",
+                          to_godown_id="g2", quantity="10", movement_date=on)
+    assert out["ok"] is True, out
+    return out
+
+
+@pytest.mark.parametrize("transfer_on", [
+    "2025-04-01",     # the day of the first FIFO movement
+    "2025-09-15",     # inside the FIFO span: used to read as documents dated either side of a change
+    "2026-03-31",     # after the last FIFO movement: used to read as a clean change, with both dates
+])
+def test_a_fifo_client_with_a_godown_transfer_in_the_year_has_not_changed_its_cost_formula(transfer_on):
+    d = _goods_client("fifo")
+    _seed_two_godowns_under_one_registration(d)
+    _fifo_stock_in_godown(d, FY_START)
+    _transfer(d, transfer_on)
+
+    moved = [r for r in d.rows("inventory_stock_ledger") if r.get("movement_type") == "transfer"]
+    assert len(moved) == 2, "the writer under test must really have written the transfer"
+    data, text = _year(d)
+    assert data["inventory_cost_formula"] == costing.FIFO and data["inventory_cost_formula_source"] == "ledger"
+    assert data["inventory_cost_formula_change"] is None
+    assert data["inventory_valuation_basis"] == "first-in, first-out"
+    assert yen._INVENTORY_SENTENCE[costing.FIFO] in text
+    for claimed in ("changed during the year", "overlap", "moving average", "AS-5"):
+        assert claimed not in text, claimed
+    assert CHANGE_INPUT not in data["ca_input_required"] and FORMULA_INPUT not in data["ca_input_required"]
+
+
+@pytest.mark.parametrize("recorded, expected", [
+    (None, costing.MOVING_AVERAGE), ("moving_average", costing.MOVING_AVERAGE), ("fifo", costing.FIFO)])
+def test_the_transfer_writer_stamps_both_rows_with_the_formula_in_force(recorded, expected):
+    d = _goods_client(recorded)
+    _seed_two_godowns_under_one_registration(d)
+    _fifo_stock_in_godown(d, FY_START, method=expected)
+    _transfer(d, "2025-09-15")
+    moved = [r for r in d.rows("inventory_stock_ledger") if r.get("movement_type") == "transfer"]
+    assert [r["costing_method"] for r in moved] == [expected, expected]
+
+
+def test_a_transfer_already_on_file_carrying_the_column_default_is_not_counted_either():
+    """Nothing back-fills the transfers written before the writer stamped. They sit in a FIFO client's ledger
+    as 'moving_average', and the note reads by movement type, so history is protected as well as new rows."""
+    d = _goods_client("fifo")
+    _moved(d, costing.FIFO, "2025-05-02")
+    _moved(d, costing.FIFO, "2026-01-20")
+    for date in ("2025-09-15", "2026-03-31"):
+        d.seed("inventory_stock_ledger", {"firm_id": FIRM, "client_id": CLIENT, "movement_type": "transfer",
+                                          "costing_method": costing.MOVING_AVERAGE, "movement_date": date})
+    data, text = _year(d)
+    assert data["inventory_cost_formula"] == costing.FIFO and data["inventory_cost_formula_change"] is None
+    assert "changed during the year" not in text and "moving average" not in text
+
+
+def test_a_legacy_transfer_does_not_move_the_dates_of_a_change_that_really_happened():
+    """The last-date read is filtered too: a transfer entered after a genuine switch, still carrying the old
+    formula's default, used to push 'the last movement on the earlier formula' past the switch and turn a clean
+    change into an overlapping one."""
+    d = _goods_client("fifo")
+    for date in ("2025-04-10", "2025-09-20"):
+        _moved(d, costing.MOVING_AVERAGE, date)
+    for date in ("2025-10-01", "2026-03-15"):
+        _moved(d, costing.FIFO, date)
+    d.seed("inventory_stock_ledger", {"firm_id": FIRM, "client_id": CLIENT, "movement_type": "transfer",
+                                      "costing_method": costing.MOVING_AVERAGE, "movement_date": "2026-01-15"})
+    change = _year(d)[0]["inventory_cost_formula_change"]
+    assert change == {"formulas": [costing.MOVING_AVERAGE, costing.FIFO],
+                      "last_movement_on_earlier_formula": "2025-09-20",
+                      "first_movement_on_later_formula": "2025-10-01", "interleaved": False}
+
+
+def test_only_movements_no_formula_priced_are_left_out_and_a_row_without_a_type_still_counts():
+    """The skip is by movement type and not by anything looser: a row that lacks the key (every `_moved`
+    fixture, and any legacy shape) is read as priced, the direction that cannot hide a real change."""
+    assert costing.MOVEMENT_TYPES_THAT_PRICE_NOTHING == ("transfer",)
+    d = _goods_client(None)
+    _moved(d, costing.MOVING_AVERAGE, "2025-09-01")
+    d.seed("inventory_stock_ledger", {"firm_id": FIRM, "client_id": CLIENT, "movement_type": "sale",
+                                      "costing_method": costing.FIFO, "movement_date": "2025-12-01"})
+    assert _year(d)[0]["inventory_cost_formula_change"] is not None

@@ -17,14 +17,30 @@ from core.db_paging import fetch_all
 from domain.inventory import costing
 
 
-def read_policy(db, *, firm_id: str, client_id: str) -> dict:
-    """What formula this client is on, what the alternatives are, and what a
-    change would mean. Reads nothing but the client row."""
+def _recorded_formula(db, *, firm_id: str, client_id: str) -> Optional[str]:
+    """The formula the client row records, or None where nothing is recorded or the client is not this firm's."""
     rows = (
         db.table("clients").select("id, inventory_costing_method")
         .eq("firm_id", firm_id).eq("id", client_id).limit(1).execute().data
     ) or []
-    recorded = rows[0].get("inventory_costing_method") if rows else None
+    return rows[0].get("inventory_costing_method") if rows else None
+
+
+def formula_in_force(db, *, firm_id: str, client_id: str) -> str:
+    """The cost formula in force for this firm's client: `costing.MOVING_AVERAGE` or `costing.FIFO`.
+
+    One firm-scoped read, for a writer that stamps a ledger row but is not a posting path
+    (`inventory_location_service.transfer`). A client with nothing recorded is on the weighted average, which is a
+    fact about how the books were kept (`costing.UNRECORDED_MEANS`) and not a guess. It does not swallow a failed
+    read: a stamp from a read that failed would be the column's default dressed up as an answer.
+    """
+    return costing.method_for(_recorded_formula(db, firm_id=firm_id, client_id=client_id))
+
+
+def read_policy(db, *, firm_id: str, client_id: str) -> dict:
+    """What formula this client is on, what the alternatives are, and what a
+    change would mean. Reads nothing but the client row."""
+    recorded = _recorded_formula(db, firm_id=firm_id, client_id=client_id)
     policy = costing.policy_for(client_id, recorded)
     return {
         "client_id": client_id,
@@ -125,14 +141,23 @@ def ledger_methods_used(db, *, firm_id: str, client_id: str) -> list:
     period a change took effect from is a property of the ledger. Nothing
     stores it, for migration 278's reason: a stored date is wrong the moment a
     backdated document lands.
+
+    A MOVEMENT NO FORMULA PRICED IS NOT A SPAN. A godown transfer issues
+    nothing, and its rows carry the column's NOT NULL DEFAULT, so counting them
+    showed a client on FIFO as having used the weighted average on the day of
+    a transfer (`costing.MOVEMENT_TYPES_THAT_PRICE_NOTHING`). Filtered in
+    Python, so a row that lacks the key reads as one a formula priced: the
+    direction that cannot hide a real change of policy.
     """
     rows = fetch_all(
         lambda: db.table("inventory_stock_ledger")
-        .select("id, movement_date, costing_method")
+        .select("id, movement_date, movement_type, costing_method")
         .eq("firm_id", firm_id).eq("client_id", client_id),
         key="id", label="inventory.costing_method_spans")
     spans: dict = {}
     for r in rows:
+        if r.get("movement_type") in costing.MOVEMENT_TYPES_THAT_PRICE_NOTHING:
+            continue
         m = r.get("costing_method") or costing.METHOD_WHEN_UNRECORDED
         d = str(r.get("movement_date") or "")[:10]
         if not d:
