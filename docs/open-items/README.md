@@ -12,7 +12,7 @@
 
 ## The two axes
 
-**When — before or after the demo.** The demo is showing practising CAs the seeded demo firm on the live deployment. `docs/plan/THE-PLAN.md` says it has no fixed date (D16), that the owner decided on 15 Sep to show CAs only once, after a verification session with five gates (Track 4), and that the commercial registrations (GSP, ERI, NIC, Third Party Software Utility; Track 5) start after it. **The pre/post split is a judgement, not a fact:** an item is *before* only if leaving it open could break, embarrass or mislead in front of a practising CA (sign-up and invites, mail, AI answering, a visible wrong number or false claim, a screen that fails, the cold start on the first load, portal behaviour) or it is a cheap check with a large risk reduction. Everything else is *after*. The first pre-demo item asks the owner for the date, so the list can be re-cut.
+**When — before or after the demo.** The demo is showing practising CAs the seeded demo firm on the live deployment. `docs/plan/THE-PLAN.md` says it has no fixed date (D16; **the owner set 1 November 2026 on 8 Oct, a Sunday, and that supersedes D16**), that the owner decided on 15 Sep to show CAs only once, after a verification session with five gates (Track 4), and that the commercial registrations (GSP, ERI, NIC, Third Party Software Utility; Track 5) start after it. **The pre/post split is a judgement, not a fact:** an item is *before* only if leaving it open could break, embarrass or mislead in front of a practising CA (sign-up and invites, mail, AI answering, a visible wrong number or false claim, a screen that fails, the cold start on the first load, portal behaviour) or it is a cheap check with a large risk reduction. Everything else is *after*. The first pre-demo item now asks only who attends; with 24 days from 8 Oct the whole list fits and nothing has been cut.
 
 **Who — three buckets.**
 - **A — Mine** (`…-A-…`): Claude can do it alone: code, tests, docs, CI, a migration under the standing merge convention. No decision, credential, outside document or spend is needed.
@@ -29,17 +29,17 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 
 | file | items | what it holds |
 |---|---|---|
-| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 18 | before the demo: Claude can do alone |
-| [pre-demo-B-ours.md](pre-demo-B-ours.md) | 15 | before the demo: owner decides, or a live session |
+| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 19 | before the demo: Claude can do alone |
+| [pre-demo-B-ours.md](pre-demo-B-ours.md) | 16 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 212 | after the demo: Claude can do alone |
-| [post-demo-B-ours.md](post-demo-B-ours.md) | 334 | after the demo: owner decides first, then Claude builds |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 213 | after the demo: Claude can do alone |
+| [post-demo-B-ours.md](post-demo-B-ours.md) | 333 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 203 | after the demo: only the owner or outsiders can do |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 
-**788 open items** (39 before the demo, 749 after); 17 after-demo items are `high` priority; 35 are UNSURE.
+**790 open items** (41 before the demo, 749 after); 17 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 
@@ -47,45 +47,47 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 
 Pre-demo items by suggested order. The first is the date; Render and Supabase dashboard checks and the fixes Claude can make come next, then the seeded-firm work, then the rehearsals, then the day-of wake-up.
 
-1. **PRE-C-001** (you) — Tell Claude the demo date and audience
+1. **PRE-C-001** (you) — Tell Claude who attends the 1 November demo (the date is set)
 2. **PRE-C-002** (you) — Check the Render dashboard variables
 3. **PRE-B-012** (decision) — Check the Supabase dashboard: plan, backups, password and auth limits
-4. **PRE-C-003** (you) — Confirm Resend delivers: verified domain, webhook, one real mail of each kind
-5. **PRE-B-004** (decision) — Decide which known gaps the demo fixes, shows or avoids
-6. **PRE-B-005** (decision) — Fix the sentence for 'can I use this for my practice tomorrow'
-7. **PRE-B-015** (decision) — Decide the marketing-site wording: Privacy/Terms links and 'replaces Tally'
-8. **PRE-B-002** (decision) — Stop three screens promising what they do not do
-9. **PRE-B-013** (decision) — Look at which tier the Gemini and Groq keys are on
-10. **PRE-C-006** (you) — Check the website's support and onboarding promises are staffed
-11. **PRE-A-007** (Claude) — Require the filed date when marking a GST return filed
-12. **PRE-A-008** (Claude) — Qualify the IMS demo copy so it asserts no unverified reading
-13. **PRE-A-013** (Claude) — Qualify demo copy on DSC and MCA signers; assert no unverified rule
-14. **PRE-A-014** (Claude) — Reword the XBRL screen so 'Package validated' does not mean MCA-validated
-15. **PRE-A-009** (Claude) — Label Net Payable on the Tax Computation as before interest and fee
-16. **PRE-A-012** (Claude) — Fix document upload: documents.uploaded_by foreign key refuses every row
-17. **PRE-A-003** (Claude) — Make 'Set up Practice' explain a missing firm PAN
-18. **PRE-A-017** (Claude) — Hide the internal practice client from eleven client pickers
-19. **PRE-A-011** (Claude) — Fix invoice and bill importers accepting rows the server refuses
-20. **PRE-A-010** (Claude) — Clamp negative days_overdue on not-yet-due fee invoices
-21. **PRE-A-016** (Claude) — Fix on-screen printing: /reports prints blank, others unstyled
-22. **PRE-A-018** (Claude) — Link Practice Billing and AR to the practice client's invoices
-23. **PRE-A-006** (Claude) — Name the AI provider on the extract and scan screens
-24. **PRE-C-004** (you) — Redeploy the latest main on Render and record how it deploys
-25. **PRE-A-005** (Claude) — Shrink the stale axe baseline so the nightly smoke walk is green, then dispatch it once
-26. **PRE-A-015** (Claude) — Drive the money editors in a browser: double-click guard, keyboard, drafts, dates
-27. **PRE-A-001** (Claude) — Drive the upload screens in a browser: GSTR-2B and the bulk imports
-28. **PRE-B-006** (live) — Rehearse sign-up and first Partner sign-in as a stranger would
-29. **PRE-B-014** (live) — Press Check now on Settings > AI status for Groq and Gemini
-30. **PRE-B-001** (live) — Seed the demo firm with seed_demo_firm.py --confirm and walk it
-31. **PRE-B-003** (live) — Check the seeded and a fresh firm can raise a first invoice
-32. **PRE-A-004** (Claude) — Run the seeded firm through GST, year-end and ITR; fill empty screens
-33. **PRE-B-008** (live) — Rehearse the critical spine on the seeded firm with the console open
-34. **PRE-B-007** (live) — Rehearse the core UAT scenarios on the demo firm
-35. **PRE-B-009** (live) — Test the client and employee portals end to end
-36. **PRE-B-010** (live) — Verification A: check six outputs against one real client's filed figures
-37. **PRE-B-011** (live) — Verification B: print the outgoing documents and read them on paper
-38. **PRE-A-002** (Claude) — Fix whatever the rehearsals and walks turn up
-39. **PRE-C-005** (you) — Wake the API two minutes before the demo; keep a tab open
+4. **PRE-B-016** (decision) — Buy the domain and make mail leave: a verified Resend sender and Supabase sign-up mail
+5. **PRE-C-003** (you) — Confirm Resend delivers: verified domain, webhook, one real mail of each kind
+6. **PRE-B-004** (decision) — Decide which known gaps the demo fixes, shows or avoids
+7. **PRE-B-005** (decision) — Fix the sentence for 'can I use this for my practice tomorrow'
+8. **PRE-B-015** (decision) — Decide the marketing-site wording: Privacy/Terms links and 'replaces Tally'
+9. **PRE-B-002** (decision) — Stop three screens promising what they do not do
+10. **PRE-B-013** (decision) — Look at which tier the Gemini and Groq keys are on
+11. **PRE-C-006** (you) — Check the website's support and onboarding promises are staffed
+12. **PRE-A-007** (Claude) — Require the filed date when marking a GST return filed
+13. **PRE-A-008** (Claude) — Qualify the IMS demo copy so it asserts no unverified reading
+14. **PRE-A-013** (Claude) — Qualify demo copy on DSC and MCA signers; assert no unverified rule
+15. **PRE-A-014** (Claude) — Reword the XBRL screen so 'Package validated' does not mean MCA-validated
+16. **PRE-A-009** (Claude) — Label Net Payable on the Tax Computation as before interest and fee
+17. **PRE-A-012** (Claude) — Fix document upload: documents.uploaded_by foreign key refuses every row
+18. **PRE-A-019** (Claude) — Make a blank dashboard value mean 'not set' everywhere it does not
+19. **PRE-A-003** (Claude) — Make 'Set up Practice' explain a missing firm PAN
+20. **PRE-A-017** (Claude) — Hide the internal practice client from eleven client pickers
+21. **PRE-A-011** (Claude) — Fix invoice and bill importers accepting rows the server refuses
+22. **PRE-A-010** (Claude) — Clamp negative days_overdue on not-yet-due fee invoices
+23. **PRE-A-016** (Claude) — Fix on-screen printing: /reports prints blank, others unstyled
+24. **PRE-A-018** (Claude) — Link Practice Billing and AR to the practice client's invoices
+25. **PRE-A-006** (Claude) — Name the AI provider on the extract and scan screens
+26. **PRE-C-004** (you) — Redeploy the latest main on Render and record how it deploys
+27. **PRE-A-005** (Claude) — Shrink the stale axe baseline so the nightly smoke walk is green, then dispatch it once
+28. **PRE-A-015** (Claude) — Drive the money editors in a browser: double-click guard, keyboard, drafts, dates
+29. **PRE-A-001** (Claude) — Drive the upload screens in a browser: GSTR-2B and the bulk imports
+30. **PRE-B-006** (live) — Rehearse sign-up and first Partner sign-in as a stranger would
+31. **PRE-B-014** (live) — Press Check now on Settings > AI status for Groq and Gemini
+32. **PRE-B-001** (live) — Seed the demo firm with seed_demo_firm.py --confirm and walk it
+33. **PRE-B-003** (live) — Check the seeded and a fresh firm can raise a first invoice
+34. **PRE-A-004** (Claude) — Run the seeded firm through GST, year-end and ITR; fill empty screens
+35. **PRE-B-008** (live) — Rehearse the critical spine on the seeded firm with the console open
+36. **PRE-B-007** (live) — Rehearse the core UAT scenarios on the demo firm
+37. **PRE-B-009** (live) — Test the client and employee portals end to end
+38. **PRE-B-010** (live) — Verification A: check six outputs against one real client's filed figures
+39. **PRE-B-011** (live) — Verification B: print the outgoing documents and read them on paper
+40. **PRE-A-002** (Claude) — Fix whatever the rehearsals and walks turn up
+41. **PRE-C-005** (you) — Wake the API two minutes before the demo; keep a tab open
 
 ## The after-demo items marked high priority
 
