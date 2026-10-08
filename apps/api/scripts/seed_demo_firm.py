@@ -456,6 +456,44 @@ def _engagements(api: Api, c, client_id: str, fy: str, fy_start: str,
         written["obligations"] += int(out.get("generated") or 0)
 
 
+def _bank_rules(api: Api, c, client_id: str, written: dict) -> None:
+    """The matching rules a CA writes for the recurring lines of a statement.
+
+    A RULE IS A HUMAN'S DECISION, which is what grades the line it covers
+    `ready` (`domain/banking/entry`): with no rule and no payee history every
+    line was `needs_you` (21 to 60 per client) or at best `proposed`, and
+    "Pass N ready" had nothing to pass on any of eight clients. They are
+    written BEFORE the statement is imported so the first redraft already uses
+    them (a rule written later marks the drafts stale for a redraft instead).
+
+    NONE IS TRUSTED. A trusted rule passes its lines with no click, as the
+    Manager who trusted it -- the one place the product acts unprompted -- and
+    a seeded queue that has already passed its own ready lines shows nothing to
+    press. The ledger is resolved by NAME from the client's own chart (the
+    mock chart's codes are not the standard chart's), and a rule whose ledger
+    the chart does not carry is skipped and counted, never written against a
+    guess.
+    """
+    if not c.bank_rules:
+        return
+    chart = api.get(f"/api/accounting/accounts?client_id={client_id}").get("data") or []
+    by_name = {a.get("account_name"): a.get("id") for a in chart if a.get("id")}
+    for r in c.bank_rules:
+        ledger_id = by_name.get(r.ledger)
+        if not ledger_id:
+            written["bank_rules_skipped"] += 1
+            continue
+        api.post("/api/banking/rules", {
+            "client_id": client_id,
+            "rule_name": r.rule_name,
+            "description_pattern": r.description_pattern,
+            "txn_type": "debit",
+            "suggested_account_id": ledger_id,
+            "suggested_gst_rate_bps": r.gst_rate_bps,
+        })
+        written["bank_rules"] += 1
+
+
 def _statement(api: Api, c, client_id: str, bank_id: str,
                open_credits: list[dict], written: dict) -> None:
     """One statement for the year, and a queue with real work in it.
@@ -669,7 +707,8 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "employees": 0, "payroll_runs": 0, "payroll_finalized": 0,
                "payroll_disbursed": 0,
                "bank_lines": 0, "bank_drafts": 0, "tans": 0,
-               "engagements": 0, "obligations": 0}
+               "engagements": 0, "obligations": 0,
+               "bank_rules": 0, "bank_rules_skipped": 0}
 
     # ── THE FIRM'S HSN LIBRARY COMES FIRST, AND IT IS A GATE ─────────────────
     #
@@ -862,6 +901,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         # LAST, because the credits above are known only once every invoice
         # has been written and the engine has told us what each one came to.
         if bank_id and c.banks[0].import_statement:
+            _bank_rules(api, c, client_id, written)
             _statement(api, c, client_id, bank_id, open_credits, written)
 
     return written

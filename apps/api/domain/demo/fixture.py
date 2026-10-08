@@ -425,6 +425,48 @@ class DemoEngagement:
 
 
 @dataclass(frozen=True)
+class DemoBankRule:
+    """A matching rule the CA has written for a recurring line of the statement.
+
+    A rule is a human's decision ("every line that says Rent is Office Rent"),
+    which is what makes the line it covers `ready` -- passable in one click by
+    "Pass N ready". With no rule and no payee history every line is `needs_you`
+    or at best `proposed`, so the screen the demo exists to show had nothing to
+    pass: 0 ready on all eight clients. The ledger is named by its NAME, not its
+    code: the standard chart's codes are not the mock chart's, and a name is
+    what the CA sees."""
+    rule_name: str
+    #: A case-insensitive substring of the narration (`match_operator`
+    #: `contains` on the description, the engine's default).
+    description_pattern: str
+    #: `chart_of_accounts.account_name`.
+    ledger: str
+    #: The GST inside the amount, where the CA can tell -- only the bank's own
+    #: charges (BANK-24).
+    gst_rate_bps: Optional[int] = None
+
+
+#: The recurring operating lines of `_FACTORY_OUTFLOWS` / `_OFFICE_OUTFLOWS` /
+#: `_SMALL_OUTFLOWS`, each with the ledger a CA would code it to.
+_BANK_RULES = (
+    DemoBankRule("Rent", "Rent -", "Office Rent"),
+    DemoBankRule("Electricity", "electricity", "Electricity & Utilities"),
+    DemoBankRule("Broadband", "broadband", "Internet & Telephone"),
+    DemoBankRule("Courier", "courier", "General Expenses"),
+    DemoBankRule("Bank charges", "Bank charges", "Bank Charges", 1_800),
+)
+
+
+def bank_rules_for(client: "DemoClient") -> tuple[DemoBankRule, ...]:
+    """The rules this client's statement has something for: one for each
+    recurring outflow the statement actually carries, so a rule never exists
+    for a line that is not there."""
+    narrations = [ln.description.lower() for ln in client.bank_lines if not ln.is_credit]
+    return tuple(r for r in _BANK_RULES
+                 if any(r.description_pattern.lower() in n for n in narrations))
+
+
+@dataclass(frozen=True)
 class DemoClient:
     name: str
     legal_name: str
@@ -469,6 +511,9 @@ class DemoClient:
     #: What the practice does for this client. Derived from what the client
     #: files -- see `engagements_for`.
     engagements: tuple[DemoEngagement, ...] = ()
+    #: Matching rules for the first bank account's statement -- see
+    #: `bank_rules_for`. Empty for a client whose statement is not imported.
+    bank_rules: tuple[DemoBankRule, ...] = ()
 
     @property
     def deducts_tax(self) -> bool:
@@ -974,7 +1019,11 @@ def _finished(client: "DemoClient", financial_year: str) -> "DemoClient":
         catalogue=_opened_for_the_year(client, financial_year),
         tan=tan_for(client) if client.deducts_tax else None,
     )
-    return replace(finished, engagements=engagements_for(finished))
+    return replace(
+        finished,
+        engagements=engagements_for(finished),
+        bank_rules=bank_rules_for(finished) if finished.banks and finished.banks[0].import_statement else (),
+    )
 
 
 def build(financial_year: str = "2025-26") -> DemoFirm:

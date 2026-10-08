@@ -109,6 +109,15 @@ class _Recorder:
 
     def get(self, path: str) -> dict:
         self.calls.append(("GET", path))
+        if path.startswith("/api/accounting/accounts"):
+            # A chart carrying every ledger the fixture's bank rules name, so
+            # the rules are WRITTEN (an empty chart skips them all, which is
+            # the seeder's correct answer and would leave their bodies
+            # unchecked).
+            names = sorted({r.ledger for c in fixture.build().clients for r in c.bank_rules})
+            return {"success": True, "error": None,
+                    "data": [{"id": f"ledger-{i}", "account_name": n}
+                             for i, n in enumerate(names)]}
         return {"success": True, "data": [], "error": None}
 
     def post(self, path: str, body: dict) -> dict:
@@ -493,6 +502,34 @@ def test_every_engagement_has_its_obligations_generated_for_the_books_year(_run)
     assert {b["billing_cycle"] for _, b in engagements} <= {
         "Monthly", "Quarterly", "Half-Yearly", "Annually", "One-time"}
     assert all(b["fee_paise"] > 0 and b["fee_paise"] % 100 == 0 for _, b in engagements)
+
+
+def test_each_statements_rules_are_written_before_it_is_imported_and_none_is_trusted(_run):
+    """A rule is a human's decision, which is what grades its line `ready`; it
+    has to exist before the first redraft or the drafts are stale at once. And
+    trusting one would post its lines with no click, leaving "Pass N ready"
+    nothing to pass."""
+    firm = fixture.build()
+    per_client: list[dict] = []
+    for method, path, body in _run.requests:
+        if (method, path) == ("POST", "/api/clients"):
+            per_client.append({"rules": [], "rules_before_import": True, "imported": False})
+        elif (method, path) == ("POST", "/api/banking/rules"):
+            per_client[-1]["rules"].append(body)
+            if per_client[-1]["imported"]:
+                per_client[-1]["rules_before_import"] = False
+        elif (method, path) == ("POST", "/api/banking/statements/import"):
+            per_client[-1]["imported"] = True
+    assert len(per_client) == len(firm.clients)
+    expected = sum(len(c.bank_rules) for c in firm.clients)
+    assert expected > 0 and sum(len(p["rules"]) for p in per_client) == expected
+    for client, got in zip(firm.clients, per_client, strict=True):
+        assert len(got["rules"]) == len(client.bank_rules), client.name
+        assert got["rules_before_import"], f"{client.name}: a rule was written after its statement"
+        for body in got["rules"]:
+            assert body["txn_type"] == "debit" and body["suggested_account_id"]
+            assert not body.get("is_trusted"), "a seeded rule is trusted: nothing is left to pass by hand"
+            assert (body["suggested_gst_rate_bps"] is not None) == (body["rule_name"] == "Bank charges")
 
 
 def test_a_payment_settles_a_fraction_of_what_is_owed_and_not_of_the_face_total():
