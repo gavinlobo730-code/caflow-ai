@@ -1276,9 +1276,12 @@ function ReleaseTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   async function reverse(run: PayrollRun) {
-    // A reason, because a reversal is answered for later. The server records it
-    // on the transition log; asking here means the CA writes it while they know
-    // why rather than reconstructing it in June.
+    // A reason, because a reversal is answered for later. It is SENT with the
+    // request and the server records it on the run's timeline and on the audit
+    // log (not on the transition log, whose reason column means something
+    // else); asking here means the CA writes it while they know why rather than
+    // reconstructing it in June. It used to be collected, length-checked and
+    // dropped, with this comment saying the server recorded it.
     const reason = await promptDialog({
       title: `Reverse payroll for ${run.month}?`,
       message: "This posts reversing journals for the accrual and, if paid, the "
@@ -1295,7 +1298,7 @@ function ReleaseTab({ clientId }: { clientId: string }) {
     }
     setBusy(run.id); setMsg(null);
     try {
-      const res = await api.payroll.reverseRun(run.id) as {
+      const res = await api.payroll.reverseRun(run.id, reason.trim()) as {
         success?: boolean; error?: string | null;
         data?: { loan_notes?: string[] } | null;
       };
