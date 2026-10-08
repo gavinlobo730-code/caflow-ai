@@ -320,8 +320,10 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
              "note": "Electronic Verification Code via net banking, a "
                      "pre-validated bank account, or a demat account"},
             {"key": "dsc", "label": "Verify with DSC", "otp": False,
-             "note": "Digital signature via emBridge; mandatory for "
-                     "companies and audit cases (Rule 12, IT Rules 1962)"},
+             "note": "Digital signature via emBridge. Companies and returns "
+                     "that need an audit are generally expected to verify "
+                     "with DSC; confirm the current requirement on the "
+                     "income-tax e-filing portal"},
         ]),
         common.otp_stage(
             "An OTP would now be sent to the signatory's registered mobile "

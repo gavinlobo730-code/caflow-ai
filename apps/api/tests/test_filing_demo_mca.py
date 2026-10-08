@@ -18,6 +18,7 @@ What is particular to MCA and pinned here:
 """
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 
 import pytest
@@ -121,23 +122,116 @@ def test_mgt7_is_dual_but_mgt7a_drops_the_professional_certification():
     )
 
 
-def test_mgt7s_certifier_is_a_company_secretary_specifically():
-    """§92(1) proviso / Form MGT-7: the annual return's professional
-    certification belongs to a practising Company Secretary alone — offering
-    a CA the option would teach a CA they can sign something they cannot.
-    AOC-4 keeps the CA / CS / cost accountant trio (§137)."""
+# WHO MAY CERTIFY IS STATED GENERALLY, NEVER AS AN EXCLUSIVE RULE.
+# docs/compliance/04-mca-epfo-esic.md §1 records that "who signs what" was NOT
+# re-verified [U] (the general position there: AOC-4 certified by a practising
+# professional; MGT-7 by a director and a CS or PCS). The earlier copy said a CA
+# or cost accountant "cannot certify MGT-7" and that MGT-7 belongs to a
+# Company Secretary "specifically", which is a rule nobody here had read and
+# which a CA shown the walk-through can check in a minute. The sequence (two
+# signatories, two statements, two DSCs) is the thing the demo teaches and is
+# pinned elsewhere in this module; what is held here is the wording.
+
+# A sentence NAMING a profession as a certifier. "The practising professional"
+# alone names nobody and is not matched.
+_PROFESSION = re.compile(
+    r"chartered accountant|company secretar|cost accountant|"
+    r"\bCAs?\b|\bCS\b|\bPCS\b", re.IGNORECASE)
+_HEDGE = re.compile(r"\b(generally|usually|typically|confirm)\b", re.IGNORECASE)
+_EXCLUSIVE = re.compile(
+    r"specifically|\balone\b|\bonly (a|an|the)\b|\bcannot (certify|sign)\b|"
+    r"\bmust be (a|an)\b|\bexclusively\b|\bno one else\b", re.IGNORECASE)
+
+
+def _sentences(text: str) -> list[str]:
+    return [s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s]
+
+
+def _text_units(out: dict) -> list[str]:
+    """Every sentence-bearing string of a built flow, except the form's own
+    statutory wording (the declarations are transcribed, never paraphrased,
+    and are not ours to hedge)."""
+    units = [out["real_channel"]["how"], out["when_this_is_real"]]
+    for stage in out["stages"]:
+        for key in ("note", "signatory_label"):
+            if stage.get(key):
+                units.append(stage[key])
+        for method in stage.get("methods", []):
+            units.append(method["note"])
+    return units
+
+
+def _unhedged_naming(units: list[str]) -> list[str]:
+    """Sentences that name who certifies without saying "generally" or
+    pointing at the form."""
+    return [s for u in units for s in _sentences(u)
+            if _PROFESSION.search(s) and not _HEDGE.search(s)]
+
+
+def _exclusive_claims(units: list[str]) -> list[str]:
+    return [s for u in units for s in _sentences(u) if _EXCLUSIVE.search(s)]
+
+
+def test_who_certifies_mgt7_is_stated_generally_and_excludes_no_profession():
     mgt7 = mca.build(_db(form_type="MGT-7"), FIRM, CLIENT, {"filing_id": "F1"})
     certifier = mgt7["stages"][3]
     assert certifier["kind"] == "declaration"
-    assert certifier["signatory_options"] == [
-        "Company Secretary (in whole-time practice)"]
-    assert "Company Secretary in whole-time practice" in certifier["note"]
+    # The dual-signature sequence is intact: a second declaration with its own
+    # options and its own note, followed by its own DSC stage.
+    assert certifier["signatory_options"], "the wizard needs something to pick"
+    assert "membership number" in certifier["note"]
+    assert "generally" in certifier["note"], (
+        "who certifies MGT-7 is [U] in docs/compliance/04 §1 and is said "
+        "generally")
+    assert _HEDGE.search(certifier["note"]) and "confirm" in certifier["note"]
+    for option in certifier["signatory_options"]:
+        assert _HEDGE.search(option), (
+            "the option the wizard offers must not be an unhedged assertion "
+            f"of who may certify: {option!r}")
+    units = _text_units(mgt7)
+    assert _exclusive_claims(units) == []
+    assert _unhedged_naming(units) == []
 
+
+def test_who_certifies_aoc4_is_stated_generally_and_keeps_its_options():
     aoc4 = mca.build(_db(form_type="AOC-4"), FIRM, CLIENT, {"filing_id": "F1"})
-    aoc4_certifier = aoc4["stages"][3]
-    assert len(aoc4_certifier["signatory_options"]) == 3
+    certifier = aoc4["stages"][3]
+    assert len(certifier["signatory_options"]) == 3
     assert any("Chartered Accountant" in o
-               for o in aoc4_certifier["signatory_options"])
+               for o in certifier["signatory_options"])
+    assert "generally" in certifier["note"] and "confirm" in certifier["note"]
+    units = _text_units(aoc4)
+    assert _exclusive_claims(units) == []
+    assert _unhedged_naming(units) == []
+
+
+def test_every_mca_form_states_who_signs_without_an_unverified_rule():
+    for form in ("AOC-4", "MGT-7", "MGT-7A", "ADT-1"):
+        out = mca.build(_db(form_type=form), FIRM, CLIENT, {"filing_id": "F1"})
+        units = _text_units(out)
+        assert _exclusive_claims(units) == [], form
+        assert _unhedged_naming(units) == [], form
+
+
+def test_the_mca_detectors_catch_the_copy_that_was_removed():
+    """The negative control, kept: the detectors must flag the sentences the
+    flow used to carry, or the tests above could pass on a flow that states
+    the rule as fact."""
+    removed = [
+        "This is the PRACTISING PROFESSIONAL's certification — for MGT-7 "
+        "that professional is a Company Secretary in whole-time practice "
+        "(Companies Act §92(1)), signing with their OWN DSC; membership "
+        "number and certificate of practice are entered on the form.",
+        "The annual return's professional certification is a COMPANY "
+        "SECRETARY in whole-time practice specifically — a CA or cost "
+        "accountant cannot certify MGT-7, unlike AOC-4.",
+    ]
+    assert len(_unhedged_naming(removed)) == 2
+    assert len(_exclusive_claims(removed)) == 1
+    hedged = ["For MGT-7 that professional is generally a Company Secretary "
+              "in practice; confirm against the form."]
+    assert _unhedged_naming(hedged) == []
+    assert _exclusive_claims(hedged) == []
 
 
 def test_a_prefixed_financial_year_still_parses_to_fy_bounds():

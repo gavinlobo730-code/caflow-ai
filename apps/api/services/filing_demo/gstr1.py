@@ -133,8 +133,10 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
             {"key": "evc", "label": "File with EVC", "otp": True,
              "note": "OTP to the authorised signatory's registered mobile and email"},
             {"key": "dsc", "label": "File with DSC", "otp": False,
-             "note": "Class 3 digital signature via emSigner; mandatory for "
-                     "companies and LLPs"},
+             "note": "Class 3 digital signature via emSigner. Companies and "
+                     "LLPs are generally expected to use DSC rather than "
+                     "EVC; confirm the current requirement for this "
+                     "registration on the GST portal"},
         ]),
         common.otp_stage(
             "An OTP would now be sent to the authorised signatory's mobile "

@@ -5,19 +5,32 @@ THE REAL CHANNEL THIS MIMICS
     (since FY 2022-23 these are filled on the portal itself, not offline
     PDFs) → the eForm declaration signed by a DIRECTOR with a DIN-linked
     Class 3 DSC → for AOC-4 and MGT-7, the certification block signed by a
-    PRACTISING PROFESSIONAL with their OWN DSC and membership number (for
-    AOC-4 a CA / CS / cost accountant in whole-time practice; for MGT-7 a
-    Company Secretary in whole-time practice specifically, §92(1)) → upload →
-    pre-scrutiny → SRN → fee → challan/acknowledgement.
+    PRACTISING PROFESSIONAL with their OWN DSC and membership number →
+    upload → pre-scrutiny → SRN → fee → challan/acknowledgement.
+
+    WHO MAY SIGN WHAT IS STATED GENERALLY, NOT AS A RULE. Generally AOC-4 is
+    certified by a CA, CS or cost accountant in practice and MGT-7 by a
+    Company Secretary in practice, but the Companies Act, the Rules and each
+    form's own certification block decide, and
+    docs/compliance/04-mca-epfo-esic.md §1 records that "who signs what" was
+    NOT re-verified [U]: the general position there is AOC-4 by a director
+    with the CFO or CS where appointed and certified by a practising
+    professional, and MGT-7 by a director and a CS or PCS, with MGT-8 for
+    larger companies. So this module offers the practical sequence (a
+    director's declaration, then a practising professional's) and says
+    "generally" and "confirm against the form" wherever it names who the
+    professional is. It excludes no profession by name. The hedge is held by
+    tests/test_filing_demo_mca.py as a rule: no sentence names who certifies
+    a form without a hedge word, and no sentence says a profession alone, or
+    specifically, may sign.
 
     The dual signature is the defining feature of the ROC annual forms and
     the thing this walk-through exists to teach: two different people affirm
     two different statements, and neither of them is the accounting firm as
-    such. MGT-7A (One Person Companies and small companies, proviso to §92(1)
-    of the Companies Act 2013 read with the Companies (Management and
-    Administration) Rules 2014) drops the professional certification; ADT-1
-    is the company's intimation of its auditor's appointment under §139(1)
-    and is signed by a director alone.
+    such. MGT-7A (One Person Companies and small companies) generally drops
+    the professional certification; ADT-1 is the company's intimation of its
+    auditor's appointment and is generally signed by a director, the company
+    and not the auditor being the filer.
 
     Software may not transmit this today: MCA V3 is a portal-login flow with
     no public filing API. The demo says so in real_channel.
@@ -65,10 +78,10 @@ _DIRECTOR_DECLARATION = (
 )
 
 # The certification block on AOC-4 and MGT-7, signed by the practising
-# professional with their own DSC and membership number — for AOC-4 a
-# CA / CS / cost accountant in whole-time practice, for MGT-7 a Company
-# Secretary in whole-time practice specifically (§92(1); options are set
-# per form where the stages are built). Again the form's own wording.
+# professional with their own DSC and membership number. Who that professional
+# may be is stated GENERALLY where the stages are built (see the module
+# docstring: "who signs what" is [U] in docs/compliance/04-mca-epfo-esic.md
+# §1), never as an exclusive rule. Again the form's own wording.
 _PROFESSIONAL_CERTIFICATION = (
     "It is hereby certified that I have verified the above particulars "
     "(including attachment(s)) from the records of the Company and found "
@@ -372,36 +385,44 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         # the wizard resets the declaration tick between pairs so each
         # signatory affirms their own words. MGT-7A and ADT-1 skip this pair.
         if form_type == "MGT-7":
-            # Companies Act §92(1) proviso and Form MGT-7's own certification
-            # block: the annual return's professional certification is a
-            # COMPANY SECRETARY in whole-time practice specifically — a CA or
-            # cost accountant cannot certify MGT-7, unlike AOC-4.
-            certifier_options = ["Company Secretary (in whole-time practice)"]
+            # Generally a Company Secretary in practice certifies the annual
+            # return, but "who signs what" has not been re-verified here and
+            # the earlier copy's "a CA or cost accountant cannot certify
+            # MGT-7" was an exclusive rule nobody had read. One generic option
+            # keeps the wizard's sequence without naming or excluding a
+            # profession.
+            certifier_options = [
+                "Practising professional (generally a Company Secretary)"]
             certifier_note = (
-                "This is the PRACTISING PROFESSIONAL's certification — for "
-                "MGT-7 that professional is a Company Secretary in whole-time "
-                "practice (Companies Act §92(1)), signing with their OWN DSC; "
-                "membership number and certificate of practice are entered on "
-                "the form and the certification is the professional's "
-                "personal responsibility.")
+                "This is the PRACTISING PROFESSIONAL's certification, signed "
+                "with their OWN DSC. For MGT-7 that professional is "
+                "generally a Company Secretary in practice; confirm against "
+                "the form's own certification block and the Companies Act "
+                "and Rules who may certify. On the real form the membership "
+                "number and certificate of practice are entered and the "
+                "certification is the professional's personal "
+                "responsibility.")
         else:
-            # AOC-4 (§137, Form AOC-4 certification block): CA, CS or cost
-            # accountant in whole-time practice.
+            # AOC-4: generally a CA, CS or cost accountant in practice; the
+            # three options stay so the wizard keeps its sequence, and the
+            # note says "generally" and points at the form.
             certifier_options = [
                 "Chartered Accountant (in whole-time practice)",
                 "Company Secretary (in whole-time practice)",
                 "Cost Accountant (in whole-time practice)",
             ]
             certifier_note = (
-                "This is the PRACTISING PROFESSIONAL's certification — a "
-                "CA, CS or cost accountant in whole-time practice signing "
-                "with their OWN DSC; membership number and certificate of "
-                "practice are entered on the form and the certification is "
-                "the professional's personal responsibility.")
+                "This is the PRACTISING PROFESSIONAL's certification, signed "
+                "with their OWN DSC. For AOC-4 that is generally a CA, CS or "
+                "cost accountant in practice; confirm against the form's "
+                "own certification block who may certify. On the real form "
+                "the membership number and certificate of practice are "
+                "entered and the certification is the professional's "
+                "personal responsibility.")
         stages += [
             common.declaration_stage(
                 _PROFESSIONAL_CERTIFICATION,
-                "Certifying professional (in whole-time practice)",
+                "Certifying professional (in practice)",
                 certifier_options,
                 certifier_note,
             ),
@@ -447,9 +468,11 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         {
             "how": "Filed on mca.gov.in (MCA V3) as a web form: the "
                    "director signs with a DIN-linked Class 3 DSC, a "
-                   "practising professional certifies AOC-4 and MGT-7 with "
-                   "their own DSC and membership number, and the portal "
-                   "runs pre-scrutiny, issues the SRN and collects the fee.",
+                   "practising professional generally certifies AOC-4 and "
+                   "MGT-7 with their own DSC and membership number "
+                   "(confirm who may certify against each form), and the "
+                   "portal runs pre-scrutiny, issues the SRN and collects "
+                   "the fee.",
             "software_permitted": False,
             "note": "MCA V3 is a portal-login flow with no public filing "
                     "API — PracticeSync prepares the figures and evidence; "
@@ -462,8 +485,9 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         "Least changed of all the walk-throughs, and the reason is the two "
         "signatures. Filing needs MCA21 V3 credentials for the company plus "
         "a DIN-linked Class 3 DSC in the director's hands and, on AOC-4 and "
-        "MGT-7, a second DSC in the certifying professional's — physical "
-        "tokens held by two different people, which no API replaces. MCA "
+        "MGT-7, generally a second DSC in the certifying professional's — "
+        "physical tokens held by two different people, which no API "
+        "replaces. MCA "
         "publishes no public filing API in any case. So the roadmap here is "
         "the PREPARATION: the Schedule III figures, the XBRL package where "
         "it applies, the attachments and the AGM-driven due dates, assembled "
