@@ -13,13 +13,13 @@ never affects GST returns (CGST Act) or any filing calculation.
 from __future__ import annotations
 
 import logging
-import os
 import time
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from typing import Iterator, Optional
 
 from core.db_paging import fetch_all
+from core.env import env_or_default
 from core.ist_clock import fy_bounds, ist_fy_label, ist_today
 
 from . import balance_cache
@@ -57,7 +57,7 @@ def _passbook_mode() -> str:
     blueprint does not auto-apply env-var changes — a code default deploys
     reliably, whereas the env var would sit unapplied. Tests force "off" via
     conftest (their fake DBs have no buckets); an explicit env var still wins."""
-    m = os.environ.get("REPORTING_PASSBOOK_MODE", "on").strip().lower()
+    m = env_or_default("REPORTING_PASSBOOK_MODE", "on").lower()
     return m if m in ("off", "shadow", "on") else "on"
 
 

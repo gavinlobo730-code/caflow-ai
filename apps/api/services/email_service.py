@@ -11,12 +11,13 @@ from dataclasses import dataclass
 from email.utils import parseaddr
 from typing import Callable, Optional
 
+from core.env import env_or_default
 from domain.branding import email_template
 from domain.money_text import rupees_paise
 
 _logger = logging.getLogger("caflow.email")
 _RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-_FROM_EMAIL = os.environ.get("EMAIL_FROM", "PracticeSync AI <noreply@caflow.ai>")
+_FROM_EMAIL = env_or_default("EMAIL_FROM", "PracticeSync AI <noreply@caflow.ai>")
 
 
 # ── Who a mail is FROM and where a reply GOES (practice_management-04) ────────

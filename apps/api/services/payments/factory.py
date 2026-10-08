@@ -7,15 +7,15 @@ the configured PAYMENT_PROVIDER or we raise (the route then rejects). This pins
 the webhook to exactly one provider so a request to e.g. /webhook/mock can never
 instantiate the mock verifier in a Razorpay-configured deployment.
 """
-import os
 from typing import Optional
 
+from core.env import env_or_default
 from services.payments.base import PaymentProvider
 from services.payments.mock import MockProvider
 
 
 def configured_provider() -> str:
-    return os.environ.get("PAYMENT_PROVIDER", "mock").lower()
+    return env_or_default("PAYMENT_PROVIDER", "mock").lower()
 
 
 def get_provider(name: Optional[str] = None) -> PaymentProvider:
