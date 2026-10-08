@@ -26,6 +26,24 @@
 #     deliberately left to arrive on its own, because it is the one that can break the build
 #     (Next 14 to 15, React 18 to 19) and deserves its own review.
 #
+# WHAT IS DELIBERATELY IGNORED, AND UNTIL WHEN (8 October 2026, the owner's decision; ledger items
+# POST-A-171, POST-A-172 and POST-A-213 in docs/open-items/)
+#     Each entry below is a dependency whose newer version is a MIGRATION and not a bump, held until
+#     after the 1 November 2026 demo. An ignored version produces no pull request and no group
+#     member, so it cannot sit beside the safe bumps as a red check. Delete the entry in the same
+#     change that adopts the version; nothing else removes it.
+#       fastapi, supabase   minor and major ignored (0.x numbering: a minor IS the breaking one).
+#                           fastapi moves starlette to 1.x and breaks every test that walks app.routes,
+#                           and turns a missing required query parameter from a 422 into a 500;
+#                           supabase removes the client class core/supabase_client._force_http1 patches,
+#                           which silently reopens the HTTP/2 multi-thread bug. Patch releases still arrive.
+#       next, eslint-config-next, tailwindcss, typescript, @sentry/nextjs
+#                           major ignored in apps/web and apps/marketing (the two sites are on the same
+#                           versions). Next 16 and Tailwind 4 fail the Cloudflare Pages build as they stand;
+#                           the redirect and _headers generation and the static export are Next-sensitive.
+#     Security advisories are not hidden by this: the pip-audit and pnpm audit workflows are the alarm
+#     and their baselines may only shrink.
+#
 # WHAT THIS DOES NOT DO
 #     It does not patch a vulnerability the week it is published: that is Dependabot SECURITY
 #     updates, a repository setting (Settings > Code security), not something a file can turn
@@ -47,6 +65,11 @@ updates:
     groups:
       python-minor-and-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "fastapi"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "supabase"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/apps/web"
@@ -59,6 +82,17 @@ updates:
     groups:
       web-minor-and-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@sentry/nextjs"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/apps/marketing"
@@ -71,6 +105,15 @@ updates:
     groups:
       marketing-minor-and-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
