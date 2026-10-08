@@ -25,8 +25,10 @@ held rate is `verified=True`, which is a claim about PROVENANCE: the
 notifications were read on 18-09-2026 (`docs/compliance/sources/
 gst-notifications/README.md`), and each figure is pinned exactly by a test. What
 still returns the named gap is any other return (GSTR-4, GSTR-6, GSTR-7, GSTR-8,
-CMP-08 and GSTR-9C each carry their own fee), a GSTR-1 or GSTR-3B year the table
-does not hold, and a GSTR-9 year before FY 2022-23 outside the amnesty window;
+CMP-08 and GSTR-9C have no fee entered here; whether and what each carries is
+open, see the open-items ledger and that return's own notification), a GSTR-1
+or GSTR-3B year the table does not hold, and a GSTR-9 year before FY 2022-23
+outside the amnesty window;
 its sentence is built from the table's own range, so it cannot go on naming one
 the table no longer has. A late fee written from memory is a number a CA would
 pay, which is why the statutory ₹100 and ₹5,000 are never a fallback. The same
