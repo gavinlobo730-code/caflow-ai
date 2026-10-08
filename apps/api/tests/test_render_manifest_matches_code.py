@@ -143,11 +143,13 @@ EXEMPT: dict[str, str] = {
 }
 
 # `os.environ.get("X")`, `os.getenv("X")`, `os.environ["X"]`, and the indirect
-# `_flag("X")` helper in core/security_config.py. The helper matters: without it
-# USE_USER_JWT and REQUIRE_MFA — two flags that decide whether RLS and MFA are
-# enforced — read as unused, which is the wrong direction to be wrong in.
+# `_flag("X")` helper in core/security_config.py and `env_or_default("X", ...)` in core/env.py
+# (the way to read a setting that has a default: a blank dashboard value is "not set"). The
+# helpers matter: without them USE_USER_JWT and REQUIRE_MFA — two flags that decide whether RLS
+# and MFA are enforced — and PAYMENT_PROVIDER and EMAIL_FROM read as unused, which is the wrong
+# direction to be wrong in.
 _READ = re.compile(
-    r"""(?:os\.environ\.get|os\.getenv|_flag)\(\s*["']([A-Z][A-Z0-9_]*)["']"""
+    r"""(?:os\.environ\.get|os\.getenv|_flag|env_or_default)\(\s*["']([A-Z][A-Z0-9_]*)["']"""
     r"""|os\.environ\[\s*["']([A-Z][A-Z0-9_]*)["']\s*\]"""
 )
 

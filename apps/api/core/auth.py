@@ -13,6 +13,7 @@ import jwt
 
 _logger = logging.getLogger("caflow.auth")
 from jwt import PyJWKClient
+from core.env import env_or_default
 from core.supabase_client import get_service_supabase
 from core.request_context import bind_firm
 
@@ -299,7 +300,7 @@ def get_current_user(
     # Dev fallback — only allowed when APP_ENV=development AND no SUPABASE_URL.
     supabase_url = os.environ.get("SUPABASE_URL", "")
     if not supabase_url:
-        app_env = os.environ.get("APP_ENV", "production")
+        app_env = env_or_default("APP_ENV", "production")
         if app_env != "development":
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -436,7 +437,7 @@ def get_jwt_user(authorization: Optional[str] = Header(default=None)) -> dict:
     """
     supabase_url = os.environ.get("SUPABASE_URL", "")
     if not supabase_url:
-        app_env = os.environ.get("APP_ENV", "production")
+        app_env = env_or_default("APP_ENV", "production")
         if app_env != "development":
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                                 detail="Server configuration error: SUPABASE_URL not set")

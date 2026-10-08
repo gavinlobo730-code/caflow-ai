@@ -29,7 +29,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 
 | file | items | what it holds |
 |---|---|---|
-| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 19 | before the demo: Claude can do alone |
+| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 18 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 16 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 213 | after the demo: Claude can do alone |
@@ -39,7 +39,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 
-**790 open items** (41 before the demo, 749 after); 17 after-demo items are `high` priority; 35 are UNSURE.
+**789 open items** (40 before the demo, 749 after); 17 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 
@@ -64,30 +64,29 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 15. **PRE-A-014** (Claude) — Reword the XBRL screen so 'Package validated' does not mean MCA-validated
 16. **PRE-A-009** (Claude) — Label Net Payable on the Tax Computation as before interest and fee
 17. **PRE-A-012** (Claude) — Fix document upload: documents.uploaded_by foreign key refuses every row
-18. **PRE-A-019** (Claude) — Make a blank dashboard value mean 'not set' everywhere it does not
-19. **PRE-A-003** (Claude) — Make 'Set up Practice' explain a missing firm PAN
-20. **PRE-A-017** (Claude) — Hide the internal practice client from eleven client pickers
-21. **PRE-A-011** (Claude) — Fix invoice and bill importers accepting rows the server refuses
-22. **PRE-A-010** (Claude) — Clamp negative days_overdue on not-yet-due fee invoices
-23. **PRE-A-016** (Claude) — Fix on-screen printing: /reports prints blank, others unstyled
-24. **PRE-A-018** (Claude) — Link Practice Billing and AR to the practice client's invoices
-25. **PRE-A-006** (Claude) — Name the AI provider on the extract and scan screens
-26. **PRE-C-004** (you) — Redeploy the latest main on Render and record how it deploys
-27. **PRE-A-005** (Claude) — Shrink the stale axe baseline so the nightly smoke walk is green, then dispatch it once
-28. **PRE-A-015** (Claude) — Drive the money editors in a browser: double-click guard, keyboard, drafts, dates
-29. **PRE-A-001** (Claude) — Drive the upload screens in a browser: GSTR-2B and the bulk imports
-30. **PRE-B-006** (live) — Rehearse sign-up and first Partner sign-in as a stranger would
-31. **PRE-B-014** (live) — Press Check now on Settings > AI status for Groq and Gemini
-32. **PRE-B-001** (live) — Seed the demo firm with seed_demo_firm.py --confirm and walk it
-33. **PRE-B-003** (live) — Check the seeded and a fresh firm can raise a first invoice
-34. **PRE-A-004** (Claude) — Run the seeded firm through GST, year-end and ITR; fill empty screens
-35. **PRE-B-008** (live) — Rehearse the critical spine on the seeded firm with the console open
-36. **PRE-B-007** (live) — Rehearse the core UAT scenarios on the demo firm
-37. **PRE-B-009** (live) — Test the client and employee portals end to end
-38. **PRE-B-010** (live) — Verification A: check six outputs against one real client's filed figures
-39. **PRE-B-011** (live) — Verification B: print the outgoing documents and read them on paper
-40. **PRE-A-002** (Claude) — Fix whatever the rehearsals and walks turn up
-41. **PRE-C-005** (you) — Wake the API two minutes before the demo; keep a tab open
+18. **PRE-A-003** (Claude) — Make 'Set up Practice' explain a missing firm PAN
+19. **PRE-A-017** (Claude) — Hide the internal practice client from eleven client pickers
+20. **PRE-A-011** (Claude) — Fix invoice and bill importers accepting rows the server refuses
+21. **PRE-A-010** (Claude) — Clamp negative days_overdue on not-yet-due fee invoices
+22. **PRE-A-016** (Claude) — Fix on-screen printing: /reports prints blank, others unstyled
+23. **PRE-A-018** (Claude) — Link Practice Billing and AR to the practice client's invoices
+24. **PRE-A-006** (Claude) — Name the AI provider on the extract and scan screens
+25. **PRE-C-004** (you) — Redeploy the latest main on Render and record how it deploys
+26. **PRE-A-005** (Claude) — Shrink the stale axe baseline so the nightly smoke walk is green, then dispatch it once
+27. **PRE-A-015** (Claude) — Drive the money editors in a browser: double-click guard, keyboard, drafts, dates
+28. **PRE-A-001** (Claude) — Drive the upload screens in a browser: GSTR-2B and the bulk imports
+29. **PRE-B-006** (live) — Rehearse sign-up and first Partner sign-in as a stranger would
+30. **PRE-B-014** (live) — Press Check now on Settings > AI status for Groq and Gemini
+31. **PRE-B-001** (live) — Seed the demo firm with seed_demo_firm.py --confirm and walk it
+32. **PRE-B-003** (live) — Check the seeded and a fresh firm can raise a first invoice
+33. **PRE-A-004** (Claude) — Run the seeded firm through GST, year-end and ITR; fill empty screens
+34. **PRE-B-008** (live) — Rehearse the critical spine on the seeded firm with the console open
+35. **PRE-B-007** (live) — Rehearse the core UAT scenarios on the demo firm
+36. **PRE-B-009** (live) — Test the client and employee portals end to end
+37. **PRE-B-010** (live) — Verification A: check six outputs against one real client's filed figures
+38. **PRE-B-011** (live) — Verification B: print the outgoing documents and read them on paper
+39. **PRE-A-002** (Claude) — Fix whatever the rehearsals and walks turn up
+40. **PRE-C-005** (you) — Wake the API two minutes before the demo; keep a tab open
 
 ## The after-demo items marked high priority
 

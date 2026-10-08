@@ -36,6 +36,8 @@ THE DEFAULT DEPENDS ON WHERE THE PROCESS IS RUNNING (SECURITY-PRIVACY-16)
 """
 import os
 
+from core.env import env_or_default
+
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"0", "false", "no", "off"})
 
@@ -146,7 +148,7 @@ def mfa_required_roles() -> set[str]:
     they CAN reach is ever put behind the guard — documents, clients — this list
     has to be revisited in the same change.
     """
-    raw = os.environ.get("MFA_REQUIRED_ROLES", "Partner,Manager")
+    raw = env_or_default("MFA_REQUIRED_ROLES", "Partner,Manager")
     return {r.strip() for r in raw.split(",") if r.strip()}
 
 

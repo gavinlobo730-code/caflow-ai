@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
+from core.env import env_or_default
 from core.exceptions import PermissionDeniedError, unhandled_failure
 
 load_dotenv()
@@ -25,8 +26,8 @@ from core.observability import boot_notice, error_reporting_enabled, init_error_
 _SENTRY_DSN = os.environ.get("SENTRY_DSN")
 init_error_reporting(
     _SENTRY_DSN,
-    environment=os.environ.get("ENVIRONMENT", "production"),
-    traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0")),
+    environment=env_or_default("ENVIRONMENT", "production"),
+    traces_sample_rate=float(env_or_default("SENTRY_TRACES_SAMPLE_RATE", "0")),
 )
 _level, _sentence = boot_notice(_SENTRY_DSN, os.environ.get("APP_ENV"))
 _logger.log(_level, _sentence)
