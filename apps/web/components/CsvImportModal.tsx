@@ -13,6 +13,7 @@ import { useState, useRef, useEffect } from "react";
 import { X, Download, Upload, AlertCircle, CheckCircle, Plus } from "lucide-react";
 import { LogoIcon } from "@/components/LogoIcon";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { sheetToCsvWithIsoDates } from "@/lib/spreadsheet/xlsxCsv";
 
 // THE SPREADSHEET LIBRARY IS NEVER IMPORTED AT THE TOP OF THIS FILE. SheetJS is
 // 404 KB raw / ~135 KB gzip, and ten screens import this modal — the client
@@ -324,11 +325,18 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           }
           // Parse the first sheet of the workbook into CSV text, then reuse the
           // same CSV pipeline so validation/preview behave identically.
+          //
+          // `cellNF` makes each cell carry its number format, which is how a
+          // DATE cell (a serial number in Excel) is told from a number. The
+          // sheet is turned into text by `sheetToCsvWithIsoDates` and not by
+          // `sheet_to_csv` directly: that prints a date cell's display text,
+          // `3/15/25` for Excel's own default short date, which every importer
+          // refuses for its two-digit year. See lib/spreadsheet/xlsxCsv.ts.
           const data = new Uint8Array(e.target?.result as ArrayBuffer);
-          const wb = XLSX.read(data, { type: "array" });
+          const wb = XLSX.read(data, { type: "array", cellNF: true });
           const firstSheet = wb.Sheets[wb.SheetNames[0]];
           if (!firstSheet) { setFileError("The workbook has no sheets."); return; }
-          const text = XLSX.utils.sheet_to_csv(firstSheet);
+          const text = sheetToCsvWithIsoDates(XLSX, wb, firstSheet);
           processText(text);
         } else {
           processText(e.target?.result as string);
