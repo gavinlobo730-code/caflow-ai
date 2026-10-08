@@ -7711,12 +7711,18 @@ export const api = {
      *  Served rather than spelled here for the reason roleMatrix is: the last
      *  hardcoded copy of a backend vocabulary in this app drifted in BOTH
      *  directions at once and nine of fifty mapped accounts were silently
-     *  discarded as a result. */
+     *  discarded as a result.
+     *
+     *  `notice` is the server's own sentence about what a block here reaches
+     *  and what it does not (POST-A-005). Optional on purpose: a frontend that
+     *  is live before the backend that serves it, or one talking to an older
+     *  backend, gets no field, and an absent field is "not told" — the drawer
+     *  then says nothing rather than something it made up. */
     permissionVocabulary: () =>
       request<ApiResp<{ permissions: Array<{
         resource: string; action: string;
         privilege_changing: boolean; unrevokable_for_partner: boolean;
-      }> }>>("/api/identity/permission-vocabulary"),
+      }>; notice?: string }>>("/api/identity/permission-vocabulary"),
 
     /** One member's access: the role template, the stored overrides, the effective answer.
      *

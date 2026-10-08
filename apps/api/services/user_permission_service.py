@@ -56,6 +56,36 @@ class PermissionWriteRefused(ValueError):
     """A grid change the firm may not make, with the reason a human reads."""
 
 
+# WHAT A BLOCK ON THE TEAM SCREEN REACHES, in the words the screen shows beside
+# the grid (POST-A-005). The grid is read by `rbac()`, which every staff route
+# goes through, and by the write policies of a few tables (migrations 415, 470,
+# 478). It is NOT read by any table's SELECT policy, so a screen that reads a
+# table straight from the browser over PostgREST — payroll attendance and
+# reports, the documents pages, the bank-account pickers — is governed there by
+# the person's firm, their client assignments and, on a few tables, their role.
+# A Partner who unticked Payroll for a Manager and believed the data was out of
+# that Manager's reach would be the localStorage grid's mistake again, so the
+# sentence is served from here, beside the guard that keeps it true, and the
+# drawer renders what it is given (it holds no copy).
+#
+# KEPT TRUE BY `tests/test_the_per_person_grid_reaches_the_database_pg.py`,
+# which reads `pg_policies` on a migrated database and fails the day a public
+# table's SELECT or ALL policy asks the grid — or the day no write policy does.
+# Whoever makes either happen rewrites this sentence in the same commit.
+# Deliberately says nothing about counts (tables, screens) because those go
+# stale, and nothing about Storage, which is files and not a table.
+DENIAL_REACH_NOTICE = (
+    "A block here is enforced by the PracticeSync server, which refuses that "
+    "person's requests for that permission. The database does not look at this "
+    "grid when a table is read, and several screens read tables directly from "
+    "the browser (payroll attendance and reports, documents and bank accounts "
+    "among them): there only the person's firm, client assignments and, on a "
+    "few tables, role decide. Direct writes are checked against this grid on "
+    "some tables only. The one read it does reach is a stored year-end export "
+    "file."
+)
+
+
 def vocabulary() -> list[dict]:
     """Every (resource, action) pair the product has, for the grid's columns.
 
