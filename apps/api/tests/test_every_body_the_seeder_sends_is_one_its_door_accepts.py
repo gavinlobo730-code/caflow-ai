@@ -89,6 +89,9 @@ class _Recorder:
     def __init__(self, models):
         self.models = models
         self.calls: list[tuple[str, str]] = []
+        #: The same writes WITH their bodies, in order -- what the tests that
+        #: assert on a field's value (a date, a flag, a PAN) read.
+        self.requests: list[tuple[str, str, dict]] = []
         self.unmatched: list[tuple[str, str]] = []
         self.invalid: list[str] = []
         self._n = 0
@@ -114,6 +117,7 @@ class _Recorder:
 
     def _write(self, method: str, path: str, body: dict) -> dict:
         self.calls.append((method, path))
+        self.requests.append((method, path, body))
         matched, model = self._door_for(method, path)
         if not matched:
             self.unmatched.append((method, path))
@@ -171,6 +175,8 @@ _DOORS_THIS_SEEDER_MUST_WALK = [
     ("POST", "/api/fixed-assets"),
     ("POST", "/api/fixed-assets/run-depreciation"),
     ("PUT", "/api/payroll/enablement"),
+    # The deductor's TAN -- without it no TDS statement can be built.
+    ("PUT", "/api/payroll/statutory-identity"),
     ("POST", "/api/payroll/employees"),
     ("PUT", "/api/payroll/attendance"),
     ("POST", "/api/payroll/runs"),
@@ -390,3 +396,116 @@ def test_a_reorder_level_of_none_is_a_real_state():
     assert not [i for i in goods if i.reorder_level_units == 0], (
         "a reorder level of ZERO stands in for 'not set', which is the exact "
         "conflation INV-09 exists to prevent")
+
+
+# ── What the recorded bodies SAY, not only whether the door accepts them ────
+#
+# A body can satisfy its model and still be wrong about the books it writes:
+# every one below was true of the seeder as shipped and was only visible by
+# running it over a real database (PRE-A-004).
+
+def _sent(run, method, path):
+    return [b for m, p, b in run.requests if (m, p) == (method, path)]
+
+
+def test_every_catalogue_item_that_opens_stock_is_dated_to_the_books_first_day(_run):
+    """Left out, the router dates an opening balance to the financial year the
+    CLOCK is in -- 2026-27 for books that begin 1 April 2025 -- which put thirty
+    InventoryOpening journals a year after the sales they were meant to
+    cover."""
+    firm = fixture.build()
+    first_day = f"{firm.financial_year[:4]}-04-01"
+    items = _sent(_run, "POST", "/api/service-catalogue/")
+    stocked = [b for b in items if b.get("opening_qty_units")]
+    assert stocked, "no catalogue item opens stock"
+    assert {b.get("opening_balance_date") for b in stocked} == {first_day}
+    assert not [b for b in items
+                if not b.get("opening_qty_units") and b.get("opening_balance_date")], (
+        "a date was sent for an item that opens no stock")
+
+
+def test_documents_are_written_in_date_order_sales_and_purchases_together(_run):
+    """A stock ledger is a chain in the order it is WRITTEN. All sales before
+    any purchase put the running quantity below nil however the year nets."""
+    per_client: list[list[tuple[str, str]]] = []
+    for method, path, body in _run.requests:
+        if (method, path) == ("POST", "/api/clients"):
+            per_client.append([])
+        elif (method, path) == ("POST", "/api/sales-invoices/"):
+            per_client[-1].append((body["invoice_date"], "sale"))
+        elif (method, path) == ("POST", "/api/purchase-bills/"):
+            per_client[-1].append((body["bill_date"], "purchase"))
+    assert len(per_client) == len(fixture.build().clients)
+    for docs in per_client:
+        dates = [d for d, _ in docs]
+        assert dates == sorted(dates), "a client's documents were not written in date order"
+        kinds = [k for _, k in docs]
+        if "sale" in kinds and "purchase" in kinds:
+            assert kinds.index("purchase") < len(kinds) - 1 - kinds[::-1].index("sale"), (
+                "every purchase was written after the last sale")
+
+
+def test_a_vendor_is_withheld_from_only_when_it_has_a_section_and_its_client_deducts(_run):
+    """`vendors.tds_section` alone withholds nothing; the purchase-bill engine
+    asks `tds_applicable` first. And a payee's PAN is its GSTIN's characters 3
+    to 12, with none for an unregistered one (s.206AA)."""
+    firm = fixture.build()
+    bodies = _sent(_run, "POST", "/api/vendors/")
+    assert len(bodies) == sum(len(c.vendors) for c in firm.clients)
+    for b in bodies:
+        assert isinstance(b["tds_applicable"], bool), b
+        if b["tds_applicable"]:
+            assert b["tds_section"], f"withheld with no section: {b}"
+        assert b["pan"] == (b["gstin"][2:12] if b["gstin"] else None), b
+    expected = sum(1 for c in firm.clients if c.deducts_tax
+                   for v in c.vendors if v.withholds_tds)
+    assert expected > 0, "the fixture withholds from nobody: the TDS screens are empty"
+    assert sum(1 for b in bodies if b["tds_applicable"]) == expected
+    assert [b for b in bodies if b["tds_section"] and not b["tds_applicable"]], (
+        "no vendor carries a section without being withheld from, so the "
+        "natural-person client's case is unshown")
+
+
+def test_a_tan_is_recorded_for_every_client_that_deducts_and_for_no_other(_run):
+    firm = fixture.build()
+    sent = _sent(_run, "PUT", "/api/payroll/statutory-identity")
+    assert sorted(b["tan"] for b in sent) == sorted(c.tan for c in firm.clients if c.tan)
+    assert sent and all(set(b) == {"client_id", "tan"} for b in sent)
+
+
+def test_a_payment_settles_a_fraction_of_what_is_owed_and_not_of_the_face_total():
+    """A bill with tax withheld is owed `net_payable_paise`, and a payment of a
+    fraction of the TOTAL against it is refused as exceeding the outstanding
+    (the door's own check) -- the reason the seeder died once the vendors were
+    marked as withheld from."""
+    seeder = _seeder()
+
+    class Api:
+        def __init__(self):
+            self.posted = []
+
+        def post(self, path, body):
+            self.posted.append((path, body))
+            return {"success": True}
+
+    doc = fixture.DemoDocument(
+        doc_date="2025-06-10", party=0, lines=(),
+        settlement=fixture.DemoSettlement(paid_after_days=30, fraction_bps=5_000))
+
+    withheld = {"data": {"id": "b1", "total_paise": 118_000_00, "net_payable_paise": 108_000_00}}
+    api = Api()
+    assert seeder._pay(api, doc, withheld, "c", "v", "bank")
+    assert api.posted[0][1]["amount_paise"] == 54_000_00
+
+    plain = {"data": {"id": "b2", "total_paise": 118_000_00}}
+    api = Api()
+    assert seeder._pay(api, doc, plain, "c", "v", "bank")
+    assert api.posted[0][1]["amount_paise"] == 59_000_00, "no net figure: the face total is what is owed"
+
+    for fraction in (3_500, 5_000, 7_000, 10_000):
+        full = fixture.DemoDocument(
+            doc_date="2025-06-10", party=0, lines=(),
+            settlement=fixture.DemoSettlement(paid_after_days=30, fraction_bps=fraction))
+        api = Api()
+        seeder._pay(api, full, withheld, "c", "v", "bank")
+        assert api.posted[0][1]["amount_paise"] <= withheld["data"]["net_payable_paise"]

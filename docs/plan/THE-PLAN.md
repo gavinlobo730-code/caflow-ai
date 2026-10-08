@@ -319,12 +319,24 @@ practice partway through the month after the year end has exactly that, and a
 book where everything is posted cannot show the issue and receive buttons.
 
 **Inventory opens with stock.** Each goods item carries an opening quantity and
-its COST — not its price, AS-2 paragraph 6 — so the first sale of the year
-relieves real stock instead of driving the position negative on document one,
-and the item group and reorder level make the reorder report and the item
-grouping non-empty. Two items deliberately have **no** reorder level, because
-zero is a real answer ("tell me when it runs out") and reading an absence as
-zero records a decision nobody made.
+its COST — not its price, AS-2 paragraph 6 — and the item group and reorder
+level make the reorder report and the item grouping non-empty. Two items
+deliberately have **no** reorder level, because zero is a real answer ("tell me
+when it runs out") and reading an absence as zero records a decision nobody made.
+
+⚠️ **That paragraph used to claim the first sale "relieves real stock instead of
+driving the position negative", and running the seeder over a real database
+showed it was false** (PRE-A-004, 8 October 2026): the opening was dated to the
+financial year the clock is in rather than the books' (thirty opening journals
+in FY 2026-27), and every sale of a client was written before any purchase, so
+the running quantity was negative on five of eight clients (Anand: 56 of 183
+ledger rows, as low as -403 units) and four items ended the year below nil.
+Now the opening is dated to the books' first day, the documents are written in
+date order (a purchase before a sale on the same day), and each item opens with
+at least the quantity `fixture.stock_floor` says the year draws — a default is
+raised and never lowered. The same run found that no TDS was ever withheld
+(`tds_section` was set and `tds_applicable` never was) and no TAN recorded; both
+are set for a client that deducts tax.
 
 **Two fields were being silently dropped**, and only the route-table guard
 could see it: `hra_paise` and `date_of_joining` on a payroll employee, where

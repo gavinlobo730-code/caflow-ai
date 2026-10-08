@@ -40,10 +40,12 @@ month and a screen showing a locked period cannot be demonstrated at all.
 """
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass, replace, field
 from datetime import date, timedelta
-from typing import Iterable, Optional
+from decimal import Decimal
+from typing import Iterable, NamedTuple, Optional
 
 from domain.gst.gstin import checksum_char
 
@@ -104,6 +106,30 @@ class DemoParty:
     #: EXCEPTION, so most vendors here carry None and one per client does not.
     msmed_agreement_days: Optional[int] = None
     tds_section: Optional[str] = None
+
+    @property
+    def pan(self) -> Optional[str]:
+        """The party's PAN, read out of its GSTIN.
+
+        Characters 3 to 12 of a GSTIN ARE the PAN (CGST Act s.25: state code,
+        then PAN, then entity number, Z and a check digit), so a registered
+        party's PAN needs no second source and cannot disagree with the
+        GSTIN. An UNREGISTERED party has neither, and None is the right answer
+        for it: a deductee with no PAN on record is the s.206AA case (the
+        higher rate), and a demo in which every vendor has one cannot show it.
+        """
+        return self.gstin[2:12] if self.gstin else None
+
+    @property
+    def withholds_tds(self) -> bool:
+        """A vendor with a section recorded is one the client deducts under.
+
+        `vendors.tds_section` alone withholds NOTHING: the purchase-bill engine
+        asks `tds_applicable` first, and `VendorIn` defaults it to False. The
+        fixture set the section and never the flag, so not one of 114 bills
+        under 194C and 194J carried any TDS and the TDS register, challans,
+        returns, certificates and deposit worksheets were all empty."""
+        return bool(self.tds_section)
 
 
 @dataclass(frozen=True)
@@ -346,9 +372,12 @@ class DemoCatalogueItem:
     rate_paise: int
     gst_rate_percent: str
     #: Stock on hand at the start of the year. `routers/service_catalogue`
-    #: seeds the costing ledger from it and dates it to the client's own FY
-    #: start, so a sale in April relieves real stock instead of driving the
-    #: position negative on the first document of the year.
+    #: seeds the costing ledger from it, dated by the `opening_balance_date`
+    #: the seeder SENDS (the books' own FY start -- left to the router it falls
+    #: to the FY the clock is in, a year after these books begin). The figure
+    #: is at least what `stock_floor` says the year's documents draw, so no
+    #: position goes below nil when they are written in `documents_in_order`;
+    #: the catalogue's default below that is kept, never reduced.
     opening_qty_units: float = 0.0
     #: What that stock COST, not what it sells for. AS-2 paragraph 6 is cost,
     #: and valuing opening stock at the selling price would put the whole
@@ -368,6 +397,11 @@ class DemoCatalogueItem:
     def hsn_type(self) -> str:
         """`firm_hsn_library` spells the same fact its own way."""
         return "services" if self.kind == "service" else "goods"
+
+
+#: The entity types the fixture treats as outside the duty to deduct tax at
+#: source -- see `DemoClient.deducts_tax`.
+_OUTSIDE_THE_DUTY_TO_DEDUCT = frozenset({"Individual", "Proprietorship", "HUF"})
 
 
 @dataclass(frozen=True)
@@ -404,6 +438,32 @@ class DemoClient:
     #: catalogues — so a line resolves its `service_catalogue_id` by HSN with
     #: no second key to keep in step.
     catalogue: tuple[DemoCatalogueItem, ...] = ()
+    #: The client's TAN, for a client that deducts tax at source. A TDS
+    #: statement is filed under the DEDUCTOR's TAN (s.203A) and
+    #: `domain/tds/deductor.resolve` REFUSES to build one without it, so a
+    #: client whose vendors are withheld from needs one recorded. None for a
+    #: client that withholds from nobody: a TAN is a registration, and
+    #: inventing one for a client that deducts no tax would be a demo of a
+    #: number nobody holds.
+    tan: Optional[str] = None
+
+    @property
+    def deducts_tax(self) -> bool:
+        """Whether this client withholds tax from any vendor payment.
+
+        A NATURAL PERSON in this fixture does not: s.194C and s.194J leave an
+        individual or HUF below the s.44AB audit limits out of the duty to
+        deduct, and the fixture's individual is a salaried person with a couple
+        of small suppliers while its proprietor is the §44AD presumptive one
+        (no audit). Marking their vendors "withheld" would demonstrate a
+        deduction nobody in their position makes. [S] The exemptions' exact
+        sub-sections were not read here (egress to incometaxindia.gov.in is
+        refused) and the audit-limit test itself is NOT modelled -- a
+        proprietor over the limit does deduct -- so only the entity type
+        decides, and a fixture proprietor above it would need this revisited.
+        """
+        return (self.entity_type not in _OUTSIDE_THE_DUTY_TO_DEDUCT
+                and any(v.withholds_tds for v in self.vendors))
 
 
 @dataclass(frozen=True)
@@ -453,6 +513,13 @@ _SERVICES = [
 ]
 
 
+def _opening_cost_paise(rate_paise: int, qty: int) -> int:
+    """What `qty` units of opening stock COST: 70% of the selling rate in whole
+    rupees a unit. A margin, not a markup table: the figure only has to be a
+    plausible cost rather than the price (AS-2 paragraph 6)."""
+    return (rate_paise * 70 // 100 // 100 * 100) * qty
+
+
 def _catalogue(*lists) -> tuple[DemoCatalogueItem, ...]:
     """The union of the catalogues a client's documents are drawn from, in
     first-seen order and deduped on the code. Order is fixed rather than
@@ -465,10 +532,8 @@ def _catalogue(*lists) -> tuple[DemoCatalogueItem, ...]:
                 name, hsn, unit, rate, gst,
                 opening_qty_units=float(qty) if good else 0.0,
                 # Cost at 70% of the selling rate, in whole rupees so the
-                # paise arithmetic stays exact. A margin, not a markup table:
-                # the figure only has to be a plausible COST rather than the
-                # price, which is AS-2 paragraph 6's whole point.
-                opening_cost_paise=(rate * 70 // 100 // 100 * 100) * int(qty) if good else 0,
+                # paise arithmetic stays exact -- see _opening_cost_paise.
+                opening_cost_paise=_opening_cost_paise(rate, int(qty)) if good else 0,
                 reorder_level_units=float(reorder) if (good and reorder is not None) else None,
                 category=group,
             ))
@@ -737,6 +802,115 @@ def _payroll_months(months: list[date], *, employees: int) -> tuple[DemoPayrollM
     return tuple(out)
 
 
+# ── The order a client's books are written in, and what that does to stock ───
+#
+# A STOCK LEDGER IS A CHAIN IN THE ORDER IT WAS WRITTEN, not in the order of the
+# dates on its rows (`domain/inventory_service._last_ledger_row`), so the
+# position a screen shows part-way through the year is the position after the
+# documents WRITTEN so far. The seeder wrote every sale of a client and then
+# every purchase, with opening stock dated to the wrong year, so the chain went
+# negative on five of eight clients -- and the fixture's own docstring said the
+# first sale "relieves real stock". Two rules, both pure and both here so the
+# seeder and the test read the same answer:
+#
+#   1. the documents go in DATE order (a purchase before a sale on the same
+#      day, because goods are received before they are sold), and
+#   2. each goods item opens with at least the quantity that order needs.
+
+class Step(NamedTuple):
+    """One document of a client's year, in the order it is written."""
+    kind: str                 # "sale" | "purchase"
+    n: int                    # 1-based position in the client's own list of that kind
+    doc: "DemoDocument"
+
+
+def draft_month(financial_year: str) -> str:
+    """The month left in DRAFT -- the last of the financial year (YYYY-MM).
+
+    A practice partway through the month after the year end has exactly that:
+    eleven months posted and the twelfth still being entered, which is also the
+    state the issue and receive buttons exist for. A draft posts nothing and
+    moves no stock, so it is excluded from every stock position below."""
+    return _fy_months(financial_year)[-1].isoformat()[:7]
+
+
+def documents_in_order(client: "DemoClient") -> tuple[Step, ...]:
+    """Every sale and purchase of one client, in the order the seeder writes
+    them: by date, a purchase before a sale on the same day, then by position.
+    `n` is the position within the client's own sales (or purchases), which is
+    what the invoice number and the vendor's bill number are built from -- so
+    interleaving the two lists changes neither."""
+    steps = [Step("sale", n, d) for n, d in enumerate(client.sales, start=1)]
+    steps += [Step("purchase", n, d) for n, d in enumerate(client.purchases, start=1)]
+    return tuple(sorted(steps, key=lambda s: (s.doc.doc_date, 0 if s.kind == "purchase" else 1, s.n)))
+
+
+def stock_floor(client: "DemoClient", financial_year: str) -> dict[str, Decimal]:
+    """Per goods item (by HSN), the opening quantity that keeps the running
+    position from going below nil when `documents_in_order` is written.
+
+    Only documents that POST move stock: a sale is issued and a purchase
+    received in every month but `draft_month`. A line of a service (a SAC in
+    Chapter 99) has no stock and is skipped, the same split
+    `domain/gst/goods_or_services` makes. Zero for an item the year never
+    draws below its opening, so a caller takes the larger of this and what the
+    catalogue already opens with and never reduces a figure."""
+    draft = draft_month(financial_year)
+    running: dict[str, Decimal] = {}
+    lowest: dict[str, Decimal] = {}
+    for step in documents_in_order(client):
+        if step.doc.doc_date[:7] == draft:
+            continue
+        sign = 1 if step.kind == "purchase" else -1
+        for ln in step.doc.lines:
+            if ln.hsn_sac_code.startswith("99"):
+                continue
+            qty = running.get(ln.hsn_sac_code, Decimal(0)) + sign * Decimal(ln.quantity)
+            running[ln.hsn_sac_code] = qty
+            lowest[ln.hsn_sac_code] = min(lowest.get(ln.hsn_sac_code, Decimal(0)), qty)
+    return {hsn: -low for hsn, low in lowest.items()}
+
+
+def _opened_for_the_year(client: "DemoClient", financial_year: str) -> tuple[DemoCatalogueItem, ...]:
+    """The client's catalogue with each goods item opened to at least what its
+    own year needs. The cost is recomputed on the same basis as the default."""
+    floor = stock_floor(client, financial_year)
+    out = []
+    for item in client.catalogue:
+        need = math.ceil(floor.get(item.hsn_sac_code, Decimal(0)))
+        if item.kind == "good" and need > item.opening_qty_units:
+            item = replace(item, opening_qty_units=float(need),
+                           opening_cost_paise=_opening_cost_paise(item.rate_paise, need))
+        out.append(item)
+    return tuple(out)
+
+
+def tan_for(client: "DemoClient") -> str:
+    """A TAN in the Income-tax Department's shape -- four letters, five digits,
+    a letter (`core/validators.validate_tan`) -- derived from the client's own
+    PAN and name, so two runs give the same number and nothing is drawn from
+    the fixture's random stream.
+
+    The first three letters are the city code the TAN was issued under (MUM,
+    PUN, BLR) and the fourth the deductor's initial; the digits are the PAN's
+    own four plus a zero. It is NOT a number anybody holds: the check is the
+    shape, and a TAN-shaped value that was never issued is exactly what a demo
+    deductor has to carry."""
+    city = "MUM" if client.state_code == HOME_STATE else "BLR"
+    return f"{city}{client.name[0].upper()}{client.pan[5:9]}0{client.pan[-1]}"
+
+
+def _finished(client: "DemoClient", financial_year: str) -> "DemoClient":
+    """What is derived from a client's whole year once its documents exist:
+    the stock each item must open with, and the TAN of a client that deducts
+    tax. Pure and draws nothing from the random stream, which is what keeps it
+    from reshuffling a document (the trap `_documents` and `_employees` record)."""
+    return replace(
+        client,
+        catalogue=_opened_for_the_year(client, financial_year),
+        tan=tan_for(client) if client.deducts_tax else None,
+    )
+
 
 def build(financial_year: str = "2025-26") -> DemoFirm:
     """The practice, for one financial year.
@@ -758,7 +932,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                away_every=7, rcm_every=0, employees=0, sales_tds_bps=0,
                frequency="monthly", banks=(), operating_lines=(),
                assets=()) -> DemoClient:
-        return DemoClient(
+        return _finished(DemoClient(
             name=name, legal_name=legal, entity_type=entity, pan=pan_value,
             gstin=gstin_for(state, pan_value) if registered else None,
             state_code=state,
@@ -791,7 +965,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
             payroll=_payroll_months(months, employees=employees) if employees else (),
             gst_filing_frequency=frequency,
             catalogue=_catalogue(sales_catalogue, purchase_catalogue),
-        )
+        ), financial_year)
 
     def asset(name, category, month_index, day, cost, method="WDV",
               **kw) -> DemoAsset:
