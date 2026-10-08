@@ -40,6 +40,40 @@ emits, rather than what a specification says it should.
 rules are STRICTER than the CGST Rules, and the two must not be collapsed — see
 `domain/gst/irp_validations.py` for that separation and why it is load-bearing.
 
+### `gst-offline-utilities/` — GSTN's offline utilities (VBA source)
+**Extracted 26-09-2026.** Downloaded by the owner as GSTN's published offline utilities
+(macro-enabled `.xlsm` workbooks) on 25-09-2026 or 26-09-2026. **The page the three were
+downloaded from and the exact day were not written down**, so neither is stated here
+rather than invented; if the owner still has either, add it to this paragraph.
+
+GSTR-9C, GSTR-8 and the annual GSTR-4 have no public API-schema document the way
+e-invoice has: the only place GSTN publishes their JSON shape and the checks it runs is
+inside the utility, whose macros therefore ARE the specification. Each `.xlsm` was
+opened with `oletools.olevba --decode` and the decompressed VBA of the modules that
+carry statutory content was committed as text (the generic infrastructure every GSTN
+utility ships, a JSON library, a PDF renderer, a SHA-256 and a signing helper, was left
+out because it says nothing about these returns). The workbooks themselves are not here.
+
+| Directory | Source file | Version | Modules |
+|---|---|---|---|
+| `gstr9c/` | `GSTR_9C_Offline_Utility.xlsm` | (as uploaded) | 5 |
+| `gstr8/` | `GSTR_8_Offline_Utility.xlsm` | (as uploaded) | 6 |
+| `gstr4-annual/` | `GSTR_4_Annual_Offline_Utility(v4.2).xlsm` | v4.2 | 10 (CMP-08's four lines are among them) |
+
+**What it settled, and the grade.** The FORM: JSON field names and nesting, which cells
+must foot to which, and what the utility refuses before it will export. A claim about
+the form that rests on these files is `[P]`. **It does NOT settle the law or the rates**:
+a rate is an Excel cell value the VBA text does not carry (the GSTR-8 rate check is read
+as a band from the macros alone), and which composition rate applies to a dealer is a
+fact about the dealer. So `domain/gst/composition.py` and `domain/gst/gstr8.py` keep
+`VERIFIED = False` and grade their rates `[S]`. The modules are read by
+`domain/gst/composition.py`, `gstr8.py`, `gstr4_annual.py` and `gstr9c.py`; the
+directory's own `README.md` says what each module is.
+
+**Not here:** any other utility (GSTR-9, GSTR-1, GSTR-3B and the rest): only these three
+have been fetched. Nor a later version of the three above. A utility's version moves within a year, so a layout read from `gstr9c/`
+may predate the one a CA is using today.
+
 ### `gst-notifications/` — CBIC
 Fetched **18-09-2026** from `taxinformation.cbic.gov.in`. These settled the §50(3)
 interest rate, which this repository had wrong three times; the reasoning is in
