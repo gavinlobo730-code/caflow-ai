@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from core.db_paging import fetch_all
+from domain.inventory import costing
 from domain.reporting import fixed_asset_movement as fa_movement
 from core.observability import capture_soft_failure
 from fastapi import APIRouter, Depends, HTTPException
@@ -171,8 +172,208 @@ def _rupees(paise: int) -> str:
     return f"Rs {rupees_paise(paise)}"
 
 
+#: How each AS-2 paragraph 14 formula is worded in a sentence a CA reads. Keyed by `costing.METHODS` and nothing
+#: else: tests/test_accounting_policies_note.py asserts every member has an entry, so a formula added there fails
+#: that test and does not arrive as a note that quietly describes the weighted average. The moving-average sentence
+#: is the one this note has always carried and is deliberately unchanged.
+_INVENTORY_BASIS_NAME = {
+    costing.MOVING_AVERAGE: "moving average",
+    costing.FIFO: "first-in, first-out",
+}
+_INVENTORY_SENTENCE = {
+    costing.MOVING_AVERAGE: (
+        "Inventories — valued on the moving average cost basis, which is how "
+        "stock movements are costed in these books."
+    ),
+    costing.FIFO: (
+        "Inventories — cost is assigned on the first-in, first-out (FIFO) formula "
+        "(AS-2 paragraph 14), which is how stock issues are costed in these books."
+    ),
+}
+_INVENTORY_FORMULA_INPUT = "Inventory cost formula (AS-2 paragraph 14)"
+_INVENTORY_CHANGE_INPUT = "Effect of the change in the inventory cost formula (AS-5 paragraph 32)"
+
+
+def _dmy(iso: Optional[str]) -> str:
+    """An ISO date as dd-mm-yyyy for a sentence; anything unreadable is returned as given."""
+    text = str(iso or "")[:10]
+    parts = text.split("-")
+    return f"{parts[2]}-{parts[1]}-{parts[0]}" if len(parts) == 3 else text
+
+
+def _formula_name(method: str) -> str:
+    return _INVENTORY_BASIS_NAME.get(method) or costing.METHOD_LABELS.get(method, method)
+
+
+def _movement_dates_by_formula(
+    db, firm_id: str, client_id: str, fy_start: str, fy_end: str,
+) -> dict:
+    """For each cost formula that priced a stock movement DATED IN THIS YEAR: `[first_date, last_date_or_None]`.
+
+    `inventory_stock_ledger.costing_method` is stamped on every row (migration 394), so which formula priced a
+    year is a fact about that year's movements and not about the client's policy as it stands today, which is
+    what a switch after the year-end would make a different thing. Four reads at most, each a single row,
+    because what a note needs is a date and not the movements: the first date for each formula, and the last
+    only when more than one formula appears (to tell a clean change from documents dated either side of it).
+    The table is named in each query as a literal, for tests/test_backend_columns_exist_pg.
+    """
+    seen: dict = {}
+    for method in costing.METHODS:
+        first = (db.table("inventory_stock_ledger").select("movement_date")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .eq("costing_method", method)
+                 .gte("movement_date", fy_start).lte("movement_date", fy_end)
+                 .order("movement_date").limit(1)
+                 .execute().data or [])
+        if first:
+            seen[method] = [str(first[0].get("movement_date"))[:10], None]
+    if len(seen) > 1:
+        for method in seen:
+            last = (db.table("inventory_stock_ledger").select("movement_date")
+                    .eq("firm_id", firm_id).eq("client_id", client_id)
+                    .eq("costing_method", method)
+                    .gte("movement_date", fy_start).lte("movement_date", fy_end)
+                    .order("movement_date", desc=True).limit(1)
+                    .execute().data or [])
+            seen[method][1] = str(last[0].get("movement_date"))[:10] if last else seen[method][0]
+    return seen
+
+
+def _decide_inventory_formula(seen: dict, recorded: Optional[str], recorded_known: bool) -> dict:
+    """Which cost formula the note may state for the year, from what the ledger shows and what the client records.
+
+    Pure. AS-2 paragraph 14 permits two formulas and AS-5 paragraphs 29 and 32 govern changing one, so the answer
+    is one of four, and they are told apart because the note says something different for each:
+
+      * `ledger`   — exactly one formula priced the year's movements. Stated, with no caveat. If the client's
+                     CURRENTLY RECORDED formula differs, a switch was recorded after those movements and the
+                     note says so rather than describing the year by today's policy.
+      * `change`   — two formulas priced movements dated in the year. A change of accounting policy, stated with
+                     its dates and flagged for the CA: the effect is not a figure this module can compute.
+                     `interleaved` when the dates overlap (a document entered after the change, dated before
+                     it), where the date the change took effect cannot be read off the ledger.
+      * `recorded` — no movement in the year to read it from (or the year is not known), so it is the client's
+                     recorded formula, said to be exactly that. A client with NOTHING recorded is the exception
+                     and is not caveated: no recorded formula means every issue was priced at the weighted
+                     average, because it was the only formula the product had (costing.UNRECORDED_MEANS), which
+                     is a fact about the books and not a reading of a setting.
+      * `unavailable` — nothing could be read, so nothing is asserted.
+    """
+    recorded_formula = costing.method_for(recorded) if recorded_known else None
+    base = {"source": "unavailable", "formula": None, "change": None,
+            "recorded_formula": recorded_formula, "recorded_differs": False, "caveat": False}
+    if len(seen) == 1:
+        (formula,) = seen
+        return {**base, "source": "ledger", "formula": formula,
+                "recorded_differs": recorded_known and recorded_formula != formula}
+    if len(seen) > 1:
+        ordered = sorted(seen, key=lambda m: seen[m][0])
+        clean = len(ordered) == 2 and seen[ordered[0]][1] < seen[ordered[1]][0]
+        return {**base, "source": "change", "change": {
+            "formulas": ordered,
+            "last_movement_on_earlier_formula": seen[ordered[0]][1],
+            "first_movement_on_later_formula": seen[ordered[1]][0],
+            "interleaved": not clean,
+        }}
+    if not recorded_known:
+        return base
+    return {**base, "source": "recorded", "formula": recorded_formula,
+            "caveat": bool((recorded or "").strip())}
+
+
+def _inventory_cost_formula(
+    db, firm_id: str, client_id: str, fy_start: Optional[str], fy_end: Optional[str],
+    recorded: Optional[str], recorded_known: bool,
+) -> dict:
+    """The inventory cost formula for the note: `{"data": {...keys of the note's data...}, "ca_input": [...]}`.
+
+    A ledger that cannot be read asserts NOTHING and puts the formula on the CA's list: the sentence this note
+    used to carry was true by construction, and with a second formula it is true only of a client that has not
+    chosen the other one.
+    """
+    seen: dict = {}
+    if fy_start and fy_end:
+        try:
+            seen = _movement_dates_by_formula(db, firm_id, client_id, fy_start, fy_end)
+        except Exception as exc:
+            capture_soft_failure(exc, operation="accounting_policies.inventory_formula",
+                                 firm_id=firm_id, client_id=client_id)
+            return _formula_result(_decide_inventory_formula({}, recorded, False), unreadable=True)
+    return _formula_result(_decide_inventory_formula(seen, recorded, recorded_known))
+
+
+def _formula_result(decision: dict, unreadable: bool = False) -> dict:
+    change = decision["change"]
+    formula = decision["formula"]
+    if change:
+        basis = ", then ".join(_formula_name(m) for m in change["formulas"])
+    else:
+        basis = _formula_name(formula) if formula else None
+    ca_input = []
+    if formula is None and (change is None):
+        ca_input.append(_INVENTORY_FORMULA_INPUT)
+    if change:
+        ca_input.append(_INVENTORY_CHANGE_INPUT)
+    return {
+        "data": {
+            "inventory_valuation_basis": basis,
+            "inventory_cost_formula": formula,
+            "inventory_cost_formula_source": decision["source"],
+            "inventory_cost_formula_change": change,
+            "inventory_recorded_cost_formula": decision["recorded_formula"],
+            "inventory_cost_formula_is_as_recorded_only": decision["caveat"],
+            "inventory_cost_formula_unreadable": unreadable,
+        },
+        "ca_input": ca_input,
+    }
+
+
+def _inventory_policy_sentences(data: dict) -> list[str]:
+    """The inventory sentence(s) of the policies note, from the data `_inventory_cost_formula` produced."""
+    if not data.get("inventory_is_stock_tracked"):
+        return []
+    change = data.get("inventory_cost_formula_change")
+    formula = data.get("inventory_cost_formula")
+    if change:
+        earlier, later = change["formulas"][0], change["formulas"][1]
+        if change["interleaved"]:
+            return [(
+                f"Inventories — both the {_formula_name(earlier)} and the {_formula_name(later)} cost formulas priced "
+                f"stock movements dated within this year, and their dates overlap (a document entered after the change "
+                f"was dated before it), so the date the change took effect cannot be read from the ledger. Which "
+                f"formula applied from which date requires the CA's input (AS-5 paragraphs 29 and 32)."
+            )]
+        return [(
+            f"Inventories — the cost formula changed during the year (AS-5 paragraphs 29 and 32). Stock movements "
+            f"dated up to {_dmy(change['last_movement_on_earlier_formula'])} were costed on the "
+            f"{_formula_name(earlier)} formula and those from {_dmy(change['first_movement_on_later_formula'])} on the "
+            f"{_formula_name(later)} formula; the change is prospective and no earlier period has been re-costed. The "
+            f"effect of the change on the financial statements is not computed here and requires the CA's input."
+        )]
+    if formula is None:
+        return [(
+            "Inventories — the cost formula (AS-2 paragraph 14) could not be established from the books, so it "
+            "requires the CA's input."
+        )]
+    sentence = _INVENTORY_SENTENCE.get(formula) or (
+        f"Inventories — cost is assigned on the {_formula_name(formula)} formula (AS-2 paragraph 14)."
+    )
+    if data.get("inventory_cost_formula_is_as_recorded_only"):
+        sentence += (
+            " This is the formula currently recorded for the client; it has not been confirmed against a "
+            "stock movement dated in this year."
+        )
+    recorded_now = data.get("inventory_recorded_cost_formula")
+    if data.get("inventory_cost_formula_source") == "ledger" and recorded_now and recorded_now != formula:
+        sentence += (
+            f" The formula now recorded for this client is {_formula_name(recorded_now)}, which differs from the "
+            f"one that costed this year's stock movements; the CA should confirm the date from which it applies."
+        )
+    return [sentence]
+
+
 def _compute_accounting_policies_data(
-    db, firm_id: str, client_id: str, fy_end: Optional[str],
+    db, firm_id: str, client_id: str, fy_end: Optional[str], *, fy_start: Optional[str] = None,
 ) -> dict:
     """What the books themselves say about the entity's accounting policies.
 
@@ -190,9 +391,11 @@ def _compute_accounting_policies_data(
         assumed. The Fixed Assets note used to assert "Written Down Value
         method" as flat text for every client, which is simply false for any
         client whose assets are on straight line.
-      * INVENTORY — domain/inventory_service implements moving-average
-        costing, by construction and not as a configurable option, so a
-        stock-tracked client's valuation basis is a property of the engine.
+      * INVENTORY — the cost formula (AS-2 paragraph 14). It was moving
+        average "by construction", and has not been since migration 394 made
+        FIFO a client policy (INV-02): the note now says which formula priced
+        THIS YEAR's movements, read from the stamp every stock-ledger row
+        carries, and says so when two did (POST-A-108; the helpers above).
 
     Everything else is left explicitly blank for the CA, following the pattern
     task #240 established for gst_tds: an honest placeholder, never a
@@ -218,6 +421,8 @@ def _compute_accounting_policies_data(
         "has_fixed_assets": False,
         "inventory_is_stock_tracked": False,
         "inventory_valuation_basis": None,
+        "inventory_cost_formula": None,
+        "inventory_cost_formula_change": None,
         "has_foreign_currency_transactions": False,
         "ca_input_required": ca_input_required,
         "note_type": "accounting_policies",
@@ -246,12 +451,20 @@ def _compute_accounting_policies_data(
     # unreachable one, must not fail note generation. The note is still useful
     # with fewer derived policies, and every policy it cannot derive is named
     # for the CA anyway.
+    # The client's recorded cost formula rides on the same read as its entity type (one round trip). Whether the
+    # row was READ matters as much as what it says: a client whose row could not be read may be on FIFO, and the
+    # inventory sentence below asserts nothing it cannot support.
+    recorded_cost_formula: Optional[str] = None
+    client_row_read = False
+    extra_inputs: list[str] = []
     try:
-        entity = (db.table("clients").select("entity_type")
+        entity = (db.table("clients").select("entity_type, inventory_costing_method")
                   .eq("firm_id", firm_id).eq("id", client_id)
                   .execute().data or [])
         if entity:
             data["entity_type"] = entity[0].get("entity_type")
+            recorded_cost_formula = entity[0].get("inventory_costing_method")
+            client_row_read = True
     except Exception as exc:
         capture_soft_failure(exc, operation="accounting_policies.entity_type",
                              firm_id=firm_id, client_id=client_id)
@@ -285,7 +498,10 @@ def _compute_accounting_policies_data(
         catalogue = []
     if any(i.get("kind") == "good" for i in catalogue):
         data["inventory_is_stock_tracked"] = True
-        data["inventory_valuation_basis"] = "moving average"
+        formula = _inventory_cost_formula(db, firm_id, client_id, fy_start, fy_end,
+                                          recorded_cost_formula, client_row_read)
+        data.update(formula["data"])
+        extra_inputs += formula["ca_input"]
 
     # Multi-currency is dormant for most clients (migration 147 defaults
     # txn_currency to INR), so this is normally False and the policy is
@@ -317,9 +533,9 @@ def _compute_accounting_policies_data(
         foreign = []
     if foreign:
         data["has_foreign_currency_transactions"] = True
-        data["ca_input_required"] = ca_input_required + [
-            "Foreign currency transactions and translation"
-        ]
+        extra_inputs.append("Foreign currency transactions and translation")
+    if extra_inputs:
+        data["ca_input_required"] = ca_input_required + extra_inputs
     return data
 
 
@@ -353,11 +569,7 @@ def _accounting_policies_text(data: dict) -> str:
                 "method, so the basis requires the CA's input."
             )
 
-    if data.get("inventory_is_stock_tracked"):
-        lines.append(
-            "Inventories — valued on the moving average cost basis, which is how "
-            "stock movements are costed in these books."
-        )
+    lines += _inventory_policy_sentences(data)
 
     outstanding = data.get("ca_input_required") or []
     if outstanding:
@@ -675,6 +887,7 @@ def generate_notes(
     computed = {
         "accounting_policies": _compute_accounting_policies_data(
             db, current_user["firm_id"], eng.get("client_id", ""), eng.get("fy_end"),
+            fy_start=eng.get("fy_start"),
         ),
         "fixed_assets": _compute_fixed_assets_note_data(
             db, current_user["firm_id"], eng.get("client_id", ""), eng.get("fy_end"),

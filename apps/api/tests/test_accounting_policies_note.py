@@ -9,8 +9,10 @@ them. Two are facts about how these books were kept rather than opinions about
 them, and only those are stated:
 
   * depreciation — read off each row's fixed_assets.depreciation_method
-  * inventory — moving average, because domain/inventory_service costs stock
-    that way by construction
+  * inventory — the cost formula (AS-2 paragraph 14) that priced THE YEAR'S stock movements, read from the
+    stamp every stock-ledger row carries (migration 394). It was "moving average, by construction" until FIFO
+    became a client policy; POST-A-108 is the second half of that change, and the cases at the end of this
+    file are its statement.
 
 Everything else is named as outstanding. This follows the pattern task #240
 established for gst_tds: an honest placeholder, never a plausible-looking
@@ -18,9 +20,12 @@ fabricated number — and a policies note is the worst place to invent text,
 because it reads as boilerplate, nobody re-reads it, and it ends up attached to
 a filed AOC-4 asserting a policy the client does not follow.
 """
+import inspect
+
 import pytest
 
 import routers.year_end_notes as yen
+from domain.inventory import costing
 from tests.e2e_harness import FakeDB, wire_e2e
 
 FIRM = "firm-1"
@@ -95,9 +100,9 @@ def test_no_fixed_assets_means_no_depreciation_policy_is_stated():
 
 
 def test_inventory_is_stated_only_for_a_stock_tracked_client():
-    """domain/inventory_service costs stock on moving average by construction,
-    so for a client that tracks stock this is a fact about the books. For one
-    that does not, the policy is omitted rather than stated as nil."""
+    """A client that tracks stock is told which cost formula priced its stock (a client with nothing recorded
+    is on the moving average, the only formula there was). For one that does not track stock, the policy is
+    omitted rather than stated as nil."""
     d = FakeDB()
     d.seed("clients", {"id": CLIENT, "firm_id": FIRM, "entity_type": "Private Limited"})
     assert "Inventories" not in yen._accounting_policies_text(
@@ -206,3 +211,295 @@ def test_the_fixed_assets_note_no_longer_asserts_a_depreciation_method(db):
     fa = next(n for n in notes if n["note_type"] == "fixed_assets")
     assert "Written Down Value" not in fa["content"]
     assert "Significant Accounting Policies note" in fa["content"]
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# INVENTORY — which cost formula priced THIS YEAR's movements (POST-A-108)
+#
+# The note said "valued on the moving average cost basis" for every client with a
+# goods item, and its docstring said that was "by construction and not as a
+# configurable option". Both stopped being true with migration 394 (INV-02): FIFO
+# is a client policy, every stock-ledger row is stamped with the formula that
+# priced it, and a note describing a FIFO client's closing stock as moving
+# average puts a false accounting policy on a signed balance sheet.
+# ═════════════════════════════════════════════════════════════════════════════
+
+FY_START, FY_END = "2025-04-01", "2026-03-31"
+MOVING_AVERAGE_SENTENCE = ("Inventories — valued on the moving average cost basis, which is how "
+                           "stock movements are costed in these books.")
+CHANGE_INPUT = "Effect of the change in the inventory cost formula (AS-5 paragraph 32)"
+FORMULA_INPUT = "Inventory cost formula (AS-2 paragraph 14)"
+
+
+class SpyDB(FakeDB):
+    """Remembers every query made on the stock ledger, so a test can say how many and how wide."""
+
+    def __init__(self):
+        super().__init__()
+        self.ledger_queries = []
+
+    def table(self, name):
+        q = super().table(name)
+        if name == "inventory_stock_ledger":
+            self.ledger_queries.append(q)
+        return q
+
+
+def _goods_client(recorded=None, db=None, with_client_row=True):
+    d = db or SpyDB()
+    if with_client_row:
+        d.seed("clients", {"id": CLIENT, "firm_id": FIRM, "entity_type": "Private Limited",
+                           "inventory_costing_method": recorded})
+    d.seed("service_catalogue", {"id": "s1", "firm_id": FIRM, "client_id": CLIENT, "kind": "good"})
+    return d
+
+
+def _moved(d, method, date, client=CLIENT, firm=FIRM):
+    d.seed("inventory_stock_ledger", {"firm_id": firm, "client_id": client, "costing_method": method,
+                                      "movement_date": date})
+
+
+def _year(d, fy_start=FY_START):
+    data = yen._compute_accounting_policies_data(d, FIRM, CLIENT, FY_END, fy_start=fy_start)
+    return data, yen._accounting_policies_text(data)
+
+
+def test_fy_start_is_keyword_only_so_every_existing_four_argument_caller_still_works():
+    param = inspect.signature(yen._compute_accounting_policies_data).parameters["fy_start"]
+    assert param.kind is inspect.Parameter.KEYWORD_ONLY and param.default is None
+
+
+def test_the_functions_docstring_no_longer_claims_the_formula_is_not_configurable():
+    assert "not as a configurable option" not in yen._compute_accounting_policies_data.__doc__
+
+
+def test_the_two_wordings_cover_every_formula_AS_2_permits_and_nothing_else():
+    """A formula added to costing.METHODS must arrive here with its words, or this fails; a missing entry
+    would otherwise be a note that quietly describes the weighted average."""
+    assert set(yen._INVENTORY_SENTENCE) == set(costing.METHODS)
+    assert set(yen._INVENTORY_BASIS_NAME) == set(costing.METHODS)
+    assert len(set(yen._INVENTORY_SENTENCE.values())) == len(costing.METHODS)
+
+
+@pytest.mark.parametrize("recorded", [None, "moving_average"])
+def test_the_moving_average_sentence_is_unchanged_for_a_client_on_it(recorded):
+    """Regression pin of the exact text, with and without the ledger to confirm it, and with nothing recorded."""
+    for seed_ledger, fy_start in ((False, FY_START), (True, FY_START), (False, None)):
+        d = _goods_client(recorded)
+        if seed_ledger:
+            _moved(d, costing.MOVING_AVERAGE, "2025-06-10")
+        data, text = _year(d, fy_start)
+        assert MOVING_AVERAGE_SENTENCE in text, (recorded, seed_ledger, fy_start)
+        assert data["inventory_valuation_basis"] == "moving average"
+        assert data["inventory_cost_formula"] == costing.MOVING_AVERAGE
+        assert FORMULA_INPUT not in data["ca_input_required"]
+    # With nothing recorded at all it is a fact about the books and carries no caveat (costing.UNRECORDED_MEANS).
+    if recorded is None:
+        assert "currently recorded" not in _year(_goods_client(None))[1]
+
+
+def test_a_fifo_client_whose_year_was_costed_on_fifo_is_told_so_and_not_called_moving_average():
+    d = _goods_client("fifo")
+    _moved(d, costing.FIFO, "2025-05-02")
+    _moved(d, costing.FIFO, "2026-01-20")
+    data, text = _year(d)
+    assert data["inventory_valuation_basis"] == "first-in, first-out"
+    assert data["inventory_cost_formula"] == costing.FIFO and data["inventory_cost_formula_source"] == "ledger"
+    assert "first-in, first-out (FIFO)" in text and "AS-2 paragraph 14" in text
+    assert "moving average" not in text
+    assert "currently recorded" not in text           # the ledger confirms it, so there is nothing to caveat
+    assert data["inventory_cost_formula_change"] is None
+    assert FORMULA_INPUT not in data["ca_input_required"] and CHANGE_INPUT not in data["ca_input_required"]
+
+
+@pytest.mark.parametrize("method", costing.METHODS)
+def test_the_note_names_the_formula_the_ledger_says_for_every_formula_there_is(method):
+    """The rule, over the whole vocabulary: whichever formula the year's rows carry is the one stated, and no
+    other formula's wording appears."""
+    d = _goods_client(method)
+    _moved(d, method, "2025-07-01")
+    data, text = _year(d)
+    assert data["inventory_cost_formula"] == method
+    assert yen._INVENTORY_SENTENCE[method] in text
+    for other in set(costing.METHODS) - {method}:
+        assert yen._INVENTORY_BASIS_NAME[other] not in text
+        assert yen._INVENTORY_SENTENCE[other] not in text
+
+
+def test_a_change_during_the_year_is_stated_with_its_dates_and_the_effect_is_left_to_the_ca():
+    """AS-5 paragraphs 29 and 32: a change of accounting policy is disclosed, with its effect. The effect is a
+    figure no ledger holds, so it is named and not computed."""
+    d = _goods_client("fifo")
+    for date in ("2025-04-10", "2025-08-14", "2025-09-20"):
+        _moved(d, costing.MOVING_AVERAGE, date)
+    for date in ("2025-10-01", "2026-01-05", "2026-03-15"):
+        _moved(d, costing.FIFO, date)
+    data, text = _year(d)
+    change = data["inventory_cost_formula_change"]
+    assert change == {"formulas": [costing.MOVING_AVERAGE, costing.FIFO],
+                      "last_movement_on_earlier_formula": "2025-09-20",
+                      "first_movement_on_later_formula": "2025-10-01", "interleaved": False}
+    assert data["inventory_valuation_basis"] == "moving average, then first-in, first-out"
+    assert "changed during the year" in text and "AS-5 paragraphs 29 and 32" in text
+    assert "20-09-2025" in text and "01-10-2025" in text
+    assert "no earlier period has been re-costed" in text and "requires the CA's input" in text
+    assert CHANGE_INPUT in data["ca_input_required"]
+    assert "Rs" not in text, "the effect of the change is not a number this module may invent"
+
+
+def test_documents_dated_either_side_of_the_change_are_flagged_and_no_date_is_claimed():
+    d = _goods_client("fifo")
+    for date in ("2025-04-10", "2025-11-20"):          # a back-dated document costed before the switch
+        _moved(d, costing.MOVING_AVERAGE, date)
+    for date in ("2025-10-01", "2025-12-05"):
+        _moved(d, costing.FIFO, date)
+    data, text = _year(d)
+    assert data["inventory_cost_formula_change"]["interleaved"] is True
+    assert "overlap" in text and "cannot be read from the ledger" in text
+    assert "dated up to" not in text, "a change date was claimed over a ledger that does not give one"
+    assert CHANGE_INPUT in data["ca_input_required"]
+
+
+def test_a_formula_switched_after_the_year_end_describes_the_year_by_its_own_formula():
+    """The client row is TODAY's policy. The ledger says what priced the year, and where they differ the note
+    says so instead of stating either silently."""
+    d = _goods_client("fifo")                                    # switched on 01-04-2026 ...
+    _moved(d, costing.MOVING_AVERAGE, "2025-12-01")              # ... so the year was costed on the weighted average
+    data, text = _year(d)
+    assert data["inventory_cost_formula"] == costing.MOVING_AVERAGE
+    assert MOVING_AVERAGE_SENTENCE in text
+    assert "now recorded for this client is first-in, first-out" in text
+    assert "confirm the date from which it applies" in text
+
+
+def test_a_fifo_client_with_no_movement_in_the_year_is_stated_as_recorded_and_says_that_is_all_it_is():
+    d = _goods_client("fifo")
+    data, text = _year(d)
+    assert data["inventory_cost_formula"] == costing.FIFO and data["inventory_cost_formula_source"] == "recorded"
+    assert yen._INVENTORY_SENTENCE[costing.FIFO] in text
+    assert "currently recorded for the client" in text and "not been confirmed against a stock movement" in text
+
+
+def test_a_year_that_is_not_known_states_the_recorded_formula_with_the_same_caveat():
+    d = _goods_client("fifo")
+    _moved(d, costing.FIFO, "2025-06-01")
+    data, text = _year(d, fy_start=None)
+    assert data["inventory_cost_formula"] == costing.FIFO and data["inventory_cost_formula_source"] == "recorded"
+    assert "currently recorded for the client" in text
+    assert d.ledger_queries == [], "no year, no ledger read"
+
+
+def test_movements_outside_the_year_are_not_the_years_formula():
+    d = _goods_client(None)
+    _moved(d, costing.MOVING_AVERAGE, "2025-09-01")
+    _moved(d, costing.FIFO, "2025-03-31")                    # the day before the year
+    _moved(d, costing.FIFO, "2026-04-01")                    # the day after it
+    data, text = _year(d)
+    assert data["inventory_cost_formula"] == costing.MOVING_AVERAGE and data["inventory_cost_formula_change"] is None
+    assert "first-in, first-out" not in text
+
+
+def test_the_first_and_last_day_of_the_year_are_inside_it():
+    d = _goods_client("fifo")
+    _moved(d, costing.MOVING_AVERAGE, FY_START)
+    _moved(d, costing.FIFO, FY_END)
+    data, _ = _year(d)
+    assert data["inventory_cost_formula_change"]["formulas"] == [costing.MOVING_AVERAGE, costing.FIFO]
+
+
+def test_another_clients_or_another_firms_movements_are_not_this_clients_formula():
+    d = _goods_client(None)
+    _moved(d, costing.MOVING_AVERAGE, "2025-09-01")
+    _moved(d, costing.FIFO, "2025-09-02", client="client-2")
+    _moved(d, costing.FIFO, "2025-09-03", firm="firm-2")
+    data, _ = _year(d)
+    assert data["inventory_cost_formula"] == costing.MOVING_AVERAGE and data["inventory_cost_formula_change"] is None
+
+
+class _Down(SpyDB):
+    """A database where the named table cannot be read."""
+
+    def __init__(self, broken):
+        super().__init__()
+        self._broken = broken
+
+    def table(self, name):
+        if name == self._broken:
+            raise RuntimeError(f"{name} is unreachable")
+        return super().table(name)
+
+
+def test_a_stock_ledger_that_cannot_be_read_asserts_no_formula_and_puts_it_on_the_cas_list(monkeypatch):
+    soft = []
+    monkeypatch.setattr(yen, "capture_soft_failure", lambda exc, *, operation, **ctx: soft.append(operation))
+    d = _goods_client("fifo", db=_Down("inventory_stock_ledger"))
+    data, text = _year(d)
+    assert data["inventory_cost_formula"] is None and data["inventory_valuation_basis"] is None
+    assert data["inventory_cost_formula_unreadable"] is True
+    assert "moving average" not in text and "first-in, first-out" not in text
+    assert "requires the CA's input" in text
+    assert FORMULA_INPUT in data["ca_input_required"]
+    assert "accounting_policies.inventory_formula" in soft
+
+
+def test_a_client_row_that_cannot_be_read_does_not_get_a_formula_guessed_for_it(monkeypatch):
+    monkeypatch.setattr(yen, "capture_soft_failure", lambda *a, **k: None)
+    d = _goods_client("fifo", db=_Down("clients"), with_client_row=False)
+    data, text = _year(d)
+    assert data["inventory_cost_formula"] is None
+    assert FORMULA_INPUT in data["ca_input_required"]
+    assert "moving average" not in text
+
+
+def test_a_client_row_that_cannot_be_read_still_gets_the_years_formula_from_the_ledger(monkeypatch):
+    monkeypatch.setattr(yen, "capture_soft_failure", lambda *a, **k: None)
+    d = _goods_client(None, db=_Down("clients"), with_client_row=False)
+    _moved(d, costing.FIFO, "2025-06-01")
+    data, _ = _year(d)
+    assert data["inventory_cost_formula"] == costing.FIFO and data["inventory_recorded_cost_formula"] is None
+
+
+def test_the_ledger_is_read_in_single_rows_and_never_in_volume():
+    """What crosses the wire is proportional to the answer: one row per formula for its first date, and one more
+    each for the last date only when two formulas appear."""
+    one = _goods_client(None)
+    for i in range(50):
+        _moved(one, costing.MOVING_AVERAGE, f"2025-06-{(i % 28) + 1:02d}")
+    _year(one)
+    assert len(one.ledger_queries) == len(costing.METHODS)
+
+    two = _goods_client("fifo")
+    for i in range(20):
+        _moved(two, costing.MOVING_AVERAGE, f"2025-06-{(i % 28) + 1:02d}")
+        _moved(two, costing.FIFO, f"2025-12-{(i % 28) + 1:02d}")
+    _year(two)
+    assert len(two.ledger_queries) == 2 * len(costing.METHODS)
+    for q in one.ledger_queries + two.ledger_queries:
+        assert q._limit == 1
+
+
+def test_a_client_that_tracks_no_stock_never_touches_the_ledger():
+    d = SpyDB()
+    d.seed("clients", {"id": CLIENT, "firm_id": FIRM, "entity_type": "Private Limited",
+                       "inventory_costing_method": "fifo"})
+    data, text = _year(d)
+    assert d.ledger_queries == [] and "Inventories" not in text
+    assert data["inventory_cost_formula"] is None
+
+
+def test_generate_notes_hands_the_engagements_own_year_to_the_policies_note(db):
+    """The wiring: the engagement's fy_start and fy_end are the window, so a FIFO client's generated note says
+    FIFO and a movement outside that engagement's year does not change it."""
+    db.seed("clients", {"id": "client-fifo", "firm_id": FIRM, "entity_type": "Private Limited",
+                        "inventory_costing_method": "fifo"})
+    db.seed("service_catalogue", {"id": "g1", "firm_id": FIRM, "client_id": "client-fifo", "kind": "good"})
+    _moved(db, costing.FIFO, "2025-09-01", client="client-fifo")
+    _moved(db, costing.MOVING_AVERAGE, "2024-09-01", client="client-fifo")      # the PREVIOUS year
+    db.seed("year_end_engagements", {"id": "E9", "firm_id": FIRM, "client_id": "client-fifo",
+                                     "financial_year": "2025-26", "status": "draft",
+                                     "fy_start": FY_START, "fy_end": FY_END})
+    notes = yen.generate_notes("E9", current_user=USER)["data"]
+    policies = next(n for n in notes if n["note_type"] == "accounting_policies")
+    assert "first-in, first-out (FIFO)" in policies["content"]
+    assert "changed during the year" not in policies["content"]
+    assert policies["note_data"]["inventory_cost_formula"] == costing.FIFO
