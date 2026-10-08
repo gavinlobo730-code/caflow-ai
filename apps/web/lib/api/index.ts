@@ -3342,7 +3342,16 @@ export interface Gstr2bBulkResult {
   problems: string[];
   registration_caveat: string | null;
   /** Set when this file REPLACED an earlier reconciliation of the same month. */
-  replaced_earlier: { reconciled_at: string | null; generated_on: string | null } | null;
+  replaced_earlier: {
+    reconciled_at: string | null;
+    generated_on: string | null;
+    /** How this download stands to the one it replaced (`same`, `newer`, `older`,
+     *  `unknown`), decided by the server from the dates the portal generated each. */
+    relation?: string;
+    /** The server's sentence for that relation. Absent from an older backend,
+     *  which the panel reads as "check this is the newer file". */
+    note?: string;
+  } | null;
 }
 
 export interface Gstr2bBulkAnswer {

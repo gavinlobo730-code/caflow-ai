@@ -76,6 +76,7 @@ from typing import Optional, Sequence
 from domain.gst.gstr2b import GSTR2BFile
 from domain.gst.registrations import Registration
 from domain.gst.return_period import parse_month
+from domain.spreadsheet_cells import parse_cell_date
 
 #: Where the period the answer carries came from.
 FROM_FILE = "file"
@@ -150,6 +151,63 @@ def two_b_not_split_caveat(regs: Sequence[Registration],
         f"any GSTR-2B already reconciled for this month under another "
         f"registration — a month holds one reconciliation per client, not one "
         f"per GSTIN.")
+
+
+# ── a download that replaces an earlier one ──────────────────────────────────
+#
+# A reconciliation is replaced whole, so an upload for a client and month that
+# already has one needs a word (gst-10): "a stale download dropped into a folder
+# of sixty must not silently overwrite a newer one". The word is only NEEDED when
+# the new file might be the older one. Asked of every replacement it was said as
+# "Check this is the newer file" — including when the same file was dropped twice
+# (PRE-A-001, found by re-dropping an identical download), which taught the CA to
+# read past it.
+
+SAME_DOWNLOAD = "same"
+OLDER_DOWNLOAD = "older"
+NEWER_DOWNLOAD = "newer"
+UNKNOWN_DOWNLOAD = "unknown"
+
+#: What the screen says under the "replaced" line, by relation. The sentences are
+#: the server's: the screen decides nothing about which download is newer.
+DOWNLOAD_NOTES = {
+    SAME_DOWNLOAD: ("This is the same download, so only the books have been read "
+                    "again."),
+    NEWER_DOWNLOAD: "This download is newer than the one it replaced.",
+    OLDER_DOWNLOAD: ("This download is OLDER than the one it replaced. Check it is "
+                     "the file you meant before relying on these figures."),
+    UNKNOWN_DOWNLOAD: ("The date either download was generated could not be read, "
+                       "so which is newer is not known. Check this is the newer file."),
+}
+
+#: Only these two leave the CA something to check. A newer download replacing an
+#: older one is the ordinary case, and an identical one changes nothing.
+DOWNLOAD_NEEDS_A_LOOK = frozenset({OLDER_DOWNLOAD, UNKNOWN_DOWNLOAD})
+
+
+def download_relation(earlier_generated_on: Optional[str],
+                      new_generated_on: Optional[str]) -> str:
+    """How the new download stands to the one it replaced, by the date the portal
+    generated each (`data.gendt`, written day-first: 14-05-2025).
+
+    `same` when both dates read and are equal, or when both are the same
+    non-empty text that does not read; `older` / `newer` when both read and
+    differ; `unknown` when either is missing or unreadable, which is never
+    treated as `same` or `newer` (a date nobody can read proves nothing about
+    which file is the stale one). The date is a DAY, so two downloads on one day
+    are `same` — the portal's 2B for a period is a statement, regenerated, not a
+    stream.
+    """
+    before = (earlier_generated_on or "").strip()
+    after = (new_generated_on or "").strip()
+    if not before or not after:
+        return UNKNOWN_DOWNLOAD
+    a, b = parse_cell_date(before), parse_cell_date(after)
+    if a is None or b is None:
+        return SAME_DOWNLOAD if before == after else UNKNOWN_DOWNLOAD
+    if b == a:
+        return SAME_DOWNLOAD
+    return NEWER_DOWNLOAD if b > a else OLDER_DOWNLOAD
 
 
 def assess(parsed: GSTR2BFile, *, typed_period: Optional[str] = None,
