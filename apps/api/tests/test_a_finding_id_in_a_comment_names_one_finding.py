@@ -23,6 +23,7 @@ WHAT THIS HOLDS, AND THE SHAPE OF IT
 """
 from __future__ import annotations
 
+import functools
 import re
 from pathlib import Path
 
@@ -37,7 +38,7 @@ NEIGHBOURHOOD = 200
 ID = "GST-16"
 
 #: Never a source file, whatever root the walk reaches them from.
-SKIP_PARTS = {"node_modules", "__pycache__", ".next", "out"}
+SKIP_PARTS = {"node_modules", "__pycache__", ".next", "out", ".venv", "venv", "site-packages", ".hypothesis"}
 
 
 def _files() -> list[Path]:
@@ -54,14 +55,26 @@ def _files() -> list[Path]:
             if p.is_file() and p.resolve() != THIS_FILE and not (SKIP_PARTS & set(p.relative_to(REPO).parts))]
 
 
-def _mentions() -> list[tuple[Path, str]]:
-    found = []
+@functools.lru_cache(maxsize=1)
+def _scan() -> tuple[int, tuple[tuple[Path, str], ...]]:
+    """(how many files were read, [(file, its text with whitespace collapsed)] for those that mention the id). Read
+    once and shared, because every test below asks the same question of the same tree."""
+    read = 0
+    mentioning: list[tuple[Path, str]] = []
     for path in _files():
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        flat = re.sub(r"\s+", " ", text)
+        read += 1
+        if ID in text:
+            mentioning.append((path, re.sub(r"\s+", " ", text)))
+    return read, tuple(mentioning)
+
+
+def _mentions() -> list[tuple[Path, str]]:
+    found = []
+    for path, flat in _scan()[1]:
         for m in re.finditer(re.escape(ID) + r"\b", flat):
             found.append((path, flat[max(0, m.start() - NEIGHBOURHOOD): m.end() + NEIGHBOURHOOD]))
     return found
@@ -70,7 +83,7 @@ def _mentions() -> list[tuple[Path, str]]:
 def test_the_scan_reads_the_tree_and_finds_the_validator_finding_it_is_allowed_to_find():
     """Not vacuous: `GST-16` still names the GSTR-1 validator finding in the web code, so a scan that found nothing
     would be a scan that read nothing."""
-    assert len(_files()) > 500, "the scan found almost no files; the rule below would pass over nothing"
+    assert _scan()[0] > 500, "the scan found almost no files; the rule below would pass over nothing"
     assert any("validator" in window.lower() for _path, window in _mentions()), (
         "no mention of GST-16 sits beside the word validator any more; if the web comments were reworded, "
         "update this premise, do not delete the test")
@@ -90,5 +103,5 @@ def test_gst_16_is_never_used_for_attributing_documents_to_a_registration():
 def test_none_of_the_old_phrasings_comes_back(phrase):
     """The four spellings that were in use. They are covered by the rule above whenever 'registration' is nearby;
     this names them so a rewording that moves the word away still fails."""
-    hits = [p for p in _files() if phrase in re.sub(r"\s+", " ", p.read_text(encoding="utf-8", errors="ignore"))]
+    hits = [p for p, flat in _scan()[1] if phrase in flat]
     assert not hits, f"{phrase!r} is back in {[str(h.relative_to(REPO)) for h in hits]}"
