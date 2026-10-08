@@ -17,6 +17,13 @@ WHAT THIS IS FOR
     PostgREST cannot give. What it does is stop the books being quietly wrong
     until somebody reads a log.
 """
+import ast
+import inspect
+
+import pytest
+
+from domain.accounting import journal_source
+from services import reconciliation_service as rs
 from services.reconciliation_service import _CHECKS, check_orphan_money_journals
 
 
@@ -26,9 +33,11 @@ class Line:
 
 
 class Entry:
-    def __init__(self, eid, entry_type, debit=0, ref="VPMT-0001", when="2026-03-27"):
+    def __init__(self, eid, entry_type, debit=0, ref="VPMT-0001", when="2026-03-27",
+                 source_type=None, reversal_of=None):
         self.id, self.entry_type = eid, entry_type
         self.reference_no, self.entry_date = ref, when
+        self.source_type, self.reversal_of = source_type, reversal_of
         self.lines = [Line(debit=debit), Line(credit=debit)]
 
 
@@ -139,3 +148,72 @@ def test_the_summary_says_what_happened_and_what_to_do():
     summary = out[0]["summary"]
     assert "no payment or receipt document behind them" in summary
     assert "Reverse them" in summary, "a Partner reading this needs the next step"
+
+
+# ── Which entries it judges ──────────────────────────────────────────────────
+#
+# The check searches two tables, receipts and purchase_payments. A posting is
+# worth searching for only if its source says one of them should hold it. The
+# Payment / Receipt entries below have no row in either BY DESIGN, and each was
+# reported as "most likely a document insert failed" on a healthy book:
+#   payroll_disbursement  salary paid out of the bank (Sunrise 10, Vaibhav 10)
+#   bank_transaction      every voucher passed from the bank queue
+#   bill_of_entry         the import duty is paid to customs, not a supplier
+#   bank_overpayment      a bank line larger than the document it settled
+#   manual                a voucher typed or imported by a person
+
+NOT_SEARCHABLE = sorted(journal_source.ALL_SOURCES - rs._JUDGED_SOURCES)
+
+
+@pytest.mark.parametrize("source", NOT_SEARCHABLE)
+@pytest.mark.parametrize("kind", ["Payment", "Receipt"])
+def test_a_posting_whose_source_is_not_a_searched_table_is_not_an_orphan(source, kind):
+    assert run([Entry("je1", kind, debit=100, source_type=source)], DB()) == []
+
+
+@pytest.mark.parametrize("source", sorted(rs._JUDGED_SOURCES))
+def test_a_posting_whose_document_should_exist_and_does_not_is_still_critical(source):
+    out = run([Entry("je1", "Payment", debit=100, source_type=source)], DB())
+    assert len(out) == 1 and out[0]["severity"] == "critical"
+
+
+def test_an_unstamped_posting_is_still_judged():
+    """It predates the source stamp (migration 104), so it cannot be told from
+    an orphan; judging it is the safe side."""
+    out = run([Entry("je1", "Receipt", debit=100, source_type=None)], DB())
+    assert len(out) == 1
+
+
+def test_a_reversal_entry_is_the_compensation_not_an_orphan():
+    """reverse_entry copies the original's entry type and source onto the
+    reversal, and no document row points at the reversal. The original has its
+    row and a reversal against it; the reversal itself was reported as a
+    critical orphan."""
+    original = Entry("je1", "Receipt", debit=100, source_type="receipt")
+    reversal = Entry("je2", "Receipt", debit=100, source_type="receipt", reversal_of="je1")
+    assert run([original, reversal], DB(receipts=["je1"], reversals=["je1"])) == []
+
+
+def test_a_reversal_of_a_phantom_does_not_hide_a_second_phantom():
+    """Skipping reversal entries must not skip an ordinary orphan beside them."""
+    phantom = Entry("je1", "Payment", debit=100, source_type="purchase_payment")
+    reversed_ = Entry("je2", "Payment", debit=100, source_type="purchase_payment")
+    reversal = Entry("je3", "Payment", debit=100, source_type="purchase_payment", reversal_of="je2")
+    out = run([phantom, reversed_, reversal], DB(reversals=["je2"]))
+    assert [e["journal_entry_id"] for e in out[0]["details"]["entries"]] == ["je1"]
+
+
+def test_the_sources_judged_are_exactly_the_tables_searched():
+    """The rule, not a list: the check may look for a document only in the
+    tables it judges by, and may judge only by sources whose table it looks in.
+    So the document tables are named once (``_MONEY_DOCUMENT_TABLES``) and the
+    check body names no other table than the journal it asks about reversals."""
+    assert rs._JUDGED_SOURCES == {src for _t, src in rs._MONEY_DOCUMENT_TABLES}
+    assert rs._JUDGED_SOURCES <= journal_source.ALL_SOURCES
+    tree = ast.parse(inspect.getsource(check_orphan_money_journals).lstrip())
+    named = {
+        node.args[0].value for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "table" and node.args and isinstance(node.args[0], ast.Constant)
+    }
+    assert named == {"journal_entries"}, named
