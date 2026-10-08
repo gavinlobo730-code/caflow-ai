@@ -64,13 +64,20 @@ from typing import Any, Iterable, Optional
 
 from domain.accounting import opening_documents as od
 from domain.money_text import rupees_paise
-from domain.spreadsheet_cells import DATE_FORMAT_SENTENCE, fold_name, parse_cell_date
+from domain.spreadsheet_cells import fold_name, parse_cell_date, why_not_a_date
 
 #: A ceiling on one request. Bulk inserts are chunked below it, but a request that
 #: carries tens of thousands of rows is a different job (an ERP migration), and
 #: refusing it beats a request that outlives the proxy's patience halfway through
 #: writing — which leaves exactly the half-imported client this exists to avoid.
 MAX_ROWS = 5000
+
+#: Said once for a row whose amount arrived as nothing. The rule behind it
+#: (`opening_documents.problem_with`, "still owed") is about an amount that WAS
+#: read and is nil or negative, and is deliberately not restated here.
+AMOUNT_UNREADABLE_SENTENCE = (
+    "The outstanding amount is blank or is not a rupee figure — write digits "
+    "with an optional decimal point, for example 1,25,000.00, with no letters.")
 
 NEW = "new"
 ALREADY_RECORDED = "already_recorded"
@@ -118,6 +125,27 @@ class Verdict:
 
 def _r(paise: int) -> str:
     return f"₹{rupees_paise(paise)}"
+
+
+def _read_dates(row: ImportRow) -> tuple[Optional[date], Optional[date], bool, list[str]]:
+    """(document date, due date, whether the document date was present but unreadable,
+    the sentences for whatever could not be read).
+
+    Each sentence says which part was wrong: a two-digit year, a day that is not
+    on the calendar, or text that is not a date (`why_not_a_date`).
+    """
+    problems: list[str] = []
+    on = parse_cell_date(row.document_date)
+    due_text = (row.due_date or "").strip()
+    due = parse_cell_date(due_text) if due_text else None
+    unreadable = bool((row.document_date or "").strip()) and on is None
+    if unreadable:
+        problems.append(f"The document date \"{row.document_date.strip()}\" is not "
+                        f"a date: {why_not_a_date(row.document_date)}.")
+    if due_text and due is None:
+        problems.append(f"The due date \"{due_text}\" is not a date: "
+                        f"{why_not_a_date(due_text)}.")
+    return on, due, unreadable, problems
 
 
 def _resolve_party(row: ImportRow, kind: str, parties: list[dict],
@@ -214,16 +242,18 @@ def plan(kind: str, rows: Iterable[ImportRow], parties: list[dict],
         # its own sentence; the rule in `problem_with` is then asked with a
         # stand-in for that one field, so it does not say the same thing a
         # second time — the sentence already said it.
-        on = parse_cell_date(r.document_date)
-        due_text = (r.due_date or "").strip()
-        due = parse_cell_date(due_text) if due_text else None
-        date_unreadable = bool((r.document_date or "").strip()) and on is None
-        if date_unreadable:
-            problems.append(f"The document date \"{r.document_date.strip()}\" is not "
-                            f"a date: {DATE_FORMAT_SENTENCE}.")
-        if due_text and due is None:
-            problems.append(f"The due date \"{due_text}\" is not a date: "
-                            f"{DATE_FORMAT_SENTENCE}.")
+        on, due, date_unreadable, date_problems = _read_dates(r)
+        problems.extend(date_problems)
+
+        # An amount the browser could not read as a rupee figure arrives as None
+        # (a cell reading "Rs. 1,234.50", a blank one from a caller that sent no
+        # amount). It is NOT an amount of nil, and `problem_with` would read it
+        # as one — "already settled, not carried over" — which sends a CA to a
+        # document that was never settled. It has its own sentence, and the rule
+        # is then asked with a stand-in for the field, as the date's is.
+        amount_unreadable = r.outstanding_paise is None
+        if amount_unreadable:
+            problems.append(AMOUNT_UNREADABLE_SENTENCE)
 
         refusal = od.problem_with(
             kind=kind,
@@ -231,7 +261,7 @@ def plan(kind: str, rows: Iterable[ImportRow], parties: list[dict],
             document_no=number,
             document_date=(on.isoformat() if on else "2000-01-01" if date_unreadable else None),
             due_date=(due.isoformat() if due else None),
-            outstanding_paise=(r.outstanding_paise if r.outstanding_paise is not None else 0))
+            outstanding_paise=(1 if amount_unreadable else r.outstanding_paise))
         problems.extend(refusal.reasons)
 
         pid = (party or {}).get("id")

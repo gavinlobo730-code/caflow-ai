@@ -166,12 +166,19 @@ def test_a_date_is_read_day_first(text):
     assert v.entry_date == "2026-04-05"
 
 
-@pytest.mark.parametrize("text", ["4/5/26", "31-02-2026", "", "tomorrow"])
-def test_a_date_that_cannot_be_read_with_certainty_is_refused_by_row(text):
+@pytest.mark.parametrize("text,reason", [
+    ("4/5/26", "two-digit year"),
+    ("31-02-2026", "February 2026 has 28 days"),
+    ("13/13/2026", "there is no month 13"),
+    ("tomorrow", "for example 15-03-2025"),
+    ("", "the date is blank"),
+])
+def test_a_date_that_cannot_be_read_with_certainty_is_refused_by_row(text, reason):
     [v] = plan(voucher(date=text))
     assert v.status == vi.REJECTED and "Row 1" in v.sentence
-    if text:
-        assert "two-digit year" in v.sentence
+    assert reason in v.sentence, v.sentence
+    # a fault that is not a two-digit year is not blamed on one (PRE-A-001)
+    assert ("two-digit year" in v.sentence) == (reason == "two-digit year"), v.sentence
 
 
 def test_a_voucher_is_dated_once():

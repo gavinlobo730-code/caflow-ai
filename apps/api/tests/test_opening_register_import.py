@@ -100,10 +100,13 @@ def test_a_mid_year_position_is_refused_with_the_way_round(text):
 
 @pytest.mark.parametrize("text,fragment", [
     ("", "blank"), ("soon", "not a date"), ("31/3/26", "two-digit year"),
+    ("31-02-2026", "February 2026 has 28 days"), ("31/13/2026", "there is no month 13"),
 ])
 def test_a_position_that_is_not_a_date_is_refused(text, fragment):
     d, why = reg.position_problem(text, TODAY)
     assert d is None and fragment in why
+    if fragment != "two-digit year":
+        assert "two-digit year" not in why, why
 
 
 def test_a_position_that_has_not_happened_is_refused():
@@ -244,10 +247,25 @@ def test_an_asset_bought_after_the_position_is_an_addition_not_an_opening_balanc
     assert one(R(purchase_date="31-03-2026")).status == reg.NEW
 
 
-@pytest.mark.parametrize("text", ["", "soon", "4/1/26", "31-02-2026"])
-def test_a_purchase_date_that_cannot_be_read_with_certainty_is_refused(text):
+@pytest.mark.parametrize("text,reason", [
+    ("", "is blank"), ("soon", "for example 15-03-2025"), ("4/1/26", "two-digit year"),
+    ("31-02-2026", "February 2026 has 28 days"),
+])
+def test_a_purchase_date_that_cannot_be_read_with_certainty_is_refused(text, reason):
     v = one(R(purchase_date=text))
     assert v.status == reg.REJECTED and "purchase date" in v.sentence
+    assert reason in v.sentence, v.sentence
+    assert ("two-digit year" in v.sentence) == (reason == "two-digit year"), v.sentence
+
+
+@pytest.mark.parametrize("text,reason", [
+    ("soon", "for example 15-03-2025"), ("4/1/26", "two-digit year"),
+    ("31-02-2021", "February 2021 has 28 days"),
+])
+def test_a_put_to_use_date_that_cannot_be_read_says_why(text, reason):
+    v = one(R(put_to_use_date=text))
+    assert v.status == reg.REJECTED and "put-to-use date" in v.sentence
+    assert reason in v.sentence, v.sentence
 
 
 def test_a_put_to_use_date_is_never_taken_from_the_purchase_date():

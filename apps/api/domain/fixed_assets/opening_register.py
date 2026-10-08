@@ -75,7 +75,7 @@ from domain.fixed_assets import asset_code as asset_code_rule
 from domain.fixed_assets import integrity as fa_integrity
 from domain.fixed_assets import schedule_ii
 from domain.money_text import rupees_paise
-from domain.spreadsheet_cells import DATE_FORMAT_SENTENCE, fold_name, parse_cell_date
+from domain.spreadsheet_cells import fold_name, parse_cell_date, why_not_a_date
 
 NEW = "new"
 ALREADY_RECORDED = "already_recorded"
@@ -126,7 +126,7 @@ def position_problem(text: Optional[str], today: date) -> tuple[Optional[date], 
     if d is None:
         if not raw:
             return None, "The position date is blank — the date the accumulated depreciation is stated as at."
-        return None, (f"The position date \"{raw}\" is not a date — {DATE_FORMAT_SENTENCE}.")
+        return None, (f"The position date \"{raw}\" is not a date — {why_not_a_date(raw)}.")
     if (d.month, d.day) != (3, 31):
         return None, (
             f"The position date must be a financial-year end, 31 March — {d.isoformat()} "
@@ -360,7 +360,7 @@ def plan(rows: Iterable[ImportRow], existing_by_code: dict[str, dict],
         if bought is None:
             given = _text(r.purchase_date)
             problems.append(
-                f"The purchase date \"{given}\" is not a date — {DATE_FORMAT_SENTENCE}."
+                f"The purchase date \"{given}\" is not a date — {why_not_a_date(given)}."
                 if given else "The purchase date is blank.")
         elif bought > as_at:
             problems.append(
@@ -373,7 +373,7 @@ def plan(rows: Iterable[ImportRow], existing_by_code: dict[str, dict],
             if put_to_use is None:
                 problems.append(
                     f"The put-to-use date \"{_text(r.put_to_use_date)}\" is not a date — "
-                    f"{DATE_FORMAT_SENTENCE}.")
+                    f"{why_not_a_date(_text(r.put_to_use_date))}.")
             elif bought is not None and put_to_use < bought:
                 problems.append(
                     f"Put to use on {put_to_use.isoformat()}, before it was bought on "
