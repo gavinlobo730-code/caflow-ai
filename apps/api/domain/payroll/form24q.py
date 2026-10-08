@@ -1,34 +1,41 @@
 """
 TODO(compliance): docs/compliance/03-income-tax-and-tds.md
-    THIS MODULE'S FORM NUMBER AND ITS SECTION CODE ARE BOTH OBSOLETE FOR
-    PERIODS FROM 01-04-2026. VERIFIED 2026-09-04, not speculation.
+    THIS MODULE'S FORM NUMBER AND ITS SECTION CODE ARE RESOLVED FROM THE PERIOD,
+    NOT STATED HERE. VERIFIED 2026-09-04, not speculation.
 
     The Income-tax Act 2025 and Income-tax Rules 2026 took effect 01-04-2026
     (CBDT Notification 22/2026 dated 20-03-2026, G.S.R. 198(E), plus a later
     corrigendum). 24Q -> Form 138 (Rule 219, ss. 392 and 393(1)); 26Q -> 140;
     27Q -> 144; 27EQ -> 143. Form 16 -> 130, and it now has THREE parts.
 
-    AND THE SECTION CODE MOVED, WHICH THIS MODULE EMITS. Line ~176 writes
-    section="192". Under the 2025 Act salary TDS is s. 392, the whole 194-series
-    collapsed into s. 393(1) with a table, and s. 195 became s. 393(2) — not
-    s. 400, whatever one secondary source says. Returns now carry numeric
-    payment codes 1001-1067. Rates and thresholds are UNCHANGED, so
-    section_rates.py holds the right numbers under the wrong keys.
+    The section code moved too: under the 2025 Act salary TDS is s. 392, the
+    whole 194-series collapsed into s. 393(1) with a table, and s. 195 became
+    s. 393(2), not s. 400, whatever one secondary source says. Rates and
+    thresholds are UNCHANGED, so section_rates.py holds the right numbers under
+    1961-Act keys, deliberately.
 
     TRANSITION IS BY EVENT, NOT BY FILING DATE: credit or payment, whichever is
     earlier. On or before 31-03-2026 -> 1961 Act and these forms, INDEFINITELY,
     including belated and revised returns. On or after 01-04-2026 -> the new
     ones. So both vocabularies are needed forever; this is not a migration.
 
-    THE OTHER HALF NOW EXISTS: domain/tds/vocabulary.py resolves the form
-    number and the section code from the PERIOD, carrying both vocabularies
-    permanently, and this module takes a financial_year so it can ask. What
-    remains outstanding is the s. 393 numeric payment-code table (1001-1067),
-    which is not held and is not guessed — vocabulary.payment_code_gap() names
-    it, and it rides on the working paper so the CA fills it in on the portal.
+    WHAT IS BUILT: domain/tds/vocabulary.py resolves the form number and the
+    section code from the PERIOD, carrying both vocabularies permanently, and
+    build_24q_from_payroll takes a REQUIRED financial_year (no default) so it
+    can ask: it writes the period's section onto each row, and the working
+    paper's banner names the period's form. The stored routing key stays "192".
+
+    WHAT IS STILL OUTSTANDING is the rest of the s. 393 payment-code table. A
+    confirmed subset is held (payment_code_for answers fourteen sections,
+    s.192 among them, and services/tds_return_service.py puts the code on the
+    24Q/26Q/27Q statement builders' deductee rows), but this module's payroll
+    working paper has no payment-code column: its CSV says so in the file
+    (vocabulary.gaps()) so the CA fills the code in on the portal. Nothing is
+    guessed for a section the table splits on a fact no record holds.
 
     Due dates are unchanged (31 Jul / 31 Oct / 31 Jan / 31 May) and
     services/compliance_engine.py remains their single source.
+
 Form 24Q, built from payroll instead of typed in again.
 
 WHAT WAS WRONG

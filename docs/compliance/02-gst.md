@@ -246,8 +246,9 @@ errors, summary-API failures, the GSTR-2B download breaking past 1,000 invoices.
   that as likely stale** and re-check against the GSP's current spec before
   relying on the payload shape.
 - `domain/gst/portal_service.py` is the seam. Its `get_provider(provider_name)`
-  takes a name and ignores it — wire the switch in the same commit that adds a
-  second provider, not after.
+  refuses any name but `manual` with a `ValueError` (pinned by
+  `tests/test_provider_factories_refuse_a_name_they_lack.py`), so the switch is
+  wired in the same commit that adds a second provider, not after.
 - A filing integration is **long-running, chunked and resumable by nature** —
   closer in shape to "Pass N ready" bank entries than to a report request. Note
   that `lib/api` aborts at 45 seconds and the abort is deliberately never

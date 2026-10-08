@@ -130,12 +130,21 @@ relied on silently.
 
 Three things it **refuses** rather than guessing:
 
-- **The s. 393 payment-code table (1001–1067) is not held.** Sixty-seven guessed
-  codes would be sixty-seven wrong labels, and a wrong payment code is
-  *accepted* and then wrong — worse than a rejection, because nothing tells the
-  CA. `payment_code_gap()` names it, and it rides on the 24Q/138 working paper
-  so a complete-looking file says which column is missing. **This is a human
-  step**, like the ITR schemas and the state PT slabs.
+- **The s. 393 payment-code table (1001–1067) is held only in part.** A confirmed
+  subset is held (25-09-2026): `payment_code_for()` answers fourteen sections (s.192,
+  193, 194, 194B, 194C, 194D, 194G, 194H, 194I(a), 194I(b), 194J(a), 194LA, 194Q,
+  194T) from Annexure 2 of Protean's specification for the renumbered statements, and
+  `domain/tds/deductee_payment_code.py` puts the code on every deductee row of the
+  24Q, 26Q and 27Q builders in `services/tds_return_service.py` (`payment_code`,
+  `payment_code_gap` and `payment_code_assumption`, always present, null for a
+  1961-Act period). A section that splits on a fact no record holds (s.194A, s.194J(b),
+  the bare 194I and 194J) is a named gap with its own reason and is never guessed:
+  sixty-seven guessed codes would be sixty-seven wrong labels, and a wrong payment
+  code is *accepted* and then wrong — worse than a rejection, because nothing tells
+  the CA. `payment_code_gap()` still names the table's incompleteness at the return
+  level. The payroll-built 24Q CSV (`domain/payroll/form24q.py`) has no payment-code
+  column and says so in the file. **The rest of the table is a human step**, like the
+  ITR schemas and the state PT slabs.
 - **s. 393(1) has no reverse.** The whole 194-series collapsed into it, so
   asking which of 194C, 194J or 194H a line was means inventing one.
 - **A form cannot be asked for without a period.** Defaulting to today would
@@ -404,13 +413,22 @@ already takes: it groups the figures `tds_26q_from_books` /
 own confirmed record hierarchy (so a CA keys them into the real RPU screens
 in the right order), and says so on the sheet in as many words — it is never
 represented as, and never becomes, the government's own upload file. Item 7
-above stays open rather than closed by this: closing it for real needs a
+above stays open rather than closed by this (the paragraph after this one says what
+of the specification was read): closing it for real needs a
 human to download `tinpan.proteantech.in`'s current XLS/PDF specs for Forms
 138/140/143/144 with an ordinary browser (that domain is not blocked for a
 human, only for this sandbox), after which a real writer could be built and
 round-tripped through an actual FVU run before being trusted — exactly the
 "a human downloads them" posture CLAUDE.md already takes for the ITR JSON
 schemas.
+
+**What was read of the Protean specification, and what was not.** On 25-09-2026 the
+owner fetched Protean's file-format specification for the renumbered statements
+(Forms 138/140/144, Tax Year 2026-27), and its Annexure 2, the payment-code table,
+was read directly: `domain/tds/vocabulary.py` records it and is the authority for
+what was taken. Only that annexure was used. No copy of the specification is
+committed under `docs/compliance/sources/`, and this document does not claim to hold
+the record layouts, the FVU version or a CSI, so the decision above stands.
 
 ### ⚠️ The highest-value lead in this whole document
 
@@ -536,13 +554,17 @@ with the suite green.
 
 ## 6. Verify before relying on any of this
 
-1. **Whether the 2025 Act renumbering is real and what it does to §0.** Highest
-   priority. Task #125.
+1. ~~Whether the 2025 Act renumbering is real and what it does to §0.~~ **Settled:**
+   verified 2026-09-04 (§0) and built (`domain/tds/vocabulary.py`). Kept in the list so
+   the numbering other documents cite still holds.
 2. **Whether the CPC-TDS OpenAPI portal and a TSP scheme exist in production.**
 3. Whether the ERI scheme survives the 2025 Act, and the s.139(1B) equivalent.
 4. Whether the ITD API spec has been updated since November 2021.
 5. Whether the UAT / 4-IP / TLS-1.2 process applies to ERIs verbatim.
 6. Whether ERIs get AIS/TIS/26AS by API at all.
-7. Whether the TIN e-TDS file format spec is publicly published.
+7. Whether the TIN e-TDS file format spec is publicly published. **Part read, still
+   open:** the owner's 25-09-2026 download of the renumbered statements'
+   specification supplied its payment-code annexure (§4); the record layouts remain
+   `[U]`.
 8. Whether Protean's licence permits hosting the FVU in a SaaS.
 9. Current ERI fees and the approval SLA; whether registration is open.
