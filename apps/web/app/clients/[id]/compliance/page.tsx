@@ -24,6 +24,7 @@ import { formatRangeLabel } from "@/lib/dates/periods";
 import { useClientEntityType, offerWhenKnown } from "@/lib/clients/useClientEntityType";
 import { hasMcaObligations, mcaRegime } from "@/lib/entityObligations";
 import { errorMessage } from "@/lib/api";
+import { AiDisclosure } from "@/components/ai/AiDisclosure";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -184,6 +185,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
         {showExtract && (
           <div className="border rounded p-4 bg-ps-bg space-y-3">
             <p className="text-xs font-medium text-state-attention">⚠ CA Review Required — AI extraction only. The notice is held for review: no task is created and nobody is alerted until a CA approves it.</p>
+            <AiDisclosure surface="notice_extraction" />
             <textarea placeholder="Paste government notice text here…"
               value={noticeText} onChange={(e) => setNoticeText(e.target.value)}
               rows={6} className="w-full border rounded px-3 py-2 text-sm" />

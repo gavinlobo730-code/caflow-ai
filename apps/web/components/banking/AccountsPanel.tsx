@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { AiDisclosure } from "@/components/ai/AiDisclosure";
 
 export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
@@ -1066,6 +1067,9 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                         : "Only used if the PDF has no readable text — a normal PDF is parsed exactly, without AI."}
                       {" Nothing is imported unless the figures add up — to the statement\u2019s own totals if it prints them, otherwise to the balances above, which we\u2019ll then ask for."}
                     </span>
+                    {/* WHO RECEIVES THE PAGES, said beside the box it is about, so it is read
+                        before ticking and is part of the checkbox's label (PRE-A-006). */}
+                    <AiDisclosure surface="statement_scan" className="mt-1" />
                   </span>
                 </label>
               )}

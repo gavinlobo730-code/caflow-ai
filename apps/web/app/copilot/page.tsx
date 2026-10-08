@@ -11,6 +11,7 @@ import { BORDER, BRAND, BRAND_SURFACE } from "@/lib/design/tokens";
 import { formatDate } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { AiDisclosure } from "@/components/ai/AiDisclosure";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -414,6 +415,7 @@ export default function CopilotPage() {
                     <button onClick={() => setChatError(null)} className="text-red-400 hover:text-red-600 shrink-0">✕</button>
                   </div>
                 )}
+                <AiDisclosure surface="copilot" className="max-w-3xl mx-auto mb-2" />
                 <div className="max-w-3xl mx-auto flex items-end gap-3">
                   <div className="flex-1 relative">
                     <textarea
