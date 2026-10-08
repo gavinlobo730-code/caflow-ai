@@ -339,6 +339,7 @@ export default function ScheduleIIIPage() {
           .from("clients")
           .select("id, client_name")
           .eq("firm_id", fid)
+          .eq("is_internal", false)
           .order("id"));
         setClients(((cls ?? []) as { id: string; client_name: string }[])
           .map((c) => ({ id: c.id, name: c.client_name }))

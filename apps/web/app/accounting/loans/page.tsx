@@ -241,7 +241,7 @@ export default function LoansAndFDPage() {
       const firmId = await getFirmId();
       const sb = getSupabaseClient();
       const [clientsRes, loansRes, fdsRes] = await Promise.all([
-        sb.from("clients").select("id, name:client_name").eq("firm_id", firmId).order("client_name"),
+        sb.from("clients").select("id, name:client_name").eq("firm_id", firmId).eq("is_internal", false).order("client_name"),
         sb
           .from("loans")
           .select("*, clients(name:client_name)")

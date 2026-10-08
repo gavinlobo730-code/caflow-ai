@@ -93,7 +93,7 @@ export default function DeclarationsPage() {
         const fid = await getFirmId();
         if (!fid) return;
         const { data } = await sb.from("clients")
-          .select("id, client_name").eq("firm_id", fid).order("client_name");
+          .select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("client_name");
         setClients(data ?? []);
       } catch (e) {
         console.error("load clients:", e);

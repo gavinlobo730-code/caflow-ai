@@ -13,7 +13,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { getClients } from "@/lib/data/clients";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { Client } from "@/lib/types/index";
 import { formatDateTime } from "@/lib/dates/format";
@@ -150,18 +150,15 @@ function buildWhatsAppUrl(phone: string, message: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Supabase: fetch clients
+// Fetch clients
 // ---------------------------------------------------------------------------
 
+// The firm's own clients, archived included (the same rows and order this
+// screen always read), through `getClients` so the firm's INTERNAL practice
+// client (Guardrail G2) is left out: a message to "your own firm" is not a
+// client message. PRE-A-017.
 async function fetchClients(): Promise<Client[]> {
-  const sb = getSupabaseClient();
-  const { data, error } = await sb
-    .from("clients")
-    .select("*")
-    .is("deleted_at", null)
-    .order("client_name");
-  if (error) throw new Error(error.message);
-  return (data ?? []) as Client[];
+  return getClients("all");
 }
 
 // ---------------------------------------------------------------------------

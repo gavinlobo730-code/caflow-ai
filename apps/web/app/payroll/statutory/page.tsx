@@ -75,7 +75,7 @@ export default function StatutoryPage() {
         // stop at 1000, and the name ordering is applied to the rows that come
         // back because selectAll orders by its own key inside the query.
         const { data } = await selectAll(() => sb.from("clients")
-          .select("id, client_name").eq("firm_id", fid).order("id"));
+          .select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("id"));
         setClients([...(data ?? [])].sort((a, b) =>
           String(a.client_name).localeCompare(String(b.client_name))));
       } catch (e) {
