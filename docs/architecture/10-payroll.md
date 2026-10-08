@@ -1,12 +1,14 @@
 # 10 — Payroll
 
-> **STATUS, 7 September 2026: PARTLY SUPERSEDED — read this box before the rest.**
+> **STATUS, 7 September 2026, annotated 8 October 2026: PARTLY SUPERSEDED — read this box before the rest.**
 >
 > The owner set this document aside on 7 September 2026 and directed that payroll be
 > planned from the scope given that day: the customer is the **CA firm**, every module
 > must be strong enough to buy on its own (breadth *and* depth), and there are no live
 > users. See `docs/audits/2026-09-07-where-we-are-against-the-one-platform-goal.md`
-> §12.3 for what replaces what.
+> §12.3 for what replaces what (that file was deleted on 8 October 2026 and is
+> recoverable: `git show 315e6a19:docs/audits/2026-09-07-where-we-are-against-the-one-platform-goal.md`;
+> see `docs/audits/README.md`).
 >
 > **Still current — the model, and it follows from the customer being the firm:** the
 > bureau shape (firm screen = client-month queue, client screen = employee-slip
@@ -18,13 +20,18 @@
 > **No longer current — the sequencing.** The 1 April 2027 cutover and the deliberate
 > non-building of mid-year migration were a calendar device to dodge the
 > opening-position problem. `payroll_opening_positions` is to be built properly
-> instead: a CA firm wins clients year-round. The deferrals — FVU-validated 24Q, Form
-> 16 distribution, bank advice — come back into scope under "depth".
+> instead: a CA firm wins clients year-round. **It is still not built** (there is no
+> such table and no code for it). The deferrals came back into scope under "depth" and
+> have gone different ways: bank advice **shipped** (`domain/payroll/bank_advice.py`);
+> the FVU-validated 24Q file was reconsidered and is **deliberately not built**
+> (`domain/tds/keying_sheet.py` is the answer instead); Form 16 distribution is still
+> deferred, and Form 16 Part B is still never generated.
 >
-> **Also stale in detail:** the phase list marks items as to-do that have since
-> shipped — salary structures are wired (`domain/payroll/salary_structure.py`),
-> per-client statutory registrations exist (migration 325), and `statutory_gaps` now
-> reaches the screen (`apps/web/app/clients/[id]/payroll/page.tsx:574-591`).
+> **Also stale in detail, and replaced:** the twelve-row phase list below marked items
+> as to-do that have all since shipped. It is now "What shipped, and where", with what
+> is still to build listed under it. `statutory_gaps` reaches the screen: the client
+> payroll page (`apps/web/app/clients/[id]/payroll/page.tsx`) reads it off the run, and
+> releasing over a gap needs a typed reason.
 >
 > **The two defects this box named on 7 September are FIXED (8 September 2026)**,
 > and three more that the fix work surfaced went with them. Recorded here because
@@ -70,13 +77,16 @@ That reading is right, and it is right about the **surface**, not the engine.
   nothing sets one from another. ESI is modelled on Rule 50 contribution periods
   rather than the current month's wage. §89 compares years at their **own** rates
   and refuses a year the registry does not hold. Where a statutory input cannot
-  be derived, the code refuses and returns a **named gap**. Fifteen domain
-  modules, thirty-six endpoints, and a full-year walk-through behind it
-  (`docs/audits/2026-09-01-payroll-can-it-run-a-year.md`).
-- **The surface is not a product.** Six pages, 5,644 lines, of which
-  `app/payroll/page.tsx` is 1,793. Payroll is one link inside Accounting's rail.
-  Attendance is reachable by no route at all. There is no screen anywhere that
-  shows a **firm** its payroll across clients — and a firm is what we sell to.
+  be derived, the code refuses and returns a **named gap**. As at 4 September 2026
+  that was fifteen domain modules and thirty-six endpoints, with a full-year
+  walk-through behind it (`docs/audits/2026-09-01-payroll-can-it-run-a-year.md`,
+  deleted 8 October 2026: `git show 315e6a19:docs/audits/2026-09-01-payroll-can-it-run-a-year.md`).
+- **The surface is not a product.** As at 4 September 2026, from the same audit: six
+  pages, 5,644 lines, of which `app/payroll/page.tsx` was 1,793. Payroll was one link
+  inside Accounting's rail. Attendance was reachable by no route at all. There was no
+  screen anywhere that showed a **firm** its payroll across clients — and a firm is
+  what we sell to. Those figures are the state the redesign started from, not the
+  state now: see "What shipped, and where".
 
 And the surface is not merely thin. It computes statutory files in the browser,
 by rules the backend fixed months ago. See **Live defects** below: those ship
@@ -157,17 +167,18 @@ Six sections.
 > query parameter**, not routes. A per-client route tree is unbuildable at any
 > price. This is also a standing risk worth its own task, independent of payroll.
 
-| entry | scope | what it is |
-|---|---|---|
-| **Month** (`/payroll`) | firm | The client-month queue. The bureau's screen on the 3rd and the 10th. |
-| **People** (`/payroll/people`) | firm | Roster across every client, one employee form, one bulk import, the exception index. |
-| **Declarations** (`/payroll/declarations`) | firm | Kept exactly as it is — see below. |
-| **Statutory** (`/payroll/statutory`) | firm | Deposits · Filings · Year-end. |
-| **Reports** (`/payroll/reports`) | firm | Rebuilt server-side. |
-| **Setup** (`/payroll/setup`) | firm | Calendars, statutory identity, pay components, **state coverage**. |
-| **Client → Payroll** (`/clients/[id]/payroll`) | client | Inputs · Register · Release · Outputs. The existing route, rebuilt as a shell. |
-| **Client portal → Payroll** | client | Register to review, statutory dues, **approve or return**, published payslips. |
-| **Employee portal → Pay** | employee | Payslip, **how your TDS was arrived at**, Form 12BB, Form 16. |
+| entry | scope | what it is | state, 8 October 2026 |
+|---|---|---|---|
+| **Month** (`/payroll`) | firm | The client-month queue. The bureau's screen on the 3rd and the 10th. | Built as the firm payroll screen with a client picker. The graded queue, one row per client with a ready, check or blocked grade, is **not built**. |
+| **People** (`/payroll/people`) | firm | Roster across every client, one employee form, one bulk import, the exception index. | Built. |
+| **Declarations** (`/payroll/declarations`) | firm | Kept exactly as it is — see below. | Built, as it was. |
+| **Statutory** (`/payroll/statutory`) | firm | Deposits · Filings · Year-end. | Built as the statutory deductions screen; it computes nothing in the browser. |
+| **Reports** (`/payroll/reports`) | firm | Rebuilt server-side. | Built, server-side. |
+| **Attendance** (`/payroll/attendance`) | firm | Not in the original table: the audit's complaint was that attendance was reachable by no route. | Built; the server decides loss of pay. |
+| **Setup** (`/payroll/setup`) | firm | Calendars, statutory identity, pay components, **state coverage**. | **Not built, by decision.** `/settings/statutory-values` is the state-coverage screen and `PayrollPanel` links to it; a second screen for one fact is the mistake the codebase records at `/accounting/retainer`. |
+| **Client → Payroll** (`/clients/[id]/payroll`) | client | Inputs · Register · Release · Outputs. The existing route, rebuilt as a shell. | Built. The four tabs exist, with File, Bonus and Setup beside them. |
+| **Client portal → Payroll** | client | Register to review, statutory dues, **approve or return**, published payslips. | **Not built.** |
+| **Employee portal → Pay** | employee | Payslip, **how your TDS was arrived at**, Form 12BB, Form 16. | Partly: payslips (their own PDF door) and the TDS projection. |
 
 **Declarations is deliberately unchanged.** It is already the standard every
 other payroll screen is held to: it computes nothing, renders server-issued
@@ -180,6 +191,13 @@ counts beside each refusal. It turns our largest liability into the one claim no
 competitor makes: we say what we do not know.
 
 ### The client month, in four verbs
+
+The four tabs exist on `/clients/[id]/payroll`. The table below is the design, and
+parts of it were not built as written: **no code carries "approver ≠ locker", the
+per-slip ready, check or blocked grade, or "Approve N ready"**. What stands in for
+them is `statutory_gaps` (the *defensible* half, as named gaps) and the month-on-month
+variance in `domain/payroll/month_on_month.py`, which names every component that moved
+(the *changed* half).
 
 | tab | the CA's job | verb |
 |---|---|---|
@@ -320,9 +338,17 @@ consistent.
 
 ## Go to market
 
-Payroll is **bundled into one subscription** — an owner decision of 2026-09-04.
-No payroll SKU, no per-employee meter. That makes payroll a **win-rate and
-retention instrument, not a revenue line**, and every choice below follows from it.
+> **Hypothesis, not finding.** This section was written on 4 September 2026, before any
+> customer was asked, and nothing in this repository tests it. The beachhead and the
+> demo below are what the author believed would work. Two parts of it were withdrawn on
+> 7 September and are marked.
+
+**The pricing posture is not restated here.** This section recorded a 4 September
+decision to bundle payroll into one subscription, with no payroll SKU and no
+per-employee meter. The 7 September scope ("every module strong enough to buy on its
+own") and later code comments do not agree on whether payroll is bundled, bought on
+its own, or priced per employee per month. That is the owner's to confirm. Nothing in
+the model or in what is built below depends on the answer.
 
 **The wedge, and its limit.** *Your client's payroll posts into the ledger you
 already close for them — the salary journal, the PF and ESI payables and the §192
@@ -337,27 +363,29 @@ nobody is using, and the sentence becomes a promise instead of a demonstration.
 **So the beachhead is firms already on PracticeSync for accounting** — 15–60
 clients, of whom 3–12 have employees, payroll run today in Excel or one
 single-employer login per client, 10–150 employees each, monthly salaried. Zero
-acquisition cost, no new contract, and the commitment asked for is a date rather
-than a purchase order.
+acquisition cost, no new contract. The figures in that sentence are the author's
+estimate and were not measured.
 
-**The date is 1 April 2027, and it is a property of the calendar, not a feature.**
-`_tds_already_deducted_this_fy` reads only slips this platform produced, so a
-mid-year import has no prior withholding on file and §192 withholds from a
-fiction. At 1 April every opening position — YTD salary, YTD TDS, lifetime
-§10(10)/§10(10AA) used — is **zero**, and zero is the only opening position that
-cannot be got wrong. Build to end-December 2026, parallel-run December to
-February on the firm's real months, roster cut-off 15 March, cut over 1 April.
+**WITHDRAWN 7 September 2026: the 1 April 2027 cutover, and "not building mid-year
+migration is the enforcement mechanism".** The argument was that a mid-year import has
+no prior withholding on file, so §192 withholds from a fiction, and that at 1 April
+every opening position (year-to-date salary, year-to-date TDS, the lifetime
+§10(10)/§10(10AA) amounts used) is zero, which is the only opening position that
+cannot be got wrong. The first half is still a fact: `_tds_already_deducted_this_fy`
+reads only slips this platform produced, so a client converted mid-year withholds
+without what the previous system withheld. The conclusion was withdrawn: a CA firm
+wins clients year-round, so the answer is to build the opening position, not to
+forbid mid-year clients. See "Still to build" below.
 
-**Not building mid-year migration is the enforcement mechanism.** Without the
-opening-position import, a mid-year conversion cannot happen by accident.
-
-**What makes bundling survivable is refusing to fund a compliance research desk.**
-Twenty states' PT slabs, sixteen LWF regimes and minimum wages revised twice
-yearly cannot be maintained against zero marginal revenue. Instead, a firm-scoped
-table where the **CA records what they read** — a state's PT slab, an LWF amount,
-the minimum wage for Bonus Act §12, SBI's Rule 3(7)(i) rate, an ESIC reason code
-— each with its notification reference, date and author, reusable across every
-client of that firm and printed on the register beside the computed figures.
+**What makes the product survivable at any price is refusing to fund a compliance
+research desk.** Twenty states' PT slabs, sixteen LWF regimes and minimum wages
+revised twice yearly cannot be maintained against zero marginal revenue. Instead, a
+firm-scoped table where the **CA records what they read** — a state's PT slab, an LWF
+amount, the minimum wage for Bonus Act §12, SBI's Rule 3(7)(i) rate, an ESIC reason
+code — each with its notification reference, date and author, reusable across every
+client of that firm and printed on the register beside the computed figures. **That
+shipped** (migration 327, `domain/payroll/firm_rates.py`, the
+`/settings/statutory-values` screen).
 
 One mechanism converts six *refused-by-design* blockers into two minutes of data
 entry, and makes our marginal cost of the next state **zero**. It is also why the
@@ -367,51 +395,73 @@ beachhead does not have to be a single state.
 Partner, not switched on firm-wide. That keeps one subscription intact, stops
 payroll appearing for clients that have none, and gives us the employee-month
 distribution — a firm at 5,000 employee-months is a platform-tier conversation,
-not a payroll invoice.
+not a payroll invoice. *The rationale was written for a bundled subscription, which
+is the open question above. The switch itself is built and does not depend on it:
+migration 332, and `payroll:enable` is Partner-only in `core/permissions.py`.*
 
 **The demo is the prospect's own last month**, imported and re-run. It rarely
 ties, because a hand-built sheet under §115BAC usually still deducts professional
 tax on Annexure II, or annualises the withholding instead of projecting it. Then
 one employee is posted to a state we do not model, and the system **names the
 gap** rather than deducting zero in silence. Every CA has been burned by a
-spreadsheet formula that quietly returned zero.
+spreadsheet formula that quietly returned zero. *This is the sales story and is
+untested.*
 
-## Phases
+## What shipped, and where
 
-Phase 1 is not a redesign. It is the wrong numbers, and every item is verified
-above.
+This replaces the twelve-row "v1 — build to end-December 2026" table, which sized
+each item in weeks and days. Every one of its twelve items has shipped. Phase 1 was
+never a redesign: it was the wrong numbers, and every item was verified above.
 
-**v1 — build to end-December 2026, in this order.**
-
-| # | what | size |
+| # | what | where it is |
 |---|---|---|
-| 1 | Employee master extended to everything the statutory outputs need (UAN, ESIC IP, PAN, DOB, gender, DOJ, PT state, bank), plus **one server-side bulk import** — whole-file validation, whole-file refusal, idempotent on employee code | weeks |
-| 2 | Per-client establishment identity: EPF establishment code, ESIC employer code, PT registration, LIN, the client's own TAN. *Grep finds none of these in the repo* — and the ECR, ESIC return and 24Q are finished, correct, and unusable without them | weeks |
-| 3 | Attendance/LOP as a server-side contract with a named cut-off and an explicit **not entered** — defect 5 | weeks |
-| 4 | **Firm-supplied statutory values** — the mechanism that makes bundling survivable | weeks |
-| 5 | The defensible release: `statutory_gaps` rendered (today it is returned by the API and appears in **zero** `.tsx` files), an unresolved gap **blocks** release, Partner override with a typed reason on the transition log | weeks |
-| 6 | Run-lifecycle correctness: accrual dated to the payroll month in IST, EDLI and PF admin charge into the GL, reversal on a screen, attendance read hoisted out of the per-employee loop | days |
-| 7 | One-time and variable earnings — incentive, bonus, arrears, ex-gratia. No real month is a pure repeat, and a December cohort hits a Diwali bonus immediately | weeks |
-| 8 | Wire `salary_structures` so a named structure applies to an employee. The table exists (migration 054) and **no run has ever read it** | days |
-| 9 | Month-end pack: bulk payslip PDFs, salary register and statutory summary rendered and exportable | weeks |
-| 10 | One payroll surface — the client-scoped workspace becomes canonical, the rival firm rail repointed at it, spine named on screen | weeks |
-| 11 | Payroll dates in the existing deadline view, plus a payroll-state column on the client list. `compliance_engine` already derives all of them | days |
-| 12 | Per-client payroll enablement — the cost brake | days |
+| 1 | Employee master extended to everything the statutory outputs need, and one server-side bulk import: whole-file validation, whole-file refusal, idempotent on employee code | `domain/payroll/employee_import.py`; UAN and IFSC format checks in `domain/payroll/identity.py` |
+| 2 | Per-client establishment identity: EPF establishment code, ESIC employer code, LIN, the client's own TAN, PT registration | migration 325 (`client_statutory_identity`, `client_pt_registrations`) |
+| 3 | Attendance and LOP as a server-side contract with an explicit **not entered** | migrations 324 and 326; `domain/payroll/attendance.py`; `routers/payroll.py::_attendance_gap` |
+| 4 | Firm-supplied statutory values | migration 327; `domain/payroll/firm_rates.py`; the `/settings/statutory-values` screen |
+| 5 | The defensible release: `statutory_gaps` rendered, and releasing over one needs a typed reason | `routers/payroll.py::_reason_for_releasing_with` and `finalize_run`; finalising is Partner-only (`payroll:finalize`) |
+| 6 | Run-lifecycle correctness: accrual dated to the payroll month in IST, the employer's PF, EDLI, admin charge and ESI in their own expense head, an unreleased run recomputed or deleted, a reversal that puts a loan back | `services/phase2_journal_service.py::journal_for_payroll`; migrations 375 and 367; `POST /api/payroll/runs/{run_id}/recompute` and `DELETE` |
+| 7 | One-time and variable earnings: incentive, bonus, arrears, ex-gratia | `domain/payroll/one_time_earnings.py`; migration 331 |
+| 8 | Salary structures wired, so a named structure applies to an employee and a revision records the structure that produced it | `domain/payroll/salary_structure.py`; migration 330 |
+| 9 | Month-end pack: the salary register and every payslip in one zip, built by the server | `GET /api/payroll/runs/{run_id}/payslips.zip` |
+| 10 | One payroll surface: the 13th top-level workspace, six screens (`/payroll`, `/payroll/people`, `/payroll/declarations`, `/payroll/statutory`, `/payroll/reports`, `/payroll/attendance`) | `components/panels/PayrollPanel.tsx`; `lib/workspace/workspaceConfig.ts` |
+| 11 | Payroll dates in the deadline view, and a payroll column on the client list | `services/compliance_engine.py::payroll_deposit_due_dates`; `payroll_enabled` in `apps/web/app/clients/page.tsx` |
+| 12 | Per-client payroll enablement, the cost brake | migration 332; `payroll:enable` in `core/permissions.py` |
 
-Defects 1–4 ship inside items 5, 6 and 1; defect 5 is item 3.
+Shipped beyond the twelve: bank advice, the month-on-month variance and department
+cost reports (`domain/payroll/bank_advice.py`, `month_on_month.py`,
+`department_cost.py`, served under `/api/payroll/reports/`), the bonus register
+(`domain/payroll/bonus_register.py`) and an employee-portal door for a payslip PDF and
+the §192 projection (`routers/portal_employee.py`).
+
+Defects 1–4 above shipped inside items 5, 6 and 1; defect 5 is item 3.
+
+### Still to build
+
+- **Opening positions for a client mid-year** (`payroll_opening_positions`: no table,
+  no code), with the **previous employer's salary and TDS under §192(2)**. Without
+  them §192 withholds from a position that omits what came before.
+- **The client portal's payroll surface**: register to review, statutory dues, approve
+  or return.
+- **The graded client-month queue** (ready, check, blocked per client and per slip)
+  and "Approve N ready".
+
+Not on this list because it was decided against: the FVU-validated 24Q file
+(`domain/tds/keying_sheet.py` instead) and a Form 16 Part B generator.
 
 **Deferred with reasons, not forgotten.** A formula engine for pay heads (the
 classic payroll trap — configuration grows to fill the schedule and nothing
 statutory ships). The cross-client work queue and batch operations (designing a
 forty-client board with zero payroll clients means guessing every column; the
-first cohort tells us the columns). Leave management. Mid-year migration — *not*
-building it is what enforces the April window. The FVU-validated 24Q file, due by
-July 2027 for a Q1 cohort. Form 16 distribution, first owed June 2028. Bank
-advice files — a per-bank format zoo that grows per **client**, the one cost
-shape a bundled price cannot absorb, and the payment is the client's act anyway.
-Employee-portal depth and bulk invites, because every one of them scales support
-by employee count against zero marginal revenue, which is exactly what
-competitors are pricing for.
+first cohort tells us the columns). Leave management. Form 16 distribution, first
+owed June 2028. Employee-portal depth and bulk invites, because every one of them
+scales support by employee count against zero marginal revenue, which is exactly
+what competitors are pricing for. **No longer deferred:** bank advice (shipped; the
+payment is still the client's act, and the file moves no money). **Reconsidered and
+decided against:** the FVU-validated 24Q file, because a byte-exact writer against a
+format that is still moving is a guess that gets a whole statement rejected; the
+keying sheet takes its place (`domain/tds/keying_sheet.py`). **Withdrawn:** mid-year
+migration as something to refuse, see "Go to market".
 
 ## Deliberately not built
 
@@ -440,11 +490,16 @@ summaries of vendor documentation, and two questions — how bureaux collect per
 inputs, and the operating month end to end — returned nothing at all. Every claim
 about a competitor should be treated as *reported*, not verified.
 
-The code-grounded half is sound: 125 capabilities with file-and-line evidence,
-44 structural problems, and the four defects above independently re-verified.
+The code-grounded half was sound when written: as at 4 September 2026, 125
+capabilities with file-and-line evidence, 44 structural problems, and the four
+defects above independently re-verified, all from the audit
+`docs/audits/2026-09-01-payroll-can-it-run-a-year.md` (deleted 8 October 2026;
+`git show 315e6a19:docs/audits/2026-09-01-payroll-can-it-run-a-year.md`). Those counts
+are a snapshot and have not been redone.
 
 **The strongest case against this design:** it is a large surface for a module
-with, today, zero employees in production. Phases 1 and 2 are justified whatever
-happens next; phases 3 onward are a bet that payroll becomes a service the firm
-sells. If that bet is wrong, we will have built a bureau console for one client.
+with, today, zero employees in production. The first two items of the list above were
+justified whatever happened next; the rest were a bet that payroll becomes a service
+the firm sells. All twelve have been built, so if that bet is wrong, we have built a
+bureau console for one client.
 The phase order is chosen so that bet is made late and cheaply.
