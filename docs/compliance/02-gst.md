@@ -187,6 +187,16 @@ finding in this file:**
 > e-invoice rails.** That path is open today with any GSTIN, which is different
 > sequencing from "GSP first, everything after".
 
+> **The two turnover lines above are a TAXPAYER's route. They are not the only
+> door for a software vendor.** NIC issues e-invoice API credentials to "GSPs,
+> ERPs and ECOs" `[S]`; an **ERP** category exists, PracticeSync plausibly fits
+> it, and no net-worth or turnover bar was found for it `[U]` (`07` §3.2, `08`
+> §3.4). Production for that category still needs a Test Summary Report, up to
+> four static IPs whitelisted and a real taxpayer ERP/accounting application
+> under test `[S]`. `07` also found the taxpayer ladder itself contradicted across
+> sources (₹500 crore, ₹10 crore, and ₹5–10 crore from 1 January 2023), so quote
+> no threshold to a client from this file.
+
 **The 30-day reporting limit.** From **1 April 2025**, taxpayers with **AATO ≥
 ₹10 crore** cannot report an e-invoice more than **30 days after the document
 date** — invoices, credit notes and debit notes alike. It is an **IRP
@@ -202,7 +212,10 @@ threshold; ₹100–500 crore is GSP-only. `[S]` **API enablement is self-servic
 the EWB portal** (API Registration → Create API User → OTP). `[S]`
 
 The same GSP typically serves all three — every GSP examined bundles GSTN
-returns, NIC e-way bill and IRP e-invoice under one contract. `[S]`
+returns, NIC e-way bill and IRP e-invoice under one contract. `[S]` What the
+taxpayer actually does is pick a GSP from a dropdown on the EWB portal, so the
+constraint on a client conversation is whose name is in that list, not a
+turnover line: see `07` §3.3.
 
 ## 7. Costs and timelines — all weak
 

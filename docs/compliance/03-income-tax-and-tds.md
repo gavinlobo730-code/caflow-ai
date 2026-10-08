@@ -253,10 +253,15 @@ A vendor page claiming ERIs get "instant pre-fill of AIS, 26AS, Form 16" is
 **marketing copy**; what is confirmed is the **Prefill** API, which is not the
 same thing.
 
-### ⚠️ The constraint that hits this deployment specifically
+### ⚠️ A constraint that MAY hit this deployment — and it probably does not come from ERI
 
-From the **External Agency** registration manual `[P, but a different registration
-category — verify it applies to ERIs verbatim]` `[U]`:
+The list below is from the **External Agency** registration manual `[P, but a
+different registration category]`. `07` §3.4 found that External Agency is for
+Central and State Government departments, approved undertaking agencies and
+RBI-approved banks, **a category PracticeSync cannot join**, so these steps are
+real for that category and are **not evidence about the ERI path**. Whether they
+bind ERIs verbatim is open `[U]` (`07` §0 point 2; `08` Appendix C, Email 1,
+question 5 asks it):
 
 - UAT source IPs emailed to ITD; ITD issues test credentials and test scenarios.
 - Final UAT test report emailed back for **competent-authority approval**.
@@ -264,12 +269,32 @@ category — verify it applies to ERIs verbatim]` `[U]`:
 - **Production access granted by whitelisting a maximum of 4 Indian static IPs.**
 - The ERI shares its **DSC public key** with ITD for signature validation.
 
+> The four-static-IP whitelist **is** independently sourced for NIC **e-invoice
+> production** (`07` §3.2), so the consideration below stands for that route
+> whatever the ERI answer is.
+>
 > **`apps/api` runs on Render in Singapore**, deliberately, to sit near the
 > Mumbai Supabase (`render.yaml` carries the measurements). Render is not in
 > India and does not offer static egress IPs on all plans. Satisfying a 4-IP
 > Indian whitelist needs an **India-hosted static-IP egress hop** that the
 > filing calls route through. That is a **deployment change, not a code change**,
-> and it is its own line item.
+> and it is its own line item — **where it applies**: to e-invoice production, and
+> to ERI if the open question above is answered yes.
+
+### The `SW########` most likely comes from a different registration
+
+The ITR JSON schemas require a software-provider id of the form `SW########` in
+`CreationInfo.SWCreatedBy`, and a return without an approved one is rejected
+`[S]`. The e-filing portal has a user category **Third Party Software Utility
+Developer** with its own official user manual (`07` §3.4). **No source says that
+registration issues the id**, so the link is an inference: the category, the
+manual and the id all exist, and nothing connects them in print `[U]`. If it
+holds, it is a self-service registration separate from ERI and the cheapest
+unblock available; if it does not, the id comes from somewhere not yet
+identified. `08` Appendix C, Email 1, question 4 asks it. Until that is answered
+the code's refusal (`SoftwareProviderNotRegistered` in
+`domain/income_tax/itr_json.py`) says only that the id is a registration step,
+and does not say which one.
 
 ### Buying instead of building
 
@@ -281,7 +306,7 @@ GET https://api.sandbox.co.in/itd/eri/tax-payers/:pan/itrs/:assessment_year/itr-
 ```
 
 > **The trade-off, stated plainly:** this sidesteps registration, net worth,
-> ISA/CISA certification, UAT and the 4-IP whitelist — but **the client's consent
+> ISA/CISA certification and any UAT or IP-whitelisting step that applies — but **the client's consent
 > is granted to the aggregator's ERI, not to PracticeSync.** That is a material
 > thing to have to tell a CA firm about their clients' data, and it puts a third
 > party between the product and a statutory filing.
@@ -297,10 +322,11 @@ GET https://api.sandbox.co.in/itd/eri/tax-payers/:pan/itrs/:assessment_year/itr-
 Protean". Registration is reportedly valid **two years**, renewed from 1 April.
 
 **Timelines: no published SLA and no practitioner account found.** `[U]` But the
-Type-2 path has **at least four serial, email-driven, manually-reviewed gates** —
-application + documents, ISA/CISA due-diligence certificate, ITD UAT
-certification, production IP whitelisting. **Plan in quarters, not weeks**, and
-say so rather than inventing a figure.
+Type-2 path has **at least three serial, manually-reviewed gates** — application
++ documents, ISA/CISA due-diligence certificate, departmental approval (`07`
+§3.4). UAT certification and production IP whitelisting are the External Agency
+manual's steps and are **unconfirmed for ERI**; if they apply they are further
+gates. **Plan in quarters, not weeks**, and say so rather than inventing a figure.
 
 ⚠️ One claim to **not** carry forward: that ERI registration requires ISO 27001
 or a third-party penetration test. That came from a low-quality aggregator and
