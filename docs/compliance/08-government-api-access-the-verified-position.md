@@ -4,6 +4,7 @@ title: Government Filing Access
 subtitle: What PracticeSync can file today, what it cannot, why — and what we are building instead
 meta: Prepared by | PracticeSync engineering
 meta: Date | 11 September 2026
+meta: Revised | 8 October 2026 — cross-references reconciled; no finding changed
 meta: Status | For information. One decision recorded, none requested.
 meta: Supersedes | docs/compliance/07-getting-permission-to-file.md (retained as the underlying playbook)
 footer: PracticeSync — Government filing access — 11 September 2026
@@ -94,7 +95,7 @@ our own software. That is the strongest argument for continuing to do so:
   rejected at the portal after doing the work. **Track F1** — and ⚠️ **this was
   not the thing that bounces the upload.** The portal's rule is that the file
   must carry EVERY insured person it has mapped, and one missing person rejects
-  the whole file (§6.4.4). That check is built; emitting BIFF8 is a decided NO
+  the whole file (Appendix D.3, ESIC's filing manual, point 3). That check is built; emitting BIFF8 is a decided NO
   (§5.2), because it needs three parsers, two unmaintained since 2017, on a
   `.xls`-only premise traceable to about 2011 that egress blocks us checking.
 - ==ESIC and professional tax have no filing record at all.== There is nowhere
@@ -475,8 +476,9 @@ keeping.** "We fill the CA's template" means reading and writing BIFF8, which
 means `xlrd` + `xlwt` + `xlutils`: two with no release since 2017, and the
 reader pointed at an untrusted upload inside the service that holds every
 client's general ledger. The premise forcing that — that the portal still
-refuses `.xlsx` — traces to guidance from around 2011 (§6.4.4) and cannot be
-checked from here, because egress is blocked.
+refuses `.xlsx` — traces to guidance from around 2011 (`04-mca-epfo-esic.md` §3,
+where it is graded `[U]`; the manual read in Appendix D.3 shows `.xls` but is a copy
+of unknown vintage) and cannot be checked from here, because egress is blocked.
 
 So the file half is a **decided NO**, not a gap. What was built is the
 reconciliation, which is where the harm actually is: ==the upload is
@@ -574,14 +576,14 @@ ordinary browser.
 
 | Priority | Page | What it settles |
 |---|---|---|
-| **1** | ITD's ERI registration page | ==Type 1 vs Type 2, the fee, whether the bank guarantee applies to us and how much==. Could move ITR from "quarters and a bank instrument" to "₹4,600 and a document set" |
-| **2** | GSTN GSP eligibility | ==The turnover threshold==, and whether applications are open at all |
-| **3** | `test-dev.tdscpc.gov.in` | Real developer programme, or internal host? The only lead toward a TDS API |
-| **4** | Third Party Software Utility Developer registration | ==The cheapest real step in this paper.== Prerequisites and what it entitles us to |
-| **5** | ESIC zero-wage reason codes | Closes a refusal the product deliberately makes today. ==Needs an employer login we do not hold== |
-| **6** | Maharashtra PT notification, 28-02-2026 | The real due date, before Track F5 writes one down |
+| **1** | ITD's ERI registration page | ==Type 1 vs Type 2, the fee, whether the bank guarantee applies to us and how much==. Could move ITR from "quarters and a bank instrument" to "₹4,600 and a document set". *Asked in Email 1.* |
+| **2** | GSTN GSP eligibility | ==The turnover threshold==, and whether applications are open at all. *Asked in Email 3.* |
+| **3** | `test-dev.tdscpc.gov.in` | Real developer programme, or internal host? The only lead toward a TDS API. *Asked in Email 2.* |
+| **4** | Third Party Software Utility Developer registration | ==The cheapest real step in this paper.== Prerequisites and what it entitles us to. *Asked in Email 1.* |
+| **5** | ESIC zero-wage reason codes | Closes a refusal the product deliberately makes today. ==Needs an employer login we do not hold==. *Not asked by email.* |
+| **6** | Maharashtra PT notification, 28-02-2026 | The real due date, before Track F5 writes one down. *Not asked by email: a notification to read.* |
 
-:::note Four enquiries are already drafted
+:::note Six enquiries are already drafted
 Appendix C carries complete emails — recipients, subject lines and bodies — to
 the Income Tax Department, CPC-TDS, GSTN, NIC, Protean eGov and DigiLocker,
 each citing the published page the question arises from.
@@ -642,8 +644,9 @@ There is no free public endpoint for them. `[S]` That is genuinely useful to a C
 platform beyond filing.
 
 **Code seams.** `domain/gst/portal_service.py` (the `GSTPortalProvider`
-abstraction — and note `get_provider()` currently takes a name and **ignores
-it**; fix before a real provider exists), `domain/gst/gstr1_builder.py` (targets
+abstraction — and `get_provider()` refuses any name but `manual` with a
+`ValueError`, pinned by `tests/test_provider_factories_refuse_a_name_they_lack.py`,
+so the switch is wired in the commit that adds a provider), `domain/gst/gstr1_builder.py` (targets
 API spec v1.3 of July 2023, likely stale), `services/gst_filing_record_service.py`.
 
 ### A.2 e-invoice IRN · **DIRECT API — and completable**
@@ -654,7 +657,7 @@ API spec v1.3 of July 2023, likely stale), `services/gst_filing_record_service.p
 | **Registration (sandbox)** | `https://einv-apisandbox.nic.in/` — **self-service, free, any GSTIN, no empanelment, no IP whitelisting** | `[S]` |
 | **Documents** | None for sandbox | `[S]` |
 | **Approval (production)** | Test every API in pre-production with minimum success and failure cases → file a **Test Summary Report** → email `support.einv.api@gov.in` → submit **up to four static IPs** for whitelisting. One source: 4–5 days | `[S]` |
-| **Fees** | Sandbox free. Production: **no fee found for the ERP route** `[U]`. The real cost is the India static-IP hop (§6.4) | `[U]` |
+| **Fees** | Sandbox free. Production: **no fee found for the ERP route** `[U]`. The real cost is the India static-IP hop (§3.4, step 4) | `[U]` |
 | **Credentials** | Client Id + Client Secret — **ours**. The GSTIN and the taxpayer's e-invoice portal credentials are the **client's** | `[S]` |
 | **Sandbox → production** | Testing must interface the APIs with a taxpayer's **actual** ERP/accounting application, not NIC's online test tool | `[S]` |
 | **Client onboarding** | Taxpayer authorises the solution provider for API access to the GSTIN | `[S]` |
@@ -755,11 +758,13 @@ notification defining a "TDS Suvidha Provider". `[U]`
 The uploaded research reached the same conclusion by a different route
 (*"did not find a current public government developer onboarding page"*) and did
 not find the portal at all. **Two emails to `suvidha-support@tdscpc.gov.in`
-would settle it and cost nothing** — see §6.4.
+would settle it and cost nothing** — see §6.4 row 3 and Email 2 in Appendix C.
 
-**One thing no registration fixes.** `domain/tds/vocabulary.py` deliberately
-does not hold the s.393 **payment-code table**, and an API makes that worse: a
-wrong payment code is *accepted* and then wrong. The range is **1001–1092, not
+**One thing no registration fixes.** `domain/tds/vocabulary.py` holds only a
+confirmed subset of the s.393 **payment-code table** (14 sections, read from
+Protean's specification on 25-09-2026: `payment_code_for`) and names the rest as
+gaps, and an API makes that worse: a wrong payment code is *accepted* and then
+wrong. The range is **1001–1092, not
 1001–1067** — 1068–1092 are the s.394 TCS codes, so anything range-checking at
 ≤ 1067 rejects every valid TCS code. `[S]`
 
@@ -951,10 +956,14 @@ Not today. `[U]`
 
 # Appendix C — The enquiries, drafted and unsent
 
-§6.4.4 lists nine open questions. They go to **six inboxes**, not nine — several
-questions belong to the same authority and are far more likely to be answered as
-one short numbered list than as three separate messages arriving in the same
-queue.
+§6.4 lists six pages that would settle most of the weakness in this paper. The
+enquiries below go to **six inboxes**: they ask about rows 1 to 4 of that table and
+about three further matters (NIC production access, Protean PAN verification,
+DigiLocker). Rows 1 and 4 share Email 1 because both belong to the Income Tax
+Department and are far more likely to be answered as one short numbered list than
+as two messages arriving in the same queue. Rows 5 and 6 are not asked by email:
+row 5 needs an ESIC employer login we do not hold and row 6 is a notification to
+read.
 
 ### How to send these, and it matters more than the wording
 
@@ -981,7 +990,7 @@ queue.
 
 ---
 
-### Email 1 of 6 — Income Tax Department (e-Filing) · closes questions 1, 4, 7, 9
+### Email 1 of 6 — Income Tax Department (e-Filing) · closes §6.4 rows 1 and 4
 
 **To:** `efilingwebmanager@incometax.gov.in`
 **Fallback:** e-Filing helpline **1800 103 0025** / **1800 419 0025** /
@@ -1028,7 +1037,7 @@ queue.
 
 ---
 
-### Email 2 of 6 — CPC-TDS (TRACES) · closes question 2
+### Email 2 of 6 — CPC-TDS (TRACES) · closes §6.4 row 3
 
 **This is the highest-value email in the set.** If the answer is yes, the
 direct-tax side changes from "generate a file, a human uploads it" to "integrate
@@ -1070,7 +1079,7 @@ an API subject to empanelment".
 
 ---
 
-### Email 3 of 6 — GSTN · closes question 3
+### Email 3 of 6 — GSTN · closes §6.4 row 2
 
 **To:** `info@gstn.org.in`
 **Cc:** `helpdesk@gst.gov.in`
@@ -1109,7 +1118,7 @@ an API subject to empanelment".
 
 ---
 
-### Email 4 of 6 — NIC e-Invoice (IRP) · closes question 5
+### Email 4 of 6 — NIC e-Invoice (IRP) · closes the open rows of Appendix A.2
 
 **Send this one last, after the sandbox work**, because it is the only email
 here that is stronger with evidence attached — NIC's own process expects a test
@@ -1148,7 +1157,7 @@ summary report.
 
 ---
 
-### Email 5 of 6 — Protean eGov (TIN) · closes question 8
+### Email 5 of 6 — Protean eGov (TIN) · closes Appendix B.2
 
 **Expect a "no".** The published eligibility categories appear to require the
 applicant's *own* TDS filings to exceed 500 deductees a quarter, which a
@@ -1187,7 +1196,7 @@ at `https://www.protean-tinpan.com/`
 
 ---
 
-### Email 6 of 6 — DigiLocker / API Setu · the non-filing one worth doing
+### Email 6 of 6 — DigiLocker / API Setu · closes Appendix B.1 · the non-filing one worth doing
 
 **No email address confirmed.** Onboarding appears to run through the partner
 portal at `https://partners.apisetu.gov.in/signin`, which uses DigiLocker
@@ -1223,16 +1232,16 @@ Organisation → apply for **Requester** access
 
 | # | To | Closes | Sent | Chased | Answered | Answer |
 |---|---|---|---|---|---|---|
-| 1 | `efilingwebmanager@incometax.gov.in` | Q1, Q4, Q7, Q9 | | | | |
-| 2 | `suvidha-support@tdscpc.gov.in` | Q2 | | | | |
-| 3 | `info@gstn.org.in` | Q3 | | | | |
-| 4 | `support.einv.api@gov.in` | Q5 | | | | |
-| 5 | `tininfo@protean-tinpan.com` | Q8 | | | | |
-| 6 | API Setu partner portal | DigiLocker | | | | |
+| 1 | `efilingwebmanager@incometax.gov.in` | §6.4 rows 1, 4 | | | | |
+| 2 | `suvidha-support@tdscpc.gov.in` | §6.4 row 3 | | | | |
+| 3 | `info@gstn.org.in` | §6.4 row 2 | | | | |
+| 4 | `support.einv.api@gov.in` | Appendix A.2 | | | | |
+| 5 | `tininfo@protean-tinpan.com` | Appendix B.2 | | | | |
+| 6 | API Setu partner portal | Appendix B.1 | | | | |
 
-**Question 6 — "all fees, everywhere" — is not a separate email.** It is asked
-inside each of the five above, because a fee question answered by the authority
-that charges it is the only kind worth having.
+**Fees are not a separate email.** They are asked inside each of the six,
+because a fee question answered by the authority that charges it is the only
+kind worth having.
 
 **Send 1, 2, 3 and 5 today.** They cost nothing, they commit to nothing, and
 until they are answered every cost and eligibility line in this document is an
@@ -1340,7 +1349,7 @@ entry says what was opened, what it showed, and what changed as a result.
 
 **`esic.in/ESICInsurance1/App_Themes/Help/MC_Template1.xls` → 404.** `[O]`
 That URL came out of a search snippet and is dead. Worth recording for its own
-sake: it is a small, concrete instance of the failure mode §6.4.1 warns about — a
+sake: it is a small, concrete instance of the failure mode §6.1 warns about — a
 search engine reported a path that does not exist, and nothing short of opening
 it would have told us.
 
@@ -1368,7 +1377,7 @@ establishment-code gap become one question, not three.
 
 **No ESIC employer login available.** `[O]` The owner is a CA firm without an
 employer registration of its own and did not have a client login to hand. That
-is a permanent constraint on §6.4.4 items 1–3, not a delay — and it is the reason
+is a permanent constraint on §6.4 row 5, not a delay — and it is the reason
 F1 was redesigned to fill the CA's own downloaded template rather than mint
 one. **The constraint improved the design.**
 
@@ -1428,7 +1437,7 @@ product already makes:
    *"For other reasons, last working day must be left BLANK."* We still do not
    hold the numeric codes (the portal surfaces them at filing time, which is
    exactly what the module said), but we now hold which reasons are terminal.
-   **§6.4.4 item 2 is therefore half-closed**: the semantics are settled, the
+   **§6.4 row 5 is therefore half-closed**: the semantics are settled, the
    numbers are not.
 3. **The upload is all-or-nothing** against the portal's own list of mapped
    IPs — *"successful transaction only when all the Employees' (who are
@@ -1489,6 +1498,6 @@ set rather than a bank instrument, which is a completely different order of
 commitment.
 
 **Do not act on that yet.** It rests on secondary sources agreeing with each
-other, which is exactly the failure mode §6.4.1 describes; the ITD's own
-registration page is §6.4.4 item 5 and remains the thing to read. But it moves
+other, which is exactly the failure mode §6.1 describes; the ITD's own
+registration page is §6.4 row 1 and remains the thing to read. But it moves
 that item from "worth doing" to **the highest-value single page on the list**.
