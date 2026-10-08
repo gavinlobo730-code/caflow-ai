@@ -18,6 +18,10 @@
 # design pass, so versioning them would be 30MB of churn saying nothing.
 /.smoke/
 
+# scripts/drive-an-excel-file-through-the-import-dialog.mjs --shots: the same
+# reasoning, for the manual drive's screenshots.
+/.drive/
+
 # production
 /build
 
