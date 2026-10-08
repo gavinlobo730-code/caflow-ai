@@ -44,6 +44,14 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 BUCKET = "Documents"
 
+#: `documents.uploaded_by` (and `reviewed_by`) reference `public.users(id)` since
+#: migration 479 -- the INTERNAL user id (`current_user["id"]`), like every other
+#: created_by / posted_by column, never the Supabase auth id. Until 479 they
+#: referenced `team_members`, which holds no rows, so no upload ever succeeded.
+#: The audit log below is the opposite case and keeps the AUTH id: `audit_log.
+#: actor_id` has no foreign key and takes the auth id (CLAUDE.md, "the audit log
+#: names one kind of actor"). `deleted_by` is left as it was: it has no foreign key.
+
 #: What `documents.document_type` accepts — `documents_document_type_check`, from
 #: migration 001 and still in the production snapshot. It is the route's own
 #: vocabulary because `document_type` is interpolated into the storage key as a
@@ -110,7 +118,7 @@ def upload_document(
             "storage_path": storage_path,
             "file_size_bytes": len(content),
             "review_status": "pending_review",
-            "uploaded_by": current_user.get("auth_user_id"),
+            "uploaded_by": current_user.get("id"),
         })
         # H10: immutable audit_log record for the upload (mock path).
         try:
@@ -148,7 +156,7 @@ def upload_document(
         "storage_bucket": BUCKET,
         "file_size_bytes": len(content),
         "review_status": "pending_review",
-        "uploaded_by": current_user.get("auth_user_id"),
+        "uploaded_by": current_user.get("id"),
     })
 
     signed = sb.storage.from_(BUCKET).create_signed_url(storage_path, expires_in=3600)
