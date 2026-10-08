@@ -32,14 +32,14 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 8 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 16 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 198 | after the demo: Claude can do alone |
-| [post-demo-B-ours.md](post-demo-B-ours.md) | 332 | after the demo: owner decides first, then Claude builds |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 196 | after the demo: Claude can do alone |
+| [post-demo-B-ours.md](post-demo-B-ours.md) | 333 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 203 | after the demo: only the owner or outsiders can do |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 
-**763 open items** (30 before the demo, 733 after); 17 after-demo items are `high` priority; 35 are UNSURE.
+**762 open items** (30 before the demo, 732 after); 15 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 
@@ -80,9 +80,7 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 
 ## The after-demo items marked high priority
 
-- **POST-A-004** (claude) — Hash the year-lock PIN and restrict reading it
 - **POST-A-005** (claude) — Make the per-person permission grid reach reads in the database
-- **POST-A-108** (claude) — Year-end policy note says moving average even for FIFO clients
 - **POST-B-004** (owner-decides) — Decide who may read payroll in the database; add role tiers
 - **POST-B-005** (owner-decides) — Stop Reviewer writes on 41 tables the API gives no write resource
 - **POST-B-047** (owner-decides) — Open statutory sources to Claude: allowlist .gov.in hosts or hand-fetch

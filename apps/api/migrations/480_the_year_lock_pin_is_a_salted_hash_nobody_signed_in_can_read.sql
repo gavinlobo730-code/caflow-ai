@@ -67,11 +67,15 @@
 --
 -- ORDER OF DEPLOY
 --     The migration and the API deploy race on a push to main. New API before
---     this migration: year-lock requests fail until firm_lock_pins exists. This
---     migration before the new API: the OLD code reads firms.lock_pin, finds
---     NULL, reads "no PIN set", and for a few minutes a Partner could set a new
---     PIN, which the CHECK then refuses with an error rather than storing it.
---     Both are Partner-only and both fail closed or loudly.
+--     this migration: year-lock requests fail until firm_lock_pins exists
+--     (closed, and Partner-only). This migration before the new API: the OLD
+--     code reads firms.lock_pin, finds NULL and reads "no PIN set", so for a few
+--     minutes a firm that HAD a PIN is treated as having none (an unlock with no
+--     PIN would succeed), and a Partner who tries to set a new PIN gets an error
+--     from the CHECK rather than a stored PIN. The window is Partner-only and
+--     short. Production held 0 firms with a PIN when this was written (read-only
+--     query, 8 October 2026), so nothing is exposed there; a database that holds
+--     PINs should be migrated and deployed together.
 --
 -- Idempotent: CREATE ... IF NOT EXISTS, INSERT ... ON CONFLICT DO NOTHING, an
 -- UPDATE that matches nothing the second time, and the constraint guarded by a
