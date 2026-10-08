@@ -38,7 +38,13 @@ the base (INR) amounts (authoritative — GL, GST, reports, TDS read these); new
   document **at its frozen rate**, converted to base up front so all settlement
   runs in base. Phase-3 limit: **full settlement only** (partial-foreign / cross-rate
   / foreign advances / foreign TDS are rejected with a clear message — they need
-  realized FX, next phase).
+  realized FX, next phase). **Superseded by Phase 4 (`06d`)** for partial, multiple
+  and over-payment and for cross-rate settlement, which now post Realized FX; an
+  over-payment's unallocated excess is carried as an advance at the settlement rate.
+  **Still refused:** foreign TDS on a receipt (`create_foreign_receipt`). A foreign
+  payment that leaves an unallocated remainder to a TDS-applicable vendor carries the
+  named gap `foreign_advance_not_withheld`, because the tax is remitted in rupees
+  while the vendor is credited in the foreign currency.
 - **Statements** — customer & vendor statements now show `txn_currency`,
   `exchange_rate` and `txn_amount` beside the authoritative base amounts.
 - **Kernel** — `_currency_kwargs()` reconstructs the frozen rate from the document

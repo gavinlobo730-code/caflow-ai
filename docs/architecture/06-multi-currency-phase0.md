@@ -1,6 +1,10 @@
 # 06 — Multi-Currency (Phase 0 — FROZEN design)
 
-**Status: FROZEN v1.0 — DESIGN ONLY. Not implemented.** The engine is single-currency (INR) today; this is the approved architecture for adding multi-currency as an additive layer. Nothing here changes behaviour until implemented phase-by-phase. Reopens only for a critical architectural issue (change-controlled).
+**Status: the DESIGN is FROZEN v1.0 and unchanged; Capability A is IMPLEMENTED (Phases 0.5 to 5, migrations 146 to 150, records `06a` to `06e`).** This file is the approved architecture and it reopens only for a critical architectural issue (change-controlled), so its body below is the design as approved and is not rewritten as the code moves. Where it and `06a` to `06e` disagree about what exists, they and the code win.
+
+- **Gated OFF by default.** A foreign-currency transaction needs all three gates: the environment kill switch `MULTI_CURRENCY_ENABLED`, `firms.multi_currency_entitled` and `clients.multi_currency_enabled`. The two database gates are writable since 13-09-2026 (`PUT /api/currencies/entitlement` and `PUT /api/currencies/policy`, screen `/settings/multi-currency`); before that only a manual UPDATE could set them.
+- **The AS 11 year-end revaluation has a door**: `routers/fx_revaluation.py` (`POST /api/fx-revaluation/preview` and `/run`), over `domain/currency/fx_revaluation_service.py`. Nothing schedules it.
+- **Not built.** Capability B (presentation-currency translation, FCTR/OCI, consolidation): a non-INR functional currency is refused by `domain/currency/policy.py`. Foreign credit and debit notes: those four tables carry no currency columns. Foreign TDS on a receipt is refused (`services/receipt_service.create_foreign_receipt`).
 
 ## Scope decision
 
