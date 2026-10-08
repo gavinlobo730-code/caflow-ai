@@ -37,6 +37,13 @@
 #                           and turns a missing required query parameter from a 422 into a 500;
 #                           supabase removes the client class core/supabase_client._force_http1 patches,
 #                           which silently reopens the HTTP/2 multi-thread bug. Patch releases still arrive.
+#       gunicorn            major ignored (21 to 26 proposed). It carries two request-smuggling advisories
+#                           (fixed from 22.0.0, ledger item POST-A-173), so it is a planned bump and not a
+#                           forgotten one: it is the production web server, and the one check that matters,
+#                           the container starting under Render's health check, cannot be run from CI. On
+#                           8 October 2026 the production start command ran on 26.2.0 outside a container and
+#                           answered /health; that is the evidence for the later bump, not a reason to take it
+#                           three weeks before a demo.
 #       next, eslint-config-next, tailwindcss, typescript, @sentry/nextjs
 #                           major ignored in apps/web and apps/marketing (the two sites are on the same
 #                           versions). Next 16 and Tailwind 4 fail the Cloudflare Pages build as they stand;
@@ -70,6 +77,8 @@ updates:
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "supabase"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "gunicorn"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/apps/web"

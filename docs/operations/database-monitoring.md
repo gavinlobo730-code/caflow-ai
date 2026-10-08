@@ -20,7 +20,7 @@ One sitting, in the first week of the month, by whoever owns operations. About t
    once and write down, for each, *fix*, *intentional (why)* or *not now (why)*.
    Some findings are known and intentional (`docs/BETA_OPERATIONS.md` §3 records which) — a finding that
    appears there needs no new decision, a finding that does not needs one. The advisors have been run
-   before, by hand, after migrations (`docs/DEPLOYMENT_READINESS_AUDIT_v1_1.md`); what was missing was a
+   before, by hand, after migrations (the early deployment readiness audit, deleted on 8 October 2026; see `docs/audits/README.md`); what was missing was a
    routine and a record.
 2. **Run the review queries**, `apps/api/scripts/db/monthly_review.sql`, one numbered block at a time in
    the SQL editor (or all of it with `psql "$DATABASE_URL" -f …`). They are read-only and read no
