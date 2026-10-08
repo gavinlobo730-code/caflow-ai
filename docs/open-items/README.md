@@ -29,7 +29,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 
 | file | items | what it holds |
 |---|---|---|
-| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 9 | before the demo: Claude can do alone |
+| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 8 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 16 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 212 | after the demo: Claude can do alone |
@@ -39,7 +39,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 
-**778 open items** (31 before the demo, 747 after); 17 after-demo items are `high` priority; 35 are UNSURE.
+**777 open items** (30 before the demo, 747 after); 17 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 
@@ -63,7 +63,6 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 23. **PRE-A-018** (Claude) — Link Practice Billing and AR to the practice client's invoices
 24. **PRE-A-006** (Claude) — Name the AI provider on the extract and scan screens
 25. **PRE-C-004** (you) — Redeploy the latest main on Render and record how it deploys
-26. **PRE-A-005** (Claude) — Shrink the stale axe baseline so the nightly smoke walk is green, then dispatch it once
 27. **PRE-A-015** (Claude) — Drive the money editors in a browser: double-click guard, keyboard, drafts, dates
 28. **PRE-A-001** (Claude) — Drive the upload screens in a browser: GSTR-2B and the bulk imports
 29. **PRE-B-006** (live) — Rehearse sign-up and first Partner sign-in as a stranger would
@@ -126,12 +125,12 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 
 ## Things in the repository that are known to be stale or wrong (so nobody trusts them)
 
-Each has its own line in the ledger (search `docs-hygiene`); this is the short list. CLAUDE.md says Rule 59(2) Invoice Furnishing Facility is not built — it is (`apps/api/domain/gst/iff.py`). CLAUDE.md's IT-23 paragraph ends "still not built: revised and updated return" — migration 381 built it. CLAUDE.md has no paragraph for the four builders written on 26 Sep (CMP-08, GSTR-8, GSTR-4 annual, GSTR-9C; #622–#624). CLAUDE.md says the GST notification texts are committed under `docs/compliance/sources/gst-notifications/` — only a README is there (checked), and the Protean file-format spreadsheet, the Form 3CD source and the ESIC manual it cites as primary sources are not committed either. `docs/schema-drift.md`'s tally and the production-guards snapshot (migration 381, against 478 in the repo) are out of date. CLAUDE.md's "about 7,000 tests" is stale (the suite passes about 22,500). `apps/api/domain/tds/vocabulary.py` holds payment codes 1001–1067 where docs/compliance/07 reports 1001–1092 (unverified either way). CLAUDE.md's engineering-15 and frontend_ux-05 paragraphs say the smoke walk has never run on GitHub and that migration 456's real-Postgres tests have not been run — the walk has since run twice on schedule (6 and 7 October, red only for stale axe-baseline lines, see PRE-A-005) and the 456 test runs in the required migration job. CLAUDE.md's pointer to `scripts/seed_demo_firm.py` should read `apps/api/scripts/seed_demo_firm.py`.
+Each has its own line in the ledger (search `docs-hygiene`); this is the short list. CLAUDE.md says Rule 59(2) Invoice Furnishing Facility is not built — it is (`apps/api/domain/gst/iff.py`). CLAUDE.md's IT-23 paragraph ends "still not built: revised and updated return" — migration 381 built it. CLAUDE.md has no paragraph for the four builders written on 26 Sep (CMP-08, GSTR-8, GSTR-4 annual, GSTR-9C; #622–#624). CLAUDE.md says the GST notification texts are committed under `docs/compliance/sources/gst-notifications/` — only a README is there (checked), and the Protean file-format spreadsheet, the Form 3CD source and the ESIC manual it cites as primary sources are not committed either. `docs/schema-drift.md`'s tally and the production-guards snapshot (migration 381, against 478 in the repo) are out of date. CLAUDE.md's "about 7,000 tests" is stale (the suite passes about 22,500). `apps/api/domain/tds/vocabulary.py` holds payment codes 1001–1067 where docs/compliance/07 reports 1001–1092 (unverified either way). CLAUDE.md's engineering-15 and frontend_ux-05 paragraphs say the smoke walk has never run on GitHub and that migration 456's real-Postgres tests have not been run — the walk has since run on GitHub (twice on schedule on 6 and 7 October, red only for stale axe-baseline lines, which #704 deleted; then dispatched by hand on 8 October and green) and the 456 test runs in the required migration job. CLAUDE.md's pointer to `scripts/seed_demo_firm.py` should read `apps/api/scripts/seed_demo_firm.py`.
 
 ## How this ledger was built, and what it cannot tell you
 
 Twenty-eight read-only passes extracted every still-open item from CLAUDE.md (read in four parts), every file under `docs/audits/`, `docs/plan/`, `docs/compliance/`, `docs/operations/` and `docs/architecture/`, the top-level `docs/*.md`, the code's own markers and render.yaml, and the 337-point improvement roadmap of 30 Sep 2026 — which existed only in session data and is now captured here (195 points were Claude's alone and are mostly built; the other 142 need the owner or someone outside, and the roughly 60 of the 195 still unbuilt are included). That gave 1,306 raw items; fourteen group passes and two cross-group passes merged them to 788 with every raw item accounted for by a script. Each reader re-checked its items against the code on 2 Oct 2026 and recorded what it found already done in `checked-closed.md`.
 
-**Second pass, 8 October 2026.** After the ledger was committed, the before-demo items and the high-priority after-demo items were each re-read against the code (files, functions, columns, routes, env vars, the matrix classes, the Actions API for CI state, the repository's own grep results) by one session and no sub-agents. 64 items were checked; 5 needed their text corrected (the fixes are in the lines), the rest held, and the who/when buckets of all 64 stood. Two facts for planning that this pass produced: the nightly smoke walk is red only because axe-baseline entries no longer fire (PRE-A-005, hours, Claude alone), and the documents-upload defect was real (closed by migration 479 on 8 October 2026).
+**Second pass, 8 October 2026.** After the ledger was committed, the before-demo items and the high-priority after-demo items were each re-read against the code (files, functions, columns, routes, env vars, the matrix classes, the Actions API for CI state, the repository's own grep results) by one session and no sub-agents. 64 items were checked; 5 needed their text corrected (the fixes are in the lines), the rest held, and the who/when buckets of all 64 stood. Two facts for planning that this pass produced: the nightly smoke walk was red only because axe-baseline entries no longer fired (the baseline was shrunk on 8 October 2026 and the walk dispatched green), and the documents-upload defect was real (closed by migration 479 on 8 October 2026).
 
 Limits: **nothing was exercised against production** except one read-only query (it confirmed the documents-upload defect); dashboard state is unreadable from here, hence UNSURE; nothing was clicked in a browser; about 30 statutory readings are graded `[S]` (a search summary, not the primary text) and need a person with a browser; the pre-demo list is Claude's judgement of the demo's needs; and effort figures are estimates. Source references point at documents that were deleted on 8 October 2026 — recover them with `git show 315e6a19:<path>` (see `deletion-plan.md`).
