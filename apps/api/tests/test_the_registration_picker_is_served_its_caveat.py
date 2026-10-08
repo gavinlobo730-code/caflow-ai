@@ -8,7 +8,8 @@ asserts, is three things:
 
   * the list it chooses from carries, per registration, the caveat a return for
     that registration would have to say — because choosing a registration does
-    not split the documents (GST-16 is open), and a picker that did not say so
+    not split the documents (attributing each document to a registration is
+    open work), and a picker that did not say so
     would let a CA build wrong returns faster;
   * the compute calls accept the chosen GSTIN and BUILD THAT REGISTRATION'S
     RETURN — the response names it, so the screen saves it under that GSTIN;

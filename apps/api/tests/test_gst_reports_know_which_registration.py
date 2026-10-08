@@ -11,7 +11,7 @@ second GSTIN is therefore assembled from the CLIENT-WIDE documents, including th
 first state's, and renders as authoritatively as one built from a clean book.
 The interim guard is a NAMED caveat on the return (a refusal would strand a saved
 return that must stay readable); the durable fix is to attribute each document to
-a registration (GST-16).
+a registration (open work, not yet built).
 """
 from __future__ import annotations
 

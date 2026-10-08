@@ -1129,8 +1129,9 @@ def _late_filing_block(result, period: str, filed_on,
         "days_late": _lf.days_late(due, filed_on),
         "interest_by_head": charges,
         "interest_total_paise": total,
-        # A dict with `refused` where the year's §47 notification is not
-        # recorded, which is every year today. The sentence names what to read.
+        # A computed fee for any year `LATE_FEE_RATES` holds (FY 2017-18 to
+        # 2026-27 for GSTR-3B); a dict with `refused` for a year it does not,
+        # whose sentence names the range that IS held.
         "late_fee": fee if isinstance(fee, dict) else fee.as_dict(),
         "caveats": caveats,
     }
@@ -2098,8 +2099,9 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # WHAT BEING LATE COSTS (GST-21). Absent until a filing date is given —
         # a return being prepared has none, and computing interest against
         # today would give the screen a figure that changes every day the
-        # return is not filed. The LATE FEE is a refusal with a named gap: §47's
-        # notified rates are not held here. See domain/gst/late_filing.
+        # return is not filed. The LATE FEE is computed for every year the
+        # §47 table holds and is a refusal with a named gap for one it does
+        # not. See domain/gst/late_filing.
         "late_filing": _late_filing_block(result, period, filed_on,
                                           frequency=window.frequency,
                                           state_code=state_code,
@@ -2610,9 +2612,9 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     `frequency` is the REGISTRATION'S OWN (GST-11). Rule 59(2) with Rule 61A
     lets a QRMP filer furnish this return QUARTERLY, so the window is the whole
     quarter and the return is keyed on its first month. Omitting it means
-    monthly. The two interim months' INVOICE FURNISHING FACILITY is not built
-    for the two interim months is built by `iff_from_books` above, and this
-    return names it — see `return_period.IFF_AVAILABLE`.
+    monthly. The two interim months' INVOICE FURNISHING FACILITY is built apart
+    from this return by `iff_from_books` above, and this return names it — see
+    `return_period.IFF_AVAILABLE`.
     """
     window = return_period.resolve(period, frequency)
     period, start, end = window.key, window.start, window.end
@@ -2723,9 +2725,9 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     # both REPORTED rather than resolved: the form's own `fp` carries the
     # quarter's first month and the utility's expectation could not be checked
     # from this environment, and CGST Rule 59(2)'s Invoice Furnishing Facility
-    # for months 1 and 2 is not produced by this product — so without it the
-    # recipient's credit waits for this return. Emitted only on a quarter: a
-    # monthly filer owes neither.
+    # for months 1 and 2 is available but is prepared apart from this return
+    # (`iff_from_books`) — so without it the recipient's credit waits for this
+    # return. Emitted only on a quarter: a monthly filer owes neither.
     if window.is_quarter:
         # `GAP_RETURN_CAVEAT`, not the literal "REPORTED_NOT_WITHHELD" that
         # stood here: that is the name of the SET and is not a member of it,

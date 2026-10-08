@@ -13,15 +13,25 @@ rate not exceeding eighteen per cent as may be notified" (notified at 18% by
 Notification 13/2017-Central Tax) and §50(3) at twenty-four per cent — and the
 rule that decides the BASE is textual rather than numeric.
 
-The LATE FEE is REFUSED, and that is the deliberate half. §47(1) sets a
-statutory ₹100 per day per Act capped at ₹5,000, but no registered person has
-paid that since 2018: Notifications 4/2018 and 76/2018 reduced it, and 19/2021
-and 20/2021 capped it by turnover band. Those figures are not held, because
-this environment's egress proxy refuses every `.gov.in` and a late fee written
-from memory is a number a CA would pay. So `late_fee` returns a NAMED GAP
-saying exactly which notification to read, the same shape as the state
-professional-tax slabs and the ESIC reason codes. A CA fills the table once;
-until they do, nothing wrong is shown.
+The LATE FEE is computed where its notified figures are held and REFUSED, with
+a NAMED GAP, where they are not. §47(1) sets a statutory ₹100 per day per Act
+capped at ₹5,000, but no registered person has paid that since 2018. GSTR-1 and
+GSTR-3B are held for every financial year in `LATE_FEE_RATES` (FY 2017-18 to
+2026-27): Notifications 4/2018 and 76/2018 reduced the per-day figure and set
+no cap, and 19/2021 and 20/2021 capped it by turnover band from the June 2021
+tax period. GSTR-9's §47(2) fee is `_annual_late_fee`, from FY 2022-23
+(Notification 7/2023, with its 2023 amnesty window for the years before). Every
+held rate is `verified=True`, which is a claim about PROVENANCE: the
+notifications were read on 18-09-2026 (`docs/compliance/sources/
+gst-notifications/README.md`), and each figure is pinned exactly by a test. What
+still returns the named gap is any other return (GSTR-4, GSTR-6, GSTR-7, GSTR-8,
+CMP-08 and GSTR-9C each carry their own fee), a GSTR-1 or GSTR-3B year the table
+does not hold, and a GSTR-9 year before FY 2022-23 outside the amnesty window;
+its sentence is built from the table's own range, so it cannot go on naming one
+the table no longer has. A late fee written from memory is a number a CA would
+pay, which is why the statutory ₹100 and ₹5,000 are never a fallback. The same
+shape as the state professional-tax slabs and the ESIC reason codes: a person
+adds a year once, having read what was notified for it.
 
 RULE 88B IS THE PART THAT IS EASY TO GET WRONG, AND IT IS THE EXPENSIVE ONE
 
@@ -426,33 +436,34 @@ def interest_on_wrongly_availed_credit(
 
 # ── The late fee ─────────────────────────────────────────────────────────────
 #
-# ⚠️ EVERY FIGURE BELOW IS `[S]`-GRADED, AND THIS TABLE WAS EMPTY UNTIL NOW.
+# HOW THIS TABLE CAME TO BE HELD, KEPT BECAUSE IT EXPLAINS ITS SHAPE. It was
+# EMPTY and `late_fee` refused for every year, on a ground that was MEMORY: "a
+# late fee written from memory is a number a CA would pay over". §47(1) is ₹100
+# a day per Act capped at ₹5,000 and no registered person has paid that since
+# 2018, so the statutory figure is four times what is notified.
 #
-# The refusal that stood here was right at the time and its ground was MEMORY:
-# "a late fee written from memory is a number a CA would pay over". §47(1) is
-# ₹100 a day per Act capped at ₹5,000 and no registered person has paid that
-# since 2018, so the statutory figure is four times what is notified.
-#
-# What changed is the evidence, not the caution. The figures below are
-# corroborated across independent secondary sources that agree with each other
-# AND with what this module had already recorded as unverified belief —
-# Notification **19/2021-Central Tax, 01-06-2021** (GSTR-3B) and **20/2021-CT**
-# (GSTR-1), on the 43rd Council's recommendation. Still not read off the
-# notification: this environment's proxy refuses every `.gov.in`. So
-# `verified=False` travels on every rate, every answer carries the source, and
-# a test pins each number exactly.
+# What changed is the evidence, not the caution. The 2021 figures were first
+# stated on independent secondary sources that agreed with each other, with
+# `verified=False` on every rate. The notifications themselves — 4/2018 and
+# 76/2018, 19/2021 and 20/2021 (on the 43rd Council's recommendation) and 7/2023
+# — were then read on 18-09-2026 (`docs/compliance/sources/gst-notifications/
+# README.md` records what each settled), and every held rate is `verified=True`
+# as a claim about PROVENANCE. Each number is still pinned exactly by a test,
+# which is what makes a later silent edit visible, and every answer carries the
+# source.
 #
 # WHY STATE THEM AT ALL, HAVING REFUSED. A CA who gets nothing computes the fee
-# by hand from the same secondary sources, with no caveat attached and no test
-# pinning it. And the PORTAL is authoritative here in a way it is not for
-# §50(3) interest — the fee is computed by GSTN at filing, so this figure is a
+# by hand from the same sources, with no caveat attached and no test pinning
+# it. And the PORTAL is authoritative here in a way it is not for §50(3)
+# interest — the fee is computed by GSTN at filing, so this figure is a
 # planning estimate the CA checks against the portal, not a sum they pay over
 # on this product's say-so.
 #
-# ONLY FROM FY 2021-22. Notifications 4/2018 and 76/2018 govern earlier
-# periods, with different caps and no turnover bands, and those were not
-# corroborated to the same standard — so an earlier year still REFUSES rather
-# than being charged at a rate that was not in force. The fork shape this
+# THE YEARS HELD. Notifications 4/2018 and 76/2018 govern FY 2017-18 to 2020-21
+# with a per-day rate and no turnover bands; 19/2021 and 20/2021 govern FY
+# 2021-22 onward with the banded ladder (April and May 2021 excepted, see
+# `LATE_FEE_2021_LADDER_FIRST_MONTH`). A year outside the table still REFUSES
+# rather than being charged at a rate that was not in force. The fork shape this
 # codebase applies to the TDS vocabulary and the capital-gains rates.
 @dataclass(frozen=True)
 class TurnoverCap:
@@ -485,8 +496,10 @@ class LateFeeRate:
     nil_cap_paise: int
     turnover_caps: tuple[TurnoverCap, ...]
     source: str
-    #: False everywhere, and not a field anyone should set True without having
-    #: read the notification itself.
+    #: A claim about PROVENANCE: True only for a rate whose notification was
+    #: read (the held rates below, on 18-09-2026), False for one stated from
+    #: anywhere else. Not a field anyone should set True without having read
+    #: the notification itself.
     verified: bool = False
 
     def cap_for(self, aggregate_turnover_paise: Optional[int]) -> int:
@@ -866,10 +879,13 @@ def late_fee(
     was assumed. `client_gst_turnover` (migration 401) is where a caller gets
     it — the same store the HSN-digit requirement reads.
 
-    AN EARLIER YEAR STILL REFUSES. Only the 2021 ladder is held; Notifications
-    4/2018 and 76/2018 govern periods before it with different caps and no
-    turnover bands, so charging those years at the 2021 figures would be a rate
-    that was not in force.
+    A YEAR THE TABLE DOES NOT HOLD REFUSES. GSTR-1 and GSTR-3B are held for the
+    years in `LATE_FEE_RATES` (the 2018 ladder before FY 2021-22, the 2021
+    ladder from it) and GSTR-9 from `GSTR9_FEE_FIRST_HELD_FY`; any other return,
+    or a year outside those, answers `GAP_LATE_FEE_RATES_NOT_HELD` with a
+    sentence built from the table's own range. Charging it at a ladder that did
+    not reach it, or at the statutory figure, would be a rate that was not in
+    force.
     """
     days = days_late(due_date, filed_on)
     kind = return_type.strip().lower()
@@ -899,6 +915,12 @@ def late_fee(
         else:
             ladder_month_assumed = True
     if rate is None:
+        # The range quoted is the table's OWN, read at the moment of refusal: a
+        # sentence that restated a year would go on naming it after the table
+        # moved (it said the figures were "held from FY 2017-18 (Notifications
+        # 19/2021 and 20/2021); an earlier period is governed by 4/2018", which
+        # was wrong for a year AFTER the table and for the 2018 notifications).
+        held_years = sorted({held_fy for (_rt, held_fy) in LATE_FEE_RATES})
         return {
             "refused": True,
             "code": GAP_LATE_FEE_RATES_NOT_HELD,
@@ -908,10 +930,11 @@ def late_fee(
             "reason": (
                 f"This return is {days} day(s) late and the section 47 late fee "
                 f"for {return_type.upper()} in FY {financial_year} is not "
-                f"recorded. The notified figures are held from FY "
-                f"{LATE_FEE_FIRST_HELD_FY} (Notifications 19/2021 and 20/2021); "
-                f"an earlier period is governed by Notifications 4/2018 and "
-                f"76/2018, which carry different caps and no turnover bands. "
+                f"recorded. This product holds the GSTR-1 and GSTR-3B fee for "
+                f"FY {held_years[0]} to FY {held_years[-1]} and the GSTR-9 fee "
+                f"from FY {GSTR9_FEE_FIRST_HELD_FY}; any other return, or a "
+                f"year outside those, has not been entered, and its own "
+                f"notification has to be read. "
                 f"The statutory figure is ₹100 a day under each Act capped at "
                 f"₹5,000 (₹200 and ₹10,000 combined) and is deliberately NOT "
                 f"used as a fallback, because charging four times the notified "

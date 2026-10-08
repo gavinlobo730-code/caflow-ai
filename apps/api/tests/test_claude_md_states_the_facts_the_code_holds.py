@@ -278,13 +278,31 @@ def test_the_years_the_page_says_the_gst_late_fee_is_held_for_are_the_years_the_
         f"domain/gst/late_filing.py LATE_FEE_RATES holds FY {held[0]} to {held[-1]}. "
         "The code is the authority: fix the page.")
     assert late_filing.LATE_FEE_FIRST_HELD_FY == held[0], (
-        "LATE_FEE_FIRST_HELD_FY is the year the refusal sentence quotes; it has drifted from the table's first year")
+        "LATE_FEE_FIRST_HELD_FY is documented as the first year any ladder is held for; it has drifted from the "
+        "table's first year")
     annual = _found(r"GSTR-9 from FY (\d{4}-\d{2}) \(7/2023-CT", "the first financial year the GSTR-9 late fee is held for")
     assert annual.group(1) == late_filing.GSTR9_FEE_FIRST_HELD_FY, (
         f"CLAUDE.md says the GSTR-9 late fee is held from FY {annual.group(1)} and late_filing.py "
         f"GSTR9_FEE_FIRST_HELD_FY is {late_filing.GSTR9_FEE_FIRST_HELD_FY}")
     assert "the §47 late fee for a year BEFORE 2021-22" not in _page(), (
         "the table-3b row still describes the late fee as refused for a year before 2021-22 and for GSTR-9")
+
+
+def test_the_page_says_the_invoice_furnishing_facility_is_built_and_where():
+    """Rule 59(2)'s Invoice Furnishing Facility was "not built" when the GST-11 bullet was written. It is:
+    `domain/gst/iff.py`, `GET /api/gst-workspace/iff/compute`, `gst_return_service.iff_from_books` and the
+    `IffPanel`, and `return_period.IFF_NOT_BUILT` was renamed `IFF_AVAILABLE` so a quarterly GSTR-1 says it is
+    available. The bullet went on saying it was not built, on the very return that now names it."""
+    from domain.gst import return_period
+
+    assert (API / "domain" / "gst" / "iff.py").is_file(), "premise: the facility's module exists"
+    assert hasattr(return_period, "IFF_AVAILABLE") and not hasattr(return_period, "IFF_NOT_BUILT"), (
+        "premise: the quarterly return's sentence says the facility is available")
+    page = _page()
+    assert not re.search(r"Invoice Furnishing Facility is not built", page), (
+        "CLAUDE.md still says Rule 59(2)'s Invoice Furnishing Facility is not built; domain/gst/iff.py builds it.")
+    assert "domain/gst/iff.py" in page, (
+        "CLAUDE.md does not name domain/gst/iff.py, the Rule 59(2) builder. Describe it beside the GST-11 bullet.")
 
 
 def test_the_page_does_not_say_the_payment_code_is_unwired_from_the_deductee_rows():

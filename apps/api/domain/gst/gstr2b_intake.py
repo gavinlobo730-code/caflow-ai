@@ -53,7 +53,8 @@ WHAT THIS DECIDES, AND WHAT IT DOES NOT
 
 WHAT IT DELIBERATELY DOES NOT DO
     It does not split the client's purchase bills by registration. No bill
-    records which registration it was received under (GST-16 is what adds that),
+    records which registration it was received under (attributing each document
+    to a registration is what adds that),
     so a client holding several registrations has one reconciliation per MONTH,
     not per GSTIN: a second registration's 2B matches against ALL the client's
     bills and REPLACES the first's. That is named on every answer for such a

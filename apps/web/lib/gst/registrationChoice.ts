@@ -29,8 +29,9 @@
  *      instead.
  *
  * AND THE PICKER DOES NOT FILTER. No invoice, bill or note names a registration
- * (GST-16 is open), so choosing one changes which GSTIN the return is filed
- * under and not which documents it contains. The server's caveat for the chosen
+ * (attributing each document to a registration is open work), so choosing one
+ * changes which GSTIN the return is filed under and not which documents it
+ * contains. The server's caveat for the chosen
  * registration travels with it (`caveatFor`), shown beside the choice.
  */
 
