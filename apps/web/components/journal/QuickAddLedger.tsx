@@ -13,12 +13,20 @@
  *
  * IT WRITES THROUGH THE ACCOUNT ENDPOINT AND DECIDES NOTHING. The same
  * `POST /api/accounting/accounts` the Chart of Accounts screen uses, so the code
- * is still required (UNIQUE per firm, client and code is the server's rule and
- * the server's sentence comes back verbatim) and the account is created for THIS
- * CLIENT: a ledger typed from inside one client's voucher is that client's own,
- * and a firm-wide one would appear on every other client's chart too. A firm-
- * level account is offered on the Chart of Accounts screen, where that choice is
- * the point of the form.
+ * is still required and the account is created for THIS CLIENT: a ledger typed
+ * from inside one client's voucher is that client's own, and a firm-wide one
+ * would appear on every other client's chart too. A firm-level account is
+ * offered on the Chart of Accounts screen, where that choice is the point of the
+ * form.
+ *
+ * A CODE AND A NAME ARE EACH UNIQUE ACROSS THE FIRM'S WHOLE CHART, not within one
+ * client's (production holds chart_of_accounts_firm_code_unique and
+ * chart_of_accounts_firm_name_unique beside the per-client key), so a ledger can
+ * be refused because a firm-level account or ANOTHER client's already holds it.
+ * The hint under the box used to say "Unique within this client's chart", which
+ * was false, and the refusal came back as a constraint name; the server now says
+ * which it was in a sentence (core/exceptions._DUPLICATE_DOCUMENT) and it is
+ * shown as it came.
  *
  * Subtype, group and the Schedule III mapping are left to the chart screen on
  * purpose: they decide where the account sits on the balance sheet, which is a
@@ -87,8 +95,8 @@ export function QuickAddLedger({ clientId, seedName, onCreated, onClose }: {
         is_active: res.data.is_active ?? true,
       });
     } catch (e) {
-      // The server's sentence is written for the CA (a duplicate code, a
-      // read-only role) and is shown as it came.
+      // The server's sentence is written for the CA (a code or a name already
+      // taken in the firm's chart, a read-only role) and is shown as it came.
       setError(e instanceof Error ? e.message : "The ledger was not created.");
     } finally {
       submitting.current = false;
@@ -106,7 +114,7 @@ export function QuickAddLedger({ clientId, seedName, onCreated, onClose }: {
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Code" required hint="Unique within this client's chart.">
+          <Field label="Code" required hint="Unique across your firm's whole chart, other clients' ledgers included.">
             <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="5100" />
           </Field>
           <Field label="Type" required>
