@@ -5,9 +5,10 @@ Every late GSTR-3B the product prepared carried nil interest and nil late fee:
 gstr3b.py` said so in its own text. The CA computed both by hand.
 
 What these pin is the split between what is COMPUTED and what is REFUSED. The
-interest rates are in the Act; the late-fee rates are notifications this
-environment cannot reach, and a fee written from memory is a number a CA would
-pay over.
+interest rates are in the Act; the late-fee rates are notified figures, computed
+for the years whose notifications were read and refused (with the range that IS
+held, derived from the table) for the rest, because a fee written from memory is
+a number a CA would pay over.
 """
 from datetime import date
 
@@ -256,10 +257,11 @@ def test_each_missing_fact_is_named(missing, monkeypatch):
 # ── §47 — the notified fee, and what it still refuses ────────────────────────
 
 def test_the_notified_ladder_is_held_exactly():
-    """Every figure is `[S]`-graded — corroborated across independent secondary
-    sources, not read off the notification, because this environment's proxy
-    refuses every .gov.in. So each is pinned EXACTLY here, which is the only
-    thing that makes a later silent edit visible."""
+    """Each figure is pinned EXACTLY here, which is what makes a later silent
+    edit visible. `verified=True` is a claim about PROVENANCE and not about
+    confidence: the notifications were read on 18-09-2026 (what each settled is
+    in docs/compliance/sources/gst-notifications/README.md), and a rate stated
+    from anywhere else must stay False."""
     r = LATE_FEE_RATES[("gstr3b", "2025-26")]
     assert r.per_day_paise == 50_00              # ₹25 CGST + ₹25 SGST
     assert r.nil_return_per_day_paise == 20_00   # ₹10 + ₹10
@@ -270,8 +272,8 @@ def test_the_notified_ladder_is_held_exactly():
         (None,          10_000_00),   # above ₹5 crore
     ]
     assert r.verified is True, (
-        "a True here claims a primary source nobody has — the figures are "
-        "corroborated, not read off the notification"
+        "a True here is a claim that the notification itself was read; these "
+        "were, on 18-09-2026 — a rate added from a secondary source must say False"
     )
     assert "19/2021" in r.source
 
@@ -352,7 +354,8 @@ def test_a_year_before_the_2021_ladder_IS_NOW_COMPUTED_at_the_2018_figures():
     The refusal was right for as long as 4/2018 and 76/2018 had not been read:
     they govern the earlier periods, they carry different caps, and charging
     those years at the 2021 ladder would be a rate that was not in force. Both
-    are now committed under docs/compliance/sources/, and what they say is that
+    were read on 18-09-2026 (what each settled is in
+    docs/compliance/sources/gst-notifications/README.md), and what they say is that
     the PER-DAY RATE NEVER MOVED — ₹25 central tax, ₹10 for a nil return, the
     same figures 2021 kept. What 2021 added was the turnover-banded ceiling and
     the ₹500 nil cap.
@@ -520,12 +523,50 @@ def test_the_2023_amnesty_window_is_honoured_and_has_closed():
 
 
 def test_an_unknown_return_type_is_still_refused_rather_than_defaulted():
-    """GSTR-4, GSTR-7 and GSTR-8 each carry their own fee and none is held.
+    """No fee is held for GSTR-4, GSTR-7, GSTR-8 or CMP-08, so each is refused.
     Falling back to the 3B ladder would charge one anyway."""
     for rt in ("gstr4", "gstr7", "gstr8", "cmp08"):
         out = late_fee(return_type=rt, financial_year="2025-26",
                        due_date=date(2026, 12, 31), filed_on=date(2027, 1, 15))
         assert isinstance(out, dict) and out["refused"] is True, rt
+
+
+@pytest.mark.parametrize("return_type, financial_year", [
+    ("gstr3b", "2027-28"),   # a year AFTER the table: the sentence used to say the figures were "held from FY 2017-18"
+    ("gstr1", "2016-17"),    # a year BEFORE it
+    ("gstr4", "2025-26"),    # another return altogether
+    ("cmp08", "2025-26"),
+])
+def test_the_refusal_names_the_range_the_table_actually_holds(return_type, financial_year):
+    """The refusal's sentence is what a CA reads on Table 5.1 beside a late return, and it used to say the notified
+    figures "are held from FY 2017-18 (Notifications 19/2021 and 20/2021); an earlier period is governed by
+    4/2018 and 76/2018". That was wrong three ways for the same refusal: 4/2018 and 76/2018 ARE held (from 2017-18),
+    19/2021 and 20/2021 do not start there, and a year after the table (2027-28) is not "an earlier period" at all.
+
+    It is built from the table's own first and last year now, and from the first year of the annual fee, so adding
+    a year to `LATE_FEE_RATES` moves the sentence with it and no edit can leave it naming a range the table has
+    stopped matching."""
+    held = sorted({fy for (_rt, fy) in LATE_FEE_RATES})
+    out = late_fee(return_type=return_type, financial_year=financial_year,
+                   due_date=date(2030, 1, 1), filed_on=date(2030, 1, 15))
+    assert isinstance(out, dict) and out["refused"] is True
+    assert out["code"] == GAP_LATE_FEE_RATES_NOT_HELD
+    reason = out["reason"]
+    assert f"FY {held[0]} to FY {held[-1]}" in reason, reason
+    assert f"from FY {lf.GSTR9_FEE_FIRST_HELD_FY}" in reason, reason
+    assert "earlier period" not in reason, reason
+    # the statutory figure stays a named non-fallback: charging it is four times the notified fee
+    assert "NOT used as a fallback" in reason
+
+
+def test_the_refusal_range_moves_when_the_table_grows(monkeypatch):
+    """Proves the sentence is DERIVED rather than a constant that happens to equal today's table: add a year and the
+    refusal for the year after it names the new last year."""
+    template = LATE_FEE_RATES[("gstr3b", "2025-26")]
+    monkeypatch.setitem(lf.LATE_FEE_RATES, ("gstr3b", "2027-28"), template)
+    out = late_fee(return_type="gstr3b", financial_year="2030-31",
+                   due_date=date(2031, 7, 20), filed_on=date(2031, 8, 1))
+    assert "to FY 2027-28" in out["reason"], out["reason"]
 
 
 # ── the wiring: Table 5.1 and the service ────────────────────────────────────

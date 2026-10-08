@@ -48,7 +48,7 @@ frontend UI on the Purchases page.)*
 | Integer paise only (no float) | Everywhere; kernel + models + reporting |
 | Double-entry (Σ debit = Σ credit) | `_create_journal` (asserts before insert) |
 | Posted entries are never hard-deleted or rewritten in place | DB triggers `trg_journal_immutability` (update) / `trg_journal_immutability_delete` (delete). A **manual** entry may be edited or soft-deleted while its period is open — `edit_posted_journal` / `discard_posted_journal`, both gated on `journal_period_lock_reason` (migrations 266, 275, 276) |
-| No posting into a locked FY | `period_validation_service.validate_posting_date` on every posting/edit path (see `03-financial-years.md`) |
+| No posting into a closed period | `period_validation_service.validate_posting_date` on the posting/edit paths, **and the kernel itself** (`period_lock_service.closure_reason`: the firm locked the year, or the client's year-end is finalised, migration 361), so a path that never calls the validator is still refused. A *filed return* is asked only where a document that feeds a return is written, not by the kernel (see `03-financial-years.md`) |
 | Multi-tenant isolation | RLS + firm-scoped writes; `created_by` FKs to internal `users.id` |
 | Auditability | `trg_audit_capture` + `services/audit_service.log_event` |
 
@@ -65,10 +65,17 @@ frontend UI on the Purchases page.)*
 | `03-financial-years.md` | Indian FY, year locking, period validation |
 | `04-opening-balances.md` | Master opening balances → the opening journal |
 | `05-manual-journals.md` | Manual journal module |
-| `06-multi-currency-phase0.md` | Frozen multi-currency architecture (design; not yet implemented) |
+| `06-multi-currency-phase0.md` | Multi-currency architecture: design frozen, Capability A implemented and gated off (read its status banner first) |
+| `06a-multi-currency-phase1-implementation.md` | Phase 1: currencies master, rates, the three gates (migration 146) |
+| `06b-multi-currency-phase2-implementation.md` | Phase 2: a currency-aware GL, the kernel stamps each line's currency (147) |
+| `06c-multi-currency-phase3-implementation.md` | Phase 3: foreign sales invoices, purchase bills, receipts and payments (148) |
+| `06d-multi-currency-phase4-implementation.md` | Phase 4: realized FX on settlement, and the AS 11 year-end revaluation (149) |
+| `06e-multi-currency-phase5-implementation.md` | Phase 5: FX reports and foreign-currency bank accounts (150) |
 | `07-gst-engine.md` | GST computation, GSTR-1/3B/2B |
-| `08-reporting-engine.md` | GL, Trial Balance, Balance Sheet, P&L, Cash Flow |
+| `08-reporting-engine.md` | GL, Trial Balance, Balance Sheet, P&L, Cash Flow, and the read paths behind them |
+| `09-bank-entries.md` | A bank statement line becomes a voucher: Receipt, Payment or Contra |
+| `10-payroll.md` | Payroll, the bureau model (a design record, partly superseded; read its status box) |
 
 ## Current phase
 
-Single-currency (**INR**) production engine. Multi-currency is designed (frozen Phase 0) and gated OFF; nothing currency-aware is implemented yet — see `06-multi-currency-phase0.md`.
+An **INR-functional** production engine. Multi-currency **Capability A** (INR books that transact in foreign currency) is **implemented** (Phases 0.5 to 5, migrations 146 to 150) and **gated OFF by default**: a foreign-currency transaction needs the environment switch `MULTI_CURRENCY_ENABLED`, `firms.multi_currency_entitled` and `clients.multi_currency_enabled`, and the two database gates are writable by a Partner (`PUT /api/currencies/entitlement` and `/policy`). The AS 11 year-end revaluation has a door (`routers/fx_revaluation.py`). **Not built:** Capability B (presentation-currency translation; a non-INR functional currency is refused) and foreign credit and debit notes. See the status banner on `06-multi-currency-phase0.md`; where it and `06a` to `06e` disagree with this overview, they and the code win.

@@ -23,9 +23,13 @@ grep -rnE 'gst\.gov\.in|incometax\.gov\.in|ewaybillgst|mca\.gov\.in|esic\.in|epf
   --include=*.py apps/api | grep -v /tests/
 ```
 
-32 hits at the time of writing, across 15 files, and every one is either a
-docstring, a `# CA REVIEW REQUIRED` comment, or a sentence shown to a CA telling
-them where to go. **Two are neither, and are worth knowing about so nobody
+60 hits across 27 files on 8 October 2026, and every one is either a docstring,
+a `# CA REVIEW REQUIRED` comment, or a sentence shown to a CA telling them where
+to go. That figure is a dated snapshot and drifts every time a comment is added,
+so do not quote it as a promise: the claim itself is pinned by
+`tests/test_the_facts_behind_the_marketing_claims.py::test_no_server_code_addresses_a_government_portal`,
+which reads the string literals (not docstrings or comments) for a scheme-bearing
+portal URL and fails on one. **Two are neither, and are worth knowing about so nobody
 mistakes them for an integration**: `domain/income_tax/xbrl_service.py` uses
 `http://www.mca.gov.in/taxonomy/2023/in-bse-fin` and `http://www.mca.gov.in` as
 XML **namespace URIs**. A namespace URI is an identifier, not an address — it is
@@ -119,12 +123,15 @@ integration work, because it is **the seam**: an abstract `GSTPortalProvider`
 with exactly one implementation, `ManualGSTProvider`, and READ-ONLY in capitals
 at the top.
 
-There is a live sharp edge there. `get_provider(provider_name: str = "manual")`
-takes a name **and ignores it** — it returns `ManualGSTProvider()`
-unconditionally. Today that is harmless because there is nothing else to return.
-The day a second provider is added, a caller asking for it by name gets manual
-data and no error, which is the silent-wrong-answer failure this codebase keeps
-having to unpick. Wire the switch in the same commit that adds the provider.
+The sharp edge that used to be there is closed. `get_provider(provider_name: str =
+"manual")` once took a name and ignored it, so the day a second provider existed a
+caller asking for it by name would have got manual data and no error, which is the
+silent-wrong-answer failure this codebase keeps having to unpick. It now **refuses
+any name but `manual` with a `ValueError`**, pinned by
+`tests/test_provider_factories_refuse_a_name_they_lack.py`, so the switch has to be
+wired in the same commit that adds a provider. The e-invoice factory,
+`domain/income_tax/einvoice_service.get_provider`, behaves differently: it logs a
+warning and falls back to its manual provider.
 
 ## 5. The one place the product already refuses for a registration reason
 
@@ -137,6 +144,11 @@ one that matters here:
 > upload whatever else it contains. Obtaining it is a registration step, not a
 > coding one, in the same way GSP registration gates GST filing.
 
+**Which registration issues that number is not settled.** `07` §3.4 argues it is the
+Third Party Software Utility Developer registration and probably separate from ERI,
+and `08` Email 1 asks the Department; treat any statement that it comes with ERI as
+unconfirmed.
+
 That is the model for everything in this document. The code is ahead of the
 paperwork, it knows it, and it says so at the point of refusal rather than
 emitting something that looks right and fails at a portal.
@@ -146,8 +158,8 @@ issued is a config change.
 
 ## 6. The filing demos
 
-`services/filing_demo/` — eight flows: `gstr1`, `gstr3b`, `gstr9`, `itr`,
-`tds_return`, `pf_ecr`, `esi`, `mca`. Served by
+`services/filing_demo/` — eight flows, under the keys the API serves them by:
+`gstr1`, `gstr3b`, `gstr9`, `tds`, `itr`, `pf`, `esi`, `mca`. Served by
 `POST /api/filing-demo/{flow}/preview`, rendered by
 `components/FilingDemoWizard.tsx`, wired into five screens.
 
@@ -182,7 +194,8 @@ holds the line — it fails if any of those files come back, if anything writes
 `demo_filings` from the browser, or if a screen offers the wizard without first
 probing `fetchFilingDemoCapabilities`.
 
-`docs/DEMO_FILING.md` documents the deleted path and only that one, which is how
-the discrepancy survived unnoticed for as long as it did. It is stale and should
-be replaced by a description of the shared framework or removed.
+`docs/DEMO_FILING.md` is the description of the shared framework: the one
+implementation, what each of the eight flows is there to teach, the two rivals that
+were deleted and the kill switch. It used to describe only the deleted path, which
+is how the discrepancy survived unnoticed for as long as it did, and no longer does.
 

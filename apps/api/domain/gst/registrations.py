@@ -276,7 +276,9 @@ def documents_not_split_caveat(regs: list[Registration],
     CLIENT-WIDE documents, including the first state's, and renders as
     authoritatively as one built from a clean book. The interim answer is to say
     so on the return (GST-05); the durable one is to attribute each document to
-    a registration (GST-16), and this module is what that change retires.
+    a registration (open work: see docs/open-items/, "Attribute each invoice,
+    bill and note to a GST registration"), and this module is what that change
+    retires.
 
     A CAVEAT, NOT A REFUSAL, and that is deliberate: a saved return whose GSTIN
     the client holds must stay readable and markable as filed

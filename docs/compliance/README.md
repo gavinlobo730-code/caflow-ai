@@ -50,10 +50,13 @@ greppable marker naming the section that explains it:
 grep -rn 'TODO(compliance)' apps/api apps/web
 ```
 
-Eleven markers today, in `domain/gst/portal_service.py`,
+The markers are in `domain/gst/portal_service.py`,
 `domain/income_tax/itr_json.py`, `domain/payroll/{ecr,esic,statutory,form24q}.py`,
-`domain/banking/normalizer.py`, and the four prepare-only rails
-(`routers/{einvoice,eway_bill,xbrl_engine,mca_workspace}.py`).
+`domain/tds/section_rates.py`, `domain/dpdp/retention.py`,
+`domain/banking/normalizer.py`, `services/audit_service.py`, and the four
+prepare-only rails (`routers/{einvoice,eway_bill,xbrl_engine,mca_workspace}.py`).
+The list is the rule, not the count: `tests/test_compliance_markers_point_somewhere_real.py`
+fails a file that carries a marker and is not named here.
 
 The convention is **new** and deliberately scoped. The codebase had zero
 `TODO`/`FIXME` markers anywhere before this — it prefers prose comments beside
@@ -88,8 +91,10 @@ orphaning.
 3. **`05` §0** — CLAUDE.md's bank-data section tells you to register as an FIU,
    and research says that is not a thing a SaaS company can do. **`05` §7** is
    where that line of work ends: route 3, closed.
-4. **`03` §0** — the Income-tax Act 2025 may have renumbered every TDS form the
-   product emits, and 25 files carry the old vocabulary.
+4. **`03` §0** — the Income-tax Act 2025 renumbered every TDS form the product
+   emits. The fork is built (`domain/tds/vocabulary.py`, both vocabularies
+   permanent); what is still open there is the part of the s. 393 payment-code
+   table nobody has read.
 
 ## What is deliberately NOT duplicated here
 

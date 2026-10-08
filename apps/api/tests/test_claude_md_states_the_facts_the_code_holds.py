@@ -196,3 +196,121 @@ def test_a_variable_the_page_names_as_read_is_read_by_the_backend(name):
         f"CLAUDE.md tells a reader `{name}` matters ({NAMED_AS_READ[name]}) and nothing in apps/api reads it. "
         "Either the code stopped honouring it, or the scan's reading of how it is read needs extending "
         "(tests/test_render_manifest_matches_code.py `_READ`).")
+
+
+# ═══ Known contradictions between a sentence on the page and a thing the code now holds ══════════════════════════
+#
+# There is NO generic detector for a prose rule, and this file does not pretend to be one: a sentence that says
+# "X is not built" goes stale the day X is built, and nothing can tell from the sentence alone. What can be pinned
+# is each contradiction that has actually been found, in the direction that cannot be satisfied by deleting the
+# test: the page must not say the thing WHILE the code that makes it false is still in the tree. Each case names
+# both halves, so a reader who trips it sees what changed.
+
+def test_the_page_does_not_say_the_revised_and_updated_return_is_unbuilt():
+    """IT-23 built the §139(5) revised and §139(8A) updated return (migration 381 gave `itr_filings` a
+    `return_type`; `domain/income_tax/return_type.py` is the authority; `GET /api/itr/return-kinds` serves it). The
+    seven-forms bullet went on saying they were "Still not built" and that they "need a migration replacing
+    migration 319's UNIQUE", which is the opposite of the IT-23 bullet far above it."""
+    assert (API / "domain" / "income_tax" / "return_type.py").is_file(), "premise: the return-kind authority exists"
+    assert list((API / "migrations").glob("381_*.sql")), "premise: migration 381 exists"
+    page = _page()
+    assert not re.search(r"Still not built: the §139\(5\) revised and §139\(8A\) updated return", page), (
+        "CLAUDE.md still says the §139(5) revised and §139(8A) updated return are not built; "
+        "domain/income_tax/return_type.py and migration 381 build them. See the IT-23 return-kinds bullet.")
+    assert not re.search(r"need a `return_type` and a migration replacing migration 319", page), (
+        "CLAUDE.md still says the revised return needs a migration replacing migration 319's key; migration 381 "
+        "is that migration.")
+
+
+_NUMBER_WORDS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8}
+
+
+def test_the_page_counts_what_the_irp_module_names_as_not_held():
+    """GST-32 names the things `irp_validations` does not hold, and the page gave a COUNT. Migration 411 gave a sales
+    invoice line an `is_service` and `goods_unit_finding` now asks the goods-only quantity rule, so the module's
+    `NOT_HELD` went from five entries to four while the page went on saying five and on saying the goods-only rule
+    "needs an `is_service` that `client_sales_invoice_lines` does not have". The number is what is held to the code;
+    the clause is the known contradiction."""
+    from domain.gst import irp_validations
+
+    hit = _found(r"(\w+) things are NAMED as not held", "how many things the IRP validations name as not held")
+    stated = _NUMBER_WORDS.get(hit.group(1).lower())
+    assert stated is not None, f"CLAUDE.md gives the count as {hit.group(1)!r}, which this test cannot read as a number"
+    assert stated == len(irp_validations.NOT_HELD), (
+        f"CLAUDE.md says {hit.group(1)} things are named as not held and domain/gst/irp_validations.py `NOT_HELD` "
+        f"has {len(irp_validations.NOT_HELD)}. The code is the authority: fix the page.")
+    assert hasattr(irp_validations, "goods_unit_finding"), "premise: the goods-only quantity rule is built"
+    assert not re.search(r"goods-only quantity rule \(both need an `is_service`", _page()), (
+        "CLAUDE.md still says the goods-only quantity rule needs an `is_service` that "
+        "`client_sales_invoice_lines` does not have; migration 411 added it and `goods_unit_finding` asks it.")
+
+
+#: The four returns GST-25 built for a registration that does not file GSTR-1 and GSTR-3B, each the module that
+#: decides it. `registrations.files_gstr1_and_3b` has refused such a registration those screens since GST-20; these
+#: are the returns it owes instead, and the design record has to say they exist or the next reader concludes the
+#: product still has nothing to offer a composition dealer or an e-commerce operator.
+GST_25_BUILDERS = ("composition", "gstr8", "gstr4_annual", "gstr9c")
+
+
+@pytest.mark.parametrize("module", GST_25_BUILDERS)
+def test_the_page_names_each_return_builder_for_a_registration_that_does_not_file_gstr1_and_3b(module):
+    path = API / "domain" / "gst" / f"{module}.py"
+    assert path.is_file(), f"premise: {path} exists; if it was renamed, update GST_25_BUILDERS and the page together"
+    assert f"domain/gst/{module}.py" in _page(), (
+        f"CLAUDE.md does not name `domain/gst/{module}.py`, the builder GST-25 added for a registration that "
+        "does not file GSTR-1 and GSTR-3B. Add it to the GST-25 bullet (after the multi-registration one).")
+
+
+def test_the_years_the_page_says_the_gst_late_fee_is_held_for_are_the_years_the_table_holds():
+    """The table-3b row for the section 47 late fee said the code refuses a year before 2021-22 and refuses GSTR-9,
+    after the same page's section 47 paragraph had said both are computed (`LATE_FEE_RATES` from FY 2017-18,
+    `_annual_late_fee` from FY 2022-23). The row now states the held range, and a year added to the table (or the
+    first year of the annual fee moving) fails here instead of leaving the row to age."""
+    from domain.gst import late_filing
+
+    hit = _found(r"GSTR-1 and GSTR-3B are HELD for FY (\d{4}-\d{2}) to (\d{4}-\d{2})",
+                 "the financial years the GSTR-1 and GSTR-3B late fee is held for")
+    first, last = hit.groups()
+    held = sorted({fy for (_rt, fy) in late_filing.LATE_FEE_RATES})
+    assert len(held) >= 10, "premise: the late-fee table holds a run of years, not a stub"
+    assert (first, last) == (held[0], held[-1]), (
+        f"CLAUDE.md says the GSTR-1 and GSTR-3B late fee is held for FY {first} to {last}; "
+        f"domain/gst/late_filing.py LATE_FEE_RATES holds FY {held[0]} to {held[-1]}. "
+        "The code is the authority: fix the page.")
+    assert late_filing.LATE_FEE_FIRST_HELD_FY == held[0], (
+        "LATE_FEE_FIRST_HELD_FY is documented as the first year any ladder is held for; it has drifted from the "
+        "table's first year")
+    annual = _found(r"GSTR-9 from FY (\d{4}-\d{2}) \(7/2023-CT", "the first financial year the GSTR-9 late fee is held for")
+    assert annual.group(1) == late_filing.GSTR9_FEE_FIRST_HELD_FY, (
+        f"CLAUDE.md says the GSTR-9 late fee is held from FY {annual.group(1)} and late_filing.py "
+        f"GSTR9_FEE_FIRST_HELD_FY is {late_filing.GSTR9_FEE_FIRST_HELD_FY}")
+    assert "the §47 late fee for a year BEFORE 2021-22" not in _page(), (
+        "the table-3b row still describes the late fee as refused for a year before 2021-22 and for GSTR-9")
+
+
+def test_the_page_says_the_invoice_furnishing_facility_is_built_and_where():
+    """Rule 59(2)'s Invoice Furnishing Facility was "not built" when the GST-11 bullet was written. It is:
+    `domain/gst/iff.py`, `GET /api/gst-workspace/iff/compute`, `gst_return_service.iff_from_books` and the
+    `IffPanel`, and `return_period.IFF_NOT_BUILT` was renamed `IFF_AVAILABLE` so a quarterly GSTR-1 says it is
+    available. The bullet went on saying it was not built, on the very return that now names it."""
+    from domain.gst import return_period
+
+    assert (API / "domain" / "gst" / "iff.py").is_file(), "premise: the facility's module exists"
+    assert hasattr(return_period, "IFF_AVAILABLE") and not hasattr(return_period, "IFF_NOT_BUILT"), (
+        "premise: the quarterly return's sentence says the facility is available")
+    page = _page()
+    assert not re.search(r"Invoice Furnishing Facility is not built", page), (
+        "CLAUDE.md still says Rule 59(2)'s Invoice Furnishing Facility is not built; domain/gst/iff.py builds it.")
+    assert "domain/gst/iff.py" in page, (
+        "CLAUDE.md does not name domain/gst/iff.py, the Rule 59(2) builder. Describe it beside the GST-11 bullet.")
+
+
+def test_the_page_does_not_say_the_payment_code_is_unwired_from_the_deductee_rows():
+    """`Vocabulary.payment_code()` was "deliberately NOT yet wired into `tds_return_service.py`'s per-line deductee
+    output" when it was written. `domain/tds/deductee_payment_code.py` wires it onto the 24Q/26Q/27Q rows
+    (TDS-INCOME-TAX-31), and `tds_return_service` imports it; the later bullet says so and the earlier one did not."""
+    wired = (API / "services" / "tds_return_service.py").read_text(encoding="utf-8")
+    assert "deductee_payment_code" in wired, "premise: tds_return_service uses deductee_payment_code"
+    assert not re.search(r"deliberately NOT yet wired into `tds_return_service\.py`", _page()), (
+        "CLAUDE.md still says the s.393 payment code is not wired into tds_return_service.py's deductee rows; "
+        "domain/tds/deductee_payment_code.py does that. Point the sentence at the TDS-INCOME-TAX-31 bullet.")

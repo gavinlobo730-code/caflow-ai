@@ -1,23 +1,24 @@
 "use client";
 /**
- * Bank — three tabs, one working screen.
+ * Bank — four tabs, one working screen.
  *
- *   Entries    the work. Every statement line becomes a Receipt, Payment or
- *              Contra, is proposed for by the machine, and is PASSED by the
- *              CA. Importing a statement and managing the bank accounts are
- *              reached from here too — they are setup, not a step.
- *   Reconcile  the BRS — statement against books, signed off per period
- *   Worth a…   risk-based review: which POSTED lines carry a reason for a
- *              partner to look, and why. Read-only, and deliberately so —
- *              domain/banking/exceptions.py carries the argument.
- *   Rules      what the machine proposes, and what it may pass on its own
+ *   Entries       the work. Every statement line becomes a Receipt, Payment or
+ *                 Contra, is proposed for by the machine, and is PASSED by the
+ *                 CA. Importing a statement and managing the bank accounts are
+ *                 reached from here too — they are setup, not a step.
+ *   Reconcile     the BRS — statement against books, signed off per period
+ *   Worth a Look  risk-based review: which POSTED lines carry a reason for a
+ *                 partner to look, and why. Read-only, and deliberately so —
+ *                 domain/banking/exceptions.py carries the argument.
+ *   Rules         what the machine proposes, and what it may pass on its own
  *
  * Rebuilt 2026-09-03 around ENTRIES — docs/architecture/09-bank-entries.md —
  * as five tabs, and collapsed to three the same day after first use: Accounts
  * was setup wearing a tab, and Bank Book was a report (it now lives under
- * Reports › Bank Book). This file is the shell only; each tab is its own file
- * under components/banking/. The chart of accounts is loaded once here because
- * Entries and Rules both read it.
+ * Reports › Cash & Bank Book). Worth a Look was added as a fourth on
+ * 2026-09-17, on the owner's decision. This file is the shell only; each tab
+ * is its own file under components/banking/. The chart of accounts is loaded
+ * once here because Entries and Rules both read it.
  */
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";

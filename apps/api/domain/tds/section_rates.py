@@ -1,27 +1,33 @@
 """
 TODO(compliance): docs/compliance/03-income-tax-and-tds.md
-    THE KEYS IN THIS FILE ARE 1961-ACT SECTION NUMBERS AND ARE OBSOLETE FOR
-    PERIODS FROM 01-04-2026. THE RATES ARE NOT. Verified 2026-09-04.
+    THE KEYS IN THIS FILE ARE 1961-ACT SECTION NUMBERS, ON PURPOSE, AND THEY
+    STAY. THE RATES ARE RIGHT UNDER EITHER ACT. Verified 2026-09-04.
 
     The Income-tax Act 2025 consolidated ss. 192-196D and the whole 194-series
     into a table-driven architecture under ss. 392-402: salary is s. 392, the
     194-series collapsed into s. 393(1), and s. 195 became s. 393(2). TCS is
-    s. 394. Returns and challans now carry numeric payment codes 1001-1067.
+    s. 394. Statements from 01-04-2026 carry numeric payment codes 1001-1067.
 
     Substantive rates and thresholds are UNCHANGED, so every number below is
-    still right — it is the LABEL a payment is reported under that moved, and
-    citing an old section code on a return draws a processing error and a
-    correction statement.
+    still right. What moved is the LABEL a payment is reported under, and
+    citing an old section code on a 2025-Act return draws a processing error
+    and a correction statement.
 
     Do NOT rekey this file. Periods up to 31-03-2026 still report under these
     section numbers, indefinitely, including belated and revised returns.
 
-    THE PERIOD-AWARE MAPPING NOW EXISTS ALONGSIDE: domain/tds/vocabulary.py.
-    It takes a 1961-Act section — the keys below, which stay — and returns the
-    label that period's statement must carry. Translation happens at the
-    BOUNDARY, where a form or a return line is emitted; every rate lookup, every
-    stored challan and every test in this codebase goes on using these keys, and
-    a test pins that so a later rekeying is deliberate rather than tidy.
+    THE PERIOD-AWARE MAPPING EXISTS ALONGSIDE: domain/tds/vocabulary.py. It
+    takes a 1961-Act section, the keys below, which stay, and returns the label
+    that period's statement must carry. Translation happens at the BOUNDARY,
+    where a form or a return line is emitted; every rate lookup, every stored
+    challan and every test in this codebase goes on using these keys, and a
+    test pins that so a later rekeying is deliberate rather than tidy.
+
+    THE PAYMENT CODE IS HELD IN PART: vocabulary.payment_code_for answers the
+    fourteen sections a confirmed source covers (read from Annexure 2 of
+    Protean's specification, 25-09-2026), and the rest are named gaps rather
+    than guesses. Nothing in this file holds a payment code.
+
 FY-versioned TDS-on-payments section rates — single source of truth.
 
 IT Act 1961, Chapter XVII-B: Sections 193/194/194A/194B/194C/194D/194G/194H/

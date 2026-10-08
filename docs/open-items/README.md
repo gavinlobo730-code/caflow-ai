@@ -32,14 +32,14 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 8 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 16 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 212 | after the demo: Claude can do alone |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 198 | after the demo: Claude can do alone |
 | [post-demo-B-ours.md](post-demo-B-ours.md) | 332 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 203 | after the demo: only the owner or outsiders can do |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 
-**777 open items** (30 before the demo, 747 after); 17 after-demo items are `high` priority; 35 are UNSURE.
+**763 open items** (30 before the demo, 733 after); 17 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 
@@ -125,7 +125,7 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 
 ## Things in the repository that are known to be stale or wrong (so nobody trusts them)
 
-Each has its own line in the ledger (search `docs-hygiene`); this is the short list. CLAUDE.md says Rule 59(2) Invoice Furnishing Facility is not built — it is (`apps/api/domain/gst/iff.py`). CLAUDE.md's IT-23 paragraph ends "still not built: revised and updated return" — migration 381 built it. CLAUDE.md has no paragraph for the four builders written on 26 Sep (CMP-08, GSTR-8, GSTR-4 annual, GSTR-9C; #622–#624). CLAUDE.md says the GST notification texts are committed under `docs/compliance/sources/gst-notifications/` — only a README is there (checked), and the Protean file-format spreadsheet, the Form 3CD source and the ESIC manual it cites as primary sources are not committed either. `docs/schema-drift.md`'s tally and the production-guards snapshot (migration 381, against 478 in the repo) are out of date. CLAUDE.md's "about 7,000 tests" is stale (the suite passes about 22,500). `apps/api/domain/tds/vocabulary.py` holds payment codes 1001–1067 where docs/compliance/07 reports 1001–1092 (unverified either way). CLAUDE.md's engineering-15 and frontend_ux-05 paragraphs say the smoke walk has never run on GitHub and that migration 456's real-Postgres tests have not been run — the walk has since run on GitHub (twice on schedule on 6 and 7 October, red only for stale axe-baseline lines, which #704 deleted; then dispatched by hand on 8 October and green) and the 456 test runs in the required migration job. CLAUDE.md's pointer to `scripts/seed_demo_firm.py` should read `apps/api/scripts/seed_demo_firm.py`.
+Each has its own line in the ledger (search `docs-hygiene`) or is a fact the earlier sweeps recorded; this is the short list. `docs/schema-drift.md`'s tally and the production-guards snapshot (migration 381, against 479 in the repo) are out of date. `apps/api/domain/tds/vocabulary.py` holds payment codes 1001–1067 where docs/compliance/07 and 08 report that research found 1001–1092 (both now say it is unverified either way). The Protean file-format spreadsheet, the Form 3CD source and the ESIC manual that the code cites as primary sources are not committed in `docs/compliance/sources/` (POST-C-199). The CLAUDE.md, architecture and compliance documents were brought in step with the code on 8 October 2026 (the GST, income-tax, payroll, reporting, bank and multi-currency design records, the late-fee and IFF sentences, the smoke-walk paragraphs); a new stale sentence is found by the guards each of those documents now has, or by reading.
 
 ## How this ledger was built, and what it cannot tell you
 

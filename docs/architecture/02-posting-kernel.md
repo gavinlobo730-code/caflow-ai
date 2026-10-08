@@ -10,13 +10,20 @@ Signature (integer paise throughout):
 _create_journal(db, firm_id, client_id, entry_date, reference_no, narration,
                 entry_type, lines,
                 is_posted=True, source_type=None, source_id=None, created_by=None,
-                reversal_of=None, attachments=None) -> entry_id
+                reversal_of=None, attachments=None,
+                txn_currency=None, exchange_rate=None, rate_source=None,
+                rate_type=None, rate_date=None, rate_selected_by=None,
+                rate_overridden=False, currency_policy=None) -> entry_id
 ```
 
+The last eight parameters are the multi-currency metadata (`06b`): every one defaults to the INR, rate 1 identity, so a caller that passes none is unchanged.
+
 What it guarantees, in order:
-1. **Double-entry balance** — sums `debit_paise` / `credit_paise` across `lines`; raises `ValueError` if `total_debit != total_credit`. Nothing unbalanced ever reaches the GL.
-2. **Dedup** — if a posted entry with the same `(client_id, reference_no, entry_date)` exists, it returns that id instead of duplicating (idempotency for auto-posted sources).
-3. **Insert** — writes one `journal_entries` row + its `journal_lines`.
+1. **Double-entry balance** — sums `debit_paise` / `credit_paise` across `lines`; raises `ValueError` if `total_debit != total_credit`, and refuses a balanced but zero-value journal. Nothing unbalanced ever reaches the GL.
+2. **The period is not closed** — `period_lock_service.closure_reason` (the SQL `period_closure_reason`, migration 361) refuses a date inside a financial year the firm locked or a client year-end that was finalised, and raises its CA-facing sentence. A date it cannot read is itself a refusal. The *filed-return* branch is deliberately not asked here; see `03-financial-years.md`.
+3. **Currency** — a non-INR line or a rate other than 1 is refused unless an active `CurrencyPolicy` is supplied (`06b`).
+4. **Dedup** — if a live entry with the same `(client_id, reference_no, entry_date)` exists (not reversed, not soft-deleted: the unique index is partial on exactly those), it returns that id instead of duplicating (idempotency for auto-posted sources).
+5. **Insert** — the `post_journal_atomic` RPC (migration 152) writes one `journal_entries` row and its `journal_lines` in one transaction, recording each line's position in the array as `journal_lines.line_order` (migration 384; a posted line from before it keeps `NULL` and `domain/accounting/line_order.py` orders it at read time). Only a database double with no `rpc` takes the two-insert fallback, which stamps `line_order` too.
 
 Entry payload fields: `firm_id, client_id, entry_date, reference_no, narration, entry_type, is_posted, status(=posted/draft), posted_at, posted_by, created_by, source_type, source_id` — plus the additive, optional `reversal_of` and `attachments` (written only when supplied, so every existing caller is unchanged).
 
@@ -27,6 +34,8 @@ Entry payload fields: `firm_id, client_id, entry_date, reference_no, narration, 
 ## Account resolution — `_find_account`
 
 Callers reference accounts by intent, not id. `_find_account(db, firm_id, client_id, name_pattern, system_key=None)` resolves a `chart_of_accounts.id` by **`system_account_key` first** (firm-wide, stable), then falls back to **`account_name ILIKE`** (client OR firm-template scope). Raises `ValueError` if neither finds an active account.
+
+**In practice the name match does most of the work, and that is worth knowing before renaming an account.** `seed_firm_coa` (`services/coa_seed_service.py`) writes no `system_account_key` on any row, so a freshly seeded firm resolves every account by name. Keys exist only where a migration stamped them: 092 back-filled the control accounts by name once, and later migrations (098, 149, 374, 389, 397, 425) stamp the accounts they add. Migration 375, which adds the employer-contribution head (5016), is the exception: it inserts that account with a NULL key, like the rest of the payroll accounts. The payroll accounts (Salaries Expense, Net Salary Payable, the PF, ESI and PT payables, TDS Payable - Salary) are looked up by name only (the posting functions pass no key), so a renamed one stops a payroll finalising, and a key would not yet help for the TDS pair: migration 092 stamped `tds_payable` on both TDS accounts. The key branch itself is firm-wide and unordered (`.limit(1)`, no client scope), safe only for firm-level rows; migration 360's trigger refuses another client's account on a line. **The fix is not built**: one vocabulary of payroll keys and one client-scoped resolver, with the readers moved to it in the same change as the writers (switching only the posting functions would let the accrual and `tds_return_service`'s tie-out look the same accounts up differently).
 
 ## Posting surface (every path → kernel)
 

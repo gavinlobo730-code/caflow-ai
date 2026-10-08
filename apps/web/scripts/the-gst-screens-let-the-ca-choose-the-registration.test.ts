@@ -150,7 +150,8 @@ test("the picker shows the server's caveat and decides nothing statutory", () =>
 
 test("the picker does not pretend to filter the documents", () => {
   // Choosing a registration changes which GSTIN the return is filed under and
-  // NOT which documents it contains (GST-16 is open). So the screen has to be
+  // NOT which documents it contains (attributing each document to a
+  // registration is open work). So the screen has to be
   // able to say so, and the sentence it says is carried with the choice.
   const src = code(PICKER);
   assert.match(src, /caveatFor\(/);

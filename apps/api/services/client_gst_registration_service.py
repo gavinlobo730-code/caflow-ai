@@ -116,7 +116,8 @@ def listing(db, firm_id: str, client_id: str) -> list[dict]:
             # from the in-memory list already read (no further query), and is
             # None where the client holds one registration that files the
             # ordinary pair. `registrations.documents_not_split_caveat` is the
-            # one place it is worded; GST-16 retires it.
+            # one place it is worded; attributing each document to a
+            # registration is what retires it.
             "documents_not_split_caveat": reg.documents_not_split_caveat(
                 held_here, r.gstin),
         })

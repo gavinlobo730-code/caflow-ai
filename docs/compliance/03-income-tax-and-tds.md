@@ -130,12 +130,21 @@ relied on silently.
 
 Three things it **refuses** rather than guessing:
 
-- **The s. 393 payment-code table (1001–1067) is not held.** Sixty-seven guessed
-  codes would be sixty-seven wrong labels, and a wrong payment code is
-  *accepted* and then wrong — worse than a rejection, because nothing tells the
-  CA. `payment_code_gap()` names it, and it rides on the 24Q/138 working paper
-  so a complete-looking file says which column is missing. **This is a human
-  step**, like the ITR schemas and the state PT slabs.
+- **The s. 393 payment-code table (1001–1067) is held only in part.** A confirmed
+  subset is held (25-09-2026): `payment_code_for()` answers fourteen sections (s.192,
+  193, 194, 194B, 194C, 194D, 194G, 194H, 194I(a), 194I(b), 194J(a), 194LA, 194Q,
+  194T) from Annexure 2 of Protean's specification for the renumbered statements, and
+  `domain/tds/deductee_payment_code.py` puts the code on every deductee row of the
+  24Q, 26Q and 27Q builders in `services/tds_return_service.py` (`payment_code`,
+  `payment_code_gap` and `payment_code_assumption`, always present, null for a
+  1961-Act period). A section that splits on a fact no record holds (s.194A, s.194J(b),
+  the bare 194I and 194J) is a named gap with its own reason and is never guessed:
+  sixty-seven guessed codes would be sixty-seven wrong labels, and a wrong payment
+  code is *accepted* and then wrong — worse than a rejection, because nothing tells
+  the CA. `payment_code_gap()` still names the table's incompleteness at the return
+  level. The payroll-built 24Q CSV (`domain/payroll/form24q.py`) has no payment-code
+  column and says so in the file. **The rest of the table is a human step**, like the
+  ITR schemas and the state PT slabs.
 - **s. 393(1) has no reverse.** The whole 194-series collapsed into it, so
   asking which of 194C, 194J or 194H a line was means inventing one.
 - **A form cannot be asked for without a period.** Defaulting to today would
@@ -244,10 +253,15 @@ A vendor page claiming ERIs get "instant pre-fill of AIS, 26AS, Form 16" is
 **marketing copy**; what is confirmed is the **Prefill** API, which is not the
 same thing.
 
-### ⚠️ The constraint that hits this deployment specifically
+### ⚠️ A constraint that MAY hit this deployment — and it probably does not come from ERI
 
-From the **External Agency** registration manual `[P, but a different registration
-category — verify it applies to ERIs verbatim]` `[U]`:
+The list below is from the **External Agency** registration manual `[P, but a
+different registration category]`. `07` §3.4 found that External Agency is for
+Central and State Government departments, approved undertaking agencies and
+RBI-approved banks, **a category PracticeSync cannot join**, so these steps are
+real for that category and are **not evidence about the ERI path**. Whether they
+bind ERIs verbatim is open `[U]` (`07` §0 point 2; `08` Appendix C, Email 1,
+question 5 asks it):
 
 - UAT source IPs emailed to ITD; ITD issues test credentials and test scenarios.
 - Final UAT test report emailed back for **competent-authority approval**.
@@ -255,12 +269,32 @@ category — verify it applies to ERIs verbatim]` `[U]`:
 - **Production access granted by whitelisting a maximum of 4 Indian static IPs.**
 - The ERI shares its **DSC public key** with ITD for signature validation.
 
+> The four-static-IP whitelist **is** independently sourced for NIC **e-invoice
+> production** (`07` §3.2), so the consideration below stands for that route
+> whatever the ERI answer is.
+>
 > **`apps/api` runs on Render in Singapore**, deliberately, to sit near the
 > Mumbai Supabase (`render.yaml` carries the measurements). Render is not in
 > India and does not offer static egress IPs on all plans. Satisfying a 4-IP
 > Indian whitelist needs an **India-hosted static-IP egress hop** that the
 > filing calls route through. That is a **deployment change, not a code change**,
-> and it is its own line item.
+> and it is its own line item — **where it applies**: to e-invoice production, and
+> to ERI if the open question above is answered yes.
+
+### The `SW########` most likely comes from a different registration
+
+The ITR JSON schemas require a software-provider id of the form `SW########` in
+`CreationInfo.SWCreatedBy`, and a return without an approved one is rejected
+`[S]`. The e-filing portal has a user category **Third Party Software Utility
+Developer** with its own official user manual (`07` §3.4). **No source says that
+registration issues the id**, so the link is an inference: the category, the
+manual and the id all exist, and nothing connects them in print `[U]`. If it
+holds, it is a self-service registration separate from ERI and the cheapest
+unblock available; if it does not, the id comes from somewhere not yet
+identified. `08` Appendix C, Email 1, question 4 asks it. Until that is answered
+the code's refusal (`SoftwareProviderNotRegistered` in
+`domain/income_tax/itr_json.py`) says only that the id is a registration step,
+and does not say which one.
 
 ### Buying instead of building
 
@@ -272,7 +306,7 @@ GET https://api.sandbox.co.in/itd/eri/tax-payers/:pan/itrs/:assessment_year/itr-
 ```
 
 > **The trade-off, stated plainly:** this sidesteps registration, net worth,
-> ISA/CISA certification, UAT and the 4-IP whitelist — but **the client's consent
+> ISA/CISA certification and any UAT or IP-whitelisting step that applies — but **the client's consent
 > is granted to the aggregator's ERI, not to PracticeSync.** That is a material
 > thing to have to tell a CA firm about their clients' data, and it puts a third
 > party between the product and a statutory filing.
@@ -288,10 +322,11 @@ GET https://api.sandbox.co.in/itd/eri/tax-payers/:pan/itrs/:assessment_year/itr-
 Protean". Registration is reportedly valid **two years**, renewed from 1 April.
 
 **Timelines: no published SLA and no practitioner account found.** `[U]` But the
-Type-2 path has **at least four serial, email-driven, manually-reviewed gates** —
-application + documents, ISA/CISA due-diligence certificate, ITD UAT
-certification, production IP whitelisting. **Plan in quarters, not weeks**, and
-say so rather than inventing a figure.
+Type-2 path has **at least three serial, manually-reviewed gates** — application
++ documents, ISA/CISA due-diligence certificate, departmental approval (`07`
+§3.4). UAT certification and production IP whitelisting are the External Agency
+manual's steps and are **unconfirmed for ERI**; if they apply they are further
+gates. **Plan in quarters, not weeks**, and say so rather than inventing a figure.
 
 ⚠️ One claim to **not** carry forward: that ERI registration requires ISO 27001
 or a third-party penetration test. That came from a low-quality aggregator and
@@ -404,13 +439,22 @@ already takes: it groups the figures `tds_26q_from_books` /
 own confirmed record hierarchy (so a CA keys them into the real RPU screens
 in the right order), and says so on the sheet in as many words — it is never
 represented as, and never becomes, the government's own upload file. Item 7
-above stays open rather than closed by this: closing it for real needs a
+above stays open rather than closed by this (the paragraph after this one says what
+of the specification was read): closing it for real needs a
 human to download `tinpan.proteantech.in`'s current XLS/PDF specs for Forms
 138/140/143/144 with an ordinary browser (that domain is not blocked for a
 human, only for this sandbox), after which a real writer could be built and
 round-tripped through an actual FVU run before being trusted — exactly the
 "a human downloads them" posture CLAUDE.md already takes for the ITR JSON
 schemas.
+
+**What was read of the Protean specification, and what was not.** On 25-09-2026 the
+owner fetched Protean's file-format specification for the renumbered statements
+(Forms 138/140/144, Tax Year 2026-27), and its Annexure 2, the payment-code table,
+was read directly: `domain/tds/vocabulary.py` records it and is the authority for
+what was taken. Only that annexure was used. No copy of the specification is
+committed under `docs/compliance/sources/`, and this document does not claim to hold
+the record layouts, the FVU version or a CSI, so the decision above stands.
 
 ### ⚠️ The highest-value lead in this whole document
 
@@ -536,13 +580,17 @@ with the suite green.
 
 ## 6. Verify before relying on any of this
 
-1. **Whether the 2025 Act renumbering is real and what it does to §0.** Highest
-   priority. Task #125.
+1. ~~Whether the 2025 Act renumbering is real and what it does to §0.~~ **Settled:**
+   verified 2026-09-04 (§0) and built (`domain/tds/vocabulary.py`). Kept in the list so
+   the numbering other documents cite still holds.
 2. **Whether the CPC-TDS OpenAPI portal and a TSP scheme exist in production.**
 3. Whether the ERI scheme survives the 2025 Act, and the s.139(1B) equivalent.
 4. Whether the ITD API spec has been updated since November 2021.
 5. Whether the UAT / 4-IP / TLS-1.2 process applies to ERIs verbatim.
 6. Whether ERIs get AIS/TIS/26AS by API at all.
-7. Whether the TIN e-TDS file format spec is publicly published.
+7. Whether the TIN e-TDS file format spec is publicly published. **Part read, still
+   open:** the owner's 25-09-2026 download of the renumbered statements'
+   specification supplied its payment-code annexure (§4); the record layouts remain
+   `[U]`.
 8. Whether Protean's licence permits hosting the FVU in a SaaS.
 9. Current ERI fees and the approval SLA; whether registration is open.

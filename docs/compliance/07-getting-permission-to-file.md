@@ -202,16 +202,20 @@ treat it as `[U]` and read the PDF before it enters a plan.
 > Choose the counterparty accordingly, and read the data clauses.
 
 **Code seam.** `apps/api/domain/gst/portal_service.py` — the abstract
-`GSTPortalProvider` with one `ManualGSTProvider`. Its sharp edge is live:
+`GSTPortalProvider` with one `ManualGSTProvider`. Its sharp edge is closed:
 
 ```python
 def get_provider(provider_name: str = "manual") -> GSTPortalProvider:
+    if provider_name != "manual":
+        raise ValueError(...)
     return ManualGSTProvider()
 ```
 
-It takes a name and ignores it. Today harmless; the day a GSP provider exists, a
-caller asking for it by name silently gets manual data and no error. **Wire the
-switch in the same commit that adds the provider.** Also
+It once returned the manual provider whatever name it was given, so the day a GSP
+provider existed a caller asking for it by name would have silently got manual data
+and no error. It now refuses a name it does not have
+(`tests/test_provider_factories_refuse_a_name_they_lack.py`). **Wire the switch in
+the same commit that adds the provider.** Also
 `apps/api/domain/gst/gstr1_builder.py` (targets GSTN API spec v1.3 of July 2023,
 likely stale — get the current version from the GSP under NDA) and
 `apps/api/services/gst_filing_record_service.py`, whose docstring already says it
@@ -462,11 +466,14 @@ And what is still missing, which is why nobody should plan against it yet:
 > first real filing API on the direct-tax side.
 
 **One thing the registration would not fix.** `apps/api/domain/tds/vocabulary.py`
-deliberately does not hold the s. 393 **payment-code table**, and an API makes
-that worse rather than better: a wrong payment code is *accepted* and then wrong.
-The 7 September research also found the range is **1001–1092, not 1001–1067** —
-1068–1092 are the s. 394 TCS codes, so **anything that range-checks a code at
-≤1067 rejects every valid TCS code.** `[S]` The table remains a human step.
+holds only a confirmed subset of the s. 393 **payment-code table** (14 sections,
+read from Protean's specification on 25-09-2026: `payment_code_for`) and names the
+rest as gaps, and an API makes that worse rather than better: a wrong payment code
+is *accepted* and then wrong. The 7 September research reported the range as
+**1001–1092, not 1001–1067** — 1068–1092 being the s. 394 TCS codes, so anything
+that range-checks a code at ≤1067 would reject every valid TCS code — while
+`vocabulary.PAYMENT_CODE_RANGE` holds `(1001, 1067)`. Which is right is unverified
+either way. `[S]` The rest of the table remains a human step.
 
 ### 3.6 TDS certificates — Form 16 → 130, Form 16A → 131
 
@@ -563,7 +570,7 @@ with things that are free, self-service and reversible.
 | 2 | Register on **`einv-apisandbox.nic.in`** with any GSTIN; build and test the IRN rails | `routers/einvoice.py` — the one filing software can complete | Free, no empanelment, no commercial conversation. `02` §5's point, still true |
 | 3 | Email **`suvidha-support@tdscpc.gov.in`**: is the CPC-TDS developer portal live in production, at what URL, and what does the TSP category require? | Potentially the entire direct-tax filing side | Two emails against a possible step-change. Costs nothing to ask and closes a `[U]` that has been open since the first research pass |
 | 4 | Read `gstn.org.in/.../eligibility-batch-5.pdf`; email GSTN asking whether GSP applications are open | Settles build-vs-buy on GST | Free; and "closed" is a perfectly good answer that saves a quarter of wasted effort |
-| 5 | Fix `get_provider()` to honour its argument | Nothing today; prevents a silent-wrong-answer later | Ten minutes now, versus a class of bug this codebase has repeatedly had to unpick. Do it before the provider exists, not with it |
+| 5 | **Done.** `get_provider()` refuses a name it does not have (`tests/test_provider_factories_refuse_a_name_they_lack.py`) | Nothing today; prevents a silent-wrong-answer later | Kept in the list so the numbering other documents cite still holds. The remaining step is to wire the switch in the commit that adds a provider, not after |
 
 ### Wave 1 — weeks to months. Small money, one real decision.
 
@@ -679,8 +686,8 @@ Non-negotiable, and none of it is optional per filing type.
    `apps/api/services/audit_service.py`, the discipline already used for journal
    deletions.
 6. **Delete the demo for that flow.** `apps/api/services/filing_demo/` holds
-   eight (`gstr1`, `gstr3b`, `gstr9`, `itr`, `tds_return`, `pf_ecr`, `esi`,
-   `mca`). When a real channel exists for one of them it is a **new endpoint**
+   eight, under the keys the API serves them by (`gstr1`, `gstr3b`, `gstr9`,
+   `tds`, `itr`, `pf`, `esi`, `mca`). When a real channel exists for one of them it is a **new endpoint**
    and that flow is **deleted** — never repointed, because everything that makes
    it safe is the fact that it cannot file. `apps/web/scripts/one-filing-demo-and-the-kill-switch-reaches-it.test.ts`
    holds the one-implementation line, and every screen offering the wizard must
@@ -689,8 +696,9 @@ Non-negotiable, and none of it is optional per filing type.
    filing. It defaults on today because this deployment records none. It is the
    kill switch, and it only reaches server-side flows — which is why the
    browser-side rival was deleted.
-8. **Fix `get_provider()` in the same commit that adds a provider** (§3.1). Not
-   after.
+8. **Wire the `get_provider()` switch in the same commit that adds a provider**
+   (§3.1). Not after. The factory already refuses a name it does not have, so a
+   caller cannot reach a missing provider silently.
 9. **A real filing must write the record the lock already reads.**
    `apps/api/services/gst_filing_record_service.py` builds the `filings` row that
    `journal_period_lock_reason` matches on, and its field-by-field notes explain

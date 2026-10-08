@@ -765,13 +765,17 @@ def generate_itr_json(payload: ITRPayload) -> str:
             "Obtaining it is a registration step, not a coding one, in the same "
             "way GSP registration gates GST filing. Set ITR_SOFTWARE_PROVIDER_ID "
             "once it has been issued."
-            # TODO(compliance): docs/compliance/03-income-tax-and-tds.md
-            #   The number comes with e-Return Intermediary registration. Type-2
-            #   ERI (own software, ITD APIs) is the target, and it has four
-            #   serial gates: net worth >= Rs 1 crore or apply through a CA firm,
-            #   an ISA/CISA due-diligence certificate, ITD UAT certification,
-            #   and production access limited to FOUR whitelisted INDIAN static
-            #   IPs. That last one is a deployment problem, not a code one —
+            # TODO(compliance): docs/compliance/07-getting-permission-to-file.md
+            #   Which registration issues this number is UNCONFIRMED. It most
+            #   likely comes from the portal's "Third Party Software Utility
+            #   Developer" registration and not from e-Return Intermediary
+            #   (section 3.4). A Type-2 ERI (own software, ITD APIs) is what
+            #   lets software TRANSMIT a return; it has at least three serial
+            #   gates: net worth >= Rs 1 crore or apply through a CA firm, an
+            #   ISA/CISA due-diligence certificate, and departmental approval.
+            #   Whether production access also needs whitelisted INDIAN static
+            #   IPs is the External Agency manual's rule and is unconfirmed for
+            #   ERI; if it applies it is a deployment problem, not a code one —
             #   apps/api runs on Render in Singapore.
         )
 
