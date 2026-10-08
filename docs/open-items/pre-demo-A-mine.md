@@ -18,7 +18,6 @@ IDs `PRE-A-NNN` are stable: never renumber; add new items at the next free numbe
 
 ## GST returns
 
-- **PRE-A-007** · `gst-returns` · high · hours — **Require the filed date when marking a GST return filed.** services/gst_filing_record_service.record_filing does `filed_date = filed_date or ist_today()`. filings.filed_date feeds journal_period_lock_reason and the s.37(3) / 39(9) / 16(4) correction window, so a return filed on the portal on the 11th and recorded here on the 14th is dated the 14th. The compliance door is already fixed (mark-filed requires a date, gst-27, MarkFiledModal), but the GST workspace doors still send none: apps/web/lib/data/gst.ts markGSTR3BFiled and markGSTR1Filed call setGstr3bStatus / setGstr1Status with {status, ca_approved, arn} only, although GSTStatusUpdate.filed_date exists and routers/gst_workspace.py passes body.filed_date straight through. Fix: a required date field (a field, not a computation) on those two calls and on the mark-filed dialogs of apps/web/app/gst/gstr1 and gstr3b, and consider requiring it in record_filing for GSTR-1 / GSTR-3B as the compliance door now does. _When: Cheap; 'mark GSTR-3B filed' and the period lock are natural demo moments and would silently stamp today's date._ — _Sources:_ docs/audits/OPEN-QUESTIONS.md D2 (re-verified 02-10-2026) — _Refs:_ D2, rm/gst-27
 
 ## Income tax and ITR
 
