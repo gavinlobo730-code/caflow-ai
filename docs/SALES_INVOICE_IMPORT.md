@@ -33,9 +33,10 @@ Pipeline:
    gate — the CA can skip ahead with names still unresolved; those rows are
    simply skipped and reported, same as any other row error. Skipped
    automatically when nothing is missing.
-4. **Validate** — required columns, `YYYY-MM-DD` dates, positive quantity, numeric
-   rate / GST, that each customer already exists for the client, and that a
-   given `product_service` matches an existing catalogue item.
+4. **Validate** — required columns (including `product_service`, which the
+   server demands on every line), `YYYY-MM-DD` dates, positive quantity, numeric
+   rate / GST, that each customer already exists for the client, and that the
+   `product_service` matches an existing catalogue item.
 5. **Preview** — a table shows every row with a per-row status. Rows with errors are
    highlighted and **skipped**; only valid rows import. The user can re-upload a
    corrected file before committing.
@@ -61,12 +62,12 @@ importers on this page don't use).
 | `invoice_date`      | Yes          | `YYYY-MM-DD`. Must match across every row sharing an `invoice_no`.       |
 | `due_date`          | No           | `YYYY-MM-DD`. Must match across every row sharing an `invoice_no` (if given). |
 | `supply_state_code` | No           | 2-digit GST state code, e.g. `27`. Must match across every row sharing an `invoice_no` (if given). |
-| `product_service`   | No           | Existing Product/Service catalogue item name for this client, or resolved via the "+ Add" step. Pre-fills `description`/`hsn_sac`/`rate`/`gst_rate` from the catalogue item — the row's own values still win if given. |
-| `description`       | If no `product_service` | Line-item description.                                       |
+| `product_service`   | **Yes**      | Existing Product/Service catalogue item name for this client, or resolved via the "+ Add" step. **Required on every line**: the server refuses an invoice line with no catalogue item, so the preview refuses the row first. Pre-fills `description`/`hsn_sac`/`rate`/`gst_rate` from the catalogue item — the row's own values still win if given. |
+| `description`       | If the `product_service` has no description of its own | Line-item description.                          |
 | `hsn_sac`           | No           | HSN or SAC code. Overrides the `product_service`'s own if both are given. |
 | `quantity`          | Yes          | Positive number, e.g. `1`.                                            |
-| `rate`              | If no `product_service` (or its catalogue price is unset) | Per-unit rate in **rupees**, e.g. `1500.00`. |
-| `gst_rate`          | If no `product_service` (or its catalogue rate is unset) | GST percent, e.g. `18` for 18%. |
+| `rate`              | If the `product_service`'s catalogue price is unset | Per-unit rate in **rupees**, e.g. `1500.00`. |
+| `gst_rate`          | If the `product_service`'s catalogue rate is unset | GST percent, e.g. `18` for 18%. |
 
 ### Invoice numbering is fully manual — no Caflow-generated scheme
 
@@ -109,12 +110,14 @@ A row is reported and **skipped** (not imported) when:
 
 - `invoice_no` is blank;
 - the customer name doesn't match an existing active customer for the client;
-- a given `product_service` doesn't match an existing catalogue item for the client;
+- the row names no `product_service` (the server refuses a line with no
+  catalogue item: `Product/Service is required on every line item`);
+- the `product_service` doesn't match an existing catalogue item for the client;
 - `invoice_date` (or a non-empty `due_date`) is not `YYYY-MM-DD`;
-- `description` is blank and no `product_service` supplies one;
+- `description` is blank and the `product_service` has none of its own;
 - `quantity` is not a positive number;
-- `rate` or `gst_rate` is not a non-negative number and no `product_service`
-  supplies a default for it;
+- `rate` or `gst_rate` is not a non-negative number and the `product_service`
+  supplies no default for it;
 - an `invoice_no` is reused with a different `customer`, `invoice_date`,
   `due_date`, or `supply_state_code` than the row that first established it.
 
@@ -138,6 +141,9 @@ node --experimental-strip-types --test lib/invoices/importMapping.test.ts
 ```
 
 Covers paise/bps conversion, invoice_no grouping, separate-invoice splitting,
-unknown-customer/unknown-product skip, bad date/amount reporting,
-product_service pre-fill + override, and invoice_no reused with a mismatched
-customer/date/due_date/supply_state_code.
+unknown-customer/unknown-product skip, a blank `product_service` refused (alone
+and inside a multi-row invoice), every built line carrying its catalogue id, bad
+date/amount reporting, product_service pre-fill + override, and invoice_no reused
+with a mismatched customer/date/due_date/supply_state_code. The rule that every
+importer's `product_service` column is required is held from the Python side by
+`apps/api/tests/test_an_importer_asks_for_the_catalogue_item_the_line_model_requires.py`.
