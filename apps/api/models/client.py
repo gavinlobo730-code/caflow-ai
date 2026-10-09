@@ -107,10 +107,11 @@ class ClientCreate(BaseModel):
     state_code: Optional[str] = None
     gst_filing_frequency: Optional[GSTFilingFrequency] = GSTFilingFrequency.MONTHLY
     # What the PRIMARY registration (the gstin above) IS under s.25 — see
-    # domain/gst/registrations.py. None means unrecorded, not "regular" — the
-    # domain layer's own primary_of() supplies that default, so a bare column
-    # left NULL here still resolves the way every client did before this field
-    # existed.
+    # domain/gst/registrations.py. None means NOT STATED, and POST /api/clients
+    # then leaves the key out of the insert: the column is NOT NULL DEFAULT
+    # 'regular' (migration 420), which is also what the domain layer's own
+    # primary_of() reads an absent value as. Sending the null instead is
+    # refused by the column (routers/clients._new_client_row).
     gst_registration_type: Optional[str] = None
     # Which s.10 rate a COMPOSITION primary pays — meaningless otherwise, and
     # None means unrecorded rather than any particular rate (domain/gst/

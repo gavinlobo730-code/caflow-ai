@@ -89,6 +89,9 @@ class _Recorder:
     def __init__(self, models):
         self.models = models
         self.calls: list[tuple[str, str]] = []
+        #: The same writes WITH their bodies, in order -- what the tests that
+        #: assert on a field's value (a date, a flag, a PAN) read.
+        self.requests: list[tuple[str, str, dict]] = []
         self.unmatched: list[tuple[str, str]] = []
         self.invalid: list[str] = []
         self._n = 0
@@ -98,12 +101,23 @@ class _Recorder:
         at all; a model of None means the route exists and declares no body
         this test can check."""
         for m, rx, model in self.models:
-            if m == method and rx.fullmatch(path):
+            # A route is matched on its PATH: `generate-obligations` takes the
+            # financial year as a query parameter, which no route regex holds.
+            if m == method and rx.fullmatch(path.split("?", 1)[0]):
                 return True, model
         return False, None
 
     def get(self, path: str) -> dict:
         self.calls.append(("GET", path))
+        if path.startswith("/api/accounting/accounts"):
+            # A chart carrying every ledger the fixture's bank rules name, so
+            # the rules are WRITTEN (an empty chart skips them all, which is
+            # the seeder's correct answer and would leave their bodies
+            # unchecked).
+            names = sorted({r.ledger for c in fixture.build().clients for r in c.bank_rules})
+            return {"success": True, "error": None,
+                    "data": [{"id": f"ledger-{i}", "account_name": n}
+                             for i, n in enumerate(names)]}
         return {"success": True, "data": [], "error": None}
 
     def post(self, path: str, body: dict) -> dict:
@@ -114,6 +128,7 @@ class _Recorder:
 
     def _write(self, method: str, path: str, body: dict) -> dict:
         self.calls.append((method, path))
+        self.requests.append((method, path, body))
         matched, model = self._door_for(method, path)
         if not matched:
             self.unmatched.append((method, path))
@@ -137,6 +152,7 @@ class _Recorder:
             # Every figure the seeder reads back off a response. Plausible
             # rather than computed — nothing here is an accounting claim.
             "total_paise": 118_000_00,
+            "taxable_amount_paise": 100_000_00,
             "months_posted": 1, "remaining_months": 0,
             "imported": 1, "drafted": 1, "remaining": 0,
         }}
@@ -171,6 +187,10 @@ _DOORS_THIS_SEEDER_MUST_WALK = [
     ("POST", "/api/fixed-assets"),
     ("POST", "/api/fixed-assets/run-depreciation"),
     ("PUT", "/api/payroll/enablement"),
+    # The services the practice provides -- and the obligations they imply.
+    ("POST", "/api/engagements"),
+    # The deductor's TAN -- without it no TDS statement can be built.
+    ("PUT", "/api/payroll/statutory-identity"),
     ("POST", "/api/payroll/employees"),
     ("PUT", "/api/payroll/attendance"),
     ("POST", "/api/payroll/runs"),
@@ -390,3 +410,221 @@ def test_a_reorder_level_of_none_is_a_real_state():
     assert not [i for i in goods if i.reorder_level_units == 0], (
         "a reorder level of ZERO stands in for 'not set', which is the exact "
         "conflation INV-09 exists to prevent")
+
+
+# ── What the recorded bodies SAY, not only whether the door accepts them ────
+#
+# A body can satisfy its model and still be wrong about the books it writes:
+# every one below was true of the seeder as shipped and was only visible by
+# running it over a real database (PRE-A-004).
+
+def _sent(run, method, path):
+    return [b for m, p, b in run.requests if (m, p) == (method, path)]
+
+
+def test_every_catalogue_item_that_opens_stock_is_dated_to_the_books_first_day(_run):
+    """Left out, the router dates an opening balance to the financial year the
+    CLOCK is in -- 2026-27 for books that begin 1 April 2025 -- which put thirty
+    InventoryOpening journals a year after the sales they were meant to
+    cover."""
+    firm = fixture.build()
+    first_day = f"{firm.financial_year[:4]}-04-01"
+    items = _sent(_run, "POST", "/api/service-catalogue/")
+    stocked = [b for b in items if b.get("opening_qty_units")]
+    assert stocked, "no catalogue item opens stock"
+    assert {b.get("opening_balance_date") for b in stocked} == {first_day}
+    assert not [b for b in items
+                if not b.get("opening_qty_units") and b.get("opening_balance_date")], (
+        "a date was sent for an item that opens no stock")
+
+
+def test_documents_are_written_in_date_order_sales_and_purchases_together(_run):
+    """A stock ledger is a chain in the order it is WRITTEN. All sales before
+    any purchase put the running quantity below nil however the year nets."""
+    per_client: list[list[tuple[str, str]]] = []
+    for method, path, body in _run.requests:
+        if (method, path) == ("POST", "/api/clients"):
+            per_client.append([])
+        elif (method, path) == ("POST", "/api/sales-invoices/"):
+            per_client[-1].append((body["invoice_date"], "sale"))
+        elif (method, path) == ("POST", "/api/purchase-bills/"):
+            per_client[-1].append((body["bill_date"], "purchase"))
+    assert len(per_client) == len(fixture.build().clients)
+    for docs in per_client:
+        dates = [d for d, _ in docs]
+        assert dates == sorted(dates), "a client's documents were not written in date order"
+        kinds = [k for _, k in docs]
+        if "sale" in kinds and "purchase" in kinds:
+            assert kinds.index("purchase") < len(kinds) - 1 - kinds[::-1].index("sale"), (
+                "every purchase was written after the last sale")
+
+
+def test_a_vendor_is_withheld_from_only_when_it_has_a_section_and_its_client_deducts(_run):
+    """`vendors.tds_section` alone withholds nothing; the purchase-bill engine
+    asks `tds_applicable` first. And a payee's PAN is its GSTIN's characters 3
+    to 12, with none for an unregistered one (s.206AA)."""
+    firm = fixture.build()
+    bodies = _sent(_run, "POST", "/api/vendors/")
+    assert len(bodies) == sum(len(c.vendors) for c in firm.clients)
+    for b in bodies:
+        assert isinstance(b["tds_applicable"], bool), b
+        if b["tds_applicable"]:
+            assert b["tds_section"], f"withheld with no section: {b}"
+        assert b["pan"] == (b["gstin"][2:12] if b["gstin"] else None), b
+    expected = sum(1 for c in firm.clients if c.deducts_tax
+                   for v in c.vendors if v.withholds_tds)
+    assert expected > 0, "the fixture withholds from nobody: the TDS screens are empty"
+    assert sum(1 for b in bodies if b["tds_applicable"]) == expected
+    assert [b for b in bodies if b["tds_section"] and not b["tds_applicable"]], (
+        "no vendor carries a section without being withheld from, so the "
+        "natural-person client's case is unshown")
+
+
+def test_a_tan_is_recorded_for_every_client_that_deducts_and_for_no_other(_run):
+    firm = fixture.build()
+    sent = _sent(_run, "PUT", "/api/payroll/statutory-identity")
+    assert sorted(b["tan"] for b in sent) == sorted(c.tan for c in firm.clients if c.tan)
+    assert sent and all(set(b) == {"client_id", "tan"} for b in sent)
+
+
+def test_every_engagement_has_its_obligations_generated_for_the_books_year(_run):
+    """Obligations are not created with a client; an engagement's service type
+    is the door, and the call that generates them defaults to the financial
+    year the CLOCK is in, which is not the books'. So the year is sent, once
+    per engagement, and names the fixture's own."""
+    firm = fixture.build()
+    engagements = [(p, b) for m, p, b in _run.requests
+                   if (m, p) == ("POST", "/api/engagements")]
+    generated = [p for m, p, _ in _run.requests
+                 if m == "POST" and "/generate-obligations" in p]
+    assert len(engagements) == sum(len(c.engagements) for c in firm.clients) > 0
+    assert len(generated) == len(engagements), "an engagement had no obligations generated"
+    assert all(p.endswith(f"?financial_year={firm.financial_year}") for p in generated), generated[:3]
+    assert {b["billing_cycle"] for _, b in engagements} <= {
+        "Monthly", "Quarterly", "Half-Yearly", "Annually", "One-time"}
+    assert all(b["fee_paise"] > 0 and b["fee_paise"] % 100 == 0 for _, b in engagements)
+
+
+def test_each_statements_rules_are_written_before_it_is_imported_and_none_is_trusted(_run):
+    """A rule is a human's decision, which is what grades its line `ready`; it
+    has to exist before the first redraft or the drafts are stale at once. And
+    trusting one would post its lines with no click, leaving "Pass N ready"
+    nothing to pass."""
+    firm = fixture.build()
+    per_client: list[dict] = []
+    for method, path, body in _run.requests:
+        if (method, path) == ("POST", "/api/clients"):
+            per_client.append({"rules": [], "rules_before_import": True, "imported": False})
+        elif (method, path) == ("POST", "/api/banking/rules"):
+            per_client[-1]["rules"].append(body)
+            if per_client[-1]["imported"]:
+                per_client[-1]["rules_before_import"] = False
+        elif (method, path) == ("POST", "/api/banking/statements/import"):
+            per_client[-1]["imported"] = True
+    assert len(per_client) == len(firm.clients)
+    expected = sum(len(c.bank_rules) for c in firm.clients)
+    assert expected > 0 and sum(len(p["rules"]) for p in per_client) == expected
+    for client, got in zip(firm.clients, per_client, strict=True):
+        assert len(got["rules"]) == len(client.bank_rules), client.name
+        assert got["rules_before_import"], f"{client.name}: a rule was written after its statement"
+        for body in got["rules"]:
+            assert body["txn_type"] == "debit" and body["suggested_account_id"]
+            assert not body.get("is_trusted"), "a seeded rule is trusted: nothing is left to pass by hand"
+            assert (body["suggested_gst_rate_bps"] is not None) == (body["rule_name"] == "Bank charges")
+
+
+def test_each_project_is_built_out_of_bills_the_books_received_and_is_costed_from_the_engines_figure(_run):
+    """A tranche is `from_bill`: it moves the cost a RECEIVED bill already
+    charged to Purchases, dated that bill's own date and for the engine's
+    taxable value off the create response. `credit` would credit Trade Payables
+    with no bill behind it (Verify Books reports that as critical) and `paid`
+    takes the bank further down."""
+    firm = fixture.build()
+
+    def created(body_id: str):
+        # The recorder answers the n-th write with the id `seeded-{n:05d}`.
+        return _run.requests[int(body_id.rsplit("-", 1)[1]) - 1]
+
+    received = {p.split("/")[3] for m, p, _ in _run.requests
+                if m == "POST" and p.startswith("/api/purchase-bills/") and p.endswith("/receive")}
+    projects = _sent(_run, "POST", "/api/cwip")
+    assert len(projects) == sum(len(c.cwip_projects) for c in firm.clients) > 0
+    sent_costs = [b for m, p, b in _run.requests
+                  if m == "POST" and p.startswith("/api/cwip/") and p.endswith("/costs")]
+    assert sent_costs, "a project was written with no cost in it"
+    for body in sent_costs:
+        assert body["acquisition_mode"] == "from_bill", body
+        bill_id = body["purchase_bill_id"]
+        assert bill_id in received, "a tranche names a bill that was never received, so it posted nothing to reclassify"
+        _, bill_path, bill_body = created(bill_id)
+        assert bill_path == "/api/purchase-bills/"
+        assert body["incurred_on"] == bill_body["bill_date"], "a tranche precedes or follows the debit it reclassifies"
+        assert body["amount_paise"] == 100_000_00, "the amount is not the engine's taxable value off the bill's response"
+        assert not any(body.get(k) for k in ("igst_paise", "cgst_paise", "sgst_paise")), (
+            "a reclassification moves cost and no tax: the credit was claimed on the bill")
+        assert body["itc_eligible"] is True and not body.get("bank_account_id") and not body.get("vendor_id")
+    # A suspension is written after the project's last tranche, for the date the fixture states.
+    suspensions = [(p, b) for m, p, b in _run.requests if m == "PUT" and p.endswith("/status")
+                   and p.startswith("/api/cwip/")]
+    assert len(suspensions) == sum(1 for c in firm.clients for p in c.cwip_projects if p.suspended_on) > 0
+    for path, body in suspensions:
+        project_id = path.split("/")[3]
+        last_cost = max(i for i, (m, p, _) in enumerate(_run.requests)
+                        if m == "POST" and p == f"/api/cwip/{project_id}/costs")
+        assert _run.requests.index(("PUT", path, body)) > last_cost
+        assert body["status"] == "suspended"
+
+
+def test_a_clients_projects_are_written_after_every_bill_of_that_client(_run):
+    """A tranche reclassifies the cost a RECEIVED bill charged to Purchases, so
+    no bill of the client may be created or received after its first project."""
+    projects_seen = 0
+    in_projects = False
+    for method, path, _ in _run.requests:
+        if (method, path) == ("POST", "/api/clients"):
+            in_projects = False
+        elif (method, path) == ("POST", "/api/cwip"):
+            in_projects = True
+            projects_seen += 1
+        elif in_projects:
+            assert not path.startswith("/api/purchase-bills/"), (
+                f"{method} {path} came after the client's first project")
+    assert projects_seen > 0
+
+
+def test_a_payment_settles_a_fraction_of_what_is_owed_and_not_of_the_face_total():
+    """A bill with tax withheld is owed `net_payable_paise`, and a payment of a
+    fraction of the TOTAL against it is refused as exceeding the outstanding
+    (the door's own check) -- the reason the seeder died once the vendors were
+    marked as withheld from."""
+    seeder = _seeder()
+
+    class Api:
+        def __init__(self):
+            self.posted = []
+
+        def post(self, path, body):
+            self.posted.append((path, body))
+            return {"success": True}
+
+    doc = fixture.DemoDocument(
+        doc_date="2025-06-10", party=0, lines=(),
+        settlement=fixture.DemoSettlement(paid_after_days=30, fraction_bps=5_000))
+
+    withheld = {"data": {"id": "b1", "total_paise": 118_000_00, "net_payable_paise": 108_000_00}}
+    api = Api()
+    assert seeder._pay(api, doc, withheld, "c", "v", "bank")
+    assert api.posted[0][1]["amount_paise"] == 54_000_00
+
+    plain = {"data": {"id": "b2", "total_paise": 118_000_00}}
+    api = Api()
+    assert seeder._pay(api, doc, plain, "c", "v", "bank")
+    assert api.posted[0][1]["amount_paise"] == 59_000_00, "no net figure: the face total is what is owed"
+
+    for fraction in (3_500, 5_000, 7_000, 10_000):
+        full = fixture.DemoDocument(
+            doc_date="2025-06-10", party=0, lines=(),
+            settlement=fixture.DemoSettlement(paid_after_days=30, fraction_bps=fraction))
+        api = Api()
+        seeder._pay(api, full, withheld, "c", "v", "bank")
+        assert api.posted[0][1]["amount_paise"] <= withheld["data"]["net_payable_paise"]

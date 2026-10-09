@@ -30,7 +30,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from domain.accounting import ledger_anomalies
+from domain.accounting import journal_source, ledger_anomalies
 from domain.money_text import rupees_paise
 from domain.reporting.sources import SupabaseLedgerSource
 from core.db_paging import fetch_all, fetch_all_in
@@ -276,9 +276,20 @@ def check_inventory_cache_drift(db, firm_id: str, client_id: str, entries) -> li
     )]
 
 
+# An invoice carries a receivable in every status from the day it is issued:
+# ``issued``, ``partially_paid`` and ``paid`` (migration 050's CHECK allows no
+# other live one; ``draft`` has posted nothing and ``cancelled`` has reversed
+# it). The purchase side has always read its three live statuses; the sales
+# side read ``issued`` alone, so a PART-PAID invoice -- whose open balance the
+# ledger still carries -- was left out of the sub-ledger sum and the check
+# reported the part-paid balance as a critical difference on every book that
+# had taken a part payment.
+_LIVE_INVOICE_STATUSES = ["issued", "partially_paid", "paid"]
+
+
 def check_ar_subledger_vs_gl(db, firm_id: str, client_id: str, entries) -> list[dict]:
-    """GL Trade Receivables balance must equal the sum of outstanding issued
-    sales invoices (total - paid - credited + debit notes)."""
+    """GL Trade Receivables balance must equal the sum of what is still open on
+    the client's live sales invoices (total - paid - credited + debit notes)."""
     account_id = _find_account_id(db, firm_id, client_id, "Trade Receivables")
     if not account_id:
         return []
@@ -287,7 +298,8 @@ def check_ar_subledger_vs_gl(db, firm_id: str, client_id: str, entries) -> list[
     invoices = fetch_all(lambda: (
         db.table("client_sales_invoices")
         .select("id, total_paise, paid_paise, credited_paise, debit_note_paise")
-        .eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "issued")
+        .eq("firm_id", firm_id).eq("client_id", client_id)
+        .in_("status", _LIVE_INVOICE_STATUSES)
     ))
     subledger_paise = sum(
         int(i.get("total_paise") or 0) - int(i.get("paid_paise") or 0)
@@ -439,6 +451,47 @@ def check_bank_reconciliation_discrepancies(db, firm_id: str, client_id: str, en
     return findings
 
 
+# THE ENTRIES THIS CHECK JUDGES ARE THE ONES WHOSE DOCUMENT IT CAN LOOK FOR.
+# A journal stamped ``receipt`` should have a ``receipts`` row pointing at it
+# and one stamped ``purchase_payment`` a ``purchase_payments`` row; those two
+# tables are the whole of what the check searches. Many other postings are
+# typed Payment or Receipt and have no row in either table by design -- a
+# payroll disbursement, a bill of entry (the duty is paid to customs), a
+# voucher passed from the bank queue, a bank overpayment, a typed voucher --
+# so judging them reported a healthy book as "most likely a document insert
+# failed" (20 payroll disbursements and every bank-queue voucher on the demo
+# firm). The pairing below is the one place both halves are written: the
+# table the check searches and the source that makes an entry worth searching
+# for. An entry with NO source is judged too -- it predates the stamping
+# (migration 104) and cannot be told from an orphan, which is the safe side.
+# The check below names each of these tables as a LITERAL in its own query (a
+# table chosen by a variable is a chain the firm-scope reader cannot read, and
+# its budget is exact), so what keeps the two statements of the pairing from
+# drifting apart is a test: the tables the check queries must equal this tuple.
+_MONEY_DOCUMENT_TABLES = (
+    ("purchase_payments", journal_source.PURCHASE_PAYMENT),
+    ("receipts", journal_source.RECEIPT),
+)
+_JUDGED_SOURCES = frozenset(source for _table, source in _MONEY_DOCUMENT_TABLES)
+
+
+def _is_judged_money_entry(entry) -> bool:
+    """True when this entry is a first posting whose document the check can find.
+
+    A REVERSAL is the compensation itself, not a posting needing a document: it
+    carries the original's entry type and source (reverse_entry propagates
+    both) and no receipts / purchase_payments row of its own points at it, so
+    judging it flagged every reversed receipt or payment as an orphan -- the
+    mechanism this check calls "working" reported as the fault.
+    """
+    if getattr(entry, "entry_type", None) not in ("Payment", "Receipt"):
+        return False
+    if getattr(entry, "reversal_of", None):
+        return False
+    source = (getattr(entry, "source_type", None) or "").strip()
+    return not source or source in _JUDGED_SOURCES
+
+
 def check_orphan_money_journals(db, firm_id: str, client_id: str, entries) -> list[dict]:
     """Posted Payment / Receipt journal entries with no document behind them.
 
@@ -462,11 +515,13 @@ def check_orphan_money_journals(db, firm_id: str, client_id: str, entries) -> li
 
     A reversal is NOT an orphan. A compensated entry has a reversal against it
     and nets to zero, which is the mechanism working; flagging those would bury
-    the real ones in noise.
+    the real ones in noise. Neither is the reversal ENTRY itself, nor a posting
+    whose source is not one of the two document tables this check searches (see
+    _MONEY_DOCUMENT_TABLES).
     """
     orphans, total = [], 0
     for entry in (entries or {}).values():
-        if getattr(entry, "entry_type", None) not in ("Payment", "Receipt"):
+        if not _is_judged_money_entry(entry):
             continue
         eid = getattr(entry, "id", None)
         if not eid:

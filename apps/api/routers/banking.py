@@ -2608,6 +2608,29 @@ def list_rules(
     return api_response(True, res.data or [])
 
 
+# Fields of MatchingRuleIn that mean "not stated" when None and whose column is
+# NOT NULL DEFAULT. PostgREST inserts exactly the keys it is sent, so a JSON null
+# is written as NULL and the default never applies; the key is left out instead.
+# Migration 413 made `flags_tds_decision` NOT NULL DEFAULT false and the model
+# kept `Optional[bool] = None` (so PATCH can tell "leave it" from "set it"):
+# every create that did not send the flag -- every API caller, the demo seeder
+# included; the rules screen always sends it -- answered 400 "A required value
+# was missing". The same class as routers/clients._OMITTED_WHEN_NOT_STATED.
+_RULE_KEYS_OMITTED_WHEN_NOT_STATED = ("flags_tds_decision",)
+
+
+def _rule_fields(data: MatchingRuleIn) -> dict:
+    """What POST /api/banking/rules writes of the request: its fields, less any
+    that were not stated and whose column has a default. Returned as a spread
+    source, not as the whole row, so the insert below stays a dict literal that
+    tests/test_backend_columns_exist_pg.py can read the column names of."""
+    fields = data.model_dump()
+    for key in _RULE_KEYS_OMITTED_WHEN_NOT_STATED:
+        if fields.get(key) is None:
+            fields.pop(key, None)
+    return fields
+
+
 @router.post("/rules")
 def create_rule(
     data: MatchingRuleIn,
@@ -2621,7 +2644,7 @@ def create_rule(
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
     row = db.table("bank_matching_rules").insert(
-        {"firm_id": current_user["firm_id"], **data.model_dump()}
+        {"firm_id": current_user["firm_id"], **_rule_fields(data)}
     ).execute()
     # A new rule may cover lines already drafted from history or nothing.
     # Mark them for re-proposal; the screen redrafts in chunks on its next load.

@@ -585,7 +585,12 @@ def _build_one_year(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
 
     # ── Balance Sheet: Assets ────────────────────────────────────────────────
     tangible, intangible, lt_inv = gb("Tangible Fixed Assets"), gb("Intangible Fixed Assets"), gb("Long-term Investments")
-    non_current_assets = tangible + intangible + lt_inv
+    # Capital work-in-progress is its own line (Division I Part I, Non-current
+    # assets, after the fixed assets -- the caption's comment above says so) and
+    # it used to be read by nothing: the statement's assets were short by
+    # exactly the balance and `is_balanced` said False.
+    cwip = gb("Capital Work-in-Progress")
+    non_current_assets = tangible + intangible + cwip + lt_inv
     inv, tr, cash = gb("Inventories"), gb("Trade Receivables"), gb("Cash & Cash Equivalents")
     stla, oca = gb("Short-term Loans & Advances"), gb("Other Current Assets")
     current_assets = inv + tr + cash + stla + oca
@@ -595,6 +600,7 @@ def _build_one_year(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
         _section("I. Non-Current Assets", [
             _line("Fixed Assets — Tangible", tangible),
             _line("Fixed Assets — Intangible", intangible),
+            _line("Capital Work-in-Progress", cwip),
             _line("Long-term Investments", lt_inv),
         ], non_current_assets, "Total Non-Current Assets"),
         _section("II. Current Assets", [

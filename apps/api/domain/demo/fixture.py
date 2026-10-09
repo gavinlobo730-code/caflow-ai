@@ -40,10 +40,12 @@ month and a screen showing a locked period cannot be demonstrated at all.
 """
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass, replace, field
 from datetime import date, timedelta
-from typing import Iterable, Optional
+from decimal import Decimal
+from typing import Iterable, NamedTuple, Optional
 
 from domain.gst.gstin import checksum_char
 
@@ -104,6 +106,30 @@ class DemoParty:
     #: EXCEPTION, so most vendors here carry None and one per client does not.
     msmed_agreement_days: Optional[int] = None
     tds_section: Optional[str] = None
+
+    @property
+    def pan(self) -> Optional[str]:
+        """The party's PAN, read out of its GSTIN.
+
+        Characters 3 to 12 of a GSTIN ARE the PAN (CGST Act s.25: state code,
+        then PAN, then entity number, Z and a check digit), so a registered
+        party's PAN needs no second source and cannot disagree with the
+        GSTIN. An UNREGISTERED party has neither, and None is the right answer
+        for it: a deductee with no PAN on record is the s.206AA case (the
+        higher rate), and a demo in which every vendor has one cannot show it.
+        """
+        return self.gstin[2:12] if self.gstin else None
+
+    @property
+    def withholds_tds(self) -> bool:
+        """A vendor with a section recorded is one the client deducts under.
+
+        `vendors.tds_section` alone withholds NOTHING: the purchase-bill engine
+        asks `tds_applicable` first, and `VendorIn` defaults it to False. The
+        fixture set the section and never the flag, so not one of 114 bills
+        under 194C and 194J carried any TDS and the TDS register, challans,
+        returns, certificates and deposit worksheets were all empty."""
+        return bool(self.tds_section)
 
 
 @dataclass(frozen=True)
@@ -243,6 +269,69 @@ class DemoAsset:
 
 
 @dataclass(frozen=True)
+class DemoCwipProject:
+    """A plant under construction, funded out of bills the client has already
+    booked -- the one thing the register of assets cannot show.
+
+    AN ASSET UNDER CONSTRUCTION IS NOT IN THE REGISTER (FA-11a): it is
+    capital work-in-progress, presented on its own line of the balance sheet
+    and disclosed in two schedules (MCA G.S.R. 207(E): ageing, and completion
+    against the approved date and cost). The demo client for construction said
+    it demonstrated exactly that, and nothing wrote a project.
+
+    EACH TRANCHE IS A BILL ALREADY IN THE BOOKS (`acquisition_mode`
+    `from_bill`): the cost was charged to Purchases when the bill was received,
+    and the tranche moves it out into the project -- Dr Capital WIP / Cr
+    Purchases -- touching neither the payable nor cash. That is the only mode
+    that leaves the books reconciled: `credit` would credit Trade Payables with
+    no purchase bill behind it (Verify Books' payables check then reports the
+    difference as critical, measured), and `paid` would take the bank further
+    down. The projects are PLANT, not a building, on purpose: CGST s.17(5)(c)
+    and (d) block the credit on construction of an immovable property other
+    than plant or machinery, and the bills these tranches come from have
+    already claimed theirs.
+
+    The two projects exist to show both of the completion schedule's reasons
+    and both rows of the ageing schedule: one is past its approved completion
+    date at the year end, one has spent more than it was approved to and is
+    suspended."""
+    name: str
+    code: str
+    asset_category: str
+    started_on: str
+    approved_completion_date: str
+    expected_completion_date: str
+    #: Basis points of what the bills below come to, rounded to a whole
+    #: thousand rupees. A budget is a figure somebody approved BEFORE the cost
+    #: was known, so it cannot be stated in rupees for a fixture whose bills are
+    #: generated; above 10,000 the project is within budget, below it over.
+    approved_cost_bps: int
+    #: Positions within the client's own purchases (the `n` that
+    #: `documents_in_order` carries) whose taxable value this project absorbs.
+    bills: tuple[int, ...]
+    #: Set when the project is suspended, and never before its last tranche.
+    suspended_on: Optional[str] = None
+    tranche_label: str = "Erection and commissioning"
+
+    def approved_cost_paise(self, cost_paise: int) -> int:
+        """The approved cost for a project whose bills come to `cost_paise`,
+        in whole thousands of rupees."""
+        thousand = 1_000_00
+        return max(thousand, round(cost_paise * self.approved_cost_bps / 10_000 / thousand) * thousand)
+
+
+def document_taxable_paise(doc: "DemoDocument") -> int:
+    """What the fixture says a document's taxable value is: quantity times
+    rate over its lines, to the paisa. The engine's own figure (which the
+    seeder reads back off the create response) is the authority for what is
+    posted; this is only for the questions the fixture asks of itself -- how big
+    is a budget, does a project's cost exceed it -- where a paisa decides
+    nothing."""
+    return sum(int((Decimal(ln.quantity) * ln.rate_paise).to_integral_value())
+               for ln in doc.lines)
+
+
+@dataclass(frozen=True)
 class DemoBankAccount:
     """A bank account of one client, and the ledger behind it.
 
@@ -346,9 +435,12 @@ class DemoCatalogueItem:
     rate_paise: int
     gst_rate_percent: str
     #: Stock on hand at the start of the year. `routers/service_catalogue`
-    #: seeds the costing ledger from it and dates it to the client's own FY
-    #: start, so a sale in April relieves real stock instead of driving the
-    #: position negative on the first document of the year.
+    #: seeds the costing ledger from it, dated by the `opening_balance_date`
+    #: the seeder SENDS (the books' own FY start -- left to the router it falls
+    #: to the FY the clock is in, a year after these books begin). The figure
+    #: is at least what `stock_floor` says the year's documents draw, so no
+    #: position goes below nil when they are written in `documents_in_order`;
+    #: the catalogue's default below that is kept, never reduced.
     opening_qty_units: float = 0.0
     #: What that stock COST, not what it sells for. AS-2 paragraph 6 is cost,
     #: and valuing opening stock at the selling price would put the whole
@@ -368,6 +460,73 @@ class DemoCatalogueItem:
     def hsn_type(self) -> str:
         """`firm_hsn_library` spells the same fact its own way."""
         return "services" if self.kind == "service" else "goods"
+
+
+#: The entity types the fixture treats as outside the duty to deduct tax at
+#: source -- see `DemoClient.deducts_tax`.
+_OUTSIDE_THE_DUTY_TO_DEDUCT = frozenset({"Individual", "Proprietorship", "HUF"})
+
+
+@dataclass(frozen=True)
+class DemoEngagement:
+    """One service the practice is engaged to provide a client, and what it
+    charges for it.
+
+    THE `service_type` IS A KEYWORD, NOT A LABEL. `compliance_obligation_service.
+    obligations_for_service` reads the statutory obligations an engagement
+    implies off the words in it ("GST" -> GSTR-1, GSTR-3B, GSTR-9; "TDS" ->
+    the quarterly statements and the monthly deposits; "Income Tax Return";
+    "Advance Tax"; "ROC"/"MCA"; "payroll"), so the string is what makes the
+    compliance calendar non-empty. The seeder generated none: a client with no
+    engagement and no GSTIN had no obligation of any kind, and the deadline
+    screens of a practice with eight clients were empty."""
+    service_type: str
+    fee_paise: int
+    #: Monthly | Quarterly | Half-Yearly | Annually | One-time (the CHECK on
+    #: `fee_engagements.billing_cycle`).
+    billing_cycle: str
+
+
+@dataclass(frozen=True)
+class DemoBankRule:
+    """A matching rule the CA has written for a recurring line of the statement.
+
+    A rule is a human's decision ("every line that says Rent is Office Rent"),
+    which is what makes the line it covers `ready` -- passable in one click by
+    "Pass N ready". With no rule and no payee history every line is `needs_you`
+    or at best `proposed`, so the screen the demo exists to show had nothing to
+    pass: 0 ready on all eight clients. The ledger is named by its NAME, not its
+    code: the standard chart's codes are not the mock chart's, and a name is
+    what the CA sees."""
+    rule_name: str
+    #: A case-insensitive substring of the narration (`match_operator`
+    #: `contains` on the description, the engine's default).
+    description_pattern: str
+    #: `chart_of_accounts.account_name`.
+    ledger: str
+    #: The GST inside the amount, where the CA can tell -- only the bank's own
+    #: charges (BANK-24).
+    gst_rate_bps: Optional[int] = None
+
+
+#: The recurring operating lines of `_FACTORY_OUTFLOWS` / `_OFFICE_OUTFLOWS` /
+#: `_SMALL_OUTFLOWS`, each with the ledger a CA would code it to.
+_BANK_RULES = (
+    DemoBankRule("Rent", "Rent -", "Office Rent"),
+    DemoBankRule("Electricity", "electricity", "Electricity & Utilities"),
+    DemoBankRule("Broadband", "broadband", "Internet & Telephone"),
+    DemoBankRule("Courier", "courier", "General Expenses"),
+    DemoBankRule("Bank charges", "Bank charges", "Bank Charges", 1_800),
+)
+
+
+def bank_rules_for(client: "DemoClient") -> tuple[DemoBankRule, ...]:
+    """The rules this client's statement has something for: one for each
+    recurring outflow the statement actually carries, so a rule never exists
+    for a line that is not there."""
+    narrations = [ln.description.lower() for ln in client.bank_lines if not ln.is_credit]
+    return tuple(r for r in _BANK_RULES
+                 if any(r.description_pattern.lower() in n for n in narrations))
 
 
 @dataclass(frozen=True)
@@ -404,6 +563,41 @@ class DemoClient:
     #: catalogues — so a line resolves its `service_catalogue_id` by HSN with
     #: no second key to keep in step.
     catalogue: tuple[DemoCatalogueItem, ...] = ()
+    #: The client's TAN, for a client that deducts tax at source. A TDS
+    #: statement is filed under the DEDUCTOR's TAN (s.203A) and
+    #: `domain/tds/deductor.resolve` REFUSES to build one without it, so a
+    #: client whose vendors are withheld from needs one recorded. None for a
+    #: client that withholds from nobody: a TAN is a registration, and
+    #: inventing one for a client that deducts no tax would be a demo of a
+    #: number nobody holds.
+    tan: Optional[str] = None
+    #: What the practice does for this client. Derived from what the client
+    #: files -- see `engagements_for`.
+    engagements: tuple[DemoEngagement, ...] = ()
+    #: Matching rules for the first bank account's statement -- see
+    #: `bank_rules_for`. Empty for a client whose statement is not imported.
+    bank_rules: tuple[DemoBankRule, ...] = ()
+    #: Assets under construction, funded out of this client's own bills. See
+    #: DemoCwipProject.
+    cwip_projects: tuple[DemoCwipProject, ...] = ()
+
+    @property
+    def deducts_tax(self) -> bool:
+        """Whether this client withholds tax from any vendor payment.
+
+        A NATURAL PERSON in this fixture does not: s.194C and s.194J leave an
+        individual or HUF below the s.44AB audit limits out of the duty to
+        deduct, and the fixture's individual is a salaried person with a couple
+        of small suppliers while its proprietor is the §44AD presumptive one
+        (no audit). Marking their vendors "withheld" would demonstrate a
+        deduction nobody in their position makes. [S] The exemptions' exact
+        sub-sections were not read here (egress to incometaxindia.gov.in is
+        refused) and the audit-limit test itself is NOT modelled -- a
+        proprietor over the limit does deduct -- so only the entity type
+        decides, and a fixture proprietor above it would need this revisited.
+        """
+        return (self.entity_type not in _OUTSIDE_THE_DUTY_TO_DEDUCT
+                and any(v.withholds_tds for v in self.vendors))
 
 
 @dataclass(frozen=True)
@@ -453,6 +647,13 @@ _SERVICES = [
 ]
 
 
+def _opening_cost_paise(rate_paise: int, qty: int) -> int:
+    """What `qty` units of opening stock COST: 70% of the selling rate in whole
+    rupees a unit. A margin, not a markup table: the figure only has to be a
+    plausible cost rather than the price (AS-2 paragraph 6)."""
+    return (rate_paise * 70 // 100 // 100 * 100) * qty
+
+
 def _catalogue(*lists) -> tuple[DemoCatalogueItem, ...]:
     """The union of the catalogues a client's documents are drawn from, in
     first-seen order and deduped on the code. Order is fixed rather than
@@ -465,10 +666,8 @@ def _catalogue(*lists) -> tuple[DemoCatalogueItem, ...]:
                 name, hsn, unit, rate, gst,
                 opening_qty_units=float(qty) if good else 0.0,
                 # Cost at 70% of the selling rate, in whole rupees so the
-                # paise arithmetic stays exact. A margin, not a markup table:
-                # the figure only has to be a plausible COST rather than the
-                # price, which is AS-2 paragraph 6's whole point.
-                opening_cost_paise=(rate * 70 // 100 // 100 * 100) * int(qty) if good else 0,
+                # paise arithmetic stays exact -- see _opening_cost_paise.
+                opening_cost_paise=_opening_cost_paise(rate, int(qty)) if good else 0,
                 reorder_level_units=float(reorder) if (good and reorder is not None) else None,
                 category=group,
             ))
@@ -737,6 +936,161 @@ def _payroll_months(months: list[date], *, employees: int) -> tuple[DemoPayrollM
     return tuple(out)
 
 
+# ── The order a client's books are written in, and what that does to stock ───
+#
+# A STOCK LEDGER IS A CHAIN IN THE ORDER IT WAS WRITTEN, not in the order of the
+# dates on its rows (`domain/inventory_service._last_ledger_row`), so the
+# position a screen shows part-way through the year is the position after the
+# documents WRITTEN so far. The seeder wrote every sale of a client and then
+# every purchase, with opening stock dated to the wrong year, so the chain went
+# negative on five of eight clients -- and the fixture's own docstring said the
+# first sale "relieves real stock". Two rules, both pure and both here so the
+# seeder and the test read the same answer:
+#
+#   1. the documents go in DATE order (a purchase before a sale on the same
+#      day, because goods are received before they are sold), and
+#   2. each goods item opens with at least the quantity that order needs.
+
+class Step(NamedTuple):
+    """One document of a client's year, in the order it is written."""
+    kind: str                 # "sale" | "purchase"
+    n: int                    # 1-based position in the client's own list of that kind
+    doc: "DemoDocument"
+
+
+def draft_month(financial_year: str) -> str:
+    """The month left in DRAFT -- the last of the financial year (YYYY-MM).
+
+    A practice partway through the month after the year end has exactly that:
+    eleven months posted and the twelfth still being entered, which is also the
+    state the issue and receive buttons exist for. A draft posts nothing and
+    moves no stock, so it is excluded from every stock position below."""
+    return _fy_months(financial_year)[-1].isoformat()[:7]
+
+
+def documents_in_order(client: "DemoClient") -> tuple[Step, ...]:
+    """Every sale and purchase of one client, in the order the seeder writes
+    them: by date, a purchase before a sale on the same day, then by position.
+    `n` is the position within the client's own sales (or purchases), which is
+    what the invoice number and the vendor's bill number are built from -- so
+    interleaving the two lists changes neither."""
+    steps = [Step("sale", n, d) for n, d in enumerate(client.sales, start=1)]
+    steps += [Step("purchase", n, d) for n, d in enumerate(client.purchases, start=1)]
+    return tuple(sorted(steps, key=lambda s: (s.doc.doc_date, 0 if s.kind == "purchase" else 1, s.n)))
+
+
+def stock_floor(client: "DemoClient", financial_year: str) -> dict[str, Decimal]:
+    """Per goods item (by HSN), the opening quantity that keeps the running
+    position from going below nil when `documents_in_order` is written.
+
+    Only documents that POST move stock: a sale is issued and a purchase
+    received in every month but `draft_month`. A line of a service (a SAC in
+    Chapter 99) has no stock and is skipped, the same split
+    `domain/gst/goods_or_services` makes. Zero for an item the year never
+    draws below its opening, so a caller takes the larger of this and what the
+    catalogue already opens with and never reduces a figure."""
+    draft = draft_month(financial_year)
+    running: dict[str, Decimal] = {}
+    lowest: dict[str, Decimal] = {}
+    for step in documents_in_order(client):
+        if step.doc.doc_date[:7] == draft:
+            continue
+        sign = 1 if step.kind == "purchase" else -1
+        for ln in step.doc.lines:
+            if ln.hsn_sac_code.startswith("99"):
+                continue
+            qty = running.get(ln.hsn_sac_code, Decimal(0)) + sign * Decimal(ln.quantity)
+            running[ln.hsn_sac_code] = qty
+            lowest[ln.hsn_sac_code] = min(lowest.get(ln.hsn_sac_code, Decimal(0)), qty)
+    return {hsn: -low for hsn, low in lowest.items()}
+
+
+def _opened_for_the_year(client: "DemoClient", financial_year: str) -> tuple[DemoCatalogueItem, ...]:
+    """The client's catalogue with each goods item opened to at least what its
+    own year needs. The cost is recomputed on the same basis as the default."""
+    floor = stock_floor(client, financial_year)
+    out = []
+    for item in client.catalogue:
+        need = math.ceil(floor.get(item.hsn_sac_code, Decimal(0)))
+        if item.kind == "good" and need > item.opening_qty_units:
+            item = replace(item, opening_qty_units=float(need),
+                           opening_cost_paise=_opening_cost_paise(item.rate_paise, need))
+        out.append(item)
+    return tuple(out)
+
+
+def tan_for(client: "DemoClient") -> str:
+    """A TAN in the Income-tax Department's shape -- four letters, five digits,
+    a letter (`core/validators.validate_tan`) -- derived from the client's own
+    PAN and name, so two runs give the same number and nothing is drawn from
+    the fixture's random stream.
+
+    The first three letters are the city code the TAN was issued under (MUM,
+    PUN, BLR) and the fourth the deductor's initial; the digits are the PAN's
+    own four plus a zero. It is NOT a number anybody holds: the check is the
+    shape, and a TAN-shaped value that was never issued is exactly what a demo
+    deductor has to carry."""
+    city = "MUM" if client.state_code == HOME_STATE else "BLR"
+    return f"{city}{client.name[0].upper()}{client.pan[5:9]}0{client.pan[-1]}"
+
+
+def engagements_for(client: "DemoClient") -> tuple[DemoEngagement, ...]:
+    """The services the practice provides this client, from what the client
+    FILES -- so the compliance calendar holds exactly the obligations the books
+    behind it imply, and no client has a deadline for a return it does not owe.
+
+      * GST returns for a client with a GSTIN (CGST ss.25, 37, 39, 44), monthly
+        or quarterly as the client files them; an unregistered client owes none
+        and is given none (`obligations_for_service` says the same);
+      * the income tax return for every client;
+      * advance tax for everyone but an individual -- s.208 reaches a person
+        whose estimated liability for the year is Rs 10,000 or more, which this
+        fixture's salaried individual is not assumed to have [S];
+      * TDS statements for a client that deducts (`DemoClient.deducts_tax`);
+      * payroll deposits for a client that runs payroll;
+      * the company's annual MCA filings for a Private Limited company.
+
+    Each `service_type` is a KEYWORD string the obligation generator reads; one
+    service is one engagement because "Advance Tax" and "Income Tax Return" in
+    one string would generate only the first (`obligations_for_service` takes
+    one branch of the two)."""
+    out: list[DemoEngagement] = []
+    if client.gstin:
+        quarterly = client.gst_filing_frequency == "quarterly"
+        out.append(DemoEngagement(
+            "GST Returns", 6_000_00 if quarterly else 2_500_00,
+            "Quarterly" if quarterly else "Monthly"))
+    out.append(DemoEngagement(
+        "Income Tax Return",
+        4_000_00 if client.entity_type == "Individual" else 12_000_00, "Annually"))
+    if client.entity_type != "Individual":
+        out.append(DemoEngagement("Advance Tax", 3_000_00, "Quarterly"))
+    if client.deducts_tax:
+        out.append(DemoEngagement("TDS Returns", 5_000_00, "Quarterly"))
+    if client.employees:
+        out.append(DemoEngagement("Payroll Processing", 6_000_00, "Monthly"))
+    if client.entity_type == "Private Limited":
+        out.append(DemoEngagement("ROC and MCA Annual Filings", 18_000_00, "Annually"))
+    return tuple(out)
+
+
+def _finished(client: "DemoClient", financial_year: str) -> "DemoClient":
+    """What is derived from a client's whole year once its documents exist:
+    the stock each item must open with, the TAN of a client that deducts tax,
+    and the services the practice provides. Pure and draws nothing from the
+    random stream, which is what keeps it from reshuffling a document (the trap
+    `_documents` and `_employees` record)."""
+    finished = replace(
+        client,
+        catalogue=_opened_for_the_year(client, financial_year),
+        tan=tan_for(client) if client.deducts_tax else None,
+    )
+    return replace(
+        finished,
+        engagements=engagements_for(finished),
+        bank_rules=bank_rules_for(finished) if finished.banks and finished.banks[0].import_statement else (),
+    )
+
 
 def build(financial_year: str = "2025-26") -> DemoFirm:
     """The practice, for one financial year.
@@ -757,8 +1111,8 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                sales_per_month=(2, 5), purchases_per_month=(1, 4),
                away_every=7, rcm_every=0, employees=0, sales_tds_bps=0,
                frequency="monthly", banks=(), operating_lines=(),
-               assets=()) -> DemoClient:
-        return DemoClient(
+               assets=(), cwip_projects=()) -> DemoClient:
+        return _finished(DemoClient(
             name=name, legal_name=legal, entity_type=entity, pan=pan_value,
             gstin=gstin_for(state, pan_value) if registered else None,
             state_code=state,
@@ -783,6 +1137,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
             banks=banks,
             bank_lines=_bank_lines(months, operating_lines) if banks else (),
             assets=assets,
+            cwip_projects=cwip_projects,
             # A month of payroll needs somebody to pay. The states the months
             # are left in are the engine's own (see _payroll_months); nothing
             # here chooses per client, because a demo in which one client's
@@ -791,7 +1146,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
             payroll=_payroll_months(months, employees=employees) if employees else (),
             gst_filing_frequency=frequency,
             catalogue=_catalogue(sales_catalogue, purchase_catalogue),
-        )
+        ), financial_year)
 
     def asset(name, category, month_index, day, cost, method="WDV",
               **kw) -> DemoAsset:
@@ -803,6 +1158,23 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
         return DemoAsset(name=name, category=category,
                          purchase_date=_asset_date(months, month_index, day),
                          cost_paise=cost, method=method, **kw)
+
+    def cwip_project(name, code, *, started, approved_completion,
+                     expected_completion, approved_cost_bps, bills,
+                     suspended=None) -> DemoCwipProject:
+        """One project, dated as `asset` is: each date is (month of the
+        financial year, day), 0 being April and 12 or more the year after, so
+        a project's approved and expected completion can fall past the year end
+        without a typed date pinning the register to one year."""
+        def at(month_and_day):
+            return _asset_date(months, *month_and_day)
+        return DemoCwipProject(
+            name=name, code=code, asset_category="Plant & Machinery",
+            started_on=at(started),
+            approved_completion_date=at(approved_completion),
+            expected_completion_date=at(expected_completion),
+            approved_cost_bps=approved_cost_bps, bills=tuple(bills),
+            suspended_on=at(suspended) if suspended else None)
 
     # ── The operating outflows that reach the BANK and not the books ────────
     #
@@ -1006,6 +1378,23 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                          3, 15, 3_80_000_00, "SL"),
                    asset("Total station and survey kit", "Office Equipment",
                          6, 2, 4_90_000_00, "SL"),
+               ),
+               # Two plants under construction, each built out of bills the
+               # client has already booked. The first is past its approved
+               # completion date at the year end and inside its budget; the
+               # second has spent more than it was approved to and is
+               # suspended -- the completion schedule's two reasons and the
+               # ageing schedule's two rows.
+               cwip_projects=(
+                   cwip_project("Concrete batching plant, Chakan", "CWIP-001",
+                                started=(3, 1), approved_completion=(11, 15),
+                                expected_completion=(15, 31),
+                                approved_cost_bps=12_500, bills=(6, 9, 13)),
+                   cwip_project("Mobile crusher unit", "CWIP-002",
+                                started=(6, 20), approved_completion=(14, 30),
+                                expected_completion=(17, 30),
+                                approved_cost_bps=8_500, bills=(11, 17),
+                                suspended=(10, 1)),
                )),
     )
 
@@ -1047,6 +1436,7 @@ def summary(firm: DemoFirm) -> dict:
         # depreciation run reports fewer assets than the register holds.
         "assets_never_depreciated": sum(
             1 for c in firm.clients for a in c.assets if a.category == "Land"),
+        "cwip_projects": sum(len(c.cwip_projects) for c in firm.clients),
         "assets_with_blocked_tax": sum(
             1 for c in firm.clients for a in c.assets if a.itc_eligible is False),
         "payroll_runs": sum(len(c.payroll) for c in firm.clients),

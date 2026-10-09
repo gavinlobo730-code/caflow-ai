@@ -140,6 +140,19 @@ def _total_paise(resp: dict) -> int:
         f"no total_paise in the response — cannot settle it: {json.dumps(resp)[:300]}")
 
 
+def _taxable_paise(resp: dict) -> int:
+    """The document's taxable value as the ENGINE computed it, for the one
+    thing that needs it: the cost a bill contributes to a project under
+    construction. Raises rather than defaulting to nil, like `_total_paise`: a
+    tranche of nil is refused by the door (`amount_paise` is positive) and a
+    silent zero here would be a project with nothing in it."""
+    data = resp.get("data") if isinstance(resp, dict) else None
+    if isinstance(data, dict) and isinstance(data.get("taxable_amount_paise"), int):
+        return data["taxable_amount_paise"]
+    raise SystemExit(
+        f"no taxable_amount_paise in the response — cannot cost the project: {json.dumps(resp)[:300]}")
+
+
 def _paid_on(doc_date: str, days: int) -> str:
     from datetime import date, timedelta
     y, m, d = (int(x) for x in doc_date.split("-"))
@@ -186,6 +199,23 @@ def _settle(api: Api, client, doc, invoice: dict,
     return True
 
 
+def _owed_paise(resp: dict) -> int:
+    """What the client owes the vendor on a bill: `net_payable_paise`, which is
+    the total LESS the tax withheld at the bill (`outstanding_paise` is
+    generated from it, migration 278).
+
+    The total is the bill's face value and is NOT what is open once any tax
+    has been deducted: a payment of a fraction of the total against a bill
+    whose net payable is smaller is refused ("Payment exceeds the bill's
+    outstanding"). Falls back to the total only when the response carries no
+    net figure, which is a bill nothing was withheld from. Raises, like
+    `_total_paise`, rather than defaulting to nil."""
+    data = resp.get("data") if isinstance(resp, dict) else None
+    if isinstance(data, dict) and isinstance(data.get("net_payable_paise"), int):
+        return data["net_payable_paise"]
+    return _total_paise(resp)
+
+
 def _pay(api: Api, doc, bill: dict, client_id: str, vendor_id: str,
          bank_account_id: Optional[str] = None) -> bool:
     """A vendor payment against one bill.
@@ -193,12 +223,13 @@ def _pay(api: Api, doc, bill: dict, client_id: str, vendor_id: str,
     NO `tds_paise` HERE and that is not an omission: on a purchase the client
     is the DEDUCTOR and the tax comes off at the bill, so the payment is
     already net — `PurchasePaymentIn` has no such field for exactly that
-    reason. The bills left unpaid are what gives §43B(h) something to report:
-    a screen that flags every purchase flags nothing."""
+    reason. THE FRACTION IS OF WHAT IS OWED (`_owed_paise`), not of the face
+    total, for the same reason. The bills left unpaid are what gives §43B(h)
+    something to report: a screen that flags every purchase flags nothing."""
     st = doc.settlement
     if st is None or st.paid_after_days is None:
         return False
-    settled = _total_paise(bill) * st.fraction_bps // 10_000
+    settled = _owed_paise(bill) * st.fraction_bps // 10_000
     if settled <= 0:
         return False
     api.post("/api/purchase-payments", {
@@ -333,6 +364,60 @@ def _fixed_assets(api: Api, c, client_id: str, bank_id: Optional[str],
             break
 
 
+def _cwip(api: Api, c, client_id: str, book, written: dict) -> None:
+    """Assets under construction, built out of bills the books already hold.
+
+    EACH TRANCHE IS `from_bill`: the cost was charged to Purchases when the bill
+    was received and the tranche moves exactly that amount into the project
+    (Dr Capital Work-in-Progress / Cr Purchases), touching neither the payable
+    nor the bank -- so the receivables, payables and bank checks stay as they
+    were. `credit` would credit Trade Payables with no purchase bill behind it,
+    which Verify Books reports as a critical payables difference.
+
+    THE AMOUNT IS THE ENGINE'S taxable value off the bill's own create response
+    (`_taxable_paise`), never a second copy of the arithmetic, and the tranche
+    is dated the bill's own date, so the move can never precede the debit it
+    reclassifies. A bill that was left as a draft posted nothing and has
+    nothing to reclassify: its tranche is skipped and counted, not written.
+    """
+    for p in c.cwip_projects:
+        costs = {n: _taxable_paise(book.received_bills[n]["response"])
+                 for n in p.bills if n in book.received_bills}
+        project = api.post("/api/cwip", {
+            "client_id": client_id,
+            "project_name": p.name,
+            "project_code": p.code,
+            "asset_category": p.asset_category,
+            "started_on": p.started_on,
+            "approved_completion_date": p.approved_completion_date,
+            "expected_completion_date": p.expected_completion_date,
+            "approved_cost_paise": p.approved_cost_paise(sum(costs.values())),
+        })
+        project_id = _id(project)
+        written["cwip_projects"] += 1
+        for n in p.bills:
+            bill = book.received_bills.get(n)
+            if bill is None:
+                written["cwip_tranches_skipped"] += 1
+                continue
+            api.post(f"/api/cwip/{project_id}/costs", {
+                "client_id": client_id,
+                "incurred_on": bill["date"],
+                "description": f"{p.tranche_label}, bill {bill['bill_no']}",
+                "amount_paise": costs[n],
+                # The credit was claimed on the bill; a reclassification moves
+                # the cost and nothing about the tax, so no tax is sent.
+                "itc_eligible": True,
+                "acquisition_mode": "from_bill",
+                "purchase_bill_id": bill["id"],
+            })
+            written["cwip_tranches"] += 1
+        if p.suspended_on:
+            api.put(f"/api/cwip/{project_id}/status", {
+                "client_id": client_id, "status": "suspended",
+                "on_date": p.suspended_on})
+
+
 def _payroll(api: Api, c, client_id: str, bank_id: Optional[str],
              written: dict) -> None:
     """Twelve months, left in the three states a run can be in.
@@ -403,6 +488,77 @@ def _payroll(api: Api, c, client_id: str, bank_id: Optional[str],
                 "payment_reference": f"SAL/{m.month}",
             })
             written["payroll_disbursed"] += 1
+
+
+def _engagements(api: Api, c, client_id: str, fy: str, fy_start: str,
+                 written: dict) -> None:
+    """The services the practice provides, and the obligations each implies.
+
+    OBLIGATIONS ARE NOT CREATED WITH A CLIENT. They come from the 06:00 IST
+    sweep for the current year, lazily when somebody opens a client's overview
+    for GST only, and for everything else (the return, TDS, payroll, advance
+    tax, the company's filings) from a fee engagement's service type -- so a
+    seeded client had a compliance calendar of nothing, and one with no GSTIN
+    had no obligation of any kind. The engagement is the door, and
+    `generate-obligations` is the same call a CA presses; it is idempotent, and
+    the financial year is passed because the default is the one the clock is
+    in, which is not the books'.
+
+    Fee engagements are also what billing reads, so this populates those
+    screens too. The fees are the fixture's, in whole rupees.
+    """
+    for e in c.engagements:
+        engagement = api.post("/api/engagements", {
+            "client_id": client_id,
+            "service_type": e.service_type,
+            "fee_paise": e.fee_paise,
+            "billing_cycle": e.billing_cycle,
+            "start_date": fy_start,
+            "status": "Active",
+        })
+        written["engagements"] += 1
+        out = api.post(
+            f"/api/engagements/{_id(engagement)}/generate-obligations"
+            f"?financial_year={fy}", {}).get("data") or {}
+        written["obligations"] += int(out.get("generated") or 0)
+
+
+def _bank_rules(api: Api, c, client_id: str, written: dict) -> None:
+    """The matching rules a CA writes for the recurring lines of a statement.
+
+    A RULE IS A HUMAN'S DECISION, which is what grades the line it covers
+    `ready` (`domain/banking/entry`): with no rule and no payee history every
+    line was `needs_you` (21 to 60 per client) or at best `proposed`, and
+    "Pass N ready" had nothing to pass on any of eight clients. They are
+    written BEFORE the statement is imported so the first redraft already uses
+    them (a rule written later marks the drafts stale for a redraft instead).
+
+    NONE IS TRUSTED. A trusted rule passes its lines with no click, as the
+    Manager who trusted it -- the one place the product acts unprompted -- and
+    a seeded queue that has already passed its own ready lines shows nothing to
+    press. The ledger is resolved by NAME from the client's own chart (the
+    mock chart's codes are not the standard chart's), and a rule whose ledger
+    the chart does not carry is skipped and counted, never written against a
+    guess.
+    """
+    if not c.bank_rules:
+        return
+    chart = api.get(f"/api/accounting/accounts?client_id={client_id}").get("data") or []
+    by_name = {a.get("account_name"): a.get("id") for a in chart if a.get("id")}
+    for r in c.bank_rules:
+        ledger_id = by_name.get(r.ledger)
+        if not ledger_id:
+            written["bank_rules_skipped"] += 1
+            continue
+        api.post("/api/banking/rules", {
+            "client_id": client_id,
+            "rule_name": r.rule_name,
+            "description_pattern": r.description_pattern,
+            "txn_type": "debit",
+            "suggested_account_id": ledger_id,
+            "suggested_gst_rate_bps": r.gst_rate_bps,
+        })
+        written["bank_rules"] += 1
 
 
 def _statement(api: Api, c, client_id: str, bank_id: str,
@@ -480,6 +636,137 @@ def _credit_for_an_open_invoice(doc, invoice: dict, customer_name: str,
             "reference_no": f"N{doc.doc_date.replace('-', '')}{invoice_no[-4:]}"}
 
 
+class _Book:
+    """One client's books as the seeder writes them: the ids every document
+    names, and the credits for invoices nobody paid that the statement is built
+    from once the last invoice is known.
+
+    A class and not a closure because both document kinds need the same dozen
+    facts and `seed()` was already near the complexity limits the lint ratchet
+    holds it to; the bodies are the ones that were inline, unchanged. A plain
+    class and not a dataclass: the guard that validates every body this module
+    sends loads it with `exec_module` and no `sys.modules` entry, and
+    `@dataclass` under `from __future__ import annotations` looks its own
+    module up there."""
+
+    def __init__(self, api, client, client_id, customer_ids, vendor_ids,
+                 catalogue, bank_id, financial_year, last_month, cutoff,
+                 fy_end, written):
+        self.api = api
+        self.client = client                 # fixture.DemoClient
+        self.client_id = client_id
+        self.customer_ids = customer_ids
+        self.vendor_ids = vendor_ids
+        self.catalogue = catalogue
+        self.bank_id = bank_id
+        self.financial_year = financial_year
+        self.last_month = last_month
+        self.cutoff = cutoff
+        self.fy_end = fy_end
+        self.written = written
+        #: Bank credits for invoices nobody paid, in the order they arose.
+        self.open_credits: list[dict] = []
+        #: The bills the books RECEIVED, by position (the `n` of the vendor's
+        #: bill number): what a project under construction draws its cost
+        #: from. A bill left as a draft posted nothing and is not here.
+        self.received_bills: dict[int, dict] = {}
+
+    def sale(self, n: int, d) -> None:
+        api, c, written = self.api, self.client, self.written
+        customer_id = self.customer_ids[d.party % len(self.customer_ids)]
+        invoice_no = f"INV/{self.financial_year}/{n:04d}"
+        invoice = api.post("/api/sales-invoices/", {
+            "client_id": self.client_id,
+            "customer_id": customer_id,
+            # The series a real practice runs: a prefix, the FY, a padded
+            # counter. `domain/gst/invoice_series` enforces Rule 46(b)'s
+            # sixteen characters and character set at the door, so this
+            # has to satisfy it — 'INV/2025-26/0001' is 16 exactly.
+            "invoice_no": invoice_no,
+            "invoice_date": d.doc_date,
+            "place_of_supply": d.place_of_supply,
+            "supply_state_code": d.place_of_supply,
+            "is_inter_state": d.place_of_supply != c.state_code,
+            "lines": [{
+                "service_catalogue_id": self.catalogue[ln.hsn_sac_code],
+                "description": ln.description,
+                "hsn_sac": ln.hsn_sac_code,
+                "quantity": float(ln.quantity),
+                "unit": ln.unit,
+                "rate_paise": ln.rate_paise,
+                "gst_rate_percent": float(ln.gst_rate_percent),
+            } for ln in d.lines],
+        })
+        written["sales_invoices"] += 1
+        # ISSUED, so it posts, ages, moves stock and reaches the return.
+        # A settlement against a DRAFT would be a receipt against a
+        # receivable that does not exist, so the settle below is gated on
+        # it rather than left to the fixture's own "recent" rule agreeing
+        # by coincidence.
+        posted = _post_the_document(api, "/api/sales-invoices", "issue",
+                                    _id(invoice), d.doc_date, self.last_month)
+        written["invoices_issued"] += 1 if posted else 0
+        # THE TOTAL COMES OFF THE RESPONSE, never out of a second copy of
+        # the GST arithmetic here: the engine has just computed it, lines,
+        # rounding and all, and `domain/gst` is the one authority for it.
+        if posted and _settle(api, c, d, invoice, self.client_id, customer_id,
+                              self.bank_id):
+            written["receipts"] += 1
+        elif posted and len(self.open_credits) < _OPEN_CREDITS_PER_CLIENT and n % 3 == 0:
+            credit = _credit_for_an_open_invoice(
+                d, invoice, c.customers[d.party % len(c.customers)].name,
+                invoice_no, self.cutoff, self.fy_end)
+            if credit:
+                self.open_credits.append(credit)
+
+    def purchase(self, n: int, d) -> None:
+        api, c, written = self.api, self.client, self.written
+        vendor_id = self.vendor_ids[d.party % len(self.vendor_ids)]
+        bill_no = f"{c.vendors[d.party % len(c.vendors)].name[:3].upper()}/{n:04d}"
+        bill = api.post("/api/purchase-bills/", {
+            "client_id": self.client_id,
+            "vendor_id": vendor_id,
+            # The VENDOR'S own number, not ours — `bill_no` is a fact about
+            # the supplier's books, which is why the recurring purchase
+            # path deliberately leaves it blank rather than inventing one.
+            # Here the fixture IS the supplier, so it may state one.
+            "bill_no": bill_no,
+            "bill_date": d.doc_date,
+            # `PurchaseBillIn` HAS NO `place_of_supply` — an inward supply
+            # is told apart by `is_inter_state`, and the name it was sent
+            # under was dropped in silence. No figure moves today (every
+            # purchase in this fixture is intra-state) and it would the
+            # first time one was not.
+            "is_inter_state": d.place_of_supply != c.state_code,
+            "is_reverse_charge": d.is_reverse_charge,
+            "lines": [{
+                "service_catalogue_id": self.catalogue[ln.hsn_sac_code],
+                "description": ln.description,
+                "hsn_sac": ln.hsn_sac_code,
+                "quantity": float(ln.quantity),
+                "unit": ln.unit,
+                "rate_paise": ln.rate_paise,
+                "gst_rate_percent": float(ln.gst_rate_percent),
+            } for ln in d.lines],
+        })
+        written["purchase_bills"] += 1
+        # RECEIVED — which is what posts Dr Expense / Dr GST Input / Cr
+        # Trade Payables, withholds the TDS and brings the goods into
+        # stock at the line's taxable value plus its §17(5)-blocked tax.
+        received = _post_the_document(api, "/api/purchase-bills", "receive",
+                                      _id(bill), d.doc_date, self.last_month)
+        written["bills_received"] += 1 if received else 0
+        if received:
+            # The create response is kept whole and read only by the
+            # client whose projects need it (`_taxable_paise` raises on a
+            # response without the figure, which no other client has to meet).
+            self.received_bills[n] = {
+                "id": _id(bill), "date": d.doc_date, "bill_no": bill_no,
+                "response": bill}
+        if received and _pay(api, d, bill, self.client_id, vendor_id, self.bank_id):
+            written["payments"] += 1
+
+
 def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
     existing = api.get("/api/clients").get("data") or []
     rows = existing.get("clients") if isinstance(existing, dict) else existing
@@ -498,7 +785,10 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "fixed_assets": 0, "depreciation_months": 0,
                "employees": 0, "payroll_runs": 0, "payroll_finalized": 0,
                "payroll_disbursed": 0,
-               "bank_lines": 0, "bank_drafts": 0}
+               "bank_lines": 0, "bank_drafts": 0, "tans": 0,
+               "engagements": 0, "obligations": 0,
+               "bank_rules": 0, "bank_rules_skipped": 0,
+               "cwip_projects": 0, "cwip_tranches": 0, "cwip_tranches_skipped": 0}
 
     # ── THE FIRM'S HSN LIBRARY COMES FIRST, AND IT IS A GATE ─────────────────
     #
@@ -528,8 +818,10 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
     #: An invoice raised inside the last two months is not overdue, so a bank
     #: credit clearing one would be an odd thing to be demonstrating.
     cutoff = f"{start_year + 1}-02-01"
-    #: The month left in DRAFT — see `_post_the_document`.
-    last_month = f"{start_year + 1}-03"
+    #: The month left in DRAFT — see `_post_the_document`. The fixture owns the
+    #: answer because its stock sizing must agree with it (`fixture.stock_floor`
+    #: counts only the documents that post).
+    last_month = fixture.draft_month(firm.financial_year)
 
     for c in firm.clients:
         print(f"  {c.name} — {c.demonstrates}")
@@ -552,6 +844,15 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         }))
         written["clients"] += 1
 
+        # THE DEDUCTOR'S TAN, for a client that withholds from anyone. A TDS
+        # statement is filed under it (s.203A) and `domain/tds/deductor.
+        # resolve` refuses to build one without it -- GET /api/tds/deductor
+        # answered `deductor_tan_missing` for every seeded client.
+        if c.tan:
+            api.put("/api/payroll/statutory-identity",
+                    {"client_id": client_id, "tan": c.tan})
+            written["tans"] += 1
+
         # ── THE CATALOGUE, AND WHY EVERY LINE MUST NAME ONE ──────────────
         #
         # Migration 206 made `service_catalogue_id` required on an invoice and
@@ -571,15 +872,22 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 # Goods only: `unit` is the CBIC UQC and a service has none,
                 # which is the same split `domain/gst/goods_or_services` makes.
                 "unit": item.unit if item.kind == "good" else None,
-                # OPENING STOCK, so the first sale of the year relieves real
-                # stock instead of driving the position negative on document
-                # one. `routers/service_catalogue` seeds the costing ledger
-                # from these two and dates it to the client's own FY start;
-                # it gates on `kind == "good"`, so a service sending them is
+                # OPENING STOCK, sized by the fixture for the documents that
+                # follow (`fixture.stock_floor`) so no position goes below nil
+                # while they are written in date order. `routers/
+                # service_catalogue` seeds the costing ledger from these and
+                # gates on `kind == "good"`, so a service sending them is
                 # ignored rather than refused — which is why they are sent
                 # only for goods here and not left to that gate.
                 "opening_qty_units": item.opening_qty_units or None,
                 "opening_cost_paise": item.opening_cost_paise or None,
+                # DATED TO THE BOOKS' OWN FIRST DAY. Left out, the router dates
+                # the opening to the FINANCIAL YEAR THE CLOCK IS IN (the
+                # client carries no `financial_year_start`), which for books
+                # that begin 1 April 2025 put thirty InventoryOpening journals
+                # in FY 2026-27 -- after a year of sales had already driven
+                # five clients' stock negative.
+                "opening_balance_date": fy_start if item.opening_qty_units else None,
                 # None is a REAL third state and never zero (INV-09): zero
                 # means "tell me when it runs out", and reading an absence as
                 # zero records a decision nobody made.
@@ -612,6 +920,19 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 "client_id": client_id, "name": p.name, "gstin": p.gstin,
                 "state_code": p.state_code, "credit_days": 30,
                 "tds_section": p.tds_section,
+                # A SECTION ALONE WITHHOLDS NOTHING. The purchase-bill engine
+                # asks `tds_applicable` first (`VendorIn` defaults it False),
+                # so with only the section set not one of 114 bills under 194C
+                # and 194J carried any TDS, and the TDS register, challans,
+                # returns and deposit worksheets were all empty. Only a client
+                # that deducts at all (`deducts_tax`: not an individual) is
+                # marked.
+                "tds_applicable": c.deducts_tax and p.withholds_tds,
+                # THE PAYEE'S PAN, out of its GSTIN (characters 3 to 12 are
+                # the PAN). An unregistered vendor has none, which is the
+                # s.206AA case -- the higher rate -- and a demo in which every
+                # payee has a PAN cannot show it.
+                "pan": p.pan,
                 # THE THIRD STATE, DELIBERATELY. `rcm_documents` reads NULL as
                 # *unrecorded* and names it as a gap rather than guessing, so a
                 # demo where every vendor is classified cannot show that
@@ -635,99 +956,33 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 })
                 written["msmed_classifications"] += 1
 
-        #: Bank credits for invoices nobody paid — built while the invoices
-        #: are written, because the AMOUNT is the engine's own total off the
-        #: create response and there is nowhere else to read it from.
-        open_credits: list[dict] = []
-        for n, d in enumerate(c.sales, start=1):
-            invoice_no = f"INV/{firm.financial_year}/{n:04d}"
-            invoice = api.post("/api/sales-invoices/", {
-                "client_id": client_id,
-                "customer_id": customer_ids[d.party % len(customer_ids)],
-                # The series a real practice runs: a prefix, the FY, a padded
-                # counter. `domain/gst/invoice_series` enforces Rule 46(b)'s
-                # sixteen characters and character set at the door, so this
-                # has to satisfy it — 'INV/2025-26/0001' is 16 exactly.
-                "invoice_no": invoice_no,
-                "invoice_date": d.doc_date,
-                "place_of_supply": d.place_of_supply,
-                "supply_state_code": d.place_of_supply,
-                "is_inter_state": d.place_of_supply != c.state_code,
-                "lines": [{
-                    "service_catalogue_id": catalogue[ln.hsn_sac_code],
-                    "description": ln.description,
-                    "hsn_sac": ln.hsn_sac_code,
-                    "quantity": float(ln.quantity),
-                    "unit": ln.unit,
-                    "rate_paise": ln.rate_paise,
-                    "gst_rate_percent": float(ln.gst_rate_percent),
-                } for ln in d.lines],
-            })
-            written["sales_invoices"] += 1
-            # ISSUED, so it posts, ages, moves stock and reaches the return.
-            # A settlement against a DRAFT would be a receipt against a
-            # receivable that does not exist, so the settle below is gated on
-            # it rather than left to the fixture's own "recent" rule agreeing
-            # by coincidence.
-            posted = _post_the_document(api, "/api/sales-invoices", "issue",
-                                        _id(invoice), d.doc_date, last_month)
-            written["invoices_issued"] += 1 if posted else 0
-            # THE TOTAL COMES OFF THE RESPONSE, never out of a second copy of
-            # the GST arithmetic here: the engine has just computed it, lines,
-            # rounding and all, and `domain/gst` is the one authority for it.
-            if posted and _settle(api, c, d, invoice, client_id,
-                       customer_ids[d.party % len(customer_ids)], bank_id):
-                written["receipts"] += 1
-            elif posted and len(open_credits) < _OPEN_CREDITS_PER_CLIENT and n % 3 == 0:
-                credit = _credit_for_an_open_invoice(
-                    d, invoice, c.customers[d.party % len(c.customers)].name,
-                    invoice_no, cutoff, fy_end)
-                if credit:
-                    open_credits.append(credit)
-
-        for n, d in enumerate(c.purchases, start=1):
-            bill = api.post("/api/purchase-bills/", {
-                "client_id": client_id,
-                "vendor_id": vendor_ids[d.party % len(vendor_ids)],
-                # The VENDOR'S own number, not ours — `bill_no` is a fact about
-                # the supplier's books, which is why the recurring purchase
-                # path deliberately leaves it blank rather than inventing one.
-                # Here the fixture IS the supplier, so it may state one.
-                "bill_no": f"{c.vendors[d.party % len(c.vendors)].name[:3].upper()}/{n:04d}",
-                "bill_date": d.doc_date,
-                # `PurchaseBillIn` HAS NO `place_of_supply` — an inward supply
-                # is told apart by `is_inter_state`, and the name it was sent
-                # under was dropped in silence. No figure moves today (every
-                # purchase in this fixture is intra-state) and it would the
-                # first time one was not.
-                "is_inter_state": d.place_of_supply != c.state_code,
-                "is_reverse_charge": d.is_reverse_charge,
-                "lines": [{
-                    "service_catalogue_id": catalogue[ln.hsn_sac_code],
-                    "description": ln.description,
-                    "hsn_sac": ln.hsn_sac_code,
-                    "quantity": float(ln.quantity),
-                    "unit": ln.unit,
-                    "rate_paise": ln.rate_paise,
-                    "gst_rate_percent": float(ln.gst_rate_percent),
-                } for ln in d.lines],
-            })
-            written["purchase_bills"] += 1
-            # RECEIVED — which is what posts Dr Expense / Dr GST Input / Cr
-            # Trade Payables, withholds the TDS and brings the goods into
-            # stock at the line's taxable value plus its §17(5)-blocked tax.
-            received = _post_the_document(api, "/api/purchase-bills", "receive",
-                                          _id(bill), d.doc_date, last_month)
-            written["bills_received"] += 1 if received else 0
-            if received and _pay(api, d, bill, client_id,
-                                 vendor_ids[d.party % len(vendor_ids)], bank_id):
-                written["payments"] += 1
+        # THE DOCUMENTS GO IN DATE ORDER, sales and purchases together, and
+        # that is what `fixture.documents_in_order` is: a stock ledger is a
+        # chain in the order it is WRITTEN, so every sale of the year before
+        # any purchase put the position below nil on most clients (and the
+        # opening quantities are sized for this order, `fixture.stock_floor`).
+        # `open_credits` are bank credits for invoices nobody paid — built
+        # while the invoices are written, because the AMOUNT is the engine's
+        # own total off the create response and there is nowhere else to read
+        # it from.
+        book = _Book(api, c, client_id, customer_ids, vendor_ids, catalogue,
+                     bank_id, firm.financial_year, last_month, cutoff, fy_end,
+                     written)
+        for step in fixture.documents_in_order(c):
+            if step.kind == "sale":
+                book.sale(step.n, step.doc)
+            else:
+                book.purchase(step.n, step.doc)
+        open_credits = book.open_credits
 
         _fixed_assets(api, c, client_id, bank_id, firm.financial_year, written)
+        _cwip(api, c, client_id, book, written)
         _payroll(api, c, client_id, bank_id, written)
+        _engagements(api, c, client_id, firm.financial_year, fy_start, written)
         # LAST, because the credits above are known only once every invoice
         # has been written and the engine has told us what each one came to.
         if bank_id and c.banks[0].import_statement:
+            _bank_rules(api, c, client_id, written)
             _statement(api, c, client_id, bank_id, open_credits, written)
 
     return written
