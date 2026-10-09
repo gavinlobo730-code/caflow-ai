@@ -53,7 +53,7 @@ const TRIGGERS: Record<string, AiDisclosureSurface> = {
 const FIGURES_ONLY: Record<string, { calls: string; reason: string }> = {
   "components/accounting/StatementAnalysisPanel.tsx": {
     calls: "statementAnalysis",
-    reason: "narrates the ratios the ledger computes; the CA presses a button and types nothing",
+    reason: "narrates the revenue, expenses and profit in rupees for two years and the ratios the ledger computes, with no client name; the CA presses a button and types nothing",
   },
   "app/executive-dashboard/page.tsx": {
     calls: "executiveDashboard",

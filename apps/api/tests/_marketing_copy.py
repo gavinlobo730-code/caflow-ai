@@ -120,6 +120,15 @@ def sentences_of(text: str, min_words: int = 4):
             yield s
 
 
+def sentences_in_source(src: str, min_words: int = 4) -> set[str]:
+    """The sentences ONE source file's text carries, by the rule `copy_sentences` applies to every file."""
+    found: set[str] = set()
+    for unit in _units(src):
+        if _looks_like_copy(unit):
+            found.update(sentences_of(unit, min_words))
+    return found
+
+
 def copy_sentences(min_words: int = 4) -> dict[str, set[str]]:
     """{sentence: {site-relative files it appears in}}.
 
@@ -130,9 +139,97 @@ def copy_sentences(min_words: int = 4) -> dict[str, set[str]]:
     found: dict[str, set[str]] = {}
     for path in sources():
         rel = path.relative_to(MARKETING).as_posix()
-        for unit in _units(path.read_text(encoding="utf-8")):
-            if not _looks_like_copy(unit):
-                continue
-            for s in sentences_of(unit, min_words):
-                found.setdefault(s, set()).add(rel)
+        for s in sentences_in_source(path.read_text(encoding="utf-8"), min_words):
+            found.setdefault(s, set()).add(rel)
     return found
+
+
+# ── a class list is told from prose by WHERE it sits, never by what it looks like ─────────────────────────────
+
+# `className="…"`, `className={…}` and an object's `className: …`. The lookahead keeps a type annotation
+# (`className?: string`, `className: string`) and a sentence that merely mentions the word out of it.
+_CLASS_NAME = re.compile(r"\bclassName\s*[=:]\s*(?=[\"'`{])")
+
+
+def _end_of_quoted(src: str, i: int) -> int:
+    """Index just past the string that opens at `src[i]` (an unterminated one ends at its line)."""
+    quote = src[i]
+    i += 1
+    while i < len(src):
+        c = src[i]
+        if c == "\\":
+            i += 2
+        elif c == quote:
+            return i + 1
+        elif c == "\n":
+            return i
+        else:
+            i += 1
+    return len(src)
+
+
+def _end_of_template(src: str, i: int) -> int:
+    """Index just past the template literal that opens at `src[i]`, `${…}` holes included."""
+    i += 1
+    while i < len(src):
+        c = src[i]
+        if c == "\\":
+            i += 2
+        elif c == "`":
+            return i + 1
+        elif src.startswith("${", i):
+            i = _end_of_braces(src, i + 1)
+        else:
+            i += 1
+    return len(src)
+
+
+def _end_of_braces(src: str, i: int) -> int:
+    """Index just past the `{…}` that opens at `src[i]`: a brace inside a string or a template is not counted."""
+    depth = 0
+    while i < len(src):
+        c = src[i]
+        if c in "\"'":
+            i = _end_of_quoted(src, i)
+            continue
+        if c == "`":
+            i = _end_of_template(src, i)
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return len(src)
+
+
+def blank_class_names(src: str) -> str:
+    """`src` with the value of every `className` attribute (and `className:` property) replaced by spaces.
+
+    A Tailwind class list is a string literal and the extractor reads it as copy. Telling one from a sentence by its
+    SHAPE (a word, a dash, a digit: `text-[15px]`, `gap-x-12`) drops a real sentence that happens to hold `tier-1`,
+    `ap-south-1` or `aes-256`, and a guard that looks past such a sentence is blind exactly where a page about data is
+    most likely to promise something. WHERE a string sits does not have that problem: the value of a `className` is
+    styling whatever it says and a visitor never reads it, and a string anywhere else is read, whatever it looks like.
+    Comments are blanked first, so a commented-out element is not scanned."""
+    src = blank_comments(src)
+    out = list(src)
+    pos = 0
+    for m in _CLASS_NAME.finditer(src):
+        if m.start() < pos:
+            continue
+        start = m.end()
+        opener = src[start]
+        if opener in "\"'":
+            end = _end_of_quoted(src, start)
+        elif opener == "`":
+            end = _end_of_template(src, start)
+        else:
+            end = _end_of_braces(src, start)
+        for k in range(start, end):
+            if out[k] != "\n":
+                out[k] = " "
+        pos = end
+    return "".join(out)

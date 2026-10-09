@@ -176,6 +176,13 @@ def test_an_unmapped_sentence_is_named_and_removing_it_passes(site):
     "Penetration tested every quarter",
     "Clients upload their documents to the portal",
     "Import your ledgers and journals from Tally",
+    # PRE-B-015(a): what is recorded or measured about a visitor, and what leaves with a person's content
+    "No session replay on any screen",
+    "Loads no analytics or tracking scripts",
+    "We use cookies to remember you",
+    "Content is sent to Groq for reading",
+    "Names you type are sent as written",
+    "Anything shaped like a PAN is replaced before it leaves",
 ])
 def test_the_vocabulary_catches_what_it_is_for(sentence):
     assert topics_of(sentence), f"{sentence!r} would pass the site unreviewed"
@@ -191,6 +198,10 @@ def test_the_vocabulary_catches_what_it_is_for(sentence):
     "Billed monthly · save ~2 months on annual",
     "GSTR-1 — 11th of the following month",
     "What's included",
+    # the privacy topic is narrow on purpose: the product's own analytics and tracking screens are not a visitor's
+    "Practice analytics",
+    "Client-health scoring and lifecycle tracking",
+    "Built-in due-date tracking across every client, GSTIN and PAN",
 ])
 def test_the_vocabulary_leaves_a_label_a_question_and_a_price_alone(sentence):
     assert not topics_of(sentence), f"{sentence!r} is not a promise"

@@ -30,6 +30,7 @@ Later (once a custom domain is attached):
 | `/pricing`   | Plans + FAQ                                                        |
 | `/support`   | Help channels + contact                                           |
 | `/resources` | Guides + Indian statutory compliance calendar                     |
+| `/privacy`   | "How we handle your data" — a factual summary, not the full notice |
 | `/access`    | **Login gateway** — two cards (Firm workspace / Client portal)    |
 
 The `/access` gateway's cards link into `apps/web`: the firm card → `/login`, the
