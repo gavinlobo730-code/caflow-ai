@@ -10,9 +10,24 @@ from models.workflow import (
     WorkflowScheduleIn, ApprovalResponseIn,
 )
 from core.authz import assert_client_access, filter_by_client
+from core.db_errors import error_code
 from core.permissions import rbac
+from repositories.workflow_repository import IN_FLIGHT_STATUSES
 
 router = APIRouter(prefix="/api/workflows", tags=["Workflows Phase 10"])
+
+#: What a manual start can answer that is not a run it created.
+NOT_A_NEW_RUN = ("duplicate_skipped", "not_started")
+
+
+def _runs(count: int) -> str:
+    return f"{count} run" if count == 1 else f"{count} runs"
+
+
+def _cannot_delete(ran: Optional[int]) -> str:
+    history = _runs(ran) if ran else "runs"
+    return (f"This workflow has {history} on record, and deleting it would erase that "
+            "history. Pause it instead: a paused workflow does not start by itself.")
 
 
 def _repo():
@@ -124,7 +139,22 @@ def update_template(
 ):
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id")
-    updated = _repo().update_template(firm_id, template_id, payload.model_dump(exclude_none=True), user_id)
+    data = payload.model_dump(exclude_none=True)
+    if "steps" in data:
+        # Replacing the steps replaces their ids. A run that is working, or
+        # waiting on a person, holds the id of the step it is at, so it would be
+        # left pointing at a step that no longer exists. Renaming the workflow,
+        # changing its trigger or pausing it (no `steps` in the request) never
+        # reaches this: those do not touch a run.
+        in_flight = _repo().count_instances(firm_id, template_id, IN_FLIGHT_STATUSES)
+        if in_flight:
+            raise HTTPException(
+                409,
+                f"This workflow has {_runs(in_flight)} still in progress, so its steps "
+                "cannot be changed under them. Cancel those runs or let them finish, "
+                "then save the steps again.",
+            )
+    updated = _repo().update_template(firm_id, template_id, data, user_id)
     if not updated:
         raise HTTPException(404, "Workflow template not found")
     return api_response(True, updated)
@@ -136,7 +166,21 @@ def delete_template(
     current_user: dict = Depends(rbac("task", "delete")),
 ):
     firm_id = current_user["firm_id"]
-    deleted = _repo().delete_template(firm_id, template_id)
+    # Every run of a workflow points at it, and the database refuses to delete a
+    # template that runs point at. That refusal used to surface as a 500 for any
+    # workflow that had ever run; the answer is a 409 that says why and what to
+    # do instead. The count is the check (a template with no runs is deleted as
+    # before); the 23503 below is the same refusal arriving from a run that
+    # started between the count and the delete.
+    ran = _repo().count_instances(firm_id, template_id)
+    if ran:
+        raise HTTPException(409, _cannot_delete(ran))
+    try:
+        deleted = _repo().delete_template(firm_id, template_id)
+    except Exception as exc:
+        if error_code(exc) == "23503":
+            raise HTTPException(409, _cannot_delete(None)) from exc
+        raise
     if not deleted:
         raise HTTPException(404, "Workflow template not found")
     return api_response(True, {"deleted": True, "template_id": template_id})
@@ -163,7 +207,7 @@ def manually_trigger(
     payload: dict = {},
     current_user: dict = Depends(rbac("task", "write")),
 ):
-    """Manually fire a workflow template with optional trigger data."""
+    """Start ONE workflow template by hand, with optional trigger data."""
     firm_id = current_user["firm_id"]
     template = _repo().get_template(firm_id, template_id)
     if not template:
@@ -171,13 +215,21 @@ def manually_trigger(
     # The template is firm property, but firing it CREATES an instance against
     # the client named in the payload — that is the client-scoped act here.
     assert_client_access(current_user, payload.get("client_id"))
-    results = _engine().fire_trigger(
+    # THIS template, not every active template of its trigger type: the call used
+    # to be fire_trigger(trigger_type=...), so one press started every workflow
+    # the firm had on that trigger.
+    results = _engine().start_manually(
         firm_id=firm_id,
-        trigger_type=template["trigger_type"],
+        template_id=template_id,
         trigger_data=payload,
         client_id=payload.get("client_id"),
+        started_by=current_user.get("auth_user_id"),
     )
-    return api_response(True, {"instances_started": len(results), "instances": results})
+    # Only a run that was created counts as started. A repeat of a run that
+    # already holds its key, and a workflow whose conditions did not match, are
+    # answered in `instances` with their status and are not "started".
+    started = [r for r in results if r.get("status") not in NOT_A_NEW_RUN]
+    return api_response(True, {"instances_started": len(started), "instances": results})
 
 
 # ── Instances ─────────────────────────────────────────────────────────────────
@@ -291,6 +343,7 @@ def respond_to_approval(
         approval["instance_id"],
         approved=(payload.decision == "approved"),
         user_id=user_id,
+        approval_step_id=approval.get("step_id"),
     )
     return api_response(True, approval)
 

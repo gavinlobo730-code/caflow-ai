@@ -11,6 +11,7 @@ Tables used:
 """
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta
@@ -18,8 +19,20 @@ from typing import Optional, Any
 
 from repositories.base import BaseRepository
 from core import db_provider
+from domain.workflow import step_links
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
+
+_logger = logging.getLogger("caflow.workflow_repository")
+
+#: A run in one of these has not finished: it is working, or it is waiting on a
+#: person. A template's steps cannot be replaced under it.
+IN_FLIGHT_STATUSES = ("pending", "running", "waiting_approval")
+
+#: A run that ended in one of these did not do its work, so it does not hold the
+#: idempotency key of the event that started it: the same event may start it
+#: again. A run that completed, or is still going, does.
+DID_NOT_RUN_STATUSES = ("failed", "cancelled")
 
 
 _get_db = db_provider.request_db
@@ -121,10 +134,7 @@ class WorkflowRepository(BaseRepository):
                 **data,
             }
             MOCK_TEMPLATES.append(template)
-            saved_steps = []
-            for i, step in enumerate(steps):
-                saved_steps.append(self._create_step(template["id"], {**step, "step_order": i}))
-            template["steps"] = saved_steps
+            template["steps"] = self._insert_steps(template["id"], step_links.prepare(steps))
             return template
 
         steps = data.pop("steps", [])
@@ -146,10 +156,18 @@ class WorkflowRepository(BaseRepository):
         db = _get_db()
         result = db.table("workflow_templates").insert(payload).execute()
         template = result.data[0]
-        saved_steps = []
-        for i, step in enumerate(steps):
-            saved_steps.append(self._create_step(template["id"], {**step, "step_order": i}))
-        template["steps"] = saved_steps
+        try:
+            template["steps"] = self._insert_steps(template["id"], step_links.prepare(steps))
+        except Exception:
+            # The steps go in as ONE statement, so none of them is stored. Take
+            # the template back out too: one with no steps "runs" and completes,
+            # which is a success reported over nothing.
+            try:
+                db.table("workflow_templates").delete().eq("id", template["id"]).eq("firm_id", firm_id).execute()
+            except Exception:
+                _logger.exception("Could not remove workflow template %s after its steps failed to save",
+                                  template["id"])
+            raise
         return template
 
     def update_template(self, firm_id: str, template_id: str, data: dict, user_id: Optional[str] = None) -> Optional[dict]:
@@ -162,9 +180,7 @@ class WorkflowRepository(BaseRepository):
                     t["updated_by"] = user_id
                     t["updated_at"] = _now()
                     if steps is not None:
-                        MOCK_STEPS[:] = [s for s in MOCK_STEPS if s["template_id"] != template_id]
-                        for i, step in enumerate(steps):
-                            self._create_step(template_id, {**step, "step_order": i})
+                        self._replace_steps(template_id, steps)
                     t["steps"] = self.list_steps(template_id)
                     return t
             return None
@@ -190,9 +206,7 @@ class WorkflowRepository(BaseRepository):
             return None
         template = result.data[0]
         if steps is not None:
-            db.table("workflow_steps").delete().eq("template_id", template_id).execute()
-            for i, step in enumerate(steps):
-                self._create_step(template_id, {**step, "step_order": i})
+            self._replace_steps(template_id, steps, replacing=existing.get("steps") or [])
         template["steps"] = self.list_steps(template_id)
         return template
 
@@ -267,6 +281,76 @@ class WorkflowRepository(BaseRepository):
     def create_step(self, template_id: str, data: dict) -> dict:
         return self._create_step(template_id, data)
 
+    def _insert_steps(self, template_id: str, rows: list[dict]) -> list[dict]:
+        """Store a template's steps, already given their ids and links by
+        `domain.workflow.step_links.prepare`, in ONE statement.
+
+        One statement is what makes a save all-or-nothing: the steps used to go
+        in one request at a time, so a failure on the third left a template of
+        two steps that ran, completed and reported success.
+        """
+        if not rows:
+            return []
+        created_at = _now()
+        if _USE_MOCK:
+            saved = [{**row, "template_id": template_id, "created_at": created_at} for row in rows]
+            MOCK_STEPS.extend(saved)
+            return saved
+
+        db = _get_db()
+        result = db.table("workflow_steps").insert([
+            {
+                "id": row["id"], "template_id": template_id, "created_at": created_at,
+                "step_order": row["step_order"], "step_type": row["step_type"],
+                "name": row["name"], "description": row["description"],
+                "config": row["config"], "next_step_id": row["next_step_id"],
+                "true_branch_step_id": row["true_branch_step_id"],
+                "false_branch_step_id": row["false_branch_step_id"],
+            }
+            for row in rows
+        ]).execute()
+        stored = result.data or []
+        # The statement stores every row or none, so a short answer is the
+        # client's, not the database's: read back rather than report fewer steps.
+        if len(stored) != len(rows):
+            return self.list_steps(template_id)
+        return sorted(stored, key=lambda step: step["step_order"])
+
+    def _replace_steps(self, template_id: str, steps: list[dict], replacing: Optional[list[dict]] = None) -> None:
+        """Swap a template's steps for a new list without a moment in which it has none.
+
+        The new set is inserted BEFORE the old one is removed. The old order was
+        delete-then-insert one at a time, so a failure part-way left a template
+        with a fraction of its steps, or none. Here a failed insert changes
+        nothing, and a failed delete takes the new set back out so the template
+        still has exactly one set.
+
+        `replacing` is the steps the caller has already read (update_template
+        reads the template to bump its version); without it they are read here.
+        """
+        rows = step_links.prepare(steps)
+        if _USE_MOCK:
+            self._insert_steps(template_id, rows)
+            new_ids = {row["id"] for row in rows}
+            MOCK_STEPS[:] = [s for s in MOCK_STEPS
+                             if s["template_id"] != template_id or s["id"] in new_ids]
+            return
+
+        old_ids = [s["id"] for s in (replacing if replacing is not None else self.list_steps(template_id))]
+        self._insert_steps(template_id, rows)
+        if not old_ids:
+            return
+        db = _get_db()
+        try:
+            db.table("workflow_steps").delete().eq("template_id", template_id).in_("id", old_ids).execute()
+        except Exception:
+            try:
+                db.table("workflow_steps").delete().eq("template_id", template_id).in_(
+                    "id", [row["id"] for row in rows]).execute()
+            except Exception:
+                _logger.exception("Could not take back the new steps of workflow template %s", template_id)
+            raise
+
     # ── Instances ─────────────────────────────────────────────────────────────
 
     def list_instances(
@@ -318,6 +402,31 @@ class WorkflowRepository(BaseRepository):
             .execute()
         )
         return result.data
+
+    def count_instances(
+        self,
+        firm_id: str,
+        template_id: str,
+        statuses: Optional[tuple] = None,
+    ) -> int:
+        """How many runs a template has, or how many of them are in `statuses`.
+
+        A COUNT, never a row set: the answer is one number however many runs the
+        template has had, which is what a template that fires every month
+        accumulates.
+        """
+        if _USE_MOCK:
+            return len([
+                i for i in MOCK_INSTANCES
+                if i["firm_id"] == firm_id and i["template_id"] == template_id
+                and (statuses is None or i["status"] in statuses)
+            ])
+        db = _get_db()
+        query = (db.table("workflow_instances").select("id", count="exact")
+                 .eq("firm_id", firm_id).eq("template_id", template_id))
+        if statuses is not None:
+            query = query.in_("status", list(statuses))
+        return int(query.limit(1).execute().count or 0)
 
     def client_ids_for_instances(self, firm_id: str, instance_ids) -> dict:
         """`{instance_id: client_id}` for the given instances, firm-scoped.
@@ -447,7 +556,18 @@ class WorkflowRepository(BaseRepository):
         trigger_event: str,
         idempotency_key: str,
     ) -> Optional[dict]:
-        """Return existing instance if one already ran with this idempotency_key."""
+        """Return the run that already holds this idempotency_key, if there is one.
+
+        A run that FAILED or was CANCELLED does not hold it: it did not do the
+        work, and the same event has to be able to start it again. Before this
+        the check ignored status, so a failed run blocked its own retry for ever
+        (the event was reported as a duplicate of a run that had done nothing).
+        A run that completed, is running or is waiting on an approval still holds
+        the key, which is what stops one event making two runs.
+
+        More than one row can share a key (a failed run and its retry), so this
+        asks for one row rather than `maybe_single`, which raises on two.
+        """
         if _USE_MOCK:
             for i in MOCK_INSTANCES:
                 if (
@@ -455,22 +575,25 @@ class WorkflowRepository(BaseRepository):
                     and i["template_id"] == template_id
                     and i["trigger_event"] == trigger_event
                     and i.get("idempotency_key") == idempotency_key
+                    and i["status"] not in DID_NOT_RUN_STATUSES
                 ):
                     return i
             return None
 
         db = _get_db()
-        result = (
+        rows = (
             db.table("workflow_instances")
             .select("*")
             .eq("firm_id", firm_id)
             .eq("template_id", template_id)
             .eq("trigger_event", trigger_event)
             .eq("idempotency_key", idempotency_key)
-            .maybe_single()
+            .not_.in_("status", list(DID_NOT_RUN_STATUSES))
+            .limit(1)
             .execute()
-        )
-        return result.data
+            .data
+        ) or []
+        return rows[0] if rows else None
 
     # ── Action Logs ───────────────────────────────────────────────────────────
 
