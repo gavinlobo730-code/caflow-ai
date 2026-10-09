@@ -14,6 +14,7 @@ from models.common import api_response
 from core.auth import get_jwt_user
 from core.portal_auth import get_current_portal_client
 from services import portal_access_service, employee_portal_service
+from services.payments import availability as online_payment
 
 router = APIRouter(prefix="/api/portal", tags=["portal_self"])
 
@@ -95,11 +96,16 @@ _DASHBOARD_SECTIONS = [
 
 @router.get("/dashboard")
 def portal_dashboard(portal: dict = Depends(get_current_portal_client)):
-    """Dashboard SHELL — section scaffold only, no business data (4.5.1 foundation)."""
+    """Dashboard SHELL — section scaffold only, no business data (4.5.1 foundation).
+
+    `online_payment` is the SERVER's answer to "may a client pay online?" with the words to show when not
+    (PRE-B-002 part 2): the portal renders it and decides nothing. It is on the shell and not on `/invoices` or
+    `/dues`, whose payloads are pinned exactly."""
     return api_response(True, {
         "client_id": portal["client_id"],
         "contact": {"email": portal["email"], "name": portal["name"]},
         "sections": _DASHBOARD_SECTIONS,
+        "online_payment": online_payment.portal_block(),
     })
 
 

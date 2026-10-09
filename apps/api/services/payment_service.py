@@ -30,7 +30,10 @@ from services.timeline_service import timeline_service
 from services import email_service
 from services.receipt_service import create_receipt_core
 from services.payments import get_provider, PaymentLinkRequest, CAPTURED, FAILED, REFUNDED
+from services.payments import availability as online_payment
+from services.payments.factory import configured_provider
 from domain.money_text import whole_rupees
+from domain.payments import availability as payable
 
 _logger = logging.getLogger("caflow.payment_service")
 
@@ -88,16 +91,23 @@ def create_link(db, firm_id: str, invoice_id: str, actor: dict,
     outstanding = _outstanding(inv)
     if outstanding <= 0:
         raise HTTPException(status_code=422, detail="Invoice has no outstanding balance to collect.")
+    # A draft has not been issued and a cancelled invoice is not owed, whatever balance the columns read
+    # (PRE-B-002 part 2): the same two statuses the portal offers a pay control for.
+    if not payable.invoice_is_payable(inv.get("status"), outstanding):
+        raise HTTPException(status_code=422, detail="Only an issued invoice with a balance can be collected online.")
 
-    # Idempotency: reuse an existing open link of the same amount.
+    provider = get_provider(provider_name)
+
+    # Idempotency: reuse an existing open link of the same amount, made by THIS provider. A link a different
+    # provider made (the test double's `mock-pay.local` address, say) points nowhere under this one and is never
+    # handed back as if it were this gateway's.
     existing = (db.table("customer_payment_links").select("*")
                 .eq("firm_id", firm_id).eq("invoice_id", invoice_id)
-                .eq("amount_paise", outstanding).in_("status", list(_OPEN_LINK))
+                .eq("amount_paise", outstanding).eq("provider", provider.name)
+                .in_("status", list(_OPEN_LINK))
                 .limit(1).execute().data or [])
     if existing:
         return existing[0]
-
-    provider = get_provider(provider_name)
 
     # Insert first so the provider reference_id == our link id (clean webhook correlation).
     link_row = (db.table("customer_payment_links").insert({
@@ -134,9 +144,12 @@ def list_links(db, firm_id: str, invoice_id: str, actor: dict) -> list[dict]:
     inv = _get_invoice(db, firm_id, invoice_id)
     if inv and not can_access_client(actor, inv.get("client_id")):
         raise HTTPException(status_code=404, detail="Invoice not found.")
-    return (db.table("customer_payment_links").select("*")
+    rows = (db.table("customer_payment_links").select("*")
             .eq("firm_id", firm_id).eq("invoice_id", invoice_id)
             .order("created_at", desc=True).execute().data or [])
+    # A link made by the test double carries an address that goes nowhere: it is listed (the history is true)
+    # and never shown.
+    return [payable.mask_link(r) for r in rows]
 
 
 def get_link(db, firm_id: str, link_id: str, actor: dict) -> Optional[dict]:
@@ -161,11 +174,16 @@ def history(db, firm_id: str, invoice_id: str, actor: dict) -> dict:
     inv = _get_invoice(db, firm_id, invoice_id)
     if inv and not can_access_client(actor, inv.get("client_id")):
         raise HTTPException(status_code=404, detail="Invoice not found.")
+    outstanding = _outstanding(inv) if inv else 0
     return {
         "invoice_id": invoice_id,
-        "outstanding_paise": _outstanding(inv) if inv else 0,
+        "outstanding_paise": outstanding,
         "links": list_links(db, firm_id, invoice_id, actor),
         "payments": list_payments(db, firm_id, invoice_id),
+        # The server decides whether a link may be made: whether a gateway is set up, and whether THIS invoice is
+        # one a link may be made for. The screen renders both and decides neither.
+        "online_payment": online_payment.staff_block(),
+        "can_pay_online": payable.invoice_is_payable(inv.get("status") if inv else None, outstanding),
     }
 
 
@@ -175,6 +193,12 @@ def send_link_email(db, firm_id: str, link_id: str, actor: dict) -> dict:
     link = get_link(db, firm_id, link_id, actor)
     if not link:
         raise HTTPException(status_code=404, detail="Payment link not found.")
+    # Never mail an address that goes nowhere: a link the test double made, one made under another gateway, one
+    # that is half-made, paid, cancelled or past its expiry. The route has already refused while no gateway is
+    # set up; this is the check on the LINK, and it holds for any caller.
+    problem = payable.link_problem(link, configured_provider())
+    if problem:
+        raise HTTPException(status_code=409, detail=problem)
     inv = _get_invoice(db, firm_id, link["invoice_id"])
     cust = _customer(db, firm_id, link["customer_id"])
     to = cust.get("email")

@@ -24,6 +24,7 @@ from services import collections_service
 from core.ist_clock import ist_today
 from core.db_paging import fetch_all
 from core import db_provider
+from domain.payments import availability as payable
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.portal_data")
@@ -120,6 +121,15 @@ def list_invoices(firm_id: str, client_id: str, db=None, today: Optional[date] =
             .eq("customer_id", scope["internal_customer_id"]).is_("deleted_at", "null")
             .order("invoice_date", desc=True).execute().data or [])
     return [safe_invoice(r, today) for r in rows]
+
+
+def with_pay_flag(rows: list[dict]) -> list[dict]:
+    """Each client-safe invoice row plus `can_pay_online`: True only for an issued or part-paid invoice with a
+    balance (`domain/payments/availability.invoice_is_payable`). It is eligibility of the INVOICE, not a promise
+    that a gateway is set up: a draft, a cancelled or a paid invoice is never offered a pay control, whatever the
+    outstanding figure reads."""
+    return [{**r, "can_pay_online": payable.invoice_is_payable(r.get("status"), r.get("outstanding_paise"))}
+            for r in rows]
 
 
 def dues(firm_id: str, client_id: str, db=None, today: Optional[date] = None) -> dict:
