@@ -7,8 +7,11 @@
  * EMI formula: P × r × (1+r)^n / ((1+r)^n - 1) where r = monthly interest rate
  * All monetary values stored as integer paise — never floating point.
  *
- * TDS on FD interest per IT Act Section 194A — threshold ₹40,000 p.a.
- * (₹50,000 for senior citizens). TDS rate: 10% (20% if PAN not furnished).
+ * TDS on FD interest per IT Act Section 194A. This screen states NO limit: it
+ * depends on the financial year, on who pays the interest and on who receives
+ * it, and domain/tds/section_rates.py is the one place that holds it (the
+ * figures this header carried were the pre-Finance-Act-2025 ones).
+ * TDS rate: 10% (20% if PAN not furnished).
  */
 
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
@@ -384,7 +387,7 @@ export default function LoansAndFDPage() {
         maturity_date: fdForm.maturity_date,
         maturity_amount_paise: maturityPaise,
         is_auto_renewed: fdForm.is_auto_renewed,
-        // TDS on FD interest per IT Act Section 194A — threshold ₹40,000 p.a. (₹50,000 for senior citizens)
+        // TDS on FD interest per IT Act Section 194A (the limit is the TDS engine's, not this screen's)
         tds_applicable: fdForm.tds_applicable,
         status: "active",
         notes: fdForm.notes.trim() || null,
@@ -757,8 +760,8 @@ export default function LoansAndFDPage() {
             <div className="px-5 py-4 border-b border-ps-border">
               <h2 className="text-sm font-semibold text-ps-ink">FD Register</h2>
               <p className="text-xs text-ps-hint mt-0.5">
-                {/* TDS on FD interest per IT Act Section 194A — threshold ₹40,000 p.a. (₹50,000 for senior citizens) */}
-                TDS applicable per IT Act Section 194A — ₹40,000 threshold p.a.
+                {/* TDS on FD interest per IT Act Section 194A (the limit is the TDS engine's, not this screen's) */}
+                TDS on FD interest falls under IT Act Section 194A once it crosses the limit for the year, which depends on who pays and who is paid.
               </p>
             </div>
             {loading ? (
@@ -996,8 +999,8 @@ export default function LoansAndFDPage() {
               </div>
               {fdForm.tds_applicable && (
                 <p className="text-3xs text-amber-600 bg-state-attention-surface px-3 py-2 rounded-lg">
-                  {/* TDS on FD interest per IT Act Section 194A — threshold ₹40,000 p.a. (₹50,000 for senior citizens) */}
-                  IT Act Section 194A — TDS deducted on FD interest exceeding ₹40,000 p.a. (₹50,000 for senior citizens). TDS rate: 10% (20% if PAN not furnished).
+                  {/* TDS on FD interest per IT Act Section 194A (the limit is the TDS engine's, not this screen's) */}
+                  IT Act Section 194A — TDS is deducted on FD interest once it crosses the limit for the year, which depends on who pays and who is paid. TDS rate: 10% (20% if PAN not furnished).
                 </p>
               )}
               <FormField label="Notes" optional>

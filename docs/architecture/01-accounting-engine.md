@@ -75,6 +75,7 @@ frontend UI on the Purchases page.)*
 | `08-reporting-engine.md` | GL, Trial Balance, Balance Sheet, P&L, Cash Flow, and the read paths behind them |
 | `09-bank-entries.md` | A bank statement line becomes a voucher: Receipt, Payment or Contra |
 | `10-payroll.md` | Payroll, the bureau model (a design record, partly superseded; read its status box) |
+| `11-revenue-ops-and-knowledge.md` | The practice's own revenue loop (the internal client, billing schedules, collections, time capture) and the knowledge base, written from the code |
 
 ## Current phase
 
