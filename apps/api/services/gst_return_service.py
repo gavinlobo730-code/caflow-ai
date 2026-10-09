@@ -2662,7 +2662,7 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             # These CGST and SGST figures are the books' own, summed from
             # lines taxed by domain/sales/line_tax.compute_line_gst, whose
             # SGST carries each line's odd paisa -- so the halves may differ
-            # by up to one paisa per line (CGST Act s.8) and not otherwise.
+            # by up to one paisa per line (CGST Act s.9(1)) and not otherwise.
             line_count=len(inv.lines),
         )
         for inv in invoices

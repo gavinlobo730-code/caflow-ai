@@ -64,6 +64,11 @@ def test_a_project_is_built_out_of_received_bills_each_used_once(client):
             assert bill.doc_date[:7] != draft, f"purchase {n} is left as a draft: it posted nothing to reclassify"
             assert not bill.is_reverse_charge, f"purchase {n} is reverse charge"
             assert fixture.document_taxable_paise(bill) > 0
+            # A project's cost is lifted out of Purchases by value (from_bill). A goods line would also have moved
+            # stock into the inventory ledger when the bill was received, and the same rupees would then sit in two
+            # places; a Chapter 99 service line moves no stock.
+            assert all(ln.hsn_sac_code.startswith("99") for ln in bill.lines), (
+                f"purchase {n} carries a goods line: it would have put stock on the shelf as well as in the project")
 
 
 @pytest.mark.parametrize("client", WITH_PROJECTS, ids=lambda c: c.name)

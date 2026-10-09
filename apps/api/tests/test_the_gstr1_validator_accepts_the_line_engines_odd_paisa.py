@@ -10,7 +10,7 @@ WHAT WAS WRONG
     produced it in 10 of 12 months for one client and 31 distinct messages across the book, some 2 paise apart on a
     two-line invoice. A validator that fires on a correct return is a validator nobody reads.
 
-THE RULE (CGST Act s.8, with the SGST Acts: the same rate on each half)
+THE RULE (CGST Act s.9(1), with the SGST Acts: the same rate on each half)
     0 <= SGST - CGST <= the number of lines the figures were summed over. Only in that direction, only for a caller
     that says how many lines (`line_count`), so a raw payload whose halves were typed or computed elsewhere keeps the
     strict equality, and a Rs 1,000 gap, a CGST above its SGST, and a gap wider than the lines can explain are all

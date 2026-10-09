@@ -162,27 +162,74 @@ cat_map = {
     assert not any(_is_category_to_ledger_dict(n) for n in ast.walk(unrelated))
 
 
-def test_the_posting_engine_asks_the_table_in_all_three_places():
-    """Each journal that books an asset to its category's ledger asks the one
-    table. Judged per function, by AST, so renaming the local variable or adding
-    a fourth journal that also asks cannot fail it; a journal that stops asking
-    (and would then carry a map of its own) does."""
+def _called_names(fn: ast.AST) -> set[str]:
+    """Names a function calls, whether spelt `f(..)` or `module.f(..)`."""
+    names: set[str] = set()
+    for n in ast.walk(fn):
+        if isinstance(n, ast.Call):
+            if isinstance(n.func, ast.Name):
+                names.add(n.func.id)
+            elif isinstance(n.func, ast.Attribute):
+                names.add(n.func.attr)
+    return names
+
+
+def _reads_an_asset_category(fn: ast.AST) -> bool:
+    """A function that looks `asset_category` up on a row is deciding which
+    ledger that row's cost belongs to, whatever it calls the local variable."""
+    return any(isinstance(n, ast.Constant) and n.value == "asset_category"
+               for n in ast.walk(fn))
+
+
+def _functions_that_read_a_category_and_skip_the_table(tree: ast.AST) -> tuple[list[str], list[str]]:
+    """(functions that read an asset's category, those of them that never call
+    `ledger_pattern`). Judged on what the function calls, not on how the call
+    is spelt: the argument may be a local, an inline `.get(..)` or an attribute."""
+    readers, skipping = [], []
+    for fn in ast.walk(tree):
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and _reads_an_asset_category(fn):
+            readers.append(fn.name)
+            if "ledger_pattern" not in _called_names(fn):
+                skipping.append(fn.name)
+    return sorted(readers), sorted(skipping)
+
+
+def test_the_posting_engine_asks_the_table_wherever_it_reads_an_assets_category():
+    """The rule, over the AST: every function in the posting service that reads
+    an asset's category asks `asset_ledger.ledger_pattern` where the ledger comes
+    from. Not a count of one spelling of the call, and not a search for the old
+    local's name: a fourth caller, a renamed variable or an inline argument all
+    still stand, and a function that answers the question from a literal fails."""
     tree = ast.parse((API / "services" / "phase2_journal_service.py").read_text())
-    asking = {
-        fn.name
-        for fn in ast.walk(tree)
-        if isinstance(fn, ast.FunctionDef)
-        and any(
-            isinstance(c, ast.Call)
-            and getattr(c.func, "id", getattr(c.func, "attr", "")) == "ledger_pattern"
-            for c in ast.walk(fn)
-        )
-    }
-    assert {
-        "journal_for_asset_acquisition",
-        "journal_for_cwip_capitalisation",
-        "journal_for_asset_disposal",
-    } <= asking
+    readers, skipping = _functions_that_read_a_category_and_skip_the_table(tree)
+    # The scan must be reading the module: these are the three journals that
+    # debit or credit an asset's cost (acquisition, CWIP capitalisation, disposal).
+    assert {"journal_for_asset_acquisition", "journal_for_cwip_capitalisation",
+            "journal_for_asset_disposal"} <= set(readers), (
+        f"the scan found {readers}: it is not reading the posting journals")
+    assert not skipping, (
+        f"{skipping} read an asset's category and never ask "
+        "domain/fixed_assets/asset_ledger.ledger_pattern which ledger it is")
+
+
+def test_the_scan_sees_a_function_that_answers_from_a_literal_and_accepts_every_spelling_of_the_call():
+    """Negative control for the guard above, in both directions."""
+    def verdict(body: str) -> tuple[list[str], list[str]]:
+        return _functions_that_read_a_category_and_skip_the_table(ast.parse(body))
+
+    # Skips the table: a hard-coded ledger, and a private dict, for the same row.
+    assert verdict('def f(a):\n    return a.get("asset_category") and "%Plant & Machinery%"\n') \
+        == (["f"], ["f"])
+    assert verdict('def f(a):\n    m = {"Land": "%Land%"}\n    return m[a["asset_category"]]\n') \
+        == (["f"], ["f"])
+    # Asks the table, however the call is spelt or its argument is built.
+    for spelling in ('ledger_pattern(c)',
+                     'ledger_pattern(a.get("asset_category", "Other"))',
+                     'asset_ledger.ledger_pattern(a["asset_category"])'):
+        body = f'def f(a):\n    c = a.get("asset_category")\n    return {spelling}\n'
+        assert verdict(body) == (["f"], []), spelling
+    # A function that never reads a category is none of the rule's business.
+    assert verdict('def f(a):\n    return a.get("asset_name")\n') == ([], [])
 
 
 # ── the behaviour: a firm holding only the standard chart can post ──────────

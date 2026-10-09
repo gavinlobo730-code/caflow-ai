@@ -104,7 +104,7 @@ class InvoiceToValidate:
 def odd_paisa_allowance(line_count: int | None) -> int:
     """The most SGST may exceed CGST on an intra-State document, in paise.
 
-    CGST Act s.8 charges an intra-State supply CGST and SGST at the same rate,
+    CGST Act s.9(1) charges an intra-State supply CGST and SGST at the same rate,
     so the two halves are the same amount. ``domain/sales/line_tax.
     compute_line_gst`` computes a line's full tax first and halves it: CGST is
     the floor of the half and SGST carries the odd paisa. A line whose tax is
@@ -211,7 +211,7 @@ class GSTValidator:
                     ref,
                 ))
 
-        # CGST must equal SGST for intra-state supplies (CGST Act s.8 with the
+        # CGST must equal SGST for intra-state supplies (CGST Act s.9(1) with the
         # SGST Acts) -- to within the odd paisa per line the line engine puts on
         # SGST, and only in that direction (see odd_paisa_allowance).
         gap = inv.sgst_paise - inv.cgst_paise
