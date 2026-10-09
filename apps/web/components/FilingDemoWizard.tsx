@@ -457,10 +457,23 @@ export default function FilingDemoWizard({
                   <div className="rounded border border-ps-border bg-ps-bg p-3">
                     <p className="text-2xs font-semibold text-ps-body">How this is really filed today</p>
                     <p className="text-2xs text-ps-label">{script.real_channel.how}</p>
+                    {/* The wizard has NO roadmap wording of its own. It used to
+                        say "that is the API integration on the roadmap" here
+                        (and, for every flow where software may not transmit,
+                        "the roadmap integration depends on the authority" —
+                        which promises an integration for TDS, PF, ESI and MCA,
+                        where no registration unlocks one), a second voice
+                        beside the served posture that no guard read. Where a
+                        flow's software MAY transmit, what is planned is the
+                        served sentence (domain/filing_posture.py, with the
+                        lib/filing/posture fallback); where it may not, the
+                        flow's own "what changes when this is real" below says
+                        what gates it, or that nothing does. */}
                     <p className="text-2xs text-ps-label mt-1">
                       {script.real_channel.software_permitted
-                        ? "Software IS permitted to transmit this filing in India — that is the API integration on the roadmap."
-                        : "No public API lets software transmit this today; the roadmap integration depends on the authority."}
+                        ? "Software is permitted to transmit this filing in India."
+                        : "No public API lets software transmit this today."}
+                      {script.real_channel.software_permitted && <>{" "}{posture.roadmap}</>}
                       {" "}{script.real_channel.note}
                     </p>
                   </div>

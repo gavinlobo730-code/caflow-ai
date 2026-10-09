@@ -20,6 +20,9 @@ specimens) apply automatically via tests/test_filing_demo_framework.py.
 """
 from __future__ import annotations
 
+import importlib
+import re
+
 import pytest
 
 from services.filing_demo import esi, pf_ecr
@@ -331,6 +334,71 @@ def test_both_flows_say_what_changes_when_filing_is_real():
         assert "no registration to wait for" in note
         assert portal in note
         assert "belongs to the client" in note
+
+
+# What each walk-through's "what changes when this is real" may say about the FILE.
+#
+# The two texts used to say "What PracticeSync will do is produce the ECR .txt"
+# and "...produce the contribution file": the future tense, for a file that
+# domain/payroll/ecr.build_ecr and domain/payroll/esic.build_esic_return have
+# produced from a finalised run, and routers/payroll has served, for a long
+# time. A CA shown the walk-through was told a shipped feature was future work
+# (COMING-016, COMING-017). The rule is not a spelling: where the product
+# already builds the file the walk-through says so in the present tense, and the
+# premise test below is what would make the future tense true again.
+
+#: flow -> (module, the builder that produces the file, the route that serves
+#: it, the walk-through module)
+_FILE_BUILT_TODAY = {
+    "pf": ("domain.payroll.ecr", "build_ecr", "/runs/{run_id}/ecr", pf_ecr),
+    "esi": ("domain.payroll.esic", "build_esic_return", "/runs/{run_id}/esic", esi),
+}
+
+#: The product speaking about its own future work: "PracticeSync will ...",
+#: "it will ...". A sentence about somebody else's future ("the portal will
+#: reject") is not this rule's business.
+_PRODUCT_FUTURE = re.compile(
+    r"\b(?:PracticeSync|it|this app|this product|the product)\s+will\b", re.I)
+
+
+@pytest.mark.parametrize("flow", sorted(_FILE_BUILT_TODAY))
+def test_the_premise_the_file_is_built_and_served_today(flow):
+    """The reason the present tense is the true one. If a builder or its route
+    is removed this fails first, and the walk-through's wording is then a
+    decision, not a leftover."""
+    from routers import payroll as payroll_router
+
+    module_name, builder, route_suffix, _ = _FILE_BUILT_TODAY[flow]
+    assert callable(getattr(importlib.import_module(module_name), builder, None)), (
+        f"{module_name}.{builder} is gone: the {flow} walk-through may speak of "
+        "the file as future work again, but say so deliberately")
+    assert any(getattr(r, "path", "").endswith(route_suffix)
+               for r in payroll_router.router.routes), (
+        f"no payroll route ends in {route_suffix}: the file is no longer served")
+
+
+@pytest.mark.parametrize("flow", sorted(_FILE_BUILT_TODAY))
+def test_a_file_the_product_already_produces_is_not_future_work(flow):
+    walkthrough = _FILE_BUILT_TODAY[flow][3]
+    note = walkthrough.build(_db(), FIRM, CLIENT, REF)["when_this_is_real"]
+    future = _PRODUCT_FUTURE.findall(note)
+    assert not future, (
+        f"the {flow} walk-through speaks of what PracticeSync {future!r} do, but "
+        f"{_FILE_BUILT_TODAY[flow][1]} already builds the file. Say it in the "
+        "present tense: what is built, and what stays with the portal login")
+    assert re.search(r"\bproduces\b", note), (
+        f"the {flow} walk-through never says PracticeSync produces the file")
+
+
+def test_the_future_tense_rule_fires_on_the_old_wording():
+    """Verify clause: the rule above is shown to fail on the sentences it was
+    written for, so it is not vacuous."""
+    old_pf = ("What PracticeSync will do is produce the ECR .txt itself, member "
+              "by member with each UAN.")
+    old_esi = "...and it will flag the coverage the table above describes"
+    assert _PRODUCT_FUTURE.search(old_pf)
+    assert _PRODUCT_FUTURE.search(old_esi)
+    assert not _PRODUCT_FUTURE.search("EPFO will reject a file with no UAN.")
 
 
 def test_both_due_dates_are_the_15th_of_the_following_month():

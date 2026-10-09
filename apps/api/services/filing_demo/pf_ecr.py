@@ -271,17 +271,22 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         # What changes when this is real. The gate here is not a registration
         # PracticeSync could obtain — it is the EMPLOYER's establishment
         # login, which belongs to the client and is theirs to use, and no
-        # public API exists behind it in any case. So the honest roadmap is
-        # the file, not the transmission.
+        # public API exists behind it in any case. So nothing is left to wait
+        # for: the file is built today (domain/payroll/ecr.build_ecr, served
+        # by GET /api/payroll/runs/{run_id}/ecr) and the transmission is not
+        # ours to build. Say the first in the present tense —
+        # tests/test_filing_demo_payroll.py holds the premise and the tense.
         "There is no registration to wait for here, and pretending otherwise "
         "would be the easy lie: EPFO publishes no API for ECR upload, and "
         "the only door is the employer's own establishment login on "
         "unifiedportal-emp.epfindia.gov.in — which belongs to the client, "
-        "not to the firm, and should stay that way. What PracticeSync will "
-        "do is produce the ECR .txt itself, member by member with each UAN, "
-        "so the step becomes an upload of a file that already passes the "
-        "four checks above rather than a spreadsheet reconciled by hand. The "
-        "upload, the verification and the net-banking payment stay with "
-        "whoever holds the establishment login.",
+        "not to the firm, and should stay that way. PracticeSync already "
+        "produces the ECR .txt itself from a finalised payroll run, member "
+        "by member with each UAN, and names every member the file cannot "
+        "carry (no UAN, a ceiling breached) before the upload rather than "
+        "after the portal rejects the batch, so the step is an upload of a "
+        "file rather than a spreadsheet reconciled by hand. The upload, the "
+        "verification and the net-banking payment stay with whoever holds "
+        "the establishment login.",
         stages,
     )

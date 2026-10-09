@@ -2730,7 +2730,13 @@ guard that states the rule rather than a spelling of it:
   approval" and "coming soon" are all forbidden and a test says so — a product
   that overstates its regulatory standing is a different and worse kind of wrong
   from one that overstates a feature. It says direct submission is **planned**
-  and names what grants it.
+  and names what grants it. **The wizard carries no roadmap voice of its own** (COMING-016/017,
+  9-10-2026): where software may transmit it renders the served `posture.roadmap`,
+  where it may not it says only that no public API lets software transmit, and the
+  PF ECR and ESI walk-throughs say the file IS produced today from a finalised run
+  (`build_ecr`, `build_esic_return`) with the upload, verification and payment left
+  to whoever holds the login; a guard fails the product's own future tense
+  ("PracticeSync will") in a flow whose file is built.
 
 `services/compliance_engine.py` is the single source for every due date above. If prose
 and that module disagree, the module wins and the prose gets fixed.
