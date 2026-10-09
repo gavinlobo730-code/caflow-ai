@@ -31,7 +31,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | file | items | what it holds |
 |---|---|---|
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 3 | before the demo: Claude can do alone |
-| [pre-demo-B-ours.md](pre-demo-B-ours.md) | 15 | before the demo: owner decides, or a live session |
+| [pre-demo-B-ours.md](pre-demo-B-ours.md) | 14 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 198 | after the demo: Claude can do alone |
 | [post-demo-B-ours.md](post-demo-B-ours.md) | 337 | after the demo: owner decides first, then Claude builds |
@@ -41,7 +41,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**762 open items** (24 before the demo, 738 after); 15 after-demo items are `high` priority; 35 are UNSURE.
+**761 open items** (23 before the demo, 738 after); 15 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 
@@ -55,7 +55,6 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 4. **PRE-B-016** (decision) — Buy the domain and make mail leave: a verified Resend sender and Supabase sign-up mail
 5. **PRE-C-003** (you) — Confirm Resend delivers: verified domain, webhook, one real mail of each kind
 6. **PRE-B-004** (decision) — Decide which known gaps the demo fixes, shows or avoids
-7. **PRE-B-005** (decision) — Fix the sentence for 'can I use this for my practice tomorrow'
 9. **PRE-B-002** (decision) — Stop three screens promising what they do not do
 10. **PRE-B-013** (decision) — Look at which tier the Gemini and Groq keys are on
 11. **PRE-C-006** (you) — Check the website's support and onboarding promises are staffed
