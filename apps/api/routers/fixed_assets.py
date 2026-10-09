@@ -97,9 +97,10 @@ _journal_svc = Phase2JournalService()
 #
 # The category keys are the asset_category taxonomy used platform-wide — the
 # create form's list (now served from here, see GET /categories) and the GL
-# account mapping in services/phase2_journal_service.py's cat_map. task #232
-# fixed an earlier mismatch in those keys; adding a key here without adding it
-# there silently books the asset to Plant & Machinery.
+# account mapping in domain/fixed_assets/asset_ledger.py. task #232 fixed an
+# earlier mismatch in those keys; a category with no key there is refused by
+# tests/test_every_asset_category_has_a_ledger_on_the_standard_chart.py, so it
+# can no longer book silently to Plant & Machinery.
 
 # ── Schedule II Part C, and the rules over it, live in the domain ───────────
 #

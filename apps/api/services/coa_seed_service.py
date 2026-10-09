@@ -79,6 +79,16 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     # then failed to find its account (migration 425 repairs those firms).
     # The SUBTYPE is load-bearing — schedule_iii.classify buckets on it.
     ("1507", "Capital Work-in-Progress",     "Asset", "Capital Work-in-Progress"),
+    # %Office Equipment% — the ledger an asset of category "Office Equipment"
+    # is debited to (domain/fixed_assets/asset_ledger). It was in the posting
+    # engine's map and NOT on this chart, so for every firm onboarded through
+    # the product `POST /api/fixed-assets` with that category failed to find
+    # its account and answered 500 (migration 482 repairs the firms that
+    # exist). Same subtype as the other tangible asset ledgers, which is what
+    # puts it under Property, Plant and Equipment in Schedule III. 1508 and not
+    # a number inside 1501-1506: those six are taken by what this list already
+    # seeded and every firm onboarded since holds them.
+    ("1508", "Office Equipment",             "Asset", "Fixed Asset"),   # %Office Equipment%
     ("1590", "Accumulated Depreciation",     "Asset", "Fixed Asset"),   # %Accumulated Depreciation%
     # ── Liabilities ──
     ("2001", "Trade Payables",               "Liability", "Payable"),           # %Trade Payable%
