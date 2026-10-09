@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     template: "%s · PracticeSync",
   },
   description:
-    "One AI-first platform for Indian Chartered Accountants — GST, Income Tax, TDS and MCA compliance, accounting, payroll, client management and documents. Replace Tally, ClearTax, Winman and WhatsApp.",
+    "One AI-first platform for Indian Chartered Accountants — GST, Income Tax, TDS and MCA compliance, accounting, payroll, client management and documents in one workspace, with the books on one ledger. Runs alongside Tally.",
   keywords: [
     "CA practice management software",
     "GST software India",

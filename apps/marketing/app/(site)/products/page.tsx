@@ -173,7 +173,7 @@ export default function ProductsPage() {
             { text: "One platform for" },
             { text: "every part of your practice.", italic: true },
           ]}
-          subtitle="PracticeSync brings compliance, accounting, payroll, clients, documents and analytics into a single AI-first workspace — replacing Tally, ClearTax, Winman and WhatsApp for Indian CA firms."
+          subtitle="PracticeSync brings compliance, accounting, payroll, clients, documents and analytics into a single AI-first workspace on one ledger, and runs alongside Tally for Indian CA firms."
         />
         <div className="mt-10 flex flex-wrap items-center gap-5">
           <Button href="/demo" variant="accent" className="px-6 py-3.5">

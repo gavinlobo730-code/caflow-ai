@@ -18,8 +18,8 @@ TWO TIERS, because a label and a claim are not the same thing.
   They count only in a sentence of four or more words, where something is being
   said ABOUT the thing.
 
-WHAT IS DELIBERATELY NOT HERE. Positioning ("AI-first", "replaces Tally, ClearTax,
-Winman and WhatsApp"), due dates in a reference table (pinned to `compliance_engine`
+WHAT IS DELIBERATELY NOT HERE. Positioning ("AI-first", "runs alongside Tally"), due
+dates in a reference table (pinned to `compliance_engine`
 by `test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py`) and the
 sample data inside the rendered product screens under `components/home/screens/`
 (see `EXEMPT_PREFIXES`). The vocabulary is a visible, extendable list: adding a term

@@ -129,7 +129,7 @@ export function ScrollMarquee({
  * A figure that counts up once, when it scrolls into view.
  *
  * Every number this is used for is a COUNTABLE FACT about the product — how
- * many modules there are, how many tools one login replaces — never a
+ * many modules there are, how many ledgers the books sit on — never a
  * performance statistic or a customer count, which §16 of the brief forbids
  * and which this product has no data for. The count-up is a flourish on a
  * number that would be true written plainly.

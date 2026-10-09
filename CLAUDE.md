@@ -1,5 +1,5 @@
 PracticeSync — AI-powered practice management platform for Indian Chartered Accountants.
-Replaces Tally + ClearTax + Winman + WhatsApp with one unified AI-first platform.
+Runs alongside Tally and puts practice management, accounting and compliance preparation on one ledger: one unified AI-first platform.
 
 Naming: the product is **PracticeSync**. The repo, the Supabase project, log prefixes
 (`caflow.*`), some seed data and a few mock URLs still say `caflow` / `CAflow AI`. That
@@ -144,7 +144,14 @@ guard that states the rule rather than a spelling of it:
   double-entry balance and dedupes on `(client_id, reference_no, entry_date)` before
   inserting. Sales, purchases, receipts, payments, credit/debit notes, banking, payroll,
   fixed assets, opening balances, manual journals and reversals all route through it. Do
-  not add a second write path.
+  not add a second write path. ⚠️ **"All route through it" is exact for the Python kernel and
+  not for the database**: an ordinary rupee receipt posts its journal inside the receipt's own
+  transaction through the `settle_receipt_atomic` database function (migrations 160 and 235)
+  and not through `post_journal_atomic`, and a manual journal's lines are rewritten by
+  `edit_posted_journal`, so three database functions write the ledger. The public site
+  therefore says "one ledger" and never "one posting path";
+  `tests/test_the_hero_figures_are_counted_facts.py` pins the closed set of writers, the
+  agreement of the hero's figures with the page's counters and that wording.
 - **A VOUCHER'S LINES HAVE AN ORDER AND TWO FUNCTIONS RECORD IT** (ACC-16, migration
   384). `journal_lines.line_order` is the zero-based position the line held in the
   jsonb array the posting was called with, read out with `WITH ORDINALITY` by

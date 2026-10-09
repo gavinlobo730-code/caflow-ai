@@ -158,7 +158,7 @@ export default function HomePage() {
             { text: "Five tools. Five logins.", italic: true },
             { text: "One deadline through the cracks." },
           ]}
-          subtitle="PracticeSync replaces Tally, ClearTax, Winman and WhatsApp with a single workspace for compliance, accounting, banking, payroll, clients and documents — where every return is computed from the books rather than assembled beside them."
+          subtitle="PracticeSync runs alongside Tally and brings compliance, accounting, banking, payroll, clients and documents into one workspace on one ledger — where every return is computed from the books rather than assembled beside them."
         />
       </Panel>
 
@@ -231,7 +231,7 @@ export default function HomePage() {
         <div className="mt-16 grid grid-cols-2 gap-x-10 gap-y-12 sm:grid-cols-4">
           {[
             { n: 11, suffix: "+", label: "Modules, one connected workspace" },
-            { n: 4, suffix: "", label: "Separate tools replaced by one login" },
+            { n: 1, suffix: "", label: "Ledger under sales, purchases, banking and payroll" },
             { n: 0, suffix: "", label: "Returns the software files for you — you sign every one" },
             { n: 4, suffix: "", label: "Compliance domains — GST, ITR, TDS, MCA" },
           ].map((s, i) => (
