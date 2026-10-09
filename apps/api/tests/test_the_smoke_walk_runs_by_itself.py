@@ -110,7 +110,55 @@ def test_the_report_is_uploaded_even_when_the_walk_fails_and_the_screens_only_th
     assert report, "the report must be uploaded with `if: always()`, or the run that fails leaves no report"
     screens = re.search(r"- name: Keep the screenshots of a failed walk\n\s+if: failure\(\)", text)
     assert screens, "screenshots are kept only for a failed walk"
-    assert text.count("retention-days:") == 2
+    # The RULE, not a count of today's upload steps: every artifact this workflow leaves says how long it lives. An
+    # upload step without `retention-days` keeps the repository's default (90 days), and the screenshots of 159
+    # screens are the artifact that must not. (This used to be `text.count("retention-days:") == 2`, which a third
+    # upload step, the money-editor drive's report, broke without breaking the rule it stood for.)
+    # Read from the code with the comments taken out, so a commented-out upload step is neither counted nor excused.
+    uploads = [c for c in re.split(r"\n(?=      - (?:name|uses):)", _code(WORKFLOW)) if "actions/upload-artifact" in c]
+    assert len(uploads) >= 3, "the walk's report, its screenshots and the drive's report are three uploads"
+    for chunk in uploads:
+        assert re.search(r"\n\s+retention-days:\s*\d+", chunk), f"an upload step without retention-days: {chunk[:90]!r}"
+
+
+# ── the money-editor drive that runs after the walk (PRE-A-015) ───────────────────────────────────
+
+def _step(name_re: str) -> str:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    chunks = re.split(r"\n(?=      - (?:name|uses):)", text)
+    found = [c for c in chunks if re.search(rf"- name: {name_re}", c)]
+    assert len(found) == 1, f"expected one workflow step named like {name_re!r}, found {len(found)}"
+    return found[0]
+
+
+def test_the_money_editors_are_driven_after_the_walk_on_the_same_build_even_when_the_walk_failed():
+    """The drive is the browser half of the money-editor guards (it found eight double-dispatch defects every source
+    guard had passed). It must run on the build the walk made, after the walk, and a walk that found a broken
+    screen must not be a reason to skip it; a build that FAILED is, because there is nothing to drive."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    code = _code(WORKFLOW)
+    assert code.index("pnpm smoke:build") < code.index("scripts/smoke-walk.mjs") < code.index("scripts/driveMoneyEditors.mjs")
+    drive = _step("Drive the money editors")
+    assert re.search(r"\n\s+if: always\(\) && steps\.build\.outcome == 'success'", drive), (
+        "the drive must run `if: always() && steps.build.outcome == 'success'`")
+    assert re.search(r"- name: Build the static export for the walk\n\s+id: build\n", text), "the build step needs `id: build`"
+    assert "continue-on-error" not in drive, "a drive that cannot fail the run is a drive nobody reads"
+    assert "--report .smoke/drive-report.json" in drive
+    report = _step("Keep the money-editor drive report")
+    assert re.search(r"\n\s+if: always\(\)\n", report), "the drive's report must be uploaded even when the drive fails"
+    assert "path: apps/web/.smoke/drive-report.json" in report
+
+
+def test_the_drive_is_no_trigger_of_its_own_and_needs_no_playwright_in_the_package():
+    """Same rule as the walk: it needs a build and a browser, so it adds nothing to the workflow's triggers and
+    nothing to the product's dependencies (the frontend job every pull request runs)."""
+    code = _code(WORKFLOW)
+    on_block = code.split("\njobs:")[0]
+    assert not re.search(r"^\s+push:", on_block, re.M) and not re.search(r"^\s*paths(-ignore)?:", on_block, re.M)
+    pkg = json.loads(PACKAGE.read_text(encoding="utf-8"))
+    assert not any(k in {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+                   for k in ("@playwright/test", "playwright", "playwright-core"))
+    assert not any("drive" in name for name in pkg["scripts"]), "a package script for the drive sits beside `pnpm test`"
 
 
 # ── the script ─────────────────────────────────────────────────────────────────

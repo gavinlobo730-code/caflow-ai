@@ -15,7 +15,9 @@
 // This file needs no Chromium and cannot tell whether the drive PASSES. What it holds is that the drive can
 // neither be quietly removed nor quietly stop looking at what it was written to look at:
 //
-//   1. it is not a trigger of its own, a required check, or a reason for Playwright to join the package;
+//   1. it is wired into the nightly workflow, after the walk and on the same build, runs even when the walk
+//      failed, leaves its report whatever happened, and is not a trigger of its own, a required check, or a
+//      reason for Playwright to join the package;
 //   2. `pnpm test` can never pick it up (node's runner takes any `*.test.*`, `test-*` file or `test` directory);
 //   3. its scenarios are discovered, not listed, every module has the shape the runner needs, and the six groups
 //      the finding names are all present;
@@ -25,9 +27,10 @@
 //      gain a date field the drive does not know about without this failing;
 //   7. it fails a scenario on everything the walk fails a route on, and on any native dialog.
 //
-// NEGATIVE CONTROLS (measured, in the commit message): add a push trigger; add `@playwright/test` to
-// package.json; name a scenario file `test-x.mjs`; change one value of the drive's FAKE_USER; add a DateInput
-// to the journal editor. Each fails one test here.
+// NEGATIVE CONTROLS (measured, in the commit message): remove the workflow step; give the step a plain
+// `if: success()`; add a push trigger; add `@playwright/test` to package.json; name a scenario file
+// `test-x.mjs`; change one value of the drive's FAKE_USER; add a DateInput to the journal editor. Each fails
+// one test here.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -53,9 +56,52 @@ function allFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/** The workflow's steps as { name, body }, split on `- name:` at the steps' own indentation. */
+function steps(): Array<{ name: string; body: string }> {
+  const text = read(WORKFLOW);
+  const at = text.indexOf("    steps:");
+  assert.ok(at > 0, "the workflow no longer has a steps list");
+  const parts = text.slice(at).split(/\n(?=      - (?:name|uses):)/).slice(1);
+  return parts.map((body) => ({ name: (/name:\s*(.+)/.exec(body)?.[1] ?? "").trim(), body }));
+}
+const stepNamed = (re: RegExp) => {
+  const found = steps().filter((s) => re.test(s.name));
+  assert.equal(found.length, 1, `expected exactly one workflow step matching ${re}, found ${found.length}`);
+  return found[0];
+};
+
 // ═════════════════════════════════════════════════════════════════════════════
-// 1. NOT A TRIGGER, NOT A REQUIRED CHECK, NOT A DEPENDENCY
+// 1. THE WORKFLOW
 // ═════════════════════════════════════════════════════════════════════════════
+
+test("the nightly workflow drives the money editors after the walk, on the same build, even when the walk failed", () => {
+  const all = steps();
+  const build = stepNamed(/Build the static export/);
+  const walk = stepNamed(/Walk every screen/);
+  const drive = stepNamed(/Drive the money editors/);
+  const at = (step: { name: string }) => all.findIndex((s) => s.name === step.name);
+  assert.ok(at(build) >= 0 && at(build) < at(walk) && at(walk) < at(drive),
+    "the drive needs the export the build makes and runs after the walk");
+  assert.match(drive.body, /node scripts\/driveMoneyEditors\.mjs/, "the step does not run the drive");
+  assert.match(drive.body, /--report \.smoke\/drive-report\.json/, "the drive's verdict is not written to a file");
+  // A broken walk must not hide the drive: `if: always()` alone would run it on a build that failed, so the
+  // build's own outcome is asked as well.
+  assert.match(drive.body, /\n\s+if:\s*always\(\)\s*&&\s*steps\.build\.outcome\s*==\s*'success'/,
+    "the drive must run `if: always() && steps.build.outcome == 'success'`: a failed walk must not skip it, a failed build must");
+  assert.match(build.body, /\n\s+id:\s*build\b/, "the build step needs `id: build` for the drive's condition to mean something");
+  assert.doesNotMatch(drive.body, /continue-on-error/, "a drive that cannot fail the run is a drive nobody reads");
+});
+
+test("the drive's report is kept whatever happened, for as long as the walk's", () => {
+  const keep = stepNamed(/drive report|money-editor/i);
+  assert.match(keep.body, /uses:\s*actions\/upload-artifact@v\d+/);
+  assert.match(keep.body, /\n\s+if:\s*always\(\)/, "the report must be uploaded `if: always()`, or the run that fails leaves none");
+  assert.match(keep.body, /path:\s*apps\/web\/\.smoke\/drive-report\.json/);
+  assert.match(keep.body, /retention-days:\s*\d+/);
+  const walkKeep = stepNamed(/^Keep the report$/);
+  assert.equal(/retention-days:\s*(\d+)/.exec(keep.body)?.[1], /retention-days:\s*(\d+)/.exec(walkKeep.body)?.[1],
+    "the two reports are read side by side and should live for the same time");
+});
 
 test("the drive is not a trigger, a required check or a reason for Playwright to be a dependency", () => {
   const text = read(WORKFLOW);

@@ -19,6 +19,18 @@
 #     * the stub API is held for 24 s on /tasks and the run asserts the waking-up sentence appears once at about
 #       three seconds, a Retry at about twenty, and that both go with the data.
 #
+# AND IT DRIVES THE MONEY EDITORS (PRE-A-015)
+#     The walk proves a screen renders. After it, on the same build, `apps/web/scripts/driveMoneyEditors.mjs`
+#     proves what a click, a key and a typed date DO in the editors a CA posts money through: it serves the
+#     export from a stub that answers rows and logs every write, and fails a scenario when two clicks in one tick
+#     write twice (Post Entry, Save & Issue, Record Payment, Issue, Receive, Delete Draft), when a ledger row is
+#     not operable from the keyboard, when an unsent draft is lost, applied unasked or left behind after a save,
+#     when a typed date does not reach the server as the ISO date in any of three locales and zones, and when a
+#     delete or a prompt is a native dialog or sends something on Cancel. Its first run found eight
+#     double-dispatch defects and a payroll reversal reason that the screen collected and discarded; every source
+#     guard had been green on all of them. It adds about five minutes, runs even when the walk failed, and is
+#     held in place by `apps/web/scripts/the-money-editors-are-driven-in-a-browser.test.ts`.
+#
 # WHEN IT RUNS, AND WHY NOT ON EVERY PULL REQUEST
 #     * every night, at 02:00 IST (20:30 UTC), against main;
 #     * on demand (Actions > Smoke walk > Run workflow), against any branch;
@@ -60,7 +72,11 @@
 #       with its errors, the herds, how long each screen took to settle, the axe verdict per named screen and
 #       every ratchet failure, the slow-server scenario's problems), so a run can be compared with the one a
 #       week earlier;
-#     * `smoke-walk-screens`: the screenshots and contact sheet, only when the walk FAILED, 14 days;
+#     * `money-editor-drive-report`: .smoke/drive-report.json on every run, 30 days. Every scenario with how long
+#       it took and, for a failed one, what went wrong, so a scenario that has started to take twice as long is
+#       visible before it fails;
+#     * `smoke-walk-screens`: the screenshots and contact sheet, only when the walk (or the drive) FAILED, 14
+#       days. A scenario of the drive that failed leaves its picture in .smoke/drive/;
 #     * the run's summary page: a table of the broken routes, the accessibility table and the slow-server
 #       verdict, and one error annotation per broken route or axe failure (the first ten of each) naming it.
 name: Smoke walk
@@ -145,6 +161,7 @@ jobs:
       # same-origin and no CORS preflight exists to defeat the stub (the script's header has the long
       # version).
       - name: Build the static export for the walk
+        id: build
         working-directory: apps/web
         run: pnpm smoke:build
 
@@ -158,6 +175,32 @@ jobs:
         with:
           name: smoke-walk-report
           path: apps/web/.smoke/report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      # THE MONEY EDITORS, DRIVEN (PRE-A-015). The walk proves a screen RENDERS; this proves what a click, a key and
+      # a typed date DO on the screens a CA posts money through: two clicks in one tick write once, a ledger row is
+      # operable from the keyboard, an unsent draft survives a reload and is offered rather than applied, a typed
+      # date reaches the server as the ISO date typed in any locale and zone, a delete and a prompt are in-app
+      # dialogs whose Cancel sends nothing. It is the SAME build and the same Playwright install, a stub that
+      # answers rows and keeps a log of every write (apps/web/scripts/drive/), and about five more minutes.
+      #
+      # `if: always() && steps.build.outcome == 'success'`: a walk that found a broken screen must not hide the
+      # drive (they answer different questions), and a build that failed must, because there is no export to
+      # drive. Like the walk it is not a check anything waits on: no trigger of its own, no `paths:` filter, and
+      # it is not in the required checks. `--shots` keeps a picture of a scenario that failed, in the .smoke/
+      # folder the failed-run artifact below uploads.
+      - name: Drive the money editors
+        if: always() && steps.build.outcome == 'success'
+        working-directory: apps/web
+        run: node scripts/driveMoneyEditors.mjs --report .smoke/drive-report.json --shots
+
+      - name: Keep the money-editor drive report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: money-editor-drive-report
+          path: apps/web/.smoke/drive-report.json
           if-no-files-found: warn
           retention-days: 30
 
