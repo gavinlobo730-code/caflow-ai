@@ -353,7 +353,11 @@ function ActionsMenu({ member, onEdit, onDeactivate }: ActionsMenuProps) {
 // Partner an Executive could reach Clients and Tasks only — when the backend
 // grants them Accounting, GST, Income Tax, MCA, Reports and TDS besides. It
 // also carried the line "Admins can override these per person in the matrix
-// above", which described a capability that has never existed.
+// above", which described a capability that had never existed. It exists now
+// (migration 403), and for a while after it did this card's own header still
+// read "there is no per-person override": the card describes the TEMPLATE a
+// role gives, and the sentence about the override has to agree with the grid
+// beside it. What a block reaches is the drawer's notice, served by the API.
 function RolePermissionsCard() {
   const [matrix, setMatrix] = useState<RoleMatrix | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -379,7 +383,8 @@ function RolePermissionsCard() {
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Role Permissions</h3>
           <p className="text-xs text-ps-hint">
-            Read from the server. Access is decided by role — there is no per-person override.
+            Read from the server. A role is the starting point for each member; a Partner can
+            allow or block any of these for one person: select a member in Module Access above.
           </p>
         </div>
       </div>

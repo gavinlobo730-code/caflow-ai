@@ -284,9 +284,15 @@ def permission_vocabulary(current_user: dict = Depends(rbac("team", "read"))):
     codebase drifted in BOTH directions at once — offering five captions the
     engine had never heard of and spelling five others differently — and nine
     of fifty mapped accounts were silently discarded as a result.
+
+    `notice` is the one sentence the grid's drawer shows about what a block
+    reaches and what it does not (POST-A-005). It is served for the same
+    reason the pairs are: it is a claim about `pg_policies`, the guard that
+    keeps it true is a Python test, and a copy typed into the browser would
+    outlive the policies it describes.
     """
-    from services.user_permission_service import vocabulary
-    return api_response(True, {"permissions": vocabulary()})
+    from services.user_permission_service import DENIAL_REACH_NOTICE, vocabulary
+    return api_response(True, {"permissions": vocabulary(), "notice": DENIAL_REACH_NOTICE})
 
 
 @router.get("/users/{user_id}/permissions")

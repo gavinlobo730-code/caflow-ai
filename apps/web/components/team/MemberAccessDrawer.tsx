@@ -21,6 +21,15 @@
  *     detached from the firm's own role definitions. It is also the state every
  *     member is in today, so it must be nameable.
  *
+ * WHAT A BLOCK REACHES IS SAID BY THE SERVER, NOT BY THIS FILE
+ *     A block is enforced by the API and by the write policies of a few
+ *     tables; no table's READ policy asks the grid, so a screen that reads a
+ *     table straight from the browser is not stopped by it (POST-A-005). That
+ *     is a claim about the database's policies, so the sentence comes from
+ *     `GET /api/identity/permission-vocabulary` (`notice`), next to the
+ *     real-Postgres guard that keeps it true, and is rendered as received. An
+ *     absent notice renders nothing: "not told" is not "nothing to tell".
+ *
  * NOTHING IS DECIDED HERE
  *     The server resolves access (`core/permissions.resolve_permission`) and
  *     this screen renders what it is told. In particular the "effective" column
@@ -32,6 +41,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { X, ShieldAlert, Lock, RotateCcw } from "lucide-react";
 import { api, type MemberAccessGrid } from "@/lib/api";
+import { denialNotice } from "@/lib/team/denialNotice";
 
 type Pair = {
   resource: string;
@@ -76,6 +86,10 @@ interface Props {
 
 export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) {
   const [vocabulary, setVocabulary] = useState<Pair[] | null>(null);
+  // The server's own sentence about what a block here reaches (POST-A-005).
+  // null is "not told" — an older backend, or a refused request — and renders
+  // nothing; this component holds no wording of its own about it.
+  const [notice, setNotice] = useState<string | null>(null);
   const [grid, setGrid] = useState<MemberAccessGrid | null>(null);
   const [draft, setDraft] = useState<Record<string, Choice>>({});
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +107,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
     if (!vocab.success || !vocab.data) { setError(vocab.error ?? "Couldn't load the permission list."); return; }
     if (!one.success || !one.data) { setError(one.error ?? "Couldn't load this member's access."); return; }
     setVocabulary(vocab.data.permissions);
+    setNotice(denialNotice(vocab.data.notice));
     setGrid(one.data);
     setDraft(
       Object.fromEntries(
@@ -207,6 +222,11 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
             Which <em>clients</em> this person can open is set separately, under Client
             Assignments — this screen decides which parts of the product they can use.
           </p>
+          {notice && (
+            <p className="text-xs text-ps-label mt-1" data-testid="denial-reach-notice">
+              {notice}
+            </p>
+          )}
         </div>
 
         {error && (

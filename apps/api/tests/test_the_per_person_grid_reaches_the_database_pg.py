@@ -26,6 +26,17 @@ WHAT EACH CASE IS FOR
   * a Partner denied `team:write` — the backstop. Without it the grid is
                                   unrepairable.
 
+THE OTHER HALF, WHICH THIS MODULE ALSO HOLDS (POST-A-005). Everything above is a
+WRITE. No table's READ policy asks the grid, so a screen that reads a table
+straight from the browser is not stopped by a per-person block, and the Team
+screen says so in a sentence the API serves
+(`services.user_permission_service.DENIAL_REACH_NOTICE`). The last section is
+the guard that keeps that sentence true: it reads `pg_policies` on the migrated
+schema and fails the day a public table's SELECT or ALL policy asks the grid,
+or the day no write policy does. Making reads follow the grid is a decision
+(POST-B-004 for payroll) and a migration; whoever makes it rewrites the notice
+in the same commit and turns the cases below into their opposites.
+
 Simulates an authenticated PostgREST session the way
 `_supabase_compat_bootstrap.sql`'s auth.uid() shim expects: `SET
 request.jwt.claims = '{"sub": "<auth_user_id>"}'` + `SET ROLE authenticated`.
@@ -35,6 +46,7 @@ Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode job.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -245,3 +257,175 @@ def test_a_grant_is_a_module_not_a_scope(dsn):
     assert after.returncode != 0, (
         "a module grant reached a client the person is not assigned to")
     assert "assignment_scope" in (after.stderr or ""), after.stderr
+
+
+# ── What the grid does NOT reach: reading a table (POST-A-005) ───────────────
+#
+# The Team screen tells a Partner what a block reaches, in a sentence the API
+# serves (`DENIAL_REACH_NOTICE`): the database does not look at the grid when a
+# table is read, and a direct write is checked against it on some tables only.
+# Both are claims about `pg_policies`, so they are held HERE, on the schema the
+# migrations build, and not on a copy of the migration text.
+#
+# THE RULE, NOT A LIST OF TABLES. The first test asks whether any SELECT or ALL
+# policy on a public table calls the grid — `my_permission` itself or any
+# function that calls it, found through `pg_proc` to a fixed point, so a wrapper
+# a later migration writes is as visible as the function it wraps. Storage is a
+# different surface (files, not a table) and is outside the sentence: the one
+# Storage SELECT that asks the grid, `year_end_exports_storage_select` (469), is
+# deliberately not in scope here, and the notice names it as the one read the grid reaches.
+
+_NOTICE = "services.user_permission_service.DENIAL_REACH_NOTICE"
+
+
+def _rows(dsn: str, sql: str) -> list[list[str]]:
+    r = subprocess.run(
+        ["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-tA", "-F", "\t", "-c", sql],
+        capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return [line.split("\t") for line in r.stdout.splitlines() if line.strip()]
+
+
+def _scalar_as(dsn: str, auth_user_id: str, sql: str) -> str:
+    """One value, as that person. `_as` is two SETs in the same -c and psql
+    prints a status line for each, so the answer is the last line."""
+    r = subprocess.run(
+        ["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-tA", "-c", _as(auth_user_id) + sql],
+        capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return r.stdout.strip().splitlines()[-1].strip()
+
+
+def _functions_that_ask_the_grid(dsn: str) -> set[str]:
+    """`my_permission` and every function whose body calls one of them."""
+    found = {"my_permission"}
+    while True:
+        names = "|".join(sorted(found))
+        rows = _rows(dsn, f"""
+            SELECT DISTINCT p.proname
+              FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND p.prosrc ~* '\\m({names})\\M';
+        """)
+        new = {r[0] for r in rows}
+        if new <= found:
+            return found
+        found |= new
+
+
+def _policies(dsn: str) -> list[tuple[str, str, str, str, str, str]]:
+    """(schema, table, policy, command, USING, WITH CHECK), whitespace folded."""
+    rows = _rows(dsn, """
+        SELECT schemaname, tablename, policyname, cmd,
+               regexp_replace(coalesce(qual, ''), '\\s+', ' ', 'g'),
+               regexp_replace(coalesce(with_check, ''), '\\s+', ' ', 'g')
+          FROM pg_policies ORDER BY 1, 2, 3;
+    """)
+    assert rows, "pg_policies came back empty — the scan below would pass on nothing"
+    return [tuple(r) for r in rows]  # type: ignore[misc]
+
+
+def _asks(expr: str, names: set[str]) -> bool:
+    return any(re.search(rf"\b{re.escape(n)}\s*\(", expr) for n in names)
+
+
+def test_no_public_table_is_read_through_the_grid(dsn):
+    """THE GUARD BEHIND "THE DATABASE DOES NOT LOOK AT THIS GRID WHEN A TABLE
+    IS READ".
+
+    A Partner who unticks Payroll, Documents or Bank for a Manager leaves that
+    Manager able to select the data straight from the browser, because no read
+    policy asks `user_permissions`. That is what the Team screen now says. The
+    day a SELECT or ALL policy on a public table asks the grid, that sentence is
+    wrong in the SAFE direction and still wrong, and this is where it is found.
+    """
+    names = _functions_that_ask_the_grid(dsn)
+    reads = [(t, p, c) for s, t, p, c, qual, _wc in _policies(dsn)
+             if s == "public" and c in ("SELECT", "ALL") and _asks(qual, names)]
+    assert not reads, (
+        "a public table is now read through the per-person grid: "
+        f"{reads}. If that is deliberate, rewrite {_NOTICE} in the same commit "
+        "(it says no table read asks the grid) and turn "
+        "test_a_block_on_reading_does_not_hide_a_table_read_directly into its "
+        "opposite for that table.")
+
+
+def test_some_but_not_all_tables_are_written_through_the_grid(dsn):
+    """THE OTHER HALF OF THE SENTENCE: "direct writes are checked against this
+    grid on some tables only".
+
+    Both words are claims. "Some" — the scan must see migration 415's tables,
+    or the guard above passes on a scan that finds nothing and the notice
+    promises a protection that is not there. "Only" — a write policy that asks
+    the role and not the grid still exists (261, 296, 345, 346, 359 and later),
+    so a firm cannot read "checked" as "all".
+    """
+    names = _functions_that_ask_the_grid(dsn)
+    grid_written: set[str] = set()
+    any_written: set[str] = set()
+    for s, t, _p, c, qual, wc in _policies(dsn):
+        if s != "public" or c not in ("INSERT", "UPDATE", "DELETE", "ALL"):
+            continue
+        any_written.add(t)
+        if _asks(qual, names) or _asks(wc, names):
+            grid_written.add(t)
+    assert "fee_engagements" in grid_written, (
+        "the scan cannot see migration 415's write policies, which the cases "
+        "above prove behaviourally — the read guard is passing on nothing")
+    assert grid_written < any_written, (
+        f"every table with a write policy is now written through the grid; "
+        f"{_NOTICE} says 'some tables only' and must be rewritten")
+
+
+# What the sentence calls "several screens read tables directly from the browser
+# (payroll attendance and reports, documents and bank accounts among them)",
+# measured instead of assumed: one table per family, with the permission pair a
+# Partner would block to keep a Manager out of it and the role floor that pair
+# is written with, so `my_permission` is asked the question the grid answers.
+_READ_PROBES = [
+    pytest.param(
+        "document", "Reviewer",
+        "INSERT INTO documents (firm_id, client_id, document_type, file_name, file_path) "
+        "VALUES ('{firm}', '{client}', 'OTHER', 'a.pdf', 'p/a.pdf');",
+        "SELECT count(*) FROM documents;", id="documents"),
+    pytest.param(
+        "banking", "Executive",
+        "INSERT INTO bank_accounts (firm_id, client_id, bank_name, account_no) "
+        "VALUES ('{firm}', '{client}', 'Test Bank', '000111222');",
+        "SELECT count(*) FROM bank_accounts;", id="bank_accounts"),
+    pytest.param(
+        "payroll", "Manager",
+        "INSERT INTO payroll_employees (firm_id, client_id, name) "
+        "VALUES ('{firm}', '{client}', 'E');",
+        "SELECT count(*) FROM payroll_employees;", id="payroll_employees"),
+]
+
+
+@pytest.mark.parametrize("resource,floor,seed,select", _READ_PROBES)
+def test_a_block_on_reading_does_not_hide_a_table_read_directly(
+        dsn, resource, floor, seed, select):
+    """The finding, end to end: block `<resource>:read` for an assigned Manager
+    and the same JWT's PostgREST-style SELECT still returns the row.
+
+    Three steps, each of which would otherwise be assumed: the Manager reads the
+    row before any block (so the probe is not vacuous), the grid then answers NO
+    for this person on this pair (so the block really is in force — the same
+    function the write policies ask), and the row is still there.
+    """
+    seeded = _psql(dsn, seed.format(firm=FIRM, client=CLIENT))
+    assert seeded.returncode == 0, seeded.stderr
+
+    before = _scalar_as(dsn, AUTH_MANAGER, select)
+    assert before == "1", f"premise: the assigned Manager could not read the row ({before!r})"
+
+    _grant(dsn, MANAGER, resource, "read", False)
+    asked = _scalar_as(
+        dsn, AUTH_MANAGER, f"SELECT public.my_permission('{resource}','read','{floor}');")
+    assert asked == "f", f"premise: the grid does not refuse {resource}:read ({asked!r})"
+
+    after = _scalar_as(dsn, AUTH_MANAGER, select)
+    assert after == "1", (
+        f"a per-person block on {resource}:read now hides the table from a direct "
+        f"read ({after!r} rows). If that is deliberate, rewrite {_NOTICE} in the "
+        "same commit: it tells a Partner that reading a table directly is not "
+        "checked against this grid.")
