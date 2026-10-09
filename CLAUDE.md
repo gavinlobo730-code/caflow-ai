@@ -4828,6 +4828,8 @@ reached `[P]`, because egress to the government sites is refused from this
 container, so every claim in it rested on a search engine's summary of a page
 nobody opened.
 
+- **THE COMING-SOON REGISTER IS ONE FILE AND IS HELD TO THE CODE** (9-10-2026). docs/open-items/coming-soon.md lists, one COMING-NNN row each, every statement a person is shown that something is planned, coming, not built or not switched on: where, exact words in guillemets, gate, owner letter, ledger ids. tests/test_the_coming_soon_register_is_well_formed.py checks it is TRUE (format, ids, ledger ids exist, paths exist, a shown row's words are still in its files, switch/flow/claim names exist) and that a filing row uses none of domain.filing_posture.FORBIDDEN_REGISTRATION_CLAIMS (held once; the posture test imports it) and says planned where a registration gates it. House words: coming soon for a product feature, planned plus the gate for filing, not switched on for an owner switch. NOT built: the scan that finds wording with no row. The row is edited in the feature's own commit. The guard is a browser reader: tests_reading_the_browser.py now matches a whole apps/web/... literal. Two rows were on a frozen no-ledger-line set until the ledger lines POST-B-338 and POST-B-339 were added, so that set is empty and the goal is to keep it so.
+
 ## Scope
 
 Well past MVP. Shipped and mounted: accounting/GL, GST (GSTR-1/3B/9, 2A/2B recon,

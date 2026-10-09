@@ -164,12 +164,15 @@ def test_the_filesystem_probe_actually_finds_something():
         "has stopped working (a moved directory, or paths built some third way)")
 
 
-def test_the_two_spellings_are_both_matched_by_the_selector():
-    """Stated as the two REAL shapes rather than as regexes, so a rewrite of
-    the script that keeps both behaviours passes and one that drops either
-    fails."""
+def test_each_spelling_of_the_frontend_path_is_matched_by_the_selector():
+    """Stated as the REAL shapes rather than as regexes, so a rewrite of the
+    script that keeps every behaviour passes and one that drops any fails."""
     both = {p.name for p in selector.modules_reading_the_browser()}
     # `/ "apps" / "web"` — the common spelling.
     assert "test_every_mounted_endpoint_has_a_way_in.py" in both
     # `parents[2] / "web/app/…"` — the one missed until 18 Sep 2026.
     assert "test_a_short_self_assessment_challan_lands_fee_first.py" in both
+    # `"apps/web/lib/…"` — the whole path in one literal, which the coming-soon register's guard
+    # uses to name the frontend files it checks wording against (09-10-2026). That guard reads the
+    # frontend, and a PR that rewords a registered sentence touches no apps/api file.
+    assert "test_the_coming_soon_register_is_well_formed.py" in both

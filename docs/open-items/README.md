@@ -9,6 +9,7 @@
 3. Items marked **UNSURE** depend on a dashboard or production state the repository cannot show (Render, Supabase, Resend, Sentry, GitHub settings). Reading that state is part of the item.
 4. When you close an item, **delete its line in the same commit** as the work, say which ID in the commit message, and remove the ID from the lists in this README and in `decisions-and-strategy.md` (the test fails on a dangling ID). If closing it creates follow-up work, add a new line at the next free number. Never renumber: IDs are quoted in commits and conversations. If you find something new that is open, add it to the right file.
 5. `apps/api/tests/test_the_open_items_ledger_is_well_formed.py` enforces the format (unique IDs, one line per item, an allowed theme and priority on every line, no dangling ID in the lists below, counts true). After closing or adding an item run `python3 scripts/open_items_counts.py` to refresh the counts block.
+6. `coming-soon.md` is the register of everything the product tells a person is not there yet (planned, coming, not built, not switched on): one `COMING-NNN` row per statement with where it appears, its exact words, the gate, who acts and the ledger id. It is not a ledger and its rows are not counted. Add, edit or delete its row in the same commit as the wording, the feature or the switch; `apps/api/tests/test_the_coming_soon_register_is_well_formed.py` holds every row to the code and to this ledger.
 
 ## The two axes
 
@@ -21,7 +22,7 @@
 
 Line format: `ID · theme · priority · effort [· UNSURE] [· live session] — **Title.** Detail. _When: reason._ — _Sources:_ where it came from — _Refs:_ ids`. Priority is `high` (wrong number, false claim, security or legal exposure, data loss, or gates many items), `normal` or `low`. Effort is Claude's estimate: hours, days, weeks, months.
 
-**Id namespaces — they collide, so read carefully.** Lowercase `area-NN` ids (`gst-18`, `ops-08`) belong to the 30 Sep 2026 roadmap and are written `rm/gst-18` here. UPPERCASE ids (`GST-18`, `TDS-16`, `PAY-27`) belong to the earlier September audit and its status file. `D<n>` are decisions in `docs/plan/THE-PLAN.md`. The same number means different things in the two audit namespaces: `rm/gst-18` is not `GST-18`.
+**Id namespaces — they collide, so read carefully.** Lowercase `area-NN` ids (`gst-18`, `ops-08`) belong to the 30 Sep 2026 roadmap and are written `rm/gst-18` here. UPPERCASE ids (`GST-18`, `TDS-16`, `PAY-27`) belong to the earlier September audit and its status file. `D<n>` are decisions in `docs/plan/THE-PLAN.md`. `COMING-NNN` are rows of the coming-soon register, a fifth namespace; a row cites the ledger ids that hold its work. The same number means different things in the two audit namespaces: `rm/gst-18` is not `GST-18`.
 
 ## What is in here
 
@@ -33,13 +34,14 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 16 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 198 | after the demo: Claude can do alone |
-| [post-demo-B-ours.md](post-demo-B-ours.md) | 335 | after the demo: owner decides first, then Claude builds |
+| [post-demo-B-ours.md](post-demo-B-ours.md) | 337 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 203 | after the demo: only the owner or outsiders can do |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
+| [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**761 open items** (25 before the demo, 736 after); 15 after-demo items are `high` priority; 35 are UNSURE.
+**763 open items** (25 before the demo, 738 after); 15 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 

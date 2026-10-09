@@ -46,6 +46,16 @@ WHAT THE WORDING MAY AND MAY NOT CLAIM
     product copy about a commercial posture — but it is copy a CA reads while
     deciding whether the software can be trusted with a return, which is why it
     lives beside the code rather than in a design file.
+
+    `FORBIDDEN_REGISTRATION_CLAIMS` is that rule as a list, held ONCE. It used
+    to be a tuple inside the one test that read the five POSTURE fields, so any
+    other statement about filing or a registration — a walk-through's
+    "what changes when this is real", a row in `docs/open-items/coming-soon.md`
+    — could say "in progress" or "applied for" and no guard would notice. It
+    is scoped to text about filing, registrations and regulatory standing and
+    to nothing else: an ordinary product feature (online payment, say) may be
+    "coming soon" (the owner, 9-10-2026), a filing or a registration may only
+    be "planned", with what gates it.
 """
 from __future__ import annotations
 
@@ -96,6 +106,19 @@ POSTURE = FilingPosture(
         "portal. Direct submission from within PracticeSync is planned and "
         "requires a registration with the relevant authority."
     ),
+)
+
+
+#: Phrases that claim a regulatory standing this product does not have. As at
+#: 24-09-2026 no GSP, ERI or NIC registration has been applied for (D17: the
+#: owner starts them once a CA demo has happened), so a statement about FILING,
+#: a REGISTRATION or REGULATORY STANDING must say what is PLANNED and what gates
+#: it, never what is in motion. Compared case-insensitively against the whole
+#: text. NOT a list for ordinary product copy: "coming soon" is the right words
+#: for a feature (online payment) and the wrong ones for a filing.
+FORBIDDEN_REGISTRATION_CLAIMS: tuple[str, ...] = (
+    "in progress", "under way", "underway", "applied for", "pending approval",
+    "awaiting approval", "registered gsp", "we are registered", "coming soon",
 )
 
 

@@ -75,7 +75,15 @@ _BUILDS_WEB_PATH = re.compile(r'/\s*"apps"\s*/\s*"(web|marketing)"')
 #
 # Matched on a STRING CONSTANT via the AST rather than on the raw text, because
 # the docstring's own rule holds: a path in a comment is not a read.
-_WEB_TAIL = re.compile(r'^(web|marketing)/')
+#
+# A FOURTH SPELLING, found when the coming-soon register's guard was added
+# (09-10-2026): the whole path from the repository root in one literal,
+# `"apps/web/lib/filing/posture.ts"`. A module that checks registered wording
+# against the frontend files it names reads the frontend as surely as one that
+# builds `/ "apps" / "web"`, and a PR that rewords a sentence touches no
+# apps/api file, so without this the guard would not run on the PR it exists
+# for. The leading `apps/` is optional so the second spelling above still matches.
+_WEB_TAIL = re.compile(r'^(apps/)?(web|marketing)/')
 
 # AND A THIRD SPELLING, found the same evening by the guard written for the
 # second: the path built one SEGMENT at a time, where no single literal is a
