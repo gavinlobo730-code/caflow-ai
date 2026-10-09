@@ -19,7 +19,9 @@ from pydantic import BaseModel
 from models.common import api_response
 from core.client_ip import client_ip
 from core.permissions import rbac
+from domain.payments import availability as payable
 from services import payment_service
+from services.payments import availability as online_payment
 from core import db_provider
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
@@ -54,7 +56,13 @@ class CreateLinkBody(BaseModel):
 
 @router.post("/links")
 def create_payment_link(body: CreateLinkBody, current_user: dict = Depends(rbac("accounting", "write"))):
-    """Generate a payment link for an invoice's exact outstanding balance."""
+    """Generate a payment link for an invoice's exact outstanding balance.
+
+    Refused with a 409 and the server's own sentence ("Online payment is coming soon. ...") unless a real gateway
+    is set up: with the test double the link is an address that does not exist. Asked HERE and not inside
+    `payment_service.create_link`, which the tests drive directly with the double (PRE-B-002 part 2).
+    """
+    online_payment.require_online_payment("staff")
     db = _require_db()
     link = payment_service.create_link(db, current_user.get("firm_id"), body.invoice_id, actor=current_user)
     return api_response(True, link)
@@ -72,12 +80,19 @@ def get_payment_link(link_id: str, current_user: dict = Depends(rbac("accounting
     link = payment_service.get_link(db, current_user.get("firm_id"), link_id, current_user)
     if not link:
         raise HTTPException(status_code=404, detail="Payment link not found.")
-    return api_response(True, link)
+    # `get_link` is the sender's own resolver and returns the stored row; what a SCREEN is shown has an address
+    # that goes nowhere taken off it.
+    return api_response(True, payable.mask_link(link))
 
 
 @router.post("/links/{link_id}/send")
 def send_payment_link(link_id: str, current_user: dict = Depends(rbac("accounting", "write"))):
-    """Email the payment link to the customer (reuses email + invoice_deliveries)."""
+    """Email the payment link to the customer (reuses email + invoice_deliveries).
+
+    One click by a member of the practice, never a schedule (D27). Refused with a 409 while no gateway is set up,
+    and again inside the service for a link that cannot be paid (made by the test double, expired, paid, ...).
+    """
+    online_payment.require_online_payment("staff")
     db = _require_db()
     return api_response(True, payment_service.send_link_email(db, current_user.get("firm_id"), link_id, actor=current_user))
 

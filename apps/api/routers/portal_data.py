@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from models.common import api_response
 from core.portal_auth import get_current_portal_client
 from services import portal_data_service
+from services.payments import availability as online_payment
 
 router = APIRouter(prefix="/api/portal/self", tags=["portal_data"])
 
@@ -38,7 +39,10 @@ _logger = logging.getLogger("caflow.portal_data_router")
 def portal_invoices(portal: dict = Depends(get_current_portal_client)):
     """Fee invoices the firm issued to THIS client (client-safe projection)."""
     rows = portal_data_service.list_invoices(portal["firm_id"], portal["client_id"])
-    return api_response(True, {"invoices": rows})
+    # `can_pay_online` is added HERE and not in `safe_invoice`, whose key set is pinned and which `dues` shares:
+    # it says whether this invoice is one a pay control may be offered for (issued or part-paid, with a balance),
+    # whether or not a gateway is set up. The dashboard's `online_payment` block says the second half.
+    return api_response(True, {"invoices": portal_data_service.with_pay_flag(rows)})
 
 
 @router.get("/invoices/{invoice_id}/pdf")
@@ -73,6 +77,10 @@ def portal_pay_invoice(invoice_id: str, portal: dict = Depends(get_current_porta
     firm_id, client_id = portal["firm_id"], portal["client_id"]
     if not portal_data_service.invoice_in_scope(firm_id, client_id, invoice_id):
         raise HTTPException(status_code=404, detail="Invoice not found.")
+    # Ownership is proved, now: is online payment switched on at all? Until a real gateway is set up the answer
+    # is a 409 with the server's own words ("Online payment is coming soon. ..."), and no link row is written
+    # (PRE-B-002 part 2). Asked here and not inside create_link, which the tests drive with the test double.
+    online_payment.require_online_payment("portal")
     if _USE_MOCK:
         raise HTTPException(status_code=501, detail="Online payments not available in mock mode")
     from core.supabase_client import get_supabase

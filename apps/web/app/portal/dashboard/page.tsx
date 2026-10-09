@@ -12,7 +12,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   FileText, FolderOpen, MessageSquare, Receipt, ScrollText, BellRing, ShieldCheck,
-  Download, CreditCard, Send, type LucideIcon,
+  Download, Send, type LucideIcon,
 } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import type {
@@ -29,6 +29,7 @@ import {
 } from "@/components/portal/PortalShell";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { DateInput } from "@/components/ui/date-input";
+import { OnlinePaymentNotice, PayOnlineControl } from "@/components/portal/PayOnlineControl";
 
 interface Section {
   key: string;
@@ -40,13 +41,21 @@ interface Section {
    *  stop hiding sections it does not fully implement. */
   note?: string | null;
 }
-interface Dashboard { client_id: string; contact: { email: string | null; name: string | null }; sections: Section[] }
+interface Dashboard {
+  client_id: string; contact: { email: string | null; name: string | null }; sections: Section[];
+  /** The server's answer to "may a client pay online?" and the words for when not (PRE-B-002 part 2). Read with
+   *  `readOnlinePayment` inside `PayOnlineControl`: absent or unclear means NOT available. */
+  online_payment?: unknown;
+}
 interface Membership { client_id: string; name: string | null }
 
 interface PortalInvoice {
   id: string; invoice_no: string | null; invoice_date: string | null; due_date: string | null;
   total_paise: number; paid_paise: number; outstanding_paise: number; status: string | null;
   is_overdue: boolean; days_overdue: number;
+  /** Server-set: an issued or part-paid invoice with a balance. Not "a gateway is set up" — that is the
+   *  dashboard's `online_payment`. */
+  can_pay_online?: boolean;
 }
 interface PortalDues {
   dues: PortalInvoice[]; total_outstanding_paise: number; overdue_paise: number; overdue_count: number;
@@ -315,6 +324,8 @@ export default function PortalDashboardPage() {
   // Pay Now (Phase 4.6) — create/reuse a payment link for this invoice and open
   // the hosted gateway checkout. The payment flows back through the standard
   // receipt → AR pipeline server-side; nothing here touches accounting.
+  // Reached only from the ENABLED control (`PayOnlineControl` renders no onClick while the server says online
+  // payment is coming soon), and the server refuses the call with its own sentence in any case (PRE-B-002 part 2).
   const payInvoice = async (id: string) => {
     if (!activeClient) return;
     setBusy(true); setNotice(null);
@@ -453,6 +464,9 @@ export default function PortalDashboardPage() {
           {/* ── Invoices ── */}
           {active === "invoices" && (
             <Panel title="Invoices">
+              {/* Once, above the table: why the Pay Now controls below are disabled, in the server's words. */}
+              <OnlinePaymentNotice block={dash.online_payment}
+                anyPayable={(invoices ?? []).some((i) => i.can_pay_online === true)} />
               {invoices === null ? (sectionFailed["invoices"] ? <ErrorRetry onRetry={() => loadSection("invoices", activeClient!)} /> : <Loading />) : invoices.length === 0 ? <Empty label="No invoices yet." /> : (
                 <Table head={["Invoice", "Date", "Due", "Total", "Outstanding", "Status", ""]}>
                   {invoices.map((i) => (
@@ -464,12 +478,8 @@ export default function PortalDashboardPage() {
                       <td className="px-3 py-2 tabular-nums">{formatPaise(i.outstanding_paise)}</td>
                       <td className="px-3 py-2"><StatusBadge status={i.is_overdue ? `overdue ${i.days_overdue}d` : i.status} danger={i.is_overdue} /></td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
-                        {i.outstanding_paise > 0 && (
-                          <Button variant="plain" size="none" disabled={busy} onClick={() => payInvoice(i.id)}
-                            className="inline-flex items-center gap-1 text-xs text-brand-dark hover:underline disabled:opacity-40 mr-3">
-                            <CreditCard size={13} /> Pay Now
-                          </Button>
-                        )}
+                        <PayOnlineControl block={dash.online_payment} canPay={i.can_pay_online} busy={busy}
+                          onPay={() => payInvoice(i.id)} />
                         <button disabled={busy} onClick={() => downloadInvoice(i.id)}
                           className="inline-flex items-center gap-1 text-xs text-brand hover:underline disabled:opacity-40">
                           <Download size={13} /> PDF

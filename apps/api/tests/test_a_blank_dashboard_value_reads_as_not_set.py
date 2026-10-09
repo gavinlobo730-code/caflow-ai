@@ -139,12 +139,18 @@ def test_no_server_read_gives_an_environment_variable_a_default_that_a_blank_val
 # ── the sites that were wrong, driven with the value a deployment really has ──────────────────────────────
 
 @pytest.mark.parametrize("blank", ["", "   "])
-def test_a_blank_payment_provider_is_the_mock_and_a_link_can_be_made(monkeypatch, blank):
-    from services.payments import factory
+def test_a_blank_payment_provider_is_the_mock_and_online_payment_says_it_is_not_switched_on(monkeypatch, blank):
+    """The default still applies to a blank (the factory builds the test double instead of raising). What the
+    deployment then SAYS has changed (PRE-B-002 part 2): the double is not a way to collect money, so the
+    availability rule answers `not_switched_on` and the routes refuse to make or send a link
+    (test_a_payment_link_is_never_made_or_sent_while_online_payment_is_off.py). The factory half of this rule is
+    unchanged; the rule is that a blank is read as the default, not as a provider called ''."""
+    from services.payments import availability, factory
     from services.payments.mock import MockProvider
     monkeypatch.setenv("PAYMENT_PROVIDER", blank)
     assert factory.configured_provider() == "mock"
     assert isinstance(factory.get_provider(), MockProvider)
+    assert availability.current().state == "not_switched_on" and availability.current().available is False
 
 
 def test_an_explicit_payment_provider_still_wins_and_a_wrong_one_is_still_refused(monkeypatch):

@@ -76,6 +76,7 @@ import { DrCr, sideOf } from "@/components/ui/drcr";
 import { formatPaiseBare } from "@/lib/money/format";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { readOnlinePayment } from "@/lib/payments/onlinePayment";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/states";
 import { DateInput } from "@/components/ui/date-input";
@@ -2353,10 +2354,19 @@ function SalesInvoices({
 // invoice. Pure presentation: outstanding, links and payments come from the
 // server; the gateway never touches accounting (a verified capture creates the
 // receipt server-side through the existing receipt engine).
+//
+// WHETHER A LINK MAY BE MADE IS THE SERVER'S ANSWER (PRE-B-002 part 2). `online_payment` says if a real gateway is
+// set up and carries the words for when it is not ("Online payment is coming soon. ..."), `can_pay_online` says
+// whether THIS invoice is one a link may be made for, and a link the server cannot stand behind arrives with no
+// address and a `note`. Until a gateway is set up the modal shows the reason and offers no Generate, Copy or
+// Email: the server refuses those calls with the same words in any case.
 
-interface PaymentLinkRow { id: string; short_url: string | null; amount_paise: number; status: string; provider: string; created_at?: string }
+interface PaymentLinkRow { id: string; short_url: string | null; amount_paise: number; status: string; provider: string; created_at?: string; note?: string | null }
 interface CustomerPaymentRow { id: string; amount_paise: number; status: string; provider: string; provider_payment_id: string | null; receipt_id: string | null; created_at?: string }
-interface PaymentHistory { outstanding_paise: number; links: PaymentLinkRow[]; payments: CustomerPaymentRow[] }
+interface PaymentHistory {
+  outstanding_paise: number; links: PaymentLinkRow[]; payments: CustomerPaymentRow[];
+  online_payment?: unknown; can_pay_online?: boolean;
+}
 
 const PAY_STATUS_BADGE: Record<string, string> = {
   created: "bg-ps-muted text-ps-label", active: "bg-state-working-surface text-state-working",
@@ -2382,6 +2392,11 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
     }
   }, [invoice.id]);
   useEffect(() => { load(); }, [load]);
+
+  // The server's answers, read once. Anything that is not clearly `available: true` means no control is offered.
+  const online = readOnlinePayment(hist?.online_payment);
+  const gatewayOn = online?.available === true;
+  const canGenerate = gatewayOn && hist?.can_pay_online === true;
 
   async function generate() {
     setBusy(true); setMsg(null);
@@ -2420,9 +2435,11 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
           <h3 className="text-sm font-semibold text-ps-ink">Online Payment · {invoice.invoice_no}</h3>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
-        <p className="text-2xs text-ps-hint mb-4">
-          A verified payment posts a receipt automatically through the standard receipt workflow — no manual entry.
-        </p>
+        {gatewayOn && (
+          <p className="text-2xs text-ps-hint mb-4">
+            A verified payment posts a receipt automatically through the standard receipt workflow — no manual entry.
+          </p>
+        )}
 
         {msg && (
           <div className={`rounded-lg px-3 py-2 text-xs mb-3 ${msg.type === "success" ? "bg-green-50 text-green-700 border border-green-100" : "bg-state-problem-surface text-state-problem border border-state-problem-border"}`}>
@@ -2435,18 +2452,32 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
             <p className="text-3xs uppercase tracking-wide text-ps-hint">Outstanding</p>
             <p className="text-base font-semibold text-ps-ink font-mono">{hist ? fmt(hist.outstanding_paise) : "…"}</p>
           </div>
-          <Button variant="plain" size="none" onClick={generate} disabled={busy || !hist || hist.outstanding_paise <= 0}
-            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
-            <CreditCard size={13} /> Generate Payment Link
-          </Button>
+          {gatewayOn && (
+            <Button variant="plain" size="none" onClick={generate} disabled={busy || !canGenerate || (hist?.outstanding_paise ?? 0) <= 0}
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
+              <CreditCard size={13} /> Generate Payment Link
+            </Button>
+          )}
         </div>
+
+        {/* Not available: the server's headline and reason, once, in place of the buttons it replaces. */}
+        {online && !gatewayOn && (
+          <div className="mb-4">
+            <Callout tone="note">
+              <p className="font-medium">{[online.headline, online.reason].filter(Boolean).join(" ")}</p>
+              {online.settings_to_check && online.settings_to_check.length > 0 && (
+                <p className="mt-1">Settings to check: {online.settings_to_check.join(", ")}.</p>
+              )}
+            </Callout>
+          </div>
+        )}
 
         {/* Links */}
         <p className="text-2xs font-semibold text-ps-label uppercase tracking-wide mb-2">Payment Links</p>
         {!hist ? (
           <TransactionListSkeleton rows={2} />
         ) : hist.links.length === 0 ? (
-          <p className="text-xs text-ps-hint mb-4">No payment links yet. Generate one above.</p>
+          <p className="text-xs text-ps-hint mb-4">No payment links yet.</p>
         ) : (
           <div className="space-y-2 mb-4">
             {hist.links.map((l) => (
@@ -2455,12 +2486,16 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
                   <span className="font-mono text-ps-body truncate">{l.short_url ?? "—"}</span>
                   <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${PAY_STATUS_BADGE[l.status] ?? "bg-ps-muted text-ps-label"}`}>{l.status}</span>
                 </div>
+                {/* A link the server cannot stand behind has no address and says why (`note`). */}
+                {l.note && <p className="mt-1 text-2xs text-ps-hint">{l.note}</p>}
                 <div className="flex items-center justify-between mt-1.5">
                   <span className="font-mono text-ps-label">{fmt(l.amount_paise)}</span>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => copy(l.short_url)} className="text-ps-label hover:text-indigo-600 flex items-center gap-1"><Copy size={11} /> Copy</button>
-                    <Button variant="plain" size="none" onClick={() => send(l.id)} disabled={busy} className="text-emerald-600 hover:underline flex items-center gap-1 disabled:opacity-50"><Send size={11} /> Email</Button>
-                  </div>
+                  {gatewayOn && l.short_url && (
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => copy(l.short_url)} className="text-ps-label hover:text-indigo-600 flex items-center gap-1"><Copy size={11} /> Copy</button>
+                      <Button variant="plain" size="none" onClick={() => send(l.id)} disabled={busy} className="text-emerald-600 hover:underline flex items-center gap-1 disabled:opacity-50"><Send size={11} /> Email</Button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
