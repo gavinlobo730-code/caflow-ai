@@ -19,6 +19,7 @@ import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Any
+from core.db_errors import error_code
 from core.ist_clock import ist_today
 
 _logger = logging.getLogger("caflow.workflow_engine")
@@ -67,8 +68,7 @@ class WorkflowEngineV2:
         respects is_active and the template's own conditions.
         """
         # Generate idempotency key from trigger inputs
-        key_data = f"{firm_id}:{trigger_type}:{client_id}:{json.dumps(trigger_data, sort_keys=True)}"
-        idempotency_key = hashlib.sha256(key_data.encode()).hexdigest()[:32]
+        idempotency_key = self._idempotency_key(firm_id, trigger_type, client_id, trigger_data)
 
         # Validate and enrich trigger_data for the given trigger_type
         if not self._evaluate_trigger(trigger_type, trigger_data):
@@ -89,33 +89,133 @@ class WorkflowEngineV2:
             if template.get("conditions") and not self._evaluate_conditions(template["conditions"], trigger_data):
                 continue
 
-            # Idempotency check — skip if already running/completed for this key
-            existing = self._repo.check_idempotency(firm_id, template["id"], trigger_type, idempotency_key)
-            if existing:
-                _logger.info(
-                    "WF: duplicate trigger skipped — instance %s already exists for key %s",
-                    existing["id"], idempotency_key,
-                )
-                started.append({"instance_id": existing["id"], "status": "duplicate_skipped"})
-                continue
+            started.append(self._start_instance(
+                template, firm_id, trigger_type, trigger_data, client_id, idempotency_key))
 
+        return started
+
+    # ── Public: a person starts one workflow ──────────────────────────────────
+
+    def start_manually(
+        self,
+        firm_id: str,
+        template_id: str,
+        trigger_data: dict,
+        client_id: Optional[str] = None,
+        started_by: Optional[str] = None,
+    ) -> list[dict]:
+        """Start THE template a person chose, and no other.
+
+        A person pressing "run" on one workflow is not an event to broadcast:
+        the old route fired `fire_trigger` with the template's trigger TYPE, so
+        every active template of that type started with it (three templates on
+        `client_created` meant three runs from one press, two of them somebody
+        else's workflow) and a paused template started nothing at all while the
+        answer still said it had run.
+
+        What a manual start does and does not ask:
+          * it does NOT require the template to be active. `is_active` governs
+            whether the template fires on its own (an event, a schedule); a
+            person who runs a paused workflow by hand has decided to. Whether
+            that is the right rule is the owner's to confirm.
+          * it does NOT match the trigger type or `trigger_config`: those say
+            which EVENTS start a template, and nobody pressed an event.
+          * it DOES evaluate the template's own conditions on the data supplied
+            and says so when they are not met, rather than answering with an
+            empty list that reads as "nothing happened".
+          * it keeps the idempotency key, so the same press with the same data
+            while the first run is still going, or after it completed, is a
+            duplicate (said as such, never counted as a new run). A run that
+            failed or was cancelled does not hold the key: pressing again is
+            how a failed run is retried.
+
+        Returns one result dict for the template: the run's summary, or
+        `status` "duplicate_skipped" (with the run it duplicates), or
+        `status` "not_started" with a `reason` and a sentence. Empty when the
+        template does not exist in this firm.
+        """
+        template = self._repo.get_template(firm_id, template_id)
+        if not template:
+            return []
+        trigger_type = template["trigger_type"]
+        idempotency_key = self._idempotency_key(firm_id, trigger_type, client_id, trigger_data)
+        if not self._evaluate_trigger(trigger_type, trigger_data):
+            return [{
+                "status": "not_started",
+                "template_id": template["id"],
+                "reason": "trigger_not_recognised",
+                "message": "This workflow's trigger type is not one the engine recognises, so it was not started.",
+            }]
+        if template.get("conditions") and not self._evaluate_conditions(template["conditions"], trigger_data):
+            return [{
+                "status": "not_started",
+                "template_id": template["id"],
+                "reason": "conditions_not_met",
+                "message": "This workflow's conditions did not match the data supplied, so it was not started.",
+            }]
+        return [self._start_instance(
+            template, firm_id, trigger_type, trigger_data, client_id, idempotency_key,
+            started_by=started_by)]
+
+    @staticmethod
+    def _idempotency_key(firm_id: str, trigger_type: str, client_id: Optional[str], trigger_data: dict) -> str:
+        key_data = f"{firm_id}:{trigger_type}:{client_id}:{json.dumps(trigger_data, sort_keys=True)}"
+        return hashlib.sha256(key_data.encode()).hexdigest()[:32]
+
+    def _start_instance(
+        self,
+        template: dict,
+        firm_id: str,
+        trigger_event: str,
+        trigger_data: dict,
+        client_id: Optional[str],
+        idempotency_key: str,
+        started_by: Optional[str] = None,
+    ) -> dict:
+        """Create ONE run of `template` for this event and drive it.
+
+        The per-template body of `fire_trigger`, shared with `start_manually` so
+        an event and a person start a run the same way.
+        """
+        existing = self._repo.check_idempotency(firm_id, template["id"], trigger_event, idempotency_key)
+        if existing:
+            return self._duplicate(template, existing, idempotency_key)
+
+        try:
             instance = self._repo.create_instance(
                 firm_id=firm_id,
                 template_id=template["id"],
-                trigger_event=trigger_type,
+                trigger_event=trigger_event,
                 trigger_data=trigger_data,
                 client_id=client_id,
                 idempotency_key=idempotency_key,
             )
-            self._repo.log_execution(instance["id"], firm_id, "started", {"template_name": template["name"]})
-            self._repo.update_instance_status(
-                firm_id, instance["id"], "running",
-                started_at=datetime.utcnow().isoformat(),
-            )
-            result = self._execute_steps(template, instance, dict(trigger_data), firm_id)
-            started.append(result)
+        except Exception as exc:
+            # A database that enforces one live run per key (a unique index) says
+            # 23505 to the second of two simultaneous starts. That is the first
+            # run having won, not a fault: report it as the duplicate it is.
+            if error_code(exc) == "23505":
+                existing = self._repo.check_idempotency(firm_id, template["id"], trigger_event, idempotency_key)
+                if existing:
+                    return self._duplicate(template, existing, idempotency_key)
+            raise
+        started = {"template_name": template["name"]}
+        if started_by:
+            started["started_by"] = started_by
+        self._repo.log_execution(instance["id"], firm_id, "started", started)
+        self._repo.update_instance_status(
+            firm_id, instance["id"], "running",
+            started_at=datetime.utcnow().isoformat(),
+        )
+        return self._execute_steps(template, instance, dict(trigger_data), firm_id)
 
-        return started
+    @staticmethod
+    def _duplicate(template: dict, existing: dict, idempotency_key: str) -> dict:
+        _logger.info(
+            "WF: duplicate trigger skipped — instance %s already exists for key %s",
+            existing["id"], idempotency_key,
+        )
+        return {"instance_id": existing["id"], "status": "duplicate_skipped", "template_id": template["id"]}
 
     # ── Condition evaluation ──────────────────────────────────────────────────
 
@@ -287,17 +387,35 @@ class WorkflowEngineV2:
             self._repo.log_execution(instance["id"], firm_id, "completed", {"steps_executed": 0})
             return {"status": "completed", "instance_id": instance["id"], "steps_executed": 0}
 
-        # Build step map for O(1) lookup by id
-        step_map: dict[str, dict] = {s["id"]: s for s in steps}
-
         # Skip trigger step — begin at first non-trigger step
         first_non_trigger = next(
             (s for s in sorted(steps, key=lambda s: s["step_order"]) if s["step_type"] != "trigger"),
             None,
         )
-        current_step = first_non_trigger
-        visited: set[str] = set()
-        steps_executed = 0
+        return self._run_from(instance, steps, first_non_trigger, context, firm_id)
+
+    def _run_from(
+        self,
+        instance: dict,
+        steps: list[dict],
+        current_step: Optional[dict],
+        context: dict,
+        firm_id: str,
+        visited: Optional[set] = None,
+        steps_executed: int = 0,
+    ) -> dict:
+        """The ONE loop that runs steps, from `current_step` to the end of the flow.
+
+        A fresh run enters at the first step; a run resumed after an approval
+        enters at the step after it, with `visited` and `steps_executed` carried
+        over from what the run has already logged. It used to be two loops (this
+        one and a weaker copy in `resume_after_approval`), and everything after
+        an approval ran in the copy: no action logs, no `current_step_id`, a
+        visited set and a step budget that started again from nothing.
+        """
+        # Build step map for O(1) lookup by id
+        step_map: dict[str, dict] = {s["id"]: s for s in steps}
+        visited = set() if visited is None else visited
 
         while current_step and steps_executed < MAX_STEPS:
             step_id = current_step["id"]
@@ -511,11 +629,19 @@ class WorkflowEngineV2:
                 context_data=context,
                 due_at=due_at,
             )
-            # Store the next step to resume from once approved
+            # The run stays AT this step while it waits, and carries what its
+            # earlier steps produced. It used to record the step AFTER this one,
+            # and an approval that is the last step has none: the field kept
+            # the approval step's own id, so approving re-ran the approval,
+            # created a second one, and the run never completed. Where to go on
+            # is read from the step when the answer comes (resume_after_approval).
+            # The context was not stored here at all, so what earlier steps made
+            # (task ids) was gone by the time the approval was answered.
             self._repo.update_instance_status(
                 firm_id, instance["id"],
                 "waiting_approval",
-                current_step_id=step.get("next_step_id"),
+                current_step_id=step["id"],
+                context_data=dict(context),
             )
             raise _ApprovalPause(approval["id"])
 
@@ -651,12 +777,23 @@ class WorkflowEngineV2:
         instance_id: str,
         approved: bool,
         user_id: str,
+        approval_step_id: Optional[str] = None,
     ) -> Optional[dict]:
         """Continue workflow execution after an approval decision.
 
-        If rejected the instance is cancelled. If approved, execution
-        resumes from the step stored in instance.current_step_id (set by
-        the approval step handler before raising _ApprovalPause).
+        If rejected the instance is cancelled. If approved, execution goes on
+        from the step AFTER the approval, through the same loop a fresh run uses
+        (`_run_from`): its steps are logged, `current_step_id` follows them, and
+        a run that has no step after the approval is COMPLETE.
+
+        Which step the run was paused at is read from its own action log (the
+        step whose log says "paused"), not from `current_step_id`: that field
+        held the step AFTER the approval for as long as there was one and the
+        approval step itself when there was not, so it could not say which.
+        `approval_step_id` (the answered approval's own step) is the second
+        source, for a run with no such log; the last resort is `current_step_id`
+        as the step to go on at, which is what a run paused by the older code
+        recorded.
         """
         instance = self._repo.get_instance(firm_id, instance_id)
         if not instance or instance["status"] != "waiting_approval":
@@ -677,62 +814,31 @@ class WorkflowEngineV2:
         self._repo.update_instance_status(firm_id, instance_id, "running")
         self._repo.log_execution(instance_id, firm_id, "approved", {"by": user_id})
 
-        resume_step_id = instance.get("current_step_id")
-        if not resume_step_id:
-            # Nothing left to run — mark complete
-            self._repo.update_instance_status(
-                firm_id, instance_id, "completed",
-                completed_at=datetime.utcnow().isoformat(),
-            )
-            return instance
-
         steps = self._repo.list_steps(template["id"])
         step_map: dict[str, dict] = {s["id"]: s for s in steps}
-        current_step = step_map.get(resume_step_id)
+        logs = self._repo.list_action_logs(instance_id)
+        paused = [log for log in logs if log.get("status") == "paused"]
+        if paused:
+            # The approval step is done now: say so in its log, so the run's
+            # history does not end with a step "paused" on a finished run.
+            self._repo.update_action_log(
+                paused[-1]["id"], "success",
+                result_data={"decision": "approved", "approved_by": user_id},
+            )
+        approval_step = step_map.get(paused[-1].get("step_id") if paused else approval_step_id)
+        if approval_step:
+            after = approval_step.get("next_step_id")
+            current_step = step_map.get(after) if after else None
+        else:
+            current_step = step_map.get(instance.get("current_step_id"))
+
+        # What the run has already done is what it may not do again, and what it
+        # has already spent of its step budget.
+        visited = {log["step_id"] for log in logs if log.get("step_id")}
         context = dict(instance.get("context_data") or {})
-        visited: set[str] = set()
-        steps_executed = 0
-
-        while current_step and steps_executed < MAX_STEPS:
-            step_id = current_step["id"]
-            if step_id in visited:
-                self._repo.update_instance_status(
-                    firm_id, instance_id, "failed",
-                    error_message="Cycle detected during approval resume",
-                )
-                return instance
-            visited.add(step_id)
-            steps_executed += 1
-
-            try:
-                result, next_step_id = self._execute_step_with_retry(current_step, instance, context, firm_id)
-                context.update(result or {})
-                if next_step_id:
-                    current_step = step_map.get(next_step_id)
-                elif current_step.get("next_step_id"):
-                    current_step = step_map.get(current_step["next_step_id"])
-                else:
-                    current_step = None
-            except _ApprovalPause as pause:
-                self._repo.log_execution(
-                    instance_id, firm_id, "approval_requested",
-                    {"approval_id": pause.approval_id},
-                )
-                return instance
-            except Exception as exc:
-                self._repo.update_instance_status(
-                    firm_id, instance_id, "failed",
-                    error_message=str(exc),
-                    failed_at=datetime.utcnow().isoformat(),
-                )
-                return instance
-
-        self._repo.update_instance_status(
-            firm_id, instance_id, "completed",
-            completed_at=datetime.utcnow().isoformat(),
-            context_data=context,
-        )
-        return instance
+        self._run_from(instance, steps, current_step, context, firm_id,
+                       visited=visited, steps_executed=len(logs))
+        return self._repo.get_instance(firm_id, instance_id) or instance
 
 
 class _ApprovalPause(Exception):

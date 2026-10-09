@@ -249,21 +249,37 @@ def test_the_parent_lookup_is_one_query_for_the_whole_page(repo, narrow, monkeyp
 # Firing a template creates a run FOR a client
 # ══════════════════════════════════════════════════════════════════════════════
 
+class _EngineThatRecordsEveryStart:
+    """Any method the router calls on the engine is a way of starting a run, so
+    every call is recorded whatever it is named. The rule under test is that the
+    client check comes BEFORE a run is created, not which engine method creates
+    it: the router used to call `fire_trigger` and calls `start_manually` now,
+    and a stub that named one of them would have failed on a rename that broke
+    nothing."""
+
+    def __init__(self):
+        self.started = []
+
+    def __getattr__(self, name):
+        def _start(*args, **kwargs):
+            self.started.append((name, kwargs))
+            return []
+        return _start
+
+
 def test_firing_a_template_against_another_clients_books_is_refused(repo, deny, monkeypatch):
     """The template is firm property, but the trigger CREATES an instance
     against the client named in the payload — that is the client-scoped act."""
-    fired = []
-    monkeypatch.setattr(wb, "_engine",
-                        lambda: type("E", (), {"fire_trigger": lambda *a, **k: fired.append(k) or []})())
+    engine = _EngineThatRecordsEveryStart()
+    monkeypatch.setattr(wb, "_engine", lambda: engine)
     with pytest.raises(HTTPException) as e:
         wb.manually_trigger("T1", payload={"client_id": THEIRS}, current_user=USER)
     assert e.value.status_code == 404
-    assert fired == [], "the workflow fired despite the refusal"
+    assert engine.started == [], "the workflow fired despite the refusal"
 
 
 def test_firing_a_template_with_no_client_is_a_firm_level_run(repo, deny, monkeypatch):
-    monkeypatch.setattr(wb, "_engine",
-                        lambda: type("E", (), {"fire_trigger": lambda *a, **k: []})())
+    monkeypatch.setattr(wb, "_engine", lambda: _EngineThatRecordsEveryStart())
     wb.manually_trigger("T1", payload={}, current_user=USER)
     assert deny == [None]
 
