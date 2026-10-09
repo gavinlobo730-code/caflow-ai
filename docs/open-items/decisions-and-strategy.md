@@ -22,7 +22,7 @@ Written on 30 Sep 2026 from the per-area improvement plans. Each decision gates 
 - **Why it matters:** The footer links go to the support page, nothing is recorded about who the contracting entity is, and a processor agreement is what a CA firm needs before loading client data. The entity also decides GST invoicing, the software-developer registration and any later ERI choice.
 - **Cost or time:** Counsel cost: I have no sourced figure; get two quotes. Time: 2 to 4 weeks for documents, counsel turnaround is the slow part.
 - **Roadmap points it unlocks:** market_and_trust-01, market_and_trust-02, market_and_trust-03, security_privacy-07, security_privacy-08, market_and_trust-22, market_and_trust-23, first paid pilot
-- **Open ledger items carrying them:** PRE-B-015, POST-B-259, POST-B-270, POST-B-266, POST-B-080, POST-B-267, POST-B-247
+- **Open ledger items carrying them:** POST-B-259, POST-B-270, POST-B-266, POST-B-080, POST-B-267, POST-B-247
 
 ### Decision 4. Decide the two-factor rule and the payroll read rule
 - **Why it matters:** Two-factor today covers Partner and Manager on some routes only, and any assigned Executive or Reviewer can read salary, PAN and bank details through the browser. You must choose: all staff, or all staff who can see client data; and who may read payroll.
