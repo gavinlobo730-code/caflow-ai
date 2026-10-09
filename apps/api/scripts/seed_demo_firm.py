@@ -140,6 +140,19 @@ def _total_paise(resp: dict) -> int:
         f"no total_paise in the response — cannot settle it: {json.dumps(resp)[:300]}")
 
 
+def _taxable_paise(resp: dict) -> int:
+    """The document's taxable value as the ENGINE computed it, for the one
+    thing that needs it: the cost a bill contributes to a project under
+    construction. Raises rather than defaulting to nil, like `_total_paise`: a
+    tranche of nil is refused by the door (`amount_paise` is positive) and a
+    silent zero here would be a project with nothing in it."""
+    data = resp.get("data") if isinstance(resp, dict) else None
+    if isinstance(data, dict) and isinstance(data.get("taxable_amount_paise"), int):
+        return data["taxable_amount_paise"]
+    raise SystemExit(
+        f"no taxable_amount_paise in the response — cannot cost the project: {json.dumps(resp)[:300]}")
+
+
 def _paid_on(doc_date: str, days: int) -> str:
     from datetime import date, timedelta
     y, m, d = (int(x) for x in doc_date.split("-"))
@@ -349,6 +362,60 @@ def _fixed_assets(api: Api, c, client_id: str, bank_id: Optional[str],
         written["depreciation_months"] += int(out.get("months_posted") or 0)
         if not int(out.get("remaining_months") or 0):
             break
+
+
+def _cwip(api: Api, c, client_id: str, book, written: dict) -> None:
+    """Assets under construction, built out of bills the books already hold.
+
+    EACH TRANCHE IS `from_bill`: the cost was charged to Purchases when the bill
+    was received and the tranche moves exactly that amount into the project
+    (Dr Capital Work-in-Progress / Cr Purchases), touching neither the payable
+    nor the bank -- so the receivables, payables and bank checks stay as they
+    were. `credit` would credit Trade Payables with no purchase bill behind it,
+    which Verify Books reports as a critical payables difference.
+
+    THE AMOUNT IS THE ENGINE'S taxable value off the bill's own create response
+    (`_taxable_paise`), never a second copy of the arithmetic, and the tranche
+    is dated the bill's own date, so the move can never precede the debit it
+    reclassifies. A bill that was left as a draft posted nothing and has
+    nothing to reclassify: its tranche is skipped and counted, not written.
+    """
+    for p in c.cwip_projects:
+        costs = {n: _taxable_paise(book.received_bills[n]["response"])
+                 for n in p.bills if n in book.received_bills}
+        project = api.post("/api/cwip", {
+            "client_id": client_id,
+            "project_name": p.name,
+            "project_code": p.code,
+            "asset_category": p.asset_category,
+            "started_on": p.started_on,
+            "approved_completion_date": p.approved_completion_date,
+            "expected_completion_date": p.expected_completion_date,
+            "approved_cost_paise": p.approved_cost_paise(sum(costs.values())),
+        })
+        project_id = _id(project)
+        written["cwip_projects"] += 1
+        for n in p.bills:
+            bill = book.received_bills.get(n)
+            if bill is None:
+                written["cwip_tranches_skipped"] += 1
+                continue
+            api.post(f"/api/cwip/{project_id}/costs", {
+                "client_id": client_id,
+                "incurred_on": bill["date"],
+                "description": f"{p.tranche_label}, bill {bill['bill_no']}",
+                "amount_paise": costs[n],
+                # The credit was claimed on the bill; a reclassification moves
+                # the cost and nothing about the tax, so no tax is sent.
+                "itc_eligible": True,
+                "acquisition_mode": "from_bill",
+                "purchase_bill_id": bill["id"],
+            })
+            written["cwip_tranches"] += 1
+        if p.suspended_on:
+            api.put(f"/api/cwip/{project_id}/status", {
+                "client_id": client_id, "status": "suspended",
+                "on_date": p.suspended_on})
 
 
 def _payroll(api: Api, c, client_id: str, bank_id: Optional[str],
@@ -599,6 +666,10 @@ class _Book:
         self.written = written
         #: Bank credits for invoices nobody paid, in the order they arose.
         self.open_credits: list[dict] = []
+        #: The bills the books RECEIVED, by position (the `n` of the vendor's
+        #: bill number): what a project under construction draws its cost
+        #: from. A bill left as a draft posted nothing and is not here.
+        self.received_bills: dict[int, dict] = {}
 
     def sale(self, n: int, d) -> None:
         api, c, written = self.api, self.client, self.written
@@ -651,6 +722,7 @@ class _Book:
     def purchase(self, n: int, d) -> None:
         api, c, written = self.api, self.client, self.written
         vendor_id = self.vendor_ids[d.party % len(self.vendor_ids)]
+        bill_no = f"{c.vendors[d.party % len(c.vendors)].name[:3].upper()}/{n:04d}"
         bill = api.post("/api/purchase-bills/", {
             "client_id": self.client_id,
             "vendor_id": vendor_id,
@@ -658,7 +730,7 @@ class _Book:
             # the supplier's books, which is why the recurring purchase
             # path deliberately leaves it blank rather than inventing one.
             # Here the fixture IS the supplier, so it may state one.
-            "bill_no": f"{c.vendors[d.party % len(c.vendors)].name[:3].upper()}/{n:04d}",
+            "bill_no": bill_no,
             "bill_date": d.doc_date,
             # `PurchaseBillIn` HAS NO `place_of_supply` — an inward supply
             # is told apart by `is_inter_state`, and the name it was sent
@@ -684,6 +756,13 @@ class _Book:
         received = _post_the_document(api, "/api/purchase-bills", "receive",
                                       _id(bill), d.doc_date, self.last_month)
         written["bills_received"] += 1 if received else 0
+        if received:
+            # The create response is kept whole and read only by the
+            # client whose projects need it (`_taxable_paise` raises on a
+            # response without the figure, which no other client has to meet).
+            self.received_bills[n] = {
+                "id": _id(bill), "date": d.doc_date, "bill_no": bill_no,
+                "response": bill}
         if received and _pay(api, d, bill, self.client_id, vendor_id, self.bank_id):
             written["payments"] += 1
 
@@ -708,7 +787,8 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "payroll_disbursed": 0,
                "bank_lines": 0, "bank_drafts": 0, "tans": 0,
                "engagements": 0, "obligations": 0,
-               "bank_rules": 0, "bank_rules_skipped": 0}
+               "bank_rules": 0, "bank_rules_skipped": 0,
+               "cwip_projects": 0, "cwip_tranches": 0, "cwip_tranches_skipped": 0}
 
     # ── THE FIRM'S HSN LIBRARY COMES FIRST, AND IT IS A GATE ─────────────────
     #
@@ -896,6 +976,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         open_credits = book.open_credits
 
         _fixed_assets(api, c, client_id, bank_id, firm.financial_year, written)
+        _cwip(api, c, client_id, book, written)
         _payroll(api, c, client_id, bank_id, written)
         _engagements(api, c, client_id, firm.financial_year, fy_start, written)
         # LAST, because the credits above are known only once every invoice

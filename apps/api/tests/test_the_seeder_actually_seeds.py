@@ -134,6 +134,13 @@ def test_the_whole_practice_writes_through_the_doors(api):
     assert written["bank_accounts"] == s["bank_accounts"] > 0
     assert written["fixed_assets"] == s["fixed_assets"] > 0
     assert written["bank_lines"] > 0, "no statement line reached the queue"
+    # The construction client's projects: one project per fixture project and
+    # one tranche per bill the project names -- none skipped, because the
+    # fixture builds a project only out of bills that are received.
+    assert written["cwip_projects"] == s["cwip_projects"] > 0
+    assert written["cwip_tranches"] == sum(
+        len(p.bills) for c in firm.clients for p in c.cwip_projects) > 0
+    assert written["cwip_tranches_skipped"] == 0
 
 
 def test_the_catalogue_is_written_before_any_document_needs_it(api):

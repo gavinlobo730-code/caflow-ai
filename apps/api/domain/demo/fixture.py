@@ -269,6 +269,69 @@ class DemoAsset:
 
 
 @dataclass(frozen=True)
+class DemoCwipProject:
+    """A plant under construction, funded out of bills the client has already
+    booked -- the one thing the register of assets cannot show.
+
+    AN ASSET UNDER CONSTRUCTION IS NOT IN THE REGISTER (FA-11a): it is
+    capital work-in-progress, presented on its own line of the balance sheet
+    and disclosed in two schedules (MCA G.S.R. 207(E): ageing, and completion
+    against the approved date and cost). The demo client for construction said
+    it demonstrated exactly that, and nothing wrote a project.
+
+    EACH TRANCHE IS A BILL ALREADY IN THE BOOKS (`acquisition_mode`
+    `from_bill`): the cost was charged to Purchases when the bill was received,
+    and the tranche moves it out into the project -- Dr Capital WIP / Cr
+    Purchases -- touching neither the payable nor cash. That is the only mode
+    that leaves the books reconciled: `credit` would credit Trade Payables with
+    no purchase bill behind it (Verify Books' payables check then reports the
+    difference as critical, measured), and `paid` would take the bank further
+    down. The projects are PLANT, not a building, on purpose: CGST s.17(5)(c)
+    and (d) block the credit on construction of an immovable property other
+    than plant or machinery, and the bills these tranches come from have
+    already claimed theirs.
+
+    The two projects exist to show both of the completion schedule's reasons
+    and both rows of the ageing schedule: one is past its approved completion
+    date at the year end, one has spent more than it was approved to and is
+    suspended."""
+    name: str
+    code: str
+    asset_category: str
+    started_on: str
+    approved_completion_date: str
+    expected_completion_date: str
+    #: Basis points of what the bills below come to, rounded to a whole
+    #: thousand rupees. A budget is a figure somebody approved BEFORE the cost
+    #: was known, so it cannot be stated in rupees for a fixture whose bills are
+    #: generated; above 10,000 the project is within budget, below it over.
+    approved_cost_bps: int
+    #: Positions within the client's own purchases (the `n` that
+    #: `documents_in_order` carries) whose taxable value this project absorbs.
+    bills: tuple[int, ...]
+    #: Set when the project is suspended, and never before its last tranche.
+    suspended_on: Optional[str] = None
+    tranche_label: str = "Erection and commissioning"
+
+    def approved_cost_paise(self, cost_paise: int) -> int:
+        """The approved cost for a project whose bills come to `cost_paise`,
+        in whole thousands of rupees."""
+        thousand = 1_000_00
+        return max(thousand, round(cost_paise * self.approved_cost_bps / 10_000 / thousand) * thousand)
+
+
+def document_taxable_paise(doc: "DemoDocument") -> int:
+    """What the fixture says a document's taxable value is: quantity times
+    rate over its lines, to the paisa. The engine's own figure (which the
+    seeder reads back off the create response) is the authority for what is
+    posted; this is only for the questions the fixture asks of itself -- how big
+    is a budget, does a project's cost exceed it -- where a paisa decides
+    nothing."""
+    return sum(int((Decimal(ln.quantity) * ln.rate_paise).to_integral_value())
+               for ln in doc.lines)
+
+
+@dataclass(frozen=True)
 class DemoBankAccount:
     """A bank account of one client, and the ledger behind it.
 
@@ -514,6 +577,9 @@ class DemoClient:
     #: Matching rules for the first bank account's statement -- see
     #: `bank_rules_for`. Empty for a client whose statement is not imported.
     bank_rules: tuple[DemoBankRule, ...] = ()
+    #: Assets under construction, funded out of this client's own bills. See
+    #: DemoCwipProject.
+    cwip_projects: tuple[DemoCwipProject, ...] = ()
 
     @property
     def deducts_tax(self) -> bool:
@@ -1045,7 +1111,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                sales_per_month=(2, 5), purchases_per_month=(1, 4),
                away_every=7, rcm_every=0, employees=0, sales_tds_bps=0,
                frequency="monthly", banks=(), operating_lines=(),
-               assets=()) -> DemoClient:
+               assets=(), cwip_projects=()) -> DemoClient:
         return _finished(DemoClient(
             name=name, legal_name=legal, entity_type=entity, pan=pan_value,
             gstin=gstin_for(state, pan_value) if registered else None,
@@ -1071,6 +1137,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
             banks=banks,
             bank_lines=_bank_lines(months, operating_lines) if banks else (),
             assets=assets,
+            cwip_projects=cwip_projects,
             # A month of payroll needs somebody to pay. The states the months
             # are left in are the engine's own (see _payroll_months); nothing
             # here chooses per client, because a demo in which one client's
@@ -1091,6 +1158,23 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
         return DemoAsset(name=name, category=category,
                          purchase_date=_asset_date(months, month_index, day),
                          cost_paise=cost, method=method, **kw)
+
+    def cwip_project(name, code, *, started, approved_completion,
+                     expected_completion, approved_cost_bps, bills,
+                     suspended=None) -> DemoCwipProject:
+        """One project, dated as `asset` is: each date is (month of the
+        financial year, day), 0 being April and 12 or more the year after, so
+        a project's approved and expected completion can fall past the year end
+        without a typed date pinning the register to one year."""
+        def at(month_and_day):
+            return _asset_date(months, *month_and_day)
+        return DemoCwipProject(
+            name=name, code=code, asset_category="Plant & Machinery",
+            started_on=at(started),
+            approved_completion_date=at(approved_completion),
+            expected_completion_date=at(expected_completion),
+            approved_cost_bps=approved_cost_bps, bills=tuple(bills),
+            suspended_on=at(suspended) if suspended else None)
 
     # ── The operating outflows that reach the BANK and not the books ────────
     #
@@ -1294,6 +1378,23 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                          3, 15, 3_80_000_00, "SL"),
                    asset("Total station and survey kit", "Office Equipment",
                          6, 2, 4_90_000_00, "SL"),
+               ),
+               # Two plants under construction, each built out of bills the
+               # client has already booked. The first is past its approved
+               # completion date at the year end and inside its budget; the
+               # second has spent more than it was approved to and is
+               # suspended -- the completion schedule's two reasons and the
+               # ageing schedule's two rows.
+               cwip_projects=(
+                   cwip_project("Concrete batching plant, Chakan", "CWIP-001",
+                                started=(3, 1), approved_completion=(11, 15),
+                                expected_completion=(15, 31),
+                                approved_cost_bps=12_500, bills=(6, 9, 13)),
+                   cwip_project("Mobile crusher unit", "CWIP-002",
+                                started=(6, 20), approved_completion=(14, 30),
+                                expected_completion=(17, 30),
+                                approved_cost_bps=8_500, bills=(11, 17),
+                                suspended=(10, 1)),
                )),
     )
 
@@ -1335,6 +1436,7 @@ def summary(firm: DemoFirm) -> dict:
         # depreciation run reports fewer assets than the register holds.
         "assets_never_depreciated": sum(
             1 for c in firm.clients for a in c.assets if a.category == "Land"),
+        "cwip_projects": sum(len(c.cwip_projects) for c in firm.clients),
         "assets_with_blocked_tax": sum(
             1 for c in firm.clients for a in c.assets if a.itc_eligible is False),
         "payroll_runs": sum(len(c.payroll) for c in firm.clients),

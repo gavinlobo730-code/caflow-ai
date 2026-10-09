@@ -152,6 +152,7 @@ class _Recorder:
             # Every figure the seeder reads back off a response. Plausible
             # rather than computed — nothing here is an accounting claim.
             "total_paise": 118_000_00,
+            "taxable_amount_paise": 100_000_00,
             "months_posted": 1, "remaining_months": 0,
             "imported": 1, "drafted": 1, "remaining": 0,
         }}
@@ -530,6 +531,65 @@ def test_each_statements_rules_are_written_before_it_is_imported_and_none_is_tru
             assert body["txn_type"] == "debit" and body["suggested_account_id"]
             assert not body.get("is_trusted"), "a seeded rule is trusted: nothing is left to pass by hand"
             assert (body["suggested_gst_rate_bps"] is not None) == (body["rule_name"] == "Bank charges")
+
+
+def test_each_project_is_built_out_of_bills_the_books_received_and_is_costed_from_the_engines_figure(_run):
+    """A tranche is `from_bill`: it moves the cost a RECEIVED bill already
+    charged to Purchases, dated that bill's own date and for the engine's
+    taxable value off the create response. `credit` would credit Trade Payables
+    with no bill behind it (Verify Books reports that as critical) and `paid`
+    takes the bank further down."""
+    firm = fixture.build()
+
+    def created(body_id: str):
+        # The recorder answers the n-th write with the id `seeded-{n:05d}`.
+        return _run.requests[int(body_id.rsplit("-", 1)[1]) - 1]
+
+    received = {p.split("/")[3] for m, p, _ in _run.requests
+                if m == "POST" and p.startswith("/api/purchase-bills/") and p.endswith("/receive")}
+    projects = _sent(_run, "POST", "/api/cwip")
+    assert len(projects) == sum(len(c.cwip_projects) for c in firm.clients) > 0
+    sent_costs = [b for m, p, b in _run.requests
+                  if m == "POST" and p.startswith("/api/cwip/") and p.endswith("/costs")]
+    assert sent_costs, "a project was written with no cost in it"
+    for body in sent_costs:
+        assert body["acquisition_mode"] == "from_bill", body
+        bill_id = body["purchase_bill_id"]
+        assert bill_id in received, "a tranche names a bill that was never received, so it posted nothing to reclassify"
+        _, bill_path, bill_body = created(bill_id)
+        assert bill_path == "/api/purchase-bills/"
+        assert body["incurred_on"] == bill_body["bill_date"], "a tranche precedes or follows the debit it reclassifies"
+        assert body["amount_paise"] == 100_000_00, "the amount is not the engine's taxable value off the bill's response"
+        assert not any(body.get(k) for k in ("igst_paise", "cgst_paise", "sgst_paise")), (
+            "a reclassification moves cost and no tax: the credit was claimed on the bill")
+        assert body["itc_eligible"] is True and not body.get("bank_account_id") and not body.get("vendor_id")
+    # A suspension is written after the project's last tranche, for the date the fixture states.
+    suspensions = [(p, b) for m, p, b in _run.requests if m == "PUT" and p.endswith("/status")
+                   and p.startswith("/api/cwip/")]
+    assert len(suspensions) == sum(1 for c in firm.clients for p in c.cwip_projects if p.suspended_on) > 0
+    for path, body in suspensions:
+        project_id = path.split("/")[3]
+        last_cost = max(i for i, (m, p, _) in enumerate(_run.requests)
+                        if m == "POST" and p == f"/api/cwip/{project_id}/costs")
+        assert _run.requests.index(("PUT", path, body)) > last_cost
+        assert body["status"] == "suspended"
+
+
+def test_a_clients_projects_are_written_after_every_bill_of_that_client(_run):
+    """A tranche reclassifies the cost a RECEIVED bill charged to Purchases, so
+    no bill of the client may be created or received after its first project."""
+    projects_seen = 0
+    in_projects = False
+    for method, path, _ in _run.requests:
+        if (method, path) == ("POST", "/api/clients"):
+            in_projects = False
+        elif (method, path) == ("POST", "/api/cwip"):
+            in_projects = True
+            projects_seen += 1
+        elif in_projects:
+            assert not path.startswith("/api/purchase-bills/"), (
+                f"{method} {path} came after the client's first project")
+    assert projects_seen > 0
 
 
 def test_a_payment_settles_a_fraction_of_what_is_owed_and_not_of_the_face_total():
