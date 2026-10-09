@@ -60,8 +60,11 @@ SURFACE_MODULES = {
 }
 
 #: Modules that send to a provider and are NOT a surface, each with its category and why.
-#:   figures-only: what is sent is counts, labels or ratios the product computed itself;
-#:       the CA types and uploads nothing on the screen, so there is no content to name.
+#:   figures-only: what is sent is figures the product computed itself (counts, totals,
+#:       ratios, and rupee amounts) and labels, with no client name; the CA types and
+#:       uploads nothing on the screen, so there is no content to name. "Figures" is not
+#:       "counts": the privacy page's figures card is held to the real builders by
+#:       test_the_data_handling_summary_states_only_what_the_code_holds.
 #:   no-screen: a real route no screen calls. If a screen ever does, it needs a surface
 #:       (this test fails then, because the route's URL appears in the web source).
 EXEMPT = {
@@ -71,8 +74,9 @@ EXEMPT = {
         "given no client name and is asked only when something needs attention"),
     "domain/financial_analysis_service.py": (
         "figures-only", None,
-        "statement analysis narrates the ratios the ledger computes; the CA presses a "
-        "button and types nothing"),
+        "statement analysis narrates the revenue, expenses and profit in rupees for two "
+        "financial years and the ratios the ledger computes, with no client name; the CA "
+        "presses a button and types nothing"),
     "routers/ai_copilot.py": (
         "no-screen", "/api/ai-copilot/chat",
         "a real, rate-limited, redacted route that no screen calls"),

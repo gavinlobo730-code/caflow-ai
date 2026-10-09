@@ -50,6 +50,7 @@ export const INDEXABLE_PATHS = [
   "/support",
   "/resources",
   "/demo",
+  "/privacy",
 ] as const;
 
 /**

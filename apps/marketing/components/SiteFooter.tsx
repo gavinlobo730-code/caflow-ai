@@ -91,11 +91,11 @@ export function SiteFooter() {
             © 2026 PracticeSync. Built for Indian Chartered Accountants.
           </p>
           <div className="flex items-center gap-5 text-[13px] text-slate-500">
-            <Link href="/support" className="hover:text-white">
+            {/* A legal-looking label goes to a page named for it, and there is no Terms link because there is no
+                Terms page: both used to open /support, which read as a missing legal notice (PRE-B-015). The test
+                beside the privacy page holds the rule; POST-B-259 adds the Terms link the day a document exists. */}
+            <Link href="/privacy" className="hover:text-white">
               Privacy
-            </Link>
-            <Link href="/support" className="hover:text-white">
-              Terms
             </Link>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-emerald-400" />

@@ -102,6 +102,7 @@ PRODUCTS = "app/(site)/products/page.tsx"
 SUPPORT = "app/(site)/support/page.tsx"
 RESOURCES = "app/(site)/resources/page.tsx"
 DEMO = "app/(site)/demo/page.tsx"
+PRIVACY = "app/(site)/privacy/page.tsx"
 ACCESS = "app/access/page.tsx"
 HERO = "components/home/Hero.tsx"
 ECOSYSTEM = "components/home/Ecosystem.tsx"
@@ -226,7 +227,7 @@ CLAIMS: tuple[Claim, ...] = (
         id="database-in-mumbai",
         status=COMMITMENT,
         fact="The firm's and clients' records are stored in a Supabase Postgres database in the ap-south-1 (Mumbai) region.",
-        commitment="A fact about where a hosted database is, which no test can read. It is recorded in CLAUDE.md and in the comment above the region in render.yaml. The owner confirms it against the Supabase dashboard before each pricing or security review; if the project is ever moved, every sentence under this claim is wrong at once.",
+        commitment="A fact about where a hosted database is, which no test can read. It is recorded in CLAUDE.md and in the comment above the region in render.yaml. The owner confirms it against the Supabase dashboard before each pricing or security review; if the project is ever moved, every sentence under this claim is wrong at once. The privacy summary (/privacy) names the host (Supabase) and says 'its Mumbai region'; it deliberately does NOT print the region's code, because the exact region is the owner's to read off the dashboard and confirm (PRE-C-006) and a code typed from memory is the kind of value that page must not carry.",
         says=(
             Says("PracticeSync is built around how Indian CA firms actually work: the database is in Mumbai, access is by role and by client assignment, every change to a client, invoice, bill, receipt or ledger entry is written to an audit log, and no filing ever leaves your hands without your confirmation.", PRODUCTS),
             Says("Two-factor sign-in for Partners and Managers · Database in Mumbai", ACCESS),
@@ -235,6 +236,8 @@ CLAIMS: tuple[Claim, ...] = (
             Says("Your firm's and your clients' records sit in a database in the Mumbai region.", HOME),
             Says("Records sit in a Mumbai database.", PRICING),
             Says("Your firm's and your clients' records are stored in a database in the Mumbai region.", PRODUCTS),
+            Says("Records stored in Mumbai", PRIVACY),
+            Says("Supabase hosts the database that holds your firm's and your clients' records, in its Mumbai region.", PRIVACY),
         ),
     ),
     Claim(
@@ -250,6 +253,8 @@ CLAIMS: tuple[Claim, ...] = (
             Says("The database is in the Mumbai region; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", PRICING),
             Says("The servers that run the application are in Singapore, and the AI features call providers outside India.", PRICING),
             Says("Your records sit in a database in Mumbai; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", SUPPORT),
+            Says("Run from Singapore", PRIVACY),
+            Says("The PracticeSync API, which does the computing and the checking, runs on Render in Singapore.", PRIVACY),
         ),
     ),
     Claim(
@@ -259,13 +264,16 @@ CLAIMS: tuple[Claim, ...] = (
         proofs=(
             "tests/test_the_facts_behind_the_marketing_claims.py::test_a_model_call_leaves_for_a_provider_outside_india",
             "tests/test_no_model_call_site_sends_an_identifier.py::test_a_gstin_and_a_pan_are_replaced",
+            "tests/test_the_ai_disclosure_names_the_providers_the_code_calls.py::test_a_surface_lists_exactly_the_providers_its_backend_calls",
         ),
-        not_proved="Names are not pseudonymised, and document extraction is exempt from the redaction by name (the supplier's GSTIN is printed on the invoice being read).",
+        not_proved="Names are not pseudonymised, and document extraction is exempt from the redaction by name (the supplier's GSTIN is printed on the invoice being read). 'Outside India' repeats the site's earlier claim: the destinations are Groq's API host and Google's SDK, and the processing region of the Gemini API on this account was never checked.",
         says=(
             Says("The application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", HOME, PRODUCTS),
             Says("The database is in the Mumbai region; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", PRICING),
             Says("The servers that run the application are in Singapore, and the AI features call providers outside India.", PRICING),
             Says("Your records sit in a database in Mumbai; the application servers run in Singapore, and the AI features send the text or image of a document to an AI provider outside India.", SUPPORT),
+            Says("Sent to AI providers outside India", PRIVACY),
+            Says("AI features send content to Groq, for text and for PDFs with a text layer, or to Google Gemini, for photographs and scanned pages; both are outside India.", PRIVACY),
         ),
     ),
     Claim(
@@ -314,6 +322,54 @@ CLAIMS: tuple[Claim, ...] = (
         ),
         says=(
             Says("A photographed bill goes to a vision model; a typed PDF goes to the text one.", AI_IN_ACTION),
+            Says("AI features send content to Groq, for text and for PDFs with a text layer, or to Google Gemini, for photographs and scanned pages; both are outside India.", PRIVACY),
+        ),
+    ),
+    Claim(
+        id="ai-content-is-sent-as-the-door-sends-it",
+        status=PROVEN,
+        fact="In the assistant and the copilot, every outgoing chat request has anything shaped like a PAN or a GSTIN replaced at the one door (domain/ai/redaction, applied by groq_text.chat with redaction on by default), and a name or an amount typed into the chat is not changed. A bill, a notice or a statement sent to be read is sent as it is: the document readers switch the replacement off by name because the supplier's GSTIN is printed on the invoice being read, and a picture of a document goes to Gemini with nothing removed.",
+        proofs=(
+            "tests/test_no_model_call_site_sends_an_identifier.py::test_a_gstin_and_a_pan_are_replaced",
+            "tests/test_the_ai_disclosure_names_the_providers_the_code_calls.py::test_the_chat_surfaces_say_a_pan_or_gstin_is_replaced_because_the_door_replaces_it",
+            "tests/test_the_ai_disclosure_names_the_providers_the_code_calls.py::test_the_document_readers_do_not_claim_a_replacement_they_do_not_make",
+            "tests/test_the_data_handling_summary_states_only_what_the_code_holds.py::test_a_name_and_an_amount_typed_into_a_chat_are_sent_unchanged",
+            "tests/test_the_data_handling_summary_states_only_what_the_code_holds.py::test_a_picture_of_a_document_goes_to_gemini_with_nothing_removed",
+        ),
+        not_proved="Names are not pseudonymised: a client's name typed into a question goes to the provider as typed, and the reversible 'Client A' layer is not built. The replacement is a SHAPE test (a PAN or a GSTIN, check digit or not), so an identifier written some other way is not recognised.",
+        says=(
+            Says("In the assistant and the copilot, anything shaped like a PAN or a GSTIN is replaced before it is sent.", PRIVACY),
+            Says("Names and amounts you type there are sent as written.", PRIVACY),
+            Says("A bill, a notice or a statement sent to be read is sent as it is, with every GSTIN and name on it.", PRIVACY),
+        ),
+    ),
+    Claim(
+        id="no-screen-recording",
+        status=PROVEN,
+        fact="Neither browser app configures a session-replay or screen-recording tool, and neither declares one as a dependency: no replay integration or sample rate in the source of apps/web or apps/marketing, and no replay or recording package among their dependencies.",
+        proofs=(
+            "tests/test_the_data_handling_summary_states_only_what_the_code_holds.py::test_no_replay_or_recording_tool_is_in_either_browser_app",
+            "tests/test_the_data_handling_summary_states_only_what_the_code_holds.py::test_the_replay_scan_would_catch_a_replay_tool",
+        ),
+        not_proved="The proof is the source and the dependency lists. A tool injected at the edge or added from a dashboard would not be in either, and the error tracker's own package (@sentry/nextjs) carries replay code that is simply not switched on: the rule is that no app code turns it on. If replay is ever wanted it is an owner decision that names payroll, bank and the portal as blocked routes first (CLAUDE.md, SECURITY-PRIVACY-36).",
+        says=(
+            Says("No screen recording", PRIVACY),
+            Says("No session-replay or screen-recording tool is built into the product or this website.", PRIVACY),
+        ),
+    ),
+    Claim(
+        id="no-visitor-tracking",
+        status=PROVEN,
+        fact="The marketing site loads no analytics, advertising or tracking script: no measurement vendor is named in its source, nothing is loaded through next/script, it loads nothing from another host, and its only request is the demo form's to the API.",
+        proofs=(
+            "tests/test_the_site_can_be_found_and_says_which_page_is_which.py::test_no_third_party_measurement_script_is_on_the_site",
+            "tests/test_the_two_sites_send_the_same_security_posture.py::test_the_marketing_site_loads_nothing_from_another_host",
+            "tests/test_the_two_sites_send_the_same_security_posture.py::test_every_request_the_marketing_site_makes_goes_to_the_api",
+        ),
+        not_proved="The claim is about the site's own code. A beacon the hosting platform can inject at the edge when an analytics setting is switched on in its dashboard is not in the source, and no test can read the setting: the owner confirms it is off in the Pages project (not yet an open-items line). It says nothing about the product (apps/web), which reports crashes through an error tracker, and nothing about cookies.",
+        says=(
+            Says("No tracking scripts", PRIVACY),
+            Says("This website loads no analytics, advertising or tracking scripts.", PRIVACY),
         ),
     ),
     Claim(

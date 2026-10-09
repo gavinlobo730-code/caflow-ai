@@ -64,6 +64,18 @@ _STRONG_SOURCE = {
                  |upload\ and\ sign|files?\ it\ on""",
     # where a model sits in the answer
     "ai": r"""\bai\ key|server-side|model\ call|vision\ model|text\ model|ai\ features|never\ files|proposes""",
+    # what is recorded or measured about the people who use it, and what leaves with their content
+    # (PRE-B-015a). NARROW ON PURPOSE: the site says "Practice analytics" and "deadline tracking" about
+    # the product's own screens, so a bare "analytics", "tracking" or "pixel" is not a term here; what is
+    # is the machinery that watches a visitor or a user (replay, a recording tool, an analytics or
+    # tracking script, a cookie, an advertising tag), a named AI provider receiving content, and what is
+    # done to content on its way there (an identifier replaced, content sent as written or as it is).
+    "privacy": r"""session[\ -]?(replay|recording)s?|screen[\ -]?(recording|replay)s?
+                  |analytics\ (script|tool|cookie|tracker|provider|tag)s?
+                  |(tracking|advertising)\ (script|pixel|tool|code|cookie|tag)s?|\bcookies?\b
+                  |third-party\ (script|tracker|analytic)s?|\bgroq\b|\bgemini\b
+                  |\b(pan|gstin)\b[^.]{0,60}\b(replaced|removed|masked|redacted)\b
+                  |\bsent\ as\ (written|typed|it\ is)\b""",
     # what it connects to
     "integration": r"""integrates?\ with|integration\ with|connects?\ (to|with)|syncs?\ (with|live)
                       |webhooks?|public\ api|api\ access|zapier|razorpay

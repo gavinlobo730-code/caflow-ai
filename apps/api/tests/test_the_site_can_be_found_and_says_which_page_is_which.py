@@ -20,8 +20,10 @@ What it deliberately does NOT do, and this file holds that too:
     on the marketing site. The finding's second half — "the owner can read weekly
     demo-form views and submissions" — therefore cannot be met by pasting a
     snippet, and is recorded as a design that needs a migration and a Privacy
-    Notice to name it (the footer's "Privacy" link goes to /support today). This
-    file asserts the absence so a snippet cannot arrive unnoticed.
+    Notice to name it (the footer's "Privacy" link opens /privacy, a plain
+    summary that says it is not that notice: PRE-B-015a). This file asserts the
+    absence so a snippet cannot arrive unnoticed, and the summary's "no tracking
+    scripts" sentence cites it as its proof.
   * NO `lastModified` in the sitemap (it would be the build time of every page on
     every deploy) and no Disallow in robots.txt (the `/access` sign-in chooser is
     left out of the SITEMAP instead: a URL blocked in robots.txt can still be
