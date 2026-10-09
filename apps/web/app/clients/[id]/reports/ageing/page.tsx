@@ -16,6 +16,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { todayLocalISO } from "@/lib/dateMath";
 import { objectOrNull } from "@/lib/api/shape";
 import { Callout, GapList } from "@/components/ui/callout";
+import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import ReportExportButtons from "@/components/accounting/ReportExportButtons";
 import type { Column } from "@/lib/table/types";
@@ -743,7 +744,7 @@ function DocumentList({ kind, rows, saving, onClassify, clientId }: {
   kind: "receivables" | "payables";
   rows: AgeingDocument[] | null;
   saving: string | null;
-  onClassify: (key: string, body: Parameters<typeof api.accounting.classifyForAgeing>[0]) => void;
+  onClassify: (key: string, body: Parameters<typeof api.accounting.classifyForAgeing>[0]) => unknown;
   clientId: string;
 }) {
   const isAr = kind === "receivables";
@@ -882,9 +883,10 @@ function DocumentList({ kind, rows, saving, onClassify, clientId }: {
 /** A mark, and a way to take it back. A one-way button would be the wrong
  *  affordance for something that moves an amount between the rows of a signed
  *  note — a CA who marks the wrong invoice needs to be able to unmark it. */
-function MarkToggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClick: () => void }) {
+function MarkToggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClick: () => unknown }) {
   return (
-    <button
+    <Button
+      variant="plain" size="none" spinner={false}
       onClick={onClick}
       disabled={busy}
       aria-pressed={on}
@@ -895,7 +897,7 @@ function MarkToggle({ on, busy, onClick }: { on: boolean; busy: boolean; onClick
       }`}
     >
       {busy ? "…" : on ? "Yes" : "No"}
-    </button>
+    </Button>
   );
 }
 

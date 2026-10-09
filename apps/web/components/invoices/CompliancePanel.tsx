@@ -323,7 +323,7 @@ function ComplianceCard({ icon, title, state, children }: { icon: React.ReactNod
   );
 }
 
-function EligibilityBlock({ elig, actionLabel, onAction }: { elig: { eligible: boolean; blockers: string[]; warnings: string[] }; actionLabel: string; onAction: () => void }) {
+function EligibilityBlock({ elig, actionLabel, onAction }: { elig: { eligible: boolean; blockers: string[]; warnings: string[] }; actionLabel: string; onAction: () => unknown }) {
   return (
     <div className="space-y-2">
       {elig.blockers.map((b, i) => (
@@ -337,12 +337,14 @@ function EligibilityBlock({ elig, actionLabel, onAction }: { elig: { eligible: b
   );
 }
 
-function PrimaryBtn({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
+/** A Button and not a raw <button>: it is handed its caller's click, and `onClick` is typed `() => unknown` so a
+ *  caller's promise reaches the repeat-click guard (frontend_ux-09). */
+function PrimaryBtn({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => unknown; disabled?: boolean }) {
   return (
-    <button onClick={onClick} disabled={disabled}
+    <Button variant="plain" size="none" spinner={false} onClick={onClick} disabled={disabled}
       className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1">
       {children}
-    </button>
+    </Button>
   );
 }
 

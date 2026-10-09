@@ -923,7 +923,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
           clientId={clientId}
           accounts={bankAccounts}
           onClose={() => setShowImport(false)}
-          onImported={() => { setShowImport(false); afterSetupChange(); }}
+          onImported={() => { setShowImport(false); return afterSetupChange(); }}
           onManageAccounts={() => { setShowImport(false); setShowAccounts(true); }}
         />
       )}

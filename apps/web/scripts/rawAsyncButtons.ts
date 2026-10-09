@@ -363,10 +363,31 @@ export interface ButtonFacts {
   dropsPromise: boolean;
   /** Where the dropped call sits, for a fix. */
   dropSites: ts.CallExpression[];
+  /** The click handler IS the component's own `onClick` prop, handed straight to this element. */
+  forwardsClick: boolean;
+  /** The click handler is a same-file async function that AWAITS a callback its component was handed, and
+   *  this is that callback's local name (`onConfirm`); null when it awaits none. */
+  awaitsPropCallback: string | null;
 }
 
-/** Everything the two finders and the conversion tooling need, in one walk. */
-export function analyseButtons(fileName: string, source: string): { sf: ts.SourceFile; buttons: ButtonFacts[] } {
+/** A component prop that is given an inline function which starts an async write and does not hand the
+ *  promise back, on an element that is not one of the guarded primitives. */
+export interface PropHandlerFacts {
+  line: number;
+  /** The component the function is passed to, e.g. `InvoiceViewDrawer`. */
+  tag: string;
+  /** The prop, e.g. `onIssue`. */
+  prop: string;
+  /** The async function the inline one calls, e.g. `issueInvoice`. */
+  handler: string;
+  write: string;
+  dropSites: ts.CallExpression[];
+}
+
+/** Everything the finders and the conversion tooling need, in one walk. */
+export function analyseButtons(
+  fileName: string, source: string,
+): { sf: ts.SourceFile; buttons: ButtonFacts[]; propHandlers: PropHandlerFacts[] } {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
   // name -> declarations (a file often declares the same name in several
@@ -455,6 +476,48 @@ export function analyseButtons(fileName: string, source: string): { sf: ts.Sourc
     return out;
   }
 
+  /** The props the components around `node` were handed: local name -> the prop's own name, from a
+   *  destructured first parameter (`{ onClick: go }` is `go -> onClick`), and the names of a whole `props`
+   *  object (`props.onClick`). Every enclosing function counts, because a button usually sits in a `.map`
+   *  callback inside the component. */
+  function propsAround(node: ts.Node): { locals: Map<string, string>; objects: Set<string> } {
+    const locals = new Map<string, string>();
+    const objects = new Set<string>();
+    for (let p: ts.Node | undefined = node.parent; p; p = p.parent) {
+      if (!isFnLike(p)) continue;
+      const first = p.parameters[0];
+      if (!first) continue;
+      if (ts.isObjectBindingPattern(first.name)) {
+        for (const el of first.name.elements) {
+          if (!ts.isIdentifier(el.name)) continue;
+          const prop = el.propertyName && ts.isIdentifier(el.propertyName) ? el.propertyName.text : el.name.text;
+          locals.set(el.name.text, prop);
+        }
+      } else if (ts.isIdentifier(first.name)) {
+        objects.add(first.name.text);
+      }
+    }
+    return { locals, objects };
+  }
+
+  /** The prop callback a function AWAITS, e.g. `await onConfirm()`, when `onConfirm` is one of `locals`. */
+  function awaitedProp(fn: FnLike, locals: Map<string, string>): string | null {
+    let found: string | null = null;
+    const walk = (n: ts.Node): void => {
+      if (found) return;
+      if (ts.isAwaitExpression(n)) {
+        const call = n.expression;
+        if (ts.isCallExpression(call) && ts.isIdentifier(call.expression) && locals.has(call.expression.text)) {
+          found = call.expression.text;
+          return;
+        }
+      }
+      ts.forEachChild(n, walk);
+    };
+    if (fn.body) walk(fn.body);
+    return found;
+  }
+
   const buttons: ButtonFacts[] = [];
   for (const el of buttonElements(sf)) {
     const tag = (el.tagName as ts.Identifier).text as ButtonFacts["tag"];
@@ -462,11 +525,26 @@ export function analyseButtons(fileName: string, source: string): { sf: ts.Sourc
     const line = sf.getLineAndCharacterOfPosition(el.getStart(sf)).line + 1;
     const facts: ButtonFacts = {
       tag, el, line, onClick, handler: "", write: null, dropsPromise: false, dropSites: [],
+      forwardsClick: false, awaitsPropCallback: null,
     };
     buttons.push(facts);
     if (!onClick || !onClick.initializer || !ts.isJsxExpression(onClick.initializer) ||
         !onClick.initializer.expression) continue;
     const expr = onClick.initializer.expression;
+
+    // Two shapes the same-file analysis below cannot follow, because the write is somebody else's: the
+    // component's own `onClick` prop handed straight to the element, and a handler that awaits a callback
+    // its component was given. Either way the click starts something this button cannot hold.
+    const around = propsAround(el);
+    if ((ts.isIdentifier(expr) && around.locals.get(expr.text) === "onClick") ||
+        (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression) &&
+         around.objects.has(expr.expression.text) && expr.name.text === "onClick")) {
+      facts.forwardsClick = true;
+    }
+    if (ts.isIdentifier(expr)) {
+      const named = resolve(expr.text, el);
+      if (named && isAsync(named)) facts.awaitsPropCallback = awaitedProp(named, around.locals);
+    }
 
     if (ts.isIdentifier(expr)) {
       const fn = resolve(expr.text, el);
@@ -499,7 +577,35 @@ export function analyseButtons(fileName: string, source: string): { sf: ts.Sourc
       }
     }
   }
-  return { sf, buttons };
+
+  // A function handed to a COMPONENT's `on…` prop that starts an async write and drops its promise. The
+  // receiving component is what has to hold a repeat click, and it can hold only a promise it gets back:
+  // `onIssue={(id) => { setDetailId(null); issueInvoice(id); }}` gave the drawer's Issue button nothing to wait
+  // for, so a button that did try to hold it was released on the same tick.
+  const propHandlers: PropHandlerFacts[] = [];
+  const attrs = (n: ts.Node): void => {
+    if (ts.isJsxAttribute(n) && ts.isIdentifier(n.name) && /^on[A-Z]/.test(n.name.text) &&
+        n.initializer && ts.isJsxExpression(n.initializer) && n.initializer.expression) {
+      const owner = n.parent.parent;
+      const tagName = (ts.isJsxOpeningElement(owner) || ts.isJsxSelfClosingElement(owner)) ? owner.tagName : null;
+      const fn = n.initializer.expression;
+      if (tagName && ts.isIdentifier(tagName) && /^[A-Z]/.test(tagName.text) && !GUARDED_TAGS.has(tagName.text) &&
+          isFnLike(fn) && !isAsync(fn)) {
+        const drops = startedWrites(fn).filter((s) => !isReturned(s.call));
+        if (drops.length) {
+          propHandlers.push({
+            line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1,
+            tag: tagName.text, prop: n.name.text, handler: drops[0].name, write: drops[0].write,
+            dropSites: drops.map((d) => d.call),
+          });
+        }
+      }
+    }
+    ts.forEachChild(n, attrs);
+  };
+  attrs(sf);
+
+  return { sf, buttons, propHandlers };
 }
 
 /** Every raw `<button>` in `source` whose click starts an async write. */
@@ -515,4 +621,30 @@ export function findDroppedPromises(fileName: string, source: string): RawAsyncB
   return analyseButtons(fileName, source).buttons
     .filter((b) => b.tag !== "button" && b.write && b.dropsPromise)
     .map((b) => ({ file: fileName, line: b.line, handler: b.handler, write: b.write as string }));
+}
+
+/** Every raw `<button>` that is handed its component's own `onClick` and passes it on. A generic button
+ *  primitive written this way (`function Action({ onClick }) { return <button onClick={onClick}>… }`) holds
+ *  nothing: every caller's promise, an Issue or a Receive that posts a journal included, reaches a button that
+ *  lets a second click through. The analysis above cannot see those writes (they are in the caller), so the
+ *  rule is stated on the shape: such a primitive renders `<Button>`. */
+export function findForwardedClicks(fileName: string, source: string): RawAsyncButton[] {
+  return analyseButtons(fileName, source).buttons
+    .filter((b) => b.tag === "button" && b.forwardsClick)
+    .map((b) => ({ file: fileName, line: b.line, handler: "onClick (a prop)", write: "whatever the caller passes" }));
+}
+
+/** Every raw `<button>` whose handler is a same-file async function that AWAITS a callback its component
+ *  was handed (`await onConfirm()`), which is how a confirmation dialog performs the caller's write. The
+ *  write lives in the caller, so the same-file analysis reads the handler as writing nothing. */
+export function findAwaitedPropCallbacks(fileName: string, source: string): RawAsyncButton[] {
+  return analyseButtons(fileName, source).buttons
+    .filter((b) => b.tag === "button" && b.awaitsPropCallback)
+    .map((b) => ({ file: fileName, line: b.line, handler: b.handler, write: `await ${b.awaitsPropCallback}()` }));
+}
+
+/** Every function handed to a component's `on…` prop that starts an async write and discards the promise. */
+export function findDroppedPropPromises(fileName: string, source: string): RawAsyncButton[] {
+  return analyseButtons(fileName, source).propHandlers
+    .map((h) => ({ file: fileName, line: h.line, handler: `${h.tag} ${h.prop} -> ${h.handler}`, write: h.write }));
 }

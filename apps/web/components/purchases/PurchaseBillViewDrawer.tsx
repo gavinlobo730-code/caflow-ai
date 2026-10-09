@@ -55,16 +55,21 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
   );
 }
 
+/** One action in a drawer's action bar. It is a `<Button>` and not a raw `<button>` because EVERY caller hands it a
+ *  write that posts something (Issue and Receive post a journal, Delete removes a draft), and the repeat-click
+ *  guard lives in Button: a raw button here let two clicks in one tick send two requests. `onClick` is typed
+ *  `() => unknown` so that the caller's promise reaches the guard. */
 function Action({ children, onClick, icon, primary, danger }: {
-  children: React.ReactNode; onClick: () => void; icon: React.ReactNode; primary?: boolean; danger?: boolean;
+  children: React.ReactNode; onClick: () => unknown; icon: React.ReactNode; primary?: boolean; danger?: boolean;
 }) {
   const cls = primary ? "bg-brand text-white hover:bg-brand-dark border-brand"
     : danger ? "border-ps-border text-state-problem hover:bg-state-problem-hover"
     : "border-ps-border text-ps-label hover:bg-ps-bg";
   return (
-    <button onClick={onClick} className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1 ${cls}`}>
-      {icon} {children}
-    </button>
+    <Button variant="plain" size="none" icon={icon} onClick={onClick}
+      className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1 disabled:opacity-60 ${cls}`}>
+      {children}
+    </Button>
   );
 }
 
@@ -88,7 +93,7 @@ export function PurchaseBillViewDrawer({
   vendorName: string;
   onClose: () => void;
   onEdit: (billId: string) => void;
-  onReceive: (billId: string) => void;
+  onReceive: (billId: string) => unknown;
   onDelete: (bill: PurchaseBillDetail) => void;
   /** "Duplicate" — hands the full loaded bill to the caller, which stashes it
    * via lib/purchases/duplicateSeed and opens the New Bill route. */

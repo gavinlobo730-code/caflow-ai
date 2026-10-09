@@ -3555,15 +3555,61 @@ def disburse_run(
                               "disbursement_journal_entry_id": journal_id})
 
 
+#: The shortest reason the Release tab's prompt accepts, and the shortest this door accepts when one is sent.
+_REVERSAL_REASON_MIN = 10
+_REVERSAL_REASON_MAX = 500
+
+
+class ReverseRunIn(BaseModel):
+    """What the Release tab sends with a reversal: the reason the CA wrote.
+
+    OPTIONAL, as a body and as a field, so every caller written before it (a direct call, a script, an older
+    browser tab) behaves exactly as it did. The screen has always asked for a reason and has always said "the
+    server records it"; until this body existed the request carried none, so the sentence a CA wrote while they
+    knew why was discarded and the log said only that a run was reopened.
+    """
+    reason: Optional[str] = None
+
+
+def _reversal_reason(body: Optional[ReverseRunIn]) -> Optional[str]:
+    """The reason to record, or None when none was sent; a refusal when one was sent and is not a reason.
+
+    A blank reason is no reason (an older client sending an empty string is not saying anything), a short one is
+    refused with the screen's own sentence so the two cannot disagree about what "enough" is, and a very long one
+    is refused rather than truncated, because a reason cut off mid-sentence is worse than none.
+    """
+    if body is None or body.reason is None:
+        return None
+    reason = body.reason.strip()
+    if not reason:
+        return None
+    if len(reason) < _REVERSAL_REASON_MIN:
+        raise HTTPException(
+            status_code=422,
+            detail=f"A reversal needs a reason of at least {_REVERSAL_REASON_MIN} characters.")
+    if len(reason) > _REVERSAL_REASON_MAX:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Keep the reason to {_REVERSAL_REASON_MAX} characters or fewer.")
+    return reason
+
+
 @router.post("/runs/{run_id}/reverse")
 def reverse_run(
     run_id: str,
-    current_user: dict = Depends(rbac("payroll", "finalize"))
+    current_user: dict = Depends(rbac("payroll", "finalize")),
+    body: Optional[ReverseRunIn] = None,
 ):
     """
     Reverse a finalized or paid payroll run — Partner only. Reverses the
     disbursement journal (if the run was paid) and the accrual journal, then
     reopens the run at 'review' so it can be corrected and re-finalized.
+
+    THE REASON THE CA WRITES IS RECORDED (optional body `{"reason": "…"}`). It goes on the timeline event and on
+    the audit log, with the AUTH id as actor. It is deliberately NOT written to `payroll_run_transitions`:
+    `override_reason` means "this release went ahead over gaps", migration 328's CHECK ties it to a move INTO
+    finalized or paid, and putting a reversal's reason there would make the log say the opposite of what it
+    means. A column of its own would be a migration, and is not built here.
 
     Payroll needs its own reversal path because the generic
     POST /api/journal/{id}/reverse explicitly refuses to reverse a
@@ -3578,6 +3624,7 @@ def reverse_run(
     run for that month.
     """
     _assert_run_scope(_db(), current_user, run_id)
+    reason = _reversal_reason(body)
     db = _db()
     if not db:
         return api_response(True, {"id": run_id, "status": "review"})
@@ -3654,9 +3701,21 @@ def reverse_run(
     _log_transition(db, firm_id, run, "review", current_user.get("id"))
 
     timeline_service.log(run["client_id"], "work", "Payroll Reversed",
-        f"Payroll for {run['month']} reversed and reopened for correction", "warning",
+        f"Payroll for {run['month']} reversed and reopened for correction"
+        + (f". Reason: {reason}" if reason else ""), "warning",
         firm_id=firm_id, entity_type="payroll_run", entity_id=run_id,
         actor_id=current_user.get("auth_user_id"))
+
+    # The reason the CA wrote, on the edit log as well as the timeline. `old_data` is the status the run was
+    # reversed OUT of (the transition row above records it too), which is what a reader of this log asks.
+    # Written only when a reason was sent: a reversal with none is exactly what it was before this body existed.
+    if reason:
+        from services.audit_service import log_event
+        log_event(firm_id, "payroll_run", run_id, "status_change",
+                  actor_id=current_user.get("auth_user_id"),
+                  actor_email=current_user.get("email"),
+                  old_data={"status": run["status"]}, new_data={"status": "review"},
+                  metadata={"what": "reverse", "month": run["month"], "reason": reason})
 
     # `loan_notes` is non-empty only where the undo could not be exact — a run
     # finalised before migration 367, for an employee with more than one loan.

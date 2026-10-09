@@ -5480,8 +5480,14 @@ export const api = {
      *  every refusal that ends "Reverse the run first" (attendance, one-time
      *  earnings) pointed at something a CA had no way to do.
      */
-    reverseRun: (runId: string) =>
-      request(`/api/payroll/runs/${runId}/reverse`, { method: "POST" }),
+    reverseRun: (runId: string, reason?: string) =>
+      request(`/api/payroll/runs/${runId}/reverse`, {
+        method: "POST",
+        // The reason the CA wrote in the prompt. It used to be asked for, checked for length and then dropped:
+        // the request carried no body, and the screen said the server records it. The body is optional, so a
+        // caller with nothing to say still posts exactly what it always did.
+        ...(reason && reason.trim() ? { body: JSON.stringify({ reason: reason.trim() }) } : {}),
+      }),
     /** THE MONTH-END PACK, in one action.
      *
      *  downloadPayslip below is right for one employee asking for theirs. This
