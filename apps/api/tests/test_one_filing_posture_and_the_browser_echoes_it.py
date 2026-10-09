@@ -163,6 +163,91 @@ def test_the_wizard_prefers_the_served_value_over_its_fallback():
     )
 
 
+def _roadmap_words_not_served(src: str) -> list[str]:
+    """Every use of the word "roadmap" in `src` (comments already removed) that
+    is not the served field `posture.roadmap` being read.
+
+    The RULE is that the wizard has no roadmap voice of its own: the word may
+    appear only as the name of the field the server sends. A sentence that says
+    an integration is "on the roadmap", or "depends on the authority", is the
+    product stating its plans in a second voice."""
+    return [
+        src[max(0, m.start() - 40): m.end() + 40].replace("\n", " ")
+        for m in re.finditer(r"roadmap", src, re.I)
+        if not src[: m.start()].endswith("posture.")
+    ]
+
+
+def _real_channel_blocks_without_the_served_roadmap(src: str) -> list[str]:
+    """Each place the wizard decides what to say from `software_permitted`
+    must render the served roadmap in the same paragraph. Returns the places
+    that do not (and raises if there is no such place at all, so an empty scan
+    cannot pass)."""
+    spans = []
+    for m in re.finditer(r"real_channel\.software_permitted", src):
+        end = src.find("</p>", m.end())
+        spans.append(src[m.start(): end if end != -1 else len(src)])
+    assert spans, (
+        "the wizard no longer reads real_channel.software_permitted: the "
+        "paragraph this rule guards has moved, so restate the rule")
+    return [s[:80] for s in spans if "posture.roadmap" not in s]
+
+
+def test_the_wizard_has_no_roadmap_voice_of_its_own():
+    """COMING-010: the walk-through said "that is the API integration on the
+    roadmap" in its own words, beside the served posture, and (for every flow
+    where software may not transmit) "the roadmap integration depends on the
+    authority", which promises an integration for TDS, PF, ESI and MCA where no
+    registration unlocks one. Nothing read it: the posture tests ban three
+    other phrases. The word is now only ever the served field's name."""
+    stray = _roadmap_words_not_served(_wizard_source_without_comments())
+    assert not stray, (
+        "the wizard states the roadmap in its own words:\n  " + "\n  ".join(stray)
+        + "\nRender `posture.roadmap` (domain/filing_posture.py) instead, or say "
+        "nothing: the flow's own `when_this_is_real` says what gates it.")
+
+
+def test_where_software_may_transmit_the_wizard_renders_the_served_roadmap():
+    missing = _real_channel_blocks_without_the_served_roadmap(
+        _wizard_source_without_comments())
+    assert not missing, (
+        "the wizard decides what to say from real_channel.software_permitted "
+        "and does not render posture.roadmap there:\n  " + "\n  ".join(missing))
+
+
+def test_the_wizard_claims_no_registration_this_product_lacks():
+    """D17 applies to every word the wizard shows, not only the five posture
+    fields: the wizard is where a CA reads about filing."""
+    src = _wizard_source_without_comments().lower()
+    for claim in FORBIDDEN_REGISTRATION_CLAIMS:
+        assert claim not in src, (
+            f"FilingDemoWizard.tsx says {claim!r}. No GSP, ERI or NIC "
+            "registration has been applied for (D17): say what is PLANNED and "
+            "what gates it.")
+
+
+def test_the_wizard_rules_fire_on_the_wording_they_replace():
+    """Verify clause: each rule above is shown to fail on the code it was
+    written against, so neither is vacuous."""
+    old = (
+        '<p>{script.real_channel.software_permitted\n'
+        '  ? "Software IS permitted to transmit this filing in India — that is '
+        'the API integration on the roadmap."\n'
+        '  : "No public API lets software transmit this today; the roadmap '
+        'integration depends on the authority."}\n'
+        '{" "}{script.real_channel.note}</p>'
+    )
+    assert len(_roadmap_words_not_served(old)) == 2
+    assert _real_channel_blocks_without_the_served_roadmap(old)
+    new = (
+        '<p>{script.real_channel.software_permitted ? "Permitted." : "None."}\n'
+        '{script.real_channel.software_permitted && <>{" "}{posture.roadmap}</>}\n'
+        '{" "}{script.real_channel.note}</p>'
+    )
+    assert not _roadmap_words_not_served(new)
+    assert not _real_channel_blocks_without_the_served_roadmap(new)
+
+
 def test_no_screen_writes_its_own_filing_disclaimer():
     """A second wording anywhere in apps/web is the defect returning.
 

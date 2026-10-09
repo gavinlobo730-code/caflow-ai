@@ -244,17 +244,24 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         },
         # What changes when this is real — the same honest answer as PF: no
         # registration is waiting to be obtained, because the door is the
-        # CLIENT's employer code and there is no API behind it.
+        # CLIENT's employer code and there is no API behind it. And the file
+        # is built today (domain/payroll/esic.build_esic_return, served by
+        # GET /api/payroll/runs/{run_id}/esic), so it is said in the present
+        # tense — tests/test_filing_demo_payroll.py holds the premise and the
+        # tense. The coverage carry-over is the payroll run's
+        # (routers/payroll._members_contributing_earlier_this_period): the
+        # slips it writes are what the file is built from.
         "There is no registration to wait for here. ESIC publishes no API "
         "for the monthly contribution, and the only door is the "
         "establishment's own 17-digit employer code on esic.gov.in — which "
-        "belongs to the client, not to the firm. What PracticeSync will do "
-        "is produce the contribution file, one line per IP number, so the "
-        "step becomes an upload rather than a screen typed from a payroll "
-        "register; and it will flag the coverage the table above describes, "
-        "so an employee who crossed ₹21,000 in month two of a contribution "
-        "period is still on the filing in month three. Submitting the "
-        "contribution and paying the challan stay with whoever holds the "
-        "employer code.",
+        "belongs to the client, not to the firm. PracticeSync already "
+        "produces the contribution file from a finalised payroll run, one "
+        "line per IP number, so the step is an upload rather than a screen "
+        "typed from a payroll register; the run keeps an employee who "
+        "crossed ₹21,000 in month two of a contribution period on the "
+        "filing in month three, as the table above describes, and the file "
+        "can be checked against the IP numbers ESIC has mapped before it is "
+        "uploaded. Submitting the contribution and paying the challan stay "
+        "with whoever holds the employer code.",
         stages,
     )
