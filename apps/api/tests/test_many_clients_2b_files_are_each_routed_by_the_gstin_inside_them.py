@@ -27,6 +27,7 @@ import pytest
 from pydantic import ValidationError
 
 import routers.gst_workspace as gw
+from domain.gst import gstr2b_intake
 from domain.gst import gstr2b_routing as routing
 from domain.gst.gstin import checksum_char
 from domain.gst.gstr2b import parse_gstr2b
@@ -54,8 +55,8 @@ UNKNOWN = gstin("24", "AAACZ9999C")
 MANAGER = {"id": "u-mgr", "firm_id": FIRM, "role": "Manager"}
 
 
-def _raw(recipient, period="042025", number="INV-001"):
-    return {"data": {"gstin": recipient, "rtnprd": period, "gendt": "14-05-2025",
+def _raw(recipient, period="042025", number="INV-001", gendt="14-05-2025"):
+    return {"data": {"gstin": recipient, "rtnprd": period, "gendt": gendt,
                      "docdata": {"b2b": [
                          {"ctin": SUPPLIER, "trdnm": "Acme Supplies", "supfildt": "10-05-2025",
                           "inv": [{"inum": number, "dt": "24-04-2025", "val": 1180.0,
@@ -472,7 +473,7 @@ def test_two_months_for_one_client_are_not_a_collision():
     assert {r["return_period"] for r in store["gstr2a_records"]} == {"042025", "052025"}
 
 
-def test_replacing_an_earlier_reconciliation_is_said_and_asks_for_a_look():
+def test_replacing_an_earlier_reconciliation_is_always_said():
     store = _world()
     g = CLIENTS["c1"][1]
     _run(store, [_file("first.json", g)])
@@ -483,7 +484,57 @@ def test_replacing_an_earlier_reconciliation_is_said_and_asks_for_a_look():
     assert first["replaced_earlier"] is None
     again = _run(store2, [_file("again.json", g)])[1]["results"][0]
     assert again["replaced_earlier"]["reconciled_at"]
-    assert again["needs_attention"] is True
+
+
+# What the replacement leaves the CA to CHECK depends on whether the new download
+# might be the older one. It used to be flagged every time, including when the
+# same file was dropped twice, which taught the CA to read past it (PRE-A-001).
+@pytest.mark.parametrize("first_gendt,second_gendt,relation,asks_for_a_look", [
+    ("14-05-2025", "14-05-2025", "same", False),      # the file dropped twice
+    ("14-05-2025", "20-05-2025", "newer", False),     # the ordinary replacement
+    ("20-05-2025", "14-05-2025", "older", True),      # a stale download over a newer one
+    ("14-05-2025", "", "unknown", True),              # nobody can tell
+    ("", "14-05-2025", "unknown", True),
+])
+def test_a_replacement_asks_for_a_look_only_when_the_new_download_might_be_the_older(
+        first_gendt, second_gendt, relation, asks_for_a_look):
+    store = _world()
+    g = CLIENTS["c1"][1]
+    _run(store, [_file("first.json", g, gendt=first_gendt)])
+    _db, out = _run(store, [_file("second.json", g, gendt=second_gendt)])
+    r = out["results"][0]
+    assert r["replaced_earlier"]["relation"] == relation
+    assert r["needs_attention"] is asks_for_a_look
+    assert out["needs_attention"] == (1 if asks_for_a_look else 0)
+    # the server's sentence for the relation travels with it, and says which
+    assert r["replaced_earlier"]["note"] == gstr2b_intake.DOWNLOAD_NOTES[relation]
+
+
+def test_the_notes_say_which_download_is_which():
+    notes = gstr2b_intake.DOWNLOAD_NOTES
+    assert set(notes) == {"same", "newer", "older", "unknown"}
+    assert "same download" in notes["same"]
+    assert "OLDER" in notes["older"] and "Check it is the file you meant" in notes["older"]
+    assert "newer than" in notes["newer"]
+    assert "Check this is the newer file" in notes["unknown"]
+    assert gstr2b_intake.DOWNLOAD_NEEDS_A_LOOK == {"older", "unknown"}
+
+
+@pytest.mark.parametrize("before,after,relation", [
+    ("14-05-2025", "14-05-2025", "same"),
+    ("14-05-2025", "2025-05-14", "same"),             # two spellings of one day
+    ("14-05-2025", "15-05-2025", "newer"),
+    ("31-12-2025", "01-01-2026", "newer"),            # across a year, not as text
+    ("15-05-2025", "14-05-2025", "older"),
+    ("09-06-2025", "14-05-2025", "older"),            # day-first: not 6 September
+    ("soon", "soon", "same"),                         # unreadable but identical
+    ("soon", "later", "unknown"),
+    ("14-05-2025", None, "unknown"),
+    (None, None, "unknown"),
+    ("  ", "14-05-2025", "unknown"),
+])
+def test_the_relation_is_worked_out_from_the_dates_the_portal_generated(before, after, relation):
+    assert gstr2b_intake.download_relation(before, after) == relation
 
 
 def test_one_files_failure_is_one_row_and_not_the_batch(monkeypatch):

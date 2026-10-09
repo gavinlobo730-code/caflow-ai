@@ -194,7 +194,30 @@ _SHAPE = {
 #: Keyed by the REAL index names. Adding a second set of indexes to say this
 #: more prettily would have been redundant writes on every document a client
 #: ever raises, for a message.
+#: A ledger turned away by one of chart_of_accounts' unique indexes. Production
+#: holds THREE (migration 015's firm_code_unique and firm_name_unique, beside the
+#: table's own per-client key), and the first two are keyed on the FIRM, not on the
+#: client: a code and a NAME are each taken once across the firm's whole chart.
+#: So the ledger that turns a CA away is as likely to be a firm-level account
+#: every client shares, or another client's, as one of this client's own, and a
+#: sentence saying "this client's chart" sends them to look in the wrong place
+#: (PRE-A-001, found creating a ledger from inside a voucher). The sentence says
+#: nothing about the VALUE refused, like every other entry here.
+_ACCOUNT_CODE_TAKEN = (
+    "An account with this code already exists in your firm's chart. Account codes "
+    "are unique across the whole firm, not only this client, so the ledger holding "
+    "it may be a firm-level account every client shares, or another client's. Use "
+    "a different code, or select the existing account if it is the one you want.")
+_ACCOUNT_NAME_TAKEN = (
+    "An account with this name already exists in your firm's chart. Account names "
+    "are unique across the whole firm, not only this client, so the ledger holding "
+    "it may be a firm-level account every client shares, or another client's. "
+    "Select the existing account if it is the one you want, or use a different name.")
+
 _DUPLICATE_DOCUMENT = {
+    "chart_of_accounts_firm_code_unique": _ACCOUNT_CODE_TAKEN,
+    "chart_of_accounts_firm_id_client_id_account_code_key": _ACCOUNT_CODE_TAKEN,
+    "chart_of_accounts_firm_name_unique": _ACCOUNT_NAME_TAKEN,
     # A person, not a document, but the same refusal: the relationship graph
     # matches people across clients on the PAN, so one PAN is one entity.
     "entities_pan_unique":

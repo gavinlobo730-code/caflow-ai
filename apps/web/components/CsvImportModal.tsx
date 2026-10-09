@@ -13,6 +13,11 @@ import { useState, useRef, useEffect } from "react";
 import { X, Download, Upload, AlertCircle, CheckCircle, Plus } from "lucide-react";
 import { LogoIcon } from "@/components/LogoIcon";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { sheetToCsvWithIsoDates } from "@/lib/spreadsheet/xlsxCsv";
+import { parseCsv } from "@/lib/spreadsheet/parseCsv";
+import {
+  heldBackHeading, heldBackRows, templateInstructions, templateNote, templateSheetRows,
+} from "@/lib/spreadsheet/importTemplate";
 
 // THE SPREADSHEET LIBRARY IS NEVER IMPORTED AT THE TOP OF THIS FILE. SheetJS is
 // 404 KB raw / ~135 KB gzip, and ten screens import this modal — the client
@@ -134,60 +139,6 @@ function computeMissing(
     .filter((g) => g.missing.length > 0);
 }
 
-function parseCsvLine(line: string): string[] {
-  const result: string[] = [];
-  let cur = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
-      else inQuotes = !inQuotes;
-    } else if (ch === "," && !inQuotes) {
-      result.push(cur.trim());
-      cur = "";
-    } else {
-      cur += ch;
-    }
-  }
-  result.push(cur.trim());
-  return result;
-}
-
-function parseCsv(text: string, columns: CsvColumn[]): ParsedRow[] {
-  // Strip a leading UTF-8 BOM: our own downloadCsvTemplate() now prepends one
-  // (so Excel doesn't mangle non-ASCII chars), and Excel's own "CSV UTF-8"
-  // Save As does the same — without stripping it, the first header would
-  // parse as "\ufeffkey" and never match a column.
-  const stripped = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-  const lines = stripped.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
-
-  // First non-comment line is header
-  const headerLine = lines.find(l => !l.startsWith("#")) ?? lines[0];
-  const headerIdx = lines.indexOf(headerLine);
-  const headers = parseCsvLine(headerLine).map(h => h.toLowerCase().trim());
-
-  const rows: ParsedRow[] = [];
-  for (let i = headerIdx + 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line.trim() || line.startsWith("#")) continue;
-    const values = parseCsvLine(line);
-    const data: ImportRow = {};
-    headers.forEach((h, idx) => { data[h] = values[idx] ?? ""; });
-
-    const errors: string[] = [];
-    for (const col of columns) {
-      if (col.required && !data[col.key.toLowerCase()]) {
-        errors.push(`"${col.label}" is required`);
-      }
-    }
-
-    rows.push({ index: i - headerIdx, data, errors });
-  }
-  return rows;
-}
-
 export default function CsvImportModal({ title, columns, templateFilename, onImport, onClose, validateRow, resolvers, skippedHeading }: Props) {
   const [step, setStep] = useState<"upload" | "resolve" | "preview" | "importing" | "done">("upload");
   const [rows, setRows] = useState<ParsedRow[]>([]);
@@ -214,8 +165,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
     // The header row goes through the one writer. The `#` hint line is
     // deliberately ONE field separated by " | " — it is a note to the reader,
     // not data — so it is appended as text rather than escaped into cells.
-    const hintRow = "# " + columns.map(c => c.hint ?? (c.required ? "REQUIRED" : "optional")).join(" | ");
-    const csv = `${toCsvRows([columns.map(c => c.key)])}\n${hintRow}\n`;
+    const csv = `${toCsvRows([columns.map(c => c.key)])}\n${templateNote(columns)}\n`;
     downloadCsv(
       templateFilename.endsWith(".csv")
         ? templateFilename
@@ -236,17 +186,17 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
     }
     setFileError(null);
 
-    // Build worksheet: row 1 = headers, row 2 = hints, row 3 = example placeholder
-    const headerRow = columns.map(c => c.key);
-    const hintRow = columns.map(c => c.hint ?? (c.required ? "REQUIRED" : "optional"));
-    const exampleRow = columns.map(c => c.hint ?? "");
-
-    const ws = XLSX.utils.aoa_to_sheet([headerRow, hintRow, exampleRow]);
+    // Row 1 = the headers, row 2 = ONE note cell that starts with "# " (the same
+    // note the CSV template carries, skipped on upload), data from row 3. It used
+    // to be a row of hints and a copy of it as an "example", neither marked, so
+    // the template as downloaded reported two valid rows (lib/spreadsheet/
+    // importTemplate.ts).
+    const ws = XLSX.utils.aoa_to_sheet(templateSheetRows(columns));
 
     // Style header row bold + blue fill using column widths
     ws["!cols"] = columns.map(() => ({ wch: 22 }));
 
-    // Mark required columns with a note in the hint row
+    // Required columns' headers in red, optional ones in blue
     columns.forEach((col, i) => {
       const cell = ws[XLSX.utils.encode_cell({ r: 0, c: i })];
       if (cell) {
@@ -261,18 +211,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
     XLSX.utils.book_append_sheet(wb, ws, "Template");
 
     // Add an Instructions sheet
-    const instructions = [
-      ["PracticeSync AI — Import Template"],
-      [""],
-      ["INSTRUCTIONS:"],
-      ["1. Do NOT modify the header row (Row 1)"],
-      ["2. Delete Row 2 (hints) before uploading"],
-      ["3. Enter your data from Row 3 onwards"],
-      ["4. Upload this file directly (.xlsx) or save as CSV — both are accepted"],
-      [""],
-      ["Column Guide:"],
-      ...columns.map(c => [c.key, c.required ? "REQUIRED" : "optional", c.hint ?? c.label]),
-    ];
+    const instructions = templateInstructions(columns);
     const wsInfo = XLSX.utils.aoa_to_sheet(instructions);
     wsInfo["!cols"] = [{ wch: 28 }, { wch: 12 }, { wch: 50 }];
     XLSX.utils.book_append_sheet(wb, wsInfo, "Instructions");
@@ -324,11 +263,18 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
           }
           // Parse the first sheet of the workbook into CSV text, then reuse the
           // same CSV pipeline so validation/preview behave identically.
+          //
+          // `cellNF` makes each cell carry its number format, which is how a
+          // DATE cell (a serial number in Excel) is told from a number. The
+          // sheet is turned into text by `sheetToCsvWithIsoDates` and not by
+          // `sheet_to_csv` directly: that prints a date cell's display text,
+          // `3/15/25` for Excel's own default short date, which every importer
+          // refuses for its two-digit year. See lib/spreadsheet/xlsxCsv.ts.
           const data = new Uint8Array(e.target?.result as ArrayBuffer);
-          const wb = XLSX.read(data, { type: "array" });
+          const wb = XLSX.read(data, { type: "array", cellNF: true });
           const firstSheet = wb.Sheets[wb.SheetNames[0]];
           if (!firstSheet) { setFileError("The workbook has no sheets."); return; }
-          const text = XLSX.utils.sheet_to_csv(firstSheet);
+          const text = sheetToCsvWithIsoDates(XLSX, wb, firstSheet);
           processText(text);
         } else {
           processText(e.target?.result as string);
@@ -590,6 +536,25 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                   <p className="text-2xs text-state-problem">Failed</p>
                 </div>
               </div>
+
+              {(() => {
+                // Rows the PREVIEW flagged never left the browser, so they are in
+                // none of the three tiles above. Said here, not left for the CA to
+                // find by counting.
+                const held = heldBackRows(rows);
+                if (held.count === 0) return null;
+                return (
+                  <div className="bg-ps-bg border border-ps-border rounded-xl px-4 py-3 space-y-1 max-h-40 overflow-y-auto">
+                    <p className="text-xs font-semibold text-ps-label mb-1">{heldBackHeading(held.count)}</p>
+                    {held.lines.map((l, i) => (
+                      <p key={i} className="text-xs text-ps-label">{l}</p>
+                    ))}
+                    {held.more > 0 && (
+                      <p className="text-xs text-ps-hint">…and {held.more} more.</p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {result.skippedDetail && result.skippedDetail.length > 0 && (
                 <div className="bg-state-attention-surface border border-amber-100 rounded-xl px-4 py-3 space-y-1 max-h-40 overflow-y-auto">

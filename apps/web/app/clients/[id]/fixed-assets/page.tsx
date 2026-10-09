@@ -1,6 +1,7 @@
 "use client";
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { formatPaise } from "@/lib/money/format";
 import { changedFields, formFor, type CorrectionForm } from "@/lib/fixedAssets/correction";
 import { request } from "@/lib/api";
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -205,8 +206,12 @@ function refusalMessage(body: { detail?: unknown; error?: unknown }, fallback: s
   return fallback;
 }
 
+// The one formatter (lib/money/format.ts). This page wrote its own with a MINIMUM
+// of 0 decimals and a maximum of 2, so a cost of ₹5,83,333.30 printed
+// "₹5,83,333.3" (and ₹5,83,333.00 as "₹5,83,333"), a column no one can add up by
+// eye: D5 says two decimals, always (PRE-A-001). An absent figure is a dash.
 function fmt(paise: number) {
-  return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return formatPaise(paise);
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────

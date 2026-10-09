@@ -27,6 +27,7 @@ import {
   type OpeningDocumentListing,
 } from "@/lib/api";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { formatPaise } from "@/lib/money/format";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportMeta, ImportResult, ImportRow } from "@/components/CsvImportModal";
@@ -51,10 +52,11 @@ const BLANK = {
   amount: "",
 };
 
-function rupees(paise: number): string {
-  return `₹${(paise / 100).toLocaleString("en-IN", {
-    minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+// The one formatter (lib/money/format.ts). This screen used to write the same
+// two-decimal Intl call out again, which prints a negative difference as
+// "₹-25,000.00"; formatPaise prints it "-₹25,000.00", the way every other
+// figure in the product reads (PRE-A-001).
+const rupees = formatPaise;
 
 export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
   const [kind, setKind] = useState<Kind>("receivable");

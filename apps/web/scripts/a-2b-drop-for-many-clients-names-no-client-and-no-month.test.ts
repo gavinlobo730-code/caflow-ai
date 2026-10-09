@@ -111,7 +111,12 @@ test("a file that is not reconciled is listed with why, and an absent row is nev
 test("a reconciliation that REPLACED an earlier one says so, in IST", () => {
   assert.match(PANEL, /res\.replaced_earlier &&/);
   assert.match(PANEL, /formatIstLabelled\(res\.replaced_earlier\.reconciled_at/);
-  assert.match(PANEL, /Check this is the newer file\./);
+  // What it says about which download is newer is the SERVER's sentence
+  // (gstr2b_intake.DOWNLOAD_NOTES), so the same file dropped twice is not told
+  // "check this is the newer file". The old sentence survives only as the
+  // fallback for a backend that has not redeployed.
+  assert.match(PANEL, /res\.replaced_earlier\.note \?\? "Check this is the newer file\."/);
+  assert.match(PANEL, /replaced_earlier\.relation === "same"/);
 });
 
 test("the panel keeps nothing in the browser and sends nothing to a portal", () => {

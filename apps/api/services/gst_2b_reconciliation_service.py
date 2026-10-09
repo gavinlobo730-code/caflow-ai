@@ -98,16 +98,19 @@ def read_book_bills(db, firm_id: str, client_id: str, period: str) -> list[BookB
 
     vendor_ids = sorted({r.get("vendor_id") for r in rows if r.get("vendor_id")})
     gstins: dict[str, str] = {}
+    names: dict[str, str] = {}
     for i in range(0, len(vendor_ids), 200):
-        got = (db.table("vendors").select("id, gstin")
+        got = (db.table("vendors").select("id, gstin, name")
                .eq("firm_id", firm_id).in_("id", vendor_ids[i:i + 200])
                .execute().data) or []
         gstins.update({v["id"]: (v.get("gstin") or "").strip().upper() for v in got})
+        names.update({v["id"]: (v.get("name") or "").strip() for v in got})
 
     return [
         BookBill(
             bill_id=str(r["id"]),
             supplier_gstin=gstins.get(r.get("vendor_id"), ""),
+            supplier_name=names.get(r.get("vendor_id"), ""),
             bill_no=r.get("bill_no") or "",
             bill_date=str(r.get("bill_date") or "") or None,
             taxable_paise=int(r.get("taxable_amount_paise") or 0),
@@ -311,7 +314,11 @@ def _match_json(m) -> dict:
             draft_bill_from_2b.refusal_for_kind(d.section, d.document_type)
             if m.status == "missing_in_books" and d is not None else None),
         "supplier_gstin": (d.supplier_gstin if d else (b.supplier_gstin if b else "")),
-        "supplier_name": d.supplier_name if d else None,
+        # The portal's name where there is a document, else the vendor's name from
+        # the books (a bill the supplier has not filed has no document to take one
+        # from), else None. Display only: the key is the GSTIN and the number.
+        "supplier_name": ((d.supplier_name or None) if d else None)
+                         or ((b.supplier_name or None) if b else None),
         "document_number": d.document_number if d else (b.bill_no if b else None),
         "document_date": d.document_date if d else None,
         "document_type": d.document_type if d else None,

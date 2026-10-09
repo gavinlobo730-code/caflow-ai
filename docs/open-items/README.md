@@ -5,7 +5,7 @@
 ## How to use it (for a new session, or after a compaction)
 
 1. Read this file, then **only the section file for the work in hand**. The section files are large (about 900 KB in all) and are meant to be searched, not read end to end: `grep -n "POST-B-" docs/open-items/post-demo-B-ours.md`, or grep a theme name, a roadmap id such as `rm/ops-01`, a finding id such as `TDS-16`, or a word.
-2. Before building an item, check it is still true: open the code it names. Every line was checked against `main` by its extractor on 2 Oct 2026, and **on 8 Oct 2026 sixty-four of the 788 were checked a second time by reading the code and the CI history yourself: all 39 before-demo items, all 17 high-priority after-demo items and 8 other after-demo items** (corrections from that pass are already in the lines: PRE-A-001, -004, -005, -006 and POST-B-193). The other 724 have not been re-checked since 2 Oct, so an item older than a few weeks is suspect.
+2. Before building an item, check it is still true: open the code it names. Every line was checked against `main` by its extractor on 2 Oct 2026, and **on 8 Oct 2026 sixty-four of the 788 were checked a second time by reading the code and the CI history yourself: all 39 before-demo items, all 17 high-priority after-demo items and 8 other after-demo items** (corrections from that pass are already in the lines: PRE-A-004 and POST-B-193; the others it corrected have since closed). The other 724 have not been re-checked since 2 Oct, so an item older than a few weeks is suspect.
 3. Items marked **UNSURE** depend on a dashboard or production state the repository cannot show (Render, Supabase, Resend, Sentry, GitHub settings). Reading that state is part of the item.
 4. When you close an item, **delete its line in the same commit** as the work, say which ID in the commit message, and remove the ID from the lists in this README and in `decisions-and-strategy.md` (the test fails on a dangling ID). If closing it creates follow-up work, add a new line at the next free number. Never renumber: IDs are quoted in commits and conversations. If you find something new that is open, add it to the right file.
 5. `apps/api/tests/test_the_open_items_ledger_is_well_formed.py` enforces the format (unique IDs, one line per item, an allowed theme and priority on every line, no dangling ID in the lists below, counts true). After closing or adding an item run `python3 scripts/open_items_counts.py` to refresh the counts block.
@@ -29,17 +29,17 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 
 | file | items | what it holds |
 |---|---|---|
-| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 4 | before the demo: Claude can do alone |
+| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 3 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 16 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 197 | after the demo: Claude can do alone |
-| [post-demo-B-ours.md](post-demo-B-ours.md) | 334 | after the demo: owner decides first, then Claude builds |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 198 | after the demo: Claude can do alone |
+| [post-demo-B-ours.md](post-demo-B-ours.md) | 335 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 203 | after the demo: only the owner or outsiders can do |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 
-**760 open items** (26 before the demo, 734 after); 15 after-demo items are `high` priority; 35 are UNSURE.
+**761 open items** (25 before the demo, 736 after); 15 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 
@@ -60,7 +60,6 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 11. **PRE-C-006** (you) — Check the website's support and onboarding promises are staffed
 25. **PRE-C-004** (you) — Redeploy the latest main on Render and record how it deploys
 27. **PRE-A-015** (Claude) — Drive the money editors in a browser: double-click guard, keyboard, drafts, dates
-28. **PRE-A-001** (Claude) — Drive the upload screens in a browser: GSTR-2B and the bulk imports
 29. **PRE-B-006** (live) — Rehearse sign-up and first Partner sign-in as a stranger would
 30. **PRE-B-014** (live) — Press Check now on Settings > AI status for Groq and Gemini
 31. **PRE-B-001** (live) — Seed the demo firm with seed_demo_firm.py --confirm and walk it

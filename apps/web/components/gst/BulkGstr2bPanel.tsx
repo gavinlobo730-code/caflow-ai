@@ -282,12 +282,13 @@ function ResultRow({ row }: { row: Row }) {
           </p>
         )}
         {res.replaced_earlier && (
-          <p className="text-state-attention">
+          <p className={res.replaced_earlier.relation === "same" || res.replaced_earlier.relation === "newer"
+              ? "text-ps-label" : "text-state-attention"}>
             Replaced the reconciliation of{" "}
             {formatIstLabelled(res.replaced_earlier.reconciled_at, "an earlier date")}
             {res.replaced_earlier.generated_on
               ? ` (download generated ${res.replaced_earlier.generated_on})` : ""}
-            . Check this is the newer file.
+            . {res.replaced_earlier.note ?? "Check this is the newer file."}
           </p>
         )}
         {res.problems.map((p, i) => (

@@ -11,8 +11,8 @@ core/auth.py :: B904 :: get_current_user :: 3
 core/auth.py :: B904 :: get_jwt_user :: 2
 core/ist_clock.py :: B904 :: fy_bounds :: 1
 domain/accounting/cost_centre.py :: F401 :: <module> :: 1
-domain/accounting/opening_document_import.py :: C901 :: plan :: 19
-domain/accounting/opening_document_import.py :: F401 :: <module> :: 3
+domain/accounting/opening_document_import.py :: C901 :: plan :: 18
+domain/accounting/opening_document_import.py :: F401 :: <module> :: 2
 domain/accounting/voucher_import.py :: C901 :: plan :: 30
 domain/accounting/voucher_import.py :: PLR0915 :: plan :: 84
 domain/ai/gateway.py :: B039 :: <module> :: 1

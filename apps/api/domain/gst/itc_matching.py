@@ -92,6 +92,14 @@ class BookBill:
     igst_paise: int
     cgst_paise: int
     sgst_paise: int
+    #: The supplier's name as the vendor record holds it, or "" where it has none.
+    #: It is for the PERSON reading a row and plays no part in matching: the key is
+    #: the GSTIN and the number, and a name is the one thing two parties can type
+    #: differently. A book-side row (a bill the supplier has not filed) has no
+    #: portal document to take a name from, so without this the chase list showed a
+    #: GSTIN twice and a CA phoned a number they had to look up. Last and
+    #: defaulted so no constructor written before it changes.
+    supplier_name: str = ""
 
     @property
     def tax_paise(self) -> int:
@@ -268,10 +276,15 @@ def defaulters(rec: Reconciliation) -> list[dict]:
             continue
         row = by_gstin.setdefault(m.bill.supplier_gstin, {
             "supplier_gstin": m.bill.supplier_gstin,
+            # The vendor's name from the books, or None: the key stays the GSTIN
+            # (two vendor records may carry one) and the first non-empty name wins.
+            "supplier_name": None,
             "unfiled_count": 0,
             "itc_at_risk_paise": 0,
             "bill_ids": [],
         })
+        if row["supplier_name"] is None and m.bill.supplier_name:
+            row["supplier_name"] = m.bill.supplier_name
         row["unfiled_count"] += 1
         row["itc_at_risk_paise"] += m.bill.tax_paise
         row["bill_ids"].append(m.bill.bill_id)

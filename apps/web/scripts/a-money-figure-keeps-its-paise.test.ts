@@ -96,6 +96,64 @@ test("no money figure is rendered ungrouped beside a rupee glyph", () => {
     [...new Set(found)].join("\n  "));
 });
 
+// ── a figure that sometimes shows decimals and sometimes does not ────────────
+//
+// THE THIRD SHAPE (PRE-A-001, found by driving the fixed-asset register in a
+// browser). `{ minimumFractionDigits: 0, maximumFractionDigits: 2 }` is not the
+// no-options default and is not the two-decimal carve-out either: it prints
+// ₹5,83,333.30 as "₹5,83,333.3" and ₹5,83,333.00 as "₹5,83,333", so the cards
+// and every row of the register disagreed about how many decimals a figure has.
+// The two probes above could not see it because it passes options. The RULE is
+// that a money figure's minimum and maximum fraction digits are the same number
+// (two everywhere; none only in `formatWhole`, which takes a figure the SERVER
+// has already rounded to whole rupees and pins BOTH to 0). Options with a
+// minimum of 0 and a larger maximum are forbidden in every file, the
+// authority's included.
+
+/** Each `{ ... }` options object that pins a minimum of 0 and a maximum of 2,
+ *  in either order, with any whitespace. A conditional minimum
+ *  (`hasPaise ? 2 : 0`) is not this shape and is not matched. */
+function floatingFractionDigits(src: string): string[] {
+  const found: string[] = [];
+  for (const m of src.matchAll(/\{[^{}]*\}/g)) {
+    const body = m[0];
+    const min = /\bminimumFractionDigits\s*:\s*(\d+)\s*[,}\s]/.exec(body);
+    const max = /\bmaximumFractionDigits\s*:\s*(\d+)\s*[,}\s]/.exec(body);
+    if (min && max && Number(min[1]) === 0 && Number(max[1]) >= 1) found.push(body.replace(/\s+/g, " "));
+  }
+  return found;
+}
+
+test("no money figure's decimals float between none and two", () => {
+  const offenders = FILES
+    .flatMap((f) => floatingFractionDigits(code(f)).map((o) => `${f}  ${o}`));
+  assert.deepEqual(offenders, [],
+    "an options object with minimumFractionDigits: 0 and a larger maximum prints " +
+    "₹5,83,333.30 as ₹5,83,333.3 and ₹5,83,333.00 as ₹5,83,333, so a column of " +
+    "figures cannot be added up by eye. Use formatPaise / formatPaiseBare from " +
+    "lib/money/format (D5: two decimals):\n  " + offenders.join("\n  "));
+});
+
+test("the floating-decimals probe sees both orders and leaves the right ones alone", () => {
+  for (const bad of [
+    '(p / 100).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })',
+    '(p / 100).toLocaleString("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: 0 })',
+    'x.toLocaleString("en-IN", {\n  minimumFractionDigits:0,\n  maximumFractionDigits:2\n})',
+    'new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 3 })',
+  ]) assert.equal(floatingFractionDigits(bad).length, 1, bad);
+  for (const fine of [
+    '{ minimumFractionDigits: 2, maximumFractionDigits: 2 }',
+    '{ minimumFractionDigits: 0, maximumFractionDigits: 0 }',     // formatWhole's, in the authority
+    '{ minimumFractionDigits: 2 }',
+    '{ minimumFractionDigits: hasPaise ? 2 : 0, maximumFractionDigits: 2 }',
+    '{ maximumFractionDigits: 2 }',
+  ]) assert.deepEqual(floatingFractionDigits(fine), [], fine);
+  // The authority's whole-rupee formatter is the one place a minimum of 0 is
+  // right, and it pins the maximum to 0 too, so the rule needs no exemption.
+  assert.ok(/minimumFractionDigits:\s*0,\s*maximumFractionDigits:\s*0/.test(code("lib/money/format.ts")),
+    "the whole-rupee formatter this probe is meant to leave alone is no longer there");
+});
+
 test("the two probes are about real shapes, not empty regexes", () => {
   // Each pattern must still match its own defect, or both tests above pass on
   // a tree full of it — which is exactly how the money-formatter guard passed

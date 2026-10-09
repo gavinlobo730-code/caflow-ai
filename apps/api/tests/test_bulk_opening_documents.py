@@ -70,14 +70,39 @@ def test_a_date_is_read_day_first_and_every_spelling_agrees(text):
     assert v.status == imp.NEW and v.document_date == "2026-03-01", v
 
 
-@pytest.mark.parametrize("text", ["4/1/26", "01-03-26", "31-02-2026", "13/13/2026",
-                                  "March first", "2026/03/01x"])
-def test_a_date_that_cannot_be_read_with_certainty_is_refused_not_guessed(text):
+#: What a CA is told, by what was wrong with the cell. A date refused for a
+#: two-digit year, a day that is not on the calendar and text that is not a date
+#: are three different fixes, and the sentence for one must not blame another
+#: (PRE-A-001: a sheet showing 31-02-2026 was told "a two-digit year is not read").
+TWO_DIGIT_YEAR = "two-digit year"
+DATE_REASONS = [
+    ("4/1/26", TWO_DIGIT_YEAR),
+    ("01-03-26", TWO_DIGIT_YEAR),
+    ("15-Mar-26", TWO_DIGIT_YEAR),
+    ("31-02-2026", "February 2026 has 28 days"),
+    ("29-02-2025", "February 2025 has 28 days"),
+    ("13/13/2026", "there is no month 13"),
+    ("March first", "for example 15-03-2025"),
+    ("2026/03/01x", "for example 15-03-2025"),
+]
+
+
+@pytest.mark.parametrize("text,reason", DATE_REASONS)
+def test_a_date_that_cannot_be_read_with_certainty_is_refused_not_guessed(text, reason):
     [v] = plan([R(1, date=text)])
     assert v.status == imp.REJECTED
-    assert "not a date" in v.sentence and "two-digit year" in v.sentence, v.sentence
+    assert "not a date" in v.sentence and reason in v.sentence, v.sentence
+    # a fault that is not a two-digit year is not blamed on one
+    assert (TWO_DIGIT_YEAR in v.sentence) == (reason == TWO_DIGIT_YEAR), v.sentence
     # the one sentence, said once — the rule behind it must not repeat itself
     assert v.sentence.count("document date") <= 2
+
+
+@pytest.mark.parametrize("text,reason", DATE_REASONS)
+def test_a_due_date_that_cannot_be_read_says_the_same_thing(text, reason):
+    [v] = plan([R(1, date="01-03-2026", due=text)])
+    assert v.status == imp.REJECTED
+    assert "due date" in v.sentence and reason in v.sentence, v.sentence
 
 
 def test_a_due_date_before_the_document_is_refused_by_the_one_rule():
@@ -136,13 +161,30 @@ def test_a_bad_row_lists_every_problem_at_once():
 def test_an_amount_the_browser_could_not_read_arrives_and_is_refused_with_its_row():
     [v] = plan([R(4, amt=None)])
     assert v.status == imp.REJECTED and "Row 4" in v.sentence
-    assert "STILL OWED" in v.sentence
+    # It says what is wrong: the cell is not a rupee figure. It does NOT say the
+    # document was already settled — it was never read, so nobody knows (PRE-A-001:
+    # a "Rs. 1,234.50" cell was reported as nothing owed).
+    assert imp.AMOUNT_UNREADABLE_SENTENCE in v.sentence
+    assert "rupee figure" in v.sentence and "1,25,000.00" in v.sentence
+    assert "STILL OWED" not in v.sentence and "settled" not in v.sentence, v.sentence
+    # said once, and with nothing else wrong about the row
+    assert len(v.problems) == 1
+
+
+def test_an_unreadable_amount_beside_another_fault_names_both():
+    [v] = plan([R(4, amt=None, date="31-02-2026")])
+    assert v.status == imp.REJECTED
+    assert "February 2026 has 28 days" in v.sentence and imp.AMOUNT_UNREADABLE_SENTENCE in v.sentence
+    assert "settled" not in v.sentence
 
 
 def test_a_negative_or_zero_amount_is_refused_by_the_one_rule():
     for amt in (0, -500):
         [v] = plan([R(1, amt=amt)])
         assert v.status == imp.REJECTED
+        # An amount that WAS read and is nil or negative is the settled case, and
+        # reads differently from one that was never read.
+        assert "STILL OWED" in v.sentence and imp.AMOUNT_UNREADABLE_SENTENCE not in v.sentence
 
 
 def test_the_rule_is_od_problem_with_and_not_a_copy_of_it():

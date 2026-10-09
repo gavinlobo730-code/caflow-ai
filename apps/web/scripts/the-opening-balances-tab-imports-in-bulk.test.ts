@@ -91,3 +91,15 @@ test("the done step names what was skipped for THIS import, not a customer list"
   assert.match(modal, /skippedHeading\?: string/);
   assert.match(tab, /skippedHeading="Already recorded/);
 });
+
+test("every rupee figure on the tab goes through the one formatter", () => {
+  // The tab wrote its own two-decimal Intl call, which prints the difference
+  // between the ledger and the documents — negative whenever the documents are
+  // short — as "₹-25,000.00"; formatPaise prints "-₹25,000.00", as every other
+  // screen does (PRE-A-001).
+  assert.match(tab, /import \{ formatPaise \} from "@\/lib\/money\/format";/);
+  assert.doesNotMatch(tab, /toLocaleString|Intl\.NumberFormat/,
+    "a figure formatted here is a second formatter that disagrees on a negative");
+  assert.match(tab, /importSummarySentence\(data, rupees\)/,
+    "the summary sentence must be given the same formatter as the table");
+});

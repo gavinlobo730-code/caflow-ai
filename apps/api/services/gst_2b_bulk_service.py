@@ -101,7 +101,13 @@ def _result(name: str, status: str, *, reason: Optional[str] = None,
             summary.get("amount_mismatch_count") or summary.get("missing_in_2b_count")
             or summary.get("missing_in_books_count")
             or summary.get("itc_blocked_by_2b_paise") or probable
-            or problems or caveat or replaced)
+            or problems or caveat
+            # A replacement is said on every row that has one, but it leaves the
+            # CA something to CHECK only when the new download might be the older
+            # (or nobody can tell): the same file dropped twice, or a newer one
+            # replacing an older, is the ordinary case (PRE-A-001).
+            or (replaced and replaced.get("relation")
+                in gstr2b_intake.DOWNLOAD_NEEDS_A_LOOK))
     return {
         "name": name,
         "status": status,
@@ -279,8 +285,14 @@ def _one(db, *, firm_id, name, raw, parsed, holders, names, visible, can_access,
 
     replaced = None
     if previous:
+        relation = gstr2b_intake.download_relation(
+            previous.get("generated_on"), parsed.generated_on)
         replaced = {"reconciled_at": previous.get("reconciled_at"),
-                    "generated_on": previous.get("generated_on")}
+                    "generated_on": previous.get("generated_on"),
+                    # How the new download stands to that one, and the sentence
+                    # for it: the screen decides nothing about which is newer.
+                    "relation": relation,
+                    "note": gstr2b_intake.DOWNLOAD_NOTES[relation]}
     caveats = [c for c in (intake.registration_caveat,) if c]
     return _result(
         name, RECONCILED, gstin=routing.gstin, period=period,

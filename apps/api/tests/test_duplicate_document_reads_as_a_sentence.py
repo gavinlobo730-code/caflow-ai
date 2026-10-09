@@ -39,6 +39,9 @@ def _dup(index: str) -> _PgError:
     ("debit_notes_firm_client_debit_note_no_key", "debit note"),
     ("uq_client_sales_invoices_recurring", "recurring"),
     ("bank_accounts_client_id_account_no_key", "bank account"),
+    ("chart_of_accounts_firm_code_unique", "code"),
+    ("chart_of_accounts_firm_id_client_id_account_code_key", "code"),
+    ("chart_of_accounts_firm_name_unique", "name"),
 ])
 def test_each_index_has_its_own_sentence(index, must_say):
     said = duplicate_document(_dup(index))
@@ -73,3 +76,114 @@ def test_an_unrelated_unique_violation_keeps_the_generic_sentence():
 def test_a_failure_that_is_not_a_duplicate_says_nothing_here():
     assert duplicate_document(_PgError("23503", "violates foreign key")) is None
     assert duplicate_document(ValueError("nothing to do with the database")) is None
+
+
+# ── a ledger refused by the chart of accounts (PRE-A-001) ────────────────────
+#
+# Creating a ledger from inside a voucher with a code another ledger held showed
+# the CA "Could not create the account: duplicate key value violates unique
+# constraint chart_of_accounts_firm_id_client_id_account_code_key", because no
+# chart_of_accounts index was in the table. Production holds three unique
+# indexes there and two of them are keyed on the FIRM, so the ledger that refused
+# the code or the name may be a firm-level account or another client's.
+
+import json
+from pathlib import Path
+
+from fastapi import HTTPException
+
+from core.exceptions import document_failure_detail
+
+CHART_INDEXES = (
+    "chart_of_accounts_firm_code_unique",
+    "chart_of_accounts_firm_id_client_id_account_code_key",
+    "chart_of_accounts_firm_name_unique",
+)
+
+
+def test_the_chart_indexes_named_here_are_the_ones_production_holds():
+    """The names are read off the production snapshot, not remembered: a sentence
+    keyed on an index nothing creates is a sentence that is never said."""
+    guards = json.loads(
+        (Path(__file__).parent / "fixtures" / "production_guards_2026-09-03.json").read_text())
+    unique = {k.split(".", 1)[1] for k, v in guards["constraint"].items()
+              if k.startswith("chart_of_accounts.") and v.get("detail") == "u"}
+    assert set(CHART_INDEXES) == unique, (
+        "production's unique constraints on chart_of_accounts changed; "
+        "core.exceptions._DUPLICATE_DOCUMENT must say what each now means")
+
+
+def test_every_unique_index_on_the_chart_has_a_sentence():
+    for index in CHART_INDEXES:
+        assert duplicate_document(_dup(index)), index
+
+
+def test_a_taken_code_and_a_taken_name_are_told_apart():
+    code = duplicate_document(_dup("chart_of_accounts_firm_code_unique"))
+    name = duplicate_document(_dup("chart_of_accounts_firm_name_unique"))
+    assert code != name
+    assert code.startswith("An account with this code")
+    assert name.startswith("An account with this name")
+    # both code indexes mean the same thing to the CA
+    assert duplicate_document(_dup("chart_of_accounts_firm_id_client_id_account_code_key")) == code
+
+
+def test_the_sentence_says_the_firm_and_not_only_this_clients_chart():
+    """Two of the three indexes are keyed on the firm, so the ledger that refused
+    a code may be a firm-level account every client shares or another client's;
+    "unique within this client" would send the CA to look in the wrong chart."""
+    for index in CHART_INDEXES:
+        said = duplicate_document(_dup(index))
+        assert "whole firm" in said and "another client" in said, said
+        assert "select the existing account" in said.lower(), said
+        assert "this client's chart" not in said
+
+
+def test_the_account_door_shows_the_sentence_and_not_the_index():
+    for index in CHART_INDEXES:
+        said = document_failure_detail(_dup(index), action="create the account")
+        assert said == duplicate_document(_dup(index))
+        assert "Could not create the account" not in said
+        assert index not in said and "duplicate key" not in said
+
+
+def test_creating_an_account_over_a_taken_code_answers_422_with_the_sentence(monkeypatch):
+    """The route, not just the table: POST /api/accounting/accounts."""
+    from models.accounting import AccountIn
+    from routers import accounting
+
+    class _Query:
+        def insert(self, *_a, **_k):
+            return self
+
+        def execute(self):
+            raise _dup("chart_of_accounts_firm_id_client_id_account_code_key")
+
+    class _Db:
+        def table(self, name):
+            assert name == "chart_of_accounts"
+            return _Query()
+
+    monkeypatch.setattr(accounting, "_prod_db", lambda: _Db())
+    monkeypatch.setattr(accounting, "assert_client_access", lambda *_a, **_k: None)
+    with pytest.raises(HTTPException) as caught:
+        accounting.create_account(
+            AccountIn(name="Office Rent", code="5100", account_type="Expense"),
+            client_id="c-1", current_user={"firm_id": "f-1", "role": "Partner"})
+    assert caught.value.status_code == 422
+    assert caught.value.detail == duplicate_document(_dup("chart_of_accounts_firm_code_unique"))
+    assert "duplicate key" not in caught.value.detail
+
+
+def test_the_ledger_dialog_promises_the_scope_the_database_holds():
+    """The hint under the Code box used to read "Unique within this client's chart",
+    which is false for a firm-keyed index. It is held from THIS side because the
+    scope is the database's fact, and a guard written in apps/web would assert the
+    dialog against a copy of itself."""
+    import re
+    source = (Path(__file__).resolve().parents[2] / "web" / "components" / "journal"
+              / "QuickAddLedger.tsx").read_text()
+    hint = re.search(r'label="Code"[^>]*\bhint="([^"]+)"', source)
+    assert hint, "the Code field no longer carries a hint"
+    text = hint.group(1).lower()
+    assert "firm" in text and "within this client" not in text, hint.group(1)
