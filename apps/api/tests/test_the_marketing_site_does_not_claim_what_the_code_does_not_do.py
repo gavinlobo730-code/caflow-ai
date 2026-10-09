@@ -18,6 +18,22 @@ clients' books.
       everything and says nothing).
   08  TDS returns "due the 31st of the month following the quarter end" — Q4 is
       31 May, not 30 April.
+  PRE-B-015(b)  "Replace Tally, ClearTax, Winman and WhatsApp" and "4 separate
+      tools replaced by one login". The product files nothing, the Tally import
+      writes customer and vendor masters only and there is no sync with Tally or
+      export to it, so a practising CA shown the product would contradict it. The
+      owner's positioning is that it RUNS ALONGSIDE Tally on one ledger; the rule
+      below is that the site never uses a form of "replace" (replace, replaces,
+      replaced, replacing, replacement) within one sentence of a named product
+      or of "tools", in either order and in the active or the passive ("Tally is
+      replaced by PracticeSync", "all replaced by one login"), and never lets
+      "alongside" drift into a sync or an integration that does not exist. A
+      NEGATED sentence ("does not replace Tally") is caught too, deliberately:
+      the owner's wording is "alongside", and a reader who wants to say it
+      another way changes the sentence here, in the open. Synonyms of "replace"
+      (supersede, instead of, in place of) are NOT covered; "instead of" is on
+      the support page in a sentence about carrying a practice across, which
+      is not a claim about a product.
 
 The guard is on the PYTHON side — the Schedule III caption lesson: a test in
 `apps/marketing` would assert the site against a copy of itself. The marketing
@@ -51,6 +67,11 @@ def test_the_sweep_reads_the_site():
 
 # ── 06: security and hosting ─────────────────────────────────────────────────
 
+# The products the old claim named, and the longest stretch of one sentence in
+# which a form of "replace" is read as being about them.
+_PRODUCTS = r"(?:Tally|Clear\s?Tax|Winman|WhatsApp)"
+_SAME_SENTENCE = r"[^.;!?]{0,60}"
+
 FORBIDDEN = [
     ("two-factor on every sign-in",
      re.compile(r"every firm sign-in|MFA and role-based access on every account|2-factor authentication ·", re.I)),
@@ -70,6 +91,26 @@ FORBIDDEN = [
      re.compile(r"already knows your practice", re.I)),
     ("a tautological CA-review statistic",
      re.compile(r"Filings reviewed by a CA before submit", re.I)),
+    # The product RUNS ALONGSIDE Tally and the other tools a practice already
+    # has; it replaces none of them. The rule is a form of "replace" within one
+    # sentence of a product the old claim named (or of "tools", the counter that
+    # used to wear it: "4 separate tools replaced by one login"), in EITHER
+    # order, because "replaces Tally", "Tally is replaced by PracticeSync" and
+    # "Tally, ClearTax, Winman and WhatsApp, all replaced by one login" are one
+    # claim. A sentence ends at . ; ! or ?, and a line break does not end one (a
+    # claim wrapped across two lines of JSX is still one claim). A product name
+    # is a prefix match, so TallyPrime is Tally.
+    ("replacing Tally, ClearTax, Winman or WhatsApp",
+     re.compile(rf"\breplac\w*{_SAME_SENTENCE}\b{_PRODUCTS}|\b{_PRODUCTS}\w*{_SAME_SENTENCE}\breplac\w*",
+                re.I)),
+    ("the tools it replaces",
+     re.compile(rf"\btools?\b{_SAME_SENTENCE}\breplac\w*|\breplac\w*{_SAME_SENTENCE}\btools?\b",
+                re.I)),
+    # "Alongside" is a coexistence claim, not an integration: nothing syncs with
+    # Tally or exports to it, and the importer writes masters only
+    # (`tally-masters-only` in the claims ledger).
+    ("a sync or integration with Tally",
+     re.compile(r"\b(sync\w*|integrat\w*|connect\w*)\b[^.\n]{0,24}\bTally\b|\bTally\b[^.\n]{0,24}\b(sync|integration|connector)\b", re.I)),
 ]
 
 
@@ -94,8 +135,50 @@ def test_each_pattern_detects_what_it_claims_to(name, pattern):
         "a payslip download an employee cannot do": "payslips to download, leave balance",
         "an assistant that already knows the practice": "An assistant that already knows your practice",
         "a tautological CA-review statistic": "Filings reviewed by a CA before submit",
+        # One claim, every way to word it: active, passive, name first, name
+        # last, a list of names, a line break inside the sentence, TallyPrime.
+        "replacing Tally, ClearTax, Winman or WhatsApp": (
+            "PracticeSync replaces Tally, ClearTax, Winman and WhatsApp with a single workspace",
+            "Replace Tally, ClearTax, Winman and WhatsApp",
+            "Replacing WhatsApp for client chasing",
+            "Tally, ClearTax, Winman and WhatsApp, all replaced by one login",
+            "Tally is replaced by PracticeSync",
+            "WhatsApp gets replaced with a client portal",
+            "Winman and ClearTax: replaced.",
+            "PracticeSync takes over from, and replaces,\n  TallyPrime for the books",
+            "The replacement for Tally",
+        ),
+        "the tools it replaces": (
+            "4 Separate tools replaced by one login",
+            "PracticeSync replaces five tools",
+            "Replaces the four separate tools a practice runs",
+            "One login replaced all your tools",
+            "Your tools, replaced by one login",
+            "The tools it replaces\n  are the ones you already pay for",
+        ),
+        "a sync or integration with Tally": ("Two-way sync with Tally keeps both ledgers in step",),
     }
-    assert pattern.search(samples[name]), name
+    one_or_many = samples[name]
+    for sample in ((one_or_many,) if isinstance(one_or_many, str) else one_or_many):
+        assert pattern.search(sample), (name, sample)
+
+
+def test_the_replace_rule_stops_at_the_end_of_a_sentence_and_at_a_longer_word():
+    """The rule is one sentence, not the page. Without this a widened window would
+    make the site unable to say that a practice keeps Tally, or that a screen's
+    toolbar is replaced by something else."""
+    replace_pattern = dict(FORBIDDEN)["replacing Tally, ClearTax, Winman or WhatsApp"]
+    tools_pattern = dict(FORBIDDEN)["the tools it replaces"]
+    for fine in (
+        "Your books stay in Tally. It replaced a spreadsheet.",
+        "PracticeSync replaced a spreadsheet; Tally stays where it is",
+        "Runs alongside Tally on one ledger",
+        "from Tally, ClearTax, Winman and spreadsheets, so you carry your practice forward instead of rebuilding it",
+        "Five tools. Five logins. One platform.",
+        "The toolbar is replaced by a menu",
+    ):
+        assert not replace_pattern.search(fine), fine
+        assert not tools_pattern.search(fine), fine
 
 
 def test_the_hosting_sentence_names_the_database_and_the_rest():

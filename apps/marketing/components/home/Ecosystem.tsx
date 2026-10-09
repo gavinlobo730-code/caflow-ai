@@ -66,7 +66,7 @@ const MODULES: Module[] = [
     label: "Accounting",
     icon: <Calculator size={16} />,
     headline: "A ledger that cannot quietly stop balancing",
-    body: "Double entry with one posting path. Every accounting event in the product — sales, purchases, banking, payroll, depreciation — is written by the same kernel, which asserts the entry balances before it inserts.",
+    body: "Double entry on one ledger. Sales, purchases, banking, payroll and depreciation are each written by the same kernel, which asserts the entry balances before it inserts.",
     points: [
       "Trial balance, P&L, balance sheet and cash flow",
       "Schedule III mapping, with both MCA ageing schedules",

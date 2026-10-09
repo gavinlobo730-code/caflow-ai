@@ -63,15 +63,23 @@ const ARTWORK = "/hero/space-earth.webp";
 /**
  * The hero's four figures.
  *
- * Every one is countable in this repository — the module directories, the tools
- * the product replaces, the confirmation step in front of every filing, and the
- * statutory domains it computes. Deliberately the same four the "Control &
- * trust" panel states further down the page: a figure that appears twice had
- * better agree with itself.
+ * Every one is countable in this repository — the module directories, the one
+ * general ledger the books are posted to, the confirmation step in front of
+ * every filing, and the statutory domains it computes. Deliberately the same
+ * four the "Control & trust" panel states further down the page (`counters` in
+ * app/(site)/page.tsx): a figure that appears twice had better agree with
+ * itself, and `test_the_hero_figures_are_counted_facts.py` holds the two copies
+ * equal and holds the ledger figure to the code.
+ *
+ * "1 ledger" names what sits ON the ledger (the books of one client) and nothing
+ * about how entries get there. It deliberately does not say "one posting path":
+ * an ordinary receipt is written by the `settle_receipt_atomic` database function
+ * and the other documents by `post_journal_atomic`, two doors into the same two
+ * tables. The product runs ALONGSIDE Tally and no figure here suggests otherwise.
  */
 const HERO_FACTS = [
   { value: "11+", label: "Modules, one connected workspace" },
-  { value: "4", label: "Separate tools replaced by one login" },
+  { value: "1", label: "Ledger under sales, purchases, banking and payroll" },
   { value: "0", label: "Returns the software files for you — you sign every one" },
   { value: "4", label: "Compliance domains — GST, ITR, TDS, MCA" },
 ];

@@ -53,7 +53,7 @@ const STEPS = [
   },
   {
     surface: "Posting kernel",
-    title: "It posts once, through the one path to the ledger",
+    title: "It posts once, as a single balanced entry",
     body: "Expense, input tax, TDS withheld and the payable, in integer paise, asserted to balance before the entry is written.",
   },
   {

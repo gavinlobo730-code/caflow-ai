@@ -585,7 +585,7 @@ CLAIMS: tuple[Claim, ...] = (
             Says("PracticeSync reads your books and computes the return — GSTR-1 and GSTR-3B as the JSON you upload to the GST portal; GSTR-9, the income-tax return, 24Q and 26Q worked out and laid out for you to key into the government's own utilities.", HOME),
             Says("Raise invoices, record bills and issue credit and debit notes — with GST computed per line, in integer paise, so the books and the return agree by construction rather than by reconciliation.", PRODUCTS),
             Says("Invoices, bills, credit and debit notes, and the stock they move — with GST computed per line so the books and the return agree by construction rather than by reconciliation.", ECOSYSTEM),
-            Says("PracticeSync replaces Tally, ClearTax, Winman and WhatsApp with a single workspace for compliance, accounting, banking, payroll, clients and documents — where every return is computed from the books rather than assembled beside them.", HOME),
+            Says("PracticeSync runs alongside Tally and brings compliance, accounting, banking, payroll, clients and documents into one workspace on one ledger — where every return is computed from the books rather than assembled beside them.", HOME),
             Says("PracticeSync computes the return from your books.", PRICING),
             Says("Every return computed from the books, and every deadline tracked", PRODUCTS),
             Says("GST returns — GSTR-1 (due the 11th), GSTR-3B (due the 20th) and the GSTR-9 annual return (due 31 December), computed from your ledgers", PRODUCTS),
