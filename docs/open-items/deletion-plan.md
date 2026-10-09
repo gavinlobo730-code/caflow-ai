@@ -15,7 +15,7 @@ An archive **tag** named `audit-archive-2026-10-02` was planned and could not be
 
 1. **The owner accepted the ledger** (8 October 2026).
 2. **Tag**: not pushed, see above; the merge commit stands in for it.
-3. **Amendment v1.1 design record**: still open as POST-A-177. The four `BATCH_6_*` and `BATCH_7_*` files are the only record of the internal practice client, guardrails G1-G4, the billing lifecycle and idempotency design, collections and AR rules and knowledge-base versioning, so they were **not deleted** (see HELD below).
+3. **Amendment v1.1 design record**: the record is now written from the code in `docs/architecture/11-revenue-ops-and-knowledge.md`. The four `BATCH_6_*` and `BATCH_7_*` files are **still not deleted**: deleting them waits for your go-ahead (POST-B-336, see HELD below).
 4. **`scripts/findings_status_md.py` was removed** with the findings files it read, and CLAUDE.md's audit table and its "`docs/audits/findings-status.*` is where to start" paragraph were replaced by a pointer to `docs/open-items/README.md` and a note of the deletion. `docs/plan/THE-PLAN.md` (three rows that named the findings record) and `docs/operations/post-mortems.md` (two bullets that called it the live status record) were repointed to the ledger.
 5. **Comments were not repaired.** About 45 source files, test docstrings and migration headers, and prose in KEEP documents, still name `docs/audits/...`. They are comments, not reads (checked on 2 and 8 October 2026: no test, script or workflow opens any deleted file), and a migration's checksum is its identity, so none was edited. `docs/audits/README.md` was left behind as a one-page stub saying where the files went, so a reader who follows a dangling reference lands on the explanation.
 6. **The full backend suite and the web checks ran on the branch** that deleted, as for any pull request.
@@ -130,7 +130,7 @@ An archive **tag** named `audit-archive-2026-10-02` was planned and could not be
 
 | path | size | prerequisite |
 |---|---|---|
-| `BATCH_6_COMPLETION_REPORT.md`, `BATCH_6_DESIGN_REVIEW.md`, `BATCH_7_COMPLETION_REPORT.md`, `BATCH_7_DESIGN_REVIEW.md` | 41 KB | Fold the Amendment v1.1 design record into `docs/architecture/` first (step 3 above). |
+| `BATCH_6_COMPLETION_REPORT.md`, `BATCH_6_DESIGN_REVIEW.md`, `BATCH_7_COMPLETION_REPORT.md`, `BATCH_7_DESIGN_REVIEW.md` | 41 KB | The design record is folded into `docs/architecture/11-revenue-ops-and-knowledge.md`; deleting these four waits for your go-ahead (POST-B-336). |
 
 ## KEEP
 

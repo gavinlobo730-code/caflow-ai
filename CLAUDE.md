@@ -4574,9 +4574,12 @@ doc path or one pointing at a file that does not exist.
 
 ## Where the design is written down
 
-`docs/architecture/01-09` is the authoritative design set — accounting engine, posting
+`docs/architecture/01-11` is the authoritative design set — accounting engine, posting
 kernel, financial years, opening balances, manual journals, multi-currency, GST engine,
-reporting engine, bank entries. Read the relevant one before changing a subsystem.
+reporting engine, bank entries, and the practice's own revenue loop and knowledge base.
+Read the relevant one before changing a subsystem.
+
+**THE FIRM'S OWN PRACTICE IS A CLIENT, AND ITS DESIGN RECORD IS `docs/architecture/11-revenue-ops-and-knowledge.md`** (POST-A-177). It covers the internal client (`clients.is_internal`), guardrails G1 to G4 (Partner-only; out of every client population; one linked customer; no payroll), the schedule -> draft -> issue -> receipt lifecycle with `uq_client_sales_invoices_billing_run`, collections, time capture and the knowledge base, written from the code and not from the June batch reports. `tests/test_the_revenue_ops_design_record_names_what_exists.py` holds every route, migration, function and path it names, and its "not built" statements expire (KB search is title-only; the Manager is firm-wide in the KB alone; six observed defects, now POST-A-215 and POST-A-216): when one fails, fix the record the same day. **A severity argued from "nothing reaches this" is a test** (POST-A-179): `tests/test_an_unreachable_premise_fails_when_it_becomes_reachable.py` is the register; add an entry when you write that sentence, delete it when the item closes.
 
 **Bank entries (09) in one paragraph, because it is easy to rebuild the old
 thing by accident:** a statement line becomes a voucher — Receipt, Payment or
