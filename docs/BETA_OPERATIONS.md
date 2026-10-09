@@ -54,6 +54,9 @@ Watch the boot log for `CONFIG: missing REQUIRED environment variables: …`.
 - The security headers on both sites and the API, the per-address limits on the routes that need no login,
   the one build variable that rolls the Content-Security-Policy back (`SECURITY_CSP_MODE`), and the Cloudflare
   rules that are written down and **not applied** are in `docs/operations/edge-protection.md`.
+- Showing the product to a practising CA: `docs/operations/demo-script.md` holds the one sentence to say
+  about filing, the run of show, the screens to steer round and the words never to use. **It has not been
+  rehearsed and says so.**
 - Scheduler: set `ENABLE_SCHEDULER=true` or configure an external cron to POST
   `/api/scheduler/run`, else compliance reminders / recurring jobs never fire (the
   boot log states which mode is active).
