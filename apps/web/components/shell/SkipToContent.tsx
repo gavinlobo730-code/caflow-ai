@@ -33,7 +33,7 @@ export function SkipToContent() {
   return (
     <a
       href={`#${MAIN_CONTENT_ID}`}
-      className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-ps-ink focus:shadow-lg focus:ring-2 focus:ring-brand"
+      className="sr-only print:hidden focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[100] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-ps-ink focus:shadow-lg focus:ring-2 focus:ring-brand"
     >
       Skip to content
     </a>

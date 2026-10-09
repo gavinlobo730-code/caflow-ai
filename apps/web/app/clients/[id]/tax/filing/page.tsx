@@ -775,7 +775,11 @@ export default function ITRFilingPage() {
  *  IT PRINTS. A CA keys with the utility open on one screen, so the sheet is
  *  built to come out of a printer: `print:` classes strip the chrome and the
  *  browser's own dialog is the control, which is one fewer thing to maintain
- *  than a PDF route for a page that is a table.
+ *  than a PDF route for a page that is a table. (It claimed that for a while
+ *  before it was true: Print printed the whole filing screen, with the
+ *  filing's own forms above and below the table. The root is marked
+ *  `data-print-scope` now, which makes the page print this and nothing else
+ *  but the client's name — PRE-A-016.)
  */
 function KeyingSheetPanel({ sheet, filing }: { sheet: KeyingSheet; filing: Filing }) {
   const rupees = (n: number) => n.toLocaleString("en-IN");
@@ -791,7 +795,9 @@ function KeyingSheetPanel({ sheet, filing }: { sheet: KeyingSheet; filing: Filin
   }
 
   return (
-    <div className="border border-ps-border rounded-xl overflow-hidden">
+    // `data-print-scope`: Print prints THIS and the client's name, not the whole
+    // filing screen around it (the rule is in globals.css, PRE-A-016).
+    <div data-print-scope className="border border-ps-border rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold text-ps-ink">

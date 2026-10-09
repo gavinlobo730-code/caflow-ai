@@ -51,7 +51,10 @@ export function WorkspaceTopBar({ onOpenSearch }: { onOpenSearch: () => void }) 
   const ActiveIcon = activeConfig?.icon ?? LayoutGrid;
 
   return (
-    <div className="relative shrink-0">
+    // `print:hidden` on the WRAPPER, not the <header>: the mega-menu and the
+    // search overlay hang off this div, so hiding only the bar would print an
+    // open menu. See the print paragraph on WorkspaceShell.
+    <div className="relative shrink-0 print:hidden">
       <header className="flex h-12 items-center gap-2 bg-brand px-2 md:gap-3 md:px-4">
         <div className="flex shrink-0 items-center gap-2 border-r border-white/10 pr-2.5 md:pr-3.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-white/10 text-sm font-bold text-white">

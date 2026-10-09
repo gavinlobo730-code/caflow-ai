@@ -13,7 +13,7 @@ export function SecureAccountBanner({ pathname }: { pathname: string }) {
   const { mustEnrolMfa } = useAuth();
   if (!showsSecureAccountBanner(mustEnrolMfa, pathname)) return null;
   return (
-    <div className="px-4 pt-3">
+    <div className="px-4 pt-3 print:hidden">
       <Callout tone="attention" title="Secure your account">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm">

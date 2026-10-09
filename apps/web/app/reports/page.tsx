@@ -877,18 +877,12 @@ export default function ReportsPage() {
 
   return (
     <>
-      {/* Print styles */}
-      <style jsx global>{`
-        @media print {
-          /* Hide everything except the report content */
-          body > * { display: none !important; }
-          .report-print-root { display: block !important; }
-          .report-content { display: block !important; }
-          nav, aside, header, footer, [data-sidebar] { display: none !important; }
-          .print\\:hidden { display: none !important; }
-        }
-      `}</style>
-
+      {/* Printing: nothing here. The old `<style jsx global>` hid `body > *` and
+          re-showed `.report-print-root`, which cannot work (the report is a
+          descendant of the shell, and `display: none` on an ancestor is final),
+          so /reports printed a blank page. The shell prints as itself now
+          (ClientShell / WorkspaceShell carry the `print:` resets) and this
+          page's own controls are `print:hidden`. PRE-A-016. */}
       <div className="p-6 max-w-ps-data mx-auto space-y-6 report-print-root">
         <PageHeader
           title="Reports"

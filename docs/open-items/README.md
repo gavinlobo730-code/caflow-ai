@@ -29,17 +29,17 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 
 | file | items | what it holds |
 |---|---|---|
-| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 6 | before the demo: Claude can do alone |
+| [pre-demo-A-mine.md](pre-demo-A-mine.md) | 4 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 16 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 196 | after the demo: Claude can do alone |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 197 | after the demo: Claude can do alone |
 | [post-demo-B-ours.md](post-demo-B-ours.md) | 334 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 203 | after the demo: only the owner or outsiders can do |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 
-**761 open items** (28 before the demo, 733 after); 15 after-demo items are `high` priority; 35 are UNSURE.
+**760 open items** (26 before the demo, 734 after); 15 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 
@@ -58,8 +58,6 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 9. **PRE-B-002** (decision) — Stop three screens promising what they do not do
 10. **PRE-B-013** (decision) — Look at which tier the Gemini and Groq keys are on
 11. **PRE-C-006** (you) — Check the website's support and onboarding promises are staffed
-22. **PRE-A-016** (Claude) — Fix on-screen printing: /reports prints blank, others unstyled
-23. **PRE-A-018** (Claude) — Link Practice Billing and AR to the practice client's invoices
 25. **PRE-C-004** (you) — Redeploy the latest main on Render and record how it deploys
 27. **PRE-A-015** (Claude) — Drive the money editors in a browser: double-click guard, keyboard, drafts, dates
 28. **PRE-A-001** (Claude) — Drive the upload screens in a browser: GSTR-2B and the bulk imports
