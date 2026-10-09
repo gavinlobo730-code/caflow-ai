@@ -125,6 +125,14 @@ test("parseCsv: a BOM, CRLF, a note in either spelling and a required blank", ()
   assert.equal(rows[1].index, 4);
 });
 
+test("parseCsv: a quoted data cell that merely begins with a hash is a row, not a note", () => {
+  // The library quotes a cell holding a comma. A customer called "#12, MG Road Traders" is data;
+  // only the template's own `# ` note (hash, space) is skipped, quoted or not.
+  const csv = 'name,city\n"#12, MG Road Traders",Pune\n"# a quoted note, with a comma"\nAcme,Delhi\n';
+  const rows = parseCsv(csv, NO_HINTS);
+  assert.deepEqual(rows.map((r) => r.data.name), ["#12, MG Road Traders", "Acme"]);
+});
+
 test("parseCsv: a header with no rows under it is no data", () => {
   assert.deepEqual(parseCsv("name,city\n", NO_HINTS), []);
   assert.deepEqual(parseCsv("", NO_HINTS), []);

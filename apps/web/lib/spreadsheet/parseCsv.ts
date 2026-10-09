@@ -34,7 +34,10 @@ export interface ParsedCsvRow {
 
 /** True for a line the reader skips: a note, not data. */
 export function isNoteLine(line: string): boolean {
-  return line.startsWith("#") || line.startsWith('"#');
+  // The template note is always `# ` (hash, space); the library quotes it as `"# `
+  // when a hint holds a comma. A quoted DATA cell that merely begins with a hash
+  // (a customer called "#12, MG Road Traders") is a row, not a note.
+  return line.startsWith("#") || line.startsWith('"# ');
 }
 
 export function parseCsvLine(line: string): string[] {
