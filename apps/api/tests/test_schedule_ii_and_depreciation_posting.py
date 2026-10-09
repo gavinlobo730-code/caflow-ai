@@ -40,7 +40,6 @@ import re
 import sys
 from datetime import date
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
@@ -349,15 +348,21 @@ def test_the_categories_endpoint_serves_the_one_table():
 
 
 def test_every_category_has_a_gl_account_mapping():
-    """A category here that phase2_journal_service's cat_map does not know
-    books the asset to Plant & Machinery instead — silently, in the ledger.
-    task #232 fixed that mismatch once; this stops it coming back through a
-    category added on this side alone."""
-    source = (Path(fa.__file__).resolve().parents[1] / "services" / "phase2_journal_service.py").read_text(encoding="utf-8")
+    """A category here that the category-to-ledger table does not know books the
+    asset to Plant & Machinery instead — silently, in the ledger. task #232
+    fixed that mismatch once; this stops it coming back through a category
+    added on this side alone.
+
+    The table used to be a dict literal repeated inside phase2_journal_service
+    and this test grepped that file's source for the quoted category, which is
+    a spelling of the rule; it is now asked of the one table
+    (domain/fixed_assets/asset_ledger), and "Other" is in it explicitly rather
+    than being a fall-through this test had to skip. The stronger half of the
+    rule - the pattern each entry names finds exactly one ledger on the
+    standard chart - is test_every_asset_category_has_a_ledger_on_the_standard_chart.py."""
+    from domain.fixed_assets.asset_ledger import LEDGER_PATTERN_BY_CATEGORY
     for category in SCHEDULE_II_CATEGORIES:
-        if category == "Other":
-            continue  # deliberately the fallback
-        assert f'"{category}"' in source, f"{category} has no GL account mapping"
+        assert category in LEDGER_PATTERN_BY_CATEGORY, f"{category} has no GL account mapping"
 
 
 # ── create_asset: what a new asset is given ─────────────────────────────────

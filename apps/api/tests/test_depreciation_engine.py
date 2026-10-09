@@ -359,7 +359,7 @@ class TestDepreciationJournalIntegrity:
         """Every category in the platform taxonomy has an ANSWER — a rate, a
         definite zero, or a definite None. The taxonomy must match the one used
         platform-wide (the create form, now served from the backend, and
-        phase2_journal_service's cat_map GL mapping)."""
+        domain/fixed_assets/asset_ledger's category-to-ledger table)."""
         required = [
             "Plant & Machinery", "Furniture & Fixtures", "Computer & IT Equipment",
             "Office Equipment", "Vehicles", "Building", "Land", "Intangibles", "Other",

@@ -52,6 +52,7 @@ def purchase_bill_journal_ref(bill_id: str) -> str:
 
 
 from domain.accounting.payment_account import resolve_payment_account
+from domain.fixed_assets.asset_ledger import ledger_pattern
 
 
 class Phase2JournalService:
@@ -1482,17 +1483,7 @@ class Phase2JournalService:
             db = get_supabase()
 
             category = asset.get("asset_category", "Plant & Machinery")
-            cat_map = {
-                "Plant & Machinery":        "%Plant & Machinery%",
-                "Furniture & Fixtures":     "%Furniture & Fixtures%",
-                "Computer & IT Equipment":  "%Computers & Software%",
-                "Office Equipment":         "%Office Equipment%",
-                "Vehicles":                 "%Vehicles%",
-                "Building":                 "%Land & Building%",
-                "Land":                     "%Land & Building%",
-                "Intangibles":              "%Intangible Assets%",
-            }
-            asset_acct = self._find_account(db, firm_id, client_id, cat_map.get(category, "%Plant & Machinery%"))
+            asset_acct = self._find_account(db, firm_id, client_id, ledger_pattern(category))
 
             cost = int(asset["purchase_cost_paise"])
             tax = (int(asset.get("igst_paise") or 0)
@@ -1790,18 +1781,8 @@ class Phase2JournalService:
             db = get_supabase()
 
             category = asset.get("asset_category") or "Plant & Machinery"
-            cat_map = {
-                "Plant & Machinery":        "%Plant & Machinery%",
-                "Furniture & Fixtures":     "%Furniture & Fixtures%",
-                "Computer & IT Equipment":  "%Computers & Software%",
-                "Office Equipment":         "%Office Equipment%",
-                "Vehicles":                 "%Vehicles%",
-                "Building":                 "%Land & Building%",
-                "Land":                     "%Land & Building%",
-                "Intangibles":              "%Intangible Assets%",
-            }
             asset_acct = self._find_account(
-                db, firm_id, client_id, cat_map.get(category, "%Plant & Machinery%"))
+                db, firm_id, client_id, ledger_pattern(category))
             cwip_acct = self._find_account(
                 db, firm_id, client_id, "%Capital Work-in-Progress%",
                 system_key="cwip")
@@ -1862,17 +1843,7 @@ class Phase2JournalService:
             db = get_supabase()
 
             category = asset.get("asset_category", "Plant & Machinery")
-            cat_map = {
-                "Plant & Machinery":        "%Plant & Machinery%",
-                "Furniture & Fixtures":     "%Furniture & Fixtures%",
-                "Computer & IT Equipment":  "%Computers & Software%",
-                "Office Equipment":         "%Office Equipment%",
-                "Vehicles":                 "%Vehicles%",
-                "Building":                 "%Land & Building%",
-                "Land":                     "%Land & Building%",
-                "Intangibles":              "%Intangible Assets%",
-            }
-            asset_acct    = self._find_account(db, firm_id, client_id, cat_map.get(category, "%Plant & Machinery%"))
+            asset_acct    = self._find_account(db, firm_id, client_id, ledger_pattern(category))
             accum_dep_id  = self._find_account(db, firm_id, client_id, "%Accumulated Depreciation%")
             # Disposal proceeds land in the account that RECEIVED them, not a
             # firm-wide guess — the sale of an asset for cash is as ordinary as

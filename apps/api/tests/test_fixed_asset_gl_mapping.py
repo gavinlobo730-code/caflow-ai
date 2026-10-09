@@ -178,8 +178,9 @@ def test_every_frontend_category_maps_to_its_own_gl_account(monkeypatch):
 
 
 def test_disposal_journal_uses_the_same_corrected_mapping(monkeypatch):
-    """journal_for_asset_disposal carries its own (duplicate) cat_map — verify
-    it was fixed too, not just the acquisition side."""
+    """journal_for_asset_disposal resolves the ledger through the same
+    domain/fixed_assets/asset_ledger table as the acquisition side, so the two
+    cannot disagree about a category."""
     monkeypatch.setattr(pjs, "_USE_MOCK", False)
     svc = Phase2JournalService()
 
