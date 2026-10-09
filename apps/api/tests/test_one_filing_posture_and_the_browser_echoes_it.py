@@ -46,7 +46,7 @@ from pathlib import Path
 
 import pytest
 
-from domain.filing_posture import POSTURE, posture_payload
+from domain.filing_posture import FORBIDDEN_REGISTRATION_CLAIMS, POSTURE, posture_payload
 
 REPO = Path(__file__).resolve().parents[3]
 WEB = REPO / "apps" / "web"
@@ -205,10 +205,9 @@ def test_the_roadmap_sentence_claims_no_registration_this_product_lacks():
     phrasings are asserted rather than left to a reviewer's eye.
     """
     text = " ".join(getattr(POSTURE, f) for f in FIELDS).lower()
-    for claim in (
-        "in progress", "under way", "underway", "applied for", "pending approval",
-        "awaiting approval", "registered gsp", "we are registered", "coming soon",
-    ):
+    # The list is `domain.filing_posture.FORBIDDEN_REGISTRATION_CLAIMS`, held once: the
+    # coming-soon register's guard asks the same list of every row about filing.
+    for claim in FORBIDDEN_REGISTRATION_CLAIMS:
         assert claim not in text, (
             f"the filing posture claims {claim!r}. No GSP, ERI or NIC "
             "registration has been applied for (D17) — say what is PLANNED and "

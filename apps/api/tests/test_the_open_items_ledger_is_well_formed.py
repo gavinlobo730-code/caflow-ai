@@ -73,7 +73,7 @@ def _items():
 
 
 def test_the_ledger_has_its_files():
-    for name in [*SECTIONS, "README.md", "decisions-and-strategy.md", "checked-closed.md", "deletion-plan.md"]:
+    for name in [*SECTIONS, "README.md", "decisions-and-strategy.md", "checked-closed.md", "deletion-plan.md", "coming-soon.md"]:
         assert (LEDGER / name).is_file(), f"docs/open-items/{name} is missing"
 
 

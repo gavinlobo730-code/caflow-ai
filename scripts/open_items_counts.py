@@ -33,6 +33,7 @@ OTHERS = [
     ("decisions-and-strategy.md", "the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap"),
     ("checked-closed.md", "what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it"),
     ("deletion-plan.md", "which audit and plan documents can be deleted, which must stay and why, and what must be done first"),
+    ("coming-soon.md", "the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id"),
 ]
 
 ITEM = re.compile(r"^- \*\*(?P<id>(?:PRE|POST)-[ABC]-\d{3})\*\* · `(?P<theme>[a-z\-]+)` · (?P<prio>high|normal|low)\b")
