@@ -63,6 +63,16 @@ DOMAIN = API / "domain"
 # module path (relative to apps/api) -> why nothing imports it.
 # Entries may be REMOVED as each is wired up. Adding one needs a reason.
 NO_READER_YET: dict[str, str] = {
+    "domain/reporting/report_schedule.py":
+        "A SEQUENCE, NOT A DEFECT, and it ends by itself. The pure rule of scheduled reports (PRE-B-002 part 1): "
+        "which report a schedule runs, which period each due date covers, when the next one falls due and who may "
+        "receive it. Its readers are the later chunks of the same feature (the run table's service, the router the "
+        "Scheduled Reports screen calls, the send door), which are written against the contract this module settles "
+        "and cannot exist before it; an importer added now only to satisfy this list would be a reader that applies "
+        "nothing. The next test in this file fails the day a production module imports it, which is when this entry "
+        "is deleted. Until then `tests/test_a_schedule_says_which_period_it_covers_and_when_it_is_due.py` and "
+        "`tests/test_a_scheduled_report_is_one_the_server_can_make_and_goes_only_to_people_it_may.py` hold it, "
+        "including that it reads no clock and does no I/O.",
     "domain/reporting/pdf_text.py":
         "NOT A DEFECT, and the reason is worth keeping so nobody 'fixes' it. "
         "Its docstring says the rupee-glyph substitution 'is one function "
