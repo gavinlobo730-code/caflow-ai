@@ -12,7 +12,7 @@
 
 ## The two axes
 
-**When — before or after the demo.** The demo is showing practising CAs the seeded demo firm on the live deployment. `docs/plan/THE-PLAN.md` says it has no fixed date (D16; **the owner set 1 November 2026 on 8 Oct, a Sunday, and that supersedes D16**), that the owner decided on 15 Sep to show CAs only once, after a verification session with five gates (Track 4), and that the commercial registrations (GSP, ERI, NIC, Third Party Software Utility; Track 5) start after it. **The pre/post split is a judgement, not a fact:** an item is *before* only if leaving it open could break, embarrass or mislead in front of a practising CA (sign-up and invites, mail, AI answering, a visible wrong number or false claim, a screen that fails, the cold start on the first load, portal behaviour) or it is a cheap check with a large risk reduction. Everything else is *after*. The first pre-demo item now asks only who attends; with 24 days from 8 Oct the whole list fits and nothing has been cut.
+**When — before or after the demo.** The demo is showing practising CAs the seeded demo firm on the live deployment. `docs/plan/THE-PLAN.md` says it has no fixed date (D16; **the owner set 1 November 2026 on 8 Oct and then moved the demo later on 9 Oct, so there is no fixed date and D16 stands again**), that the owner decided on 15 Sep to show CAs only once, after a verification session with five gates (Track 4), and that the commercial registrations (GSP, ERI, NIC, Third Party Software Utility; Track 5) start after it. **The pre/post split is a judgement, not a fact:** an item is *before* only if leaving it open could break, embarrass or mislead in front of a practising CA (sign-up and invites, mail, AI answering, a visible wrong number or false claim, a screen that fails, the cold start on the first load, portal behaviour) or it is a cheap check with a large risk reduction. Everything else is *after*. The first pre-demo item now asks for the new date and who attends; the agreed order is to build every item first, so nothing has been cut or frozen for a date.
 
 **Who — three buckets.**
 - **A — Mine** (`…-A-…`): Claude can do it alone: code, tests, docs, CI, a migration under the standing merge convention. No decision, credential, outside document or spend is needed.
@@ -47,7 +47,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 
 Pre-demo items by suggested order. The first is the date; Render and Supabase dashboard checks and the fixes Claude can make come next, then the seeded-firm work, then the rehearsals, then the day-of wake-up.
 
-1. **PRE-C-001** (you) — Tell Claude who attends the 1 November demo (the date is set)
+1. **PRE-C-001** (you) — Tell Claude the demo date once you set one, and who attends (the demo was moved later on 9 Oct; build everything first)
 2. **PRE-C-002** (you) — Check the Render dashboard variables
 3. **PRE-B-012** (decision) — Check the Supabase dashboard: plan, backups, password and auth limits
 4. **PRE-B-016** (decision) — Buy the domain and make mail leave: a verified Resend sender and Supabase sign-up mail
