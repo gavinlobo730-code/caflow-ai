@@ -206,14 +206,21 @@ def test_a_reversal_of_a_phantom_does_not_hide_a_second_phantom():
 def test_the_sources_judged_are_exactly_the_tables_searched():
     """The rule, not a list: the check may look for a document only in the
     tables it judges by, and may judge only by sources whose table it looks in.
-    So the document tables are named once (``_MONEY_DOCUMENT_TABLES``) and the
-    check body names no other table than the journal it asks about reversals."""
+    The pairing is written once (``_MONEY_DOCUMENT_TABLES``); the check names
+    its tables as literals, which the firm-scope reader can see and a table
+    chosen by a variable it cannot, so this test is what holds the two
+    statements together: every table the check queries is a literal, and those
+    literals are the pairing's tables plus the journal it asks about reversals."""
     assert rs._JUDGED_SOURCES == {src for _t, src in rs._MONEY_DOCUMENT_TABLES}
     assert rs._JUDGED_SOURCES <= journal_source.ALL_SOURCES
     tree = ast.parse(inspect.getsource(check_orphan_money_journals).lstrip())
-    named = {
-        node.args[0].value for node in ast.walk(tree)
+    table_calls = [
+        node for node in ast.walk(tree)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "table" and node.args and isinstance(node.args[0], ast.Constant)
-    }
-    assert named == {"journal_entries"}, named
+        and node.func.attr == "table"
+    ]
+    assert table_calls, "the check queries no table at all"
+    assert all(c.args and isinstance(c.args[0], ast.Constant) for c in table_calls), (
+        "a table chosen by a variable is a chain the firm-scope reader cannot read")
+    named = {c.args[0].value for c in table_calls}
+    assert named == {"journal_entries"} | {t for t, _src in rs._MONEY_DOCUMENT_TABLES}, named

@@ -464,6 +464,10 @@ def check_bank_reconciliation_discrepancies(db, firm_id: str, client_id: str, en
 # table the check searches and the source that makes an entry worth searching
 # for. An entry with NO source is judged too -- it predates the stamping
 # (migration 104) and cannot be told from an orphan, which is the safe side.
+# The check below names each of these tables as a LITERAL in its own query (a
+# table chosen by a variable is a chain the firm-scope reader cannot read, and
+# its budget is exact), so what keeps the two statements of the pairing from
+# drifting apart is a test: the tables the check queries must equal this tuple.
 _MONEY_DOCUMENT_TABLES = (
     ("purchase_payments", journal_source.PURCHASE_PAYMENT),
     ("receipts", journal_source.RECEIPT),
@@ -522,10 +526,11 @@ def check_orphan_money_journals(db, firm_id: str, client_id: str, entries) -> li
         eid = getattr(entry, "id", None)
         if not eid:
             continue
-        owned = any(
-            db.table(table).select("id")
-            .eq("firm_id", firm_id).eq("journal_entry_id", eid).limit(1).execute().data
-            for table, _source in _MONEY_DOCUMENT_TABLES
+        owned = (
+            (db.table("purchase_payments").select("id")
+             .eq("firm_id", firm_id).eq("journal_entry_id", eid).limit(1).execute().data)
+            or (db.table("receipts").select("id")
+                .eq("firm_id", firm_id).eq("journal_entry_id", eid).limit(1).execute().data)
         )
         if owned:
             continue
