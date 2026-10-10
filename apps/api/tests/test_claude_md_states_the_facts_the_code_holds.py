@@ -49,6 +49,7 @@ from tests.test_render_manifest_matches_code import _read_by_code
 API = Path(__file__).resolve().parents[1]
 REPO = API.parents[1]
 CLAUDE_MD = REPO / "CLAUDE.md"
+DESIGN_RECORD = REPO / "docs" / "design-record"
 WEB_API_CLIENT = REPO / "apps" / "web" / "lib" / "api" / "index.ts"
 
 pytestmark = pytest.mark.skipif(not CLAUDE_MD.is_file(), reason="CLAUDE.md is not in this checkout")
@@ -56,8 +57,11 @@ pytestmark = pytest.mark.skipif(not CLAUDE_MD.is_file(), reason="CLAUDE.md is no
 
 def _page() -> str:
     """The design record with every run of whitespace collapsed to one space, so a sentence the editor wrapped
-    across lines reads as it does on screen."""
-    return re.sub(r"\s+", " ", CLAUDE_MD.read_text(encoding="utf-8"))
+    across lines reads as it does on screen. The record is CLAUDE.md plus the files under docs/design-record/, where
+    the long per-area write-ups were moved verbatim on 10 October 2026."""
+    parts = [CLAUDE_MD.read_text(encoding="utf-8")]
+    parts += [p.read_text(encoding="utf-8") for p in sorted(DESIGN_RECORD.glob("*.md"))]
+    return re.sub(r"\s+", " ", "\n".join(parts))
 
 
 def _found(pattern: str, what: str) -> re.Match:
