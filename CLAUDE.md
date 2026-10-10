@@ -11,6 +11,65 @@ before or after the demo, by who must act). Read it for any "what is left"
 question; the audit documents that used to answer it were deleted on 8 October
 2026 (see the paragraph near the end of this file).
 
+## How to work on this repo: the owner's standing instructions
+
+Set by the owner on 9 and 10 October 2026. They apply to every session and are not to be
+asked for again. Where one of them differs from a default, this section wins.
+
+- **Who decides what.** Claude decides every open question, using three tests in order: it is
+  lawful and follows the rules in this file, it is safe for the data of a CA's clients, and it
+  is best for the product. The owner decides **money** (a paid server tier or more memory, paid
+  mail, the Supabase plan, backups or an off-site copy, a staging copy, a second reviewer, a
+  penetration test, counsel fees, the domain, paid AI terms, the payment gateway, pricing,
+  plans and subscriptions) and does whatever only the owner can do (dashboards, KYC, quotes,
+  who attends the demo, pilot firms). Claude does not decide those: it collects them in one
+  short list, each with a recommendation, and brings it to the owner.
+- **Statutory and legal points are never assumed.** If a decision or a build depends on a rate,
+  threshold, due date, section, form, notification, wage ceiling, interest period or filing
+  rule, or on a legal reading (privacy law, consent, erasure, breach reporting, retention, a
+  contract), and Claude has not confirmed it from a primary source it actually read, it does
+  not pick a cautious default and does not build on it. It writes down the exact question, the
+  document, section or figure it needs, who can supply it (the owner, a practising CA or
+  counsel) and what stays unbuilt meanwhile, puts that on the owner's list, and carries on
+  with work that does not depend on it. Nothing is marked verified unless the primary text was
+  read; the `[S]` and `[P]` grades in this file record what was read and are not a licence to
+  assume. A mechanism that holds no statutory figure of its own (an empty table the owner
+  fills) is fine; if unsure whether even that embeds an assumption, ask first.
+- **Before or after the demo.** The demo has no date, so everything is built now, in order of
+  impact: security gaps, privacy-law deadlines, anything false on a screen and statutory
+  correctness first, then the other recommended builds by impact, then the small tail. An item
+  the ledger says should wait until a client asks for it stays unbuilt. Building stops only
+  when the owner says the demo is final.
+- **Deletions.** The owner allows deleting repository files, dead endpoints and dead tables
+  wherever Claude judges it safe and it does not lower quality: confirm nothing reads it, keep
+  it recoverable from git, tests green. Pushing tags and closing pull requests still need the
+  owner's go-ahead.
+- **Pull requests.** One theme per pull request: about ten hours-sized items, four days-sized
+  items, one weeks- or months-sized item, or one rule of a mechanical sweep. At most three are
+  open at once and they are merged one at a time, each only when both required checks are green
+  and it is current with `main` (squash). Branch from `origin/main` and, after a merge, reset
+  the work branch to `main`. Close an item's ledger line in the same commit as its work. Before
+  each batch, confirm every item in it is still true against the code and close any that is
+  already done or moot. A change that touches no backend or frontend file skips the heavy
+  checks; a migration merged to `main` applies to production (see Migrations).
+- **Sub-agents and workflows.** The default is to do the work directly. Sub-agents are for
+  narrow, independent, read-only research, or an independent review of one specific diff: at
+  most three at a time, each briefed with the goal, the files and what is already ruled out.
+  There is no Workflow run and no fan-out over the whole ledger unless the owner asks for one by
+  name, and never a draft, review and finalise pipeline per chunk of the ledger: a 160-agent run
+  launched on 10 October 2026 was stopped within minutes because every agent re-reads code and
+  this container ran two at a time, and it would have cost far more than the owner expected. If
+  a task would need more than five agents, tell the owner the rough cost first and wait. Say
+  plainly when credits look low.
+- **Telling the owner.** Plain English, with no file paths or function names: the owner has
+  chartered-accountant domain knowledge and does not read code. All times in IST. Report
+  faithfully what was verified, what was not and what is waiting on whom. The owner's list
+  (money, tasks only the owner can do, statutory and legal needs) is kept in one place and
+  refreshed, not scattered across replies.
+- **Pace and start.** Steady: one batch at a time, with the next prepared while the checks of
+  the last run. Building starts on 15 October 2026 at 04:30 IST, after the owner's weekly
+  credits refresh; the start is scheduled.
+
 ## Repo layout
 
 Three apps, not two:
