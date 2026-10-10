@@ -42,9 +42,10 @@ SKIP_PARTS = {"node_modules", "__pycache__", ".next", "out", ".venv", "venv", "s
 
 
 def _files() -> list[Path]:
-    """Every file where a comment can quote a finding id: the design record, the whole API, and the web's source
+    """Every file where a comment can quote a finding id: the design record (CLAUDE.md and docs/design-record/), the whole API, and the web's source
     directories. Listed by what they are rather than by name, so a new module is covered the day it is written."""
     found: list[Path] = [REPO / "CLAUDE.md"]
+    found += sorted((REPO / "docs" / "design-record").glob("*.md"))
     found += list(API.rglob("*.py"))
     for sub in ("app", "components", "lib", "scripts"):
         root = WEB / sub

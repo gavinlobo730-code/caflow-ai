@@ -1,6 +1,6 @@
 # Open items — the single ledger of everything still to do
 
-**Snapshot: 2 October 2026 (IST), `main` at `03acde2a`** (checked again on 7 and 8 October: `main` had not moved apart from this ledger). This directory replaces the audit, finding, "what is left" and plan snapshots that used to answer "what is still open?". If a document and this ledger disagree about whether something is open, this ledger wins; if this ledger and CLAUDE.md disagree about how something works, CLAUDE.md wins.
+**Snapshot: 2 October 2026 (IST), `main` at `03acde2a`** (checked again on 7 and 8 October: `main` had not moved apart from this ledger). This directory replaces the audit, finding, "what is left" and plan snapshots that used to answer "what is still open?". If a document and this ledger disagree about whether something is open, this ledger wins; if this ledger and CLAUDE.md (or the design record under `docs/design-record/`, which holds its long per-area write-ups) disagree about how something works, CLAUDE.md and the design record win.
 
 ## How to use it (for a new session, or after a compaction)
 
@@ -36,14 +36,14 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 14 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 198 | after the demo: Claude can do alone |
-| [post-demo-B-ours.md](post-demo-B-ours.md) | 337 | after the demo: owner decides first, then Claude builds |
+| [post-demo-B-ours.md](post-demo-B-ours.md) | 336 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 203 | after the demo: only the owner or outsiders can do |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**761 open items** (23 before the demo, 738 after); 15 after-demo items are `high` priority; 35 are UNSURE.
+**760 open items** (23 before the demo, 737 after); 15 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 
