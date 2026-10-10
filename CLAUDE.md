@@ -1,5 +1,4 @@
-PracticeSync — AI-powered practice management platform for Indian Chartered Accountants.
-Runs alongside Tally and puts practice management, accounting and compliance preparation on one ledger: one unified AI-first platform.
+PracticeSync — an AI-first platform that aims to become the one platform Indian chartered accountants and their clients run their whole practice on. It is built to be so complete, and so much better than every tool on the market, that practices replace those tools with it, Tally included. Practice management, accounting, GST, TDS, income tax, payroll, banking and compliance, all on one ledger.
 
 Naming: the product is **PracticeSync**. The repo, the Supabase project, log prefixes
 (`caflow.*`), some seed data and a few mock URLs still say `caflow` / `CAflow AI`. That
@@ -13,23 +12,43 @@ question; the audit documents that used to answer it were deleted on 8 October
 
 ## Goal and context
 
-- **What PracticeSync is.** An AI-first practice management platform for Indian chartered accountants. It runs
-  alongside Tally and puts practice management, accounting and compliance preparation on one ledger. It is well
-  past MVP (see Scope).
-- **Who it is for.** One kind of firm first: small CA firms with about 15 to 150 SME clients that keep their books
-  in Tally today, starting in one city. The positioning is "works beside Tally" for the practice layer, with the
-  books moving client by client at a year boundary. It cannot realistically become the only product Indian CAs use,
-  and trying to would put its one rare asset at risk (the strategy of 30 September 2026 in
-  `docs/open-items/decisions-and-strategy.md`).
-- **The rare asset is being believed.** A reputation for telling the truth is what the product has that a rival
-  does not, so every public claim and every screen must be true, a screen says what it read, what it did not and
-  what it will not do, and an unknown is never shown as a value. A wrong number, a false claim or a silent cost is
-  the failure that matters most; breadth and speed come second.
-- **Filing is prepare-only.** The product computes and prepares; the CA files on the government portal and records
-  it here. Nothing is ever auto-submitted. Real filing needs registrations (GSP, ERI, NIC) that are the owner's and
-  are reconsidered after the demo.
-- **The next milestone.** Showing practising CAs the seeded demo firm on the live deployment, then three to five
-  pilot firms in one city and, later, named reference firms. The demo has no date, so everything is built now.
+- **What PracticeSync is.** An AI-first platform for Indian chartered accountants and the businesses they serve. The goal
+  is to be so complete and so much better than every platform in the Indian market that a practice replaces those tools
+  with it. That means accounting software such as Tally, practice-management tools, GST, TDS and income-tax tools,
+  payroll, and the spreadsheets between them. The aim is to become the standard platform of the Indian market by being
+  better, not by forcing anyone. It is well past MVP (see Scope).
+- **Where it stands today.** The goal is the direction, not yet a fact about the product. Today it runs beside Tally,
+  the Tally importer writes customer and vendor masters only, and the production footprint is about 7 clients, with no
+  paying firm and no reference firm yet (the strategy note of 30 September 2026 in
+  `docs/open-items/decisions-and-strategy.md`). It is **not released to the public and will not be until it is fully
+  complete**. What the product says about itself follows what it does today, and moves up only as it earns each claim.
+- **How it gets to market, in order.**
+  1. Build and test now, until the base works smoothly.
+  2. The demo to practising CAs, once the owner says it is ready.
+  3. **Pilot firms.** After the demo the first firms get the software and run it **in parallel** with the tools they use
+     today. They tell us what is not working and what to change. They are small CA firms with about 15 to 150 SME
+     clients that keep their books in Tally today, starting in one city. They are told plainly that the filing
+     walk-throughs are simulations and that they file on the portal themselves.
+  4. The portal integrations are added last (see Filing).
+  5. **Public release only when the product is fully complete**, which means after the full integrations. The aim then
+     widens to larger firms and more cities.
+
+  A CA moves a client's books only at a year boundary, so the move happens firm by firm and client by client.
+- **The rare asset is being believed, and it is how the market is won.** A reputation for telling the truth is what the
+  product has that a rival does not. Every public claim and every screen must be true. A screen says what it read, what
+  it did not and what it will not do, and an unknown is never shown as a value. A wrong number, a false claim or a
+  silent cost is the failure that matters most. Breadth and speed come second to being believed, because being believed
+  is what lets the breadth be sold.
+- **Filing is part of the goal, and it is the last stage of the build.** The best platform has to file as well as
+  prepare, and the product is not complete until real filing works. Until then the product **prepares** and the CA files
+  on the government portal and records it here. The filing walk-throughs are simulations: each shows how real filing will
+  work, says on the screen that it is a simulation, and transmits and files nothing. The only genuine filing record is
+  the one the CA makes after filing on the portal. When real filing arrives, nothing is ever auto-submitted: each return
+  needs the CA's explicit confirmation. Real filing needs registrations (GSP, ERI, NIC) that are the owner's.
+- **The next milestone.** Showing practising CAs the seeded demo firm on the live deployment, once the owner says it is
+  ready. The pilot firms follow. The demo has no date, so everything is built now.
+- **What the goal does and does not change.** It decides what gets built and in what order. It relaxes no rule in this
+  file.
 - **The owner.** A founder with chartered-accountant domain knowledge who does not read code, wants plain-English
   reports and decides the money; the standing instructions below say who decides what.
 - **Where to look.** `docs/open-items/README.md` for what is left; `docs/architecture/` for the design set;
@@ -1725,14 +1744,20 @@ _Longer design records for this area were moved to `docs/design-record/banking-a
 
 ## Scope
 
-Well past MVP. Shipped and mounted: accounting/GL, GST (GSTR-1/3B/9, 2A/2B recon,
+**What exists today.** Well past MVP. Shipped and mounted: accounting/GL, GST (GSTR-1/3B/9, 2A/2B recon,
 amendments, ITC reversal), TDS, income tax/ITR, payroll (see below), banking and reconciliation,
 fixed assets, inventory, year-end and Schedule III, client and employee portals,
 relationship/health/lifecycle intelligence, AI copilot and memory, workflow automation,
 Tally migration, and prepare-only e-invoice/e-way/XBRL rails.
 
-Don't infer scope from this list — ask. It is a description of what exists, not a
-licence to extend any of it.
+**What the goal still needs.** The target scope is everything a practice and its clients use in India, enough to
+replace every platform on the market (see Goal and context). `docs/open-items/README.md` is the live list of what is
+still missing; the list above is only what exists. The last stage is real filing through the portals and live bank
+feeds (next section), which wait on registrations only the owner can obtain.
+
+The list above describes what exists. It is not a statement of what may be built: what to build, and in what order,
+is decided under the standing instructions at the top of this file. Two things are held back by name, in the next
+section.
 
 **Payroll specifically** is walked end to end in
 the 1 September 2026 payroll audit (deleted on 8 October 2026; `git show
@@ -1750,9 +1775,11 @@ earned, and the two legitimately differ.
 
 ## Not built yet — known, deliberate, and not to be quietly started
 
-Two capabilities the product is expected to grow into. Both are recorded here so
-nobody re-derives them from scratch, and so nobody half-builds one as a side
-effect of another task. **Neither is in scope until asked for by name.**
+Two capabilities the product is expected to grow into. Under the goal they are the LAST STAGE of the build: the
+product is not complete until real filing works. Both are recorded here so nobody re-derives them from scratch, and so
+nobody half-builds one as a side effect of another task. **Neither is started until the owner starts it by name**: both
+need registrations and commercial steps only the owner can take, and nothing in code can stand in for them. Until then
+the filing walk-throughs stay simulations.
 
 ### Filing to the government portals through the software
 
