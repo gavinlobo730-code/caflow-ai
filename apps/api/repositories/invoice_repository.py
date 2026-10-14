@@ -67,6 +67,27 @@ class InvoiceRepository(BaseRepository[dict]):
         result = query.order("invoice_date", desc=True).execute()
         return result.data or []
 
+    #: What a relationship-health score needs of a fee invoice: whose it is, how far along it is, when, and what it is for.
+    HEALTH_COLUMNS = ("client_id", "status", "invoice_date", "total_paise")
+
+    def find_for_health(self, firm_id: str) -> list[dict]:
+        """The firm's live fee invoices, four columns, read with the privileged client and the firm's own scope.
+
+        A client's relationship-health score is a property of THE CLIENT, not of whoever is looking, so it is computed
+        from every invoice of that client whatever the caller's own row security would show of the fee tables. Read as
+        the caller, a rule that keeps fee rows from every role below a Partner would have left a Manager's score with
+        no invoices at all: the payment third pinned at 40, and no payment recommendation, with nothing on screen
+        saying so. The caller is authorised by `rbac("ai", "read")` and confined to their own clients by
+        `allowed_client_ids`, which the service applies; what leaves is the score and, for a caller who may read fees,
+        the figures (`compute_relationship_health`'s `include_fee_figures`).
+        """
+        if _USE_MOCK:
+            return [{k: i.get(k) for k in self.HEALTH_COLUMNS}
+                    for i in self.find_all(firm_id=firm_id)]
+        rows = (db_provider.service_db().table("fee_invoices").select(", ".join(self.HEALTH_COLUMNS))
+                .eq("firm_id", firm_id).eq("is_deleted", False).execute().data)
+        return rows or []
+
     def list_for_engagement(self, engagement_id: str) -> list[dict]:
         return self.find_all(engagement_id=engagement_id)
 

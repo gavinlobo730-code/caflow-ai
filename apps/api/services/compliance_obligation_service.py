@@ -723,7 +723,9 @@ def itr_profile_for(client_id: str,
 
     has_audit = False
     try:
-        engagements = engagement_repo.find_all(firm_id=firm_id, client_id=client_id)
+        # The engagement's SCOPE, not its fees: asked as the caller, a rule on who reads fees would answer this
+        # question for a Partner and "no audit engagement" for everybody else (find_scope's docstring).
+        engagements = engagement_repo.find_scope(firm_id, client_id)
         has_audit = any(
             e.get("status") in _ACTIVE_ENGAGEMENT_STATUSES
             and "audit" in (e.get("service_type") or "").lower()
@@ -735,6 +737,18 @@ def itr_profile_for(client_id: str,
             "due date will be reported as assumed", client_id)
 
     return entity_type, has_audit
+
+
+def has_active_engagement(client_id: str, firm_id: str) -> bool:
+    """Whether this client has an engagement in an ACTIVE status (the three generate_due acts on).
+
+    It answers from the engagement's scope and not its fees, so it gives the same answer to every role that may
+    read the client's compliance. There is deliberately NO try/except: an engagement list that cannot be read is an
+    error the route reports, never a False, because "no engagement is recorded" is a statement the Compliance tab
+    prints to a CA and it must not be what an outage looks like.
+    """
+    return any(e.get("status") in _ACTIVE_ENGAGEMENT_STATUSES
+               for e in engagement_repo.find_scope(firm_id, client_id))
 
 
 def _itr_obligation(financial_year: str, *,
@@ -1243,7 +1257,10 @@ def generate_due(firm_id: str, client_id: Optional[str] = None, financial_year: 
     convention. None means unrestricted (firm-wide role, or a single
     client_id already checked by the caller)."""
     fy = financial_year or _current_fy()
-    engagements = engagement_repo.find_all(firm_id=firm_id, client_id=client_id)
+    # Scope only (find_scope): which services each client buys and whether the engagement is live. Read as the
+    # caller, a Partner-only rule on the fee tables would hand every other role an empty list here, and the loop
+    # below would quietly generate the no-engagement GST baseline for every client and nothing else.
+    engagements = engagement_repo.find_scope(firm_id, client_id)
     if allowed_client_ids is not None:
         engagements = [e for e in engagements if str(e.get("client_id")) in allowed_client_ids]
     active = [e for e in engagements if e.get("status") in _ACTIVE_ENGAGEMENT_STATUSES]

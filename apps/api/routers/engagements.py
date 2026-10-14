@@ -277,8 +277,10 @@ def generate_engagement_obligations(
     """Generate the statutory compliance obligations this engagement implies for the
     given FY (idempotent; draft obligations only — no filing)."""
     firm_id = current_user.get("firm_id")
+    # The engagement's scope (service and status), not its fees: this route is compliance:write, and the fee
+    # columns are a Partner's (engagement_repo.find_scope says why this read is not the caller's own).
     engagement = _assert_engagement_scope(
-        current_user, engagement_repo.find_by_id(engagement_id))
+        current_user, engagement_repo.find_scope_by_id(engagement_id, firm_id))
     from services import compliance_obligation_service as obligations
     fy = financial_year or obligations._current_fy()
     result = obligations.generate_for_engagement(firm_id, engagement, fy, actor=current_user)

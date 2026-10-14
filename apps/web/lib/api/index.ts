@@ -509,11 +509,15 @@ export interface RelationshipHealthPayload {
     health_level: string;
     open_tasks: number;
     overdue_tasks: number;
-    overdue_invoices: number;
-    outstanding_paise: number;
+    /** null (not 0) when `fees_withheld`: the practice's fees are a Partner's to read, and a count printed as 0
+     *  would say a client who owes the practice money owes none. */
+    overdue_invoices: number | null;
+    outstanding_paise: number | null;
     recent_activity?: number;
   }[];
   at_risk_count: number;
+  /** true when the caller's role may not read the practice's fees; the two figures above are then null. */
+  fees_withheld?: boolean;
   computed_at?: string | null;
 }
 
@@ -4224,6 +4228,12 @@ export const api = {
       request<ApiResp<MarkFiledResult>>(
         `/api/compliance/calendar/${encodeURIComponent(recordId)}/filed`,
         { method: "PATCH", body: JSON.stringify(body) }),
+    /** Whether the client has a live service engagement, asked of the server. The Compliance tab used to read the
+     *  fee_engagements table itself, which carries the practice's fees and is a Partner's to read; the answer is the
+     *  same for everyone who may read the client's compliance, so the server gives it from the engagement's scope. */
+    engagementStatus: (clientId: string) =>
+      request<ApiResp<{ client_id: string; has_active_engagement: boolean }>>(
+        `/api/compliance/engagement-status?client_id=${encodeURIComponent(clientId)}`),
     tasks: (params?: { client_id?: string; status?: string }) => {
       const q = new URLSearchParams(params as Record<string, string>).toString();
       return request(`/api/compliance/tasks${q ? `?${q}` : ""}`);

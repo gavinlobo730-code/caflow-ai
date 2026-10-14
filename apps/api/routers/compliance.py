@@ -298,6 +298,26 @@ def itr_due_date_for_one_client(
                                "entity_type": entity_type})
 
 
+@router.get("/engagement-status")
+def engagement_status_for_one_client(
+    client_id: str,
+    current_user: dict = Depends(rbac("compliance_record", "read")),
+):
+    """Whether this client has a live service engagement, for the Compliance tab to explain an empty sub-tab.
+
+    The tab used to read `fee_engagements` from the browser, which returns the caller's own view of a table whose
+    rows carry the practice's fees. A rule that keeps those rows from every role below a Partner would have made
+    the tab print "No active service engagement is recorded... Add an engagement" to a Manager about a client who
+    has one, and a Manager cannot add one. The answer is the same for every role that may read the client, so it is
+    served here from the engagement's scope and never its fees (`engagement_repo.find_scope`). It states the
+    fact and the status vocabulary; the screen holds neither.
+    """
+    assert_client_access(current_user, client_id)
+    from services.compliance_obligation_service import has_active_engagement
+    return api_response(True, {"client_id": client_id,
+                               "has_active_engagement": has_active_engagement(client_id, current_user.get("firm_id"))})
+
+
 @router.get("/tax-audit-due-dates")
 def tax_audit_due_dates(
     financial_year: Annotated[FYLabel, Query(

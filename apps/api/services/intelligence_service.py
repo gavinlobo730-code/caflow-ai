@@ -134,16 +134,17 @@ def compute_compliance_risk(
 
 # ── Relationship intelligence ────────────────────────────────────────────────
 
-def compute_relationship_health(
-    firm_id: str, allowed_client_ids: Optional[set[str]] = None
-) -> dict:
+def _relationship_rows(firm_id: str, allowed_client_ids: Optional[set[str]] = None) -> list[dict]:
     """
-    Client relationship / engagement health scoring (0-100, higher = healthier).
+    Client relationship / engagement health scoring (0-100, higher = healthier), every figure included.
 
     Components:
       Task delivery (40): on-time vs overdue open tasks
       Payment behaviour (40): paid vs overdue invoices
       Engagement activity (20): recent task or invoice activity
+
+    Private on purpose: what a caller is allowed to SEE of the fee figures is decided by the two public callers
+    (`compute_relationship_health`, `compute_recommendations`), never here.
     """
     from repositories.client_repository import client_repo
     from repositories.task_repository import task_repo
@@ -154,7 +155,7 @@ def compute_relationship_health(
     if allowed_client_ids is not None:
         clients = [c for c in clients if str(c.get("id")) in allowed_client_ids]
     tasks = task_repo.find_all(firm_id=firm_id)
-    invoices = invoice_repo.find_all(firm_id=firm_id)
+    invoices = invoice_repo.find_for_health(firm_id)
 
     today = ist_today().isoformat()
     ninety_days_ago = (ist_today() - timedelta(days=90)).isoformat()
@@ -214,9 +215,28 @@ def compute_relationship_health(
         })
 
     results.sort(key=lambda r: r["health_score"])
+    return results
+
+
+def compute_relationship_health(
+    firm_id: str, allowed_client_ids: Optional[set[str]] = None, *, include_fee_figures: bool = True
+) -> dict:
+    """The relationship-health scores, with the practice's fee figures only for a caller who may read fees.
+
+    THE SCORE IS THE CLIENT'S, THE FIGURES ARE THE PRACTICE'S. The payment third is computed from every invoice of the
+    client (`invoice_repo.find_for_health`, which does not depend on the caller's row security), so a score is the same
+    for every role. What a role that may not read fees (`billing:read`, a Partner's) is shown in place of the
+    practice's fee economics is NOTHING AT ALL, not a zero: `overdue_invoices` and `outstanding_paise` come back None
+    and the payload says `fees_withheld`, because a count printed as 0 and an amount printed as Rs 0 tell a Manager that
+    a client who owes the practice money owes none.
+    """
+    rows = _relationship_rows(firm_id, allowed_client_ids)
+    if not include_fee_figures:
+        rows = [{**r, "overdue_invoices": None, "outstanding_paise": None} for r in rows]
     return {
-        "clients": results,
-        "at_risk_count": sum(1 for r in results if r["health_level"] != "healthy"),
+        "clients": rows,
+        "at_risk_count": sum(1 for r in rows if r["health_level"] != "healthy"),
+        "fees_withheld": not include_fee_figures,
         "computed_at": ist_now().isoformat(),
     }
 
@@ -315,9 +335,13 @@ def approve_journal_suggestion(firm_id: str, suggestion: dict, user_id: Optional
 # ── Proactive recommendations ────────────────────────────────────────────────
 
 def compute_recommendations(
-    firm_id: str, allowed_client_ids: Optional[set[str]] = None
+    firm_id: str, allowed_client_ids: Optional[set[str]] = None, *, include_fee_figures: bool = True
 ) -> dict:
-    """Rule-based compliance / client / operational recommendations."""
+    """Rule-based compliance / client / operational recommendations.
+
+    A caller who may not read fees still hears that a client's payment is late (it is the relationship, and the
+    recommendation is the point of the screen); the counts and rupee amounts are the practice's fee economics and are
+    left out of the sentence rather than printed as zero."""
     recommendations: list[dict] = []
 
     # Compliance recommendations from the risk engine above
@@ -341,8 +365,7 @@ def compute_recommendations(
 
     # Client recommendations from relationship health
     try:
-        health = compute_relationship_health(firm_id, allowed_client_ids)
-        for c in health["clients"]:
+        for c in _relationship_rows(firm_id, allowed_client_ids):
             if c["health_level"] == "critical":
                 recommendations.append({
                     "category": "client",
@@ -352,6 +375,10 @@ def compute_recommendations(
                         f"Health score {c['health_score']}/100 — "
                         f"{c['overdue_tasks']} overdue tasks, {c['overdue_invoices']} overdue invoices, "
                         f"₹{whole_rupees(c['outstanding_paise'])} outstanding."
+                        if include_fee_figures else
+                        f"Health score {c['health_score']}/100 — {c['overdue_tasks']} overdue tasks"
+                        + (", and a fee payment is overdue." if c["outstanding_paise"] > 0 and c["overdue_invoices"] > 0
+                           else ".")
                     ),
                     "client_id": c["client_id"],
                     "action": "open_client",
@@ -361,7 +388,10 @@ def compute_recommendations(
                     "category": "client",
                     "priority": "medium",
                     "title": f"Follow up on payment — {c['client_name']}",
-                    "detail": f"₹{whole_rupees(c['outstanding_paise'])} outstanding with {c['overdue_invoices']} overdue invoice(s).",
+                    "detail": (
+                        f"₹{whole_rupees(c['outstanding_paise'])} outstanding with {c['overdue_invoices']} overdue invoice(s)."
+                        if include_fee_figures else "A fee payment from this client is overdue."
+                    ),
                     "client_id": c["client_id"],
                     "action": "open_invoices",
                 })

@@ -287,7 +287,9 @@ export default function InsightsPage() {
         <Section
           icon={HeartPulse}
           title="Clients needing attention"
-          hint="Open and overdue work against what they owe. Outstanding is real money — invoices issued or overdue — not a figure derived from task counts."
+          hint={health.fees_withheld
+            ? "Open and overdue work, and a score that includes whether the client pays. The fee figures (overdue invoices and the amount outstanding) are the practice's fees and are not shown to your role."
+            : "Open and overdue work against what they owe. Outstanding is real money — invoices issued or overdue — not a figure derived from task counts."}
         >
           {healthRows.length === 0 ? (
             <p className="px-5 py-8 text-center text-xs text-ps-hint">
@@ -313,9 +315,9 @@ export default function InsightsPage() {
                       </Link>
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-ps-body">{c.overdue_tasks}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-ps-body">{c.overdue_invoices}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-ps-body">{c.overdue_invoices ?? "Not shown"}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-ps-body">
-                      {formatPaise(c.outstanding_paise)}
+                      {c.outstanding_paise == null ? "Not shown" : formatPaise(c.outstanding_paise)}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <span className={cn(
