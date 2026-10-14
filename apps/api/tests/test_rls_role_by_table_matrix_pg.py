@@ -85,9 +85,9 @@ THE FILE, AND WHAT IT IS ALLOWED TO SAY
     observed value is recorded and nothing claims it is right.
 
 BREAKING IT ON PURPOSE
-    Fourteen holes this repository already closed once are put back in a copy of the
-    world, eleven of them by running the migration's own rollback file (468, 469,
-    470, 478, 483, 484, 485, 487, 488, 489, 490): each must turn named cells red. `liveness-dropped-from-every-helper`
+    Fifteen holes this repository already closed once are put back in a copy of the
+    world, twelve of them by running the migration's own rollback file (468, 469,
+    470, 478, 483, 484, 485, 487, 488, 489, 490, 495): each must turn named cells red. `liveness-dropped-from-every-helper`
     is migration 468 reversed; dropping the check from `get_my_role` ALONE
     turns only two cells red (a suspended Partner writes `fx_rates`, whose
     policy asks the role and never the firm) because `get_my_firm_id` still
@@ -202,6 +202,8 @@ ALSO_COVERED = {
     "fx_rates": "migration 470 repaired its write policy; it has its own regression test",
     # The payroll tables the API reads and writes with the service role and the browser never touches (490): the
     # threat the matrix models is a direct call with a person's own JWT, whoever the application itself calls as.
+    # The browser stopped reading this table (POST-B-024): the Compliance tab asks GET /api/compliance/engagement-status.
+    "fee_engagements": "the practice's engagements and their fees, read by the API under billing:read (495)",
     "payroll_salary_revisions": "payroll (490): salary history, read and written only by the payroll router",
     "salary_structures": "payroll (490): a client's salary template",
     "payroll_perquisites": "payroll (490): an employee's perquisites",
@@ -891,25 +893,14 @@ DEVIATION_CLASSES: tuple[Deviation, ...] = (
     # could make, with no resource in the API allowing it. Migrations 487, 488 and 489 closed them in three slices (13, 17
     # and 9 tables, 117 cells) and the class was deleted with the last one; `test_the_matrix_turns_red_when_a_known_hole_is_put_back`
     # [reviewer-writes-slice-1-487-reopened / -2-488-reopened / -3-489-reopened] put each slice back on purpose.
+    # `billing-reads-are-partner-only` and `fee-receipts-have-no-client-id` stood here (10 cells over the three fee
+    # tables: an assigned Manager, Executive or Reviewer read the practice's fee economics, and every member read every
+    # client's fee receipts). Migration 495 closed them; `test_the_matrix_turns_red_when_a_known_hole_is_put_back
+    # [fee-read-tier-495-reopened]` puts them back on purpose.
     # `payroll-tier-not-in-rls`, `payroll-children-have-no-client-id` and `payroll-children-manager-delete` stood
     # here (a payroll tier missing from three tables, and four children with no client scope). Migration 485
     # closed them and their entries went in the same commit; `test_the_matrix_turns_red_when_a_known_hole_is_put_back
     # [payroll-tier-485-reopened]` puts them back on purpose.
-    Deviation(
-        "billing-reads-are-partner-only",
-        "fee_engagements and fee_invoices carry an assignment scope and no read tier, so an assigned Manager, "
-        "Executive or Reviewer reads the practice's fee economics that PERMISSIONS reserves to a Partner "
-        "(billing:read).",
-        ("fee_engagements", "fee_invoices"),
-        _cells(("manager", "exec_assigned", "reviewer"), ("select",), "A", "-"),
-    ),
-    Deviation(
-        "fee-receipts-have-no-client-id",
-        "fee_receipts has no client_id and a firm-only select policy, so every member reads every client's fee "
-        "receipts although billing:read is Partner-only.",
-        ("fee_receipts",),
-        _cells(STAFF_ACTORS, ("select",), "A,B", "-"),
-    ),
     Deviation(
         "suspended-member-keeps-their-own-user-row",
         "users_own_row_select and users_own_row_rename compare auth_user_id with auth.uid() directly and never "
@@ -1149,6 +1140,14 @@ CONTROLS = (
       ("reviewer", "epfo_ecr_filings", "update"), ("exec_assigned", "statutory_remittances", "insert"),
       ("reviewer", "payroll_run_transitions", "insert"), ("reviewer", "bonus_disqualifications", "update"),
       ("exec_assigned", "bonus_declarations", "select"), ("reviewer", "bonus_declarations", "insert")}),
+    ("fee-read-tier-495-reopened",
+     "migration 495 rolled back: an assigned Manager, Executive or Reviewer reads the fees of their clients again, and "
+     "every member of the firm reads every client's fee receipts",
+     lambda: _migration_sql("495_the_practices_fee_tables_are_read_only_by_someone_with_billing_access_rollback.sql"),
+     ("fee_engagements", "fee_invoices", "fee_receipts"),
+     {("manager", "fee_engagements", "select"), ("exec_assigned", "fee_invoices", "select"),
+      ("reviewer", "fee_invoices", "select"), ("reviewer", "fee_receipts", "select"),
+      ("exec_unassigned", "fee_receipts", "select")}),
     ("anon-granted-a-table",
      "GRANT SELECT ON clients TO anon: no policy would show a row, but the privilege itself is the hole",
      lambda: "GRANT SELECT ON public.clients TO anon;",

@@ -24,7 +24,10 @@
 //     obligations at all — services/compliance_obligation_service.py's
 //     `_ACTIVE_ENGAGEMENT_STATUSES`) looked identical to one with an
 //     engagement and genuinely nothing due. The empty state now names the
-//     missing engagement where that is the reason.
+//     missing engagement where that is the reason. The question is put to the
+//     SERVER (GET /api/compliance/engagement-status), which answers from the
+//     engagement's scope and not its fees: the fee_engagements table is the
+//     practice's economics, and a read of it from the browser is a Partner's.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -62,8 +65,6 @@ test("selecting a sub-tab that has become unavailable falls back to all", () => 
 
 test("an empty ITR/TDS/MCA tab explains a missing engagement rather than saying only 'No compliance entries'", () => {
   const src = code(PAGE);
-  assert.match(src, /ACTIVE_ENGAGEMENT_STATUSES\s*=\s*new Set\(\["Active", "In Progress", "Review"\]\)/,
-    "must mirror services/compliance_obligation_service.py's own _ACTIVE_ENGAGEMENT_STATUSES");
   assert.match(src, /ENGAGEMENT_SCOPED_LABEL/,
     "income_tax/tds/mca must be named as the engagement-scoped sub-tabs — gst is NOT one of them, " +
     "since generate_default_for_client's no-engagement fallback still generates GST obligations off the GSTIN");
@@ -75,8 +76,14 @@ test("an empty ITR/TDS/MCA tab explains a missing engagement rather than saying 
     "the empty state must no longer be a single unconditional sentence");
 });
 
-test("the engagement check reads fee_engagements directly, the same pattern NoticesSection on this page already uses", () => {
+test("the engagement check is asked of the server, which answers from the engagement's scope and never its fees", () => {
   const src = code(PAGE);
-  assert.match(src, /\.from\("fee_engagements"\)\s*\.select\("status"\)\s*\.eq\("client_id", clientId\)/,
-    "a direct Supabase read, RLS-scoped, matching the house pattern for an explanatory (non-authoritative) signal");
+  assert.match(src, /apiFetch\(`\/api\/compliance\/engagement-status\?client_id=/,
+    "the tab asks GET /api/compliance/engagement-status; the status vocabulary lives in the backend");
+  // NEGATIVE CONTROL: the browser read of the fee table (a Partner's to read) and its own copy of the status set.
+  assert.doesNotMatch(src, /\.from\("fee_engagements"\)/,
+    "a browser read of fee_engagements returns nothing to a role that may not read fees, and an empty answer " +
+    "here is printed to the CA as 'No active service engagement is recorded'");
+  assert.doesNotMatch(src, /ACTIVE_ENGAGEMENT_STATUSES/,
+    "the set of statuses that count is the backend's (compliance_obligation_service._ACTIVE_ENGAGEMENT_STATUSES)");
 });

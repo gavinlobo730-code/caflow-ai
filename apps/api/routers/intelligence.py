@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from models.common import api_response
-from core.permissions import rbac
+from core.permissions import can_user, rbac
 from core.authz import assert_client_access, effective_client_ids
 from middleware.rate_limit import ai_limit
 
@@ -32,8 +32,11 @@ def relationship_health(current_user: dict = Depends(rbac("ai", "read"))):
     from services.intelligence_service import compute_relationship_health
     # None for a firm-wide role; a set of assigned ids otherwise. Every row
     # this returns names its client, so it must be narrowed.
+    # The fee figures (overdue invoices, outstanding) are the practice's economics, a Partner's to read (billing:read):
+    # per-person, so a Manager the Partner granted billing sees them and everyone else gets a withheld marker.
     return api_response(True, compute_relationship_health(
-        current_user["firm_id"], effective_client_ids(current_user)))
+        current_user["firm_id"], effective_client_ids(current_user),
+        include_fee_figures=can_user(current_user, "billing", "read")))
 
 
 @router.get("/recommendations")
@@ -43,7 +46,8 @@ def recommendations(current_user: dict = Depends(rbac("ai", "read"))):
     # None for a firm-wide role; a set of assigned ids otherwise. Every row
     # this returns names its client, so it must be narrowed.
     return api_response(True, compute_recommendations(
-        current_user["firm_id"], effective_client_ids(current_user)))
+        current_user["firm_id"], effective_client_ids(current_user),
+        include_fee_figures=can_user(current_user, "billing", "read")))
 
 
 @router.get("/digest")

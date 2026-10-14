@@ -12,6 +12,11 @@ if _USE_MOCK:
 
 _get_db = db_provider.request_db
 
+#: What an engagement SAYS about the work, with none of what it charges. A caller that only needs to know which
+#: services a client is engaged for, and whether the engagement is live, reads these and nothing else: the fee, the
+#: billing cycle and the notes are the practice's economics, which core/permissions reserves to a Partner.
+SCOPE_COLUMNS = ("id", "firm_id", "client_id", "service_type", "status")
+
 
 class EngagementRepository(BaseRepository[dict]):
 
@@ -48,6 +53,36 @@ class EngagementRepository(BaseRepository[dict]):
             query = query.eq("status", status)
         result = query.order("created_at", desc=True).execute()
         return result.data or []
+
+    def find_scope(self, firm_id: str, client_id: Optional[str] = None) -> list[dict]:
+        """The engagements' SCOPE (client, service, status), read WITHOUT their fees and without the caller's row security.
+
+        WHY A SEPARATE READ. `find_all` runs as the caller, so what comes back is what the caller's row security lets
+        them see, and the fee economics of an engagement are a Partner's. The obligation generator, the ITR due-date
+        question and the Compliance tab ask something else: which services does this client buy, and is the engagement
+        live. Asking that through `find_all` meant a rule on who reads FEES silently changed which obligations a
+        calendar got, with the response still looking like success. This read is the privileged client with the
+        firm's own scope, and the four columns above; the CALLER IS AUTHORISED BY THE ROUTE (rbac and
+        assert_client_access, or an `allowed_client_ids` filter) before it gets here, which is the contract of
+        `db_provider.service_db`.
+        """
+        if _USE_MOCK:
+            rows = self.find_all(firm_id=firm_id, client_id=client_id)
+            return [{k: e.get(k) for k in SCOPE_COLUMNS} for e in rows]
+        query = (db_provider.service_db().table("fee_engagements")
+                 .select(", ".join(SCOPE_COLUMNS)).eq("firm_id", firm_id))
+        if client_id:
+            query = query.eq("client_id", client_id)
+        return query.order("created_at", desc=True).execute().data or []
+
+    def find_scope_by_id(self, id: str, firm_id: str) -> Optional[dict]:
+        """One engagement's scope (see `find_scope`), or None when it is not this firm's."""
+        if _USE_MOCK:
+            e = ENGAGEMENT_INDEX.get(id)
+            return {k: e.get(k) for k in SCOPE_COLUMNS} if e and e.get("firm_id") == firm_id else None
+        rows = (db_provider.service_db().table("fee_engagements").select(", ".join(SCOPE_COLUMNS))
+                .eq("id", id).eq("firm_id", firm_id).limit(1).execute().data or [])
+        return rows[0] if rows else None
 
     def list_by_status(self, firm_id: str, status: str) -> list[dict]:
         return self.find_all(firm_id=firm_id, status=status)

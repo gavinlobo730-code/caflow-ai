@@ -509,11 +509,15 @@ export interface RelationshipHealthPayload {
     health_level: string;
     open_tasks: number;
     overdue_tasks: number;
-    overdue_invoices: number;
-    outstanding_paise: number;
+    /** null (not 0) when `fees_withheld`: the practice's fees are a Partner's to read, and a count printed as 0
+     *  would say a client who owes the practice money owes none. */
+    overdue_invoices: number | null;
+    outstanding_paise: number | null;
     recent_activity?: number;
   }[];
   at_risk_count: number;
+  /** true when the caller's role may not read the practice's fees; the two figures above are then null. */
+  fees_withheld?: boolean;
   computed_at?: string | null;
 }
 

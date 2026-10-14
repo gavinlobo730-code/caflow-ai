@@ -29,7 +29,7 @@ A dash in the Why column means the group reason: it closes a real gap, is lawful
 | POST-B-019 | **Record encryption at rest; decide column tokenisation of identifiers.** Accepted as recommended: Build later: record the citation now; tokenise only if counsel or a firm's data agreement asks. | — |
 | POST-B-021 | **Replace plaintext engagement sign tokens with a hashed lookup.** Accepted as recommended: Build after the demo, when you say: hash on write; resending a link issues a new one. | — |
 | POST-B-023 | **Require aal2 in the database for payroll and document tables.** Accepted as recommended: Build after POST-B-013 is answered. | — |
-| POST-B-024 | **Restrict fee tables' reads to the Partner tier (billing:read).** Accepted as recommended: Build now: Partner-only reads for fee tables. | — |
+| POST-B-024 | **Restrict fee tables' reads to the Partner tier (billing:read).** Accepted as recommended: Build now: Partner-only reads for fee tables. BUILT 14-10-2026 (migration 495, with the readers moved first); the line is deleted from the ledger. | — |
 | POST-B-025 | **Scope cross_client_matches by the caller's clients.** Accepted as recommended: Build now. | — |
 | POST-B-026 | **Scope year_end_notes and year_end_review_events to the engagement's client.** Accepted as recommended: Build now. | — |
 | POST-B-027 | **Stop staff reading every client's portal contacts and invite_token.** Accepted as recommended: Build now: assignment-scoped staff only; the token not readable from the browser. | — |

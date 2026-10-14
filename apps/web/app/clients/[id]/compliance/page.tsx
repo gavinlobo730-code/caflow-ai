@@ -62,14 +62,6 @@ interface MarkFiledForm {
   arn: string;
 }
 
-// Mirrors services/compliance_obligation_service.py's own
-// `_ACTIVE_ENGAGEMENT_STATUSES` — an engagement in one of these three is what
-// `generate_for_engagement` (and `generate_due`'s no-engagement fallback logic)
-// treats as "this client has an engagement", so this is the same question the
-// backend already answers, asked here only to explain an empty tab rather than
-// to decide anything.
-const ACTIVE_ENGAGEMENT_STATUSES = new Set(["Active", "In Progress", "Review"]);
-
 // Which sub-tabs are ENGAGEMENT-scoped, and the label to use in the empty-state
 // sentence for each. GST is excluded on purpose: generate_default_for_client's
 // no-engagement fallback generates GST obligations for any client with a GSTIN
@@ -291,7 +283,7 @@ export default function CompliancePage() {
 
   // A selection may only name rows still on screen (see lib/table/pruneSelection).
   useEffect(() => { setSelected((s) => pruneSelection(s, compliance.map((c) => c.id))); }, [compliance]);
-  // Whether this client has ANY active fee_engagements row. ITR/TDS/MCA
+  // Whether this client has ANY active service engagement. ITR/TDS/MCA
   // obligations are engagement-scoped by design (generate_default_for_client's
   // own docstring), so an empty list on those sub-tabs can mean "nothing due"
   // or "no engagement recorded to generate anything from" — two different
@@ -333,24 +325,24 @@ export default function CompliancePage() {
     load();
   }, [clientId]);
 
-  // Direct Supabase read (RLS-scoped), the same pattern NoticesSection above
-  // already uses on this page — this is only to explain an empty tab, not to
-  // decide anything, so it asks nothing of `rbac("billing", ...)`.
+  // Asked of the server, which answers from the engagement's scope and never its fees (the table is a Partner's
+  // to read, so a browser read of it would tell a Manager "no engagement" about a client who has one). This only
+  // explains an empty tab, it decides nothing.
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;
     let cancelled = false;
     (async () => {
-      const { data, error } = await getSupabaseClient()
-        .from("fee_engagements")
-        .select("status")
-        .eq("client_id", clientId);
-      if (cancelled) return;
-      // A failed read leaves the question unanswered rather than asserting
-      // "no engagement" — the generic empty-state message is the safe default.
-      setHasActiveEngagement(
-        error ? null
-              : (data ?? []).some((e) => ACTIVE_ENGAGEMENT_STATUSES.has(e.status as string))
-      );
+      let answer: boolean | null = null;
+      try {
+        const res = await apiFetch(`/api/compliance/engagement-status?client_id=${encodeURIComponent(clientId)}`);
+        // A failed read leaves the question unanswered rather than asserting
+        // "no engagement" — the generic empty-state message is the safe default.
+        answer = res?.success && typeof res.data?.has_active_engagement === "boolean"
+          ? (res.data.has_active_engagement as boolean) : null;
+      } catch {
+        answer = null;
+      }
+      if (!cancelled) setHasActiveEngagement(answer);
     })();
     return () => { cancelled = true; };
   }, [clientId]);

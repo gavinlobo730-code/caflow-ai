@@ -336,10 +336,12 @@ def _asks(expr: str, names: set[str]) -> bool:
 #: run transitions, which follow their settlement and their run).
 READ_THROUGH_THE_GRID = {"payroll_employees", "payroll_runs", "payroll_slips",
                          # 490: the three payroll tables keyed on the client and not on an employee or a run
-                         "salary_structures", "statutory_remittances", "epfo_ecr_filings", "bonus_declarations"}
+                         "salary_structures", "statutory_remittances", "epfo_ecr_filings", "bonus_declarations",
+                         # 495: the practice's fee tables ask billing:read, a Partner's by default
+                         "fee_engagements", "fee_invoices", "fee_receipts"}
 
 
-def test_only_the_payroll_tables_are_read_through_the_grid(dsn):
+def test_only_the_payroll_and_fee_tables_are_read_through_the_grid(dsn):
     """THE GUARD BEHIND "THE DATABASE DOES NOT LOOK AT THIS GRID WHEN A TABLE
     IS READ", NOW WITH ONE NAMED EXCEPTION.
 
@@ -552,6 +554,33 @@ def test_a_grant_of_payroll_read_reaches_an_executive_and_its_absence_does_not(d
     assert _scalar_as(dsn, auth_exec, select) == "0", "an Executive with no grant read payroll"
     _grant(dsn, executive, "payroll", "read", True)
     assert _scalar_as(dsn, auth_exec, select) == "1", "a per-person payroll:read grant did not reach the database"
+
+
+# ── billing: the practice's fee tables, since migration 495 ──────────────────
+# `billing:read` is a Partner's by default, so an assigned Manager reads nothing until the Partner grants it, and a
+# grant that is then withdrawn hides the table again. Each table is seeded as the administrator.
+_FEE_SEED = ("WITH g AS (INSERT INTO fee_engagements (firm_id, client_id, service_type) "
+             "VALUES ('{firm}', '{client}', 'GST Filing') RETURNING id), "
+             "i AS (INSERT INTO fee_invoices (firm_id, client_id, engagement_id, invoice_no) "
+             "SELECT '{firm}', '{client}', id, 'INV-1' FROM g RETURNING id) "
+             "INSERT INTO fee_receipts (firm_id, invoice_id, amount_paise) SELECT '{firm}', id, 100 FROM i;")
+
+
+@pytest.mark.parametrize("table", ["fee_engagements", "fee_invoices", "fee_receipts"])
+def test_billing_read_is_a_partners_unless_granted_and_a_withdrawn_grant_hides_the_table_again(dsn, table):
+    seeded = _psql(dsn, _FEE_SEED.format(firm=FIRM, client=CLIENT))
+    assert seeded.returncode == 0, seeded.stderr
+    select = f"SELECT count(*) FROM {table};"
+
+    assert _scalar_as(dsn, AUTH_MANAGER, select) == "0", "an assigned Manager with no grant read the practice's fees"
+    _grant(dsn, MANAGER, "billing", "read", True)
+    assert _scalar_as(dsn, AUTH_MANAGER, select) == "1", "a per-person billing:read grant did not reach the database"
+    _grant(dsn, MANAGER, "billing", "read", False)
+    asked = _scalar_as(dsn, AUTH_MANAGER, "SELECT public.my_permission('billing','read','Partner');")
+    assert asked == "f", f"premise: the grid does not refuse billing:read ({asked!r})"
+    assert _scalar_as(dsn, AUTH_MANAGER, select) == "0", (
+        f"a per-person block on billing:read no longer hides {table} from a direct read: {_NOTICE} says the "
+        "database enforces it for billing")
 
 
 # ── payroll WRITES on the twelve other payroll tables, since migration 490 ───
