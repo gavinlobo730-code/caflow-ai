@@ -110,10 +110,19 @@ class BankTransferService:
 
     # ── pairing ─────────────────────────────────────────────────────────────
     def pair(self, db, firm_id: str, primary_id: str, counterpart_id: str,
-             actor_id: Optional[str] = None) -> dict:
-        """Record two lines as one transfer. The RPC re-checks every rule."""
+             actor_id: Optional[str] = None, rpc_db=None) -> dict:
+        """Record two lines as one transfer. The RPC re-checks every rule.
+
+        `rpc_db` is the client the two functions are CALLED through, and it has to be the SERVICE role:
+        migration 258 grants EXECUTE on them to `service_role` alone, deliberately ("a SECURITY DEFINER function
+        taking a firm_id must not be callable by `authenticated` — it could pass any firm's id"). They were called
+        with the caller's own sign-in, so in production the call was refused for every signed-in user ("permission
+        denied for function") and a transfer could never be paired. The ROUTE vouches for both rows first: it
+        checks the caller's reach of each transaction's client, and the function checks the firm and that both
+        belong to one client. `db` stays the caller's client for every read.
+        """
         try:
-            db.rpc("pair_bank_transfer", {
+            (rpc_db or db).rpc("pair_bank_transfer", {
                 "p_firm_id": firm_id, "p_primary_id": primary_id,
                 "p_counter_id": counterpart_id, "p_actor_id": actor_id,
             }).execute()
@@ -126,9 +135,10 @@ class BankTransferService:
                   {"transfer_pair_id": primary_id, "transfer_is_primary": False})
         return self.get(db, firm_id, primary_id)
 
-    def unpair(self, db, firm_id: str, txn_id: str, actor_id: Optional[str] = None) -> dict:
+    def unpair(self, db, firm_id: str, txn_id: str, actor_id: Optional[str] = None, rpc_db=None) -> dict:
+        """Undo a pairing. `rpc_db` is the service role, for the reason given on `pair`."""
         try:
-            db.rpc("unpair_bank_transfer", {
+            (rpc_db or db).rpc("unpair_bank_transfer", {
                 "p_firm_id": firm_id, "p_txn_id": txn_id,
             }).execute()
         except Exception as e:

@@ -1914,9 +1914,12 @@ def pair_transfer(
     if not db:
         return api_response(True, {"transaction_id": txn_id, "is_paired": True})
     _assert_txn_scope(db, current_user, txn_id)
+    # BOTH sides are the caller's to touch: the function below checks the firm and that the two belong to one
+    # client, and is executable by the service role only, so the caller's own reach is asked here.
+    _assert_txn_scope(db, current_user, data.counterpart_id)
     return api_response(True, bank_transfer_service.pair(
         db, current_user["firm_id"], txn_id, data.counterpart_id,
-        actor_id=current_user.get("auth_user_id")))
+        actor_id=current_user.get("auth_user_id"), rpc_db=_service_db() or db))
 
 
 @router.delete("/transactions/{txn_id}/transfer-pair")
@@ -1932,7 +1935,7 @@ def unpair_transfer(
     _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_transfer_service.unpair(
         db, current_user["firm_id"], txn_id,
-        actor_id=current_user.get("auth_user_id")))
+        actor_id=current_user.get("auth_user_id"), rpc_db=_service_db() or db))
 
 
 @router.put("/transactions/{txn_id}/payee")
