@@ -31,6 +31,8 @@ import { isCompaniesActCompany } from "@/lib/entityObligations";
 import { Callout } from "@/components/ui/callout";
 import { formatCroreLakh } from "@/lib/money/format";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -199,9 +201,12 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const dates = useDateProblems();
 
   async function handleSubmit() {
     if (!clientId || !cin.trim() || !dueDate) { setErr("Client, CIN and Due Date are required."); return; }
+    // The date box is on the form only for a filed filing, so an unreadable one matters only then.
+    if (status === "Filed" && dates.first) { setErr(dates.first); return; }
     if (status === "Filed" && (!srn.trim() || !filedOn)) {
       setErr("A filing marked Filed needs its SRN and the date it was filed on MCA21."); return;
     }
@@ -314,8 +319,15 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
           </div>
           {status === "Filed" && (
             <div>
-              <label className="text-xs font-medium text-ps-body block mb-1">Filed on MCA21 on</label>
-              <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={filedOn} max={todayLocalISO()} onChange={e => setFiledOn(e.target.value)} />
+              <label htmlFor="mca-filed-on" className="text-xs font-medium text-ps-body block mb-1">Filed on MCA21 on</label>
+              <DateInput
+                id="mca-filed-on"
+                value={filedOn}
+                max={todayLocalISO()}
+                onChange={setFiledOn}
+                onStateChange={dates.watch("filedOn", "Filed on MCA21 on")}
+                className="w-full"
+              />
             </div>
           )}
           <div>
