@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * Scheduled Report Delivery — PracticeSync AI
- * Firm staff can schedule automatic report emails to clients.
+ * Scheduled Reports — PracticeSync AI
+ * Firm staff record which reports go to whom and when. NOTHING is sent from here yet: no job reads these rows, and the
+ * decided design is that a schedule PREPARES the report and a person presses Send (PRE-B-002 part 1, COMING-002).
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -231,7 +232,7 @@ export default function ScheduledReportsPage() {
       <PageHeader
         back={{ href: "/settings", label: "Settings" }}
         title="Scheduled Reports"
-        subtitle="Automatically email reports to clients on a schedule"
+        subtitle="Plan which reports go to which clients, and when. Sending them is coming soon."
         actions={
           <button
             onClick={() => { setShowModal(true); setFormError(null); }}
@@ -246,7 +247,8 @@ export default function ScheduledReportsPage() {
       <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
         <AlertCircle size={15} className="text-blue-500 mt-0.5 shrink-0" />
         <p className="text-xs text-blue-700 leading-relaxed">
-          Reports are generated and emailed automatically on the scheduled day. Ensure client email is set.
+          Nothing is emailed automatically yet. A schedule only records what you plan to send; preparing the report
+          and sending it, after you have checked it, is coming soon.
         </p>
       </div>
 
@@ -271,7 +273,7 @@ export default function ScheduledReportsPage() {
         <div className="bg-white rounded-xl border border-ps-border px-5 py-14 text-center">
           <Calendar className="w-8 h-8 text-gray-200 mx-auto mb-2" />
           <p className="text-sm text-ps-hint">No schedules yet</p>
-          <p className="text-xs text-ps-disabled mt-1">Create your first scheduled report to get started</p>
+          <p className="text-xs text-ps-disabled mt-1">Add the first report you plan to send</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">

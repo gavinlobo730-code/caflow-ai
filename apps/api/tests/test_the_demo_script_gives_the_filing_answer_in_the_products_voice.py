@@ -805,7 +805,7 @@ def test_explaining_a_screen_whose_register_row_is_unsafe_fails(script):
 
 def test_a_decision_that_is_neither_avoid_nor_explain_fails_and_a_row_with_no_id_fails(script):
     assert check_avoid_table(_broken(script, "| avoid | Anything dated FY 2026-27", "| ignore | Anything dated FY 2026-27"), register_rows())
-    assert check_avoid_table(_broken(script, "| COMING-019 |", "| nothing |"), register_rows())
+    assert check_avoid_table(_broken(script, "| COMING-027 |", "| nothing |"), register_rows())
 
 
 def test_a_switched_off_row_that_cites_a_promise_row_fails(script):
