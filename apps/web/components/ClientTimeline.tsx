@@ -184,10 +184,16 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
     setPinning(event.id);
     try {
       const supabase = getSupabaseClient();
-      await supabase
+      const { error } = await supabase
         .from("client_timeline_events")
         .update({ is_pinned: !event.is_pinned })
         .eq("id", event.id);
+      // The answer used to be ignored, so a refused update (production had no UPDATE grant at all until migration
+      // 494 gave `is_pinned` back) showed the event pinned and the next load put it back.
+      if (error) {
+        setMoreError(`Couldn't ${event.is_pinned ? "unpin" : "pin"} that event: ${error.message}`);
+        return;
+      }
       setEvents((prev) =>
         prev.map((e) => e.id === event.id ? { ...e, is_pinned: !e.is_pinned } : e)
       );
