@@ -330,10 +330,13 @@ def _asks(expr: str, names: set[str]) -> bool:
     return any(re.search(rf"\b{re.escape(n)}\s*\(", expr) for n in names)
 
 
-#: The tables whose SELECT policy asks the grid on purpose (migration 485). attendance, leave_balances and the two
-#: declaration tables are scoped through `payroll_employees` by a subquery, so they follow it without naming a
-#: function and do not appear here.
-READ_THROUGH_THE_GRID = {"payroll_employees", "payroll_runs", "payroll_slips"}
+#: The tables whose SELECT policy asks the grid on purpose (migrations 485 and 490). attendance, leave_balances, the two
+#: declaration tables and the seven employee-keyed payroll tables are scoped through `payroll_employees` by a
+#: subquery, so they follow it without naming a function and do not appear here (nor do the settlement components and
+#: run transitions, which follow their settlement and their run).
+READ_THROUGH_THE_GRID = {"payroll_employees", "payroll_runs", "payroll_slips",
+                         # 490: the three payroll tables keyed on the client and not on an employee or a run
+                         "salary_structures", "statutory_remittances", "epfo_ecr_filings", "bonus_declarations"}
 
 
 def test_only_the_payroll_tables_are_read_through_the_grid(dsn):
@@ -470,6 +473,43 @@ _PAYROLL_READ_PROBES = [
                  "INSERT INTO payroll_it_declaration_items (firm_id, declaration_id, section) "
                  "SELECT '{firm}', id, '80C' FROM d;",
                  "SELECT count(*) FROM payroll_it_declaration_items;", id="payroll_it_declaration_items"),
+    # 490: the twelve other payroll tables, one probe per KIND of scoping. Employee-keyed (through the employee),
+    # parent-keyed (a settlement's lines through the settlement, a run's history through the run) and client-keyed
+    # (the tier asked by name).
+    pytest.param("WITH e AS (INSERT INTO payroll_employees (firm_id, client_id, name) "
+                 "VALUES ('{firm}', '{client}', 'E') RETURNING id) "
+                 "INSERT INTO payroll_salary_revisions (firm_id, client_id, employee_id, effective_from) "
+                 "SELECT '{firm}', '{client}', id, '2026-04-01' FROM e;",
+                 "SELECT count(*) FROM payroll_salary_revisions;", id="payroll_salary_revisions"),
+    pytest.param("WITH e AS (INSERT INTO payroll_employees (firm_id, client_id, name) "
+                 "VALUES ('{firm}', '{client}', 'E') RETURNING id) "
+                 "INSERT INTO payroll_loans (firm_id, client_id, employee_id) "
+                 "SELECT '{firm}', '{client}', id FROM e;",
+                 "SELECT count(*) FROM payroll_loans;", id="payroll_loans"),
+    pytest.param("WITH e AS (INSERT INTO payroll_employees (firm_id, client_id, name) "
+                 "VALUES ('{firm}', '{client}', 'E') RETURNING id) "
+                 "INSERT INTO payroll_perquisites (firm_id, client_id, employee_id, fy, label) "
+                 "SELECT '{firm}', '{client}', id, '2026-27', 'P' FROM e;",
+                 "SELECT count(*) FROM payroll_perquisites;", id="payroll_perquisites"),
+    pytest.param("WITH e AS (INSERT INTO payroll_employees (firm_id, client_id, name) "
+                 "VALUES ('{firm}', '{client}', 'E') RETURNING id), "
+                 "s AS (INSERT INTO payroll_settlements (firm_id, client_id, employee_id, fy, leaving_date) "
+                 "SELECT '{firm}', '{client}', id, '2026-27', '2026-09-30' FROM e RETURNING id) "
+                 "INSERT INTO payroll_settlement_components (firm_id, settlement_id, label) "
+                 "SELECT '{firm}', id, 'L' FROM s;",
+                 "SELECT count(*) FROM payroll_settlement_components;", id="payroll_settlement_components"),
+    pytest.param("INSERT INTO payroll_runs (firm_id, client_id, month) VALUES ('{firm}', '{client}', '2026-04'); "
+                 "INSERT INTO payroll_run_transitions (firm_id, run_id, to_status) "
+                 "SELECT '{firm}', id, 'draft' FROM payroll_runs WHERE client_id = '{client}';",
+                 "SELECT count(*) FROM payroll_run_transitions;", id="payroll_run_transitions"),
+    pytest.param("INSERT INTO salary_structures (firm_id, client_id, name) VALUES ('{firm}', '{client}', 'S');",
+                 "SELECT count(*) FROM salary_structures;", id="salary_structures"),
+    pytest.param("INSERT INTO epfo_ecr_filings (firm_id, client_id, wage_month, return_type, submitted_on) "
+                 "VALUES ('{firm}', '{client}', '2026-04', 'regular', '2026-05-10');",
+                 "SELECT count(*) FROM epfo_ecr_filings;", id="epfo_ecr_filings"),
+    pytest.param("INSERT INTO bonus_declarations (firm_id, client_id, accounting_year) "
+                 "VALUES ('{firm}', '{client}', '2026-27');",
+                 "SELECT count(*) FROM bonus_declarations;", id="bonus_declarations"),
 ]
 
 
@@ -512,3 +552,43 @@ def test_a_grant_of_payroll_read_reaches_an_executive_and_its_absence_does_not(d
     assert _scalar_as(dsn, auth_exec, select) == "0", "an Executive with no grant read payroll"
     _grant(dsn, executive, "payroll", "read", True)
     assert _scalar_as(dsn, auth_exec, select) == "1", "a per-person payroll:read grant did not reach the database"
+
+
+# ── payroll WRITES on the twelve other payroll tables, since migration 490 ───
+_PAYROLL_WRITE_PROBES = [
+    pytest.param("INSERT INTO salary_structures (firm_id, client_id, name) VALUES ('{firm}', '{client}', 'S2');",
+                 "SELECT count(*) FROM salary_structures;", id="salary_structures"),
+    pytest.param("INSERT INTO epfo_ecr_filings (firm_id, client_id, wage_month, return_type, submitted_on) "
+                 "VALUES ('{firm}', '{client}', '2026-05', 'regular', '2026-06-10');",
+                 "SELECT count(*) FROM epfo_ecr_filings;", id="epfo_ecr_filings"),
+    pytest.param("INSERT INTO bonus_declarations (firm_id, client_id, accounting_year) "
+                 "VALUES ('{firm}', '{client}', '2027-28');",
+                 "SELECT count(*) FROM bonus_declarations;", id="bonus_declarations"),
+    pytest.param("INSERT INTO payroll_loans (firm_id, client_id, employee_id) "
+                 "SELECT '{firm}', '{client}', id FROM payroll_employees LIMIT 1;",
+                 "SELECT count(*) FROM payroll_loans;", id="payroll_loans"),
+    pytest.param("INSERT INTO payroll_perquisites (firm_id, client_id, employee_id, fy, label) "
+                 "SELECT '{firm}', '{client}', id, '2026-27', 'P' FROM payroll_employees LIMIT 1;",
+                 "SELECT count(*) FROM payroll_perquisites;", id="payroll_perquisites"),
+]
+
+
+@pytest.mark.parametrize("insert,select", _PAYROLL_WRITE_PROBES)
+def test_a_block_on_writing_payroll_stops_a_direct_write_but_not_a_direct_read(dsn, insert, select):
+    """THE WRITE TIER ASKS THE GRID, WHICH THE OLD ROLE POLICIES DID NOT. An assigned Manager writes the row before any
+    block (so the probe is not vacuous); with `payroll:write` refused for that person the same insert is refused by row
+    security, and the rows they could already read are still readable, because reading is a different pair."""
+    seeded = _psql(dsn, f"INSERT INTO payroll_employees (firm_id, client_id, name) VALUES ('{FIRM}', '{CLIENT}', 'E');")
+    assert seeded.returncode == 0, seeded.stderr
+
+    first = _psql(dsn, _as(AUTH_MANAGER) + insert.format(firm=FIRM, client=CLIENT))
+    assert first.returncode == 0, f"premise: the assigned Manager could not write before any block: {first.stderr}"
+
+    _grant(dsn, MANAGER, "payroll", "write", False)
+    asked = _scalar_as(dsn, AUTH_MANAGER, "SELECT public.my_permission('payroll','write','Manager');")
+    assert asked == "f", f"premise: the grid does not refuse payroll:write ({asked!r})"
+
+    refused = _psql(dsn, _as(AUTH_MANAGER) + insert.format(firm=FIRM, client=CLIENT))
+    assert refused.returncode != 0 and "row-level security" in refused.stderr, (
+        f"a per-person block on payroll:write no longer stops a direct insert: {refused.stderr or 'it succeeded'}")
+    assert _scalar_as(dsn, AUTH_MANAGER, select) == "1", "a block on writing must not hide what could be read"

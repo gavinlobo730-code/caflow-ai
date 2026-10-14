@@ -93,6 +93,11 @@ def db(pg_template):
             f"VALUES ('{MANAGER}','{FIRM}','{MANAGER}','mgr331@t.in','Mgr','Manager');",
             f"INSERT INTO users (id, firm_id, auth_user_id, email, full_name, role) "
             f"VALUES ('{REVIEWER}','{FIRM}','{REVIEWER}','rev331@t.in','Rev','Reviewer');",
+            # ASSIGNED to the client: since migration 490 a one-off earning is reached through the caller's own view
+            # of payroll_employees, which is the payroll tier AND the assignment scope. An unassigned Manager
+            # reaching a client's payroll rows is exactly what 490 ends.
+            f"INSERT INTO user_client_assignments (firm_id, user_id, client_id) "
+            f"VALUES ('{FIRM}','{MANAGER}','{CLIENT}'), ('{FIRM}','{REVIEWER}','{CLIENT}');",
         ]
         for sql in stmts:
             r = _psql(dsn, sql)

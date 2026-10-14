@@ -1,0 +1,52 @@
+-- Rollback of migration 490: drops the policies it created. THIS RE-OPENS THE HOLES — every member of the firm
+-- can again read the thirteen payroll tables, and write the six that carry no write tier. Only for a database that
+-- must be put back exactly as it was before 490.
+
+DROP POLICY IF EXISTS "payroll_salary_revisions_employee_in_reach" ON public.payroll_salary_revisions;
+DROP POLICY IF EXISTS "payroll_salary_revisions_write_tier_insert" ON public.payroll_salary_revisions;
+DROP POLICY IF EXISTS "payroll_salary_revisions_write_tier_update" ON public.payroll_salary_revisions;
+DROP POLICY IF EXISTS "payroll_salary_revisions_write_tier_delete" ON public.payroll_salary_revisions;
+DROP POLICY IF EXISTS "payroll_loans_employee_in_reach" ON public.payroll_loans;
+DROP POLICY IF EXISTS "payroll_loans_write_tier_insert" ON public.payroll_loans;
+DROP POLICY IF EXISTS "payroll_loans_write_tier_update" ON public.payroll_loans;
+DROP POLICY IF EXISTS "payroll_loans_write_tier_delete" ON public.payroll_loans;
+DROP POLICY IF EXISTS "payroll_loan_recoveries_employee_in_reach" ON public.payroll_loan_recoveries;
+DROP POLICY IF EXISTS "payroll_loan_recoveries_write_tier_insert" ON public.payroll_loan_recoveries;
+DROP POLICY IF EXISTS "payroll_loan_recoveries_write_tier_update" ON public.payroll_loan_recoveries;
+DROP POLICY IF EXISTS "payroll_loan_recoveries_write_tier_delete" ON public.payroll_loan_recoveries;
+DROP POLICY IF EXISTS "payroll_perquisites_employee_in_reach" ON public.payroll_perquisites;
+DROP POLICY IF EXISTS "payroll_perquisites_write_tier_insert" ON public.payroll_perquisites;
+DROP POLICY IF EXISTS "payroll_perquisites_write_tier_update" ON public.payroll_perquisites;
+DROP POLICY IF EXISTS "payroll_perquisites_write_tier_delete" ON public.payroll_perquisites;
+DROP POLICY IF EXISTS "payroll_one_time_earnings_employee_in_reach" ON public.payroll_one_time_earnings;
+DROP POLICY IF EXISTS "payroll_one_time_earnings_write_tier_insert" ON public.payroll_one_time_earnings;
+DROP POLICY IF EXISTS "payroll_one_time_earnings_write_tier_update" ON public.payroll_one_time_earnings;
+DROP POLICY IF EXISTS "payroll_one_time_earnings_write_tier_delete" ON public.payroll_one_time_earnings;
+DROP POLICY IF EXISTS "payroll_settlements_employee_in_reach" ON public.payroll_settlements;
+DROP POLICY IF EXISTS "payroll_settlements_write_tier_insert" ON public.payroll_settlements;
+DROP POLICY IF EXISTS "payroll_settlements_write_tier_update" ON public.payroll_settlements;
+DROP POLICY IF EXISTS "payroll_settlements_write_tier_delete" ON public.payroll_settlements;
+DROP POLICY IF EXISTS "bonus_disqualifications_employee_in_reach" ON public.bonus_disqualifications;
+DROP POLICY IF EXISTS "bonus_disqualifications_write_tier_insert" ON public.bonus_disqualifications;
+DROP POLICY IF EXISTS "bonus_disqualifications_write_tier_update" ON public.bonus_disqualifications;
+DROP POLICY IF EXISTS "bonus_disqualifications_write_tier_delete" ON public.bonus_disqualifications;
+DROP POLICY IF EXISTS "payroll_settlement_components_settlement_in_reach" ON public.payroll_settlement_components;
+DROP POLICY IF EXISTS "payroll_settlement_components_write_tier_insert" ON public.payroll_settlement_components;
+DROP POLICY IF EXISTS "payroll_settlement_components_write_tier_update" ON public.payroll_settlement_components;
+DROP POLICY IF EXISTS "payroll_settlement_components_write_tier_delete" ON public.payroll_settlement_components;
+DROP POLICY IF EXISTS "payroll_run_transitions_run_in_reach" ON public.payroll_run_transitions;
+DROP POLICY IF EXISTS "payroll_run_transitions_write_tier_insert" ON public.payroll_run_transitions;
+DROP POLICY IF EXISTS "salary_structures_read_tier" ON public.salary_structures;
+DROP POLICY IF EXISTS "salary_structures_write_tier_insert" ON public.salary_structures;
+DROP POLICY IF EXISTS "salary_structures_write_tier_update" ON public.salary_structures;
+DROP POLICY IF EXISTS "salary_structures_write_tier_delete" ON public.salary_structures;
+DROP POLICY IF EXISTS "statutory_remittances_read_tier" ON public.statutory_remittances;
+DROP POLICY IF EXISTS "statutory_remittances_write_tier_insert" ON public.statutory_remittances;
+DROP POLICY IF EXISTS "statutory_remittances_write_tier_update" ON public.statutory_remittances;
+DROP POLICY IF EXISTS "epfo_ecr_filings_read_tier" ON public.epfo_ecr_filings;
+DROP POLICY IF EXISTS "epfo_ecr_filings_write_tier_insert" ON public.epfo_ecr_filings;
+DROP POLICY IF EXISTS "epfo_ecr_filings_write_tier_update" ON public.epfo_ecr_filings;
+DROP POLICY IF EXISTS "bonus_declarations_read_tier" ON public.bonus_declarations;
+DROP POLICY IF EXISTS "bonus_declarations_write_tier_insert" ON public.bonus_declarations;
+DROP POLICY IF EXISTS "bonus_declarations_write_tier_update" ON public.bonus_declarations;
+DROP POLICY IF EXISTS "bonus_declarations_write_tier_delete" ON public.bonus_declarations;
