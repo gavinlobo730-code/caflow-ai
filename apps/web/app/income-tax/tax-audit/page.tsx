@@ -11,7 +11,7 @@
  */
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Plus, X, CheckCircle, Clock, AlertTriangle, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,6 +31,7 @@ import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { duplicateAuditErrorMessage } from "@/lib/income-tax/taxAuditErrors";
 import { PageHeader } from "@/components/ui/page-header";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,15 @@ interface TaxAudit {
 }
 
 const STATUS_OPTIONS: AuditStatus[] = ["not_started", "in_progress", "completed", "filed"];
+
+/**
+ * Recording an audit as completed or filed says the auditor has signed and the report is on the portal. That is an
+ * approver's act (`income_tax:approve`: a Manager or Partner, or a grant from the Partner), the same tier that records
+ * the matching return as filed, and the database refuses the other two roles both the status and any change to an
+ * audit already in it (migration 496). The form says so instead of offering a choice that would be refused.
+ */
+const FINISHED_STATUSES: AuditStatus[] = ["completed", "filed"];
+const APPROVER_ONLY = "Only someone who may approve income tax work (a Manager or Partner) can record an audit as completed or filed, or change one that is.";
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
 // 1 April with nothing saying so. `financialYearChoicesAround` is the one
@@ -146,6 +156,11 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Until the permission map has loaded nothing is known about the person, so the form is not narrowed (a form that
+  // waited would turn a slow identity call into a screen that never opens); the database refuses the write either way.
+  const { can, resolved } = usePermissions();
+  const mayClose = !resolved || can("income_tax", "approve");
+
   // ── Detect an existing (client, FY) record BEFORE the CA hits Save ────────
   // tax_audits is UNIQUE(client_id, financial_year) (migration 035). The Add
   // form defaulted client_id to blank and financial_year to the CURRENT FY —
@@ -213,11 +228,43 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingMatch?.id]);
 
+  // The other direction: when the CA changes the client or year to a pair with NO record, the fields that were copied
+  // from the old record (status, UDIN, acknowledgement number, dates) must not follow them into a new audit. Without
+  // this an approver adding an audit for another client saved it "completed" under the previous client's UDIN, and a
+  // person who may not close audits saw "Not started" in a box that still held "completed" and was refused for it.
+  const copiedFromMatch = useRef(false);
+  useEffect(() => {
+    if (existingMatch) { copiedFromMatch.current = true; return; }
+    if (!copiedFromMatch.current) return;
+    copiedFromMatch.current = false;
+    setForm(f => ({
+      ...f,
+      formType: BLANK.formType,
+      status: BLANK.status,
+      auditorName: "",
+      auditDate: "",
+      filingDate: "",
+      udin: "",
+      ackNumber: "",
+      turnoverRs: "",
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingMatch?.id]);
+
+  // A found row counts only while the form still names ITS client and year. The lookup for a changed pair takes a
+  // moment, and an update keyed on the old row's id with the new pair in the payload would rewrite the wrong audit.
+  const matchIsForThisForm = !!existingMatch
+    && existingMatch.client_id === form.clientId
+    && existingMatch.financial_year === form.financialYear;
+
   // The record this save will actually touch: the row the table's "Edit"
   // button named, or the one just found to already exist for this client and
   // FY. Everything below that decides UPDATE-vs-INSERT or what the modal
   // calls itself reads this rather than `editAudit` alone.
-  const target = editAudit ?? existingMatch;
+  const target = editAudit ?? (matchIsForThisForm ? existingMatch : null);
+  // An audit already completed or filed is changed only by an approver, and a refused update finds no row to change.
+  const lockedForYou = !mayClose && !!target && FINISHED_STATUSES.includes(target.status);
+  const statusChoices = mayClose || lockedForYou ? STATUS_OPTIONS : STATUS_OPTIONS.filter(s => !FINISHED_STATUSES.includes(s));
 
   // ── §44AB applicability, ASKED not decided (IT-11) ───────────────────────
   // The badge under the turnover box used to be three lines of TypeScript
@@ -278,6 +325,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
 
   async function handleSave() {
     if (!form.clientId) { setError("Select a client"); return; }
+    if (lockedForYou || (!mayClose && FINISHED_STATUSES.includes(form.status))) { setError(APPROVER_ONLY); return; }
     // All money in integer paise — no floating point
     // This turnover decides whether a s.44AB tax audit applies at all. Read as
     // ₹1 because it was typed "1,20,00,000", it says no audit is required for a
@@ -306,8 +354,16 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
         turnover_paise: turnoverPaise,
       };
       if (target) {
-        const { error: err } = await sb.from("tax_audits").update(payload).eq("id", target.id);
+        // .select("id"): a policy that refuses an update to a row finds nothing to change and raises no error, so
+        // "no error" is not "saved". Count the rows the update reached.
+        const { data: reached, error: err } = await sb.from("tax_audits").update(payload).eq("id", target.id).select("id");
         if (err) throw err;
+        if (!reached || reached.length === 0) {
+          throw new Error(
+            "This audit was not changed. Either you may not edit tax audits for this client, or it is recorded as "
+            + "completed or filed, which only someone who may approve income tax work (a Manager or Partner) can change.",
+          );
+        }
       } else {
         const { error: err } = await sb.from("tax_audits").insert(payload);
         if (err) throw err;
@@ -320,8 +376,13 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
       // failing silently): the CA still sees an actionable sentence instead
       // of the constraint's own wording, which names a database object
       // rather than a document they can go and open.
-      setError(duplicateAuditErrorMessage(e as { code?: string } | null)
-        ?? (e instanceof Error ? e.message : "Save failed"));
+      // 42501 is row security refusing the NEW row: for the two finished statuses that is the approver rule, and for
+      // anything else it is the client scope, so the sentence says which rather than quoting the database.
+      const code = (e as { code?: string } | null)?.code;
+      setError(code === "42501"
+        ? (FINISHED_STATUSES.includes(form.status) ? APPROVER_ONLY : "You may not save a tax audit for this client.")
+        : duplicateAuditErrorMessage(e as { code?: string } | null)
+          ?? (e instanceof Error ? e.message : "Save failed"));
     } finally {
       setSaving(false);
     }
@@ -340,10 +401,15 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
               the client+FY the CA is typing turned out to already have a
               record, so unlike an explicit "Edit" click it needs to say why
               the form just filled itself in. */}
-          {existingMatch && !editAudit && (
+          {matchIsForThisForm && !editAudit && (
             <Callout tone="attention">
               An audit record for this client and financial year already exists —
               you are editing it below instead of adding a second one.
+            </Callout>
+          )}
+          {lockedForYou && target && (
+            <Callout tone="attention">
+              This audit is recorded as {statusBadge(target.status).label.toLowerCase()}. {APPROVER_ONLY}
             </Callout>
           )}
           <div>
@@ -470,10 +536,14 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
             </div>
           )}
           <div>
-            <label className={lbl}>Status</label>
-            <select value={form.status} onChange={e => upd({ status: e.target.value as AuditStatus })} className={inputCls}>
-              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{statusBadge(s).label}</option>)}
+            <label className={lbl} htmlFor="tax-audit-status">Status</label>
+            <select id="tax-audit-status" value={form.status} disabled={lockedForYou}
+              onChange={e => upd({ status: e.target.value as AuditStatus })} className={inputCls}>
+              {statusChoices.map(s => <option key={s} value={s}>{statusBadge(s).label}</option>)}
             </select>
+            {!mayClose && (
+              <p className="mt-1 text-xs text-ps-label" role="note">{APPROVER_ONLY}</p>
+            )}
           </div>
           <div>
             <label className={lbl}>Auditor Name</label>
@@ -502,7 +572,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
         </div>
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
-          <Button variant="plain" size="none" onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
+          <Button variant="plain" size="none" onClick={handleSave} disabled={saving || lockedForYou} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
             {saving ? "Saving…" : target ? "Update" : "Add Audit"}
           </Button>
         </div>
