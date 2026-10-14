@@ -11,7 +11,9 @@
 5. `apps/api/tests/test_the_open_items_ledger_is_well_formed.py` enforces the format (unique IDs, one line per item, an allowed theme and priority on every line, no dangling ID in the lists below, counts true). After closing or adding an item run `python3 scripts/open_items_counts.py` to refresh the counts block.
 6. `coming-soon.md` is the register of everything the product tells a person is not there yet (planned, coming, not built, not switched on): one `COMING-NNN` row per statement with where it appears, its exact words, the gate, who acts and the ledger id. It is not a ledger and its rows are not counted. Add, edit or delete its row in the same commit as the wording, the feature or the switch; `apps/api/tests/test_the_coming_soon_register_is_well_formed.py` holds every row to the code and to this ledger.
 7. `checkpoint-2026-10-09.md` is a snapshot of where a long run of pull requests stopped: what landed (#711 to #726), the build waves not started and their order, the owner decisions still owed and the human steps. It is not a ledger and goes stale; the ledger is this file and the six section files.
-8. `plan-going-faster-2026-10-09.md` is the plan the owner agreed on 9 October 2026 for working through this ledger faster (decision sheets, themed batches, a parked list). Planning only: nothing in it has been built.
+8. `plan-going-faster-2026-10-09.md` is the plan the owner agreed on 9 October 2026 for working through this ledger faster (decision sheets, themed batches, a parked list). Its Step 0 (the decisions) was taken on 14 October 2026 and is recorded in the next two files; the rest follows.
+9. `decisions-taken-2026-10-14.md` records every decision Claude took on 14 October 2026 under the owner's standing instructions, with a one-line reason: what to build, what waits until someone asks, what stays as it is, and what is decided but blocked. **A line listed there as "build" is Claude-alone work whatever its id letter says**; a "keep as it is" decision closed its line (a line something else cites stays until that citation changes). Ids are not renumbered.
+10. `owner-list.md` is the owner's list in one place: the money decisions with a recommendation, the tasks only the owner can do, the statutory and legal points Claude will not assume (the exact question, the document needed, who can supply it, what stays unbuilt), the wait-until-asked items the goal probably needs, and two open questions. Refresh it, do not scatter it.
 
 ## The two axes
 
@@ -36,14 +38,14 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 14 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 198 | after the demo: Claude can do alone |
-| [post-demo-B-ours.md](post-demo-B-ours.md) | 336 | after the demo: owner decides first, then Claude builds |
+| [post-demo-B-ours.md](post-demo-B-ours.md) | 286 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 203 | after the demo: only the owner or outsiders can do |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**760 open items** (23 before the demo, 737 after); 15 after-demo items are `high` priority; 35 are UNSURE.
+**710 open items** (23 before the demo, 687 after); 15 after-demo items are `high` priority; 35 are UNSURE.
 
 <!-- counts:end -->
 
