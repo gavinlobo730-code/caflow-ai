@@ -321,7 +321,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - The 26AS reconciliation is the same rule and had the same defect (TDS-21)
 - NOT EVERY PART OF FORM 26AS IS A CREDIT, and the client-as-DEDUCTEE reconciliation used to sum all of them
 
-### `docs/design-record/tenancy-and-security.md` (18 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (19 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -341,6 +341,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE ROLE TIERS AND CLIENT SCOPES THE API GIVES FOUR MORE TABLES NOW REACH THE DATABASE
 - PRODUCTION HAD A POLICY NO MIGRATION CREATES, AND IT MADE THE AUDIT LOG READABLE BY THE WHOLE FIRM
 - THE DATABASE ASKS THE PAYROLL TIER AND THE CLIENTS IN REACH OF THE EMPLOYEE, RUN AND PAYSLIP ROWS, AND A PARTNER'S BLOCK ON PAYROLL NOW REACHES THEM
+- A DATABASE FUNCTION THAT WRITES AS ITS OWNER ASKS WHO IS CALLING, BECAUSE ROW SECURITY DOES NOT RUN INSIDE IT
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
@@ -1599,6 +1600,7 @@ _Longer design records for this area were moved to `docs/design-record/engineeri
   careless rewrite drops.
 - `core/schema_guard.py` is the boot-time backstop: it surfaces code/schema drift loudly
   instead of letting writes fail silently behind broad `try/except`.
+- **A `SECURITY DEFINER` function that takes arguments and that a signed-in user can execute MUST ASK WHO IS CALLING**, because row security does not run inside it: call `public.assert_caller_acts_for(function, firm, client, pairs)` first (migration 486 is the pattern, and it wraps by RENAME so no body is restated), or revoke EXECUTE from `authenticated`. `tests/test_a_function_that_runs_as_its_owner_and_a_signed_in_user_can_call_asks_who_is_calling_pg.py` fails a new one.
 
 _Longer design records for this area were moved to `docs/design-record/engineering-and-ci.md`; see the Design record index._
 

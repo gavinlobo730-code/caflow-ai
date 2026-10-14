@@ -107,7 +107,10 @@ def test_the_api_roles_keep_it(db, sig):
     `service_role` too, since theirs came from PUBLIC on several of these. The
     re-grant is not tidiness — without it, core/schema_guard.py's boot check and
     the §40A(3) scan stop working."""
-    assert _privilege(db, "authenticated", sig) == "yes", sig
+    # Migration 486 took EXECUTE from `authenticated` on is_client_fy_locked: nothing in the application or the
+    # database calls it, and for a signed-in user it was a yes/no about any firm's client. The service role keeps it.
+    gone_for_signed_in_users = sig == "public.is_client_fy_locked(uuid, uuid, date)"
+    assert _privilege(db, "authenticated", sig) == ("no" if gone_for_signed_in_users else "yes"), sig
     assert _privilege(db, "service_role", sig) == "yes", sig
 
 

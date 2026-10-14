@@ -311,8 +311,9 @@ USERS_READERS_THAT_DO_NOT_AUTHORISE = {
     # Resolve the ACTOR'S EMAIL for an audit row after the fact; they decide
     # nothing about what the caller may do.
     "audit_capture", "audit_capture_firm", "audit_capture_journal_line",
-    # Read the actor named by the `p_actor` ARGUMENT for the audit record.
-    "discard_posted_journal",
+    # Read the actor named by the `p_actor` ARGUMENT for the audit record. Since migration 486 the logic lives under
+    # the renamed original; the public `discard_posted_journal` is a wrapper that asks who is calling.
+    "discard_posted_journal", "discard_posted_journal__unguarded",
     # Counts a firm's users before purging it; platform-admin and service role.
     "platform_purge_firm",
 }
