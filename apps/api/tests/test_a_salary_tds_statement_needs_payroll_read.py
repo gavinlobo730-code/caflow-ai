@@ -125,6 +125,10 @@ def test_a_24q_walk_through_without_payroll_access_does_not_compute_and_says_so(
     note = _summary_note(out)
     assert "needs access to payroll" in note and "not computed" in note
     assert "zeros are real" not in note, "an unknown must not be worded as a true nil"
+    figures = {f["label"]: f for f in next(s for s in out["stages"] if s["kind"] == "summary")["figures"]}
+    for label in ("TDS deducted", "TDS deposited", "Deductees"):
+        assert figures[label] == {"label": label, "text": "Not computed"}, (
+            f"{label} is shown as a value although nobody computed it: {figures[label]}")
 
 
 def test_the_same_walk_through_with_payroll_access_computes_the_quarter(fallback):

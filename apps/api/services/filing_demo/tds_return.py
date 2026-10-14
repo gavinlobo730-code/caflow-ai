@@ -104,7 +104,9 @@ def build(db, firm_id: str, client_id: str, ref: dict, *, payroll_readable: bool
     deposited = int(rec.get("total_deposits_paise") or 0)
     deductee_count = int(rec.get("deductee_count") or 0)
     figures_note = ""
+    not_computed = False
     if deducted == 0 and deposited == 0 and form == "24Q" and not payroll_readable:
+        not_computed = True
         # Not asked, and not worded as an answer: zero here means UNKNOWN to this
         # person, which is a different fact from a quarter with no tax withheld.
         figures_note = (
@@ -156,11 +158,14 @@ def build(db, firm_id: str, client_id: str, ref: dict, *, payroll_readable: bool
     # conversation with a client still uses it, and both remain valid
     # vocabulary permanently (the transition is a fork, not a migration).
     form_label = form_no if form_no == form else f"{form_no} (was {form})"
+    # A figure nobody computed is not zero. For a person who may not read payroll the quarter's amounts are
+    # UNKNOWN to them, so the screen says so in the figure itself and not only in the note beside it.
+    _unknown = {"text": "Not computed"}
     figures = [
         {"label": "Form", "text": form_label},
-        {"label": "TDS deducted", "paise": deducted},
-        {"label": "TDS deposited", "paise": deposited},
-        {"label": "Deductees", "text": str(deductee_count)},
+        {"label": "TDS deducted", **(_unknown if not_computed else {"paise": deducted})},
+        {"label": "TDS deposited", **(_unknown if not_computed else {"paise": deposited})},
+        {"label": "Deductees", **(_unknown if not_computed else {"text": str(deductee_count)})},
     ]
     if due is not None:
         figures.append({"label": "Due date (Rule 31A)", "text": due.isoformat()})

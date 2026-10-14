@@ -1097,7 +1097,7 @@ CONTROLS = (
     ("payroll-tier-485-reopened",
      "migration 485 rolled back: an assigned Executive or Reviewer reads and writes employees, runs and payslips, "
      "and every member reads every client's attendance, leave and tax declarations",
-     lambda: _migration_sql("485_the_database_asks_the_payroll_tier_and_the_clients_in_reach_of_every_salary_row_rollback.sql"),
+     lambda: _migration_sql("485_the_database_asks_the_payroll_tier_and_the_clients_in_reach_of_the_employee_run_and_payslip_rows_rollback.sql"),
      ("payroll_employees", "payroll_runs", "payroll_slips", "attendance", "leave_balances",
       "payroll_it_declarations", "payroll_it_declaration_items"),
      {("exec_assigned", "payroll_employees", "select"), ("reviewer", "payroll_slips", "update"),

@@ -62,6 +62,8 @@ class PermissionWriteRefused(ValueError):
 # 478) and, since migration 485, by the read AND write policies of the three
 # payroll tables (employees, runs and payslips; attendance, leave and the
 # income-tax declarations are scoped through the employee, so they follow).
+# The other payroll tables (salary structures, revisions, loans, settlements,
+# perquisites and so on) are NOT, and the sentence says so.
 # It is NOT read by any other table's SELECT policy, so a screen that reads a
 # table straight from the browser over PostgREST — the documents pages, the
 # bank-account pickers — is governed there by the person's firm, their client
@@ -81,14 +83,15 @@ class PermissionWriteRefused(ValueError):
 DENIAL_REACH_NOTICE = (
     "A block here is enforced by the PracticeSync server, which refuses that "
     "person's requests for that permission. For payroll the database enforces "
-    "it as well: a person blocked from reading payroll cannot read employees, "
-    "runs, payslips, attendance, leave or tax declarations from the browser "
-    "either. Nothing else is checked against this grid when a table is read, "
-    "and several screens read tables directly from the browser (documents and "
-    "bank accounts among them): there only the person's firm, client "
-    "assignments and, on a few tables, role decide. Direct writes are checked "
-    "against this grid on some tables only. The one other read it reaches is a "
-    "stored year-end export file."
+    "it as well, but only for employees, runs, payslips, attendance, leave and "
+    "tax declarations: a person blocked from reading payroll cannot read those "
+    "from the browser either. Other payroll records, such as salary structures "
+    "and loans, are not covered yet. Nothing else is checked against this grid "
+    "when a table is read, and several screens read tables directly from the "
+    "browser (documents and bank accounts among them): there only the person's "
+    "firm, client assignments and, on a few tables, role decide. Direct writes "
+    "are checked against this grid on some tables only. The one other read it "
+    "reaches is a stored year-end export file."
 )
 
 

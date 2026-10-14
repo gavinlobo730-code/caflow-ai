@@ -436,7 +436,7 @@ def test_a_block_on_reading_does_not_hide_a_table_read_directly(
 
 # ── payroll: the opposite case, since migration 485 ──────────────────────────
 # One table per family: the three that name the grid, and the four children that follow their employee through a
-# subquery. Each is seeded as the administrator (the seed is not what is tested), read by an assigned Manager
+# subquery (the declaration items follow their declaration, which follows the employee). Each is seeded as the administrator (the seed is not what is tested), read by an assigned Manager
 # before any block (so the probe is not vacuous), then read again with `payroll:read` refused for that person.
 _PAYROLL_READ_PROBES = [
     pytest.param("INSERT INTO payroll_employees (firm_id, client_id, name) VALUES ('{firm}', '{client}', 'E');",
@@ -458,6 +458,18 @@ _PAYROLL_READ_PROBES = [
                  "VALUES ('{firm}', '{client}', 'E') RETURNING id) "
                  "INSERT INTO leave_balances (firm_id, employee_id, year) SELECT '{firm}', id, 2026 FROM e;",
                  "SELECT count(*) FROM leave_balances;", id="leave_balances"),
+    pytest.param("WITH e AS (INSERT INTO payroll_employees (firm_id, client_id, name) "
+                 "VALUES ('{firm}', '{client}', 'E') RETURNING id) "
+                 "INSERT INTO payroll_it_declarations (firm_id, client_id, employee_id, fy) "
+                 "SELECT '{firm}', '{client}', id, '2026-27' FROM e;",
+                 "SELECT count(*) FROM payroll_it_declarations;", id="payroll_it_declarations"),
+    pytest.param("WITH e AS (INSERT INTO payroll_employees (firm_id, client_id, name) "
+                 "VALUES ('{firm}', '{client}', 'E') RETURNING id), "
+                 "d AS (INSERT INTO payroll_it_declarations (firm_id, client_id, employee_id, fy) "
+                 "SELECT '{firm}', '{client}', id, '2026-27' FROM e RETURNING id) "
+                 "INSERT INTO payroll_it_declaration_items (firm_id, declaration_id, section) "
+                 "SELECT '{firm}', id, '80C' FROM d;",
+                 "SELECT count(*) FROM payroll_it_declaration_items;", id="payroll_it_declaration_items"),
 ]
 
 
@@ -465,7 +477,7 @@ _PAYROLL_READ_PROBES = [
 def test_a_block_on_reading_payroll_hides_it_from_a_direct_read(dsn, seed, select):
     """The Team screen's notice says a payroll block is enforced by the database too. Block `payroll:read` for an
     assigned Manager and the same JWT's PostgREST-style SELECT returns nothing, on the three tables that name the grid
-    and on the four children that follow their employee."""
+    and on the four children that follow their employee (attendance, leave and both declaration tables)."""
     seeded = _psql(dsn, seed.format(firm=FIRM, client=CLIENT))
     assert seeded.returncode == 0, seeded.stderr
 

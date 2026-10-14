@@ -1,4 +1,4 @@
--- Migration 485 — the database asks the payroll tier, and the clients in reach, of every salary row
+-- Migration 485 — the database asks the payroll tier, and the clients in reach, of the employee, run and payslip rows
 -- (security_privacy-34, found by the role-by-table access matrix; ledger POST-B-004, POST-B-012 and the payroll
 -- part of POST-B-015).
 --
@@ -48,21 +48,32 @@
 --     their own declarations, and writes their own unverified declaration; the matrix proves it cell by cell.
 --   * Partner-only FINALISE and the "a released run cannot be changed" rule are still the API's alone. A trigger
 --     for the second is the remaining half of POST-B-004 and is not here.
---   * The other employee-keyed tables (loans, perquisites, one-time earnings, salary revisions, settlements,
---     bonus disqualifications, run transitions, the ECR and remittance records). Nothing in the browser reaches
---     them and they are not in the access matrix; whether they take the same parent scope is a separate ledger
---     line, not a thing to do unmeasured.
+--   * THE OTHER PAYROLL TABLES, WHICH ARE STILL READABLE BY EVERY MEMBER OF THE FIRM, and the name of this
+--     migration is chosen so that it does not claim otherwise. These carry a firm-only read rule (and a role tier on
+--     their writes) and are NOT covered here: payroll_salary_revisions, salary_structures, payroll_perquisites,
+--     payroll_loans, payroll_loan_recoveries, payroll_settlements, payroll_settlement_components,
+--     payroll_one_time_earnings, bonus_disqualifications, and the run-keyed payroll_run_transitions,
+--     statutory_remittances, epfo_ecr_filings and reconciliation_findings. An Executive, a Reviewer or a Manager the
+--     Partner has blocked from payroll can still select a basic salary, a loan or a settlement from them over
+--     PostgREST. They are not in the access matrix and the browser does not reach them, which is why they were not
+--     measured here, and it is NOT a reason to leave them: the threat the matrix models is a direct call with the
+--     caller's own JWT. They are the next ledger line (the same parent-employee / parent-run scoping, after a check of
+--     every reader under a caller's JWT, as was done for the seven tables above).
 --   * No function, grant, table or row changes. No backfill.
 --
 -- WHO NOTICES, AND WHAT THE API DID ABOUT IT (same commit)
---   Under USE_USER_JWT the API runs as the caller, so this binds the API path too. Two doors let an Executive
---   read payroll data without holding `payroll:read` and would now have answered EMPTY, which is worse than a
---   refusal: Form 24Q built from the books (`POST /api/tds/24q/from-books`, `tds:compute` is Executive) and the
---   24Q rows of the TDS filing walk-through. Both now require `payroll:read` and say so.
+--   Under USE_USER_JWT the API runs as the caller, so this binds the API path too. Three doors read payroll data
+--   under the caller's own sign-in for people who do not hold `payroll:read`, and would now have answered EMPTY,
+--   which is worse than a refusal: Form 24Q built from the books (`POST /api/tds/24q/from-books`, `tds:compute` is
+--   Executive), the 24Q rows of the TDS filing walk-through, and the bank-account delete check (`payroll_runs`
+--   paid from the account). The first two now require `payroll:read` and say so; the third reads the one fact it
+--   needs (is there a payroll run paid from this account) through the service client, after the caller's access to
+--   the client is checked, because an Executive may delete a mistaken bank account and must not be told it is
+--   deletable by a probe that could not see the answer.
 --
 -- Idempotent: DROP POLICY IF EXISTS before each CREATE, and the closing check fails the migration (and so the
 -- deploy) if any policy is missing. Reversible:
--- 485_the_database_asks_the_payroll_tier_and_the_clients_in_reach_of_every_salary_row_rollback.sql
+-- 485_the_database_asks_the_payroll_tier_and_the_clients_in_reach_of_the_employee_run_and_payslip_rows_rollback.sql
 -- drops them again, which RE-OPENS the holes.
 
 -- ── payroll_employees ────────────────────────────────────────────────────────
