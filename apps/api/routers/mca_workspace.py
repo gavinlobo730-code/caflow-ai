@@ -34,7 +34,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from models.common import api_response
-from core.permissions import rbac
+from core.permissions import can_user, rbac
 from core.authz import assert_client_access, can_access_client, effective_client_ids
 from core.validators import validate_cin, validate_din, validate_pan
 from services.audit_service import log_event
@@ -508,11 +508,11 @@ def update_filing_status(
                 "Explicit ca_approved=true required for filed status. CA must confirm.")
 
         # # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-        # Companies Act §92/137/139: Only Manager+ can mark filing as filed
+        # Companies Act §92/137/139: Only Manager+ can mark filing as filed.
+        # PER PERSON (`can_user`), not per role: migration 493 asks the database the same pair through
+        # `my_permission`, so a Partner's grid decision has to be the answer in both places.
         if body.status == "filed":
-            from core.permissions import can
-            role = current_user.get("role", "executive")
-            if not can(role, "mca", "approve"):
+            if not can_user(current_user, "mca", "approve"):
                 raise HTTPException(status_code=403, detail="Only Manager or above can mark filings as filed")
 
         updates: dict = {"status": body.status}
@@ -527,9 +527,14 @@ def update_filing_status(
 
         # Read first: marking a filing "filed" writes the MCA21 SRN and
         # acknowledgement onto it (Companies Act §92/§137/§139).
-        if _load_or_none(current_user, "mca_filings", _MOCK_FILINGS,
-                         filing_id) is None:
+        existing = _load_or_none(current_user, "mca_filings", _MOCK_FILINGS, filing_id)
+        if existing is None:
             return api_response(False, None, "Filing not found")
+        # A filing recorded as filed is reopened or rewritten only by someone who may approve MCA filings
+        # (migration 493 says the same to the database), whatever status it is being moved to.
+        if existing.get("status") == "filed" and not can_user(current_user, "mca", "approve"):
+            return api_response(False, None,
+                "This filing is recorded as filed, so only someone who may approve MCA filings can change or reopen it.")
 
         if _USE_MOCK:
             _MOCK_FILINGS[filing_id].update(updates)
@@ -537,7 +542,11 @@ def update_filing_status(
         else:
             from core.supabase_client import get_supabase
             rows = get_supabase().table("mca_filings").update(updates).eq("id", filing_id).eq("firm_id", firm_id).execute().data
-            rec = rows[0] if rows else {}
+            if not rows:
+                # A refused UPDATE affects zero rows without an error; reading that as success would tell the CA a
+                # filing was recorded when the database declined to move it.
+                return api_response(False, None, "The filing was not changed. Check that you may approve MCA filings.")
+            rec = rows[0]
 
         log_event(firm_id, "mca_filing", filing_id, "status_change",
                   actor_id=current_user.get("auth_user_id"), new_data=updates)

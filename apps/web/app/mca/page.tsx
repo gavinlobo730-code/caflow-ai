@@ -17,6 +17,7 @@ import {
   Plus, X, AlertCircle, Users, Calendar,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
@@ -192,6 +193,8 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   const [period, setPeriod] = useState(() => `FY ${currentFinancialYearLabel()}`);
   const [dueDate, setDueDate] = useState("");
   const [srn, setSrn] = useState("");
+  // The date the CA filed it on MCA21, which the software must not supply (it used to write today's).
+  const [filedOn, setFiledOn] = useState("");
   const [status, setStatus] = useState<FilingStatus>("Pending");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -199,6 +202,9 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
 
   async function handleSubmit() {
     if (!clientId || !cin.trim() || !dueDate) { setErr("Client, CIN and Due Date are required."); return; }
+    if (status === "Filed" && (!srn.trim() || !filedOn)) {
+      setErr("A filing marked Filed needs its SRN and the date it was filed on MCA21."); return;
+    }
     setSaving(true); setErr(null);
     try {
       const sb = getSupabaseClient();
@@ -213,14 +219,34 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
         form_type: formType,
         period,
         due_date: dueDate,
-        filed_date: status === "Filed" ? todayLocalISO() : null,
-        srn: srn.trim() || null,
-        status: status === "Pending" ? "not_started" : status.toLowerCase(),  // DB: not_started|filed|overdue
+        // A row is CREATED not started (or overdue) and never filed: recording it as filed goes through the API
+        // below, which asks for Manager and above and the CA's confirmation. Writing `filed`, the SRN and a
+        // date taken from the clock here let an Executive record a statutory filing as done (POST-A-225).
+        filed_date: null,
+        srn: null,
+        status: status === "Overdue" ? "overdue" : "not_started",  // DB: not_started|in_progress|filed|overdue
         notes: notes.trim() || null,
       }).select().single();
       if (error) throw new Error(error.message);
       const filing = data as MCAFiling;
       filing.status = computeStatus(filing.due_date, filing.filed_date);
+      if (status === "Filed") {
+        // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this records a filing the CA made on MCA21.
+        const res = await api.mca.setFilingStatus(filing.id, {
+          status: "filed", ca_approved: true, srn: srn.trim(), filing_date: filedOn,
+        });
+        if (res.success) {
+          filing.status = "Filed";
+          filing.filed_date = filedOn;
+          filing.srn = srn.trim();
+        } else {
+          // The row exists and is pending: say so, with the server's sentence, rather than showing Filed.
+          onAdded(filing);
+          toast({ title: "Filing added, but not marked filed", description: res.error ?? "The server declined it." });
+          onClose();
+          return;
+        }
+      }
       onAdded(filing);
       toast({ title: "MCA filing added" });
       onClose();
@@ -283,9 +309,15 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">SRN (if filed)</label>
-              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" value={srn} onChange={e => setSrn(e.target.value)} placeholder="SRN12345678" />
+              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" value={srn} onChange={e => setSrn(e.target.value)} placeholder="SRN12345678" disabled={status !== "Filed"} />
             </div>
           </div>
+          {status === "Filed" && (
+            <div>
+              <label className="text-xs font-medium text-ps-body block mb-1">Filed on MCA21 on</label>
+              <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={filedOn} max={todayLocalISO()} onChange={e => setFiledOn(e.target.value)} />
+            </div>
+          )}
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>
             <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
@@ -343,13 +375,12 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
         const srn = (srns[f.id] ?? "").trim();
         try {
           if (!tableError && firmId) {
-            // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-            const sb = getSupabaseClient();
-            const { error } = await sb
-              .from("mca_filings")
-              .update({ status: "filed", filed_date: filedDate, srn })
-              .eq("id", f.id);
-            if (error) throw new Error(error.message);
+            // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Through the API (POST-A-225): the route asks for Manager
+            // and above and the CA's confirmation, and answers a refusal as HTTP 200 with { success: false }.
+            const res = await api.mca.setFilingStatus(f.id, {
+              status: "filed", ca_approved: true, srn, filing_date: filedDate,
+            });
+            if (!res.success) throw new Error(res.error ?? "Failed to update");
           }
           return { ok: true as const, id: f.id, srn };
         } catch (e) {
@@ -594,13 +625,11 @@ export default function MCAPage() {
     setFiledError(null);
     try {
       if (!tableError && firmId) {
-        // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-        const sb = getSupabaseClient();
-        const { error } = await sb
-          .from("mca_filings")
-          .update({ status: "filed", filed_date: filedForm.filed_date, srn: filedForm.srn.trim() })
-          .eq("id", id);
-        if (error) throw new Error(error.message);
+        // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Through the API: see the bulk path (POST-A-225).
+        const res = await api.mca.setFilingStatus(id, {
+          status: "filed", ca_approved: true, srn: filedForm.srn.trim(), filing_date: filedForm.filed_date,
+        });
+        if (!res.success) throw new Error(res.error ?? "Failed to update status");
       }
       setFilings(prev => prev.map(f => f.id === id
         ? { ...f, status: "Filed" as FilingStatus, filed_date: filedForm.filed_date, srn: filedForm.srn.trim() }

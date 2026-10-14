@@ -990,13 +990,27 @@ export async function saveGSTR3BReturn(
   // currently hold a NULL gstin).
   const { data: existing, error: findError } = await sb
     .from("gstr3b_returns")
-    .select("id")
+    .select("id, status")
     .eq("firm_id", firmId)
     .eq("client_id", clientId)
     .eq("period", period)
     .eq("gstin", gstinKey)
     .maybeSingle();
   if (findError) throw new Error(`Failed to save GSTR-3B: ${findError.message}`);
+
+  // A FILED RETURN IS NOT REBUILT (POST-A-224). Every Compute click lands here,
+  // and the upsert below writes `status: "draft"` over whatever the row held,
+  // so a return the CA had filed on the portal came back as an unfiled draft
+  // with a CA Approve button — its ARN, filing date and approver still on the
+  // row, the `filings` row (the period lock) still in place, and the stored
+  // figures no longer the ones that were filed. The server's own save refuses it
+  // (CGST §39: a filed return cannot be revised; a correction is declared in a
+  // later period) and so does its recompute, in these words.
+  if (existing?.status === "submitted") {
+    throw new Error(
+      `GSTR-3B for ${fromPeriod(period)} has already been filed and cannot be changed. ` +
+      "Corrections are declared as an amendment in a later return.");
+  }
 
   // ONE write with the payload written out inline, not a named object passed
   // to an insert-or-update pair: tests/test_frontend_columns_exist_pg.py can
@@ -1067,37 +1081,71 @@ export async function saveGSTR3BReturn(
     payload_json: result.payload,
     validation_errors: result.validation_warnings,
     status: "draft",
+    // Rebuilding changes what the return says, so an approval of the earlier
+    // figures no longer applies to it — the same thing the server's recompute
+    // does (routers/gst_workspace.py), and not leaving an approver on a draft.
+    ca_approved_by: null,
+    ca_approved_at: null,
     updated_at: new Date().toISOString(),
   }, { onConflict: "id" });
-  if (error) throw new Error(`Failed to save GSTR-3B: ${error.message}`);
+  if (error) {
+    // Migration 491: a return that has been APPROVED changes only in the hands of someone who may approve GST
+    // returns, so an Executive's rebuild of one is refused by row security. Say so, not "violates a policy".
+    if (existing?.status === "ca_approved" && /row-level security/i.test(error.message)) {
+      throw new Error(
+        `GSTR-3B for ${fromPeriod(period)} has been approved, so only someone who may approve GST returns can rebuild it.`);
+    }
+    throw new Error(`Failed to save GSTR-3B: ${error.message}`);
+  }
 }
 
-/** CA approves GSTR-3B — marks as ca_approved, records approver. */
+/**
+ * CA approves GSTR-3B.
+ *
+ * THROUGH THE API, NOT THE TABLE (POST-A-223). This used to be a PostgREST
+ * `.update()` that set `ca_approved_by` to the id the BROWSER supplied, which meant:
+ *
+ *     * rbac() never ran. The route requires Manager and above to approve
+ *       (`can(role, "gst", "approve")`); the table's policy asks only
+ *       `gst:compute` (Executive), and a row policy cannot tell an approval
+ *       from any other UPDATE of the row, so an Executive approved a return.
+ *     * the approver was whatever id the page passed. The page passed the id
+ *       from `auth.getUser()`, which is the Supabase AUTH id, while
+ *       `ca_approved_by` is a foreign key to public.users(id), the INTERNAL
+ *       id; the repository's own guard records that the two are not equal in
+ *       production. The server derives the approver from the signed-in user.
+ *     * the server's own refusals never ran: the explicit ca_approved
+ *       confirmation, and the books-have-moved refusal that stops a CA approving
+ *       figures that no longer match the ledger.
+ *     * no audit event was written.
+ *
+ * The (client, period, registration) -> return id lookup is a READ and stays on
+ * PostgREST; it is the WRITE that moved.
+ *
+ * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: approval is the CA's own
+ * confirmation click reaching the server, and it submits nothing to the portal.
+ */
 export async function approveGSTR3B(
   clientId: string,
   period: string,
-  userId: string,
   /** Which registration's return (GST-17). Migration 390 keyed this table on
    *  (client, period, gstin), so without it a client holding two registrations
-   *  has BOTH returns for the period approved by one click. */
+   *  would have no way to say which return is being approved. */
   gstin?: string,
 ): Promise<void> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  let q = sb
-    .from("gstr3b_returns")
-    .update({
-      status: "ca_approved",
-      ca_approved_by: userId,
-      ca_approved_at: new Date().toISOString(),
-    })
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId)
-    .eq("period", period);
-  if (gstin) q = q.eq("gstin", gstin.trim().toUpperCase());
-  const { error } = await q;
-
-  if (error) throw new Error(`Failed to approve GSTR-3B: ${error.message}`);
+  const existing = await getGSTR3BReturn(clientId, period, gstin);
+  const returnId = (existing as { id?: string } | null)?.id;
+  if (!returnId) {
+    throw new Error(
+      `No GSTR-3B has been computed for ${fromPeriod(period)} — compute it before approving.`);
+  }
+  const res = await api.gstWorkspace.setGstr3bStatus(returnId, {
+    status: "ca_approved",
+    ca_approved: true,
+  });
+  // This router answers a refusal as HTTP 200 with { success: false, error },
+  // so an unchecked call reports "approved" for a request the server declined.
+  if (!res.success) throw new Error(res.error ?? "Failed to approve GSTR-3B");
 }
 
 // ── GSTR-1 ─────────────────────────────────────────────────────────────────
@@ -1200,13 +1248,22 @@ export async function saveGSTR1Return(
   // inline for the same schema-guard reason given there.
   const { data: existing, error: findError } = await sb
     .from("gstr1_returns")
-    .select("id")
+    .select("id, status")
     .eq("firm_id", firmId)
     .eq("client_id", clientId)
     .eq("period", period)
     .eq("gstin", gstinKey)
     .maybeSingle();
   if (findError) throw new Error(`Failed to save GSTR-1: ${findError.message}`);
+
+  // A FILED RETURN IS NOT REBUILT (POST-A-224) — see saveGSTR3BReturn. The upsert
+  // below writes `validated` or `draft` over whatever the row held, and the
+  // server's save refuses a submitted GSTR-1 in these words (CGST §37).
+  if (existing?.status === "submitted") {
+    throw new Error(
+      `GSTR-1 for ${fromPeriod(period)} has already been filed and cannot be changed. ` +
+      "Corrections are declared as an amendment in a later return.");
+  }
 
   const { error } = await sb.from("gstr1_returns").upsert({
     ...(existing ? { id: existing.id } : {}),
@@ -1224,35 +1281,40 @@ export async function saveGSTR1Return(
     // wired in. A return carrying an error the portal will reject is a draft.
     status: readyToFile ? "validated" : "draft",
     validated_at: readyToFile ? new Date().toISOString() : null,
+    // A rebuild voids an earlier approval — see saveGSTR3BReturn.
+    ca_approved_by: null,
+    ca_approved_at: null,
     updated_at: new Date().toISOString(),
   }, { onConflict: "id" });
-  if (error) throw new Error(`Failed to save GSTR-1: ${error.message}`);
+  if (error) {
+    // See saveGSTR3BReturn: migration 491.
+    if (existing?.status === "ca_approved" && /row-level security/i.test(error.message)) {
+      throw new Error(
+        `GSTR-1 for ${fromPeriod(period)} has been approved, so only someone who may approve GST returns can rebuild it.`);
+    }
+    throw new Error(`Failed to save GSTR-1: ${error.message}`);
+  }
 }
 
-/** CA approves GSTR-1 — marks as ca_approved. */
+/** CA approves GSTR-1. Through the API for the reasons given on approveGSTR3B. */
 export async function approveGSTR1(
   clientId: string,
   period: string,
-  userId: string,
   /** Which registration's return (GST-17) — see approveGSTR3B. */
   gstin?: string,
 ): Promise<void> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  let q = sb
-    .from("gstr1_returns")
-    .update({
-      status: "ca_approved",
-      ca_approved_by: userId,
-      ca_approved_at: new Date().toISOString(),
-    })
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId)
-    .eq("period", period);
-  if (gstin) q = q.eq("gstin", gstin.trim().toUpperCase());
-  const { error } = await q;
-
-  if (error) throw new Error(`Failed to approve GSTR-1: ${error.message}`);
+  const existing = await getGSTR1Return(clientId, period, gstin);
+  const returnId = (existing as { id?: string } | null)?.id;
+  if (!returnId) {
+    throw new Error(
+      `No GSTR-1 has been built for ${fromPeriod(period)} — build it before approving.`);
+  }
+  // # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+  const res = await api.gstWorkspace.setGstr1Status(returnId, {
+    status: "ca_approved",
+    ca_approved: true,
+  });
+  if (!res.success) throw new Error(res.error ?? "Failed to approve GSTR-1");
 }
 
 // ── Return Fetchers ────────────────────────────────────────────────────────

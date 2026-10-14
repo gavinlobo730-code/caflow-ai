@@ -163,9 +163,7 @@ export default function GSTR1Page() {
     if (!clientId || !yearMonth || !result) return;
     setApproving(true);
     try {
-      const sb = getSupabaseClient();
-      const { data: { user } } = await sb.auth.getUser();
-      await approveGSTR1(clientId, toPeriod(yearMonth), user?.id ?? "", result.gstin);
+      await approveGSTR1(clientId, toPeriod(yearMonth), result.gstin);
       setFilingStatus("ca_approved");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Approval failed");

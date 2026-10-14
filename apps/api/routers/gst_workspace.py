@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.authz import assert_client_access, can_access_client, effective_client_ids
-from core.permissions import rbac
+from core.permissions import can_user, rbac
 from core.ist_clock import ist_today
 from core.validators import validate_gstin
 from services.audit_service import log_event
@@ -288,6 +288,68 @@ def _load_return_or_none(current_user: dict, table: str, mock_store: dict,
     return _visible_or_none(current_user, rec)
 
 
+#: A return in either of these states changes only in the hands of someone who may approve GST returns. Migration
+#: 491 asks the DATABASE the same question with the same `my_permission` pair, so a direct call with a caller's own
+#: sign-in is refused too; the route says it first, in words, rather than meeting a bare policy error or, for an
+#: UPDATE or DELETE, a quiet zero rows. (POST-A-223.)
+_NEEDS_AN_APPROVER = ("ca_approved", "submitted")
+
+
+def _approval_needed_to_change(current_user: dict, rec: Optional[dict]) -> Optional[str]:
+    """The refusal for a caller who may compute but not approve, about a return that has been approved or filed;
+    None when nothing stops them. Per person (`can_user`), so a Partner's grid decision counts here as it does
+    in the database."""
+    if not rec or (rec.get("status") or "draft") not in _NEEDS_AN_APPROVER:
+        return None
+    if can_user(current_user, "gst", "approve"):
+        return None
+    return ("This return has been approved or filed, so only someone who may approve GST returns can change, "
+            "reopen, recompute or delete it.")
+
+
+def _revise_in_place(current_user: dict, existing: dict, record: dict) -> None:
+    """Turn `record` into the REVISION of `existing`: the same row, the status it had, and an approval of the earlier
+    figures voided (new figures are not the ones that were approved, as in a recompute). Raises 403 for a caller who
+    may compute but not approve, about a return that has been approved. One place for both saves, so the two cannot
+    drift."""
+    refusal = _approval_needed_to_change(current_user, existing)
+    if refusal:
+        raise HTTPException(status_code=403, detail=refusal)
+    record["id"] = existing["id"]
+    record["status"] = existing.get("status") or "draft"
+    if record["status"] == "ca_approved":
+        record["status"] = "draft"
+        record["ca_approved_by"] = None
+        record["ca_approved_at"] = None
+    record.pop("created_at", None)
+
+
+_NOT_CHANGED = "The return was not changed. Check that you may approve GST returns."
+
+
+def _write_gstr1_status(firm_id: str, return_id: str, patch: dict) -> Optional[dict]:
+    """The GSTR-1 row after the status UPDATE, or None when the database changed nothing (a refused UPDATE affects zero
+    rows without an error, and reading that as success would tell the CA a return was approved or filed when it
+    declined to move). Written out per table, not `.table(name)`: a dynamic table name is invisible to
+    tests/test_backend_columns_exist_pg.py."""
+    if _USE_MOCK:
+        _MOCK_GSTR1[return_id].update(patch)
+        return _MOCK_GSTR1[return_id]
+    from core.supabase_client import get_supabase
+    rows = get_supabase().table("gstr1_returns").update(patch).eq("id", return_id).eq("firm_id", firm_id).execute().data
+    return rows[0] if rows else None
+
+
+def _write_gstr3b_status(firm_id: str, return_id: str, patch: dict) -> Optional[dict]:
+    """The GSTR-3B twin of `_write_gstr1_status`."""
+    if _USE_MOCK:
+        _MOCK_GSTR3B[return_id].update(patch)
+        return _MOCK_GSTR3B[return_id]
+    from core.supabase_client import get_supabase
+    rows = get_supabase().table("gstr3b_returns").update(patch).eq("id", return_id).eq("firm_id", firm_id).execute().data
+    return rows[0] if rows else None
+
+
 def _filed_date_or_refusal(status: str, firm_id: str, filing_type: str,
                            filed_date: Optional[str], rec: dict):
     """(date, refusal, registration) for a return about to be marked submitted.
@@ -552,9 +614,7 @@ def save_gstr1(
                     status_code=422,
                     detail=f"GSTR-1 for {body.period} has already been filed and cannot be "
                            "changed. Corrections are declared as an amendment in a later return.")
-            record["id"] = existing["id"]
-            record["status"] = existing.get("status") or "draft"
-            record.pop("created_at", None)
+            _revise_in_place(current_user, existing, record)
 
         if _USE_MOCK:
             if existing:
@@ -610,10 +670,10 @@ def update_gstr1_status(
 
         # CGST Act §37: only Manager+ can approve/submit a GSTR-1 return —
         # ca_approved=true alone is a caller-supplied flag, not proof of role.
+        # PER PERSON (`can_user`), not per role: migration 491 asks the database the same pair through
+        # `my_permission`, so a Partner's grid decision has to be the answer in both places.
         if body.status in ("ca_approved", "submitted"):
-            from core.permissions import can
-            role = current_user.get("role", "executive")
-            if not can(role, "gst", "approve"):
+            if not can_user(current_user, "gst", "approve"):
                 return api_response(False, None,
                     "Only Manager or above can approve or submit a GST return.")
 
@@ -623,6 +683,10 @@ def update_gstr1_status(
         existing = _load_return_or_none(current_user, "gstr1_returns", _MOCK_GSTR1, return_id)
         if existing is None:
             return api_response(False, None, "Not found")
+        # Moving an approved or filed return to ANY status, draft included, is a reopening.
+        refusal = _approval_needed_to_change(current_user, existing)
+        if refusal:
+            return api_response(False, None, refusal)
 
         # PRE-A-007: the date it was filed on the portal is the CA's to state
         # and is refused before anything moves. Asked after the read, so a
@@ -640,13 +704,9 @@ def update_gstr1_status(
             body.status, actor_id=current_user.get("id"), arn=body.arn,
             now_iso=datetime.utcnow().isoformat(),
         )
-        if _USE_MOCK:
-            _MOCK_GSTR1[return_id].update(patch)
-            rec = _MOCK_GSTR1[return_id]
-        else:
-            from core.supabase_client import get_supabase
-            rows = get_supabase().table("gstr1_returns").update(patch).eq("id", return_id).eq("firm_id", firm_id).execute().data
-            rec = rows[0] if rows else {}
+        rec = _write_gstr1_status(firm_id, return_id, patch)
+        if rec is None:
+            return api_response(False, None, _NOT_CHANGED)
 
         # The filings row. This is what journal_period_lock_reason (migration
         # 266) reads to refuse an edit inside a filed period — and until now
@@ -790,9 +850,7 @@ def save_gstr3b(
                     status_code=422,
                     detail=f"GSTR-3B for {body.period} has already been filed and cannot be "
                            "changed. Corrections are declared as an amendment in a later return.")
-            record["id"] = existing["id"]
-            record["status"] = existing.get("status") or "draft"
-            record.pop("created_at", None)
+            _revise_in_place(current_user, existing, record)
 
         if _USE_MOCK:
             if existing:
@@ -862,11 +920,9 @@ def update_gstr3b_status(
                 "Explicit ca_approved=true required for ca_approved/submitted status. CA must confirm.")
 
         # CGST Act §39: only Manager+ can approve/submit a GSTR-3B return —
-        # ca_approved=true alone is a caller-supplied flag, not proof of role.
+        # ca_approved=true alone is a caller-supplied flag, not proof of role. Per person: see update_gstr1_status.
         if body.status in ("ca_approved", "submitted"):
-            from core.permissions import can
-            role = current_user.get("role", "executive")
-            if not can(role, "gst", "approve"):
+            if not can_user(current_user, "gst", "approve"):
                 return api_response(False, None,
                     "Only Manager or above can approve or submit a GST return.")
 
@@ -876,14 +932,15 @@ def update_gstr3b_status(
         existing = _load_return_or_none(current_user, "gstr3b_returns", _MOCK_GSTR3B, return_id)
         if existing is None:
             return api_response(False, None, "Not found")
-
         # PRE-A-007: the date it was filed on the portal is the CA's to state
         # and is refused before anything moves, ahead of the more expensive
         # checks below.
         filed_date, refusal, _reg = _filed_date_or_refusal(
             body.status, firm_id, FILING_TYPE_GSTR3B, body.filed_date, existing)
-        # GST-20 follows, and only when the date was acceptable.
-        refusal = refusal or _registration_refusal(body.status, firm_id, existing)
+        # GST-20 follows, and only when the date was acceptable. Moving an approved or filed return to ANY status,
+        # draft included, is a reopening, and it is the first thing asked.
+        refusal = (_approval_needed_to_change(current_user, existing) or refusal
+                   or _registration_refusal(body.status, firm_id, existing))
         if refusal:
             return api_response(False, None, refusal)
 
@@ -928,13 +985,9 @@ def update_gstr3b_status(
             body.status, actor_id=current_user.get("id"), arn=body.arn,
             now_iso=datetime.utcnow().isoformat(),
         )
-        if _USE_MOCK:
-            _MOCK_GSTR3B[return_id].update(patch)
-            rec = _MOCK_GSTR3B[return_id]
-        else:
-            from core.supabase_client import get_supabase
-            rows = get_supabase().table("gstr3b_returns").update(patch).eq("id", return_id).eq("firm_id", firm_id).execute().data
-            rec = rows[0] if rows else {}
+        rec = _write_gstr3b_status(firm_id, return_id, patch)
+        if rec is None:
+            return api_response(False, None, _NOT_CHANGED)
 
         # The filings row. This is what journal_period_lock_reason (migration
         # 266) reads to refuse an edit inside a filed period — and until now
@@ -1644,10 +1697,23 @@ def save_gstr9(
         # firm_id -- without it, a firm that merely knew/guessed another
         # firm's client_id could overwrite that firm's existing annual return
         # draft via this same "update if exists" path.
-        existing = (db.table("gstr1_returns").select("id").eq("client_id", client_id)
+        existing = (db.table("gstr1_returns").select("id, status").eq("client_id", client_id)
                     .eq("financial_year", fy).eq("return_type", "gstr9")
                     .eq("firm_id", firm_id).limit(1).execute())
         if existing.data:
+            # A filed annual return is not rewritten (CGST §44): the save below writes `draft` over whatever the
+            # row held, so a submitted GSTR-9 came back as an unfiled draft with its ARN still on the row.
+            prior = existing.data[0]
+            if prior.get("status") == "submitted":
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"GSTR-9 for {fy} has already been filed and cannot be changed.")
+            refusal = _approval_needed_to_change(current_user, prior)
+            if refusal:
+                raise HTTPException(status_code=403, detail=refusal)
+            # New figures are not the ones that were approved.
+            payload["ca_approved_by"] = None
+            payload["ca_approved_at"] = None
             # Update existing draft
             upd = db.table("gstr1_returns").update(payload).eq("id", existing.data[0]["id"]).execute()
             rec = upd.data[0] if upd.data else {**payload, "id": existing.data[0]["id"]}
@@ -2236,6 +2302,10 @@ def _delete_return(current_user: dict, table: str, mock_store: dict,
             "it would unlock a period already filed with the government. If it was "
             "not actually filed, correct the status first.")
 
+    refusal = _approval_needed_to_change(current_user, rec)
+    if refusal:
+        return api_response(False, None, refusal)
+
     firm_id = current_user["firm_id"]
     # Logged BEFORE the delete and with the whole row, so what was removed is
     # recoverable from the log rather than merely noted as having happened.
@@ -2383,6 +2453,11 @@ def recompute_gstr3b(return_id: str,
     if dry_run:
         return api_response(True, {**state, "written": False,
                                    "period": rec.get("period")})
+
+    # Recomputing voids an approval, which is the approver's to void.
+    refusal = _approval_needed_to_change(current_user, rec)
+    if refusal:
+        return api_response(False, None, refusal)
 
     if (rec.get("status") or "draft") not in _DELETABLE_STATUSES:
         return api_response(False, None,
