@@ -646,8 +646,8 @@ export default function SettingsPage() {
         </div>
         <div className="px-5 py-4 flex items-center justify-between">
           <div>
-            <p className="text-sm text-ps-body">Automatically email P&L, GST, TDS, and payroll reports to clients on a schedule.</p>
-            <p className="text-xs text-ps-hint mt-0.5">Configure frequency, recipients, and delivery day.</p>
+            <p className="text-sm text-ps-body">Plan which reports go to which clients, and when. Sending them is coming soon: nothing is emailed automatically yet.</p>
+            <p className="text-xs text-ps-hint mt-0.5">Record the frequency, recipients and day for each report.</p>
           </div>
           <Link
             href="/settings/scheduled-reports"

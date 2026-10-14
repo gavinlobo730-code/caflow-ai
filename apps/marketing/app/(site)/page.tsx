@@ -10,7 +10,6 @@ import { BeforeAfter } from "@/components/home/BeforeAfter";
 import { AiInAction } from "@/components/home/AiInAction";
 import { ProductShowcase } from "@/components/home/ProductShowcase";
 import { Grain, ScrollMarquee, CountUp } from "@/components/home/primitives";
-import { appLinks } from "@/lib/site";
 
 /**
  * The homepage.
@@ -311,10 +310,6 @@ export default function HomePage() {
           Already using PracticeSync?{" "}
           <a href="/access" className="underline underline-offset-4 hover:text-white">
             Sign in here
-          </a>
-          {" · "}
-          <a href={appLinks.signup} className="underline underline-offset-4 hover:text-white">
-            Start free trial
           </a>
         </p>
       </Panel>

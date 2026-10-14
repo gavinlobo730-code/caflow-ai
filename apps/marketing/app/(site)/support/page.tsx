@@ -56,7 +56,7 @@ const CHANNELS = [
 const FAQ = [
   {
     q: "How do I get started?",
-    a: "Sign up for the free trial, add your firm, and import your first clients from Tally or a spreadsheet. No credit card is needed to try PracticeSync.",
+    a: "Book a demo. We walk a real client's month end to end, and then set up your firm with you and bring your first clients across from Tally or a spreadsheet.",
   },
   {
     q: "Can you help migrate my existing data?",

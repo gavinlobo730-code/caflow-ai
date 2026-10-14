@@ -241,7 +241,9 @@ export function InvoiceViewDrawer({
                 <>
                   <span className="text-ps-border">·</span>
                   <Badge tone={del.sent ? "green" : "muted"}><Mail size={9} /> {del.sent ? "Sent" : "Not sent"}</Badge>
-                  <Badge tone="muted" title="Open-tracking not enabled">Viewed —</Badge>
+                  {/* No "Viewed" badge: nothing measures whether the client's customer opened an invoice (open tracking
+                      would record a third party's activity, which needs a consented design), and a badge that always
+                      reads "—" reads as a broken feature (POST-B-201). */}
                   <span className="text-ps-border">·</span>
                   <Badge tone={compliance.irn ? "blue" : "muted"}>IRN {compliance.irn ? "✓" : "—"}</Badge>
                   <Badge tone={compliance.ewayBill ? "blue" : "muted"}>E-Way {compliance.ewayBill ? "✓" : "—"}</Badge>
