@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from core.authz import assert_client_access
-from core.permissions import can, rbac
+from core.permissions import can_user, rbac
 from models.common import api_response
 from services import filing_demo
 from services.filing_demo.common import filing_simulation_enabled
@@ -48,11 +48,10 @@ def capabilities(current_user: dict = Depends(rbac("compliance_record", "read"))
     appears that the preview endpoint would then refuse.
     """
     enabled = filing_simulation_enabled()
-    role = current_user.get("role", "")
     return api_response(True, {
         "enabled": enabled,
         "flows": ([k for k, (_b, resource) in filing_demo.FLOWS.items()
-                   if can(role, resource, "read")] if enabled else []),
+                   if can_user(current_user, resource, "read")] if enabled else []),
         # Stated so no screen ever has to infer it: real transmission does not
         # exist in this build, for any filing.
         "real_filing": False,
@@ -82,15 +81,25 @@ def preview(flow: str, body: PreviewRequest,
     builder, resource = entry
 
     # The demo shows the module's real figures, so it is gated like the
-    # module: a role without payroll read does not get the PF walk-through.
-    if not can(current_user.get("role", ""), resource, "read"):
+    # module: a person without payroll read does not get the PF walk-through.
+    # `can_user`, not `can`: since migration 403 a firm may block one person
+    # from a module whatever their role, and since 485 the database refuses
+    # the payroll rows to that person too, so a role-only check would pass and
+    # the walk-through would then be built from nothing.
+    if not can_user(current_user, resource, "read"):
         return api_response(False, None,
-            "Your role does not have access to this module's figures.")
+            "You do not have access to this module's figures.")
 
     from core.supabase_client import get_supabase
     try:
+        # The salary-TDS (24Q) walk-through can compute its figures from the
+        # payroll runs when the saved return has none, and that read is the
+        # caller's own: tell it whether they may read payroll so it can say so
+        # instead of showing an empty quarter as a true one.
+        extra = ({"payroll_readable": can_user(current_user, "payroll", "read")}
+                 if flow == "tds" else {})
         script = builder(get_supabase(), current_user["firm_id"],
-                         body.client_id, body.ref or {})
+                         body.client_id, body.ref or {}, **extra)
     except ValueError as ve:
         # A flow's own refusal (bad ref, record not found, not built yet) is
         # an answer, not an incident.

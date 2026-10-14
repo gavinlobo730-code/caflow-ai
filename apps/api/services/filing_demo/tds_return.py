@@ -40,8 +40,14 @@ def _inr(paise: int) -> str:
     return f"{'-' if paise < 0 else ''}₹{body}"
 
 
-def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
-    """ref: {"return_id": <tds_returns.id>} — see the module docstring."""
+def build(db, firm_id: str, client_id: str, ref: dict, *, payroll_readable: bool = True) -> dict:
+    """ref: {"return_id": <tds_returns.id>} — see the module docstring.
+
+    `payroll_readable` is whether the CALLER may read payroll. A 24Q's figures
+    come from payroll runs, which the database shows only to a person who may,
+    so for anyone else the from-books fallback below would find no rows and the
+    walk-through would declare "the books show no TDS for this quarter". It is
+    not asked instead, and the note says so."""
     return_id = str(ref.get("return_id") or "")
     if not return_id:
         raise ValueError("tds demo needs ref.return_id")
@@ -98,7 +104,14 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     deposited = int(rec.get("total_deposits_paise") or 0)
     deductee_count = int(rec.get("deductee_count") or 0)
     figures_note = ""
-    if deducted == 0 and deposited == 0:
+    if deducted == 0 and deposited == 0 and form == "24Q" and not payroll_readable:
+        # Not asked, and not worded as an answer: zero here means UNKNOWN to this
+        # person, which is a different fact from a quarter with no tax withheld.
+        figures_note = (
+            " This return was saved without computed figures, and working them out "
+            "from the books needs access to payroll, which you do not have, so the "
+            "amounts shown are not computed.")
+    elif deducted == 0 and deposited == 0:
         from services import tds_return_service
         compute = (tds_return_service.tds_24q_from_books if form == "24Q"
                    else tds_return_service.tds_26q_from_books)

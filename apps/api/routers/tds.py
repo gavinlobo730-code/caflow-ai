@@ -282,10 +282,22 @@ def compute_27q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds
 
 
 @router.post("/24q/from-books")
-def compute_24q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds", "compute"))):
+def compute_24q_from_books(
+    req: FromBooksRequest,
+    user: dict = Depends(rbac("tds", "compute")),
+    _payroll_reader: dict = Depends(rbac("payroll", "read")),
+):
     """
     Build Form 24Q (salary TDS) ENTIRELY from finalized payroll runs and
     reconcile the total to the GL "TDS Payable - Salary" control account.
+
+    ALSO NEEDS `payroll:read`. A 24Q lists every employee with their PAN, the
+    salary paid and the tax withheld, which is payroll data; and since migration
+    485 the database refuses payroll rows to anyone without that permission
+    while this route reads them with the CALLER's own sign-in. Without the second
+    check a person who may compute TDS but not read payroll would be handed a
+    statement built from NO rows, with the reconciliation line saying nothing
+    was deducted: an empty answer worded as a true one.
 
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to TRACES or any government portal.
     """

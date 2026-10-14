@@ -321,7 +321,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - The 26AS reconciliation is the same rule and had the same defect (TDS-21)
 - NOT EVERY PART OF FORM 26AS IS A CREDIT, and the client-as-DEDUCTEE reconciliation used to sum all of them
 
-### `docs/design-record/tenancy-and-security.md` (17 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (18 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -340,6 +340,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - EVERY ACTOR IS TRIED AGAINST EVERY TABLE THE BROWSER REACHES, AND THE ANSWER IS A REVIEWED FILE, SO A HOLE IS A RED CELL AND NOT S
 - THE ROLE TIERS AND CLIENT SCOPES THE API GIVES FOUR MORE TABLES NOW REACH THE DATABASE
 - PRODUCTION HAD A POLICY NO MIGRATION CREATES, AND IT MADE THE AUDIT LOG READABLE BY THE WHOLE FIRM
+- THE DATABASE ASKS THE PAYROLL TIER AND THE CLIENTS IN REACH OF EVERY SALARY ROW, AND A PARTNER'S BLOCK ON PAYROLL NOW REACHES IT
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
