@@ -198,7 +198,7 @@
     "cross_client_matches": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -989,7 +989,7 @@
     },
     "vendors": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
-      "manager": ["A", "A", "A", "A"],
+      "manager": ["A", "A", "A", "-"],
       "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],

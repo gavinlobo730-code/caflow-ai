@@ -81,6 +81,11 @@ def seeded(migrated_db):
     client1 = str(uuid.uuid4())
     staff_auth_id = str(uuid.uuid4())
     contact = str(uuid.uuid4())
+    staff_user_id = str(uuid.uuid4())
+    # The Manager is ASSIGNED to the client: since migration 484 a member of staff reads a client's portal contacts
+    # only for a client they reach (a Partner reaches the firm's all, anyone else needs an assignment). The firm-wide
+    # read this file was first written against is exactly what 484 ended; the unassigned case is proved in
+    # test_484_only_a_partner_reads_the_audit_log_and_staff_see_their_clients_portal_contacts_pg.py.
     seed = _psql(dsn, f"""
         INSERT INTO auth.users (id, email) VALUES ('{staff_auth_id}', 'staff1@test.in');
         INSERT INTO firms (id, name, email) VALUES
@@ -89,7 +94,9 @@ def seeded(migrated_db):
         INSERT INTO clients (id, firm_id, client_name, entity_type) VALUES
           ('{client1}','{firm1}','R3.0 Client','Private Limited');
         INSERT INTO users (id, firm_id, auth_user_id, full_name, email, role) VALUES
-          (gen_random_uuid(), '{firm1}', '{staff_auth_id}', 'Staff One', 'staff1@test.in', 'Manager');
+          ('{staff_user_id}', '{firm1}', '{staff_auth_id}', 'Staff One', 'staff1@test.in', 'Manager');
+        INSERT INTO user_client_assignments (firm_id, user_id, client_id) VALUES
+          ('{firm1}', '{staff_user_id}', '{client1}');
         INSERT INTO client_portal_users
           (id, firm_id, client_id, email, name, status, invite_token, invite_expires_at)
           VALUES ('{contact}','{firm1}','{client1}','contact@client.in','Contact One',
