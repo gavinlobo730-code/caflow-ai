@@ -69,9 +69,15 @@ SELECT json_agg(x ORDER BY x.tbl) FROM (
   SELECT c.relname::text AS tbl,
          string_agg(DISTINCT g.privilege_type, ',' ORDER BY g.privilege_type) AS grants
   FROM pg_class c
-  JOIN information_schema.role_table_grants g
-    ON g.table_schema = 'public' AND g.table_name = c.relname
-   AND g.grantee = 'authenticated'
+  JOIN (
+    -- Table-level grants AND column-level ones: a table granted column by column (migrations 494 and 497) is just as
+    -- reachable from the browser, and a check that read only the first would stop looking at it.
+    SELECT table_name, privilege_type FROM information_schema.role_table_grants
+     WHERE table_schema = 'public' AND grantee = 'authenticated'
+    UNION
+    SELECT table_name, privilege_type FROM information_schema.column_privileges
+     WHERE table_schema = 'public' AND grantee = 'authenticated'
+  ) g ON g.table_name = c.relname
   WHERE c.relnamespace = 'public'::regnamespace
     AND c.relkind = 'r'
     AND NOT c.relrowsecurity
