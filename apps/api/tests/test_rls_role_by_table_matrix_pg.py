@@ -68,7 +68,7 @@ THE FILE, AND WHAT IT IS ALLOWED TO SAY
     what is intended, `DEVIATION_CLASSES` holds what the database does instead
     and why, as an equality in both directions. A fix deletes its entry; a new
     gap, a looser or a TIGHTER cell, fails and names (actor, table, operation).
-    129 cells over 43 tables in 4 classes today. Classes are closed by a
+    12 cells over 4 tables in 3 classes today. Classes are closed by a
     migration, and each entry is deleted with its fix: `any-member-assigns-
     themselves` (any member of the firm could write `user_client_assignments`
     and assign themselves to any client; migration 478), in one migration (483)
@@ -85,9 +85,9 @@ THE FILE, AND WHAT IT IS ALLOWED TO SAY
     observed value is recorded and nothing claims it is right.
 
 BREAKING IT ON PURPOSE
-    Ten holes this repository already closed once are put back in a copy of the
-    world, seven of them by running the migration's own rollback file (468, 469,
-    470, 478, 483, 484, 485): each must turn named cells red. `liveness-dropped-from-every-helper`
+    Thirteen holes this repository already closed once are put back in a copy of the
+    world, ten of them by running the migration's own rollback file (468, 469,
+    470, 478, 483, 484, 485, 487, 488, 489): each must turn named cells red. `liveness-dropped-from-every-helper`
     is migration 468 reversed; dropping the check from `get_my_role` ALONE
     turns only two cells red (a suspended Partner writes `fx_rates`, whose
     policy asks the role and never the firm) because `get_my_firm_id` still
@@ -853,18 +853,6 @@ class Deviation:
     cells: dict
 
 
-_REVIEWER_WRITES = (
-    "ai_insights", "bank_accounts", "bank_transactions", "brought_forward_losses", "client_instructions",
-    "client_sales_invoices", "compliance_records", "credit_notes", "debit_notes", "financial_statement_versions",
-    "form_26as_reconciliations", "form_26as_uploads", "government_notices", "gstr1_returns", "gstr2a_records",
-    "gstr2b_reconciliations", "gstr3b_returns", "health_alerts", "health_score_history", "health_scores",
-    "itr_filings", "mca_companies", "mca_directors", "onboarding_workflows",
-    "purchase_bills", "purchase_credit_notes", "purchase_payment_allocations", "purchase_payments",
-    "receipt_allocations", "receipts", "renewals", "sales_debit_notes", "service_catalogue",
-    "tax_computation_snapshots", "tax_disallowances", "xbrl_packages", "year_end_adjustments",
-    "year_end_engagements", "year_end_exports",
-)
-
 #: FROZEN. Every cell in it is a place the database lets somebody do what the
 #: product's own rules forbid (the five rules are in this module's docstring).
 #: A fix deletes its entry in the same commit and a new gap fails the build; a
@@ -884,6 +872,10 @@ DEVIATION_CLASSES: tuple[Deviation, ...] = (
     # so any member could assign themselves to any client. Migration 478 closed it (12 write cells) and
     # its entry went in the same commit; `test_the_matrix_turns_red_when_a_known_hole_is_put_back
     # [assignment-writes-reopened]` puts it back on purpose.
+    # `reviewer-writes-where-no-resource-allows-it` stood here: 39 tables whose writes a Reviewer assigned to the client
+    # could make, with no resource in the API allowing it. Migrations 487, 488 and 489 closed them in three slices (13, 17
+    # and 9 tables, 117 cells) and the class was deleted with the last one; `test_the_matrix_turns_red_when_a_known_hole_is_put_back`
+    # [reviewer-writes-slice-1-487-reopened / -2-488-reopened / -3-489-reopened] put each slice back on purpose.
     # `payroll-tier-not-in-rls`, `payroll-children-have-no-client-id` and `payroll-children-manager-delete` stood
     # here (a payroll tier missing from three tables, and four children with no client scope). Migration 485
     # closed them and their entries went in the same commit; `test_the_matrix_turns_red_when_a_known_hole_is_put_back
@@ -902,14 +894,6 @@ DEVIATION_CLASSES: tuple[Deviation, ...] = (
         "receipts although billing:read is Partner-only.",
         ("fee_receipts",),
         _cells(STAFF_ACTORS, ("select",), "A,B", "-"),
-    ),
-    Deviation(
-        "reviewer-writes-where-no-resource-allows-it",
-        "These 39 tables carry no write-tier policy, so a Reviewer assigned to the client inserts, updates and "
-        "deletes rows although no API resource grants a Reviewer write on them (only timeline and the member's "
-        "own name are Reviewer-writable).",
-        _REVIEWER_WRITES,
-        _cells(("reviewer",), WRITES, "A", "-"),
     ),
     Deviation(
         "suspended-member-keeps-their-own-user-row",
@@ -1104,6 +1088,37 @@ CONTROLS = (
       ("exec_assigned", "payroll_runs", "insert"), ("exec_unassigned", "attendance", "select"),
       ("manager", "leave_balances", "delete"), ("reviewer", "payroll_it_declarations", "select"),
       ("exec_assigned", "payroll_it_declaration_items", "select")}),
+    ("reviewer-writes-slice-1-487-reopened",
+     "migration 487 rolled back: a Reviewer assigned to the client writes its invoices, bills, receipts, payments, notes, "
+     "catalogue items, bank accounts and bank transactions again",
+     lambda: _migration_sql("487_a_reviewer_cannot_write_the_accounting_documents_or_the_bank_tables_rollback.sql"),
+     ("client_sales_invoices", "purchase_bills", "receipts", "receipt_allocations", "purchase_payments",
+      "purchase_payment_allocations", "credit_notes", "debit_notes", "purchase_credit_notes", "sales_debit_notes",
+      "service_catalogue", "bank_accounts", "bank_transactions"),
+     {("reviewer", "client_sales_invoices", "insert"), ("reviewer", "purchase_bills", "update"),
+      ("reviewer", "receipts", "delete"), ("reviewer", "bank_transactions", "update"),
+      ("reviewer", "credit_notes", "insert"), ("reviewer", "bank_accounts", "delete"),
+      ("exec_assigned", "service_catalogue", "insert"), ("exec_assigned", "credit_notes", "update")}),
+    ("reviewer-writes-slice-2-488-reopened",
+     "migration 488 rolled back: a Reviewer assigned to the client writes its returns, filings, year-end records and "
+     "company registrations again",
+     lambda: _migration_sql("488_a_reviewer_cannot_write_the_tax_filing_year_end_or_company_filing_tables_rollback.sql"),
+     ("gstr1_returns", "gstr3b_returns", "gstr2a_records", "gstr2b_reconciliations", "itr_filings",
+      "tax_computation_snapshots", "tax_disallowances", "brought_forward_losses", "form_26as_uploads",
+      "form_26as_reconciliations", "xbrl_packages", "year_end_adjustments", "year_end_engagements",
+      "year_end_exports", "financial_statement_versions", "mca_companies", "mca_directors"),
+     {("reviewer", "gstr1_returns", "insert"), ("reviewer", "itr_filings", "update"),
+      ("reviewer", "year_end_engagements", "delete"), ("reviewer", "mca_directors", "insert"),
+      ("reviewer", "tax_disallowances", "update"), ("reviewer", "xbrl_packages", "insert")}),
+    ("reviewer-writes-slice-3-489-reopened",
+     "migration 489 rolled back: a Reviewer assigned to the client writes its insights, instructions, compliance records, "
+     "notices, health records, onboarding workflows and renewals again",
+     lambda: _migration_sql("489_a_reviewer_cannot_write_the_client_level_tables_rollback.sql"),
+     ("ai_insights", "client_instructions", "compliance_records", "government_notices", "health_alerts",
+      "health_score_history", "health_scores", "onboarding_workflows", "renewals"),
+     {("reviewer", "ai_insights", "insert"), ("reviewer", "client_instructions", "update"),
+      ("reviewer", "compliance_records", "delete"), ("reviewer", "renewals", "insert"),
+      ("reviewer", "health_scores", "update"), ("reviewer", "government_notices", "insert")}),
     ("anon-granted-a-table",
      "GRANT SELECT ON clients TO anon: no policy would show a row, but the privilege itself is the hole",
      lambda: "GRANT SELECT ON public.clients TO anon;",

@@ -1,0 +1,42 @@
+-- Rollback for migration 487: the 39 write-tier policies it added are dropped. This RE-OPENS the hole: a Reviewer
+-- assigned to a client can again write that client's accounting documents and bank tables over PostgREST.
+
+DROP POLICY IF EXISTS "client_sales_invoices_write_tier_insert" ON public.client_sales_invoices;
+DROP POLICY IF EXISTS "client_sales_invoices_write_tier_update" ON public.client_sales_invoices;
+DROP POLICY IF EXISTS "client_sales_invoices_write_tier_delete" ON public.client_sales_invoices;
+DROP POLICY IF EXISTS "purchase_bills_write_tier_insert" ON public.purchase_bills;
+DROP POLICY IF EXISTS "purchase_bills_write_tier_update" ON public.purchase_bills;
+DROP POLICY IF EXISTS "purchase_bills_write_tier_delete" ON public.purchase_bills;
+DROP POLICY IF EXISTS "receipts_write_tier_insert" ON public.receipts;
+DROP POLICY IF EXISTS "receipts_write_tier_update" ON public.receipts;
+DROP POLICY IF EXISTS "receipts_write_tier_delete" ON public.receipts;
+DROP POLICY IF EXISTS "receipt_allocations_write_tier_insert" ON public.receipt_allocations;
+DROP POLICY IF EXISTS "receipt_allocations_write_tier_update" ON public.receipt_allocations;
+DROP POLICY IF EXISTS "receipt_allocations_write_tier_delete" ON public.receipt_allocations;
+DROP POLICY IF EXISTS "purchase_payments_write_tier_insert" ON public.purchase_payments;
+DROP POLICY IF EXISTS "purchase_payments_write_tier_update" ON public.purchase_payments;
+DROP POLICY IF EXISTS "purchase_payments_write_tier_delete" ON public.purchase_payments;
+DROP POLICY IF EXISTS "purchase_payment_allocations_write_tier_insert" ON public.purchase_payment_allocations;
+DROP POLICY IF EXISTS "purchase_payment_allocations_write_tier_update" ON public.purchase_payment_allocations;
+DROP POLICY IF EXISTS "purchase_payment_allocations_write_tier_delete" ON public.purchase_payment_allocations;
+DROP POLICY IF EXISTS "credit_notes_write_tier_insert" ON public.credit_notes;
+DROP POLICY IF EXISTS "credit_notes_write_tier_update" ON public.credit_notes;
+DROP POLICY IF EXISTS "credit_notes_write_tier_delete" ON public.credit_notes;
+DROP POLICY IF EXISTS "debit_notes_write_tier_insert" ON public.debit_notes;
+DROP POLICY IF EXISTS "debit_notes_write_tier_update" ON public.debit_notes;
+DROP POLICY IF EXISTS "debit_notes_write_tier_delete" ON public.debit_notes;
+DROP POLICY IF EXISTS "purchase_credit_notes_write_tier_insert" ON public.purchase_credit_notes;
+DROP POLICY IF EXISTS "purchase_credit_notes_write_tier_update" ON public.purchase_credit_notes;
+DROP POLICY IF EXISTS "purchase_credit_notes_write_tier_delete" ON public.purchase_credit_notes;
+DROP POLICY IF EXISTS "sales_debit_notes_write_tier_insert" ON public.sales_debit_notes;
+DROP POLICY IF EXISTS "sales_debit_notes_write_tier_update" ON public.sales_debit_notes;
+DROP POLICY IF EXISTS "sales_debit_notes_write_tier_delete" ON public.sales_debit_notes;
+DROP POLICY IF EXISTS "service_catalogue_write_tier_insert" ON public.service_catalogue;
+DROP POLICY IF EXISTS "service_catalogue_write_tier_update" ON public.service_catalogue;
+DROP POLICY IF EXISTS "service_catalogue_write_tier_delete" ON public.service_catalogue;
+DROP POLICY IF EXISTS "bank_accounts_write_tier_insert" ON public.bank_accounts;
+DROP POLICY IF EXISTS "bank_accounts_write_tier_update" ON public.bank_accounts;
+DROP POLICY IF EXISTS "bank_accounts_write_tier_delete" ON public.bank_accounts;
+DROP POLICY IF EXISTS "bank_transactions_write_tier_insert" ON public.bank_transactions;
+DROP POLICY IF EXISTS "bank_transactions_write_tier_update" ON public.bank_transactions;
+DROP POLICY IF EXISTS "bank_transactions_write_tier_delete" ON public.bank_transactions;
