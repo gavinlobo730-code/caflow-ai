@@ -440,10 +440,15 @@ def test_our_story_is_the_homepage_and_every_door_to_it_agrees():
 
 # One canonical spelling per call to action. The site carried four: "Book a
 # demo" x18 against "Book a Demo" x1, and "Start free trial" x6 against "Start a
-# free trial" x4 plus a lone "Get started".
+# free trial" x4 plus a lone "Get started". There is now ONE call to action,
+# "Book a demo", because there is no free trial to start (POST-B-264): nothing
+# in the product starts, meters or ends one, and the site may not offer what the
+# product does not do. Both trial spellings are in the table as wordings that
+# must not come back.
 CANONICAL_CTA = {
     r"Book a Demo": "Book a demo",
-    r"Start a free trial": "Start free trial",
+    r"Start a free trial": "Book a demo",
+    r"Start free trial": "Book a demo",
 }
 
 
@@ -461,6 +466,42 @@ def test_one_spelling_of_each_call_to_action(wrong, right):
         f"needs the phrase grammatically should be reworded.\n  "
         + "\n  ".join(offenders)
     )
+
+
+#: What the site may not offer, because nothing in apps/api starts, meters, bills or ends it (POST-B-264). The FAQ may
+#: ASK "Is there a free trial?" because a visitor will; its answer may not say yes.
+_OFFERS_NOTHING_BEHIND_THEM = [
+    r"free trial",
+    r"no credit card",
+    r"no card\b",
+    r"start free",
+    r"annual billing",
+    r"save ~?\s*2 months",
+]
+
+
+def test_the_site_offers_no_free_trial_no_card_free_and_no_annual_discount():
+    """There is no trial mechanism, no plan enforcement and no billing in the product, so a trial, a card-free start
+    and an annual saving are promises of things that do not exist. The pricing page's FAQ names the question a visitor
+    will ask and answers it truthfully; every other live line is held to saying none of it."""
+    offenders = []
+    for path, src in _sources():
+        for n, line in _live_lines(src):
+            if "Is there a free trial?" in line:
+                continue
+            for pattern in _OFFERS_NOTHING_BEHIND_THEM:
+                if re.search(pattern, line, flags=re.IGNORECASE):
+                    offenders.append(f"{_rel(path)}:{n}  {line.strip()[:110]}")
+    assert not offenders, (
+        "The site offers something the product does not do (no trial, billing or annual plan exists). Say what is "
+        "true instead, or build the mechanism first.\n  " + "\n  ".join(offenders))
+
+
+def test_the_trial_question_is_answered_with_a_no():
+    pricing = (MARKETING / "app" / "(site)" / "pricing" / "page.tsx").read_text(encoding="utf-8")
+    at = pricing.index("Is there a free trial?")
+    answer = pricing[at: at + 400]
+    assert "Not yet" in answer and "Yes" not in answer.split("a:", 1)[1].split("\n", 1)[0], answer
 
 
 def test_ui_tsx_is_the_button_and_not_a_second_design_system():
@@ -490,7 +531,7 @@ def test_the_canonical_calls_to_action_are_actually_on_the_site():
     blob = "\n".join(
         line for _, src in _sources() for _n, line in _live_lines(src)
     )
-    for label in ("Book a demo", "Start free trial"):
+    for label in ("Book a demo",):
         assert label in blob, f'no live markup says "{label}" — has the funnel moved?'
     for wrong in CANONICAL_CTA:
         assert re.search(wrong, f'<Button>{wrong.replace(chr(92) + "b", "")}</Button>')

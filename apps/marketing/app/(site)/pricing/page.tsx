@@ -3,12 +3,11 @@ import { Reveal } from "@/components/motion";
 import { Button } from "@/components/ui";
 import { Check, Star, ArrowRight } from "@/components/icons";
 import { instrumentSerif, manrope } from "@/lib/fonts";
-import { appLinks } from "@/lib/site";
 
 export const metadata = {
   title: "Pricing",
   description:
-    "Simple, indicative pricing for Indian CA firms. Solo, Practice and Firm plans covering GST, ITR, TDS, accounting, payroll and AI. Free trial, no credit card.",
+    "Simple, indicative pricing for Indian CA firms. Solo, Practice and Firm plans covering GST, ITR, TDS, accounting, payroll and AI. Prices are indicative and confirmed during onboarding.",
 };
 
 type Tier = {
@@ -29,7 +28,7 @@ const TIERS: Tier[] = [
     name: "Solo",
     price: "₹1,499",
     cadence: "/month",
-    priceNote: "Billed monthly · save ~2 months on annual",
+    priceNote: "Indicative · confirmed during onboarding",
     description: "For solo practitioners",
     featuresLead: "What's included",
     features: [
@@ -40,7 +39,7 @@ const TIERS: Tier[] = [
       "Document storage",
       "Email support",
     ],
-    cta: { label: "Start free trial", href: appLinks.signup, external: true },
+    cta: { label: "Book a demo", href: "/demo", external: false },
     highlighted: false,
     badge: null,
   },
@@ -48,7 +47,7 @@ const TIERS: Tier[] = [
     name: "Practice",
     price: "₹3,999",
     cadence: "/month",
-    priceNote: "Billed monthly · save ~2 months on annual",
+    priceNote: "Indicative · confirmed during onboarding",
     description: "For growing practices",
     featuresLead: "Everything in Solo, plus",
     features: [
@@ -60,7 +59,7 @@ const TIERS: Tier[] = [
       "Practice analytics",
       "Priority support",
     ],
-    cta: { label: "Start free trial", href: appLinks.signup, external: true },
+    cta: { label: "Book a demo", href: "/demo", external: false },
     highlighted: true,
     badge: "Most popular",
   },
@@ -74,7 +73,6 @@ const TIERS: Tier[] = [
     features: [
       "Unlimited users & clients",
       "Dedicated onboarding & migration",
-      "Audit logs",
     ],
     cta: { label: "Book a demo", href: "/demo", external: false },
     highlighted: false,
@@ -86,13 +84,13 @@ const INCLUDED = [
   { title: "Database in Mumbai", desc: "Records sit in a Mumbai database. The servers that run the application are in Singapore, and the AI features call providers outside India." },
   { title: "Two-factor authentication", desc: "TOTP two-factor for Partners and Managers on firm administration, billing, payroll and approvals, and role-based access on every account." },
   { title: "Nothing auto-submitted", desc: "PracticeSync prepares the return; a CA files it on the portal. The software never transmits anything to a government portal." },
-  { title: "Free trial, no card", desc: "Start on any plan with a free trial and no credit card required." },
+  { title: "Indicative prices", desc: "The prices above are indicative. Final pricing is confirmed with you during onboarding, and there is no billing to set up before then." },
 ];
 
 const FAQS = [
   {
     q: "Is there a free trial?",
-    a: "Yes. Every plan starts with a free trial and no credit card — set up your firm, add a few clients and run the full workflow before you decide.",
+    a: "Not yet. Book a demo and we will walk a real client's month end to end, so you can judge the workflow before you decide anything.",
   },
   {
     q: "Can I migrate from Tally, ClearTax or Winman?",
@@ -121,7 +119,7 @@ export default function PricingPage() {
           layout="split"
           eyebrow="Pricing"
           lines={[{ text: "Simple pricing for" }, { text: "firms of every size.", italic: true }]}
-          subtitle="One AI-first platform for GST, ITR, TDS, accounting, payroll and clients — priced for solo practitioners through to established firms. Start free, no credit card."
+          subtitle="One AI-first platform for GST, ITR, TDS, accounting, payroll and clients — priced for solo practitioners through to established firms."
         />
       </Panel>
 
@@ -182,7 +180,7 @@ export default function PricingPage() {
 
         <p className="mx-auto mt-8 max-w-2xl text-center text-[13px] leading-relaxed text-slate-500">
           All prices are indicative and shown in INR. Final pricing is confirmed with you during
-          onboarding — and choosing annual billing saves you roughly two months.
+          onboarding.
         </p>
       </Panel>
 

@@ -84,7 +84,7 @@ export const appLinks = {
    *  separately so the two are distinguishable in copy and analytics even
    *  though the URL is shared today. */
   employeePortal: `${APP_URL}/portal/login`,
-  /** New-firm signup / free trial. */
+  /** New-firm signup. Not linked from the public site: there is no free trial (POST-B-264). */
   signup: `${APP_URL}/signup`,
 };
 

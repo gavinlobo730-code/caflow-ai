@@ -466,7 +466,6 @@ CLAIMS: tuple[Claim, ...] = (
         says=(
             Says("PracticeSync is built around how Indian CA firms actually work: the database is in Mumbai, access is by role and by client assignment, every change to a client, invoice, bill, receipt or ledger entry is written to an audit log, and no filing ever leaves your hands without your confirmation.", PRODUCTS),
             Says("Partners and Managers use two-factor authentication on firm administration, billing, payroll and approvals, access is by role and by client assignment, and the audit log records who created, changed or deleted a client, invoice, bill, receipt or ledger entry — it records changes, not views.", SUPPORT),
-            Says("Audit logs", PRICING),
             Says("Audit log of changes", PRODUCTS),
         ),
     ),

@@ -4,7 +4,6 @@ import type { CSSProperties, ReactNode } from "react";
 import { Reveal, WordReveal, useInView } from "./motion";
 import { Button } from "./ui";
 import { ArrowRight, Check } from "./icons";
-import { appLinks } from "@/lib/site";
 
 /**
  * The section primitives every marketing page is built from.
@@ -313,22 +312,19 @@ export function Checklist({ points, theme }: { points: string[]; theme: "dark" |
  * The closing call-to-action, identical on every page.
  *
  * Book a demo is the site's primary conversion goal (owner decision,
- * 16-09-2026), so it is the filled button here and the free trial is the
- * outlined one beside it. This component is the single place that order is set,
- * which is why changing the funnel was one edit rather than five.
- *
- * "Start free trial" is the canonical label, everywhere. The site carried both
- * that and "Start a free trial" until the consistency pass of 16-09-2026 —
- * along with "Book a demo" against "Book a demo", and a lone "Get started".
+ * 16-09-2026), so it is the filled button here. There is NO free trial: nothing in
+ * the product starts, meters or ends one, so the outlined button beside it points
+ * at the products page (POST-B-264). This component is the single place that
+ * pair is set, which is why changing the funnel was one edit rather than five.
  */
 export function CineCTA({
   titleLines = [
     { text: "Bring your whole practice" },
     { text: "into one place.", italic: true },
   ],
-  subtitle = "Book a demo and we'll walk a real client's month end to end — or start a free trial and look around on your own.",
+  subtitle = "Book a demo and we'll walk a real client's month end to end.",
   primary = { href: "/demo", label: "Book a demo" },
-  secondary = { href: appLinks.signup, label: "Start free trial", external: true },
+  secondary = { href: "/products", label: "See what it does" },
 }: {
   titleLines?: { text: string; italic?: boolean }[];
   subtitle?: string;

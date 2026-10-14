@@ -52,7 +52,7 @@ const ARTWORK = "/hero/space-earth.webp";
  * Firms · Secure & Compliant · Trusted by Growing Practices", and the last two
  * cannot ship: there are no customers to be trusted by and no certification
  * behind "compliant". §16 forbids inventing either. What is here instead are
- * three facts — the trial takes no card, Supabase runs in ap-south-1, and the
+ * two facts — Supabase runs in ap-south-1, and the
  * software genuinely never transmits a return to a government portal.
  *
  * THE HEADLINE IS ONE <h1> AND A SCREEN READER GETS IT WHOLE. The rotating word
@@ -441,7 +441,6 @@ export function Hero() {
           </div>
 
           <ul className="mt-[clamp(14px,2.6vh,32px)] flex flex-wrap gap-x-7 gap-y-3 text-[12.5px] font-medium leading-none text-white/45">
-            <li>No credit card needed</li>
             <li>Database in Mumbai</li>
             <li>Nothing filed without your click</li>
           </ul>
