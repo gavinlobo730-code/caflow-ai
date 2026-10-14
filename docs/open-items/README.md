@@ -14,6 +14,7 @@
 8. `plan-going-faster-2026-10-09.md` is the plan the owner agreed on 9 October 2026 for working through this ledger faster (decision sheets, themed batches, a parked list). Its Step 0 (the decisions) was taken on 14 October 2026 and is recorded in the next two files; the rest follows.
 9. `decisions-taken-2026-10-14.md` records every decision Claude took on 14 October 2026 under the owner's standing instructions, with a one-line reason: what to build, what waits until someone asks, what stays as it is, and what is decided but blocked. **A line listed there as "build" is Claude-alone work whatever its id letter says**; a "keep as it is" decision closed its line (a line something else cites stays until that citation changes). Ids are not renumbered.
 10. `owner-list.md` is the owner's list in one place: the money decisions with a recommendation, the tasks only the owner can do, the statutory and legal points Claude will not assume (the exact question, the document needed, who can supply it, what stays unbuilt), the wait-until-asked items the goal probably needs, and two open questions. Refresh it, do not scatter it.
+11. `post-demo-parked.md` holds the after-demo items that wait until someone asks or until the work is sized down: low priority and sized weeks or months, or a title that starts "Watch for", "Hold" or "Keep", plus the items Claude decided on 14 October 2026 to leave until a client asks. They keep their ids and their letters, are **not** counted as open (the counts block shows both numbers), and a pre-demo item is never parked. To un-park one, move its line back to the section file for its letter and rerun the counts script.
 
 ## The two axes
 
@@ -37,15 +38,16 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 3 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 14 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 198 | after the demo: Claude can do alone |
-| [post-demo-B-ours.md](post-demo-B-ours.md) | 286 | after the demo: owner decides first, then Claude builds |
-| [post-demo-C-yours.md](post-demo-C-yours.md) | 203 | after the demo: only the owner or outsiders can do |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 174 | after the demo: Claude can do alone |
+| [post-demo-B-ours.md](post-demo-B-ours.md) | 175 | after the demo: owner decides first, then Claude builds |
+| [post-demo-C-yours.md](post-demo-C-yours.md) | 188 | after the demo: only the owner or outsiders can do |
+| [post-demo-parked.md](post-demo-parked.md) | 150 | after the demo: parked until someone asks or the work is sized down; NOT counted as open |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**710 open items** (23 before the demo, 687 after); 15 after-demo items are `high` priority; 35 are UNSURE.
+**560 open items** (23 before the demo, 537 after); 14 after-demo items are `high` priority; 32 are UNSURE. A further **150 items are parked** (not counted above).
 
 <!-- counts:end -->
 
