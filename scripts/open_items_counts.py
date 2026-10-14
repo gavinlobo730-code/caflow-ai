@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Keep the counts in docs/open-items/README.md true.
 
-The open-items ledger (docs/open-items/) is six files of one-line items. The README states how many items each
-file holds, so a person closing an item has two things to do: delete its line, and make the counts agree. This
-script does the second. Run it after closing or adding an item:
+The open-items ledger (docs/open-items/) is six files of one-line items plus a parked file. The README states how many
+items each file holds, so a person closing an item has two things to do: delete its line, and make the counts agree.
+This script does the second. Parked items are counted on their own and are not part of the open total. Run it after closing or adding an item:
 
     python3 scripts/open_items_counts.py            # rewrite the block in README.md
     python3 scripts/open_items_counts.py --check    # exit 1 if the block is out of date (the test does this)
@@ -29,6 +29,7 @@ SECTIONS = [
     ("post-demo-B-ours.md", "after the demo: owner decides first, then Claude builds"),
     ("post-demo-C-yours.md", "after the demo: only the owner or outsiders can do"),
 ]
+PARKED = ("post-demo-parked.md", "after the demo: parked until someone asks or the work is sized down; NOT counted as open")
 OTHERS = [
     ("decisions-and-strategy.md", "the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap"),
     ("checked-closed.md", "what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it"),
@@ -58,10 +59,13 @@ def render_block(ledger: Path = LEDGER) -> str:
         total += n
         pre += n if name.startswith("pre-") else 0
         rows.append(f"| [{name}]({name}) | {n} | {desc} |")
+    parked = sum(1 for _ in read_items(ledger / PARKED[0]))
+    rows.append(f"| [{PARKED[0]}]({PARKED[0]}) | {parked} | {PARKED[1]} |")
     for name, desc in OTHERS:
         rows.append(f"| [{name}]({name}) | — | {desc} |")
     lines = [START, "", "| file | items | what it holds |", "|---|---|---|", *rows, "",
-             f"**{total} open items** ({pre} before the demo, {total - pre} after); {high} after-demo items are `high` priority; {unsure} are UNSURE.",
+             f"**{total} open items** ({pre} before the demo, {total - pre} after); {high} after-demo items are `high` priority; {unsure} are UNSURE. "
+             f"A further **{parked} items are parked** (not counted above).",
              "", END]
     return "\n".join(lines)
 

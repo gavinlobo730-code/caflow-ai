@@ -41,6 +41,9 @@ SECTIONS = {
     "post-demo-B-ours.md": "POST-B",
     "post-demo-C-yours.md": "POST-C",
 }
+#: The parked file holds after-demo items of any letter, never a pre-demo one (README, "post-demo-parked.md").
+PARKED_FILE = "post-demo-parked.md"
+PARKED_PREFIXES = {"POST-A", "POST-B", "POST-C"}
 THEMES = {
     "gst-returns", "gst-einvoice-eway", "tds-tcs", "income-tax-itr", "payroll-statutory",
     "accounting-gl-reporting", "banking", "sales-purchase-docs", "inventory-fixed-assets", "ai",
@@ -66,14 +69,14 @@ def _lines(name: str):
 
 def _items():
     """Yield (file, line_no, line, match-or-None) for every bullet in the section files."""
-    for name in SECTIONS:
+    for name in [*SECTIONS, PARKED_FILE]:
         for n, line in enumerate(_lines(name), 1):
             if line.startswith("- "):
                 yield name, n, line, ITEM.match(line)
 
 
 def test_the_ledger_has_its_files():
-    for name in [*SECTIONS, "README.md", "decisions-and-strategy.md", "checked-closed.md", "deletion-plan.md", "coming-soon.md"]:
+    for name in [*SECTIONS, PARKED_FILE, "README.md", "decisions-and-strategy.md", "checked-closed.md", "deletion-plan.md", "coming-soon.md", "decisions-taken-2026-10-14.md", "owner-list.md"]:
         assert (LEDGER / name).is_file(), f"docs/open-items/{name} is missing"
 
 
@@ -85,7 +88,10 @@ def test_every_bullet_in_a_section_file_is_a_well_formed_item_in_the_right_file(
         if not m:
             bad.append(f"{name}:{n} is not `- **ID** · `theme` · priority ...`: {line[:90]}")
             continue
-        if m["prefix"] != SECTIONS[name]:
+        if name == PARKED_FILE:
+            if m["prefix"] not in PARKED_PREFIXES:
+                bad.append(f"{name}:{n} carries id {m['id']}: a pre-demo item is never parked")
+        elif m["prefix"] != SECTIONS[name]:
             bad.append(f"{name}:{n} carries id {m['id']} but this file holds {SECTIONS[name]}-NNN")
         if m["theme"] not in THEMES:
             bad.append(f"{name}:{n} {m['id']} has unknown theme `{m['theme']}`")
@@ -95,7 +101,7 @@ def test_every_bullet_in_a_section_file_is_a_well_formed_item_in_the_right_file(
     assert not bad, "\n".join(bad[:25])
 
 
-def test_ids_are_unique_across_the_six_files():
+def test_ids_are_unique_across_the_six_files_and_the_parked_file():
     ids = {}
     dup = []
     for name, n, _line, m in _items():
