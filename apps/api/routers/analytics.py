@@ -3,7 +3,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, Query
 from models.common import api_response
 from models.fy import OptionalFYLabel
-from core.permissions import rbac
+from core.permissions import can_user, rbac
 from datetime import date, timedelta
 from repositories.time_tracking_analytics_repository import time_tracking_analytics_repo
 from repositories.invoice_repository import invoice_repo
@@ -260,20 +260,22 @@ def firm_analytics(
     overdue_rate = round((total_ov / total * 100), 1) if total > 0 else 0.0
     tasks_per_client = round(total / active_clients, 1) if active_clients > 0 else 0.0
 
-    # Revenue analytics — gracefully handle missing fee tables
-    revenue_paise = 0
-    outstanding_paise = 0
-    invoices_issued = 0
-    invoices_paid = 0
-    try:
-        inv_result = db.table("fee_invoices").select("total_paise, invoice_date, status").eq("firm_id", firm_id).gte("invoice_date", date_from).execute()
-        inv_list = inv_result.data or []
-        invoices_issued = len(inv_list)
-        invoices_paid = sum(1 for i in inv_list if i.get("status") == "Paid")
-        revenue_paise = sum(i["total_paise"] for i in inv_list if i.get("status") == "Paid")
-        outstanding_paise = sum(i["total_paise"] for i in inv_list if i.get("status") not in ("Paid", "Draft"))
-    except Exception:
-        pass
+    # Revenue analytics. These four figures are the practice's fee economics (billing:read, a Partner's, or a grant),
+    # so a caller without it is given NONE of them (null, never zero: a zero says nothing was billed), and so is a
+    # caller whose read of the fee table failed, which used to be swallowed into four zeros. `fees_withheld` says
+    # which of the two it is.
+    revenue_paise = outstanding_paise = invoices_issued = invoices_paid = None
+    fees_withheld = not can_user(current_user, "billing", "read")
+    if not fees_withheld:
+        try:
+            inv_result = db.table("fee_invoices").select("total_paise, invoice_date, status").eq("firm_id", firm_id).gte("invoice_date", date_from).execute()
+            inv_list = inv_result.data or []
+            invoices_issued = len(inv_list)
+            invoices_paid = sum(1 for i in inv_list if i.get("status") == "Paid")
+            revenue_paise = sum(i["total_paise"] for i in inv_list if i.get("status") == "Paid")
+            outstanding_paise = sum(i["total_paise"] for i in inv_list if i.get("status") not in ("Paid", "Draft"))
+        except Exception:
+            invoices_issued = invoices_paid = revenue_paise = outstanding_paise = None
 
     # Get firm hours from time tracking
     firm_hours = time_tracking_analytics_repo.get_firm_hours(firm_id, date_from, date_to)
@@ -290,6 +292,7 @@ def firm_analytics(
         "outstanding_paise": outstanding_paise,
         "invoices_issued": invoices_issued,
         "invoices_paid": invoices_paid,
+        "fees_withheld": fees_withheld,
     })
 
 
@@ -300,6 +303,7 @@ def profitability_analytics(
     include_by_engagement: bool = False,
     include_by_team: bool = False,
     current_user: dict = Depends(rbac("analytics", "read")),
+    _fees: dict = Depends(rbac("billing", "read")),  # revenue is the practice's fee economics (POST-B-024)
 ):
     """
     Get profitability analytics for the firm.
@@ -479,6 +483,7 @@ def profitability_analytics(
 def fee_concentration(
     period: str = "month",
     current_user: dict = Depends(rbac("analytics", "read")),
+    _fees: dict = Depends(rbac("billing", "read")),  # revenue is the practice's fee economics (POST-B-024)
 ):
     """How much of the practice rests on one client, and where each one sits.
 
@@ -559,6 +564,7 @@ def revenue_vs_effort(
     client_id: str = None,
     engagement_id: str = None,
     current_user: dict = Depends(rbac("analytics", "read")),
+    _fees: dict = Depends(rbac("billing", "read")),  # revenue is the practice's fee economics (POST-B-024)
 ):
     """
     Analyze revenue vs effort (billable hours) to calculate realization rates.

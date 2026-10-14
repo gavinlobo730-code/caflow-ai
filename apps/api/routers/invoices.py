@@ -1,7 +1,10 @@
 """
 Invoice management endpoints.
 
-All endpoints require RBAC: invoice.read/write
+All endpoints require RBAC: billing.read/write. These are the PRACTICE'S OWN fee invoices (`fee_invoices`), the
+practice's economics, so they are a Partner's (or a grant on the Team screen). They asked invoice.read/write, an
+Executive's, until POST-B-024, while the database was about to refuse an Executive these rows, so the same table
+answered an Executive's list with data from one door and nothing from the other.
 
 Endpoints:
   GET    /api/invoices                           - list invoices (with filters)
@@ -106,7 +109,7 @@ def list_invoices(
     status: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("invoice", "read")),
+    current_user: dict = Depends(rbac("billing", "read")),
 ):
     """
     List invoices with optional filters.
@@ -151,7 +154,7 @@ def list_invoices(
 @router.get("/{invoice_id}")
 def get_invoice(
     invoice_id: str,
-    current_user: dict = Depends(rbac("invoice", "read")),
+    current_user: dict = Depends(rbac("billing", "read")),
 ):
     """Fetch a single invoice by ID."""
     invoice = _assert_invoice_scope(current_user, invoice_id)
@@ -166,7 +169,7 @@ def get_invoice(
 def generate_from_engagement(
     engagement_id: str,
     invoice_month: Optional[str] = Query(None),
-    current_user: dict = Depends(rbac("invoice", "write")),
+    current_user: dict = Depends(rbac("billing", "write")),
 ):
     """
     Generate a draft invoice from a fixed-fee engagement.
@@ -205,7 +208,7 @@ def generate_from_time_entries(
     engagement_id: str,
     invoice_month: Optional[str] = Query(None),
     billable_only: bool = Query(True),
-    current_user: dict = Depends(rbac("invoice", "write")),
+    current_user: dict = Depends(rbac("billing", "write")),
 ):
     """
     Generate a draft invoice from time entries.
@@ -241,7 +244,7 @@ def generate_from_time_entries(
 @router.get("/{invoice_id}/pdf")
 def download_invoice_pdf(
     invoice_id: str,
-    current_user: dict = Depends(rbac("invoice", "read")),
+    current_user: dict = Depends(rbac("billing", "read")),
 ):
     """
     Render and download the GST-compliant tax invoice PDF.
@@ -266,7 +269,7 @@ def download_invoice_pdf(
 
 @router.post("/run-overdue-check")
 def run_overdue_check_endpoint(
-    current_user: dict = Depends(rbac("invoice", "write")),
+    current_user: dict = Depends(rbac("billing", "write")),
 ):
     """
     Run the invoice lifecycle check for this firm: any Issued invoice past
@@ -303,7 +306,7 @@ def run_overdue_check_endpoint(
 def change_invoice_status(
     invoice_id: str,
     body: StatusChangeRequest,
-    current_user: dict = Depends(rbac("invoice", "write")),
+    current_user: dict = Depends(rbac("billing", "write")),
 ):
     """
     Transition invoice status: Draft → Issued → Paid → Overdue
@@ -336,7 +339,7 @@ def change_invoice_status(
 @router.delete("/{invoice_id}")
 def delete_invoice(
     invoice_id: str,
-    current_user: dict = Depends(rbac("invoice", "write")),
+    current_user: dict = Depends(rbac("billing", "write")),
 ):
     """
     Delete an invoice. Only Draft invoices can be deleted.

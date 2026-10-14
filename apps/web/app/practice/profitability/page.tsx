@@ -30,12 +30,13 @@ import { PageHeader } from "@/components/ui/page-header";
  * Insights page that holds health, risk AND profitability together, which is
  * 3a-1 and a separate decision.
  *
- * NOT `PartnerGuard`, although `/practice/revenue` is. The endpoints narrow
- * their per-client rows — and, on profitability, their TOTALS — to the
- * caller's assigned book, deliberately and with a test pinning both
- * directions. A screen that refuses everyone but a Partner would make that
- * narrowing dead code and would hide a Manager's own book from them. The
- * server decides; this asks.
+ * NOT `PartnerGuard`, although `/practice/revenue` is, and NOT open to every Manager either: it is under
+ * `FeeAccessGate` (the layout of this folder), which asks `billing:read`, the permission the three revenue endpoints
+ * ask beside `analytics:read`. A Partner has it; a Manager or Executive has it only when the Partner has granted it
+ * on the Team screen, and then the endpoints narrow their per-client rows (and, on profitability, their TOTALS) to
+ * the caller's assigned book, deliberately and with a test pinning both directions. A screen that refused everyone
+ * but a Partner would make that narrowing dead code for a granted Manager; a screen open to every Manager would show
+ * the practice's fee economics to people the permission table keeps them from. The server decides; this asks.
  *
  * TWO QUESTIONS, NOT ONE, and they are kept apart on purpose. Profit is
  * revenue less what the time cost. REALIZATION is revenue against what the

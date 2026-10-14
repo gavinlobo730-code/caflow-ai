@@ -78,7 +78,7 @@ test("an empty ITR/TDS/MCA tab explains a missing engagement rather than saying 
 
 test("the engagement check is asked of the server, which answers from the engagement's scope and never its fees", () => {
   const src = code(PAGE);
-  assert.match(src, /api\.compliance\.engagementStatus\(clientId\)/,
+  assert.match(src, /apiFetch\(`\/api\/compliance\/engagement-status\?client_id=/,
     "the tab asks GET /api/compliance/engagement-status; the status vocabulary lives in the backend");
   // NEGATIVE CONTROL: the browser read of the fee table (a Partner's to read) and its own copy of the status set.
   assert.doesNotMatch(src, /\.from\("fee_engagements"\)/,

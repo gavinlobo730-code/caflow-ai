@@ -23,7 +23,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { formatRangeLabel } from "@/lib/dates/periods";
 import { useClientEntityType, offerWhenKnown } from "@/lib/clients/useClientEntityType";
 import { hasMcaObligations, mcaRegime } from "@/lib/entityObligations";
-import { api, errorMessage } from "@/lib/api";
+import { errorMessage } from "@/lib/api";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -334,11 +334,11 @@ export default function CompliancePage() {
     (async () => {
       let answer: boolean | null = null;
       try {
-        const res = await api.compliance.engagementStatus(clientId);
+        const res = await apiFetch(`/api/compliance/engagement-status?client_id=${encodeURIComponent(clientId)}`);
         // A failed read leaves the question unanswered rather than asserting
         // "no engagement" — the generic empty-state message is the safe default.
-        answer = res.success && typeof res.data?.has_active_engagement === "boolean"
-          ? res.data.has_active_engagement : null;
+        answer = res?.success && typeof res.data?.has_active_engagement === "boolean"
+          ? (res.data.has_active_engagement as boolean) : null;
       } catch {
         answer = null;
       }
