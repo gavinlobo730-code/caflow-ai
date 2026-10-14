@@ -294,7 +294,19 @@ def invite_contact(firm_id: str, client_id: str, email: str, name: Optional[str]
     invite_expires_at = (datetime.now(timezone.utc) + _INVITE_TTL).isoformat()
 
     if existing:
-        fields = {"status": "invited", "invited_at": _now(), "deactivated_at": None,
+        # A contact who has ACCEPTED already has access. Re-inviting used to turn them back into "invited" while keeping
+        # the sign-in they were bound to, and no path matches that row: the accept step finds only an invited contact
+        # with NO bound sign-in, and a sign-in resolves only to an ACTIVE contact. So the client lost the portal, with the
+        # CA told an invitation had been sent (POST-A-232). Refuse in words and send nothing.
+        if existing.get("status") == "active":
+            raise HTTPException(
+                status_code=409,
+                detail="This contact already has portal access, so nothing was changed and no invitation was sent. "
+                       "If they cannot sign in, they can reset their password from the portal sign-in page.")
+        # A DEACTIVATED contact who once accepted is still bound to their old sign-in; re-inviting must release it, or
+        # the fresh token could never be accepted (the accept step requires an unbound row). The e-mail check at accept
+        # time still decides who may bind it.
+        fields = {"status": "invited", "invited_at": _now(), "deactivated_at": None, "auth_user_id": None,
                   "name": name or existing.get("name"), "invited_by": (actor or {}).get("auth_user_id"),
                   "updated_at": _now(), "invite_token": invite_token, "invite_expires_at": invite_expires_at}
         if _USE_MOCK:
@@ -332,6 +344,10 @@ def resend_invite(firm_id: str, contact_id: str, actor: Optional[dict] = None, d
         raise HTTPException(status_code=404, detail="Portal contact not found.")
     if contact.get("status") == "deactivated":
         raise HTTPException(status_code=422, detail="Reactivate the contact (re-invite) instead of resending.")
+    if contact.get("status") == "active":
+        # Nothing is pending: the link in the e-mail would be refused at accept time, and the contact reads it as a fault.
+        raise HTTPException(status_code=422, detail="This contact has already accepted the invitation, so there is "
+                                                    "nothing to resend.")
     # F22 fix: rotate the token on every resend (a stale/leaked link stops working).
     invite_token = secrets.token_urlsafe(32)
     fields = {"invited_at": _now(), "updated_at": _now(), "invite_token": invite_token,

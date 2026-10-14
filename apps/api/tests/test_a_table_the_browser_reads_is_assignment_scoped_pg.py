@@ -105,11 +105,14 @@ SELECT coalesce(json_agg(x ORDER BY x.tbl), '[]'::json) FROM (
    AND col.column_name = 'client_id'
   WHERE c.relnamespace = 'public'::regnamespace
     AND c.relkind = 'r'
-    AND EXISTS (
+    AND (EXISTS (
       SELECT 1 FROM information_schema.role_table_grants g
       WHERE g.table_schema = 'public' AND g.table_name = c.relname
         AND g.grantee = 'authenticated'
     )
+    -- A table granted COLUMN BY COLUMN is just as readable from the browser (migration 497 hides one column of
+    -- client_portal_users this way), and a check that only saw table-level grants dropped it from the rule.
+    OR has_any_column_privilege('authenticated', c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
   GROUP BY c.relname
 ) x;
 """
