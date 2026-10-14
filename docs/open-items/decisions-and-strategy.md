@@ -28,7 +28,7 @@ Written on 30 Sep 2026 from the per-area improvement plans. Each decision gates 
 - **Why it matters:** Two-factor today covers Partner and Manager on some routes only, and any assigned Executive or Reviewer can read salary, PAN and bank details through the browser. You must choose: all staff, or all staff who can see client data; and who may read payroll.
 - **Cost or time:** No cash cost. Time: a short decision, then days of work. Staff who lose a phone need a recovery path (security_privacy-29).
 - **Roadmap points it unlocks:** security_privacy-04, security_privacy-02, payroll-11, security_privacy-15, a truthful two-factor sentence on the site
-- **Open ledger items carrying them:** POST-B-013, POST-B-004, POST-B-023
+- **Open ledger items carrying them:** POST-B-013, POST-B-023
 
 ### Decision 5. Approve paid, no-training terms for Gemini, check Groq's retention terms in writing, and decide whether each firm can switch external AI off
 - **Why it matters:** Image extraction and scanned statements use a key the code calls free-tier. As recalled (not verified here), the unpaid Gemini terms allow the vendor to use submitted content to improve its products. Client invoices carry third-party GSTINs and amounts.

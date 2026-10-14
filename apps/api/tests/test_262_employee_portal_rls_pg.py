@@ -245,11 +245,27 @@ def test_employee_cannot_delete_their_own_record(seeded):
 
 
 def test_employee_cannot_invent_a_payslip(seeded):
+    """Row security is what refuses an employee here, so the run is a DRAFT one: migration 498's trigger fires before
+    the WITH CHECK and answers first for a released run, in its own words, and a released run is the case below."""
+    draft = _psql(seeded, f"INSERT INTO payroll_runs (id, firm_id, client_id, month, status) "
+                          f"VALUES ('dddddddd-0000-0000-0000-000000000262','{FIRM}','{CLIENT}','2026-07','draft');")
+    assert draft.returncode == 0, draft.stderr
+    r = _psql(seeded, _as(AUTH_A) +
+              f"INSERT INTO payroll_slips (run_id, employee_id, gross_paise, net_paise) "
+              f"VALUES ('dddddddd-0000-0000-0000-000000000262','{EMP_A}',1,1);")
+    assert r.returncode != 0
+    assert "row-level security" in r.stderr.lower()
+
+
+def test_employee_cannot_invent_a_payslip_in_a_released_run_either(seeded):
+    """Either refusal will do: 498's trigger answers before row security for a released run."""
     r = _psql(seeded, _as(AUTH_A) +
               f"INSERT INTO payroll_slips (run_id, employee_id, gross_paise, net_paise) "
               f"VALUES ('{RUN}','{EMP_A}',1,1);")
     assert r.returncode != 0
-    assert "row-level security" in r.stderr.lower()
+    assert "row-level security" in r.stderr.lower() or "payroll run" in r.stderr.lower()
+    assert _psql(seeded, "SELECT count(*) FROM payroll_slips WHERE net_paise = 1;",
+                 tuples=True).stdout.strip() == "0"
 
 
 # ─── the portal_enabled switch actually withdraws access ─────────────────────

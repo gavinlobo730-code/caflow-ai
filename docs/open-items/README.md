@@ -38,8 +38,8 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 3 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 14 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 181 | after the demo: Claude can do alone |
-| [post-demo-B-ours.md](post-demo-B-ours.md) | 165 | after the demo: owner decides first, then Claude builds |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 182 | after the demo: Claude can do alone |
+| [post-demo-B-ours.md](post-demo-B-ours.md) | 164 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 188 | after the demo: only the owner or outsiders can do |
 | [post-demo-parked.md](post-demo-parked.md) | 150 | after the demo: parked until someone asks or the work is sized down; NOT counted as open |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
@@ -82,7 +82,6 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 ## The after-demo items marked high priority
 
 - **POST-A-005** (claude) — Make the per-person permission grid reach reads in the database
-- **POST-B-004** (owner-decides) — Refuse a change to a released payroll run and its slips in the database
 - **POST-B-047** (owner-decides) — Open statutory sources to Claude: allowlist .gov.in hosts or hand-fetch
 - **POST-B-091** (owner-decides) — Attribute each invoice, bill and note to a GST registration
 - **POST-B-132** (owner-decides) — Decide whether to build the TDS RPU/FVU statement file writer

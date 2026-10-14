@@ -357,6 +357,19 @@ BEGIN
   LOOP
     EXECUTE format('ALTER TABLE public.%I ALTER COLUMN %I DROP NOT NULL', r.relname, r.attname);
   END LOOP;
+  -- Migration 498's two triggers refuse a signed-in write to a finalized or paid payroll run and its payslips. They
+  -- answer BEFORE row security does, and this world seeds those runs as finalized, so every write cell on the two
+  -- tables would read as the trigger's refusal and no longer say what row security decides. This instrument
+  -- measures row security; the freeze is measured by test_498_a_released_payroll_run_is_not_written_by_a_signed_in_
+  -- session_pg.py. Disabled by name, and only where they exist, so the world still builds from an older template.
+  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'a_released_payroll_run_is_not_written_by_a_session'
+                AND tgrelid = 'public.payroll_runs'::regclass) THEN
+    ALTER TABLE public.payroll_runs DISABLE TRIGGER a_released_payroll_run_is_not_written_by_a_session;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'a_released_runs_payslips_are_not_written_by_a_session'
+                AND tgrelid = 'public.payroll_slips'::regclass) THEN
+    ALTER TABLE public.payroll_slips DISABLE TRIGGER a_released_runs_payslips_are_not_written_by_a_session;
+  END IF;
 END $$;
 """
 
