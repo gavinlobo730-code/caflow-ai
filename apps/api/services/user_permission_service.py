@@ -59,11 +59,13 @@ class PermissionWriteRefused(ValueError):
 # WHAT A BLOCK ON THE TEAM SCREEN REACHES, in the words the screen shows beside
 # the grid (POST-A-005). The grid is read by `rbac()`, which every staff route
 # goes through, by the write policies of a few tables (migrations 415, 470,
-# 478) and, since migration 485, by the read AND write policies of the three
-# payroll tables (employees, runs and payslips; attendance, leave and the
-# income-tax declarations are scoped through the employee, so they follow).
-# The other payroll tables (salary structures, revisions, loans, settlements,
-# perquisites and so on) are NOT, and the sentence says so.
+# 478) and, since migrations 485 and 490, by the READ policies of the payroll
+# tables (employees, runs, payslips and salary structures, remittances and ECR
+# filings name the grid; attendance, leave, tax declarations, salary history,
+# loans, perquisites, settlements, one-off earnings, bonus records and the run
+# history are scoped through the employee, settlement or run, so they follow)
+# and by the WRITE policies of every payroll table except attendance, leave and
+# the tax declarations, which still ask the role alone (ledger POST-A-219).
 # It is NOT read by any other table's SELECT policy, so a screen that reads a
 # table straight from the browser over PostgREST — the documents pages, the
 # bank-account pickers — is governed there by the person's firm, their client
@@ -83,10 +85,13 @@ class PermissionWriteRefused(ValueError):
 DENIAL_REACH_NOTICE = (
     "A block here is enforced by the PracticeSync server, which refuses that "
     "person's requests for that permission. For payroll the database enforces "
-    "it as well, but only for employees, runs, payslips, attendance, leave and "
-    "tax declarations: a person blocked from reading payroll cannot read those "
-    "from the browser either. Other payroll records, such as salary structures "
-    "and loans, are not covered yet. Nothing else is checked against this grid "
+    "a block on reading as well: a person blocked from reading payroll cannot "
+    "read employees, runs, payslips, attendance, leave, tax declarations, "
+    "salary history, salary structures, loans, settlements, bonus records, "
+    "remittances or ECR filings from the browser either. A block on writing "
+    "payroll is enforced by the database for all of those except attendance, "
+    "leave and tax declarations, which the database still judges by role "
+    "alone. Nothing else is checked against this grid "
     "when a table is read, and several screens read tables directly from the "
     "browser (documents and bank accounts among them): there only the person's "
     "firm, client assignments and, on a few tables, role decide. Direct writes "

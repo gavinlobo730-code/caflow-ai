@@ -234,11 +234,13 @@ def test_nobody_can_delete_a_logged_transition(db):
 
 def test_no_update_or_delete_policy_exists_either(db):
     """The second barrier. Restoring the grant alone would not reopen amendment,
-    because RLS denies any command it has no policy for — and this asserts the
-    policy set is exactly the two it should be, so a broad FOR ALL added later
-    fails here rather than silently."""
+    because RLS denies any command it has no PERMISSIVE policy for — and this
+    asserts the permissive policy set is exactly the two it should be, so a broad
+    permissive FOR ALL added later fails here rather than silently. (RESTRICTIVE
+    policies only narrow what a permissive one admits and admit nothing
+    themselves: migration 490's payroll tier is one, and it is not a way in.)"""
     r = _psql(db, "SELECT cmd FROM pg_policies "
-                  "WHERE tablename = 'payroll_run_transitions' ORDER BY cmd;",
+                  "WHERE tablename = 'payroll_run_transitions' AND permissive = 'PERMISSIVE' ORDER BY cmd;",
               tuples=True)
     assert r.returncode == 0, r.stderr
     cmds = sorted(ln.strip() for ln in r.stdout.strip().splitlines() if ln.strip())

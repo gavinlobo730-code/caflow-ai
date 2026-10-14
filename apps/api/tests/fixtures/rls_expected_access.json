@@ -51,6 +51,30 @@
       "suspended_partner": ["-", "-", "-", "-"],
       "anon": ["x", "x", "x", "x"]
     },
+    "bonus_declarations": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "A"],
+      "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "bonus_disqualifications": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "A"],
+      "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
     "brought_forward_losses": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
@@ -265,6 +289,18 @@
       "employee": ["-", "-", "-", "-"],
       "other_firm_partner": ["X", "X", "X", "X"],
       "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "epfo_ecr_filings": {
+      "partner": ["A,B", "A,B", "A,B", "x"],
+      "manager": ["A", "A", "A", "x"],
+      "exec_assigned": ["-", "-", "-", "x"],
+      "exec_unassigned": ["-", "-", "-", "x"],
+      "reviewer": ["-", "-", "-", "x"],
+      "portal_client": ["-", "-", "-", "x"],
+      "employee": ["-", "-", "-", "x"],
+      "other_firm_partner": ["X", "X", "X", "x"],
+      "suspended_partner": ["-", "-", "-", "x"],
       "anon": ["x", "x", "x", "x"]
     },
     "fee_engagements": {
@@ -651,6 +687,66 @@
       "suspended_partner": ["-", "-", "-", "-"],
       "anon": ["x", "x", "x", "x"]
     },
+    "payroll_loan_recoveries": {
+      "partner": ["A,B", "A,B", "-", "A,B"],
+      "manager": ["A", "A", "-", "-"],
+      "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "-", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "payroll_loans": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "-"],
+      "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "payroll_one_time_earnings": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "A"],
+      "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "payroll_perquisites": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "-"],
+      "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "payroll_run_transitions": {
+      "partner": ["A,B", "A,B", "x", "x"],
+      "manager": ["A", "A", "x", "x"],
+      "exec_assigned": ["-", "-", "x", "x"],
+      "exec_unassigned": ["-", "-", "x", "x"],
+      "reviewer": ["-", "-", "x", "x"],
+      "portal_client": ["-", "-", "x", "x"],
+      "employee": ["-", "-", "x", "x"],
+      "other_firm_partner": ["X", "X", "x", "x"],
+      "suspended_partner": ["-", "-", "x", "x"],
+      "anon": ["x", "x", "x", "x"]
+    },
     "payroll_runs": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
@@ -659,6 +755,42 @@
       "reviewer": ["-", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
       "employee": ["A", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "payroll_salary_revisions": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "-"],
+      "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "payroll_settlement_components": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "-", "-", "-"],
+      "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "payroll_settlements": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "-", "-", "-"],
+      "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
       "other_firm_partner": ["X", "X", "X", "X"],
       "suspended_partner": ["-", "-", "-", "-"],
       "anon": ["x", "x", "x", "x"]
@@ -759,6 +891,18 @@
       "suspended_partner": ["-", "-", "-", "-"],
       "anon": ["x", "x", "x", "x"]
     },
+    "salary_structures": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "A"],
+      "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
     "sales_debit_notes": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
@@ -805,6 +949,18 @@
       "employee": ["-", "-", "-", "-"],
       "other_firm_partner": ["X", "X", "X", "X"],
       "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "statutory_remittances": {
+      "partner": ["A,B", "A,B", "A,B", "x"],
+      "manager": ["A", "A", "A", "x"],
+      "exec_assigned": ["-", "-", "-", "x"],
+      "exec_unassigned": ["-", "-", "-", "x"],
+      "reviewer": ["-", "-", "-", "x"],
+      "portal_client": ["-", "-", "-", "x"],
+      "employee": ["-", "-", "-", "x"],
+      "other_firm_partner": ["X", "X", "X", "x"],
+      "suspended_partner": ["-", "-", "-", "x"],
       "anon": ["x", "x", "x", "x"]
     },
     "storage/Documents": {

@@ -85,9 +85,9 @@ THE FILE, AND WHAT IT IS ALLOWED TO SAY
     observed value is recorded and nothing claims it is right.
 
 BREAKING IT ON PURPOSE
-    Thirteen holes this repository already closed once are put back in a copy of the
-    world, ten of them by running the migration's own rollback file (468, 469,
-    470, 478, 483, 484, 485, 487, 488, 489): each must turn named cells red. `liveness-dropped-from-every-helper`
+    Fourteen holes this repository already closed once are put back in a copy of the
+    world, eleven of them by running the migration's own rollback file (468, 469,
+    470, 478, 483, 484, 485, 487, 488, 489, 490): each must turn named cells red. `liveness-dropped-from-every-helper`
     is migration 468 reversed; dropping the check from `get_my_role` ALONE
     turns only two cells red (a suspended Partner writes `fx_rates`, whose
     policy asks the role and never the firm) because `get_my_firm_id` still
@@ -200,6 +200,21 @@ ALSO_COVERED = {
     "user_permissions": "what my_permission() reads (migration 403): the per-person grid",
     "client_firm_customer_links": "what my_portal_customer_ids() reads: the portal principal's reach",
     "fx_rates": "migration 470 repaired its write policy; it has its own regression test",
+    # The payroll tables the API reads and writes with the service role and the browser never touches (490): the
+    # threat the matrix models is a direct call with a person's own JWT, whoever the application itself calls as.
+    "payroll_salary_revisions": "payroll (490): salary history, read and written only by the payroll router",
+    "salary_structures": "payroll (490): a client's salary template",
+    "payroll_perquisites": "payroll (490): an employee's perquisites",
+    "payroll_loans": "payroll (490): an employee's loans",
+    "payroll_loan_recoveries": "payroll (490): what a run recovered from a loan",
+    "payroll_settlements": "payroll (490): a leaver's full and final settlement",
+    "payroll_settlement_components": "payroll (490): the lines of a settlement",
+    "payroll_one_time_earnings": "payroll (490): a month's one-off earnings",
+    "bonus_disqualifications": "payroll (490): the employer's own bonus determination",
+    "payroll_run_transitions": "payroll (490): the history of a run's status changes",
+    "statutory_remittances": "payroll (490): PF, ESI and professional tax paid over",
+    "epfo_ecr_filings": "payroll (490): the ECR filed for a month",
+    "bonus_declarations": "payroll (490): the employer's own bonus determination for a year",
 }
 
 #: rows seeded per table: label -> (firm, client). Anything else is per table.
@@ -1119,6 +1134,21 @@ CONTROLS = (
      {("reviewer", "ai_insights", "insert"), ("reviewer", "client_instructions", "update"),
       ("reviewer", "compliance_records", "delete"), ("reviewer", "renewals", "insert"),
       ("reviewer", "health_scores", "update"), ("reviewer", "government_notices", "insert")}),
+    ("payroll-tier-490-reopened",
+     "migration 490 rolled back: every member of the firm reads salary history, loans, perquisites, settlements, "
+     "salary structures, remittances and ECR filings again, and writes the four tables that had no write tier",
+     lambda: _migration_sql("490_the_database_asks_the_payroll_tier_of_the_other_payroll_tables_rollback.sql"),
+     ("payroll_salary_revisions", "salary_structures", "payroll_perquisites", "payroll_loans",
+      "payroll_loan_recoveries", "payroll_settlements", "payroll_settlement_components",
+      "payroll_one_time_earnings", "bonus_disqualifications", "payroll_run_transitions",
+      "statutory_remittances", "epfo_ecr_filings", "bonus_declarations"),
+     {("exec_assigned", "payroll_loans", "select"), ("reviewer", "payroll_salary_revisions", "select"),
+      ("exec_unassigned", "payroll_settlements", "select"), ("exec_assigned", "salary_structures", "select"),
+      ("reviewer", "statutory_remittances", "select"), ("exec_assigned", "epfo_ecr_filings", "select"),
+      ("reviewer", "payroll_settlement_components", "select"), ("exec_assigned", "salary_structures", "insert"),
+      ("reviewer", "epfo_ecr_filings", "update"), ("exec_assigned", "statutory_remittances", "insert"),
+      ("reviewer", "payroll_run_transitions", "insert"), ("reviewer", "bonus_disqualifications", "update"),
+      ("exec_assigned", "bonus_declarations", "select"), ("reviewer", "bonus_declarations", "insert")}),
     ("anon-granted-a-table",
      "GRANT SELECT ON clients TO anon: no policy would show a row, but the privilege itself is the hole",
      lambda: "GRANT SELECT ON public.clients TO anon;",
