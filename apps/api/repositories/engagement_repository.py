@@ -75,6 +75,22 @@ class EngagementRepository(BaseRepository[dict]):
             query = query.eq("client_id", client_id)
         return query.order("created_at", desc=True).execute().data or []
 
+    def count_active_for_client(self, firm_id: str, client_id: str) -> int:
+        """How many ACTIVE fee engagements this client has: a COUNT, read with the privileged client.
+
+        The client-delete check asks whether live fees would be orphaned. Read as the caller, a rule that keeps the fee
+        tables from everyone below `billing:read` would answer zero for a person the Partner granted `client:delete`
+        and not billing, and the blocker would silently never fire. No row and no figure leaves this method, only a
+        number; the CALLER IS AUTHORISED BY THE ROUTE (`rbac("client", "delete")` and the client scope) before it is
+        called, which is the contract of `db_provider.service_db`. A failed read RAISES: the caller turns that into a
+        refusal, because a count that could not be taken is not a zero.
+        """
+        if _USE_MOCK:
+            return len(self.find_all(firm_id=firm_id, client_id=client_id, status="Active"))
+        res = (db_provider.service_db().table("fee_engagements").select("id", count="exact")
+               .eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Active").execute())
+        return res.count if res.count is not None else len(res.data or [])
+
     def find_scope_by_id(self, id: str, firm_id: str) -> Optional[dict]:
         """One engagement's scope (see `find_scope`), or None when it is not this firm's."""
         if _USE_MOCK:
