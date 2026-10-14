@@ -68,13 +68,13 @@ THE FILE, AND WHAT IT IS ALLOWED TO SAY
     what is intended, `DEVIATION_CLASSES` holds what the database does instead
     and why, as an equality in both directions. A fix deletes its entry; a new
     gap, a looser or a TIGHTER cell, fails and names (actor, table, operation).
-    183 cells over 51 tables in 8 classes today. Two classes have been closed
-    by a migration since the matrix found them, and each entry was deleted with
-    its fix: `any-member-assigns-themselves` (any member of the firm could write
-    `user_client_assignments` and assign themselves to any client; migration 478)
-    and, in one migration (483), `executive-writes-manager-tier`,
-    `cross-client-matches-have-no-client-scope` and
-    `year-end-children-have-no-client-id`. The other eight await their own
+    179 cells over 50 tables in 7 classes today. Classes are closed by a
+    migration, and each entry is deleted with its fix: `any-member-assigns-
+    themselves` (any member of the firm could write `user_client_assignments`
+    and assign themselves to any client; migration 478), in one migration (483)
+    `executive-writes-manager-tier`, `cross-client-matches-have-no-client-scope`
+    and `year-end-children-have-no-client-id`, and (484)
+    `portal-contacts-are-not-scoped-for-staff`. The other seven await their own
     migration: merging one applies it to production, and the tier of each is
     decided by the API's own guard for the resource. The READ of the
     assignment rows stays firm-wide (`READABLE_BY_EVERY_MEMBER`): the API reads
@@ -84,9 +84,9 @@ THE FILE, AND WHAT IT IS ALLOWED TO SAY
     observed value is recorded and nothing claims it is right.
 
 BREAKING IT ON PURPOSE
-    Eight holes this repository already closed once are put back in a copy of the
-    world, five of them by running the migration's own rollback file (468, 469,
-    470, 478, 483): each must turn named cells red. `liveness-dropped-from-every-helper`
+    Nine holes this repository already closed once are put back in a copy of the
+    world, six of them by running the migration's own rollback file (468, 469,
+    470, 478, 483, 484): each must turn named cells red. `liveness-dropped-from-every-helper`
     is migration 468 reversed; dropping the check from `get_my_role` ALONE
     turns only two cells red (a suspended Partner writes `fx_rates`, whose
     policy asks the role and never the firm) because `get_my_firm_id` still
@@ -877,6 +877,8 @@ DEVIATION_CLASSES: tuple[Deviation, ...] = (
     # left the 41-table class with them). Migration 483 closed them
     # and their entries went in the same commit; `test_the_matrix_turns_red_when_a_known_hole_is_put_back
     # [role-tiers-483-reopened]` puts them back on purpose.
+    # `portal-contacts-are-not-scoped-for-staff` stood here (4 cells over client_portal_users). Migration 484
+    # closed it; `test_the_matrix_turns_red_when_a_known_hole_is_put_back[portal-contacts-484-reopened]` puts it back.
     # `any-member-assigns-themselves` stood here: user_client_assignments' one policy had no role test,
     # so any member could assign themselves to any client. Migration 478 closed it (12 write cells) and
     # its entry went in the same commit; `test_the_matrix_turns_red_when_a_known_hole_is_put_back
@@ -919,15 +921,6 @@ DEVIATION_CLASSES: tuple[Deviation, ...] = (
         "receipts although billing:read is Partner-only.",
         ("fee_receipts",),
         _cells(STAFF_ACTORS, ("select",), "A,B", "-"),
-    ),
-    Deviation(
-        "portal-contacts-are-not-scoped-for-staff",
-        "client_portal_users is left out of the assignment scope for the portal principal's sake and nothing "
-        "scopes the staff side, so every member reads every client's portal contacts, e-mail and invite_token "
-        "included.",
-        ("client_portal_users",),
-        {**_cells(("manager", "exec_assigned", "reviewer"), ("select",), "A,B", "A"),
-         **_cells(("exec_unassigned",), ("select",), "A,B", "-")},
     ),
     Deviation(
         "reviewer-writes-where-no-resource-allows-it",
@@ -1111,6 +1104,13 @@ CONTROLS = (
      {("exec_assigned", "vendors", "insert"), ("exec_assigned", "knowledge_articles", "update"),
       ("exec_assigned", "cross_client_matches", "delete"), ("exec_unassigned", "year_end_notes", "select"),
       ("reviewer", "year_end_review_events", "insert"), ("manager", "vendors", "delete")}),
+    ("portal-contacts-484-reopened",
+     "migration 484 rolled back: every member of the firm reads every client's portal contacts, e-mail and "
+     "invite_token again",
+     lambda: _migration_sql("484_only_a_partner_reads_the_audit_log_and_staff_see_only_their_clients_portal_contacts_rollback.sql"),
+     ("client_portal_users",),
+     {("exec_unassigned", "client_portal_users", "select"), ("manager", "client_portal_users", "select"),
+      ("reviewer", "client_portal_users", "select")}),
     ("anon-granted-a-table",
      "GRANT SELECT ON clients TO anon: no policy would show a row, but the privilege itself is the hole",
      lambda: "GRANT SELECT ON public.clients TO anon;",
