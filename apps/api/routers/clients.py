@@ -9,6 +9,8 @@ from repositories.compliance_records_repository import compliance_records_repo
 from repositories.document_repository import document_repo
 from repositories.task_repository import task_repo
 from repositories.ai_insights_repository import ai_insights_repo
+from repositories.engagement_repository import engagement_repo
+from repositories.invoice_repository import invoice_repo
 from mock_data import MOCK_ACTIVITY_LOGS
 from datetime import date
 from services.audit_service import log_event
@@ -41,6 +43,20 @@ def _assert_firm(client: dict, current_user: dict) -> None:
         raise HTTPException(status_code=404, detail="Client not found")
 
 
+def _could_not_check(what: str) -> HTTPException:
+    """The refusal for a delete blocker that could not be READ. Called inside the `except` that caught the failure.
+
+    A blocker that cannot be checked is not an absent blocker: answering "nothing blocks this" because a table did not
+    answer is how a client with live fees or a live engagement letter got deleted behind a bare `except: pass`
+    (POST-A-231). The delete is refused in words, and nothing is changed, so the person can simply try again."""
+    _logger.exception("client delete: could not check %s", what)
+    return HTTPException(
+        status_code=503,
+        detail=f"Could not check whether this client has {what}, so it has not been deleted. "
+               "Please try again in a moment; nothing was changed.",
+    )
+
+
 def _check_delete_blockers(client_id: str, firm_id: str, client_pan: str | None = None) -> list[str]:
     """
     Return human-readable blockers that prevent permanent deletion.
@@ -48,9 +64,10 @@ def _check_delete_blockers(client_id: str, firm_id: str, client_pan: str | None 
     IT Act Section 139 / CGST Act Section 37 — obligations persist until filed.
 
     client_pan (optional) lets the DSC check match firm-scoped DSC records by PAN.
-    All dependent-entity DB lookups are NON-FATAL: a missing table or DB error must
-    never crash the delete path, so each is wrapped in try/except (mirroring how the
-    existing checks tolerate empty/erroring repos).
+    A lookup that FAILS refuses the delete (503, `_could_not_check`) and never reads as "no blocker": the delete is
+    the irreversible-looking act, so doubt goes the safe way. The two fee blockers are COUNTS read with the privileged
+    client after the route has authorised the caller, because `client:delete` can be granted to someone who may not
+    read the practice's fees and their own sign-in would see none (POST-A-231, migration 495).
     """
     blockers: list[str] = []
 
@@ -75,24 +92,15 @@ def _check_delete_blockers(client_id: str, firm_id: str, client_pan: str | None 
         blockers.append(f"{len(docs)} document(s) attached")
 
     # ── Active fee engagements (fee_engagements table; DB-only, skip in mock) ──
-    # Ongoing billing relationships must be closed before the client is removed.
+    # Ongoing billing relationships must be closed before the client is removed. A COUNT, read with the privileged
+    # client (see the docstring), so a caller who may delete a client but not read fees still meets this blocker.
     if _supabase_enabled():
         try:
-            from core.supabase_client import get_supabase
-            res = (
-                get_supabase()
-                .table("fee_engagements")
-                .select("id", count="exact")
-                .eq("firm_id", firm_id)
-                .eq("client_id", client_id)
-                .eq("status", "Active")
-                .execute()
-            )
-            n = res.count if res.count is not None else len(res.data or [])
-            if n > 0:
-                blockers.append(f"{n} active fee engagement(s)")
-        except Exception:
-            pass
+            n = engagement_repo.count_active_for_client(firm_id, client_id)
+        except Exception as exc:
+            raise _could_not_check("active fee engagements") from exc
+        if n > 0:
+            blockers.append(f"{n} active fee engagement(s)")
 
     # ── Active engagement letters (engagements table) ──────────────────────────
     # CGST Act Section 31 — a live engagement letter documents an active mandate.
@@ -113,8 +121,8 @@ def _check_delete_blockers(client_id: str, firm_id: str, client_pan: str | None 
                 e for e in (res.data or [])
                 if e.get("status") not in _TERMINAL_LETTER_STATUSES
             ])
-        except Exception:
-            active_letters = 0
+        except Exception as exc:
+            raise _could_not_check("active engagement letters") from exc
     else:
         try:
             from routers.engagement_letters import _MOCK_ENGAGEMENTS
@@ -130,14 +138,13 @@ def _check_delete_blockers(client_id: str, firm_id: str, client_pan: str | None 
         blockers.append(f"{active_letters} active engagement letter(s)")
 
     # ── Fee invoices on record (financial history must not be orphaned) ────────
-    # invoice_repo.find_all already excludes soft-deleted invoices.
+    # A COUNT of the live (not deleted) invoices, read with the privileged client, for the reason above.
     try:
-        from repositories.invoice_repository import invoice_repo
-        invoices = invoice_repo.find_all(firm_id=firm_id, client_id=client_id)
-        if invoices:
-            blockers.append(f"{len(invoices)} fee invoice(s) on record")
-    except Exception:
-        pass
+        n_invoices = invoice_repo.count_live_for_client(firm_id, client_id)
+    except Exception as exc:
+        raise _could_not_check("fee invoices on record") from exc
+    if n_invoices > 0:
+        blockers.append(f"{n_invoices} fee invoice(s) on record")
 
     # ── DSC records registered to this client's PAN (firm-scoped, DB-only) ──────
     # dsc_records is firm-scoped (no client_id) but carries a pan column.
@@ -155,8 +162,8 @@ def _check_delete_blockers(client_id: str, firm_id: str, client_pan: str | None 
             n = res.count if res.count is not None else len(res.data or [])
             if n > 0:
                 blockers.append(f"{n} DSC record(s) registered to this PAN")
-        except Exception:
-            pass
+        except Exception as exc:
+            raise _could_not_check("digital signature certificates registered to this client") from exc
 
     return blockers
 

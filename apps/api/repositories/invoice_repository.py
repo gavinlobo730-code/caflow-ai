@@ -88,6 +88,19 @@ class InvoiceRepository(BaseRepository[dict]):
                 .eq("firm_id", firm_id).eq("is_deleted", False).execute().data)
         return rows or []
 
+    def count_live_for_client(self, firm_id: str, client_id: str) -> int:
+        """How many live (not deleted) fee invoices this client has: a COUNT, read with the privileged client.
+
+        Same reason and same contract as `EngagementRepository.count_active_for_client`: the client-delete check must
+        not read zero because the caller's own sign-in may not read fee rows, no figure leaves, the route has
+        authorised the caller, and a failed read raises and is never a zero.
+        """
+        if _USE_MOCK:
+            return len(self.find_all(firm_id=firm_id, client_id=client_id))
+        res = (db_provider.service_db().table("fee_invoices").select("id", count="exact")
+               .eq("firm_id", firm_id).eq("client_id", client_id).eq("is_deleted", False).execute())
+        return res.count if res.count is not None else len(res.data or [])
+
     def list_for_engagement(self, engagement_id: str) -> list[dict]:
         return self.find_all(engagement_id=engagement_id)
 
