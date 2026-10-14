@@ -120,13 +120,18 @@ def test_lines_insert_failure_rolls_back_the_header_too(seeded_db):
     """The actual R3.11 bug: previously, a lines-insert failure left the
     already-committed header orphaned. Now both are one transaction."""
     dsn = seeded_db
+    # A line the lines insert cannot cast: the header has already been inserted when it fails. (This used to name a
+    # lines table that does not exist; migration 486 refuses any table that is not one of the four numbered
+    # documents before it inserts anything, so the failure has to come from the data instead.)
+    bad_line = _ONE_LINE.replace("'quantity',1", "'quantity','not a number'")
+    assert bad_line != _ONE_LINE
     r = _psql(dsn, (
         f"SELECT numbered_document_atomic('debit_notes', {_header_json('DN-2425-SHOULD-NOT-EXIST')}, "
-        "'debit_note_lines_does_not_exist', "
-        f"{_ONE_LINE}, 'debit_note_id');"
+        "'debit_note_lines', "
+        f"{bad_line}, 'debit_note_id');"
     ))
     assert r.returncode != 0
-    assert "does not exist" in r.stderr.lower()
+    assert "invalid input syntax" in r.stderr.lower()
 
     r = _psql(dsn, "SELECT count(*) FROM debit_notes WHERE debit_note_no = 'DN-2425-SHOULD-NOT-EXIST';",
               tuples=True)

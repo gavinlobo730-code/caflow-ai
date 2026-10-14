@@ -35,11 +35,16 @@ def _last_definer() -> Path:
     """The migration that LAST defined the function, found by scanning — the
     CLAUDE.md rule for `CREATE OR REPLACE`: a guard pinned to 416 would keep
     reading a body production no longer runs the day a later migration
-    replaces it, and pass. Rollbacks are not definers."""
+    replaces it, and pass. Rollbacks are not definers.
+
+    MIGRATION 486 RENAMED THE LOGIC. `hub_client_worklist` is now a guarded wrapper and the tile queries live in
+    `hub_client_worklist__unguarded`, whose body is still the one the LAST `CREATE OR REPLACE` of the original name
+    wrote (432); a later change to the logic replaces the `__unguarded` name. Either spelling of a CREATE OR REPLACE
+    is a definer of the logic, and the wrapper (a plain CREATE FUNCTION, plus an ALTER ... RENAME) is not."""
     hits = sorted(
         p for p in API.joinpath("migrations").glob("[0-9]*.sql")
         if not p.name.endswith("_rollback.sql")
-        and re.search(r"FUNCTION\s+public\.hub_client_worklist\s*\(",
+        and re.search(r"CREATE OR REPLACE FUNCTION\s+public\.hub_client_worklist(__unguarded)?\s*\(",
                       p.read_text(encoding="utf-8"))
     )
     assert hits, "no migration defines public.hub_client_worklist"
@@ -58,7 +63,7 @@ SQL = MIGRATION.read_text(encoding="utf-8")
 # `CREATE OR REPLACE FUNCTION` replaces a whole body would otherwise move the
 # split point up into the prose and hand every assertion below the
 # documentation instead of the code.
-_STATEMENT = re.search(r"(?m)^CREATE OR REPLACE FUNCTION public\.hub_client_worklist\(", SQL)
+_STATEMENT = re.search(r"(?m)^CREATE OR REPLACE FUNCTION public\.hub_client_worklist(__unguarded)?\(", SQL)
 assert _STATEMENT, f"{MIGRATION.name} does not define public.hub_client_worklist"
 SQL_BODY = SQL[_STATEMENT.end():]
 
