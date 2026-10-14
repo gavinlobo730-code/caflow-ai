@@ -58,31 +58,40 @@ class PermissionWriteRefused(ValueError):
 
 # WHAT A BLOCK ON THE TEAM SCREEN REACHES, in the words the screen shows beside
 # the grid (POST-A-005). The grid is read by `rbac()`, which every staff route
-# goes through, and by the write policies of a few tables (migrations 415, 470,
-# 478). It is NOT read by any table's SELECT policy, so a screen that reads a
-# table straight from the browser over PostgREST — payroll attendance and
-# reports, the documents pages, the bank-account pickers — is governed there by
-# the person's firm, their client assignments and, on a few tables, their role.
-# A Partner who unticked Payroll for a Manager and believed the data was out of
-# that Manager's reach would be the localStorage grid's mistake again, so the
-# sentence is served from here, beside the guard that keeps it true, and the
-# drawer renders what it is given (it holds no copy).
+# goes through, by the write policies of a few tables (migrations 415, 470,
+# 478) and, since migration 485, by the read AND write policies of the three
+# payroll tables (employees, runs and payslips; attendance, leave and the
+# income-tax declarations are scoped through the employee, so they follow).
+# The other payroll tables (salary structures, revisions, loans, settlements,
+# perquisites and so on) are NOT, and the sentence says so.
+# It is NOT read by any other table's SELECT policy, so a screen that reads a
+# table straight from the browser over PostgREST — the documents pages, the
+# bank-account pickers — is governed there by the person's firm, their client
+# assignments and, on a few tables, their role. A Partner who unticked Documents
+# for a Manager and believed the data was out of that Manager's reach would be
+# the localStorage grid's mistake again, so the sentence is served from here,
+# beside the guard that keeps it true, and the drawer renders what it is given
+# (it holds no copy).
 #
 # KEPT TRUE BY `tests/test_the_per_person_grid_reaches_the_database_pg.py`,
 # which reads `pg_policies` on a migrated database and fails the day a public
-# table's SELECT or ALL policy asks the grid — or the day no write policy does.
-# Whoever makes either happen rewrites this sentence in the same commit.
+# table's SELECT or ALL policy outside the payroll tables asks the grid — or
+# the day no write policy does. Whoever makes either happen rewrites this
+# sentence in the same commit.
 # Deliberately says nothing about counts (tables, screens) because those go
 # stale, and nothing about Storage, which is files and not a table.
 DENIAL_REACH_NOTICE = (
     "A block here is enforced by the PracticeSync server, which refuses that "
-    "person's requests for that permission. The database does not look at this "
-    "grid when a table is read, and several screens read tables directly from "
-    "the browser (payroll attendance and reports, documents and bank accounts "
-    "among them): there only the person's firm, client assignments and, on a "
-    "few tables, role decide. Direct writes are checked against this grid on "
-    "some tables only. The one read it does reach is a stored year-end export "
-    "file."
+    "person's requests for that permission. For payroll the database enforces "
+    "it as well, but only for employees, runs, payslips, attendance, leave and "
+    "tax declarations: a person blocked from reading payroll cannot read those "
+    "from the browser either. Other payroll records, such as salary structures "
+    "and loans, are not covered yet. Nothing else is checked against this grid "
+    "when a table is read, and several screens read tables directly from the "
+    "browser (documents and bank accounts among them): there only the person's "
+    "firm, client assignments and, on a few tables, role decide. Direct writes "
+    "are checked against this grid on some tables only. The one other read it "
+    "reaches is a stored year-end export file."
 )
 
 

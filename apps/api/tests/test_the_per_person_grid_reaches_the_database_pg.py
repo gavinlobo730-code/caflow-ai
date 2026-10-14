@@ -27,15 +27,16 @@ WHAT EACH CASE IS FOR
                                   unrepairable.
 
 THE OTHER HALF, WHICH THIS MODULE ALSO HOLDS (POST-A-005). Everything above is a
-WRITE. No table's READ policy asks the grid, so a screen that reads a table
-straight from the browser is not stopped by a per-person block, and the Team
-screen says so in a sentence the API serves
-(`services.user_permission_service.DENIAL_REACH_NOTICE`). The last section is
-the guard that keeps that sentence true: it reads `pg_policies` on the migrated
-schema and fails the day a public table's SELECT or ALL policy asks the grid,
-or the day no write policy does. Making reads follow the grid is a decision
-(POST-B-004 for payroll) and a migration; whoever makes it rewrites the notice
-in the same commit and turns the cases below into their opposites.
+WRITE. Apart from the three payroll tables (migration 485), no table's READ
+policy asks the grid, so a screen that reads a table straight from the browser
+is not stopped by a per-person block, and the Team screen says so in a sentence
+the API serves (`services.user_permission_service.DENIAL_REACH_NOTICE`). The
+last section is the guard that keeps that sentence true: it reads `pg_policies`
+on the migrated schema and fails the day any OTHER public table's SELECT or ALL
+policy asks the grid, or the day no write policy does. Making a read follow the
+grid is a decision and a migration; whoever makes it rewrites the notice in the
+same commit and turns the case below into its opposite, as 485 did for payroll
+(`test_a_block_on_reading_payroll_hides_it_from_a_direct_read`).
 
 Simulates an authenticated PostgREST session the way
 `_supabase_compat_bootstrap.sql`'s auth.uid() shim expects: `SET
@@ -329,25 +330,32 @@ def _asks(expr: str, names: set[str]) -> bool:
     return any(re.search(rf"\b{re.escape(n)}\s*\(", expr) for n in names)
 
 
-def test_no_public_table_is_read_through_the_grid(dsn):
-    """THE GUARD BEHIND "THE DATABASE DOES NOT LOOK AT THIS GRID WHEN A TABLE
-    IS READ".
+#: The tables whose SELECT policy asks the grid on purpose (migration 485). attendance, leave_balances and the two
+#: declaration tables are scoped through `payroll_employees` by a subquery, so they follow it without naming a
+#: function and do not appear here.
+READ_THROUGH_THE_GRID = {"payroll_employees", "payroll_runs", "payroll_slips"}
 
-    A Partner who unticks Payroll, Documents or Bank for a Manager leaves that
-    Manager able to select the data straight from the browser, because no read
-    policy asks `user_permissions`. That is what the Team screen now says. The
-    day a SELECT or ALL policy on a public table asks the grid, that sentence is
-    wrong in the SAFE direction and still wrong, and this is where it is found.
+
+def test_only_the_payroll_tables_are_read_through_the_grid(dsn):
+    """THE GUARD BEHIND "THE DATABASE DOES NOT LOOK AT THIS GRID WHEN A TABLE
+    IS READ", NOW WITH ONE NAMED EXCEPTION.
+
+    A Partner who unticks Documents or Bank for a Manager leaves that Manager
+    able to select the data straight from the browser, because no read policy
+    on those tables asks `user_permissions`. That is what the Team screen says.
+    Payroll is the exception since migration 485 and the notice says so. The
+    day a SELECT or ALL policy on any OTHER public table asks the grid, that
+    sentence is wrong in the SAFE direction and still wrong, and this is where
+    it is found; the day payroll stops asking, it is wrong in the other.
     """
     names = _functions_that_ask_the_grid(dsn)
-    reads = [(t, p, c) for s, t, p, c, qual, _wc in _policies(dsn)
-             if s == "public" and c in ("SELECT", "ALL") and _asks(qual, names)]
-    assert not reads, (
-        "a public table is now read through the per-person grid: "
-        f"{reads}. If that is deliberate, rewrite {_NOTICE} in the same commit "
-        "(it says no table read asks the grid) and turn "
-        "test_a_block_on_reading_does_not_hide_a_table_read_directly into its "
-        "opposite for that table.")
+    reads = {t for s, t, p, c, qual, _wc in _policies(dsn)
+             if s == "public" and c in ("SELECT", "ALL") and _asks(qual, names)}
+    assert reads == READ_THROUGH_THE_GRID, (
+        f"the tables read through the per-person grid are {sorted(reads)}, and the notice names exactly "
+        f"{sorted(READ_THROUGH_THE_GRID)}. If that is deliberate, rewrite {_NOTICE} in the same commit "
+        "and turn test_a_block_on_reading_does_not_hide_a_table_read_directly into its opposite "
+        "for the table.")
 
 
 def test_some_but_not_all_tables_are_written_through_the_grid(dsn):
@@ -378,7 +386,7 @@ def test_some_but_not_all_tables_are_written_through_the_grid(dsn):
 
 
 # What the sentence calls "several screens read tables directly from the browser
-# (payroll attendance and reports, documents and bank accounts among them)",
+# (documents and bank accounts among them)",
 # measured instead of assumed: one table per family, with the permission pair a
 # Partner would block to keep a Manager out of it and the role floor that pair
 # is written with, so `my_permission` is asked the question the grid answers.
@@ -393,11 +401,6 @@ _READ_PROBES = [
         "INSERT INTO bank_accounts (firm_id, client_id, bank_name, account_no) "
         "VALUES ('{firm}', '{client}', 'Test Bank', '000111222');",
         "SELECT count(*) FROM bank_accounts;", id="bank_accounts"),
-    pytest.param(
-        "payroll", "Manager",
-        "INSERT INTO payroll_employees (firm_id, client_id, name) "
-        "VALUES ('{firm}', '{client}', 'E');",
-        "SELECT count(*) FROM payroll_employees;", id="payroll_employees"),
 ]
 
 
@@ -429,3 +432,83 @@ def test_a_block_on_reading_does_not_hide_a_table_read_directly(
         f"read ({after!r} rows). If that is deliberate, rewrite {_NOTICE} in the "
         "same commit: it tells a Partner that reading a table directly is not "
         "checked against this grid.")
+
+
+# ── payroll: the opposite case, since migration 485 ──────────────────────────
+# One table per family: the three that name the grid, and the four children that follow their employee through a
+# subquery (the declaration items follow their declaration, which follows the employee). Each is seeded as the administrator (the seed is not what is tested), read by an assigned Manager
+# before any block (so the probe is not vacuous), then read again with `payroll:read` refused for that person.
+_PAYROLL_READ_PROBES = [
+    pytest.param("INSERT INTO payroll_employees (firm_id, client_id, name) VALUES ('{firm}', '{client}', 'E');",
+                 "SELECT count(*) FROM payroll_employees;", id="payroll_employees"),
+    pytest.param("INSERT INTO payroll_runs (firm_id, client_id, month) VALUES ('{firm}', '{client}', '2026-04');",
+                 "SELECT count(*) FROM payroll_runs;", id="payroll_runs"),
+    pytest.param("WITH e AS (INSERT INTO payroll_employees (firm_id, client_id, name) "
+                 "VALUES ('{firm}', '{client}', 'E') RETURNING id), "
+                 "r AS (INSERT INTO payroll_runs (firm_id, client_id, month) "
+                 "VALUES ('{firm}', '{client}', '2026-04') RETURNING id) "
+                 "INSERT INTO payroll_slips (run_id, employee_id, gross_paise, net_paise) "
+                 "SELECT r.id, e.id, 100, 100 FROM e, r;",
+                 "SELECT count(*) FROM payroll_slips;", id="payroll_slips"),
+    pytest.param("WITH e AS (INSERT INTO payroll_employees (firm_id, client_id, name) "
+                 "VALUES ('{firm}', '{client}', 'E') RETURNING id) "
+                 "INSERT INTO attendance (firm_id, employee_id, month, year) SELECT '{firm}', id, 4, 2026 FROM e;",
+                 "SELECT count(*) FROM attendance;", id="attendance"),
+    pytest.param("WITH e AS (INSERT INTO payroll_employees (firm_id, client_id, name) "
+                 "VALUES ('{firm}', '{client}', 'E') RETURNING id) "
+                 "INSERT INTO leave_balances (firm_id, employee_id, year) SELECT '{firm}', id, 2026 FROM e;",
+                 "SELECT count(*) FROM leave_balances;", id="leave_balances"),
+    pytest.param("WITH e AS (INSERT INTO payroll_employees (firm_id, client_id, name) "
+                 "VALUES ('{firm}', '{client}', 'E') RETURNING id) "
+                 "INSERT INTO payroll_it_declarations (firm_id, client_id, employee_id, fy) "
+                 "SELECT '{firm}', '{client}', id, '2026-27' FROM e;",
+                 "SELECT count(*) FROM payroll_it_declarations;", id="payroll_it_declarations"),
+    pytest.param("WITH e AS (INSERT INTO payroll_employees (firm_id, client_id, name) "
+                 "VALUES ('{firm}', '{client}', 'E') RETURNING id), "
+                 "d AS (INSERT INTO payroll_it_declarations (firm_id, client_id, employee_id, fy) "
+                 "SELECT '{firm}', '{client}', id, '2026-27' FROM e RETURNING id) "
+                 "INSERT INTO payroll_it_declaration_items (firm_id, declaration_id, section) "
+                 "SELECT '{firm}', id, '80C' FROM d;",
+                 "SELECT count(*) FROM payroll_it_declaration_items;", id="payroll_it_declaration_items"),
+]
+
+
+@pytest.mark.parametrize("seed,select", _PAYROLL_READ_PROBES)
+def test_a_block_on_reading_payroll_hides_it_from_a_direct_read(dsn, seed, select):
+    """The Team screen's notice says a payroll block is enforced by the database too. Block `payroll:read` for an
+    assigned Manager and the same JWT's PostgREST-style SELECT returns nothing, on the three tables that name the grid
+    and on the four children that follow their employee (attendance, leave and both declaration tables)."""
+    seeded = _psql(dsn, seed.format(firm=FIRM, client=CLIENT))
+    assert seeded.returncode == 0, seeded.stderr
+
+    before = _scalar_as(dsn, AUTH_MANAGER, select)
+    assert before == "1", f"premise: the assigned Manager could not read the row ({before!r})"
+
+    _grant(dsn, MANAGER, "payroll", "read", False)
+    asked = _scalar_as(dsn, AUTH_MANAGER, "SELECT public.my_permission('payroll','read','Manager');")
+    assert asked == "f", f"premise: the grid does not refuse payroll:read ({asked!r})"
+
+    after = _scalar_as(dsn, AUTH_MANAGER, select)
+    assert after == "0", (
+        f"a per-person block on payroll:read no longer hides the table from a direct read ({after!r} rows): "
+        f"{_NOTICE} says the database enforces it for payroll")
+
+
+def test_a_grant_of_payroll_read_reaches_an_executive_and_its_absence_does_not(dsn):
+    """THE FINDING IN ITS OWN DIRECTION: with no row an assigned Executive reads no employee (the role floor is
+    Manager), and a Partner's per-person yes makes the same SELECT return the row."""
+    executive, auth_exec = "41500000-0000-0000-0000-00000000000e", "41500000-1111-0000-0000-000000000003"
+    seeded = _psql(dsn, f"""
+        INSERT INTO auth.users (id, email) VALUES ('{auth_exec}', 'e@t.in');
+        INSERT INTO users (id, firm_id, auth_user_id, email, full_name, role)
+             VALUES ('{executive}', '{FIRM}', '{auth_exec}', 'e@t.in', 'E', 'Executive');
+        INSERT INTO user_client_assignments (firm_id, user_id, client_id)
+             VALUES ('{FIRM}', '{executive}', '{CLIENT}');
+        INSERT INTO payroll_employees (firm_id, client_id, name) VALUES ('{FIRM}', '{CLIENT}', 'E');
+    """)
+    assert seeded.returncode == 0, seeded.stderr
+    select = "SELECT count(*) FROM payroll_employees;"
+
+    assert _scalar_as(dsn, auth_exec, select) == "0", "an Executive with no grant read payroll"
+    _grant(dsn, executive, "payroll", "read", True)
+    assert _scalar_as(dsn, auth_exec, select) == "1", "a per-person payroll:read grant did not reach the database"

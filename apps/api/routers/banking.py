@@ -97,6 +97,9 @@ router = APIRouter(prefix="/api/banking", tags=["banking"])
 
 
 _db = db_provider.request_db_or_none
+# The delete check's payroll probe only (see `_delete_blockers`): the caller's own sign-in cannot see payroll rows
+# unless they hold payroll:read, and a probe that cannot see the answer must not say "nothing there".
+_service_db = db_provider.service_db_or_none
 
 
 def _scope_rows(current_user: dict, client_id: Optional[str], rows: list) -> list:
@@ -355,6 +358,18 @@ def _delete_blockers(db, firm_id: str, client_id: str,
             # inventing a statutory date from a query that did not answer.
             return [{col: v} for v in values]
 
+    def _accounts_that_paid_payroll() -> set:
+        """Which of these accounts has a payroll run paid from it. Its own function, and always firm-scoped, because
+        it reads through a DIFFERENT client from the other probes (see the comment at its use)."""
+        try:
+            reader = _service_db() or db
+            rows = (reader.table("payroll_runs").select("paid_from_account_id")
+                    .eq("firm_id", firm_id).in_("paid_from_account_id", ids).execute().data or [])
+            return {r.get("paid_from_account_id") for r in rows}
+        except Exception as e:  # noqa: BLE001 — unreadable means BLOCKED, as for every other probe here
+            _logger.error("delete-check on payroll_runs failed: %s", e)
+            return set(ids)
+
     statements = _rows("bank_statements", "bank_account_id", ids, "statement_to")
     for row in statements:
         aid, end = row.get("bank_account_id"), row.get("statement_to")
@@ -365,8 +380,13 @@ def _delete_blockers(db, firm_id: str, client_id: str,
         "statements":      {r.get("bank_account_id") for r in statements},
         "reconciliations": {r.get("bank_account_id") for r in
                             _rows("bank_reconciliations", "bank_account_id", ids)},
-        "payroll":         {r.get("paid_from_account_id") for r in
-                            _rows("payroll_runs", "paid_from_account_id", ids)},
+        # Read through the SERVICE client, for the one fact this check needs (is there a payroll run paid from
+        # this account) and nothing else: since migration 485 the caller's own sign-in sees payroll rows only
+        # with payroll:read, so an Executive deleting a mistaken bank account would get an empty answer here,
+        # be told the account is deletable, and meet a bare foreign-key refusal. The caller's access to the
+        # client was checked by the route before this runs, and the read is scoped to the firm and to ids the
+        # route already vouched for. Where no service client is configured (mock mode) the same db is used.
+        "payroll":         _accounts_that_paid_payroll(),
         "ledger":          {r.get("account_id") for r in
                             _rows("journal_lines", "account_id", coa_ids)},
     }

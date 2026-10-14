@@ -115,6 +115,14 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         # against is built by _build_run_esic, the same read-only assembly
         # GET /runs/{run_id}/esic already uses.
         "/api/payroll/runs/{run_id}/esic/mapped-ips",
+        # Form 24Q from the books is built and returned, never stored, and is
+        # guarded at tds:compute. It carries payroll:read as a SECOND guard
+        # (migration 485): a 24Q lists every employee's PAN, salary and tax, and
+        # the payroll rows it is built from are visible to the caller's own
+        # sign-in only with that permission. The read-level action here is that
+        # requirement, not the route's tier. Nothing is written
+        # (tests/test_a_salary_tds_statement_needs_payroll_read.py drives it).
+        "/api/tds/24q/from-books",
         # PUR-32's preflight: reads this vendor's live bills and answers
         # which of them the one being typed may be a second copy of. POST
         # rather than GET because the request carries an invoice NUMBER, and a

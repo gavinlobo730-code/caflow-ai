@@ -68,13 +68,14 @@ THE FILE, AND WHAT IT IS ALLOWED TO SAY
     what is intended, `DEVIATION_CLASSES` holds what the database does instead
     and why, as an equality in both directions. A fix deletes its entry; a new
     gap, a looser or a TIGHTER cell, fails and names (actor, table, operation).
-    179 cells over 50 tables in 7 classes today. Classes are closed by a
+    129 cells over 43 tables in 4 classes today. Classes are closed by a
     migration, and each entry is deleted with its fix: `any-member-assigns-
     themselves` (any member of the firm could write `user_client_assignments`
     and assign themselves to any client; migration 478), in one migration (483)
     `executive-writes-manager-tier`, `cross-client-matches-have-no-client-scope`
     and `year-end-children-have-no-client-id`, and (484)
-    `portal-contacts-are-not-scoped-for-staff`. The other seven await their own
+    `portal-contacts-are-not-scoped-for-staff`, and (485) the three payroll classes
+    (`payroll-tier-not-in-rls`, `payroll-children-have-no-client-id`, `payroll-children-manager-delete`). The others await their own
     migration: merging one applies it to production, and the tier of each is
     decided by the API's own guard for the resource. The READ of the
     assignment rows stays firm-wide (`READABLE_BY_EVERY_MEMBER`): the API reads
@@ -84,9 +85,9 @@ THE FILE, AND WHAT IT IS ALLOWED TO SAY
     observed value is recorded and nothing claims it is right.
 
 BREAKING IT ON PURPOSE
-    Nine holes this repository already closed once are put back in a copy of the
-    world, six of them by running the migration's own rollback file (468, 469,
-    470, 478, 483, 484): each must turn named cells red. `liveness-dropped-from-every-helper`
+    Ten holes this repository already closed once are put back in a copy of the
+    world, seven of them by running the migration's own rollback file (468, 469,
+    470, 478, 483, 484, 485): each must turn named cells red. `liveness-dropped-from-every-helper`
     is migration 468 reversed; dropping the check from `get_my_role` ALONE
     turns only two cells red (a suspended Partner writes `fx_rates`, whose
     policy asks the role and never the firm) because `get_my_firm_id` still
@@ -883,30 +884,10 @@ DEVIATION_CLASSES: tuple[Deviation, ...] = (
     # so any member could assign themselves to any client. Migration 478 closed it (12 write cells) and
     # its entry went in the same commit; `test_the_matrix_turns_red_when_a_known_hole_is_put_back
     # [assignment-writes-reopened]` puts it back on purpose.
-    Deviation(
-        "payroll-tier-not-in-rls",
-        "payroll_employees, payroll_runs and payroll_slips carry an assignment scope and no role tier, so an "
-        "assigned Executive or Reviewer reads and writes salary rows that the API reserves to Manager and above "
-        "(payroll:read and payroll:write).",
-        ("payroll_employees", "payroll_runs", "payroll_slips"),
-        _cells(("exec_assigned", "reviewer"), OPS, "A", "-"),
-    ),
-    Deviation(
-        "payroll-children-have-no-client-id",
-        "attendance, leave_balances and the two income-tax declaration tables have no client_id, so migration "
-        "084's assignment scope never reached them: every member reads every client's attendance, leave and "
-        "declarations (payroll:read is Manager and above) and a Manager writes them for clients not assigned.",
-        ("attendance", "leave_balances", "payroll_it_declarations", "payroll_it_declaration_items"),
-        {**_cells(("exec_assigned", "reviewer", "exec_unassigned"), ("select",), "A,B", "-"),
-         **_cells(("manager",), ("select", "insert", "update"), "A,B", "A")},
-    ),
-    Deviation(
-        "payroll-children-manager-delete",
-        "attendance and leave_balances let a Manager delete rows of clients they are not assigned to, for the "
-        "same reason as the two declaration tables: no client_id for the assignment scope to read.",
-        ("attendance", "leave_balances"),
-        _cells(("manager",), ("delete",), "A,B", "A"),
-    ),
+    # `payroll-tier-not-in-rls`, `payroll-children-have-no-client-id` and `payroll-children-manager-delete` stood
+    # here (a payroll tier missing from three tables, and four children with no client scope). Migration 485
+    # closed them and their entries went in the same commit; `test_the_matrix_turns_red_when_a_known_hole_is_put_back
+    # [payroll-tier-485-reopened]` puts them back on purpose.
     Deviation(
         "billing-reads-are-partner-only",
         "fee_engagements and fee_invoices carry an assignment scope and no read tier, so an assigned Manager, "
@@ -1066,8 +1047,10 @@ CONTROLS = (
      {("suspended_partner", "clients", "select"), ("suspended_partner", "tasks", "delete"),
       ("suspended_partner", "payroll_slips", "update"), ("suspended_partner", "storage/Documents", "select")}),
     ("payroll-write-tier-dropped",
-     "the payroll:write policies of migration 261 dropped from attendance",
-     lambda: "".join(f"DROP POLICY attendance_role_{c} ON public.attendance;" for c in ("insert", "update", "delete")),
+     "the payroll:write policies of migration 261 dropped from attendance, and with them the parent scope of "
+     "485 that would otherwise still refuse an Executive or a Reviewer (two layers close this hole now)",
+     lambda: "".join(f"DROP POLICY attendance_role_{c} ON public.attendance;" for c in ("insert", "update", "delete"))
+     + "DROP POLICY attendance_employee_in_reach ON public.attendance;",
      ("attendance",),
      {("exec_assigned", "attendance", "insert"), ("reviewer", "attendance", "update"),
       ("reviewer", "attendance", "delete")}),
@@ -1111,6 +1094,16 @@ CONTROLS = (
      ("client_portal_users",),
      {("exec_unassigned", "client_portal_users", "select"), ("manager", "client_portal_users", "select"),
       ("reviewer", "client_portal_users", "select")}),
+    ("payroll-tier-485-reopened",
+     "migration 485 rolled back: an assigned Executive or Reviewer reads and writes employees, runs and payslips, "
+     "and every member reads every client's attendance, leave and tax declarations",
+     lambda: _migration_sql("485_the_database_asks_the_payroll_tier_and_the_clients_in_reach_of_the_employee_run_and_payslip_rows_rollback.sql"),
+     ("payroll_employees", "payroll_runs", "payroll_slips", "attendance", "leave_balances",
+      "payroll_it_declarations", "payroll_it_declaration_items"),
+     {("exec_assigned", "payroll_employees", "select"), ("reviewer", "payroll_slips", "update"),
+      ("exec_assigned", "payroll_runs", "insert"), ("exec_unassigned", "attendance", "select"),
+      ("manager", "leave_balances", "delete"), ("reviewer", "payroll_it_declarations", "select"),
+      ("exec_assigned", "payroll_it_declaration_items", "select")}),
     ("anon-granted-a-table",
      "GRANT SELECT ON clients TO anon: no policy would show a row, but the privilege itself is the hole",
      lambda: "GRANT SELECT ON public.clients TO anon;",
