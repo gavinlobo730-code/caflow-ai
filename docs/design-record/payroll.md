@@ -173,3 +173,9 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   **`proof_reference` IS KEPT AND IS NOT REPLACED**: it is the employee's own
   words about a proof that may only exist on paper, and making it a caption for
   the attachment would make a row with paper evidence look empty.
+  **AN EMPLOYEE CANNOT MARK THEIR OWN DECLARATION `verified` EITHER** (migration 492, POST-A-229, 14-10-2026). 297's trigger
+  guarded the verified COLUMNS and a line's status and left the HEADER's `status`, whose CHECK allows `verified`, so an
+  employee could write their own header as verified under their own sign-in. Withholding follows `proofs_verified`
+  (still guarded), so no rupee moved; what moved was what people read, and `domain/payroll/declarations.py` suppresses its
+  "proofs are not verified" notice for a verified header. The function was replaced from 297's body (its only definer)
+  with one condition per branch, and the rollback restores 297's body as the negative control.

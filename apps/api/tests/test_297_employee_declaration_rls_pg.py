@@ -334,3 +334,53 @@ def test_staff_can_still_verify(seeded):
 def test_staff_still_see_every_declaration_in_the_firm(seeded):
     assert _scalar(seeded, AUTH_STAFF,
                    "SELECT count(*) FROM payroll_it_declarations;") == "2"
+
+
+# ─── Migration 492: the header's own `status` ────────────────────────────────
+# 297 guarded the verified COLUMNS and the lines' status and left the header's: the CHECK allows 'verified', and the
+# employee's own write of their own row reached it. Money does not follow `status` (withholding follows
+# `proofs_verified`), but the employee's screen and the staff view read it, and a notice is suppressed on it.
+
+_ROLLBACK_492 = (API_ROOT / "migrations"
+                 / "492_an_employee_cannot_mark_their_own_tax_declaration_verified_rollback.sql")
+
+
+def test_employee_cannot_mark_their_own_declaration_verified(seeded):
+    r = _refused(seeded, AUTH_A, "UPDATE payroll_it_declarations SET status = 'verified';")
+    assert r.returncode != 0, "an employee marked their own declaration verified"
+    assert _scalar(seeded, AUTH_STAFF,
+                   f"SELECT status FROM payroll_it_declarations WHERE id='{DECL_A}';") != "verified"
+
+
+def test_employee_cannot_insert_a_declaration_already_marked_verified(seeded):
+    _psql(seeded, f"DELETE FROM payroll_it_declarations WHERE id='{DECL_A}';")
+    r = _refused(seeded, AUTH_A, f"""
+        INSERT INTO payroll_it_declarations (firm_id, client_id, employee_id, fy, regime, status)
+        VALUES ('{FIRM}','{CLIENT}','{EMP_A}','{FY}','old', 'verified');
+    """)
+    assert r.returncode != 0, "an employee inserted a declaration already marked verified"
+
+
+def test_employee_can_still_submit_their_declaration(seeded):
+    """The screen's own write (TaxDeclarationTab): status 'submitted', which the guard must not touch."""
+    r = _psql(seeded, _as(AUTH_A) + "UPDATE payroll_it_declarations SET status = 'submitted';")
+    assert r.returncode == 0, r.stderr
+    assert _scalar(seeded, AUTH_STAFF,
+                   f"SELECT status FROM payroll_it_declarations WHERE id='{DECL_A}';") == "submitted"
+
+
+def test_staff_can_still_mark_a_declaration_verified(seeded):
+    r = _psql(seeded, _as(AUTH_STAFF) + f"UPDATE payroll_it_declarations SET status = 'verified' WHERE id='{DECL_A}';")
+    assert r.returncode == 0, r.stderr
+    assert _scalar(seeded, AUTH_STAFF,
+                   f"SELECT status FROM payroll_it_declarations WHERE id='{DECL_A}';") == "verified"
+
+
+def test_492_rollback_puts_the_hole_back(seeded):
+    """The negative control: on 297's body alone an employee marks their own declaration verified."""
+    applied = _psql(seeded, _ROLLBACK_492.read_text(), tuples=False)
+    assert applied.returncode == 0, applied.stderr
+    r = _psql(seeded, _as(AUTH_A) + "UPDATE payroll_it_declarations SET status = 'verified';")
+    assert r.returncode == 0, r.stderr
+    assert _scalar(seeded, AUTH_STAFF,
+                   f"SELECT status FROM payroll_it_declarations WHERE id='{DECL_A}';") == "verified"
