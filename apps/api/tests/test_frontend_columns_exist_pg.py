@@ -386,7 +386,16 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     # Seven columns in one payload: firm_id, client_id, service_type, fee_paise,
     # billing_cycle, start_date, status. 207 + 7 = 214 exactly, which is the
     # independent evidence that the browser really did lose the write.
-    assert len(scan_writes(WEB)) >= 207, "write scan found too little — parser likely broke"
+    #
+    # 220 -> 204 on 14-10-2026 (POST-A-223 to -225), diagnosed the same way. Three screens stopped writing a filing
+    # state straight over PostgREST and send it to the API, where rbac, the state machine and the period lock run:
+    #
+    #   app/income-tax/page.tsx: 16 -> 8   (the ITR filed tick, single and bulk)
+    #   app/mca/page.tsx:        18 -> 12  (an MCA filing recorded as filed, single and bulk)
+    #   lib/data/gst.ts:         50 -> 48  (the CA-approval stamp on a GSTR-1 / GSTR-3B)
+    #
+    # 8 + 6 + 2 = 16 columns, and 220 - 16 = 204 exactly.
+    assert len(scan_writes(WEB)) >= 204, "write scan found too little — parser likely broke"
 
 
 @_NEEDS_PG
