@@ -63,7 +63,9 @@ test("handleSave decides UPDATE vs INSERT from the found-or-editing record, not 
 test("the CA is told when the form filled itself in on its own", () => {
   // Unlike an explicit "Edit" click, auto-detection has to explain itself —
   // the fields just changed under a CA who only picked a client and a year.
-  assert.match(src, /existingMatch && !editAudit/);
+  // `matchIsForThisForm` is `existingMatch` narrowed to the client and year the form still names (POST-A-226): a
+  // found record that is no longer this form's must not be announced as the one being edited.
+  assert.match(src, /(existingMatch|matchIsForThisForm) && !editAudit/);
   assert.match(src, /already exists.*editing it below|editing it below.*already exists/s);
 });
 
