@@ -68,12 +68,15 @@ THE FILE, AND WHAT IT IS ALLOWED TO SAY
     what is intended, `DEVIATION_CLASSES` holds what the database does instead
     and why, as an equality in both directions. A fix deletes its entry; a new
     gap, a looser or a TIGHTER cell, fails and names (actor, table, operation).
-    243 cells over 56 tables in 11 classes today. The twelfth,
-    `any-member-assigns-themselves` (any member of the firm could write
-    `user_client_assignments` and assign themselves to any client), was found by
-    this matrix and closed by migration 478; its entry was deleted with the fix.
-    None of the 11 has a fixing migration: merging one applies it to
-    production, and each needs a person to decide the tier. The READ of the
+    183 cells over 51 tables in 8 classes today. Two classes have been closed
+    by a migration since the matrix found them, and each entry was deleted with
+    its fix: `any-member-assigns-themselves` (any member of the firm could write
+    `user_client_assignments` and assign themselves to any client; migration 478)
+    and, in one migration (483), `executive-writes-manager-tier`,
+    `cross-client-matches-have-no-client-scope` and
+    `year-end-children-have-no-client-id`. The other eight await their own
+    migration: merging one applies it to production, and the tier of each is
+    decided by the API's own guard for the resource. The READ of the
     assignment rows stays firm-wide (`READABLE_BY_EVERY_MEMBER`): the API reads
     the caller's own rows under the caller's JWT. Where the intended tier is undocumented (what an
     Executive may write in `ai_insights`, `renewals` or the banking tables, and
@@ -81,9 +84,9 @@ THE FILE, AND WHAT IT IS ALLOWED TO SAY
     observed value is recorded and nothing claims it is right.
 
 BREAKING IT ON PURPOSE
-    Seven holes this repository already closed once are put back in a copy of the
-    world, four of them by running the migration's own rollback file (468, 469,
-    470, 478): each must turn named cells red. `liveness-dropped-from-every-helper`
+    Eight holes this repository already closed once are put back in a copy of the
+    world, five of them by running the migration's own rollback file (468, 469,
+    470, 478, 483): each must turn named cells red. `liveness-dropped-from-every-helper`
     is migration 468 reversed; dropping the check from `get_my_role` ALONE
     turns only two cells red (a suspended Partner writes `fx_rates`, whose
     policy asks the role and never the firm) because `get_my_firm_id` still
@@ -854,20 +857,26 @@ _REVIEWER_WRITES = (
     "client_sales_invoices", "compliance_records", "credit_notes", "debit_notes", "financial_statement_versions",
     "form_26as_reconciliations", "form_26as_uploads", "government_notices", "gstr1_returns", "gstr2a_records",
     "gstr2b_reconciliations", "gstr3b_returns", "health_alerts", "health_score_history", "health_scores",
-    "itr_filings", "knowledge_articles", "mca_companies", "mca_directors", "onboarding_workflows",
+    "itr_filings", "mca_companies", "mca_directors", "onboarding_workflows",
     "purchase_bills", "purchase_credit_notes", "purchase_payment_allocations", "purchase_payments",
     "receipt_allocations", "receipts", "renewals", "sales_debit_notes", "service_catalogue",
-    "tax_computation_snapshots", "tax_disallowances", "vendors", "xbrl_packages", "year_end_adjustments",
+    "tax_computation_snapshots", "tax_disallowances", "xbrl_packages", "year_end_adjustments",
     "year_end_engagements", "year_end_exports",
 )
 
 #: FROZEN. Every cell in it is a place the database lets somebody do what the
 #: product's own rules forbid (the five rules are in this module's docstring).
 #: A fix deletes its entry in the same commit and a new gap fails the build; a
-#: line is never added to make a failing run green. None of these has a fixing
-#: migration in this change, on purpose: merging a migration applies it to
-#: production, and each of them needs somebody to decide the tier.
+#: line is never added to make a failing run green. Merging a migration applies
+#: it to production, so each class is closed by its own migration once the
+#: owner's rule (Claude decides the tier under the standing instructions) is
+#: applied; the classes still listed have not been closed yet.
 DEVIATION_CLASSES: tuple[Deviation, ...] = (
+    # `year-end-children-have-no-client-id`, `cross-client-matches-have-no-client-scope` and
+    # `executive-writes-manager-tier` stood here (54 cells over 5 tables, plus 6 Reviewer cells on vendors and knowledge_articles that
+    # left the 41-table class with them). Migration 483 closed them
+    # and their entries went in the same commit; `test_the_matrix_turns_red_when_a_known_hole_is_put_back
+    # [role-tiers-483-reopened]` puts them back on purpose.
     # `any-member-assigns-themselves` stood here: user_client_assignments' one policy had no role test,
     # so any member could assign themselves to any client. Migration 478 closed it (12 write cells) and
     # its entry went in the same commit; `test_the_matrix_turns_red_when_a_known_hole_is_put_back
@@ -897,28 +906,6 @@ DEVIATION_CLASSES: tuple[Deviation, ...] = (
         _cells(("manager",), ("delete",), "A,B", "A"),
     ),
     Deviation(
-        "year-end-children-have-no-client-id",
-        "year_end_notes and year_end_review_events have no client_id and a firm-only policy, so every member "
-        "reads and writes the notes and review trail of every client's engagement, a Reviewer and an "
-        "unassigned Executive included.",
-        ("year_end_notes", "year_end_review_events"),
-        {**_cells(("manager", "exec_assigned"), OPS, "A,B", "A"),
-         **_cells(("exec_unassigned",), OPS, "A,B", "-"),
-         **_cells(("reviewer",), ("select",), "A,B", "A"),
-         **_cells(("reviewer",), WRITES, "A,B", "-")},
-    ),
-    Deviation(
-        "cross-client-matches-have-no-client-scope",
-        "cross_client_matches names two clients and PAN, GSTIN or e-mail values in match_value, and its one "
-        "policy is firm_id = get_my_firm_id(), so every member reads, and writes, the matches of clients they "
-        "cannot see although the API's relationship view narrows to the caller's clients.",
-        ("cross_client_matches",),
-        {**_cells(("manager", "exec_assigned"), OPS, "A,B", "A"),
-         **_cells(("exec_unassigned",), OPS, "A,B", "-"),
-         **_cells(("reviewer",), ("select",), "A,B", "A"),
-         **_cells(("reviewer",), WRITES, "A,B", "-")},
-    ),
-    Deviation(
         "billing-reads-are-partner-only",
         "fee_engagements and fee_invoices carry an assignment scope and no read tier, so an assigned Manager, "
         "Executive or Reviewer reads the practice's fee economics that PERMISSIONS reserves to a Partner "
@@ -943,15 +930,8 @@ DEVIATION_CLASSES: tuple[Deviation, ...] = (
          **_cells(("exec_unassigned",), ("select",), "A,B", "-")},
     ),
     Deviation(
-        "executive-writes-manager-tier",
-        "vendors and knowledge_articles have no role policy, so an assigned Executive writes rows whose API "
-        "guard (client:write, knowledge:write) is Manager and above.",
-        ("vendors", "knowledge_articles"),
-        _cells(("exec_assigned",), WRITES, "A", "-"),
-    ),
-    Deviation(
         "reviewer-writes-where-no-resource-allows-it",
-        "These 41 tables carry no write-tier policy, so a Reviewer assigned to the client inserts, updates and "
+        "These 39 tables carry no write-tier policy, so a Reviewer assigned to the client inserts, updates and "
         "deletes rows although no API resource grants a Reviewer write on them (only timeline and the member's "
         "own name are Reviewer-writable).",
         _REVIEWER_WRITES,
@@ -1123,6 +1103,14 @@ CONTROLS = (
      ("user_client_assignments",),
      {("exec_unassigned", "user_client_assignments", "insert"), ("reviewer", "user_client_assignments", "update"),
       ("manager", "user_client_assignments", "delete"), ("exec_assigned", "user_client_assignments", "insert")}),
+    ("role-tiers-483-reopened",
+     "migration 483 rolled back: vendors and knowledge_articles take any assigned writer, cross_client_matches "
+     "and the year-end notes and review events are firm-wide again",
+     lambda: _migration_sql("483_the_role_tiers_and_client_scopes_the_api_gives_four_more_tables_reach_the_database_rollback.sql"),
+     ("vendors", "knowledge_articles", "cross_client_matches", "year_end_notes", "year_end_review_events"),
+     {("exec_assigned", "vendors", "insert"), ("exec_assigned", "knowledge_articles", "update"),
+      ("exec_assigned", "cross_client_matches", "delete"), ("exec_unassigned", "year_end_notes", "select"),
+      ("reviewer", "year_end_review_events", "insert"), ("manager", "vendors", "delete")}),
     ("anon-granted-a-table",
      "GRANT SELECT ON clients TO anon: no policy would show a row, but the privilege itself is the hole",
      lambda: "GRANT SELECT ON public.clients TO anon;",
