@@ -177,7 +177,9 @@ def test_every_table_the_backend_can_read_the_api_can_read_too(seeded_db):
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
           AND has_table_privilege('service_role', c.oid, 'SELECT')
-          AND NOT has_table_privilege('authenticated', c.oid, 'SELECT')
+          -- A table granted COLUMN BY COLUMN is readable by the API (migration 497 hides one column of
+          -- client_portal_users this way); a table-level check alone called it unreachable.
+          AND NOT has_any_column_privilege('authenticated', c.oid, 'SELECT')
         ORDER BY c.relname;
     """, tuples=True)
     assert result.returncode == 0, result.stderr
