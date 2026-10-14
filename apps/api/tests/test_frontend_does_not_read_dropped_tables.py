@@ -91,7 +91,7 @@ def _frontend_table_refs() -> dict[str, set[str]]:
             src = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
-        for table in re.findall(r'\.from\("([a-z_]+)"\)', src):
+        for table in re.findall(r'\.from\("([a-z0-9_]+)"\)', src):
             refs.setdefault(table, set()).add(path.relative_to(WEB).as_posix())
     return refs
 

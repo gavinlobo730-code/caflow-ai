@@ -34,7 +34,9 @@ MIGRATION_SOURCES = [_MIG_DIR / "260_role_aware_write_policies.sql",
                      _MIG_DIR / "297_let_an_employee_file_their_own_declaration.sql",
                      _MIG_DIR / "345_the_tds_register_is_role_guarded.sql",
                      _MIG_DIR / "346_loans_and_deposits_carry_a_role_rule.sql",
-                     _MIG_DIR / "359_a_certificate_is_not_a_rate.sql"]
+                     _MIG_DIR / "359_a_certificate_is_not_a_rate.sql",
+                     _MIG_DIR / "488_a_reviewer_cannot_write_the_tax_filing_year_end_or_company_filing_tables.sql",
+                     _MIG_DIR / "491_an_approved_or_filed_gst_return_changes_only_in_the_hands_of_someone_who_may_approve.sql"]
 
 # Covered by migration 260 — each mirrors a live rbac() guard on an endpoint
 # that writes the same table.
@@ -77,6 +79,12 @@ GUARDED = {
     # migration 357 used for an opening written-down value, and for the same
     # reason: a figure one person records and everybody else's numbers rest on.
     "tds_lower_deduction_certificates",
+    # migrations 488 + 491 — the two GST return tables. INVISIBLE to this scan until 14-10-2026 because the table
+    # pattern was `[a-z_]+`, which cannot match a name with a digit in it: `gstr1_returns` and `gstr3b_returns` were
+    # written straight from the browser (the build, the approval) and never appeared here. 488 puts the tier
+    # `gst:compute` (Executive) on every write, mirroring the API's own guard; 491 adds that a return that is
+    # approved or filed changes, and is given either status, only for someone who may approve (`gst:approve`).
+    "gstr1_returns", "gstr3b_returns",
 }
 
 # Written from the browser and NOT yet role-guarded. An entry needs a product
@@ -112,7 +120,7 @@ AWAITING_DECISION: dict[str, str] = {}
 #     elsewhere are tracked in test_frontend_does_not_read_dropped_tables.py.
 CANNOT_SUCCEED: dict[str, str] = {}
 
-_FROM = re.compile(r'\.from\(\s*"([a-z_]+)"\s*\)')
+_FROM = re.compile(r'\.from\(\s*"([a-z0-9_]+)"\s*\)')
 _WRITE = re.compile(r'\.\s*(insert|upsert|update|delete)\s*\(')
 
 

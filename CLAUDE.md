@@ -174,10 +174,11 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - EACH MIGRATION IS ONE TRANSACTION, AND A REMEMBERED FAILURE KEEPS THE PIPELINE RED
 - THE SCHEMA-DRIFT CHECK HEALS ITSELF AND COVERS THE TABLES AND FUNCTIONS THE CODE CALLS
 
-### `docs/design-record/filing-and-compliance.md` (2 entries): Filing to government portals, trackers and the period lock
+### `docs/design-record/filing-and-compliance.md` (3 entries): Filing to government portals, trackers and the period lock
 
 - AND THE PRODUCT WORDS THAT POSITION ONCE
 - THERE ARE TWO TRACKERS AND BOTH LOCK THE PERIOD
+- A GST RETURN IS APPROVED, REBUILT AND REOPENED THROUGH THE API, AND THE DATABASE ASKS WHO MAY APPROVE
 
 ### `docs/design-record/fixed-assets-and-inventory.md` (11 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
 

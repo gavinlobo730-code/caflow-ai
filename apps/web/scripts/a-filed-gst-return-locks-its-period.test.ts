@@ -32,6 +32,21 @@
 //     looks like it worked, taking a shortcut past the server that owns the
 //     rule.
 //
+// THE SAME FAMILY, TWO MORE MEMBERS (POST-A-223, POST-A-224)
+//     * APPROVAL. approveGSTR1 / approveGSTR3B wrote `status: "ca_approved"` and
+//       `ca_approved_by: <an id the page supplied>` straight into the table. The
+//       route requires Manager and above, the table's policy asks Executive, and
+//       the id was the Supabase AUTH id for a column that is a foreign key to the
+//       INTERNAL user id. They go through the status route now, like the filing.
+//     * REBUILD. saveGSTR1Return / saveGSTR3BReturn upserted `status: "draft"`
+//       over whatever the row held, so every Build or Compute click on a FILED
+//       return turned it back into an unfiled draft with a CA Approve button,
+//       its ARN and approver still on the row. They refuse a submitted return
+//       now (the server's save and recompute do) and void an approval, which is
+//       what the server's recompute does. This guard's old rule looked for
+//       `submitted` and `filed` values only, so a reset to `draft` and an
+//       approval both walked past it.
+//
 // WHAT THIS DOES NOT DO
 //     It reads source, not behaviour — it cannot prove the backend writes the
 //     filings row, which is the Python suite's job
@@ -145,6 +160,81 @@ for (const fn of MARKERS) {
   });
 }
 
+// ── approval goes through the API too (POST-A-223) ─────────────────────────
+
+const APPROVERS = [
+  ["approveGSTR3B", "setGstr3bStatus"],
+  ["approveGSTR1", "setGstr1Status"],
+] as const;
+
+for (const [fn, route] of APPROVERS) {
+  test(`${fn} does not write the returns table over PostgREST`, () => {
+    const b = body(read(GST_DATA), fn);
+    for (const write of [".update(", ".upsert(", ".insert(", ".delete("]) {
+      assert.equal(
+        b.includes(write), false,
+        `${fn} writes the return itself: rbac() does not run on a PostgREST call, ` +
+        "so an Executive could approve a return the route reserves to a Manager, " +
+        "and the approver is whatever id the page supplies.",
+      );
+    }
+  });
+
+  test(`${fn} asks the status route, with the CA's confirmation, and checks the answer`, () => {
+    const b = body(read(GST_DATA), fn);
+    assert.match(b, new RegExp(`api\\.gstWorkspace\\.${route}\\(`));
+    assert.match(b, /status:\s*"ca_approved"/);
+    assert.match(b, /ca_approved:\s*true/);
+    assert.match(b, /!\s*res\.success/, `${fn} does not check the { success, error } envelope`);
+  });
+
+  test(`${fn} takes no approver from the caller`, () => {
+    // The server derives the approver from the signed-in user (a users.id). A
+    // parameter named for one is the browser choosing who approved.
+    const src = read(GST_DATA);
+    const start = src.indexOf(`export async function ${fn}(`);
+    const signature = src.slice(start, src.indexOf("{", src.indexOf(")", start)));
+    assert.doesNotMatch(signature, /userId|approver|approvedBy/i,
+      `${fn} accepts an approver from its caller`);
+  });
+}
+
+// ── a rebuild does not undo a filing or leave a stale approval (POST-A-224) ─
+
+const SAVERS = [
+  ["saveGSTR3BReturn", "GSTR-3B"],
+  ["saveGSTR1Return", "GSTR-1"],
+] as const;
+
+for (const [fn, label] of SAVERS) {
+  test(`${fn} refuses a return that has been filed`, () => {
+    const b = body(read(GST_DATA), fn);
+    // The existing row is looked up with its status...
+    assert.match(b, /\.select\(\s*"id,\s*status"\s*\)/,
+      `${fn} no longer reads the existing return's status before overwriting it`);
+    // ...and a submitted one stops the write, in the server's own words.
+    assert.match(b, /existing\?\.status\s*===\s*"submitted"/);
+    assert.match(b, new RegExp(`${label} for .* has already been filed and cannot be changed`),
+      `${fn} lost the refusal of a filed return`);
+    assert.ok(b.indexOf('"submitted"') < b.indexOf(".upsert("),
+      `${fn} checks for a filed return AFTER it writes`);
+  });
+
+  test(`${fn} says why when row security refuses a rebuild of an approved return`, () => {
+    // Migration 491: an Executive may not change a return a Manager has approved. The raw message is a policy
+    // name, which tells the CA nothing about what to do next.
+    const b = body(read(GST_DATA), fn);
+    assert.match(b, /row-level security/);
+    assert.match(b, new RegExp(`${label} for .* has been approved, so only someone who may approve`));
+  });
+
+  test(`${fn} voids an earlier approval when it rewrites the figures`, () => {
+    const b = body(read(GST_DATA), fn);
+    assert.match(b, /ca_approved_by:\s*null/);
+    assert.match(b, /ca_approved_at:\s*null/);
+  });
+}
+
 // ── the API client actually names the backend routes ───────────────────────
 
 test("the API client exposes the GST status routes at the paths the backend serves", () => {
@@ -203,7 +293,7 @@ test("no screen marks a GST return submitted over PostgREST", () => {
 // this asks the rule instead: nothing in the browser sets a filing state on
 // any table itself.
 
-const FILING_STATE_TABLES = ["gstr1_returns", "gstr3b_returns", "compliance_calendar"] as const;
+const FILING_STATE_TABLES = ["gstr1_returns", "gstr3b_returns", "compliance_calendar", "mca_filings"] as const;
 /** Does this chain SET a filed state, as opposed to merely naming the columns?
  *
  *  Creating a row with `filing_status: "pending", filed_date: null` is the
@@ -216,24 +306,20 @@ const FILING_STATE_TABLES = ["gstr1_returns", "gstr3b_returns", "compliance_cale
 function setsAFiledState(chain: string): boolean {
   if (/status:\s*"submitted"/.test(chain)) return true;
   if (/filing_status:\s*"filed"/.test(chain)) return true;
-  for (const m of chain.matchAll(/(?:filed_date|arn_number)\s*:\s*([^,\n}]*)/g)) {
+  // mca_filings (POST-A-225): its filed state is `status: "filed"` with an `srn`.
+  if (/\bstatus:\s*"filed"/.test(chain)) return true;
+  for (const m of chain.matchAll(/(?:filed_date|arn_number|srn)\s*:\s*([^,\n}]*)/g)) {
     const value = m[1].trim();
     if (value && value !== "null" && value !== "undefined") return true;
   }
   return false;
 }
 
-// Screens that still record a filing state themselves, with the reason. This
-// list may only SHRINK. Both entries are income-tax obligations: an ITR or an
-// advance-tax instalment is not a GST period, so no `public.filings` row is
-// due for them and the period lock is not the thing at stake — but rbac()
-// still does not run on those writes, which is its own finding and its own
-// module. Named here rather than excluded by a narrower regex, because a
-// narrower regex is how this table was missed in the first place.
-const STILL_WRITING_IT_THEMSELVES = [
-  "app/income-tax/page.tsx (compliance_calendar)",
-  "app/income-tax/page.tsx (compliance_calendar)",
-];
+// Screens that still record a filing state themselves, with the reason. This list may only SHRINK, and it is EMPTY:
+// the two entries that stood here were the ITR screen's single and bulk "mark filed" (POST-A-226), which now go
+// through the same API door as the GST tracker. Named in the test rather than excluded by a narrower regex, because
+// a narrower regex is how this table was missed in the first place.
+const STILL_WRITING_IT_THEMSELVES: string[] = [];
 
 test("no screen writes a filing state straight into a table", () => {
   const offenders: string[] = [];
@@ -256,6 +342,40 @@ test("no screen writes a filing state straight into a table", () => {
     "there, record_filing never fires, public.filings stays empty and the " +
     "period lock cannot engage. If you have FIXED one, delete its entry from " +
     "STILL_WRITING_IT_THEMSELVES; the list may only shrink.",
+  );
+});
+
+/** Does this chain SET an approval, as opposed to clearing one? Voiding an
+ *  approval on a rebuild (`ca_approved_by: null`) is correct and must not trip. */
+function setsAnApproval(chain: string): boolean {
+  if (/status:\s*"ca_approved"/.test(chain)) return true;
+  for (const m of chain.matchAll(/ca_approved_(?:by|at)\s*:\s*([^,\n}]*)/g)) {
+    const value = m[1].trim();
+    if (value && value !== "null" && value !== "undefined") return true;
+  }
+  return false;
+}
+
+test("no screen approves a GST return straight into the table", () => {
+  const offenders: string[] = [];
+  for (const file of walk(WEB)) {
+    const src = fs.readFileSync(file, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    const re = /\.from\(\s*"(gstr1_returns|gstr3b_returns)"\s*\)/g;
+    let hit: RegExpExecArray | null;
+    while ((hit = re.exec(src)) !== null) {
+      const chain = statementAt(src, hit.index);
+      if (/\.(update|upsert|insert|delete)\(/.test(chain) && setsAnApproval(chain)) {
+        offenders.push(`${path.relative(WEB, file)} (${hit[1]})`);
+      }
+    }
+  }
+  assert.deepEqual(
+    offenders, [],
+    "a GST return is being approved straight into the table: rbac() does not run " +
+    "there, the approver is supplied by the browser, and the route's own refusals " +
+    "(Manager and above, the explicit confirmation, books that have moved) never fire",
   );
 });
 
@@ -295,4 +415,42 @@ test("the API client names the compliance mark-filed route the backend serves", 
   assert.match(src, /`\/api\/compliance\/calendar\/\$\{[^}]+\}\/filed`/);
   const block = src.slice(src.indexOf("markFiled:"));
   assert.match(block.slice(0, 400), /method:\s*"PATCH"/);
+});
+
+test("the ITR screen marks a filing through the API, singly and in bulk (POST-A-226)", () => {
+  const src = read("app/income-tax/page.tsx")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.equal(
+    (src.match(/api\.compliance\.markFiled\(/g) ?? []).length, 2,
+    "both the single and the bulk mark-filed on the ITR screen must go through the API",
+  );
+  assert.ok(
+    (src.match(/!res\.success/g) ?? []).length >= 2,
+    "a refused mark-filed must not read as success: the route answers a refusal as HTTP 200 with { success: false }",
+  );
+  assert.doesNotMatch(src, /filing_status:\s*"filed"/);
+});
+
+test("the MCA screen records a filing as filed through the API, in all three places (POST-A-225)", () => {
+  // Creating a filed row, marking one filed, marking a batch filed: each used to write `status: "filed"`, the SRN
+  // and a date straight into mca_filings, so an Executive could record a statutory filing as done, the route's
+  // Manager-and-above rule and the CA's confirmation never ran, and the add modal supplied TODAY as the date.
+  const src = read("app/mca/page.tsx")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.equal((src.match(/api\.mca\.setFilingStatus\(/g) ?? []).length, 3);
+  assert.ok((src.match(/res\.success/g) ?? []).length >= 3,
+    "the answer's envelope must be read: the route answers a refusal as HTTP 200 with { success: false }");
+  assert.equal((src.match(/ca_approved:\s*true/g) ?? []).length, 3);
+  assert.doesNotMatch(src, /filed_date:\s*status\s*===\s*"Filed"\s*\?\s*todayLocalISO/,
+    "the add modal must not stamp today's date as the date a filing was made");
+});
+
+test("the API client names the MCA status route the backend serves, as a PATCH (POST-A-225)", () => {
+  const src = read(API_CLIENT);
+  assert.match(src, /setFilingStatus:/);
+  assert.match(src, /`\/api\/mca-workspace\/filings\/\$\{[^}]+\}\/status`/);
+  const block = src.slice(src.indexOf("setFilingStatus:"));
+  assert.match(block.slice(0, 700), /method:\s*"PATCH"/);
 });

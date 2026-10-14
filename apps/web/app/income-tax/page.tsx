@@ -49,7 +49,7 @@ import {
 import { StatCard } from "@/components/stat-card";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
-import { request, type ApiResp } from "@/lib/api";
+import { api, request, type ApiResp } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
@@ -230,20 +230,18 @@ function BulkMarkFiledModal({
     setError(null);
     setRowErrors({});
 
-    const sb = getSupabaseClient();
+    // THROUGH THE API (POST-A-226), like the GST tracker: the route cleans the date (no future or malformed one),
+    // writes the audit event and answers a refusal as HTTP 200 with { success: false }, so the envelope is
+    // checked. A direct write skipped all three, and a policy cannot tell an ITR calendar row from a GST one.
+    // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this records a filing the CA made on the portal.
     const results = await Promise.all(
       remaining.map(async (entry) => {
         try {
-          const { error: updateErr } = await sb
-            .from("compliance_calendar")
-            .update({
-              filing_status: "filed",
-              filed_date: filedDate,
-              arn_number: arns[entry.id].trim(),
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", entry.id);
-          if (updateErr) throw new Error(updateErr.message);
+          const res = await api.compliance.markFiled(entry.id, {
+            filed_date: filedDate,
+            arn: arns[entry.id].trim(),
+          });
+          if (!res.success) throw new Error(res.error ?? "Failed to update status");
           return { id: entry.id, ok: true as const };
         } catch (err) {
           return {
@@ -661,18 +659,12 @@ export default function IncomeTaxPage() {
     setFiledLoading(true);
     setFiledError(null);
     try {
-      const sb = getSupabaseClient();
-      const { error: updateErr } = await sb
-        .from("compliance_calendar")
-        .update({
-          filing_status: "filed",
-          filed_date: filedForm.filed_date,
-          arn_number: filedForm.arn.trim(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", filedModal.entry.id);
-
-      if (updateErr) throw new Error(updateErr.message);
+      // Through the API: see the bulk path above (POST-A-226).
+      const res = await api.compliance.markFiled(filedModal.entry.id, {
+        filed_date: filedForm.filed_date,
+        arn: filedForm.arn.trim(),
+      });
+      if (!res.success) throw new Error(res.error ?? "Failed to update status");
       setFiledModal(null);
       setFiledForm({ arn: "", filed_date: "" });
       await loadData();

@@ -4458,6 +4458,24 @@ export const api = {
     // docstring. A company with no AGM date recorded comes back in
     // `without_agm_date` rather than being given a plausible one.
     firmCalendar: () => request("/api/mca-workspace/calendar/firm"),
+    /**
+     * Record an MCA filing's status through the route that asks `mca:approve` (Manager and above) for "filed" and
+     * the CA's explicit confirmation (POST-A-225). The screen used to write `status: "filed"` with the SRN and date
+     * straight into `mca_filings`, so an Executive could record a statutory filing as done, the confirmation and
+     * the audit event never ran, and the date was whatever the page supplied. The route answers a refusal as HTTP
+     * 200 with `{ success: false, error }`: check it.
+     *
+     * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this records a filing the CA made on MCA21, it files nothing.
+     */
+    setFilingStatus: (filingId: string, body: {
+      status: "not_started" | "in_progress" | "filed" | "overdue";
+      ca_approved?: boolean;
+      srn?: string;
+      /** The date the CA filed it on MCA21, YYYY-MM-DD, as they typed it. */
+      filing_date?: string;
+    }) => request<ApiResp<Record<string, unknown>>>(
+      `/api/mca-workspace/filings/${encodeURIComponent(filingId)}/status`,
+      { method: "PATCH", body: JSON.stringify(body) }),
   },
   accounting: {
     accounts: () => request("/api/accounting/accounts"),

@@ -209,9 +209,7 @@ export default function GSTR3BPage() {
     if (!clientId || !yearMonth || !result) return;
     setApproving(true);
     try {
-      const sb = getSupabaseClient();
-      const { data: { user } } = await sb.auth.getUser();
-      await approveGSTR3B(clientId, toPeriod(yearMonth), user?.id ?? "", result.gstin);
+      await approveGSTR3B(clientId, toPeriod(yearMonth), result.gstin);
       setFilingStatus("ca_approved");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Approval failed");
