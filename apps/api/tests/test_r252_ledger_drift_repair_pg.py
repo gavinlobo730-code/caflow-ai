@@ -174,12 +174,22 @@ def test_clients_is_test_defaults_false(migrated_db):
 def test_new_tables_isolate_on_write_not_just_read(migrated_db):
     """052's original policies had USING but no WITH CHECK, so any authenticated
     user could INSERT a row carrying another firm's id. 252 does not reproduce
-    that. Asserted structurally: a policy missing either half is the bug."""
+    that. Asserted structurally: a policy missing the half its command uses is
+    the bug. WHICH half a command uses is the rule, and a per-command policy
+    (migration 489's `<table>_write_tier_insert` and `_delete`) legitimately
+    carries only that one: an INSERT policy has no USING, a DELETE has no WITH
+    CHECK. Asking every policy for both would fail those two for being exactly
+    right, and a policy for ALL or UPDATE still owes both."""
     bad = _scalar(migrated_db, """
         SELECT count(*) FROM pg_policies
          WHERE schemaname='public'
            AND tablename IN ('government_notices','gstr2b_uploads','firm_hsn_rate_history')
-           AND (qual IS NULL OR with_check IS NULL);
+           AND CASE cmd
+                 WHEN 'INSERT' THEN with_check IS NULL
+                 WHEN 'DELETE' THEN qual IS NULL
+                 WHEN 'SELECT' THEN qual IS NULL
+                 ELSE (qual IS NULL OR with_check IS NULL)
+               END;
     """)
     assert bad == "0", "an RLS policy on a new table is missing USING or WITH CHECK"
 

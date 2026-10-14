@@ -38,8 +38,8 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 3 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 14 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 178 | after the demo: Claude can do alone |
-| [post-demo-B-ours.md](post-demo-B-ours.md) | 170 | after the demo: owner decides first, then Claude builds |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 186 | after the demo: Claude can do alone |
+| [post-demo-B-ours.md](post-demo-B-ours.md) | 169 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 188 | after the demo: only the owner or outsiders can do |
 | [post-demo-parked.md](post-demo-parked.md) | 150 | after the demo: parked until someone asks or the work is sized down; NOT counted as open |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
@@ -47,7 +47,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**559 open items** (23 before the demo, 536 after); 14 after-demo items are `high` priority; 32 are UNSURE. A further **150 items are parked** (not counted above).
+**566 open items** (23 before the demo, 543 after); 16 after-demo items are `high` priority; 32 are UNSURE. A further **150 items are parked** (not counted above).
 
 <!-- counts:end -->
 
@@ -83,7 +83,6 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 
 - **POST-A-005** (claude) — Make the per-person permission grid reach reads in the database
 - **POST-B-004** (owner-decides) — Refuse a change to a released payroll run and its slips in the database
-- **POST-B-005** (owner-decides) — Stop Reviewer writes on 41 tables the API gives no write resource
 - **POST-B-047** (owner-decides) — Open statutory sources to Claude: allowlist .gov.in hosts or hand-fetch
 - **POST-B-091** (owner-decides) — Attribute each invoice, bill and note to a GST registration
 - **POST-B-132** (owner-decides) — Decide whether to build the TDS RPU/FVU statement file writer

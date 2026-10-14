@@ -6,7 +6,7 @@
     "ai_insights": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -126,7 +126,7 @@
     "client_sales_invoices": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "A", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["A", "-", "-", "-"],
@@ -186,7 +186,7 @@
     "credit_notes": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["A", "-", "-", "-"],
@@ -234,7 +234,7 @@
     "debit_notes": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -450,7 +450,7 @@
     "health_alerts": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -462,7 +462,7 @@
     "health_score_history": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -474,7 +474,7 @@
     "health_scores": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -498,7 +498,7 @@
     "itr_filings": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "-", "A"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -606,7 +606,7 @@
     "onboarding_workflows": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -678,7 +678,7 @@
     "purchase_bills": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "A", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -690,7 +690,7 @@
     "purchase_credit_notes": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -702,7 +702,7 @@
     "purchase_payment_allocations": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "-", "A"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -714,7 +714,7 @@
     "purchase_payments": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "-", "A"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -726,7 +726,7 @@
     "receipt_allocations": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "-", "A"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["A", "-", "-", "-"],
@@ -738,7 +738,7 @@
     "receipts": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "-", "A"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["A", "-", "-", "-"],
@@ -750,7 +750,7 @@
     "renewals": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -762,7 +762,7 @@
     "sales_debit_notes": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["A", "-", "-", "-"],
@@ -786,7 +786,7 @@
     "service_catalogue": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -858,7 +858,7 @@
     "tax_computation_snapshots": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "-", "A"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -870,7 +870,7 @@
     "tax_disallowances": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "-", "A"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
