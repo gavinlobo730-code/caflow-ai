@@ -322,7 +322,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - The 26AS reconciliation is the same rule and had the same defect (TDS-21)
 - NOT EVERY PART OF FORM 26AS IS A CREDIT, and the client-as-DEDUCTEE reconciliation used to sum all of them
 
-### `docs/design-record/tenancy-and-security.md` (24 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (25 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -348,6 +348,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE PAYROLL TIER REACHES THE OTHER PAYROLL TABLES, EACH KEYED THE WAY IT IS REALLY KEYED, AND TWO PARTS OF THE PLAN WERE WRONG
 - AN ENGAGEMENT'S SCOPE IS READ APART FROM ITS FEES, AND A RELATIONSHIP SCORE IS THE CLIENT'S WHILE ITS FIGURES ARE THE PRACTICE'S
 - A FINALIZED OR PAID PAYROLL RUN, AND ITS PAYSLIPS, ARE NOT WRITTEN BY A SIGNED-IN SESSION, AND THE API STAYS THE CONTROL FOR ITS OWN WRITES
+- A SIGNED-IN SESSION WRITES NONE OF THE PAYROLL TABLES THE BROWSER NEVER WRITES, AND THE POLICIES STAY AS THE SECOND LOCK
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 

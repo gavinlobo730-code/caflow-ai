@@ -95,6 +95,11 @@ HELPERS = {
     # fixture and one read back out of Postgres, and a second double would be
     # two fixtures agreeing with each other rather than with the database.
     "_hub_worklist_double.py",
+    # POST-A-234. Migration 499 takes the signed-in write privilege from seventeen payroll tables. The real-Postgres modules
+    # that exist to measure the SECOND lock (the row policies and the 498 triggers) write as a signed-in role, so each
+    # gives the privilege back in its own throwaway database through this one helper, which applies 499's rollback file
+    # and so cannot drift from what the migration took away.
+    "_signed_in_payroll_writes.py",
     # practice_management-02/-03. The columns a NEW migration declares, read out of
     # the migration FILE, so a test for a new table cannot disagree with the SQL it
     # is proving (a hand-copied REAL_COLUMNS list is how the two drift). Imported by

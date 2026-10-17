@@ -55,6 +55,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._signed_in_payroll_writes import give_the_signed_in_writes_back
+
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
 _ADMIN = os.environ.get("HARNESS_PG")
@@ -75,6 +77,14 @@ AUTH_MANAGER = "41500000-1111-0000-0000-000000000002"
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
     return subprocess.run(["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-c", sql],
                           capture_output=True, text=True)
+
+
+def _owner_count(dsn: str, select: str) -> str:
+    """The row count as the database owner sees it (psql's bare value, no header or footer)."""
+    done = subprocess.run(["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-tA", "-c", select],
+                          capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    return done.stdout.strip()
 
 
 def _as(auth_user_id: str) -> str:
@@ -583,7 +593,15 @@ def test_billing_read_is_a_partners_unless_granted_and_a_withdrawn_grant_hides_t
         "database enforces it for billing")
 
 
-# ── payroll WRITES on the twelve other payroll tables, since migration 490 ───
+# ── payroll WRITES: the privilege (first lock) and the grid clause of the policies (second lock) ───────────────────────────
+# Migration 490 put `my_permission('payroll', 'write', 'Manager')` under the writes of the other payroll tables, and
+# these probes proved that a block on writing refused a direct insert. Migration 499 then revoked the write privilege on
+# seventeen payroll tables from every signed-in session, because the browser never writes them and a Manager's tier was
+# enough to choose the figure a Partner's finalise posts (ledger POST-A-234). The policies remain as the second lock, so
+# BOTH are proved here: with the privilege in place an assigned Manager, even WITH an explicit grid grant of
+# `payroll:write`, is refused by the privilege and can still read; and with the privilege given back (the migration's
+# own rollback, in the throwaway database) a per-person block on `payroll:write` still stops the insert by row security,
+# which is the clause the grid reaches the database through.
 _PAYROLL_WRITE_PROBES = [
     pytest.param("INSERT INTO salary_structures (firm_id, client_id, name) VALUES ('{firm}', '{client}', 'S2');",
                  "SELECT count(*) FROM salary_structures;", id="salary_structures"),
@@ -599,16 +617,45 @@ _PAYROLL_WRITE_PROBES = [
     pytest.param("INSERT INTO payroll_perquisites (firm_id, client_id, employee_id, fy, label) "
                  "SELECT '{firm}', '{client}', id, '2026-27', 'P' FROM payroll_employees LIMIT 1;",
                  "SELECT count(*) FROM payroll_perquisites;", id="payroll_perquisites"),
+    pytest.param("INSERT INTO payroll_runs (firm_id, client_id, month) VALUES ('{firm}', '{client}', '2026-05');",
+                 "SELECT count(*) FROM payroll_runs;", id="payroll_runs"),
+    pytest.param("INSERT INTO payroll_employees (firm_id, client_id, name) VALUES ('{firm}', '{client}', 'E2');",
+                 "SELECT count(*) FROM payroll_employees;", id="payroll_employees"),
 ]
 
 
 @pytest.mark.parametrize("insert,select", _PAYROLL_WRITE_PROBES)
-def test_a_block_on_writing_payroll_stops_a_direct_write_but_not_a_direct_read(dsn, insert, select):
-    """THE WRITE TIER ASKS THE GRID, WHICH THE OLD ROLE POLICIES DID NOT. An assigned Manager writes the row before any
-    block (so the probe is not vacuous); with `payroll:write` refused for that person the same insert is refused by row
-    security, and the rows they could already read are still readable, because reading is a different pair."""
+def test_a_signed_in_manager_cannot_write_a_payroll_table_even_with_a_grid_grant(request, dsn, insert, select):
+    """The privilege is gone for every signed-in session, so the grid's say on writing no longer matters to the database
+    for these tables on its own: it is asked in the PracticeSync server, where the write happens."""
+    table = request.node.callspec.id
     seeded = _psql(dsn, f"INSERT INTO payroll_employees (firm_id, client_id, name) VALUES ('{FIRM}', '{CLIENT}', 'E');")
     assert seeded.returncode == 0, seeded.stderr
+    # the same row is written by the owner, so the Manager's read below counts a row that exists (not a vacuous 0 == 0)
+    written = _psql(dsn, insert.format(firm=FIRM, client=CLIENT))
+    assert written.returncode == 0, f"premise: the probe statement is malformed: {written.stderr}"
+    _grant(dsn, MANAGER, "payroll", "write", True)
+    asked = _scalar_as(dsn, AUTH_MANAGER, "SELECT public.my_permission('payroll','write','Manager');")
+    assert asked == "t", f"premise: the grid does not grant payroll:write ({asked!r})"
+
+    refused = _psql(dsn, _as(AUTH_MANAGER) + insert.format(firm=FIRM, client=CLIENT))
+    assert refused.returncode != 0 and f"permission denied for table {table}" in refused.stderr, (
+        f"a signed-in session can write a payroll table the browser never writes: {refused.stderr or 'it succeeded'}")
+    everything = _owner_count(dsn, select)                                # what exists, counted by the owner
+    assert everything != "0", "premise: nothing exists to read"
+    assert _scalar_as(dsn, AUTH_MANAGER, select) == everything, "a refused write must not hide what the Manager could read"
+
+
+@pytest.mark.parametrize("insert,select", _PAYROLL_WRITE_PROBES)
+def test_a_block_on_writing_payroll_stops_a_direct_write_when_the_first_lock_is_lifted(dsn, insert, select):
+    """THE SECOND LOCK STILL ASKS THE GRID. With the privilege given back (migration 499's rollback, in this throwaway
+    database), an assigned Manager writes the row before any block (so the probe is not vacuous); with `payroll:write`
+    refused for that person the same insert is refused by row security, and the rows they could already read are still
+    readable, because reading is a different pair. This is the clause migration 490 added; 499 must not leave it
+    unmeasured."""
+    seeded = _psql(dsn, f"INSERT INTO payroll_employees (firm_id, client_id, name) VALUES ('{FIRM}', '{CLIENT}', 'E');")
+    assert seeded.returncode == 0, seeded.stderr
+    give_the_signed_in_writes_back(dsn)
 
     first = _psql(dsn, _as(AUTH_MANAGER) + insert.format(firm=FIRM, client=CLIENT))
     assert first.returncode == 0, f"premise: the assigned Manager could not write before any block: {first.stderr}"
@@ -620,4 +667,6 @@ def test_a_block_on_writing_payroll_stops_a_direct_write_but_not_a_direct_read(d
     refused = _psql(dsn, _as(AUTH_MANAGER) + insert.format(firm=FIRM, client=CLIENT))
     assert refused.returncode != 0 and "row-level security" in refused.stderr, (
         f"a per-person block on payroll:write no longer stops a direct insert: {refused.stderr or 'it succeeded'}")
-    assert _scalar_as(dsn, AUTH_MANAGER, select) == "1", "a block on writing must not hide what could be read"
+    everything = _owner_count(dsn, select)                                # what exists, counted by the owner
+    assert everything != "0", "premise: nothing exists to read"
+    assert _scalar_as(dsn, AUTH_MANAGER, select) == everything, "a block on writing must not hide what could be read"

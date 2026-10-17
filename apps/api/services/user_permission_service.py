@@ -63,9 +63,16 @@ class PermissionWriteRefused(ValueError):
 # tables (employees, runs, payslips and salary structures, remittances and ECR
 # filings name the grid; attendance, leave, tax declarations, salary history,
 # loans, perquisites, settlements, one-off earnings, bonus records and the run
-# history are scoped through the employee, settlement or run, so they follow)
-# and by the WRITE policies of every payroll table except attendance, leave and
-# the tax declarations, which still ask the role alone (ledger POST-A-219).
+# history are scoped through the employee, settlement or run, so they follow).
+# Since migration 499 the database refuses a signed-in session ANY write to the
+# payroll records the sentence lists, except leave balances and the tax
+# declarations, which the browser still saves and which ask the person's role
+# alone (ledger POST-A-219 and POST-A-235). The privilege is the first lock and
+# the write policies of 485 and 490 are the second, so the sentence says the
+# server is where a write to those records happens. It does NOT speak for the
+# payroll settings tables (a client's payroll switch, its statutory identity,
+# its professional-tax registrations and the firm's slabs), which are not among
+# the records it lists and keep their own grants.
 # It is NOT read by any other table's SELECT policy, so a screen that reads a
 # table straight from the browser over PostgREST — the documents pages, the
 # bank-account pickers — is governed there by the person's firm, their client
@@ -89,9 +96,14 @@ DENIAL_REACH_NOTICE = (
     "read employees, runs, payslips, attendance, leave, tax declarations, "
     "salary history, salary structures, loans, settlements, bonus records, "
     "remittances or ECR filings from the browser either. A block on writing "
-    "payroll is enforced by the database for all of those except attendance, "
-    "leave and tax declarations, which the database still judges by role "
-    "alone. The same is true of billing: a person blocked from reading "
+    "payroll is applied by the PracticeSync server, where the payroll records "
+    "are written: the database refuses a signed-in browser session any write "
+    "to employees, runs, payslips, attendance, salary history, salary "
+    "structures, loans, settlements, bonus records, remittances or ECR "
+    "filings. Leave balances and tax declarations can still be saved from "
+    "the browser, and for those the database judges the person's role and "
+    "not this block. Billing works the same way for reading: a "
+    "person blocked from reading "
     "billing cannot read the practice's fee engagements, fee invoices or "
     "fee receipts from the browser either. Nothing else is checked against "
     "this grid "

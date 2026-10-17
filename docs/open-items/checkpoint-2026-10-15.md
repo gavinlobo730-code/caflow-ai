@@ -42,6 +42,10 @@
 
 ## 3. Staged and NOT pushed
 
+> **Update, 17 October 2026:** the owner asked for every Claude-alone item to be worked, which released the hold below. The
+> work became migration 499 (ledger line POST-A-234 closed; its follow-on is POST-A-235, the leave-balance upsert).
+> The text below is the snapshot as it stood on 15 October.
+
 - **Migration 499 (ledger POST-A-234), on hold at the owner's request.** It revokes the signed-in write privilege on
   seventeen payroll tables the browser never writes, because a Manager can still write a draft payroll run and its
   payslips directly and the finalise journal is built from the run's totals, so a Manager can choose the figure a
@@ -52,7 +56,7 @@
 
 ## 4. Open items this run created or narrowed
 
-- **POST-A-234** (the 499 work above), **POST-A-233** (a Form 3CD checklist can be marked `finalised` by an Executive),
+- **POST-A-234** (the 499 work above, since closed), **POST-A-233** (a Form 3CD checklist can be marked `finalised` by an Executive),
   **POST-A-228** (timeline actor chosen by the browser), **POST-A-227** (tasks written from the browser),
   **POST-A-221** (`is_fy_locked` answers for a firm that is not the caller's).
 - **POST-B-264** narrowed to what is the owner's: plan limits, "Priority support", the phone tier and the onboarding
