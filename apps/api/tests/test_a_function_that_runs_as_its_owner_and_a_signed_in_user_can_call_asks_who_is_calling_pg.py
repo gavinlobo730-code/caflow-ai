@@ -43,6 +43,9 @@ pytestmark = pytest.mark.skipif(
 
 #: FROZEN. Only shrinks. name -> why it is allowed to take arguments and ask nobody.
 UNGUARDED = {
+    # DECIDED 17-10-2026 (POST-A-221): stays. A guard that answers false for a firm that is not the caller's would answer
+    # "open" for a portal contact or an employee about their OWN firm (no `users` row, so get_my_firm_id() is NULL), which
+    # is worse than the one bit it closes; the id of the firm asked about must already be known to the caller.
     "is_fy_locked": "one bit (has this firm locked this year); one caller, on the caller's own sign-in, fail-closed",
 }
 

@@ -28,15 +28,26 @@ import pytest
 
 WEB = Path(__file__).resolve().parents[3] / "apps" / "web"
 _MIG_DIR = Path(__file__).resolve().parents[1] / "migrations"
-MIGRATION_SOURCES = [_MIG_DIR / "260_role_aware_write_policies.sql",
-                     _MIG_DIR / "261_role_aware_write_policies_part2.sql",
-                     _MIG_DIR / "296_employee_income_tax_declarations.sql",
-                     _MIG_DIR / "297_let_an_employee_file_their_own_declaration.sql",
-                     _MIG_DIR / "345_the_tds_register_is_role_guarded.sql",
-                     _MIG_DIR / "346_loans_and_deposits_carry_a_role_rule.sql",
-                     _MIG_DIR / "359_a_certificate_is_not_a_rate.sql",
-                     _MIG_DIR / "488_a_reviewer_cannot_write_the_tax_filing_year_end_or_company_filing_tables.sql",
-                     _MIG_DIR / "491_an_approved_or_filed_gst_return_changes_only_in_the_hands_of_someone_who_may_approve.sql"]
+
+
+def _migrations_that_put_a_role_rule_on_a_table() -> list[Path]:
+    """Every migration from 260 on that writes a RESTRICTIVE policy asking the role or the grid, found in the directory.
+
+    This was a hand list of nine file names, which stopped at the migrations it named: a table guarded by a later migration
+    (487, 489, 490, 493, 495, 496 and the rest) needed its file added by hand before GUARDED could claim it, and nothing
+    failed when nobody did (POST-A-230). The definition is the rule: a migration that creates a `RESTRICTIVE` policy and
+    calls `my_role_at_least` or `my_permission`. A rollback file is the undoing of one and is left out."""
+    found = []
+    for path in sorted(_MIG_DIR.glob("[0-9][0-9][0-9]_*.sql")):
+        if path.name.endswith("_rollback.sql") or int(path.name[:3]) < 260:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"AS RESTRICTIVE", text, re.IGNORECASE) and re.search(r"my_role_at_least|my_permission", text):
+            found.append(path)
+    return found
+
+
+MIGRATION_SOURCES = _migrations_that_put_a_role_rule_on_a_table()
 
 # Covered by migration 260 — each mirrors a live rbac() guard on an endpoint
 # that writes the same table.
@@ -366,3 +377,15 @@ def test_the_tds_tier_matches_the_endpoints_it_mirrors():
     mig = (_MIG_DIR / "345_the_tds_register_is_role_guarded.sql").read_text()
     for table in ("tds_deductions", "tds_returns", "tds_challans", "tds_certificates"):
         assert re.search(rf"\['{table}',\s*'Executive',\s*'Manager'\]", mig), table
+
+
+def test_the_migration_list_is_derived_and_still_holds_the_ones_that_were_named_by_hand():
+    names = {m.name for m in MIGRATION_SOURCES}
+    for named in ("260_role_aware_write_policies.sql", "261_role_aware_write_policies_part2.sql",
+                  "296_employee_income_tax_declarations.sql", "297_let_an_employee_file_their_own_declaration.sql",
+                  "345_the_tds_register_is_role_guarded.sql", "346_loans_and_deposits_carry_a_role_rule.sql",
+                  "359_a_certificate_is_not_a_rate.sql"):
+        assert named in names, f"{named} no longer qualifies; the derivation lost a migration the hand list had"
+    assert any(n.startswith("488_") for n in names) and any(n.startswith("491_") for n in names)
+    assert len(names) >= 30, f"only {len(names)} migrations qualified; the derivation has probably stopped matching"
+    assert not any(n.endswith("_rollback.sql") for n in names)
