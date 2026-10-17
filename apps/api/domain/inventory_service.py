@@ -47,6 +47,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.ist_clock import ist_today, ist_date_of
 from core.observability import capture_posting_failure
 from domain.inventory import costing
 from domain.inventory import landed_cost as landed
@@ -627,7 +628,7 @@ def seed_opening_balances_batch(
     from pure Python math, so the ordering can just be flipped)."""
     ledger_rows: list[dict] = []
     cache_rows: list[dict] = []
-    fallback_date = datetime.now(timezone.utc).date().isoformat()
+    fallback_date = ist_today().isoformat()
     totals_by_client: dict = {}
     # `policies` is the caller's — `bulk_create_services` resolves it out of
     # the SAME `clients` read that gives it the default opening-balance date,
@@ -659,7 +660,9 @@ def seed_opening_balances_batch(
             if not movement_date:
                 continue
         else:
-            movement_date = (row.get("created_at") or "")[:10] or fallback_date
+            # The Indian day of the row's stored stamp, not its first ten characters (the UTC day).
+            stamped = ist_date_of(row.get("created_at"))
+            movement_date = stamped.isoformat() if stamped else fallback_date
         calc = _compute_stock_in(Decimal("0"), 0, qty, int(opening_cost_paise))
         client_id = row.get("client_id")
         if client_id not in policies:
@@ -1559,7 +1562,7 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
 # inventory reversal hits a problem.
 
 def _today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+    return ist_today().isoformat()
 
 
 def reverse_sale_stock(db, *, firm_id: str, client_id: str, invoice_id: str, invoice_no: str, created_by: Optional[str] = None) -> None:

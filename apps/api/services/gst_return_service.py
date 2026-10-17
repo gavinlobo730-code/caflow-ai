@@ -18,10 +18,10 @@ Integer paise throughout. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from typing import Optional
 
-from core.ist_clock import ist_fy_label
+from core.ist_clock import ist_fy_label, ist_date_of
 
 import services.gst_2b_reconciliation_service as gst_2b_reconciliation_service
 import services.gst_advance_service as gst_advance_service
@@ -237,12 +237,31 @@ def _bills_cancelled_in(db, firm_id, client_id, start, end) -> list[dict]:
     the cancellation reversal nets the original posting to zero inside the same
     month. Only credit availed in an EARLIER period is given back here.
     """
+    # The month a cancellation belongs to is the INDIAN day of `cancelled_at` (a UTC stamp), because the cancellation
+    # reversal is dated with the Indian day and the return must put it in the same month as the ledger does. A
+    # cancellation at 01:40 IST on 1 August is stored as 31 July 20:10 UTC. So read from one day earlier in UTC
+    # (the Indian end of the period is already inside the old upper bound) and place each row by its Indian day.
+    lo = (date.fromisoformat(start) - timedelta(days=1)).isoformat()
+    hi = (date.fromisoformat(end) + timedelta(days=1)).isoformat()
     rows = _opening.without_carried_over(fetch_all(
         lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "cancelled")
-            .gte("cancelled_at", start).lte("cancelled_at", f"{end}T23:59:59.999999+00:00")))
-    return [b for b in rows if str(b.get("bill_date") or "")[:10] < start]
+            .gte("cancelled_at", f"{lo}T00:00:00+00:00").lt("cancelled_at", f"{hi}T00:00:00+00:00")))
+    return [b for b in rows
+            if _in_period(ist_date_of(b.get("cancelled_at")), start, end)
+            and str(b.get("bill_date") or "")[:10] < start]
+
+
+def _ist_day_text(stamp) -> str:
+    """The Indian day of a stored stamp as 'YYYY-MM-DD', or '' where it cannot be read."""
+    day = ist_date_of(stamp)
+    return day.isoformat() if day else ""
+
+
+def _in_period(day, start: str, end: str) -> bool:
+    """An Indian day (a date, or None when the stamp could not be read) inside [start, end]."""
+    return day is not None and start <= day.isoformat() <= end
 
 
 def _posted_bills(db, firm_id, client_id, start, end) -> list[dict]:
@@ -275,7 +294,7 @@ def _posted_bills(db, firm_id, client_id, start, end) -> list[dict]:
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "cancelled")
             .gte("bill_date", start).lte("bill_date", end)))
-        if str(b.get("cancelled_at") or "")[:10] > end
+        if (ist_date_of(b.get("cancelled_at")) or date.min).isoformat() > end
     ]
     return live + cancelled_later
 
@@ -949,7 +968,7 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str,
                 "id": r.get("id"),
                 "kind": f"Reversal ({r.get('reason_code')})",
                 "document_no": str(r.get("journal_entry_id") or "")[:8],
-                "document_date": str(r.get("created_at") or "")[:10],
+                "document_date": _ist_day_text(r.get("created_at")),
                 "party": r.get("notes") or "",
                 "taxable_paise": 0,
                 "igst_paise": i, "cgst_paise": c, "sgst_paise": sg,

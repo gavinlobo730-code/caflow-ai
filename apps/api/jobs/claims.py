@@ -58,7 +58,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Callable, Optional
 
 from core import db_errors
@@ -399,13 +399,5 @@ def ist_date_of(instant: object, fallback: date) -> date:
     """The IST calendar day of an ISO timestamp, or `fallback` where it does not
     parse. A workflow occurrence is keyed on the day it is DUE, not the day it
     happens to be read, so its key does not change across midnight."""
-    from core.ist_clock import IST
-    try:
-        text = str(instant).strip()
-        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        if moment.tzinfo is None:
-            from datetime import timezone
-            moment = moment.replace(tzinfo=timezone.utc)
-        return moment.astimezone(IST).date()
-    except (ValueError, TypeError):
-        return fallback
+    from core.ist_clock import ist_date_of as _ist_date_of      # the shared conversion (a naive stamp is read as UTC)
+    return _ist_date_of(instant) or fallback

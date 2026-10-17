@@ -18,8 +18,8 @@ Sign convention (as written by the posting paths): base_delta_paise > 0 is a GAI
 """
 from __future__ import annotations
 
+from core.ist_clock import ist_today
 import logging
-from datetime import datetime, timezone
 from typing import Optional
 from core.db_paging import fetch_all
 
@@ -38,7 +38,7 @@ _DEAD_UNISSUED = {"draft", "cancelled"}
 
 
 def _today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+    return ist_today().isoformat()
 
 
 def _d(v) -> str:

@@ -6,6 +6,7 @@ Covers the full client acquisition and retention lifecycle for a CA firm:
 
 All monetary values stored in integer paise (₹1 = 100 paise) — never float.
 """
+from core.ist_clock import ist_today
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Annotated, Any, Optional
@@ -104,7 +105,7 @@ def _next_lead_no(db, firm_id: str) -> str:
 
 def _next_proposal_no(db, firm_id: str) -> str:
     """Generate sequential proposal number like PROP-2026-0001."""
-    year = datetime.now(timezone.utc).year
+    year = ist_today().year
     if not db:
         n = len(_MOCK_PROPOSALS) + 1
         return f"PROP-{year}-{n:04d}"
@@ -1064,7 +1065,7 @@ def convert_lead(
     if not service_type:
         service_type = "General"
     fee_paise = int(chosen_engagement.get("fee_amount_paise") or 0)
-    fe_start = chosen_engagement.get("start_date") or now[:10]
+    fe_start = chosen_engagement.get("start_date") or ist_today().isoformat()
     fe_notes = (
         f"Auto-created from signed engagement "
         f"{chosen_engagement.get('engagement_number') or signed_engagement_id}"
@@ -2029,7 +2030,7 @@ def lifecycle_dashboard(
             stage_counts[s]["count"] += 1
             stage_counts[s]["total_value_paise"] += lead.get("estimated_value_paise", 0)
 
-        today = datetime.now(timezone.utc).date().isoformat()
+        today = ist_today().isoformat()
         overdue_renewals = sum(
             1 for r in _MOCK_RENEWALS
             if r.get("status") == "pending" and r.get("renewal_date") and r["renewal_date"] < today
@@ -2041,7 +2042,7 @@ def lifecycle_dashboard(
             "overdue_renewals":   overdue_renewals,
         })
 
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = ist_today().isoformat()
 
     leads = db.table("leads").select("stage, estimated_value_paise").eq("firm_id", firm_id).execute().data or []
     proposals = db.table("proposals").select("id").eq("firm_id", firm_id).execute().data or []

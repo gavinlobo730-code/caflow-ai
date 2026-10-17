@@ -182,3 +182,22 @@ def test_batch_skips_journal_when_no_goods_rows_have_opening_balance(monkeypatch
     seed_opening_balances_batch(db, firm_id=FIRM, created_by="user-1", rows=rows)
 
     assert db.rows("journal_entries") == []
+
+
+def test_a_seeded_row_that_carries_no_date_is_dated_by_the_indian_day_of_its_stamp(monkeypatch):
+    """`created_at` is a UTC stamp. 19:00 UTC on 31 March is 00:30 IST on 1 April, a different day and the next financial
+    year, so the movement is dated 1 April; its first ten characters would say 31 March."""
+    db = FakeDB()
+    _wire(monkeypatch, db)
+    _seed_coa(db)
+    item_id = str(uuid.uuid4())
+    _seed_item(db, item_id)
+    rows = [{
+        "id": item_id, "client_id": CLIENT, "kind": "good",
+        "opening_qty_units": "10", "opening_cost_paise": 100_00,
+        "created_at": "2026-03-31T19:00:00+00:00",
+    }]
+
+    seed_opening_balances_batch(db, firm_id=FIRM, created_by="user-1", rows=rows)
+
+    assert [r["movement_date"] for r in db.rows("inventory_stock_ledger")] == ["2026-04-01"]

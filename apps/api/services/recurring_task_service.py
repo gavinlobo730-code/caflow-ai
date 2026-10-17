@@ -8,7 +8,7 @@ from domain.practice import task_estimate
 from datetime import date, timedelta, datetime, timezone
 from dateutil.relativedelta import relativedelta
 from typing import Optional
-from core.ist_clock import IST, ist_today
+from core.ist_clock import ist_today, ist_date_of
 from core import db_provider
 
 
@@ -63,9 +63,7 @@ def _is_already_generated_today(config: dict) -> bool:
         # writes this column writes `datetime.now(timezone.utc)`, and reading
         # a naive stamp as local time would re-open the same gap on any host
         # not set to UTC.
-        if stamped.tzinfo is None:
-            stamped = stamped.replace(tzinfo=timezone.utc)
-        return stamped.astimezone(IST).date() == ist_today()
+        return ist_date_of(stamped) == ist_today()
     except Exception:
         return False
 

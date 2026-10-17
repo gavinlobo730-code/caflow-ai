@@ -1,8 +1,9 @@
 import os
 from typing import Optional
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from repositories.base import BaseRepository
 from core import db_provider
+from core.ist_clock import ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -59,7 +60,7 @@ class EscalationRuleRepository(BaseRepository[dict]):
         if not task.get("due_date") or task.get("status") == "completed":
             return []
 
-        today = date.today()
+        today = ist_today()
         due_date = datetime.fromisoformat(task["due_date"]).date() if isinstance(task["due_date"], str) else task["due_date"]
 
         all_rules = self.find_active_by_firm(firm_id)

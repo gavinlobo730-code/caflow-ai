@@ -31,7 +31,7 @@ from services import period_lock_service
 from services.timeline_service import timeline_service
 from services.internal_client_service import is_internal_client, assert_partner_for_internal_id, is_partner
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
-from core.ist_clock import ist_fy_label
+from core.ist_clock import ist_fy_label, ist_today
 from domain.gst import invoice_series
 from services import sales_numbering_service
 from domain.money_text import whole_rupees
@@ -2285,7 +2285,7 @@ def cancel_invoice(
 
         # A cancellation reversal is a NEW posting dated today — it must fall in an
         # open financial year.
-        reversal_date = datetime.now(timezone.utc).date().isoformat()
+        reversal_date = ist_today().isoformat()
         period_validation_service.validate_posting_date(firm_id or "", reversal_date)
 
         # Locate the invoice's posted issue-journal and reverse it THROUGH the kernel

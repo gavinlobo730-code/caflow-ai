@@ -56,6 +56,7 @@ from domain.accounting.trial_balance import (
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from core import db_provider
+from core.ist_clock import ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.trial_balance_import")
@@ -171,9 +172,9 @@ def _default_opening_date(db, client_id: str) -> str:
             return str(cl.data[0]["financial_year_start"])
     except Exception as e:
         _logger.warning("trial_balance: client FY-start lookup failed: %s", e)
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
-    fy_start = now.year if now.month >= 4 else now.year - 1
+    # The Indian day: at 01:40 IST on 1 April the UTC clock still reads March (see opening_balance_service).
+    today = ist_today()
+    fy_start = today.year if today.month >= 4 else today.year - 1
     return f"{fy_start}-04-01"
 
 

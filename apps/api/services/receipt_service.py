@@ -24,7 +24,7 @@ from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
 from services.numbering import sequence_after
-from core.ist_clock import fy_code, ist_fy_label
+from core.ist_clock import fy_code, ist_fy_label, ist_today
 from core.observability import capture_soft_failure
 from domain.money_text import whole_rupees
 
@@ -454,7 +454,7 @@ def _compensate_failed_settlement(
             else:
                 from services.phase2_journal_service import phase2_journal_service
                 phase2_journal_service.reverse_entry(
-                    db, firm_id, journal_id, str(datetime.now(timezone.utc).date()),
+                    db, firm_id, journal_id, str(ist_today()),
                     narration=f"Compensating reversal — receipt {receipt_id} settlement failed",
                     created_by=(actor or {}).get("id"),
                 )

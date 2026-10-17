@@ -17,7 +17,7 @@ _compute_next_run, _past_scheduled_hour).
 """
 import calendar
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -152,6 +152,35 @@ def assessment_year_for(fy_label) -> "str | None":
     return f"{start}-{str(start + 1)[2:]}"
 
 
+def ist_date_of(instant) -> "date | None":
+    """The Indian calendar day an INSTANT falls on: a datetime, or an ISO timestamp string such as PostgREST returns
+    for a `timestamptz` (`2026-03-31T20:10:00+00:00`, a trailing `Z`, or a naive one, which is read as UTC because that
+    is what the database stores). A `date` passes through unchanged (it is already a day). None for anything else, and
+    for a stamp too close to the ends of the calendar to convert.
+
+    This is the other half of `ist_today()`: a stored stamp's first ten characters are the UTC day, and between 18:30
+    and 24:00 UTC that is the day BEFORE the one in India, so comparing them with `ist_today()` is wrong for those five and
+    a half hours. Convert the stamp, never the question.
+
+    NAIVE VALUES ARE READ OPPOSITE WAYS BY THE TWO HELPERS HERE, ON PURPOSE: this one is for STORED INSTANTS, so a naive
+    datetime is UTC; `_as_ist_date` is for DOCUMENT dates, where a naive datetime is already the Indian day."""
+    if instant is None or instant == "":
+        return None
+    if isinstance(instant, str):
+        try:
+            instant = datetime.fromisoformat(instant.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if not isinstance(instant, datetime):
+        return instant if isinstance(instant, date) else None
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=timezone.utc)
+    try:
+        return instant.astimezone(IST).date()
+    except OverflowError:                                  # 9999-12-31T23:00Z has no Indian day inside the calendar
+        return None
+
+
 def _as_ist_date(d=None) -> date:
     """A date, a datetime, an ISO date string, or None for today in IST.
 
@@ -159,7 +188,9 @@ def _as_ist_date(d=None) -> date:
     arrives from PostgREST or a request body as `'2026-03-31'`, and a caller
     that has to convert first is a caller that can forget to — which is how the
     financial year came to be read off the clock instead of the document
-    (SALES-24)."""
+    (SALES-24).
+
+    A naive datetime is taken to BE the Indian day. For a stored instant, where a naive value is UTC, use `ist_date_of`."""
     if d is None:
         return ist_today()
     if isinstance(d, str):

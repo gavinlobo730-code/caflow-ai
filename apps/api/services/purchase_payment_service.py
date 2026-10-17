@@ -28,7 +28,7 @@ from services import vendor_tds
 from domain.tds.residency import (
     GAP_FOREIGN_ADVANCE_NOT_WITHHELD, describe_gaps,
 )
-from core.ist_clock import fy_code, ist_fy_label
+from core.ist_clock import fy_code, ist_fy_label, ist_today
 from domain.money_text import rupees_paise, whole_rupees
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -87,7 +87,7 @@ def _compensate_failed_settlement(
             else:
                 from services.phase2_journal_service import phase2_journal_service
                 phase2_journal_service.reverse_entry(
-                    db, firm_id, journal_id, str(datetime.now(timezone.utc).date()),
+                    db, firm_id, journal_id, str(ist_today()),
                     narration=f"Compensating reversal — payment {payment_id} settlement failed",
                     created_by=(actor or {}).get("id"),
                 )

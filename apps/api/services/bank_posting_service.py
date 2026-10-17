@@ -28,6 +28,7 @@ from services.bank_split_service import bank_split_service
 from services.bank_transfer_service import bank_transfer_service
 from services.bank_reconciliation_service import bank_reconciliation_service
 from services.banking_service import assert_bank_account_is_inr
+from core.ist_clock import ist_today
 
 _logger = logging.getLogger("caflow.bank_posting")
 
@@ -878,7 +879,7 @@ class BankPostingService:
         try:
             period_validation_service.validate_posting_date(firm_id or "", original_date)
         except HTTPException:
-            reversal_date = _now()[:10]
+            reversal_date = ist_today().isoformat()      # the Indian day: a UTC date is yesterday before 05:30 IST
             # Today has to be postable too, or there is nowhere to put the
             # reversal — and that is a real answer, not something to paper over.
             period_validation_service.validate_posting_date(firm_id or "", reversal_date)

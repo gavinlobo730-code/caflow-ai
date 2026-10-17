@@ -30,7 +30,7 @@ from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services import vendor_tds
 from services.timeline_service import timeline_service
-from core.ist_clock import ist_fy_label
+from core.ist_clock import ist_fy_label, ist_today
 
 # _TDS_DEFAULT_BPS WAS HERE AND IS DELETED. It mapped six sections to flat
 # rates and had no readers — grep proved it dead — but it was the last place in
@@ -1982,7 +1982,7 @@ def cancel_purchase_bill(
             raise HTTPException(status_code=409, detail="This bill has payments allocated and cannot be cancelled. Reverse the payment(s) first.")
 
         # A cancellation reversal is a NEW posting dated today — open FY required.
-        reversal_date = datetime.now(timezone.utc).date().isoformat()
+        reversal_date = ist_today().isoformat()
         period_validation_service.validate_posting_date(firm_id or "", reversal_date)
 
         # Locate the bill's posted receive-journal and reverse it THROUGH the kernel

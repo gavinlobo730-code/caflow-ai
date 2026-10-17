@@ -209,13 +209,14 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE FIRM'S OWN GSTIN LIVES IN TWO COLUMNS AND ONLY ONE IS READ
 - THE SEVEN ITR FORMS ARE `domain/income_tax/itr_json.ITR_FORMS`, derived from the `ITRForm` Literal the field mappings and the comm
 
-### `docs/design-record/ledger-and-money.md` (5 entries): The general ledger, posting kernel, period locks, money columns, reports and interest/cheque/price-list features
+### `docs/design-record/ledger-and-money.md` (6 entries): The general ledger, posting kernel, period locks, money columns, reports and interest/cheque/price-list features
 
 - A VOUCHER'S LINES HAVE AN ORDER AND TWO FUNCTIONS RECORD IT
 - THE LIVE REPORTS LEAVE AS A SERVER-MADE PDF OR EXCEL THAT IS THE SCREEN, AND A REPORT THAT DOES NOT FOOT IS NOT PRINTED
 - INTEREST A CLIENT CHARGES ITS OWN CUSTOMER IS COMPUTED AND PREPARED AS A DRAFT, NEVER POSTED OR INVOICED ON ITS OWN
 - A POST-DATED CHEQUE IS A MEMORANDUM UNTIL A DUE CHEQUE IS CONVERTED, AND CONVERSION IS AN ORDINARY RECEIPT OR VENDOR PAYMENT
 - A PRICE LIST IS A PRE-FILL SOURCE FOR AN INVOICE LINE'S RATE AND NOTHING ELSE
+- THE INDIAN DAY IS NEVER READ OFF THE UTC CLOCK, AND THE RULE IS A TEST WITH AN EMPTY ALLOWLIST, WHOSE LIMITS ARE WRITTEN DOWN
 
 ### `docs/design-record/opening-balances-and-imports.md` (2 entries): Opening balances as documents and the bulk imports of a migrated client's books
 
@@ -1933,7 +1934,21 @@ _Longer design records for this area were moved to `docs/design-record/filing-an
   same defect in a different spelling, which is this file's most-repeated
   lesson. And `_as_ist_date`'s string branch does NOT save you: it takes
   `d[:10]`, which is right for a date string and gives the UTC date for a
-  timestamp string. Parse to a datetime first.
+  timestamp string. Parse to a datetime first (`core.ist_clock.ist_date_of`
+  does, for a string or a datetime). **The sweep that followed still left forty-two places in
+  twenty-three modules** (`date.today()`, `datetime.now(timezone.utc).date()`, a
+  UTC year or month, and a stored stamp's first ten characters), found on
+  17-10-2026 while closing POST-A-048: a cancellation reversal dated and
+  period-checked a day early, a payment with no date, the ageing report, the
+  overdue-task count, the financial year a default opening date falls in, and a
+  deadline detector that raised on every record and had never produced a trigger. The
+  rule is a test now,
+  `tests/test_the_indian_day_is_never_taken_from_the_utc_clock.py`, with an
+  EMPTY allowlist. **What it sees and what it does not is written in
+  `docs/design-record/ledger-and-money.md`**: it sees a calendar date, year or
+  month taken from the server's or the UTC clock in the same function, and does
+  not see the first ten characters of a stored stamp read off a row (POST-A-251)
+  or SQL's `CURRENT_DATE` (POST-A-252).
 - **A METRIC AND THE GUARD THAT ENFORCES IT MUST COUNT THE SAME POPULATION.**
   `docs/plan/THE-PLAN.md`'s hex metric is a coarse `grep` over `app/` and
   `components/`; the guard splits three populations, strips comments and honours

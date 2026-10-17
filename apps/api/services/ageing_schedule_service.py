@@ -60,7 +60,7 @@ def _as_date(v) -> Optional[date]:
 
 
 def _today() -> date:
-    return datetime.now(timezone.utc).date()
+    return ist_today()
 
 
 def _parse_as_of(as_of: Optional[str]) -> date:

@@ -219,4 +219,6 @@ def test_the_two_live_writers_ask_the_clock_at_call_time():
     assert "(ist_today() - date.fromisoformat(" in src
 
     auto = (API / "domain" / "automation_engine.py").read_text(encoding="utf-8")
-    assert "today_str = ist_today().isoformat()" in auto
+    # The statistic asks the clock INSIDE the function (its day is then compared with each execution's Indian day).
+    stats = auto[auto.index("def get_automation_stats"):]
+    assert "today = ist_today()" in stats.split("\ndef ")[0]

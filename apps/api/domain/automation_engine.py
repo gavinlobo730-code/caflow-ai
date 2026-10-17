@@ -6,7 +6,7 @@ Rules are evaluated when trigger events occur.
 from datetime import date, timedelta, datetime
 from typing import Optional
 import uuid
-from core.ist_clock import ist_today
+from core.ist_clock import ist_today, ist_date_of
 
 
 # THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. `ist_today()` at
@@ -251,11 +251,11 @@ def get_automation_stats() -> dict:
     # question about the day the CA is asking on, and against a frozen date
     # it counts the executions of the day the process booted — a figure that
     # is zero for ever after the first day.
-    today_str = ist_today().isoformat()
+    today = ist_today()
     active_rules = len([r for r in MOCK_AUTOMATION_RULES if r["is_enabled"]])
     executions_today = len([
         e for e in MOCK_AUTOMATION_EXECUTIONS
-        if e["executed_at"][:10] == today_str
+        if ist_date_of(e["executed_at"]) == today
     ])
     tasks_created = len([
         e for e in MOCK_AUTOMATION_EXECUTIONS

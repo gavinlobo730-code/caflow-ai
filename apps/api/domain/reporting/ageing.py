@@ -376,7 +376,9 @@ def build(receivables: Iterable[Receivable], payables: Iterable[Payable],
 
     `today` is passed rather than read so the SQL half's CURRENT_DATE and this
     one can be held to the same value in the parity test; both mean the same
-    thing, which is the date the outstanding balances are true as at.
+    thing, which is the date the outstanding balances are true as at. Callers
+    pass the INDIAN day; the SQL half reads CURRENT_DATE, the UTC day, so the two
+    differ from 00:00 to 05:30 IST until POST-A-252 moves the SQL one.
 
     `unbilled_reviewed_on` is the date somebody recorded that they had been
     through this client's chart of accounts. None means nobody has, and that is
