@@ -85,9 +85,9 @@ THE FILE, AND WHAT IT IS ALLOWED TO SAY
     observed value is recorded and nothing claims it is right.
 
 BREAKING IT ON PURPOSE
-    Fifteen holes this repository already closed once are put back in a copy of the
-    world, twelve of them by running the migration's own rollback file (468, 469,
-    470, 478, 483, 484, 485, 487, 488, 489, 490, 495): each must turn named cells red. `liveness-dropped-from-every-helper`
+    Sixteen holes this repository already closed once are put back in a copy of the
+    world, thirteen of them by running the migration's own rollback file (468, 469,
+    470, 478, 483, 484, 485, 487, 488, 489, 490, 495, 499): each must turn named cells red. `liveness-dropped-from-every-helper`
     is migration 468 reversed; dropping the check from `get_my_role` ALONE
     turns only two cells red (a suspended Partner writes `fx_rates`, whose
     policy asks the role and never the firm) because `get_my_firm_id` still
@@ -114,6 +114,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -131,6 +132,12 @@ from _frontend_select_parser import browser_tables  # noqa: E402
 API_ROOT = Path(__file__).resolve().parents[1]
 WEB = API_ROOT.parents[1] / "apps" / "web"
 EXPECTED_PATH = Path(__file__).resolve().parent / "fixtures" / "rls_expected_access.json"
+#: The seventeen payroll tables migration 499 revokes the signed-in write privilege on, as the row policies of 485/490 and the
+#: triggers of 498 (the SECOND LOCK) decide them once the privilege (the first lock) is given back. It holds the cells
+#: EXPECTED_PATH held for those tables before 499, so the policies stay measured although the main matrix now reads "no
+#: privilege" in every write cell of them.
+SECOND_LOCK_PATH = Path(__file__).resolve().parent / "fixtures" / "rls_expected_second_lock.json"
+_M499_ROLLBACK = "499_a_signed_in_session_writes_none_of_the_payroll_tables_the_browser_never_writes_rollback.sql"
 _ADMIN = os.environ.get("HARNESS_PG")
 
 _NEEDS_PG = pytest.mark.skipif(
@@ -939,11 +946,19 @@ def known_deviations() -> dict[tuple[str, str, str], tuple[str, str, str, str]]:
 KNOWN_DEVIATIONS = known_deviations()
 
 
-def load_expected() -> dict[tuple[str, str], dict[str, str]]:
-    doc = json.loads(EXPECTED_PATH.read_text())
+def _load_cells(path: Path) -> dict[tuple[str, str], dict[str, str]]:
+    doc = json.loads(path.read_text())
     assert doc["ops"] == list(OPS) and doc["actors"] == list(ACTORS), (
-        "the expectation was written for different actors or operations: regenerate it")
+        f"{path.name} was written for different actors or operations: regenerate it")
     return {(a, t): dict(zip(OPS, vals, strict=True)) for t, per in doc["tables"].items() for a, vals in per.items()}
+
+
+def load_expected() -> dict[tuple[str, str], dict[str, str]]:
+    return _load_cells(EXPECTED_PATH)
+
+
+def load_second_lock() -> dict[tuple[str, str], dict[str, str]]:
+    return _load_cells(SECOND_LOCK_PATH)
 
 
 def intended_cells(observed: dict[tuple[str, str], dict[str, str]]) -> dict[tuple[str, str], dict[str, str]]:
@@ -1038,6 +1053,9 @@ def _migration_sql(name: str) -> str:
     return (_MIGRATIONS / name).read_text()
 
 
+#: The controls that apply migration 499's rollback before the rollback they are about; see the use below.
+_AGAINST_THE_SECOND_LOCK = {"payroll-tier-485-reopened", "payroll-tier-490-reopened"}
+
 #: (id, what is re-introduced, SQL, tables observed, cells that must turn red)
 #: A cell is (actor, table, op). Each control is a hole this repository already
 #: closed once, put back in a throwaway copy of the world; none edits a migration.
@@ -1046,17 +1064,17 @@ CONTROLS = (
      "migration 468 rolled back: get_my_firm_id/get_my_role/get_my_user_id, can_access_client and "
      "my_permission stop asking whether the session is live",
      lambda: _migration_sql("468_a_suspended_or_signed_out_member_is_nobody_to_the_database_rollback.sql"),
-     ("clients", "tasks", "payroll_slips", "storage/Documents"),
+     ("clients", "tasks", "leave_balances", "storage/Documents"),
      {("suspended_partner", "clients", "select"), ("suspended_partner", "tasks", "delete"),
-      ("suspended_partner", "payroll_slips", "update"), ("suspended_partner", "storage/Documents", "select")}),
+      ("suspended_partner", "leave_balances", "update"), ("suspended_partner", "storage/Documents", "select")}),
     ("payroll-write-tier-dropped",
-     "the payroll:write policies of migration 261 dropped from attendance, and with them the parent scope of "
+     "the payroll:write policies of migration 261 dropped from leave_balances (attendance is no longer a candidate: migration 499 took its write privilege away), and with them the parent scope of "
      "485 that would otherwise still refuse an Executive or a Reviewer (two layers close this hole now)",
-     lambda: "".join(f"DROP POLICY attendance_role_{c} ON public.attendance;" for c in ("insert", "update", "delete"))
-     + "DROP POLICY attendance_employee_in_reach ON public.attendance;",
-     ("attendance",),
-     {("exec_assigned", "attendance", "insert"), ("reviewer", "attendance", "update"),
-      ("reviewer", "attendance", "delete")}),
+     lambda: "".join(f"DROP POLICY leave_balances_role_{c} ON public.leave_balances;" for c in ("insert", "update", "delete"))
+     + "DROP POLICY leave_balances_employee_in_reach ON public.leave_balances;",
+     ("leave_balances",),
+     {("exec_assigned", "leave_balances", "insert"), ("reviewer", "leave_balances", "update"),
+      ("reviewer", "leave_balances", "delete")}),
     ("fx-rates-write-check-true-again",
      "migration 470 rolled back: the fx_rates write policies go back to WITH CHECK (true)",
      lambda: _migration_sql("470_only_a_partner_may_write_a_manual_exchange_rate_rollback.sql"),
@@ -1100,7 +1118,10 @@ CONTROLS = (
     ("payroll-tier-485-reopened",
      "migration 485 rolled back: an assigned Executive or Reviewer reads and writes employees, runs and payslips, "
      "and every member reads every client's attendance, leave and tax declarations",
-     lambda: _migration_sql("485_the_database_asks_the_payroll_tier_and_the_clients_in_reach_of_the_employee_run_and_payslip_rows_rollback.sql"),
+     # 499 revoked the signed-in write privilege on these tables, so the write cells stay closed after 485 alone is
+     # rolled back; the privilege comes back first so the policy rollback is what the control measures.
+     lambda: _migration_sql("499_a_signed_in_session_writes_none_of_the_payroll_tables_the_browser_never_writes_rollback.sql") + "\n"
+     + _migration_sql("485_the_database_asks_the_payroll_tier_and_the_clients_in_reach_of_the_employee_run_and_payslip_rows_rollback.sql"),
      ("payroll_employees", "payroll_runs", "payroll_slips", "attendance", "leave_balances",
       "payroll_it_declarations", "payroll_it_declaration_items"),
      {("exec_assigned", "payroll_employees", "select"), ("reviewer", "payroll_slips", "update"),
@@ -1141,7 +1162,8 @@ CONTROLS = (
     ("payroll-tier-490-reopened",
      "migration 490 rolled back: every member of the firm reads salary history, loans, perquisites, settlements, "
      "salary structures, remittances and ECR filings again, and writes the four tables that had no write tier",
-     lambda: _migration_sql("490_the_database_asks_the_payroll_tier_of_the_other_payroll_tables_rollback.sql"),
+     lambda: _migration_sql("499_a_signed_in_session_writes_none_of_the_payroll_tables_the_browser_never_writes_rollback.sql") + "\n"
+     + _migration_sql("490_the_database_asks_the_payroll_tier_of_the_other_payroll_tables_rollback.sql"),
      ("payroll_salary_revisions", "salary_structures", "payroll_perquisites", "payroll_loans",
       "payroll_loan_recoveries", "payroll_settlements", "payroll_settlement_components",
       "payroll_one_time_earnings", "bonus_disqualifications", "payroll_run_transitions",
@@ -1153,6 +1175,16 @@ CONTROLS = (
       ("reviewer", "epfo_ecr_filings", "update"), ("exec_assigned", "statutory_remittances", "insert"),
       ("reviewer", "payroll_run_transitions", "insert"), ("reviewer", "bonus_disqualifications", "update"),
       ("exec_assigned", "bonus_declarations", "select"), ("reviewer", "bonus_declarations", "insert")}),
+    ("payroll-writes-499-reopened",
+     "migration 499 rolled back: an assigned Manager writes the payroll runs, payslips, employees, run history and the "
+     "tables a run is computed from over PostgREST again",
+     lambda: _migration_sql("499_a_signed_in_session_writes_none_of_the_payroll_tables_the_browser_never_writes_rollback.sql"),
+     ("payroll_employees", "payroll_runs", "payroll_slips", "payroll_run_transitions", "salary_structures",
+      "payroll_loans", "payroll_loan_recoveries", "statutory_remittances", "epfo_ecr_filings", "attendance"),
+     {("manager", "payroll_runs", "insert"), ("manager", "payroll_employees", "update"),
+      ("partner", "payroll_slips", "delete"), ("manager", "payroll_run_transitions", "insert"),
+      ("manager", "salary_structures", "insert"), ("manager", "attendance", "update"),
+      ("manager", "epfo_ecr_filings", "insert"), ("manager", "statutory_remittances", "update")}),
     ("fee-read-tier-495-reopened",
      "migration 495 rolled back: an assigned Manager, Executive or Reviewer reads the fees of their clients again, and "
      "every member of the firm reads every client's fee receipts",
@@ -1377,6 +1409,49 @@ def test_no_cell_differs_from_the_expectation_except_the_known_deviations(world,
                       for (a, t, op), (w, h) in sorted(unexplained.items())))
 
 
+def test_the_second_lock_file_covers_exactly_the_tables_migration_499_revokes():
+    """No database: the file measuring the policies and the list the migration revokes are one set, so a table added to
+    the revoke without a second-lock row (its policies would then be measured by nothing) fails here."""
+    sql = (_MIGRATIONS / "499_a_signed_in_session_writes_none_of_the_payroll_tables_the_browser_never_writes.sql").read_text()
+    revoked = set(re.findall(r"'([a-z_]+)'", sql.split("tables text[] := ARRAY[", 1)[1].split("]", 1)[0]))
+    second = load_second_lock()
+    assert {t for _a, t in second} == revoked, (
+        f"rls_expected_second_lock.json covers a different set of tables than migration 499 revokes: "
+        f"missing {sorted(revoked - {t for _a, t in second})}, extra {sorted({t for _a, t in second} - revoked)}")
+    assert len(second) == len(revoked) * len(ACTORS)
+    # and the main expectation reads "no privilege" in every write cell of them, which is what 499 does
+    main = load_expected()
+    for (actor, table), per in second.items():
+        for op in WRITES:
+            assert main[(actor, table)][op] == "x", (actor, table, op, main[(actor, table)][op])
+        assert main[(actor, table)]["select"] == per["select"], (actor, table)
+
+
+@_NEEDS_PG
+def test_the_second_lock_decides_when_the_first_is_lifted(world):
+    """Migration 499 took the write privilege from every signed-in role on seventeen payroll tables, so the main matrix
+    reads "no privilege" in all their write cells and can no longer see a row policy move. This gives the privilege back
+    in a copy of the world (the migration's own rollback) and asks every actor again: the policies of 485 and 490 and the
+    triggers of 498 must still decide each cell exactly as they did before 499."""
+    copy = clone_world(_ADMIN, world)
+    try:
+        _ok(copy.dsn, _migration_sql(_M499_ROLLBACK))
+        expected = load_second_lock()
+        tables = sorted({t for _a, t in expected})
+        again = observe(copy, tables=tables)
+        assert not again.inconclusive, again.inconclusive[:5]
+        diff = {k: v for k, v in _differences(expected, again.cells).items()
+                if k not in KNOWN_DEVIATIONS or KNOWN_DEVIATIONS[k][0] != v[1]}
+        assert not diff, (
+            "with the write privilege given back, these payroll cells differ from what the row policies decided before "
+            "migration 499. LOOSER means a policy now lets somebody do more; TIGHTER means one stopped letting somebody "
+            "do their job. Fix the policy, or review the cell and edit fixtures/rls_expected_second_lock.json:\n  "
+            + "\n  ".join(f"{a} / {t} / {op}: expected {w!r}, the database gives {h!r}"
+                          for (a, t, op), (w, h) in sorted(diff.items())))
+    finally:
+        drop_world(_ADMIN, dbname_of(copy.dsn))
+
+
 @_NEEDS_PG
 def test_a_fixed_deviation_deletes_its_entry(world, observed):
     expected = load_expected()
@@ -1399,6 +1474,12 @@ def test_the_matrix_turns_red_when_a_known_hole_is_put_back(world, observed, con
         again = observe(copy, tables=list(tables))
         assert not again.inconclusive, again.inconclusive[:5]
         expected = {key: per for key, per in load_expected().items() if key[1] in tables}
+        if cid in _AGAINST_THE_SECOND_LOCK:
+            # These controls put the 499 rollback back FIRST, so the write privilege is present and the main expectation
+            # reads "no privilege" in every write cell of the seventeen tables: measured against it, those cells go red
+            # from the privilege alone and would prove nothing about the policy rollback that follows. Against the cells
+            # the policies decided before 499, only the policy rollback can turn them red.
+            expected.update({k: v for k, v in load_second_lock().items() if k[1] in tables})
         # red = disagrees with the expectation AND is not merely a known deviation, unchanged
         changed = {k for k, (_w, h) in _differences(expected, again.cells).items()
                    if k not in KNOWN_DEVIATIONS or KNOWN_DEVIATIONS[k][0] != h}
