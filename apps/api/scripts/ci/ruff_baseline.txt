@@ -437,7 +437,6 @@ services/ageing_schedule_service.py :: B904 :: _parse_as_of :: 1
 services/ageing_schedule_service.py :: B904 :: classify :: 1
 services/ageing_schedule_service.py :: C901 :: classify :: 18
 services/ais_service.py :: F401 :: <module> :: 1
-services/approval_service.py :: F401 :: <module> :: 1
 services/audit_query_service.py :: B904 :: decode_cursor :: 1
 services/audit_query_service.py :: B904 :: ist_day_bounds._parse :: 1
 services/bank_batch_service.py :: B904 :: BankBatchService.add_attachment :: 1

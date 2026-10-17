@@ -2,6 +2,7 @@
 Module 9.0 / M4 — approval_requests storage (mock + Supabase).
 """
 import os
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -9,6 +10,8 @@ from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _MOCK_REQUESTS: list[dict] = []
+# The mock store's stand-in for the single UPDATE ... WHERE status = 'pending' the real table makes atomic.
+_MOCK_CLAIM_LOCK = threading.Lock()
 
 
 _db = db_provider.service_db
@@ -64,6 +67,24 @@ class ApprovalRepository:
         payload = {**data, "updated_at": _now()}
         res = (_db().table("approval_requests").update(payload)
                .eq("id", request_id).eq("firm_id", firm_id).execute())
+        return res.data[0] if res.data else None
+
+    def decide_if_pending(self, firm_id: str, request_id: str, data: dict) -> Optional[dict]:
+        """Give a request that is STILL pending its decision, once: one UPDATE ... WHERE status = 'pending'.
+
+        Returns the updated row, or None when the request was no longer pending (somebody decided it first, or
+        it does not exist). This is the claim: of two simultaneous decisions exactly one gets a row back.
+        """
+        if _USE_MOCK:
+            with _MOCK_CLAIM_LOCK:
+                row = self.get(firm_id, request_id)
+                if not row or row.get("status") != "pending":
+                    return None
+                row.update(data, updated_at=_now())
+                return row
+        payload = {**data, "updated_at": _now()}
+        res = (_db().table("approval_requests").update(payload)
+               .eq("id", request_id).eq("firm_id", firm_id).eq("status", "pending").execute())
         return res.data[0] if res.data else None
 
 
