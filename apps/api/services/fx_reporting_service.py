@@ -298,6 +298,24 @@ class FXReportingService:
                 "by_currency": sorted(by_ccy.values(), key=lambda x: x["currency"]),
                 "net_paise": sum(s["net_paise"] for s in by_ccy.values())}
 
+    # ── Minor units ─────────────────────────────────────────────────────────────
+    @staticmethod
+    def _with_minor_units(db, rows: list[dict]) -> list[dict]:
+        """Each row carries the master's minor-unit exponent for its currency (JPY 0, INR 2, KWD 3).
+
+        A foreign amount is integer minor units, and how many of them make one major unit is a fact about the CURRENCY,
+        held in `currencies.minor_unit`. The browser used to divide every foreign amount by 100, so a yen figure read a
+        hundredth of itself and a dinar was cut to two places (POST-A-129). One read of the master, not one per row; a
+        code the master does not hold gets `None`, which the screen shows as unknown and never as a guess."""
+        if not rows:
+            return rows
+        from domain.currency.currency_service import list_currencies
+        units = {c["code"]: c.get("minor_unit") for c in list_currencies(db, active_only=False)}
+        for r in rows:
+            u = units.get(r.get("currency"))
+            r["minor_unit"] = int(u) if u is not None else None
+        return rows
+
     # ── 3. Currency exposure ───────────────────────────────────────────────────
     def currency_exposure(self, db, firm_id, client_id, as_of=None) -> dict:
         as_of = _d(as_of) if as_of else _today()
@@ -327,7 +345,8 @@ class FXReportingService:
             # Net monetary exposure = assets (AR + bank) − liabilities (AP).
             s["net_foreign_minor"] = s["receivable_foreign_minor"] + s["bank_foreign_minor"] - s["payable_foreign_minor"]
             s["net_base_paise"] = s["receivable_base_paise"] + s["bank_base_paise"] - s["payable_base_paise"]
-        return {"as_of": as_of, "by_currency": sorted(by.values(), key=lambda x: x["currency"])}
+        return {"as_of": as_of,
+                "by_currency": self._with_minor_units(db, sorted(by.values(), key=lambda x: x["currency"]))}
 
     # ── 4. Exchange-rate audit ─────────────────────────────────────────────────
     def exchange_rate_audit(self, db, firm_id, client_id, start=None, end=None) -> dict:
@@ -397,6 +416,8 @@ class FXReportingService:
             r["document_type"] = "sales_invoice"
         for p in payables:
             p["document_type"] = "purchase_bill"
+        for rows in (receivables, payables, banks):
+            self._with_minor_units(db, rows)
         return {"as_of": as_of, "receivables": receivables, "payables": payables, "bank_accounts": banks}
 
 

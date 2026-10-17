@@ -2635,7 +2635,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
   const rateNum = parseFloat(exchangeRate);
 
   function fmtAmt(paise: number): string {
-    return isForeign ? formatMoney(paise, currency) : fmt(paise);
+    return isForeign ? formatMoney(paise, currency, currencies.find((c) => c.code === currency)?.minor_unit) : fmt(paise);
   }
 
   const visibleBills = openBills.filter(

@@ -740,6 +740,17 @@ export default function CapitalGainsPage() {
                       caveat is a settled reason a section does not reach this
                       transfer. Collapsing them would turn "go and get this"
                       into "nothing to do here". */}
+                  {result.indexation_is_estimated && (
+                    <div className="bg-state-attention-surface rounded-lg border border-state-attention-border p-3 flex gap-2">
+                      <AlertTriangle className="w-4 h-4 text-state-attention shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-semibold text-state-attention">Provisional index — this changes the figure above</p>
+                        {result.indexation_note && (
+                          <p className="text-xs text-state-attention mt-1">{result.indexation_note}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {(result.gaps?.length ?? 0) > 0 && (
                     <div className="bg-state-attention-surface rounded-lg border border-state-attention-border p-3 flex gap-2">
                       <AlertTriangle className="w-4 h-4 text-state-attention shrink-0 mt-0.5" />
@@ -1302,7 +1313,7 @@ export default function CapitalGainsPage() {
                       )}
                       {regForm.asset_type === "property" && (
                         <div className="flex justify-between text-xs">
-                          <span className="text-ps-label">Indexed Cost</span>
+                          <span className="text-ps-label">Indexed Cost{regPreview.indexation_is_estimated ? " (provisional)" : ""}</span>
                           <span className="font-medium text-ps-ink">{fmtRs(regPreview.indexed_cost_paise)}</span>
                         </div>
                       )}
@@ -1313,6 +1324,14 @@ export default function CapitalGainsPage() {
                       PERSISTED, so a fact that would move either has to be
                       said before the CA presses Save — not afterwards on the
                       calculator tab. */}
+                  {regPreview?.indexation_is_estimated && (
+                    <div className="bg-state-attention-surface rounded-lg border border-state-attention-border px-4 py-3">
+                      <p className="text-xs font-semibold text-state-attention">Provisional index — the indexed cost is saved as blank</p>
+                      {regPreview.indexation_note && (
+                        <p className="text-xs text-state-attention mt-1">{regPreview.indexation_note}</p>
+                      )}
+                    </div>
+                  )}
                   {(regPreview?.gaps?.length ?? 0) > 0 && (
                     <div className="bg-state-attention-surface rounded-lg border border-state-attention-border px-4 py-3">
                       <p className="text-xs font-semibold text-state-attention">Not recorded — this changes what is saved</p>

@@ -3849,7 +3849,7 @@ function ReceiptForm({
   const rateNum = parseFloat(exchangeRate);
 
   function fmtAmt(paise: number): string {
-    return isForeign ? formatMoney(paise, currency) : fmt(paise);
+    return isForeign ? formatMoney(paise, currency, currencies.find((c) => c.code === currency)?.minor_unit) : fmt(paise);
   }
 
   // Load open invoices for selected customer, then keep only those in the

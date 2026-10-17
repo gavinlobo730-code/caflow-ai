@@ -307,6 +307,12 @@ export interface CapitalGainsComputeResult {
    *  section does not reach this transfer. */
   gaps?: string[];
   caveats?: string[];
+  /** True when a transfer falls in a year whose Cost Inflation Index is not yet notified and the newest known index was
+   *  used instead: `indexed_cost_paise` and `gain_with_indexation_paise` are PROVISIONAL (they understate the indexed cost
+   *  and overstate the gain). `indexation_note` is the server's sentence saying which year and why; the screen shows it as
+   *  given and holds no wording of its own about it. The register stores the indexed cost as NULL in this case. */
+  indexation_is_estimated?: boolean;
+  indexation_note?: string | null;
 }
 
 export interface CapitalGainsRecord {

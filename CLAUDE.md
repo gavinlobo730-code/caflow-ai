@@ -135,13 +135,14 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - what | where it is refused | why it cannot be derived |
 - Depreciation — but read this, it changed
 
-### `docs/design-record/banking-and-multicurrency.md` (5 entries): Bank entries, credit card accounts, matching rules, multi-currency and the AS 11 revaluation
+### `docs/design-record/banking-and-multicurrency.md` (6 entries): Bank entries, credit card accounts, matching rules, multi-currency and the AS 11 revaluation
 
 - Bank entries (09) in one paragraph, because it is easy to rebuild the old thing by accident:
 - MULTI-CURRENCY HAS THREE GATES AND TWO OF THEM ARE NOW WRITABLE
 - THE AS 11 YEAR-END REVALUATION WAS BUILT, TESTED AND UNREACHABLE
 - A COMPANY CREDIT CARD IS A BANK ACCOUNT, AND THE DOUBLE ENTRY NEEDED NO CHANGE
 - A MATCHING RULE SAYS WHICH FIELD IT READS AND WHICH RULE WINS
+- A FOREIGN AMOUNT IS SHOWN WITH ITS CURRENCY'S OWN DECIMALS, TAKEN FROM THE MASTER AND NEVER GUESSED
 
 ### `docs/design-record/banking.md` (1 entries): Bank data: Account Aggregator position, bank entries, credit cards, matching rules
 
@@ -639,7 +640,11 @@ _Longer design records for this area were moved to `docs/design-record/ledger-an
   instead (the column is nullable): nothing recomputes a stored row, so a
   figure taken from an unnotified year is wrong the moment the notification
   lands, and an absence a CA can fill in beats a stale number that reads as
-  computed.
+  computed. **The capital gains calculator now SAYS it** (POST-A-077): the
+  result carries `indexation_is_estimated` and `indexation_note`, the screen
+  shows a "Provisional index" notice with the server's own sentence, and the
+  register preview labels the indexed cost "(provisional)" and says it is
+  saved blank.
 - **A filing cannot leave draft on a computation nobody has reviewed.**
   `POST /api/itr/snapshots/{id}/review` existed from the start and had NO
   CALLER (IT-30), so every `tax_computation_snapshots` row was permanently
