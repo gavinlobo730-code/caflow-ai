@@ -22,6 +22,7 @@ from fastapi import HTTPException
 
 from repositories.invoice_repository import invoice_repo
 from core import db_provider
+from core.ist_clock import ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.fee_billing")
@@ -49,7 +50,7 @@ def record_receipt(firm_id: str, invoice_id: str, data: dict) -> dict:
     if not invoice or invoice.get("firm_id") != firm_id:
         raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found.")
 
-    receipt_date = data.get("receipt_date") or invoice_repo.now_iso()[:10]
+    receipt_date = data.get("receipt_date") or ist_today().isoformat()
     payment_mode = data.get("payment_mode") or "NEFT"
     reference_no = data.get("reference_no")
     notes = data.get("notes")

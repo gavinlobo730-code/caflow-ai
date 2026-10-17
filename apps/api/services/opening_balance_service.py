@@ -60,6 +60,7 @@ from typing import Optional
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from core import db_provider
+from core.ist_clock import ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.opening_balance")
@@ -145,9 +146,10 @@ def _default_opening_date(db, firm_id: str, client_id: str, customers: list[dict
              if r.get("opening_balance_date")]
     if dates:
         return str(min(dates))
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
-    fy_start = now.year if now.month >= 4 else now.year - 1
+    # The Indian day, not the UTC one: at 01:40 IST on 1 April the UTC clock still reads March, and the opening
+    # entry would be dated into the financial year that has just closed (POST-A-048's sweep).
+    today = ist_today()
+    fy_start = today.year if today.month >= 4 else today.year - 1
     return f"{fy_start}-04-01"
 
 

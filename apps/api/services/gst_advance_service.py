@@ -50,6 +50,7 @@ from typing import Optional
 
 from domain.banking.charge_gst import split_inclusive_charge
 from core.db_paging import fetch_all
+from core.ist_clock import ist_date_of
 
 _logger = logging.getLogger("caflow.gst_advances")
 
@@ -77,8 +78,11 @@ def _allocations_by_receipt(db, receipt_ids: list[str]) -> dict:
             .select("receipt_id, allocated_paise, created_at")
             .in_("receipt_id", receipt_ids).execute().data) or []
     for r in rows:
+        # `created_at` is a UTC stamp; Table 11 is measured against the INDIAN month, so an allocation made at 00:30 IST
+        # on 1 July (stored 19:00 UTC on 30 June) is a July allocation. An unreadable stamp sorts after every period.
+        day = ist_date_of(r.get("created_at"))
         out.setdefault(r.get("receipt_id"), []).append(
-            (int(r.get("allocated_paise") or 0), str(r.get("created_at") or "")))
+            (int(r.get("allocated_paise") or 0), day.isoformat() if day else "9999-12-31"))
     return out
 
 

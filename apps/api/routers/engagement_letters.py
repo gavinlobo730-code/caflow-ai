@@ -411,7 +411,7 @@ def _render_merge_fields(content: str, fields: dict) -> str:
 
 def _next_engagement_no(db, firm_id: str) -> str:
     """Generate sequential engagement number like EL-2026-0001."""
-    year = datetime.now(timezone.utc).year
+    year = ist_today().year
     if not db:
         n = len(_MOCK_ENGAGEMENTS) + 1
         return f"EL-{year}-{n:04d}"

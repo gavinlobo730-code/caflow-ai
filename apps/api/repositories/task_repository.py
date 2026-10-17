@@ -4,6 +4,8 @@ from repositories.base import BaseRepository
 from core.exceptions import NotFoundError
 from services.task_service import compute_task_urgency
 from core import db_provider
+from core.db_paging import fetch_all
+from core.ist_clock import ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -92,8 +94,7 @@ class TaskRepository(BaseRepository[dict]):
         defaults to None (every firm) only for backward compatibility with
         existing callers still doing their own post-filter — new callers
         should always pass firm_id so the scope is pushed to the query."""
-        from datetime import date
-        today = date.today().isoformat()
+        today = ist_today().isoformat()
         if _USE_MOCK:
             tasks = [
                 t for t in MOCK_TASKS
@@ -102,16 +103,19 @@ class TaskRepository(BaseRepository[dict]):
             if firm_id:
                 tasks = [t for t in tasks if t.get("firm_id") == firm_id]
             return tasks
-        query = (
-            _get_db().table("tasks").select("*")
-            .lt("due_date", today)
-            .neq("status", "completed")
-            .is_("deleted_at", None)
-        )
-        if firm_id:
-            query = query.eq("firm_id", firm_id)
-        result = query.execute()
-        return result.data or []
+        # Every page: PostgREST stops at ~1000 rows and says nothing, and this count feeds the executive dashboard
+        # and the morning digest (POST-A-048). The Indian day, not the UTC one: between 00:00 and 05:30 IST the
+        # server clock still names yesterday and a task that fell due this morning would not be overdue yet.
+        def _overdue_query():
+            query = (
+                _get_db().table("tasks").select("*")
+                .lt("due_date", today)
+                .neq("status", "completed")
+                .is_("deleted_at", None)
+            )
+            return query.eq("firm_id", firm_id) if firm_id else query
+
+        return fetch_all(_overdue_query, label="tasks overdue")
 
     def create(self, data: dict) -> dict:
         if _USE_MOCK:

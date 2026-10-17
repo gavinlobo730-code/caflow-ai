@@ -3,6 +3,7 @@ import uuid
 from typing import Optional
 from repositories.base import BaseRepository
 from core import db_provider
+from core.ist_clock import ist_date_of, ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -69,12 +70,12 @@ class AutomationRepository(BaseRepository[dict]):
         return result.data or []
 
     def get_stats(self, firm_id: Optional[str] = None) -> dict:
-        from datetime import date
         rules = self.get_rules(firm_id=firm_id)
         executions = self.get_executions(firm_id=firm_id, limit=1000)
-        today_str = date.today().isoformat()
+        # `executed_at` is a UTC stamp: its first ten characters are the UTC day, not the Indian one.
+        today = ist_today()
         active_rules = sum(1 for r in rules if r.get("is_enabled"))
-        executions_today = sum(1 for e in executions if e.get("executed_at", "")[:10] == today_str)
+        executions_today = sum(1 for e in executions if ist_date_of(e.get("executed_at")) == today)
         tasks_created = sum(
             1 for e in executions
             if e.get("status") == "success" and isinstance(e.get("result_data"), dict) and "task_id" in e.get("result_data", {})

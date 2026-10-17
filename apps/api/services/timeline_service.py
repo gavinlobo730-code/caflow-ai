@@ -13,7 +13,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
-from core.ist_clock import ist_today
+from core.ist_clock import ist_now, ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.timeline_service")
@@ -70,22 +70,22 @@ class TimelineService:
             action_url:      Optional CTA URL path.
             visibility:      all|internal|partner_only (default: all).
         """
-        # Derive the YYYY-MM period string from today
+        # The YYYY-MM period is the INDIAN month: on the 1st between 00:00 and 05:30 IST the UTC clock still reads the
+        # month before. `now` stays the UTC instant, which is what `created_at` stores.
         now = datetime.now(timezone.utc)
-        period = now.strftime("%Y-%m")
+        period = ist_now().strftime("%Y-%m")
 
         if _USE_MOCK:
             _logger.info(
                 "[MOCK] timeline_event firm=%s client=%s fy=%s category=%s type=%s title=%r",
                 firm_id, client_id, financial_year, category, event_type, title,
             )
-            now = datetime.now(timezone.utc)
             MOCK_TIMELINE_EVENTS.append({
                 "id":             str(uuid.uuid4()),
                 "client_id":      client_id,
                 "firm_id":        firm_id,
                 "financial_year": financial_year,
-                "period":         now.strftime("%Y-%m"),
+                "period":         period,
                 "category":       category,
                 "event_type":     event_type,
                 "title":          title,

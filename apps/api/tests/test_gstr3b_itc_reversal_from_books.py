@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+import core.ist_clock as ist_clock
 import routers.sales_invoices as si
 import routers.purchase_bills as pb
 import routers.credit_notes as cn
@@ -46,7 +47,7 @@ CALLER = {"firm_id": FIRM, "id": "u-int", "auth_user_id": "auth",
           "email": "ca@f.test", "role": "Partner"}
 GSTIN = "27AAAAA0000A1Z2"
 
-JUNE, JULY = "062025", "072025"
+JUNE, JULY, AUGUST = "062025", "072025", "082025"
 BILL_TAX = 90000            # Rs 5,000 @ 18% intra-state -> 45000 CGST + 45000 SGST
 
 
@@ -78,15 +79,31 @@ def _receive_bill(db, no, rate, date):
 
 def _cancel_on(monkeypatch, bill_id, when: str):
     """Cancel with the clock set, so the reversal journal and cancelled_at both
-    land on `when` — the router dates the reversal 'today'."""
+    land on `when` — the router dates the reversal 'today' (the Indian day)."""
     class _Clock(datetime):
         @classmethod
         def now(cls, tz=None):
             return datetime(int(when[:4]), int(when[5:7]), int(when[8:10]),
                             tzinfo=tz or timezone.utc)
-    monkeypatch.setattr(pb, "datetime", _Clock)
+    monkeypatch.setattr(pb, "datetime", _Clock)           # cancelled_at, a stored instant
+    monkeypatch.setattr(ist_clock, "datetime", _Clock)    # the reversal's date: the Indian day since POST-A-048
     res = pb.cancel_purchase_bill(bill_id, CALLER)
     assert res["success"] is True
+
+
+def _cancel_at_utc(monkeypatch, bill_id, utc_iso: str):
+    """Cancel with the process clock frozen at one real INSTANT. `cancelled_at` is that UTC stamp and the reversal
+    journal is dated with the INDIAN day of it, which is how the product behaves in the 00:00-05:30 IST window."""
+    fixed = datetime.fromisoformat(utc_iso).replace(tzinfo=timezone.utc)
+
+    class _Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.astimezone(tz) if tz is not None else fixed
+
+    monkeypatch.setattr(pb, "datetime", _Clock)
+    monkeypatch.setattr(ist_clock, "datetime", _Clock)
+    assert pb.cancel_purchase_bill(bill_id, CALLER)["success"] is True
 
 
 def _3b(db, period):
@@ -358,3 +375,55 @@ def test_a_registered_reversal_is_netted_in_the_books_comparator(monkeypatch):
 
     itc = _3b(db, JUNE)["reconciliation"]["itc"]
     assert itc["books_paise"] == 90000 - 2000
+
+
+
+# ── a cancellation after midnight in India, before midnight in UTC ───────────
+
+def test_a_cancellation_after_midnight_in_india_is_one_month_in_the_ledger_and_in_the_return(monkeypatch):
+    """Cancelled at 01:40 IST on 1 August, which is 20:10 UTC on 31 July. The reversal journal is dated 1 August (the
+    Indian day), so the return must declare the reversal in AUGUST too. Keyed on the UTC day of `cancelled_at` it said
+    July, and both months then showed a difference between the books and the ledger that was not real."""
+    db = _setup(monkeypatch)
+    bill = _receive_bill(db, "B-1", 5_00000, "2025-06-12")
+    _cancel_at_utc(monkeypatch, bill, "2025-07-31T20:10:00")
+
+    july, august = _3b(db, JULY), _3b(db, AUGUST)
+    assert august["reconciliation"]["itc"]["ledger_paise"] == -BILL_TAX, "the reversal journal is an August posting"
+    assert _rev(august)["RUL"]["camt"] == 45000 // 100 and _rev(august)["RUL"]["samt"] == 45000 // 100
+    assert august["reconciliation"]["itc"]["books_paise"] == -BILL_TAX
+    assert august["reconciliation"]["itc"]["matched"] is True
+    assert _rev(july)["RUL"]["camt"] == 0, "July must not declare a reversal that the ledger dated in August"
+    assert july["reconciliation"]["itc"]["ledger_paise"] == 0 and july["reconciliation"]["itc"]["books_paise"] == 0
+    assert july["reconciliation"]["itc"]["matched"] is True
+
+
+def test_the_same_cancellation_a_few_hours_earlier_is_a_july_one(monkeypatch):
+    """Control: 15:30 IST on 31 July (10:00 UTC). Both calendars agree, so the reversal is July's in both places."""
+    db = _setup(monkeypatch)
+    bill = _receive_bill(db, "B-1", 5_00000, "2025-06-12")
+    _cancel_at_utc(monkeypatch, bill, "2025-07-31T10:00:00")
+
+    july, august = _3b(db, JULY), _3b(db, AUGUST)
+    assert _rev(july)["RUL"]["camt"] == 45000 // 100 and july["reconciliation"]["itc"]["matched"] is True
+    assert _rev(august)["RUL"]["camt"] == 0 and august["reconciliation"]["itc"]["matched"] is True
+
+
+def test_a_bill_posted_in_july_and_cancelled_after_midnight_in_india_is_live_in_july_and_reversed_in_august(monkeypatch):
+    """The other branch of the cancellation month. The bill is dated in JULY, so its credit was availed in July's return
+    and the reversal belongs to the month it was cancelled in: 01:40 IST on 1 August is 20:10 UTC on 31 July. Taking
+    `cancelled_at`'s first ten characters (the UTC day) put the cancellation in July, so July's return dropped a bill that
+    the ledger still carried in July (books 0 against ledger 90000, not matched)."""
+    db = _setup(monkeypatch)
+    bill = _receive_bill(db, "B-1", 5_00000, "2025-07-20")
+    _cancel_at_utc(monkeypatch, bill, "2025-07-31T20:10:00")
+
+    july, august = _3b(db, JULY), _3b(db, AUGUST)
+    assert july["reconciliation"]["itc"]["ledger_paise"] == BILL_TAX, "the reversal journal is dated 1 August"
+    assert july["reconciliation"]["itc"]["books_paise"] == BILL_TAX, "cancelled on the Indian 1 August: still live in July"
+    assert july["reconciliation"]["itc"]["matched"] is True
+    assert _rev(july)["RUL"]["camt"] == 0
+    assert august["reconciliation"]["itc"]["ledger_paise"] == -BILL_TAX
+    assert august["reconciliation"]["itc"]["books_paise"] == -BILL_TAX
+    assert august["reconciliation"]["itc"]["matched"] is True
+    assert _rev(august)["RUL"]["camt"] == 45000 // 100 and _rev(august)["RUL"]["samt"] == 45000 // 100

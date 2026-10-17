@@ -32,7 +32,7 @@ from services import vendor_tds
 from services import reversal_service
 from services import purchase_payment_service
 from services.numbering import sequence_after
-from core.ist_clock import fy_code, ist_fy_label
+from core.ist_clock import fy_code, ist_fy_label, ist_today
 from domain.money_text import rupees_paise, whole_rupees
 from core import db_provider
 
@@ -104,7 +104,7 @@ def _insert_payment_or_compensate(db, firm_id: str, payload: dict, journal_entry
                 from services.phase2_journal_service import phase2_journal_service
                 try:
                     phase2_journal_service.reverse_entry(
-                        db, firm_id, journal_entry_id, str(datetime.now(timezone.utc).date()),
+                        db, firm_id, journal_entry_id, str(ist_today()),
                         narration=f"Compensating reversal — payment {payload.get('payment_no')} insert failed",
                         created_by=created_by,
                     )
@@ -445,7 +445,7 @@ def create_purchase_payment(
         raise HTTPException(status_code=422, detail="amount_paise must be positive")
 
     payment_mode = data.get("payment_mode", "bank")
-    payment_date = data.get("payment_date", str(datetime.now(timezone.utc).date()))
+    payment_date = data.get("payment_date", str(ist_today()))
     purchase_bill_id = data.get("purchase_bill_id")
     allocations = data.get("allocations") or []
 
@@ -774,7 +774,7 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
     vendor_id = data.get("vendor_id")
     if not bill_id:
         raise HTTPException(status_code=422, detail="A foreign payment must be linked to the purchase bill it settles.")
-    payment_date = data.get("payment_date", str(datetime.now(timezone.utc).date()))
+    payment_date = data.get("payment_date", str(ist_today()))
     period_validation_service.validate_posting_date(firm_id, payment_date)
 
     firm = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]

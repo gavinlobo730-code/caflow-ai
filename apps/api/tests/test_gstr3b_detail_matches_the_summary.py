@@ -251,3 +251,16 @@ def test_the_31a_detail_with_a_note_still_sums_to_the_return(books):
     assert d["total_taxable_paise"] == out["taxable_value_paise"]
     assert d["total_cgst_paise"] == out["taxable_cgst_paise"]
     assert d["total_sgst_paise"] == out["taxable_sgst_paise"]
+
+
+def test_a_registered_reversal_is_listed_under_the_indian_day_it_was_recorded(books, monkeypatch):
+    """`created_at` is a UTC stamp. A register row recorded at 20:10 UTC on 31 July was recorded at 01:40 IST on 1 August,
+    and the drill-down must show August 1 and not the first ten characters of the stamp."""
+    from services import itc_register_service
+
+    monkeypatch.setattr(itc_register_service, "for_periods", lambda db, firm_id, client_id, periods: {
+        "reversals": [{"id": "rev-1", "reason_code": "RUL", "journal_entry_id": "je-1234567890", "notes": "Rule 37",
+                       "igst_paise": 0, "cgst_paise": 4500, "sgst_paise": 4500,
+                       "created_at": "2025-07-31T20:10:00+00:00"}]})
+    d = _detail(books, E.JULY, "4B2")
+    assert [r["document_date"] for r in d["rows"]] == ["2025-08-01"]

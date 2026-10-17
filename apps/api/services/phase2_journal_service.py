@@ -17,7 +17,7 @@ from fastapi import HTTPException
 # Multi-Currency Phase 2 — currency metadata + the authoritative in-kernel gate.
 # Light imports only (policy + rate-type vocabulary); the ExchangeRateService and
 # providers are imported lazily in exchange_rate_service() to keep the hot path light.
-from core.ist_clock import month_end_date
+from core.ist_clock import month_end_date, ist_today
 from core.observability import capture_posting_failure
 from domain.currency.policy import BASE_CURRENCY, CurrencyPolicy
 from domain.accounting import journal_source as JS
@@ -190,7 +190,7 @@ class Phase2JournalService:
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
-                entry_date=invoice.get("invoice_date", str(datetime.now(timezone.utc).date())),
+                entry_date=invoice.get("invoice_date", str(ist_today())),
                 reference_no=invoice["invoice_no"],
                 narration=f"Sales invoice {invoice['invoice_no']} to {customer_name} — CGST Act §9",
                 entry_type="Sales",
@@ -303,7 +303,7 @@ class Phase2JournalService:
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
-                entry_date=receipt.get("receipt_date", str(datetime.now(timezone.utc).date())),
+                entry_date=receipt.get("receipt_date", str(ist_today())),
                 reference_no=receipt["receipt_no"],
                 narration=f"Receipt {receipt['receipt_no']} from customer",
                 entry_type="Receipt",
@@ -397,7 +397,7 @@ class Phase2JournalService:
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
-                entry_date=cn.get("credit_note_date", str(datetime.now(timezone.utc).date())),
+                entry_date=cn.get("credit_note_date", str(ist_today())),
                 reference_no=cn["credit_note_no"],
                 narration=f"Credit note {cn['credit_note_no']} — CGST Act §34",
                 entry_type="Journal",
@@ -466,7 +466,7 @@ class Phase2JournalService:
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
-                entry_date=dn.get("debit_note_date", str(datetime.now(timezone.utc).date())),
+                entry_date=dn.get("debit_note_date", str(ist_today())),
                 reference_no=dn["debit_note_no"],
                 narration=f"Debit note {dn['debit_note_no']} — CGST Act §34",
                 entry_type="Journal",
@@ -554,7 +554,7 @@ class Phase2JournalService:
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
-                entry_date=dn.get("debit_note_date", str(datetime.now(timezone.utc).date())),
+                entry_date=dn.get("debit_note_date", str(ist_today())),
                 reference_no=dn["debit_note_no"],
                 narration=f"Sales debit note {dn['debit_note_no']} — CGST Act §34(3)",
                 entry_type="Journal",
@@ -626,7 +626,7 @@ class Phase2JournalService:
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
-                entry_date=cn.get("credit_note_date", str(datetime.now(timezone.utc).date())),
+                entry_date=cn.get("credit_note_date", str(ist_today())),
                 reference_no=cn["credit_note_no"],
                 narration=f"Purchase credit note {cn['credit_note_no']} — CGST Act §34(3)",
                 entry_type="Journal",
@@ -886,7 +886,7 @@ class Phase2JournalService:
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
-                entry_date=bill.get("bill_date", str(datetime.now(timezone.utc).date())),
+                entry_date=bill.get("bill_date", str(ist_today())),
                 # System-unique — NOT the vendor's bill_no (see
                 # purchase_bill_journal_ref's docstring for the collision bug).
                 reference_no=purchase_bill_journal_ref(bill.get("id", "")) if bill.get("id") else bill.get("bill_no", ""),
@@ -976,7 +976,7 @@ class Phase2JournalService:
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
-                entry_date=payment.get("payment_date", str(datetime.now(timezone.utc).date())),
+                entry_date=payment.get("payment_date", str(ist_today())),
                 reference_no=payment["payment_no"],
                 narration=f"Vendor payment {payment['payment_no']}",
                 entry_type="Payment",
@@ -1906,7 +1906,7 @@ class Phase2JournalService:
 
             return self._create_journal(
                 db=db, firm_id=firm_id, client_id=client_id,
-                entry_date=asset.get("disposal_date", str(datetime.now(timezone.utc).date())),
+                entry_date=asset.get("disposal_date", str(ist_today())),
                 reference_no=f"FA-DISP-{(asset.get('asset_code') or asset['id'][:8])}",
                 narration=f"Asset disposal: {asset['asset_name']}",
                 entry_type="Journal",

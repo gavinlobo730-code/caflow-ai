@@ -4,9 +4,9 @@ Transforms raw event data into structured semantic memory.
 """
 import os
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from typing import Optional
-from core.ist_clock import IST, ist_now
+from core.ist_clock import IST, ist_now, ist_today, ist_date_of
 
 logger = logging.getLogger("caflow.memory")
 
@@ -368,7 +368,7 @@ class MemoryPipeline:
         profile = _get_memory_repo().get_current_profile(firm_id, client_id)
         avg_response_days = (profile or {}).get("avg_response_time_days") or 5
 
-        now = datetime.now(timezone.utc)
+        today = ist_today()
         compliance_items = _get_compliance_records_repo().find_all(firm_id=firm_id)
         upcoming = [c for c in compliance_items
                    if c.get("client_id") == client_id
@@ -377,8 +377,11 @@ class MemoryPipeline:
 
         for item in upcoming:
             try:
-                due = datetime.fromisoformat(item["due_date"].replace("Z", "+00:00"))
-                days_until_due = (due - now).days
+                # `due_date` is a DATE column, so it is a calendar day and is counted from the Indian day. It used
+                # to be parsed to a NAIVE datetime and subtracted from an AWARE clock, which raises TypeError, and
+                # the `except` below swallowed that: this detector had never produced a trigger.
+                due = date.fromisoformat(str(item["due_date"])[:10])
+                days_until_due = (due - today).days
             except Exception:
                 continue
 
@@ -446,12 +449,13 @@ class MemoryPipeline:
         60-90 days before March 31 year-end, generate a year-end readiness report.
         Only fires once per financial year.
         """
-        now = datetime.now(timezone.utc)
-        # Indian FY ends March 31
+        now = ist_now()
+        # Indian FY ends March 31. The year and the comparison are the INDIAN ones: on 1 January before 05:30 IST
+        # the UTC clock still reads the year before.
         current_year = now.year
-        fy_end = datetime(current_year, 3, 31, tzinfo=timezone.utc)
+        fy_end = datetime(current_year, 3, 31, tzinfo=IST)
         if now > fy_end:
-            fy_end = datetime(current_year + 1, 3, 31, tzinfo=timezone.utc)
+            fy_end = datetime(current_year + 1, 3, 31, tzinfo=IST)
 
         days_to_ye = (fy_end - now).days
         if not (30 <= days_to_ye <= 90):
@@ -532,7 +536,12 @@ class MemoryPipeline:
             for t in all_tasks:
                 if t.get("created_at"):
                     try:
-                        month_key = datetime.fromisoformat(t["created_at"].replace("Z", "+00:00")).strftime("%Y-%m")
+                        # The INDIAN month of the stored stamp: the current month below is the Indian one, and a task
+                        # created at 00:30 IST on the 1st is stamped on the last day of the month before in UTC.
+                        made_on = ist_date_of(t["created_at"])
+                        if made_on is None:
+                            continue
+                        month_key = made_on.strftime("%Y-%m")
                         month_counts[month_key] = month_counts.get(month_key, 0) + 1
                     except Exception:
                         pass
