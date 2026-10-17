@@ -100,6 +100,10 @@ HELPERS = {
     # gives the privilege back in its own throwaway database through this one helper, which applies 499's rollback file
     # and so cannot drift from what the migration took away.
     "_signed_in_payroll_writes.py",
+    # POST-A-048 / POST-A-072. A PostgREST double that has the ~1000-row cap, for tests that exist to prove a read
+    # PAGES: a double that returns everything from one `.execute()` passes against exactly the defect those tests are
+    # written for. Imported by `test_a_read_that_pages_reads_every_page_and_the_indian_day.py`.
+    "_capped_postgrest.py",
     # practice_management-02/-03. The columns a NEW migration declares, read out of
     # the migration FILE, so a test for a new table cannot disagree with the SQL it
     # is proving (a hand-copied REAL_COLUMNS list is how the two drift). Imported by

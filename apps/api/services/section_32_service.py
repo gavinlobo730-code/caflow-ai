@@ -39,6 +39,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
+from core.db_paging import fetch_all
 from domain.income_tax import additional_depreciation as addl
 from domain.income_tax.section_32 import (
     Addition, Block, Deletion, Section32Result, compute,
@@ -76,9 +77,14 @@ class Section32Service:
                        .eq("financial_year", financial_year).execute().data or [])
         by_key = {r["block_key"]: r for r in blocks_rows}
 
-        assets = (db.table("fixed_assets").select("*")
-                  .eq("firm_id", firm_id).eq("client_id", client_id)
-                  .is_("deleted_at", "null").execute().data or [])
+        # EVERY page: an unpaged read stops at PostgREST's row cap (about 1,000) and a client with more assets than
+        # that had its block allowance understated, silently. `fetch_all` calls the builder once per page.
+        def _assets_query():
+            return (db.table("fixed_assets").select("*")
+                    .eq("firm_id", firm_id).eq("client_id", client_id)
+                    .is_("deleted_at", "null"))
+
+        assets = fetch_all(_assets_query, label="section_32.fixed_assets")
 
         # §32(1)(iia) (IT-09, migration 406). TWO facts, and this one is about
         # the CLIENT: the section reaches only an assessee engaged in
