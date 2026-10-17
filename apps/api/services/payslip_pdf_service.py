@@ -615,7 +615,8 @@ def get_payslip_pdf(slip_id: str, firm_id: Optional[str], *, employer_db=None) -
 
     employer = load_employer(run.get("firm_id") or firm_id, run.get("client_id"), db=employer_db)
     ytd = load_ytd(run.get("firm_id") or firm_id, run.get("client_id"),
-                   run.get("month"), [slip.get("employee_id")]).get(
+                   run.get("month"), [slip.get("employee_id")],
+                   include_run_ids=[slip.get("run_id")]).get(
                        slip.get("employee_id"))
 
     pdf = build_payslip_pdf(slip, employee, run, employer, ytd=ytd)
@@ -675,7 +676,8 @@ def build_run_payslip_zip(run_id: str, firm_id: Optional[str]) -> tuple[bytes, s
     # the thirty this function exists to collapse into one.
     ytd_by_employee = load_ytd(run.get("firm_id"), run.get("client_id"),
                                run.get("month"),
-                               [s.get("employee_id") for s in slips])
+                               [s.get("employee_id") for s in slips],
+                               include_run_ids=[run_id])
     month = run.get("month") or "payslips"
 
     problems: list[str] = []
@@ -720,8 +722,15 @@ def _payslip_filename(name: str, month: str, used: set) -> str:
 
 
 def load_ytd(firm_id: Optional[str], client_id: Optional[str],
-             month: Optional[str], employee_ids) -> dict:
+             month: Optional[str], employee_ids, include_run_ids=()) -> dict:
     """{employee_id: ytd_totals(...)} for the financial year up to `month`.
+
+    WHICH RUNS COUNT (POST-A-238). Released ones (`PAYROLL_RELEASED`), plus any run named in `include_run_ids`, which is
+    the run the document itself is for. A draft or review run has deducted nothing (PAY-04), so counting an earlier
+    month that is still a draft put tax and contributions nobody withheld into a year-to-date figure that has to agree
+    with Form 16, and made the same slip read differently on the staff download (every run) and the employee's (only the
+    runs released to them). The document's own run is the exception because a watermarked draft payslip is a preview of
+    its own month and would otherwise leave that month out of the year-to-date printed beside it.
 
     TWO QUERIES, BOUNDED BY THE SIZE OF THE ANSWER, not by transaction volume:
     at most twelve payroll runs in a financial year, and at most one slip per
@@ -758,10 +767,12 @@ def load_ytd(firm_id: Optional[str], client_id: Optional[str],
     db = get_supabase()
     try:
         runs = (db.table("payroll_runs")
-                .select("id")
+                .select("id, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .in_("month", months).execute().data) or []
-        run_ids = [r.get("id") for r in runs if r.get("id")]
+        own = {r for r in (include_run_ids or ()) if r}
+        run_ids = [r.get("id") for r in runs
+                   if r.get("id") and (r.get("status") in PAYROLL_RELEASED or r.get("id") in own)]
         if not run_ids:
             return {}
         rows = (db.table("payroll_slips")

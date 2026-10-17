@@ -40,8 +40,12 @@ TWO LAYERS, LIKE THE SIBLING FILE FOR 442
     through the admin session to make this file's own test of `statement_pdf`
     pass would hide exactly the gap the migration's header goes out of its way
     to name — so this file proves the opposite: `generate()` (the part 443
-    fixes, shared with `statement()`) succeeds, and `statement_pdf` as a whole
-    STILL raises, from `clients`, on a real portal session, undisguised.
+    fixes, shared with `statement()`) succeeds, and `statement_pdf` with the
+    letterhead read on the contact's own sign-in STILL raises, from `clients`,
+    undisguised. THAT GAP IS NOW CLOSED IN CODE RATHER THAN IN POLICY (POST-A-236):
+    `statement_pdf` reads the letterhead with the privileged client after the
+    scope is proved, and tests/test_a_client_downloads_their_fee_documents_pg.py
+    proves the PDF is produced; the residual test below keeps the reason visible.
 
 NNEGATIVE CONTROL
     A template built from every migration file EXCEPT 443 reproduces the
@@ -521,8 +525,8 @@ _RLS_TABLES = {
     "sales_debit_notes", "customer_statement_deliveries",
     # NOT fixed by this migration (or 442) — routed through the SAME real
     # portal-client RLS session anyway, deliberately, so
-    # test_statement_pdf_still_fails_after_this_fix_because_clients_is_a_
-    # separate_gap proves the residual gap on a real session rather than
+    # test_statement_pdf_letterhead_read_on_the_contacts_own_sign_in_still_
+    # fails_because_clients_stays_hidden proves the residual gap on a real session rather than
     # hiding it behind an admin escape hatch. Nothing else in this file's
     # six tested functions ever queries `clients` at all.
     "clients",
@@ -813,25 +817,27 @@ def test_statement_still_refuses_to_leak_a_different_portal_clients_ledger(post_
 
 # ── statement_pdf: deliberately NOT given the same treatment — see header ───
 
-def test_statement_pdf_still_fails_after_this_fix_because_clients_is_a_separate_gap(
+def test_statement_pdf_letterhead_read_on_the_contacts_own_sign_in_still_fails_because_clients_stays_hidden(
     post_fix_db, internal_client_id_patch
 ):
     """The migration's own header names this precisely: `clients` carries the
     identical can_access_client()/get_my_firm_id() shape for the firm's
     internal-client row, and this migration deliberately does not touch it —
     that table is far too heavily loaded by other RLS layers (074's G1 sweep,
-    084's G5 sweep, 260/261's role policies) to widen here. So `statement_pdf`
-    — whose SECOND half, `load_account_holder`, reads `clients` — must still
-    fail on a real portal session, even though `generate()` (the part this
-    migration DOES fix, proven by the two tests above) now succeeds.
+    084's G5 sweep, 260/261's role policies) to widen here. So a statement PDF
+    whose letterhead is read on the portal contact's own sign-in must still
+    fail, even though `generate()` (the part this migration DOES fix, proven by
+    the tests above) now succeeds.
 
-    This is deliberately routed through the SAME `_RealDb` as every other
-    test in this file (no admin escape hatch for `clients`), so a future
-    fix to `clients`' own RLS is exactly what turns this test green — at
-    which point it should be rewritten to assert success instead of the
-    residual gap, not deleted."""
+    WHAT CHANGED (POST-A-236): the route no longer reads the letterhead that
+    way. `portal_data_service.statement_pdf` reads it with the privileged client
+    once the scope is proved, and tests/test_a_client_downloads_their_fee_
+    documents_pg.py runs that for real. This test now passes the portal
+    contact's own sign-in as `holder_db` to keep the reason on record: it is
+    still routed through the SAME `_RealDb` as every other test in this file (no
+    admin escape hatch for `clients`)."""
     from services import portal_data_service
 
     db = _RealDb(post_fix_db, PORTAL_AUTH_1)
     with pytest.raises(ValueError, match="not found"):
-        portal_data_service.statement_pdf(FIRM, EXT1, "2026-04-01", "2026-04-30", db=db)
+        portal_data_service.statement_pdf(FIRM, EXT1, "2026-04-01", "2026-04-30", db=db, holder_db=db)

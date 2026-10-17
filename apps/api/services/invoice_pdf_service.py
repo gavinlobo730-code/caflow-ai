@@ -1129,9 +1129,18 @@ def _einvoice_record_for(db, firm_id: str, invoice_id: str) -> Optional[dict]:
         return None
 
 
-def get_sales_invoice_pdf(invoice_id: str, firm_id: str) -> tuple[bytes, str]:
+def get_sales_invoice_pdf(invoice_id: str, firm_id: str, *, rest_db=None) -> tuple[bytes, str]:
     """
     Load a client_sales_invoice and render the client's own GST tax invoice.
+
+    `rest_db` is the connection the reads AFTER the invoice row itself use (the supplier's `clients` row, the lines and
+    the e-invoice record). The client portal passes the privileged client: the invoice row is read on the portal
+    contact's own sign-in, where row security still says whose invoice it is, and a portal contact cannot read the
+    practice's `clients` row, the invoice lines or the e-invoice record, so those used to come back empty and the
+    route answered 404 for an invoice the client owns (POST-A-237). None keeps every read on one connection, which is
+    every staff caller. THE CALLER OWNS THE AUTHORISATION: this function does not check that the invoice belongs to whoever
+    asked, so a caller handing in `rest_db` must already have proved that (the portal route runs `invoice_in_scope` first),
+    and the invoice row itself is still read on `db`, which keeps row security as a second check.
 
     The SUPPLIER is the `clients` row that raised the invoice, not the CA firm:
     this is the client's sale to the client's customer, and the practice is not
@@ -1171,9 +1180,10 @@ def get_sales_invoice_pdf(invoice_id: str, firm_id: str) -> tuple[bytes, str]:
             "not a tax invoice this client issued. The original document is the "
             "one to send.")
     customer = data.get("customers") or {}
+    rest = rest_db if rest_db is not None else db
     # The selling client — firm-scoped, like every other query in this codebase.
     client_row = (
-        db.table("clients")
+        rest.table("clients")
         .select(_SUPPLIER_COLUMNS)
         .eq("id", data.get("client_id"))
         .eq("firm_id", firm_id)
@@ -1190,7 +1200,7 @@ def get_sales_invoice_pdf(invoice_id: str, firm_id: str) -> tuple[bytes, str]:
             "cannot be issued without the supplier's own particulars (Rule 46(b))."
         )
     lines_resp = (
-        db.table("client_sales_invoice_lines")
+        rest.table("client_sales_invoice_lines")
         .select("*")
         .eq("sales_invoice_id", invoice_id)
         .order("sort_order")
@@ -1219,7 +1229,7 @@ def get_sales_invoice_pdf(invoice_id: str, firm_id: str) -> tuple[bytes, str]:
         # recorded one. einvoice_records is read here rather than joined above
         # because a missing record is the normal case (e-invoicing applies by
         # turnover) and must not cost the invoice its PDF.
-        **_einvoice_particulars(_einvoice_record_for(db, firm_id, invoice_id)),
+        **_einvoice_particulars(_einvoice_record_for(rest, firm_id, invoice_id)),
     }
     pdf = build_sales_invoice_pdf(invoice_dict, client, customer)
     filename = f"invoice-{data.get('invoice_no', invoice_id)}.pdf"

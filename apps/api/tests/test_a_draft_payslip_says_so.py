@@ -160,7 +160,7 @@ def test_get_payslip_pdf_end_to_end_reflects_a_finalized_run(monkeypatch):
         lambda firm_id, client_id, db=None: dict(EMPLOYER))
     monkeypatch.setattr(
         "services.payslip_pdf_service.load_ytd",
-        lambda firm_id, client_id, month, employee_ids: {})
+        lambda firm_id, client_id, month, employee_ids, include_run_ids=(): {})
 
     pdf, _filename = get_payslip_pdf("S1", "F1")
     assert _BANNER not in _text(pdf)
@@ -190,7 +190,7 @@ def test_get_payslip_pdf_end_to_end_reflects_a_draft_run(monkeypatch):
         lambda firm_id, client_id, db=None: dict(EMPLOYER))
     monkeypatch.setattr(
         "services.payslip_pdf_service.load_ytd",
-        lambda firm_id, client_id, month, employee_ids: {})
+        lambda firm_id, client_id, month, employee_ids, include_run_ids=(): {})
 
     pdf, _filename = get_payslip_pdf("S1", "F1")
     assert _BANNER in _text(pdf)

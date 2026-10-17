@@ -323,7 +323,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - The 26AS reconciliation is the same rule and had the same defect (TDS-21)
 - NOT EVERY PART OF FORM 26AS IS A CREDIT, and the client-as-DEDUCTEE reconciliation used to sum all of them
 
-### `docs/design-record/tenancy-and-security.md` (28 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (29 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -353,6 +353,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A KNOWLEDGE-BASE VERSION FOLLOWS ITS ARTICLE, AND HISTORY IS NEVER REWRITTEN BY A SIGNED-IN SESSION
 - SEVENTEEN POLICIES ONLY PRODUCTION HAD ARE DROPPED, AND NOTHING THAT WORKS TODAY RELIED ON THEM
 - AN APPROVAL REQUEST IS CLAIMED BEFORE ITS ACTION RUNS, SO TWO DECISIONS CANNOT BOTH ACT
+- A CLIENT'S DOWNLOAD OF THEIR OWN FEE DOCUMENT READS THE PRACTICE'S ROWS WITH THE PRIVILEGED CLIENT AFTER OWNERSHIP IS PROVED, AND THE ROWS IT CAN READ STAY ON THEIR OWN SIGN-IN
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 

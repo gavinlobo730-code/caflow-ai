@@ -411,6 +411,11 @@ class _Query:
         self._filters.append((col, "IS", val))
         return self
 
+    def in_(self, col, vals):
+        # `invoice_in_scope` serves only the statuses the client has been given (POST-A-236's draft rule).
+        self._filters.append((col, "IN", list(vals)))
+        return self
+
     def limit(self, n):
         self._limit = n
         return self
@@ -418,7 +423,10 @@ class _Query:
     def execute(self):
         where = []
         for col, op, val in self._filters:
-            if op == "IS" and isinstance(val, str) and val.lower() == "null":
+            if op == "IN":
+                members = ", ".join("'" + str(v).replace("'", "''") + "'" for v in val)
+                where.append(f"{col} IN ({members})" if members else "FALSE")
+            elif op == "IS" and isinstance(val, str) and val.lower() == "null":
                 where.append(f"{col} IS NULL")
             elif val is None:
                 where.append(f"{col} IS NULL")
