@@ -284,9 +284,25 @@ def build(db, firm_id: str, client_id: str, financial_year: str, *,
     return out
 
 
+class FinalisedNeedsApprover(PermissionError):
+    """The checklist is, or would become, `finalised` and the caller may not approve income tax work."""
+
+
 def save_manual_clauses(db, firm_id: str, client_id: str, financial_year: str,
-                        clauses: dict, status: str = "draft") -> dict:
+                        clauses: dict, status: Optional[str] = None, *,
+                        may_approve: bool = False) -> dict:
     """Upsert the CA's own answers for clauses this product does not derive.
+
+    RECORDING THE CHECKLIST AS `finalised` IS AN APPROVER'S ACT, like recording a tax audit as completed
+    (migration 496) or a return as filed. `may_approve` is the caller's `income_tax:approve`, asked per PERSON
+    (`can_user`), and it DEFAULTS TO FALSE so a caller that forgets to ask is refused and not trusted. It is
+    needed to give the checklist that status AND to change one that already has it, whatever the new status is:
+    an Executive who may write the clauses cannot reopen or rewrite a finalised checklist by saving it as
+    `draft`. Nothing reads `status` for a figure today, so no number moves; what the status says is that someone
+    who may approve has signed the checklist off.
+
+    `status` None means "do not touch the status": a checklist keeps the one it has (a new one starts as `draft`), so
+    saving a clause never silently reopens a finalised checklist. A status is changed only when one is sent.
 
     `clauses` may name ANY clause code, including a derivable one — the
     caller's value does not win there (`build` above only reads `manual` for
@@ -296,25 +312,44 @@ def save_manual_clauses(db, firm_id: str, client_id: str, financial_year: str,
     figures from the client's own live books, and a stale manual override
     sitting underneath one would go stale the next time a bill was entered.
     """
-    existing = (db.table("tax_audit_checklists").select("id")
+    existing = (db.table("tax_audit_checklists").select("id, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .eq("financial_year", financial_year).limit(1)
                 .execute().data or [])
+    current = existing[0].get("status") if existing else None
+    new_status = status if status is not None else (current or "draft")
+    reopen_refusal = ("This Form 3CD checklist is recorded as finalised, so only someone who may approve income tax "
+                      "work can change or reopen it.")
+    if not may_approve:
+        if status == "finalised":
+            raise FinalisedNeedsApprover(
+                "Only someone who may approve income tax work can record the Form 3CD checklist as finalised.")
+        if current == "finalised":
+            raise FinalisedNeedsApprover(reopen_refusal)
     # Inline at both calls rather than built once and passed by name: the
     # schema-safety scanner (tests/test_backend_columns_exist_pg.py) reads a
     # write's columns off a literal dict argument, not off whatever a variable
     # happens to be bound to, so a shared `payload` is invisible to it twice.
     if existing:
-        (db.table("tax_audit_checklists")
-         .update({"firm_id": firm_id, "client_id": client_id,
-                  "financial_year": financial_year, "clauses_json": clauses,
-                  "status": status})
-         .eq("id", existing[0]["id"]).execute())
+        write = (db.table("tax_audit_checklists")
+                 .update({"firm_id": firm_id, "client_id": client_id,
+                          "financial_year": financial_year, "clauses_json": clauses,
+                          "status": new_status})
+                 .eq("id", existing[0]["id"]))
+        if not may_approve:
+            # ONE statement, `UPDATE ... WHERE status <> 'finalised'`: the read above and this write are two requests, and
+            # an approver can finalise the checklist between them. Without the condition a non-approver's save that read
+            # `draft` would overwrite the `finalised` that landed in that gap.
+            written = write.neq("status", "finalised").execute().data
+            if not written:
+                raise FinalisedNeedsApprover(reopen_refusal)
+        else:
+            write.execute()
     else:
         db.table("tax_audit_checklists").insert(
             {"firm_id": firm_id, "client_id": client_id,
              "financial_year": financial_year, "clauses_json": clauses,
-             "status": status}).execute()
+             "status": new_status}).execute()
     return {"firm_id": firm_id, "client_id": client_id,
             "financial_year": financial_year, "clauses_json": clauses,
-            "status": status}
+            "status": new_status}
