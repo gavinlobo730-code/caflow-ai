@@ -208,9 +208,13 @@ def load_account_holder(db, firm_id: str, client_id: str) -> dict:
     return holder
 
 
-def get_customer_statement_pdf(db, firm_id, client_id, customer_id, start, end) -> tuple[bytes, str]:
+def get_customer_statement_pdf(db, firm_id, client_id, customer_id, start, end, *, holder_db=None) -> tuple[bytes, str]:
+    """`holder_db` reads the account holder's letterhead when it must be read on a different connection from the
+    statement's own rows: the client portal reads the statement on the portal contact's sign-in and the issuer's `clients`
+    row, which that sign-in cannot see, on the privileged client after the ownership gate (POST-A-236). None keeps `db`."""
     statement = customer_statement_service.generate(db, firm_id, client_id, customer_id, start, end)
-    pdf = build_statement_pdf(statement, load_account_holder(db, firm_id, client_id),
+    pdf = build_statement_pdf(statement,
+                              load_account_holder(holder_db if holder_db is not None else db, firm_id, client_id),
                               statement["customer"])
     name = (statement["customer"].get("name") or "customer").replace(" ", "-").lower()
     filename = f"statement-{name}-{start}-{end}.pdf"

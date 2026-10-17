@@ -54,9 +54,12 @@ def portal_invoice_pdf(invoice_id: str, portal: dict = Depends(get_current_porta
         raise HTTPException(status_code=404, detail="Invoice not found.")
     if _USE_MOCK:
         raise HTTPException(status_code=501, detail="PDF not available in mock mode")
+    from core import db_provider
     from services.invoice_pdf_service import get_sales_invoice_pdf
     try:
-        pdf_bytes, filename = get_sales_invoice_pdf(invoice_id, portal["firm_id"])
+        # The invoice row is read on the contact's own sign-in; the supplier, lines and e-invoice record, which a
+        # portal contact cannot read, on the privileged client now that ownership is proved (POST-A-237).
+        pdf_bytes, filename = get_sales_invoice_pdf(invoice_id, portal["firm_id"], rest_db=db_provider.service_db())
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

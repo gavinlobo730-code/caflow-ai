@@ -32,6 +32,13 @@ _logger = logging.getLogger("caflow.portal_data")
 # Invoice statuses considered "open" (an outstanding balance the client owes the firm).
 _OPEN = ("issued", "partially_paid")
 
+#: The statuses of a fee invoice the CLIENT HAS BEEN GIVEN: issued, part-paid, paid, or cancelled after it was issued
+#: (they were sent it, and the screen says it is cancelled). A DRAFT is the practice's working copy: it carries a
+#: placeholder number the CA must replace before issuing (billing_service), and showing it to the client, or letting its
+#: PDF be downloaded, tells them about a charge nobody has raised. An allow-list rather than "not draft", so a status
+#: added later is hidden from the client until somebody decides it belongs to them.
+_ISSUED_TO_THE_CLIENT = ("issued", "partially_paid", "paid", "cancelled")
+
 
 def _db():
     return None if _USE_MOCK else db_provider.request_db()
@@ -57,7 +64,9 @@ def safe_invoice(inv: dict, today: Optional[date] = None) -> dict:
         "due_date": inv.get("due_date"),
         "total_paise": int(inv.get("total_paise", 0) or 0),
         "paid_paise": int(inv.get("paid_paise", 0) or 0),
-        "outstanding_paise": m["outstanding_paise"],
+        # A CANCELLED invoice is owed nothing, but `assess_invoice` reads no status, so total - paid would print as
+        # "outstanding" on an invoice the practice withdrew; the list serves cancelled invoices (they were issued), so say 0.
+        "outstanding_paise": 0 if inv.get("status") == "cancelled" else m["outstanding_paise"],
         "status": inv.get("status"),
         "is_overdue": m["is_overdue"],
         "days_overdue": m["days_overdue"],
@@ -115,10 +124,16 @@ def list_invoices(firm_id: str, client_id: str, db=None, today: Optional[date] =
     scope = resolve_fee_scope(firm_id, client_id, db)
     if not scope:
         return []
+    # What is OWED is total + debit notes - paid - credit notes (CGST Act s.34; `collections_service.assess_invoice` reads
+    # all four), so the two note columns are selected with the rest. Without them the figure fell back to total - paid:
+    # a fee invoice reduced by a credit note still showed its pre-credit balance, and a fully credited unpaid one was
+    # still listed as a due (POST-A-244).
     rows = (db.table("client_sales_invoices")
-            .select("id,invoice_no,invoice_date,due_date,total_paise,paid_paise,status")
+            .select("id,invoice_no,invoice_date,due_date,total_paise,paid_paise,"
+                    "debit_note_paise,credited_paise,status")
             .eq("firm_id", firm_id).eq("client_id", scope["internal_client_id"])
             .eq("customer_id", scope["internal_customer_id"]).is_("deleted_at", "null")
+            .in_("status", list(_ISSUED_TO_THE_CLIENT))
             .order("invoice_date", desc=True).execute().data or [])
     return [safe_invoice(r, today) for r in rows]
 
@@ -156,7 +171,7 @@ def invoice_in_scope(firm_id: str, client_id: str, invoice_id: str, db=None) -> 
     rows = (db.table("client_sales_invoices").select("id")
             .eq("id", invoice_id).eq("firm_id", firm_id)
             .eq("client_id", scope["internal_client_id"]).eq("customer_id", scope["internal_customer_id"])
-            .is_("deleted_at", "null").limit(1).execute().data or [])
+            .is_("deleted_at", "null").in_("status", list(_ISSUED_TO_THE_CLIENT)).limit(1).execute().data or [])
     return bool(rows)
 
 
@@ -183,14 +198,20 @@ def statement(firm_id: str, client_id: str, start: str, end: str, db=None) -> di
         db, firm_id, scope["internal_client_id"], scope["internal_customer_id"], start, end)
 
 
-def statement_pdf(firm_id: str, client_id: str, start: str, end: str, db=None) -> tuple[bytes, str]:
+def statement_pdf(firm_id: str, client_id: str, start: str, end: str, db=None, holder_db=None) -> tuple[bytes, str]:
     db = db if db is not None else _db()
     scope = resolve_fee_scope(firm_id, client_id, db)
     if not scope:
         raise HTTPException(status_code=404, detail="No statement available for this client.")
     from services.statement_pdf_service import get_customer_statement_pdf
+    # The statement's own rows (invoices, receipts, notes) are read on the portal contact's sign-in, where row security
+    # still says whose they are. The issuer's letterhead is the practice's internal-client `clients` row: a portal
+    # contact has no `users` row, so row security hides it, the read finds nothing and the PDF used to fail with a 500
+    # (POST-A-236). The scope above has proved the contact's own client, and the internal client it resolved is the
+    # practice's own, so that one row is read with the privileged client.
     return get_customer_statement_pdf(
-        db, firm_id, scope["internal_client_id"], scope["internal_customer_id"], start, end)
+        db, firm_id, scope["internal_client_id"], scope["internal_customer_id"], start, end,
+        holder_db=holder_db if holder_db is not None else db_provider.service_db())
 
 
 def compliance(firm_id: str, client_id: str, db=None) -> list[dict]:
