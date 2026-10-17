@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Upload, Download, Trash2, AlertTriangle, X, RefreshCw } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { deleteStoredDocument } from "@/lib/documents/deleteStoredDocument";
 import { getFirmId, getUserProfile } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -256,13 +257,11 @@ export default function ClientDocumentsPage() {
     if (!(await confirmDialog({ message: `Delete "${doc.description ?? doc.file_name}"?`, danger: true, confirmLabel: "Delete" }))) return;
     try {
       const sb = getSupabaseClient();
-      // Storage first, then the row — the order app/client-portal/page.tsx
-      // records: a row whose file failed to delete can be retried, a file whose
-      // row is gone is orphaned with nothing left referencing it.
-      const { error: fileErr } = await sb.storage.from(VAULT_BUCKET).remove([doc.file_path]);
-      if (fileErr) throw new Error(fileErr.message);
-      const { error: rowErr } = await sb.from("client_documents").delete().eq("id", doc.id);
-      if (rowErr) throw new Error(rowErr.message);
+      // Storage first, then the row (a row whose file failed to delete can be retried, a file whose row is gone is
+      // orphaned with nothing left referencing it) — and the line leaves the page only when the server returned the
+      // deleted row: a delete the database refuses (only a Partner may delete a document) answers with no error.
+      const out = await deleteStoredDocument(sb, doc, VAULT_BUCKET);
+      if (!out.deleted) throw new Error(out.message);
       setDocuments(prev => prev.filter(d => d.id !== doc.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
