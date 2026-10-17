@@ -560,12 +560,22 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
     return buf.getvalue()
 
 
-def get_payslip_pdf(slip_id: str, firm_id: Optional[str]) -> tuple[bytes, str]:
+def get_payslip_pdf(slip_id: str, firm_id: Optional[str], *, employer_db=None) -> tuple[bytes, str]:
     """
     Load a payroll slip with its employee, run and EMPLOYER records and render
     the PDF. The employer is the client the run belongs to, not the CA firm.
 
     Enforces firm-scoping: the slip's run must belong to `firm_id`.
+
+    `employer_db` is the client the EMPLOYER block alone is read through. Left out, it is the
+    caller's own sign-in like every other read here, which is right for the staff route. The
+    EMPLOYEE's route passes the privileged client, and only AFTER
+    `employee_payslip_service.own_released_slip` has proved the slip is theirs and released: an
+    employee principal has no `users` row, so row security hides the `clients` row (and the
+    registrations beside it) that the letterhead is read from, and the download ownership had
+    already approved would answer 409 for every employee (POST-A-220). The slip, the run and the
+    year-to-date figures stay on the employee's own sign-in, so the database still decides which of
+    those rows they may see.
 
     Returns:
         (pdf_bytes, suggested_filename)
@@ -603,7 +613,7 @@ def get_payslip_pdf(slip_id: str, firm_id: Optional[str]) -> tuple[bytes, str]:
     if not firm_id or run.get("firm_id") != firm_id:
         raise PermissionError("Access denied")
 
-    employer = load_employer(run.get("firm_id") or firm_id, run.get("client_id"))
+    employer = load_employer(run.get("firm_id") or firm_id, run.get("client_id"), db=employer_db)
     ytd = load_ytd(run.get("firm_id") or firm_id, run.get("client_id"),
                    run.get("month"), [slip.get("employee_id")]).get(
                        slip.get("employee_id"))
@@ -770,7 +780,7 @@ def load_ytd(firm_id: Optional[str], client_id: Optional[str],
     return {eid: ytd_totals(slips) for eid, slips in by_employee.items()}
 
 
-def load_employer(firm_id: Optional[str], client_id: Optional[str]) -> dict:
+def load_employer(firm_id: Optional[str], client_id: Optional[str], *, db=None) -> dict:
     """The `clients` row the payslip is issued BY — firm-scoped, and refused
     rather than defaulted.
 
@@ -785,8 +795,9 @@ def load_employer(firm_id: Optional[str], client_id: Optional[str]) -> dict:
             "A payslip cannot be issued without knowing which employer issued "
             "it — the payroll run carries no client."
         )
-    from core.supabase_client import get_supabase
-    db = get_supabase()
+    if db is None:
+        from core.supabase_client import get_supabase
+        db = get_supabase()
     row = (db.table("clients")
            .select("id,client_name,legal_name,trade_name,gstin,pan")
            .eq("id", client_id).eq("firm_id", firm_id)

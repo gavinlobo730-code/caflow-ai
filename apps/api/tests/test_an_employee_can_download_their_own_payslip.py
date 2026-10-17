@@ -23,7 +23,12 @@ WHAT IS ASSERTED, through the real route with the employee principal and no
     * the old staff route still refuses an identity with no `users` row, and is
       still a staff-only route;
     * the route carries no person-naming parameter, and the lookup is scoped in
-      the QUERY rather than checked after the fact.
+      the QUERY rather than checked after the fact;
+    * the EMPLOYER block of the payslip is read through the privileged client the
+      route already used to prove ownership, and the staff route hands the renderer
+      nothing, so its employer block stays on the staff member's own sign-in
+      (POST-A-220: an employee principal has no `users` row, so row security hides
+      the `clients` row the letterhead comes from).
 """
 from __future__ import annotations
 
@@ -59,9 +64,11 @@ class _Renderer:
 
     def __init__(self):
         self.calls: list[tuple[str, str]] = []
+        self.employer_dbs: list = []
 
-    def __call__(self, slip_id, firm_id):
+    def __call__(self, slip_id, firm_id, *, employer_db=None):
         self.calls.append((slip_id, firm_id))
+        self.employer_dbs.append(employer_db)
         return PDF, "payslip-2026-06.pdf"
 
 
@@ -105,6 +112,7 @@ def _premise(client, db, renderer):
     _slip(db, "S-own", run_id="R-own")
     assert _get(client, "S-own").status_code == 200
     renderer.calls.clear()
+    renderer.employer_dbs.clear()
 
 
 # ── the caller's own slip ────────────────────────────────────────────────────
@@ -285,3 +293,120 @@ def test_the_renderer_is_the_one_the_staff_route_calls():
     """Two payslip renderers would be two payslips that agree until one changes."""
     assert "get_payslip_pdf" in inspect.getsource(portal_mod.employee_payslip_pdf)
     assert "get_payslip_pdf" in inspect.getsource(payroll_mod.download_salary_slip_pdf)
+
+
+# ── POST-A-220: the letterhead is read with the privileged client, after ownership ─────────────
+
+def test_the_employer_block_is_read_through_the_client_that_proved_ownership(world):
+    client, db, renderer = world
+    _run(db); _slip(db, "S-mine")
+    assert _get(client, "S-mine").status_code == 200
+    assert renderer.employer_dbs == [db], "the employee's download must hand the renderer the privileged client"
+
+
+def test_a_refused_download_never_hands_the_privileged_client_to_the_renderer(world):
+    client, db, renderer = world
+    _premise(client, db, renderer)
+    _run(db); _slip(db, "S-colleague", employee=COLLEAGUE)
+    assert _get(client, "S-colleague").status_code == 404
+    assert renderer.employer_dbs == [], "ownership was not proved, so nothing may be read with the privileged client"
+
+
+def test_the_staff_route_hands_the_renderer_no_client_of_its_own():
+    """The staff download keeps reading the employer on the staff member's own sign-in, where row security applies."""
+    src = inspect.getsource(payroll_mod.download_salary_slip_pdf)
+    assert "employer_db" not in src
+
+
+def test_load_employer_reads_the_client_it_is_given_and_not_the_callers(monkeypatch):
+    import core.supabase_client as sc
+
+    def boom():
+        raise AssertionError("the caller's own sign-in must not be used when a client is given")
+
+    monkeypatch.setattr(sc, "get_supabase", boom)
+    db = FakeDB()
+    db.seed("clients", {"id": CLIENT, "firm_id": FIRM, "client_name": "Employer Ltd", "legal_name": "Employer Ltd",
+                        "pan": "AAACE1234F"})
+    db.seed("client_statutory_identity", {"firm_id": FIRM, "client_id": CLIENT, "tan": "MUMA12345B",
+                                          "epf_establishment_code": "MHBAN0012345000"})
+    got = pdf_service.load_employer(FIRM, CLIENT, db=db)
+    assert got["client_name"] == "Employer Ltd"
+    # the registrations beside the letterhead are read through the SAME client: a split onto the caller's own sign-in
+    # would drop them silently (that read is wrapped so a missing registration never takes the payslip down)
+    assert got["tan"] == "MUMA12345B"
+    assert got["epf_establishment_code"] == "MHBAN0012345000"
+
+
+def test_load_employer_still_refuses_a_client_the_given_client_cannot_find():
+    with pytest.raises(ValueError):
+        pdf_service.load_employer(FIRM, "C-unknown", db=FakeDB())
+
+
+class _SlipOnlyDb:
+    """What the EMPLOYEE's own sign-in can read: their released slip with its employee and run, and nothing in `clients`
+    or `client_statutory_identity` (row security hides both from a principal with no `users` row, which is what
+    `test_an_employee_reads_their_payslip_but_not_their_employer_pg.py` proves on a real database)."""
+
+    class _Table:
+        def __init__(self, name):
+            self.name = name
+
+        def select(self, *a, **k):
+            return self
+
+        def eq(self, *a, **k):
+            return self
+
+        def in_(self, *a, **k):
+            return self
+
+        def maybe_single(self):
+            return self
+
+        def execute(self):
+            class _R:
+                pass
+            r = _R()
+            if self.name == "payroll_slips":
+                r.data = {
+                    "id": "S-mine", "employee_id": ME, "run_id": "R1", "gross_paise": 5000000, "net_paise": 4500000,
+                    "payroll_employees": {"name": "Me", "pan": "ABCPK1234F", "designation": "Fitter",
+                                          "department": "Assembly", "uan": "100200300400"},
+                    "payroll_runs": {"month": "2026-06", "firm_id": FIRM, "client_id": CLIENT, "status": "finalized"},
+                }
+            else:
+                r.data = None
+            return r
+
+    def table(self, name):
+        return self._Table(name)
+
+
+def _employers_db():
+    db = FakeDB()
+    db.seed("clients", {"id": CLIENT, "firm_id": FIRM, "client_name": "Employer Ltd", "legal_name": "Employer Ltd",
+                        "pan": "AAACE1234F"})
+    return db
+
+
+def test_the_renderer_itself_forwards_the_privileged_client_to_the_employer_read(monkeypatch):
+    """THE LINE THAT IS THE FIX. The route test above replaces the renderer; this one runs the REAL `get_payslip_pdf`
+    with a caller's sign-in that cannot see `clients` and asserts the PDF renders when, and only when, the privileged
+    client is handed in."""
+    import core.supabase_client as sc
+
+    monkeypatch.setattr(sc, "get_supabase", lambda: _SlipOnlyDb())
+    pdf, filename = pdf_service.get_payslip_pdf("S-mine", FIRM, employer_db=_employers_db())
+    assert pdf.startswith(b"%PDF")
+    assert filename == "payslip-2026-06.pdf"
+
+
+def test_without_the_privileged_client_the_employee_s_own_sign_in_cannot_produce_the_payslip(monkeypatch):
+    """The negative control, and the old behaviour: no `clients` row on the caller's own sign-in is a refusal, which
+    the route turns into the 409 every employee used to get."""
+    import core.supabase_client as sc
+
+    monkeypatch.setattr(sc, "get_supabase", lambda: _SlipOnlyDb())
+    with pytest.raises(ValueError, match="not found for firm"):
+        pdf_service.get_payslip_pdf("S-mine", FIRM)
