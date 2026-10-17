@@ -211,9 +211,10 @@ export default function ResetPasswordPage() {
             </div>
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-1.5">
-                <label className="block text-sm font-semibold text-ps-ink">New password</label>
+                <label htmlFor="reset-new-password" className="block text-sm font-semibold text-ps-ink">New password</label>
                 <div className="relative">
                   <input
+                    id="reset-new-password" name="new-password"
                     autoFocus type={showPw ? "text" : "password"} required value={pw}
                     onChange={(e) => setPw(e.target.value)} autoComplete="new-password"
                     placeholder={`At least ${MIN_LENGTH} characters`}
@@ -226,8 +227,9 @@ export default function ResetPasswordPage() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="block text-sm font-semibold text-ps-ink">Confirm password</label>
+                <label htmlFor="reset-confirm-password" className="block text-sm font-semibold text-ps-ink">Confirm password</label>
                 <input
+                  id="reset-confirm-password" name="confirm-password"
                   type={showPw ? "text" : "password"} required value={pw2}
                   onChange={(e) => setPw2(e.target.value)} autoComplete="new-password"
                   placeholder="Re-enter your password"
@@ -268,8 +270,9 @@ export default function ResetPasswordPage() {
             </div>
             <form onSubmit={verifyReauth} className="space-y-5">
               <div className="space-y-1.5">
-                <label className="block text-sm font-semibold text-ps-ink">Verification code</label>
+                <label htmlFor="reset-verification-code" className="block text-sm font-semibold text-ps-ink">Verification code</label>
                 <input
+                  id="reset-verification-code" name="verification-code" autoComplete="one-time-code"
                   autoFocus inputMode="numeric" value={reauthOtp} maxLength={8}
                   onChange={(e) => setReauthOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
                   placeholder="123456"

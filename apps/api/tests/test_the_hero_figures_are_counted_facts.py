@@ -31,8 +31,14 @@ file asserts, from the code:
 WHAT THIS DOES NOT REACH, and says so. A chain built across statements
 (`q = db.table("journal_lines")` ... `q.insert(...)`) or a table named by a variable is
 not seen by the Python scan; the SQL scan reads migrations, not the production catalogue
-(`core/schema_guard` and the real-Postgres suite are what tie the two). "11+ modules" is
-still not counted against the module directories.
+(`core/schema_guard` and the real-Postgres suite are what tie the two).
+
+"11+ MODULES" IS COUNTED AS A LOWER BOUND (POST-A-120). A module here is a section of the
+client workspace, the thing a person opens from the sidebar: the entries of
+`CLIENT_SECTIONS` in `apps/web/lib/workspace/ClientNavContext.tsx`. The "+" says "at least",
+so the check is that the product has at least the stated number of them, and it fails the
+day a removal takes it under. It deliberately does not claim the number of sections IS the
+figure (there are more than eleven) and does not count the firm-level screens.
 """
 from __future__ import annotations
 
@@ -125,6 +131,39 @@ def test_a_figure_that_lists_things_counts_them_right():
     for value, label in listed:
         names = [n for n in re.split(r"\s*,\s*", label.split("—", 1)[1].strip()) if n]
         assert str(len(names)) == value, f"{label!r} names {len(names)} but states {value}"
+
+
+# ── the modules figure ────────────────────────────────────────────────────────
+
+CLIENT_NAV = API_ROOT.parents[1] / "apps" / "web" / "lib" / "workspace" / "ClientNavContext.tsx"
+
+
+def _client_sections(src: str) -> list[str]:
+    block = re.search(r"export const CLIENT_SECTIONS[^=]*=\s*\[(.*?)\n\];", blank_comments(src), re.S)
+    assert block, "CLIENT_SECTIONS not found in ClientNavContext.tsx — the modules moved and this guard is blind"
+    return re.findall(r"\{\s*id:\s*\"([a-z0-9-]+)\"", block.group(1))
+
+
+def test_the_modules_figure_is_a_lower_bound_the_client_workspace_meets():
+    facts = _hero_facts(HERO.read_text(encoding="utf-8"))
+    rows = [(v, lab) for v, lab in facts if re.search(r"\bmodules\b", lab, re.I)]
+    assert len(rows) == 1, f"expected exactly one modules figure on the hero, found {rows}"
+    value, label = rows[0]
+    m = re.fullmatch(r"(\d+)\+", value)
+    assert m, f"the modules figure {value!r} is not a lower bound ('N+'); a bare number would have to equal the count"
+    sections = _client_sections(CLIENT_NAV.read_text(encoding="utf-8"))
+    assert len(sections) == len(set(sections)), f"a section id repeats: {sections}"
+    assert len(sections) >= int(m.group(1)), (
+        f"the site says {value} modules and the client workspace has {len(sections)} sections: {sections}"
+    )
+
+
+def test_the_modules_scan_sees_the_workspace_and_fails_an_overstatement():
+    sections = _client_sections(CLIENT_NAV.read_text(encoding="utf-8"))
+    assert {"accounting", "payroll", "bank", "compliance"} <= set(sections), sections
+    assert len(sections) >= 15, "the scan reads fewer sections than the workspace holds; it has gone partly blind"
+    # negative control: a lower bound above the count is caught by the same comparison
+    assert not (len(sections) >= len(sections) + 1)
 
 
 # ── the ledger figure ─────────────────────────────────────────────────────────

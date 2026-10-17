@@ -88,8 +88,13 @@ test("nothing overrides StateLookup's list with its own", () => {
 
 // ── The list is complete, and holds nothing dead ───────────────────────────
 
+/** The pairs of INDIAN_STATES alone (before the place-of-supply additions). */
+function plainStatePairs(): Array<[string, string]> {
+  return statePairs(code(CANONICAL).split("export const PLACE_OF_SUPPLY_STATES")[0]);
+}
+
 test("every live state and union territory is offered", () => {
-  const byCode = new Map(statePairs(code(CANONICAL)));
+  const byCode = new Map(plainStatePairs());
   for (const [c, name] of [
     ["26", "Dadra & Nagar Haveli and Daman & Diu"],
     ["30", "Goa"],
@@ -101,6 +106,18 @@ test("every live state and union territory is offered", () => {
     assert.equal(byCode.get(c), name, `state code ${c} must be selectable`);
   }
   assert.equal(byCode.size, 36, "36 live GST state/UT codes");
+});
+
+test("the place-of-supply list adds 96 and 97 to the states, and nothing else (POST-A-103)", () => {
+  const all = new Map(statePairs(code(CANONICAL)));
+  const plain = new Map(plainStatePairs());
+  const added = [...all.keys()].filter((c) => !plain.has(c)).sort();
+  assert.deepEqual(added, ["96", "97"], "96 (Other Country) is an export's place of supply; 97 is Other Territory");
+  // wired where a place of supply or an export customer's state is chosen, and nowhere that is GSTIN-shaped
+  for (const rel of ["components/invoices/InvoiceEditor.tsx", "components/customers/CustomerFormModal.tsx"]) {
+    assert.match(code(rel), /<StateLookup\s+placeOfSupply\b/, `${rel} must offer 96 and 97`);
+  }
+  assert.match(code("app/clients/[id]/sales/page.tsx"), /<StateLookup\s+placeOfSupply\b/, "the advance's place of supply too");
 });
 
 test("the dead codes are not offered for a new document", () => {

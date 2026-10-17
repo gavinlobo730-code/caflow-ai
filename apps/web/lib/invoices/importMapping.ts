@@ -54,6 +54,7 @@ import {
   type InvoiceType, type SupplyType,
 } from "./classification.ts";
 import { paiseFromRupeeInput, bpsFromPercentInput, parseQuantity } from "../money/rupeeInput.ts";
+import { gstRateCellProblem } from "../imports/gstRate.ts";
 
 export interface CustomerRef { id: string; name: string; }
 
@@ -227,7 +228,8 @@ export function buildSalesInvoices(
 
     const gstRaw = (r.gst_rate ?? "").trim();
     const gstBps = gstRaw ? toBps(r.gst_rate) : (service.gst_rate_bps ?? NaN);
-    if (!Number.isFinite(gstBps) || gstBps < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or give a Product/Service with a default rate)`); return; }
+    const gstProblem = gstRateCellProblem(gstBps, rowNo, gstRaw);
+    if (gstProblem) { errors.push(gstProblem); return; }
 
     const line: BuiltLine = {
       description,

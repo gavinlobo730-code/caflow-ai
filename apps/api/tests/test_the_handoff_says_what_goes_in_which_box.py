@@ -202,9 +202,18 @@ def test_the_esic_panel_warns_that_a_zero_de_registers_somebody():
     assert h.ESIC_ZERO_REMOVES in _esic().warnings
 
 
-def test_those_three_warnings_are_there_even_when_everything_is_clean():
+def test_the_esic_panel_says_the_file_is_a_csv_and_the_portal_manual_names_its_own_template():
+    """POST-A-088. The panel said nothing about format. The sentence is the MANUAL's statement and says so: it must not
+    read as a fact this product has confirmed against the live portal."""
+    assert h.ESIC_THEIR_TEMPLATE in _esic().warnings
+    text = h.ESIC_THEIR_TEMPLATE
+    assert "CSV" in text and "Sample MC Template" in text
+    assert "manual" in text and "not something this product has confirmed" in text
+
+
+def test_those_four_warnings_are_there_even_when_everything_is_clean():
     panel = _esic(identity_gaps=[], problems=[], filable=True)
-    assert len(panel.warnings) == 3
+    assert len(panel.warnings) == 4
 
 
 # ── professional tax: one state, one authority, one challan ──────────────────

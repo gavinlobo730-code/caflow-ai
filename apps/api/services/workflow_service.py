@@ -88,7 +88,7 @@ WORKFLOW_TEMPLATES = [
             {"step_order": 3, "step_name": "Verify Challans", "step_description": "Match TDS challans (OLTAS) with deduction details. Ref: IT Act Section 200", "required": True, "default_assignee_role": "staff", "estimated_hours": 1.0},
             {"step_order": 4, "step_name": "CA Review", "step_description": "Review FVU file and deductee details before submission", "required": True, "default_assignee_role": "manager", "estimated_hours": 0.5},
             {"step_order": 5, "step_name": "File TDS Return", "step_description": "# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT\nUpload to TRACES / Income Tax portal", "required": True, "default_assignee_role": "manager", "estimated_hours": 0.5},
-            {"step_order": 6, "step_name": "Issue Form 16 / 16A", "step_description": "Generate and issue TDS certificates to deductees. Ref: IT Act Section 203", "required": True, "default_assignee_role": "manager", "estimated_hours": 0.5},
+            {"step_order": 6, "step_name": "Download and give out Form 16 / 16A", "step_description": "Download the TDS certificates from TRACES once the return is processed and give them to the deductees; this product does not generate them. Ref: IT Act Section 203. For periods under the 2025 Act the certificates are Form 130 (salary) and Form 131 (non-salary, issued quarterly)", "required": True, "default_assignee_role": "manager", "estimated_hours": 0.5},
         ],
     },
     {

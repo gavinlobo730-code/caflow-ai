@@ -4152,6 +4152,7 @@ function ReceiptForm({
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Place of supply</label>
               <StateLookup
+                placeOfSupply
                 value={advancePos}
                 onChange={setAdvancePos}
                 placeholder="— Select —"

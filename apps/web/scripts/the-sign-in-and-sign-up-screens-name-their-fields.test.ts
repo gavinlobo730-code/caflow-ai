@@ -58,20 +58,19 @@ const WEB = join(import.meta.dirname, "..");
 const FRONT_DOOR_MIN_INPUTS: Record<string, number> = {
   "app/login/page.tsx": 3,
   "app/signup/page.tsx": 1,
+  // The five sibling screens joined the rule on 17-10-2026 (POST-A-154).
+  "app/login/forgot-password/page.tsx": 1,
+  "app/auth/reset-password/page.tsx": 3,
+  "app/portal/login/page.tsx": 2,
+  "app/portal/activate/page.tsx": 3,
+  "app/portal/employee/activate/page.tsx": 3,
 };
 const FRONT_DOOR = Object.keys(FRONT_DOOR_MIN_INPUTS);
 
-/** Sibling sign-in and account-setup screens that have the SAME gap and were
- *  outside this finding (found while fixing it). Each is named with what it
- *  lacks. Remove an entry when its page is fixed — the test below fails if you
- *  forget. */
-const KNOWN_UNFIXED = [
-  "app/login/forgot-password/page.tsx",
-  "app/auth/reset-password/page.tsx",
-  "app/portal/login/page.tsx",
-  "app/portal/activate/page.tsx",
-  "app/portal/employee/activate/page.tsx",
-];
+/** Sibling sign-in and account-setup screens that still have the gap. EMPTY since POST-A-154 closed the last five; the
+ *  list is kept so a screen found later can be named here instead of being quietly exempted, and the test below asks
+ *  that each entry is still true. */
+const KNOWN_UNFIXED: string[] = [];
 
 function stripComments(src: string): string {
   return src
@@ -136,6 +135,13 @@ export function problemsWith(src: string): string[] {
   }
   for (const t of inputs) {
     const at = t.replace(/\s+/g, " ").slice(0, 80);
+    // A box no <label> points at has only its placeholder for a name, and a placeholder is not one: it vanishes on the
+    // first keystroke and a screen reader may not read it. It needs aria-label (or aria-labelledby).
+    const tid = attr(t, "id");
+    const labelled = tid !== null && labels.some((l) => attr(l, "htmlFor") === tid);
+    if (!labelled && !hasAttr(t, "aria-label") && !hasAttr(t, "aria-labelledby")) {
+      problems.push(`an <input> has no label and no aria-label: ${at}`);
+    }
     for (const name of ["id", "name", "autoComplete"]) {
       if (!hasAttr(t, name)) problems.push(`an <input> has no ${name}: ${at}`);
     }
@@ -173,6 +179,13 @@ test("the checker catches each way a field goes unnamed", () => {
   assert.match(problemsWith(
     `<label htmlFor="c">C</label><input id="c" name="c" inputMode="numeric" autoComplete="off" />`).join(),
     /not one-time-code/);
+});
+
+test("the checker catches a box with a placeholder and no label", () => {
+  assert.match(problemsWith(
+    `<input id="c" name="c" autoComplete="one-time-code" placeholder="6-digit code" />`).join(), /no label and no aria-label/);
+  assert.deepEqual(problemsWith(
+    `<input id="c" name="c" autoComplete="one-time-code" aria-label="Verification code" placeholder="6-digit code" />`), []);
 });
 
 test("the checker passes a correctly named field, and a computed pair", () => {

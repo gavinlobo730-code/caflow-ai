@@ -12,6 +12,7 @@
  */
 
 import { paiseFromRupeeInput, bpsFromPercentInput, parseQuantity } from "../money/rupeeInput.ts";
+import { gstRateCellProblem } from "./gstRate.ts";
 // Relative, not "@/…": the node test runner resolves no tsconfig paths and
 // imports this module directly — see the sibling import above.
 import { PAYMENT_MODES } from "../payments/modes.ts";
@@ -495,7 +496,8 @@ export function buildPurchaseBills(
 
     const gstRaw = str(r.gst_rate);
     const gstBps = gstRaw ? toBps(r.gst_rate) : (service.gst_rate_bps ?? NaN);
-    if (!Number.isFinite(gstBps) || gstBps < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or give a Product/Service with a default rate)`); return; }
+    const gstProblem = gstRateCellProblem(gstBps, rowNo, gstRaw);
+    if (gstProblem) { errors.push(gstProblem); return; }
     const gst = gstBps / 100;
 
     const ref = billNo || `${vendorName.toLowerCase()}|${billDate}`;
@@ -790,7 +792,8 @@ function parseSalesNoteRows(
 
     const gstRaw = str(r.gst_rate);
     const gstBps = gstRaw ? toBps(r.gst_rate) : (service.gst_rate_bps ?? NaN);
-    if (!Number.isFinite(gstBps) || gstBps < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or use a Product/Service with a default rate)`); return; }
+    const gstProblem = gstRateCellProblem(gstBps, rowNo, gstRaw);
+    if (gstProblem) { errors.push(gstProblem); return; }
     const gst = gstBps / 100;
 
     const line: BuiltNoteLine = {
@@ -970,7 +973,8 @@ function parsePurchaseNoteRows(
 
     const gstRaw = str(r.gst_rate);
     const gstBps = gstRaw ? toBps(r.gst_rate) : (service.gst_rate_bps ?? NaN);
-    if (!Number.isFinite(gstBps) || gstBps < 0) { errors.push(`Row ${rowNo}: GST % must be a non-negative number (or use a Product/Service with a default rate)`); return; }
+    const gstProblem = gstRateCellProblem(gstBps, rowNo, gstRaw);
+    if (gstProblem) { errors.push(gstProblem); return; }
     const gst = gstBps / 100;
 
     const line: BuiltNoteLine = {

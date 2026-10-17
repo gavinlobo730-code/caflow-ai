@@ -99,6 +99,16 @@ ESIC_ZERO_REMOVES = (
     "with no wages come back as problems here rather than as rows."
 )
 
+#: The file format, which the panel said nothing about (POST-A-088). ESIC's manual says the bulk upload takes only the
+#: portal's own "Sample MC Template" (Excel 97-2003, every column as Text), and this product builds a CSV. The sentence
+#: is the MANUAL's statement, of unknown vintage, and is worded as that: it has not been confirmed against the live
+#: portal (docs/compliance/08, F1), and no part of the product claims the portal rejects or accepts any other format.
+ESIC_THEIR_TEMPLATE = (
+    "ESIC's own manual says the bulk upload takes only the portal's Sample MC Template (Excel 97-2003, every column "
+    "as Text), and this file is a CSV: copy its rows into that template before you upload. That is the manual's "
+    "statement, not something this product has confirmed on the live portal."
+)
+
 
 @dataclass(frozen=True)
 class IdentityField:
@@ -425,7 +435,7 @@ def esic_obligation(
                 "No member of this run carries an ESI contribution, so there is "
                 "no return to build.")),
         blocking=list(problems) if not filable else [],
-        warnings=[ESIC_IRREVERSIBLE, ESIC_ALL_OR_NOTHING, ESIC_ZERO_REMOVES]
+        warnings=[ESIC_THEIR_TEMPLATE, ESIC_IRREVERSIBLE, ESIC_ALL_OR_NOTHING, ESIC_ZERO_REMOVES]
                  + list(identity_gaps),
         record_back="the challan number and the amount that left the bank",
         recorded=recorded,
