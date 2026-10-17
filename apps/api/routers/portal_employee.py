@@ -140,7 +140,9 @@ def employee_payslip_pdf(
         raise not_found
 
     try:
-        pdf_bytes, filename = get_payslip_pdf(slip_id, employee["firm_id"])
+        # The employer block is read with the privileged client: ownership was proved above, and an employee's own
+        # sign-in cannot read the `clients` row the letterhead comes from (POST-A-220).
+        pdf_bytes, filename = get_payslip_pdf(slip_id, employee["firm_id"], employer_db=db)
     except PermissionError:
         # Ownership was proven above, so the renderer's own firm check failing
         # means the two disagree about whose slip this is. Nothing is handed

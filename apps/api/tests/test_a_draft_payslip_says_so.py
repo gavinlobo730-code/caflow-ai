@@ -157,7 +157,7 @@ def test_get_payslip_pdf_end_to_end_reflects_a_finalized_run(monkeypatch):
     # both to inert-but-valid answers.
     monkeypatch.setattr(
         "services.payslip_pdf_service.load_employer",
-        lambda firm_id, client_id: dict(EMPLOYER))
+        lambda firm_id, client_id, db=None: dict(EMPLOYER))
     monkeypatch.setattr(
         "services.payslip_pdf_service.load_ytd",
         lambda firm_id, client_id, month, employee_ids: {})
@@ -187,7 +187,7 @@ def test_get_payslip_pdf_end_to_end_reflects_a_draft_run(monkeypatch):
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: _FakeDB())
     monkeypatch.setattr(
         "services.payslip_pdf_service.load_employer",
-        lambda firm_id, client_id: dict(EMPLOYER))
+        lambda firm_id, client_id, db=None: dict(EMPLOYER))
     monkeypatch.setattr(
         "services.payslip_pdf_service.load_ytd",
         lambda firm_id, client_id, month, employee_ids: {})
