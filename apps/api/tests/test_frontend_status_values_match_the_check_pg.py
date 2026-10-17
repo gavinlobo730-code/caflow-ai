@@ -66,24 +66,33 @@ pytestmark = pytest.mark.skipif(
     reason="frontend status-vocabulary check requires HARNESS_PG + psql + apps/web",
 )
 
-# Files this check currently reports, with the values it reports, recorded on
-# 2026-09-09 against the state of the tree at that date.
+# Files this check currently reports, with the values it reports. Recorded 2026-09-09, TRIAGED FILE BY FILE on
+# 2026-10-17 (POST-A-160): the entries are no longer "not triaged". Each remaining one was read against the table that
+# really holds the value, and what follows says why it stays on the list.
 #
-# NOT TRIAGED, and the entry says so rather than pretending otherwise. Each
-# belongs to its own module's phase in docs/audits/2026-09-08c-the-phase-plan.md
-# — the TDS screens were fixed in Phase 3 because Phase 3 is the TDS phase, and
-# fixing eleven files across GST, MCA, sales, payroll and lifecycle inside it
-# would be the scope creep that plan exists to prevent.
+# ONE WAS A REAL DEFECT AND IS FIXED, and its entry is gone: app/client-portal/page.tsx compared a due's `status` to
+# "overdue" (the column never holds it; the server derives `is_overdue`) and filtered a fallback feed on
+# `status !== "posted"` (a value no transaction carries), which listed every paid sale and purchase as an outstanding due
+# whenever the server's answer was empty. See tests/test_the_client_portal_dues_screen_reads_what_the_server_sends.py.
+# (The mca "Filed" write that the 2026-09-09 note called confirmed-real was fixed earlier: it writes lowercase 'filed'.)
 #
-# ONE OF THEM IS CONFIRMED REAL and is called out because it is the same defect
-# as TDS-04, not a heuristic's guess: app/mca/page.tsx UPDATEs mca_filings with
-# status "Filed" while that table's CHECK accepts 'filed'. The row is rejected
-# by the database, so marking an ROC filing as filed does nothing.
+# THE REMAINING SIX ARE HEURISTIC LIMITS, NOT DEFECTS, and each reason is checked:
+#   accounting     "failed"    reconciliation_runs.status ('running','completed','failed', migration 244), read through the
+#                              API, not a table this file selects from directly.
+#   lifecycle      "done", "skipped"   onboarding_tasks.status ('pending','in_progress','done','skipped', migration 059).
+#   sales          "failed", "generated", "paused"   recurring invoice template and run statuses (migration 107), read
+#                              through the API.
+#   mca            "Filed", "Overdue", "Pending"   a display vocabulary: `computeStatus(due_date, filed_date)` derives it in
+#                              the browser from dates, and the write maps to the table's own values (line 232 and the
+#                              lowercase 'filed' path).
+#   declarations   "rejected", "verified"   payroll_it_declaration_items.status ('declared','verified','rejected',
+#                              migration 296), which this file reaches through a table the scanner does not attribute it to.
+#   payroll/reports "due-soon", "overdue"   computed in the browser for the statutory due-date strip; not database values.
 #
-# A ratchet, not an exemption: test_no_known_entry_is_stale fails the moment a
-# file stops reporting, so this list can only shrink.
+# They cannot leave the list by being fixed, because there is nothing to fix; they leave it only if the scanner learns to
+# attribute a value to the table it came from (which needs type inference). A ratchet, not an exemption:
+# test_no_known_entry_is_stale fails the moment a file stops reporting, so this list can only shrink.
 KNOWN: dict[str, set[str]] = {
-    "app/client-portal/page.tsx": {"overdue", "posted"},
     "app/clients/[id]/accounting/page.tsx": {"failed"},
     "app/clients/[id]/lifecycle/page.tsx": {"done", "skipped"},
     # "resident" left this list on 2026-09-12, and it was never a report worth

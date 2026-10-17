@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { deleteStoredDocument } from "@/lib/documents/deleteStoredDocument";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { Callout } from "@/components/ui/callout";
@@ -66,6 +67,7 @@ export default function DocumentsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [versionPromptDoc, setVersionPromptDoc] = useState<ClientDocument | null>(null);
   const [showVersionHistory, setShowVersionHistory] = useState<string | null>(null);
   const [versionHistory, setVersionHistory] = useState<ClientDocument[]>([]);
@@ -189,10 +191,16 @@ export default function DocumentsPage() {
   async function handleDeleteDocument(doc: ClientDocument) {
     if (!(await confirmDialog({ message: `Delete "${docLabel(doc)}"? This cannot be undone.`, danger: true, confirmLabel: "Delete" }))) return;
     setDeletingDocId(doc.id);
+    setDeleteError(null);
     try {
       const supabase = getSupabaseClient();
-      await supabase.storage.from("Documents").remove([doc.file_path]);
-      await supabase.from("client_documents").delete().eq("id", doc.id);
+      // The line leaves the page, and the timeline records the deletion, only when the server says the record is gone:
+      // a delete the database refuses (only a Partner may delete a document) comes back with no error and no row.
+      const out = await deleteStoredDocument(supabase, doc, "Documents");
+      if (!out.deleted) {
+        setDeleteError(out.message);
+        return;
+      }
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
 
       // Emit timeline event
@@ -233,6 +241,8 @@ export default function DocumentsPage() {
           <Upload size={13} /> Upload Document
         </button>
       </div>
+
+      {deleteError && <Callout tone="problem">{deleteError}</Callout>}
 
       {loading ? (
         <TableSkeleton cols={5} rows={5} />

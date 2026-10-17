@@ -28,13 +28,11 @@ const WEB = path.join(__dirname, "..");
  * addition needs a reason of the same kind as the ones already here.
  */
 const ALLOWED: Record<string, string> = {
-  "app/client-portal/page.tsx":
-    "Delete a stored file, then delete the row that points at it. Ordering is " +
-    "the point: if the row went first and the storage delete failed, the file " +
-    "would be orphaned with nothing left referencing it. One user action, not " +
-    "a page load.",
-  "app/clients/[id]/documents/page.tsx":
-    "Same storage-then-row delete as app/client-portal/page.tsx.",
+  // Empty since POST-A-151: the storage-then-row delete of a stored document (the file first, so a row is never left
+  // pointing at a blob that is gone, and a file is never orphaned) lives in lib/documents/deleteStoredDocument.ts now.
+  // This scan does walk lib/ and reads that file too; it passes there because the second call is guarded by the first
+  // call's `file.error`, which the scan counts as a dependency, not because the file is out of its sight. The three
+  // screens that carried the pattern call the helper.
 };
 
 // ─── the analysis itself ────────────────────────────────────────────────────

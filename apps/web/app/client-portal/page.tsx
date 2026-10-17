@@ -10,15 +10,14 @@ import { Badge } from "@/components/ui/badge";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getClients } from "@/lib/data/clients";
 import { getComplianceCalendar } from "@/lib/data/compliance";
-import { getTransactions } from "@/lib/data/transactions";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { deleteStoredDocument } from "@/lib/documents/deleteStoredDocument";
 import { api } from "@/lib/api";
 import type { ClientNotice, PortalUnreadSummary } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
-import type { Transaction } from "@/lib/data/transactions";
 import { formatDate } from "@/lib/services/formatting";
 import { formatPaise } from "@/lib/services/formatting";
 import { ListSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
@@ -113,18 +112,28 @@ interface PortalMessage {
   created_at: string;
 }
 
+/** One open fee invoice, as `GET /api/portal/dues` returns it (portal_data_service.safe_invoice). The page used to
+ *  declare the retired `transactions` shape (party_name, transaction_date, reference_no), none of which the server
+ *  sends any more, so every row printed a blank name and date. */
 interface ApiDue {
   id: string;
-  party_name: string;
-  transaction_date: string;
-  reference_no: string | null;
+  invoice_no: string | null;
+  invoice_date: string | null;
+  due_date: string | null;
   total_paise: number;
+  paid_paise: number;
+  /** What is still owed: the figure a "due" is. */
+  outstanding_paise: number;
   status: string;
+  /** Derived by the server from the due date and what is still owed; the `status` column never says "overdue". */
+  is_overdue: boolean;
+  days_overdue: number;
 }
 
 interface DuesResponse {
   dues: ApiDue[];
-  total_paise: number;
+  total_outstanding_paise: number;
+  overdue_paise: number;
   overdue_count: number;
 }
 
@@ -140,7 +149,6 @@ export default function ClientPortalPage() {
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [compliance, setCompliance] = useState<ComplianceEntry[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [clientsLoading, setClientsLoading] = useState(true);
   // Distinguishes "fetch failed" from "no clients yet" — a masked failure
@@ -239,7 +247,6 @@ export default function ClientPortalPage() {
     if (!selectedClientId) {
       setSelectedClient(null);
       setCompliance([]);
-      setTransactions([]);
       setDocRequests([]);
       setSharedDocs([]);
       setPortalMessages([]);
@@ -250,14 +257,9 @@ export default function ClientPortalPage() {
     setSelectedClient(client);
 
     setLoading(true);
-    Promise.all([
-      getComplianceCalendar(selectedClientId).catch(() => [] as ComplianceEntry[]),
-      getTransactions(selectedClientId).catch(() => [] as Transaction[]),
-    ])
-      .then(([comp, txns]) => {
-        setCompliance(comp);
-        setTransactions(txns);
-      })
+    getComplianceCalendar(selectedClientId)
+      .catch(() => [] as ComplianceEntry[])
+      .then((comp) => setCompliance(comp))
       .finally(() => setLoading(false));
 
     loadDocRequests(selectedClientId);
@@ -489,8 +491,13 @@ export default function ClientPortalPage() {
   async function handleDeleteSharedDoc(doc: SharedDocument) {
     if (!(await confirmDialog({ message: `Delete "${doc.description ?? doc.file_name}"?`, danger: true, confirmLabel: "Delete" }))) return;
     const sb = getSupabaseClient();
-    await sb.storage.from("Documents").remove([doc.file_path]);
-    await sb.from("client_documents").delete().eq("id", doc.id);
+    // The line leaves the page only when the server says the record is gone: a delete the database refuses (only a
+    // Partner may delete a document) comes back with no error and no row, and used to look like success.
+    const out = await deleteStoredDocument(sb, doc, "Documents");
+    if (!out.deleted) {
+      toast({ title: out.message, variant: "destructive" });
+      return;
+    }
     setSharedDocs((prev) => prev.filter((d) => d.id !== doc.id));
   }
 
@@ -514,7 +521,6 @@ export default function ClientPortalPage() {
   }
 
   const recentFilings = compliance.filter((c) => c.filing_status === "filed").slice(0, 8);
-  const unpaidInvoices = transactions.filter((t) => t.status !== "posted");
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
@@ -984,8 +990,10 @@ export default function ClientPortalPage() {
                     {duesLoading ? (
                       <TransactionListSkeleton rows={3} />
                     ) : (() => {
-                      const duesData = apiDues.length > 0 ? apiDues : unpaidInvoices;
-                      if (duesData.length === 0) {
+                      // The dues are the server's canonical answer and nothing else. A fallback to the client's whole
+                      // transaction feed used to fill this panel whenever the answer was empty, so a client who owed
+                      // nothing was shown every paid sale and purchase as "outstanding".
+                      if (apiDues.length === 0) {
                         if (duesFailed) {
                           return (
                             <div className="text-center py-10 space-y-3">
@@ -1006,46 +1014,30 @@ export default function ClientPortalPage() {
                           </div>
                         );
                       }
-                      if (apiDues.length > 0) {
-                        return apiDues.map((due) => (
-                          <div
-                            key={due.id}
-                            className="flex items-center gap-4 p-3 rounded-lg border border-ps-border hover:bg-ps-bg"
-                          >
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-ps-ink">{due.party_name}</p>
-                              <p className="text-xs text-ps-label mt-0.5">
-                                {formatDate(due.transaction_date)}
-                                {due.reference_no ? ` · Ref: ${due.reference_no}` : ""}
-                              </p>
-                            </div>
-                            <span className="text-sm font-semibold text-ps-ink">
-                              {formatPaise(due.total_paise)}
-                            </span>
-                            <Badge
-                              className={`text-xs ${due.status === "overdue" ? "bg-state-problem-surface text-state-problem" : "bg-state-attention-surface text-state-attention"}`}
-                            >
-                              {due.status}
-                            </Badge>
-                          </div>
-                        ));
-                      }
-                      return unpaidInvoices.map((t) => (
+                      return apiDues.map((due) => (
                         <div
-                          key={t.id}
+                          key={due.id}
                           className="flex items-center gap-4 p-3 rounded-lg border border-ps-border hover:bg-ps-bg"
                         >
                           <div className="flex-1">
-                            <p className="text-sm font-medium text-ps-ink">{t.party_name}</p>
+                            <p className="text-sm font-medium text-ps-ink">{due.invoice_no ?? "Fee invoice"}</p>
                             <p className="text-xs text-ps-label mt-0.5">
-                              {formatDate(t.transaction_date)}
-                              {t.reference_no ? ` · Ref: ${t.reference_no}` : ""}
+                              {due.invoice_date ? `Issued ${formatDate(due.invoice_date)}` : "Issue date not recorded"}
+                              {due.due_date ? ` · Due ${formatDate(due.due_date)}` : ""}
+                              {due.is_overdue && due.days_overdue > 0 ? ` · ${due.days_overdue} ${due.days_overdue === 1 ? "day" : "days"} overdue` : ""}
                             </p>
                           </div>
-                          <span className="text-sm font-semibold text-ps-ink">
-                            {formatPaise(t.total_paise)}
-                          </span>
-                          <Badge className="text-xs bg-state-attention-surface text-state-attention">{t.status}</Badge>
+                          <div className="text-right">
+                            <span className="text-sm font-semibold text-ps-ink">{formatPaise(due.outstanding_paise)}</span>
+                            {due.outstanding_paise !== due.total_paise && (
+                              <p className="text-xs text-ps-hint">of {formatPaise(due.total_paise)}</p>
+                            )}
+                          </div>
+                          <Badge
+                            className={`text-xs ${due.is_overdue ? "bg-state-problem-surface text-state-problem" : "bg-state-attention-surface text-state-attention"}`}
+                          >
+                            {due.is_overdue ? "overdue" : due.status}
+                          </Badge>
                         </div>
                       ));
                     })()}
