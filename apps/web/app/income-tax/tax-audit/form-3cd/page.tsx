@@ -130,9 +130,10 @@ export default function Form3cdPage() {
     if (!clientId || Object.keys(manualDrafts).length === 0) return;
     setSaving(true); setError(null);
     try {
+      // No status is sent: saving a clause must never change where the checklist stands. A new checklist starts as a
+      // draft on the server, and a finalised one is reopened only by someone who may approve, on purpose.
       const j = await api.incomeTax.saveForm3cdManualClauses(clientId, fy, {
         clauses: manualDrafts,
-        status: "draft",
       });
       if (!j.success) throw new Error(j.error ?? "Could not save.");
       await load();

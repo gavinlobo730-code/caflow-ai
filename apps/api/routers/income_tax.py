@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Annotated, Optional
 from models.common import api_response
 from core.authz import assert_client_access, can_access_client
-from core.permissions import rbac
+from core.permissions import can_user, rbac
 from core.ist_clock import ist_today
 from domain.income_tax.itr_engine import (
     ITREngine, ITRComputeRequest, Deductions80C, Deductions80D, Donation80G, HRADetails, itr_engine,
@@ -2627,11 +2627,15 @@ class Form3cdManualClauses(BaseModel):
         default_factory=dict,
         description="clause code -> the CA's own value/note, for a clause "
                     "this product does not derive")
-    status: str = Field("draft", description="draft | review | finalised")
+    status: Optional[str] = Field(
+        None, description="draft | review | finalised; omit to leave the checklist's status as it is "
+                          "(a new checklist starts as draft)")
 
     @field_validator("status")
     @classmethod
-    def _known_status(cls, v: str) -> str:
+    def _known_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
         allowed = {"draft", "review", "finalised"}
         if v not in allowed:
             raise ValueError(f"status must be one of {sorted(allowed)}")
@@ -2657,11 +2661,22 @@ def save_form_3cd_manual_clauses(
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
     """
     assert_client_access(current_user, client_id)
+    # Recording the checklist as finalised is an approver's act, asked PER PERSON (`can_user`) so a Partner's grid
+    # decision is the answer here and in the service, which also refuses to reopen a finalised checklist.
+    may_approve = can_user(current_user, "income_tax", "approve")
+    if req.status == "finalised" and not may_approve:
+        raise HTTPException(
+            status_code=403,
+            detail="Only someone who may approve income tax work can record the Form 3CD checklist as finalised.")
     db = _db()
     if not db:
         return api_response(True, {"client_id": client_id, "financial_year": fy,
                                    "clauses_json": req.clauses,
-                                   "status": req.status})
-    from services.form_3cd_service import save_manual_clauses
-    return api_response(True, save_manual_clauses(
-        db, current_user["firm_id"], client_id, fy, req.clauses, req.status))
+                                   "status": req.status or "draft"})
+    from services.form_3cd_service import FinalisedNeedsApprover, save_manual_clauses
+    try:
+        saved = save_manual_clauses(
+            db, current_user["firm_id"], client_id, fy, req.clauses, req.status, may_approve=may_approve)
+    except FinalisedNeedsApprover as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return api_response(True, saved)

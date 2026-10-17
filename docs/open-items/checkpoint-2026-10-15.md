@@ -56,7 +56,7 @@
 
 ## 4. Open items this run created or narrowed
 
-- **POST-A-234** (the 499 work above, since closed), **POST-A-233** (a Form 3CD checklist can be marked `finalised` by an Executive),
+- **POST-A-234** (the 499 work above, since closed), **POST-A-233** (a Form 3CD checklist can be marked `finalised` by an Executive; since closed),
   **POST-A-228** (timeline actor chosen by the browser), **POST-A-227** (tasks written from the browser),
   **POST-A-221** (`is_fy_locked` answers for a firm that is not the caller's).
 - **POST-B-264** narrowed to what is the owner's: plan limits, "Priority support", the phone tier and the onboarding

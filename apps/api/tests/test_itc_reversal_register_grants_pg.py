@@ -80,6 +80,11 @@ NOT_FOR_THE_API = {
     # precisely because every member of the firm can read `firms` over PostgREST; row-level security is on with
     # no policy and `authenticated` holds no privilege, which the deny-list test below proves for this name.
     "firm_lock_pins",
+    # Migration 500 (POST-A-233): the CA's own answers for the Form 3CD clauses the product cannot derive, and whether the
+    # checklist is finalised. Its one reader and writer is the income-tax router on the service-role client
+    # (`form_3cd_service`); no screen touches it over PostgREST, and a signed-in write of the status would have bypassed
+    # the approver check the route asks.
+    "tax_audit_checklists",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.
