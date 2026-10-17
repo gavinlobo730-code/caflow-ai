@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from domain.accounting.payment_account import resolve_payment_account
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
+from services import period_lock_service
 from services.timeline_service import timeline_service
 from domain.banking import parse_narration
 from domain.banking import posting_map as pmap
@@ -620,6 +621,26 @@ class BankPostingService:
         # M9: block creating a draft destined for a locked financial year — consistent
         # with the invoice/bill posting paths (this path previously skipped the check).
         period_validation_service.validate_posting_date(firm_id or "", entry_date)
+        # A line posted WITH A GST SPLIT is a document that feeds a return: the rate posted is what gst_return_service reads
+        # to declare the credit or the liability (BANK-24), so the client's filed-return lock applies to it
+        # (POST-A-089). A line posted without a split declares nothing and is deliberately left open: June's bank
+        # reconciliation happens after June's returns are filed, and refusing it would stop routine bookkeeping
+        # (migration 361's argument for leaving the posting kernel open).
+        if gst_rate_bps:
+            try:
+                period_lock_service.assert_open(db, firm_id or "", client_id, entry_date)
+            except HTTPException as locked:
+                # The way out depends on WHICH lock refused. Only a filed return is got round by posting the line as an
+                # ordinary charge: a closed year stops that post too (the kernel asks the closures), and an unverifiable
+                # check is a failure to ask, which is no reason to give up the credit on this line. Say the way out only
+                # where it exists, and say what it costs.
+                reason = str(locked.detail)
+                way_out = ""
+                if (reason != period_lock_service.UNVERIFIABLE
+                        and period_lock_service.closure_reason(db, firm_id or "", client_id, entry_date) is None):
+                    way_out = (" The bank dates this line, so it cannot be moved: post it without the GST split to book it "
+                               "as an ordinary charge, which does not claim the credit on this line.")
+                raise HTTPException(status_code=locked.status_code, detail=f"{reason}{way_out}") from locked
 
         # And in a unit this path can post. _create_journal below is called with
         # no txn_currency and no exchange_rate, so it takes INR at rate 1 — a

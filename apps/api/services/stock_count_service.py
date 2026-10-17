@@ -107,7 +107,7 @@ def _item_names(db, firm_id: str, client_id: str) -> dict[str, dict]:
     truncated read would leave the sheet's later lines labelled with their raw
     uuid — which looks like a data problem rather than a short read."""
     rows = fetch_all(
-        lambda: db.table("service_catalogue").select("id, name, unit")
+        lambda: db.table("service_catalogue").select("id, name, unit, gst_rate_bps")
         .eq("firm_id", firm_id).eq("client_id", client_id).eq("kind", "good"),
         key="id", label="service_catalogue")
     return {r["id"]: r for r in rows}
@@ -231,11 +231,12 @@ def post_session(db, *, firm_id: str, session_id: str, actor_id: Optional[str]) 
     NAMED rather than swallowed. Re-posting is refused, which is what stops a
     half-posted sheet from doubling the lines that succeeded.
 
-    BOTH PERIOD QUESTIONS ARE ASKED, unlike the single-item path — see the
-    comment at the check. `routers/inventory.py:adjust_stock` asks only the
-    firm's FY switch and is on the acknowledged debt list in
-    tests/test_every_dated_posting_path_asserts_the_client_lock.py; this path
-    is new, so it is built with both rather than added to that list.
+    BOTH PERIOD QUESTIONS CAN BE ASKED — see the comment at the check. The
+    firm's FY switch is always asked; the client's filed-return lock is asked
+    when a line of the sheet would reverse input credit, which is the same
+    question `routers/inventory.py:adjust_stock` asks of a single adjustment
+    (`domain/inventory/adjustment_effect`, POST-A-089), so the two doors give
+    one answer about one shortage.
     """
     session = _session(db, firm_id, session_id)
     if session["status"] != cs.STATUS_OPEN:
@@ -247,26 +248,33 @@ def post_session(db, *, firm_id: str, session_id: str, actor_id: Optional[str]) 
     if plan.gaps:
         raise HTTPException(status_code=422, detail=" ".join(plan.gaps))
 
-    # BOTH QUESTIONS, and the second one is the point. `validate_posting_date`
-    # is the FIRM's own financial-year switch — it takes no client_id and
-    # therefore cannot know that this client's GSTR-3B for the count month has
-    # already gone to the portal. `assert_open` is the client-scoped rule, and
-    # a count sheet needs it because a SHORTAGE is a document that feeds a
-    # return: `apply_stock_adjustment` registers the CGST Act s.17(5)(h)
-    # reversal on GSTR-3B Table 4(B)(1) (INV-06). Posting a March shortage
-    # after March's 3B is filed changes what that return should have said, and
-    # the return cannot be recalled.
+    # THE FIRM'S SWITCH ALWAYS; THE CLIENT'S FILED-RETURN LOCK WHEN A LINE REACHES A RETURN.
+    # `validate_posting_date` is the FIRM's own financial-year switch — it takes no client_id and
+    # therefore cannot know that this client's GSTR-3B for the count month has already gone to the portal.
+    # `assert_open` is the client-scoped rule, and a SHORTAGE that reverses input credit is a document that feeds a return:
+    # `apply_stock_adjustment` registers the CGST Act s.17(5)(h) reversal on GSTR-3B Table 4(B)(1) (INV-06). Posting a
+    # March shortage that reverses credit after March's 3B is filed changes what that return should have said, and the
+    # return cannot be recalled.
     #
-    # Unconditional rather than gated on whether any line carries
-    # `reverse_itc` — the same reasoning CLAUDE.md records for a fixed asset's
-    # acquisition: a rule that depends on the order two fields are filled in is
-    # not a rule, and the sheet is posted as one document whatever its lines
-    # decided.
+    # It WAS asked unconditionally, on the argument CLAUDE.md records for a fixed asset's acquisition (a rule that depends
+    # on the order two fields are filled in is not a rule). That does not carry over, and the cost was real: the main use
+    # of a count sheet is a 31 March stock-take, posted in April or May after March's returns are filed, and an unconditional
+    # lock refused exactly that for a sheet that declares nothing. The decision is a fact of the SHEET (does any line
+    # reverse credit), made in the same request, and it is the one the single-item door asks
+    # (`domain/inventory/adjustment_effect`, POST-A-089), so a shortage cannot be refused on one door and accepted on the
+    # other.
     from services.period_validation_service import period_validation_service
     from services import period_lock_service
+    from domain.inventory import adjustment_effect
     period_validation_service.validate_posting_date(firm_id or "", session["count_date"])
-    period_lock_service.assert_open(db, firm_id, session["client_id"],
-                                    session["count_date"])
+    reversing = [p for p in plan.postable if p.direction == cs.DECREASE and p.line.reverse_itc]
+    if reversing:
+        rates = _item_names(db, firm_id, session["client_id"])
+        if any(adjustment_effect.reaches_a_return(
+                direction=p.direction, reverse_itc=p.line.reverse_itc,
+                gst_rate_bps=(rates.get(p.line.service_catalogue_id) or {}).get("gst_rate_bps"))
+               for p in reversing):
+            period_lock_service.assert_open(db, firm_id, session["client_id"], session["count_date"])
 
     from domain.inventory_service import apply_stock_adjustment, resolve_costing_policy
     # ONE read of the client's cost formula for the whole sheet — a

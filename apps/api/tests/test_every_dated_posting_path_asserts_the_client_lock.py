@@ -94,17 +94,30 @@ NOT_YET: dict[str, str] = {
     "services/bank_posting_service.py:undo":
         "Undo posts a dated-today reversal; see the block comment above.",
 
-    # ── Not yet done. Each is one call in the shape this phase established ───
+    # ── DECIDED 17-10-2026 (POST-A-089): the ten paths the ledger called "one call in the established shape" ──
+    # They were not. The question per path is the one the receipts argument asks (SALES-15): could this fact change what
+    # a filed return said? Three could, and now ask the lock, each BY ITS EFFECT and not by a flag: `dispose_asset` WHEN
+    # THE DISPOSAL STATES A GST RATE (it is a supply, s.18(6); the journal credits GST Output and GSTR-3B Table 3.1(a)
+    # declares it; a scrapping that states no rate posts no tax and is declared nowhere), a stock adjustment WHEN IT
+    # REVERSES INPUT CREDIT (a decrease the CA marked, on an item with a non-zero rate: s.17(5)(h) registers the reversal
+    # GSTR-3B Table 4(B)(1) declares; asked identically by `adjust_stock` and by the count sheet through
+    # `domain/inventory/adjustment_effect`, so one shortage gets one answer on both doors) and `bank_posting_service.post`
+    # WHEN THE LINE IS POSTED WITH A GST SPLIT (BANK-24: the rate posted is what GSTR-3B Table 4(A) reads; a line posted
+    # without a split declares nothing and stays open). All three are carried by GSTR-3B, which is the return the product's
+    # own builders put them in (`gstr1_3b_tie_out.books_only_figures`).
+    # THE KNOWN COST: the lock is the combined one (any return covering the date), as create_asset's already is, so from
+    # the day GSTR-1 is filed (the 11th) these are refused although the still-open GSTR-3B (the 20th) would carry them.
+    # One definition of "filed" for every path is the price; narrowing these three to a filed GSTR-3B is recorded in the
+    # design record and the ledger as an owner decision, not done silently here.
+    # The rest stay out ON PURPOSE, each for the reason beside it, and the posting kernel's CLOSURE lock (a locked year, a
+    # finalised client year) still reaches every one of them.
     "routers/sales_invoices.py:repost_journal":
-        "Posts a journal at the INVOICE's own date, so it can land in a filed "
-        "period even though the request is made today.",
-    "routers/fixed_assets.py:dispose_asset":
-        "Posts at the disposal date; a disposal is a supply and reaches GSTR-1.",
-    "routers/inventory.py:adjust_stock":
-        "Posts a dated stock adjustment, which moves the P&L in a period a "
-        "return may already have reported.",
+        "DELIBERATE. Re-posts the journal of an invoice that already exists, at the invoice's own date. GSTR-1 is built "
+        "from the invoice rows, not the journal, so the filed return already declares this supply; refusing would leave "
+        "the ledger WITHOUT revenue and tax the filed return carries, which is the disagreement the lock exists to prevent.",
     "routers/inventory.py:writedown_stock_to_nrv":
-        "Posts a dated writedown, same exposure as adjust_stock.",
+        "DELIBERATE. A lower-of-cost-or-NRV write-down changes inventory VALUE and the P&L (AS 2); it carries no GST line "
+        "and reverses no credit, so it cannot change what a return said.",
     "routers/purchase_payments.py:create_purchase_payment":
         "The payment side of the receipts argument, and it has NOT been taken: "
         "a payment moves Bank and Creditors, but it can also carry TDS, which "
@@ -116,8 +129,12 @@ NOT_YET: dict[str, str] = {
     "services/purchase_payment_service.py:create_foreign_payment_core":
         "The service behind _create_foreign_payment; same undecided question.",
     "routers/year_end_adjustments.py:post_adjustment":
-        "Posts a date inside the very year the engagement is closing, which is "
-        "the year most likely to carry a filed return.",
+        "DELIBERATE. A year-end adjustment is posted AFTER the period it adjusts, by nature: a March entry is made in "
+        "April or May, when March's GSTR-3B is already filed. The lock would refuse the work the engagement exists to "
+        "do. The locks that do belong (the firm's locked year, the client's finalised year-end) are the kernel's. The "
+        "route takes any debit and credit account, GST Output or Input included, which is the free-form power that locks "
+        "manual journals (ACC-12); a year-end true-up of the GST ledgers to the filed returns is the accepted case here, "
+        "and whether to carve the tax ledgers out of it is undecided (POST-B-170).",
     "routers/gst_workspace.py:save_gstr1":
         "Writes the RETURN row rather than the ledger; whether saving a draft "
         "return for a filed period should be refused is its own question.",
@@ -131,22 +148,22 @@ NOT_YET: dict[str, str] = {
     "routers/tds_workspace.py:create_return":
         "A TDS return is not a GST period; see create_challan.",
     "services/manual_journal_service.py:update":
-        "The SQL guard covers the posted-row rewrite; this Python path checks "
-        "only the FY, so the two disagree about what closed means. `create` "
-        "was the other half and is done (ACC-12): it now asserts the whole "
-        "rule when the entry is posted, because a manual journal can credit "
-        "GST Output Payable directly and is the free-form path a filed return "
-        "has to stop.",
+        "ASKED UNDER ANOTHER NAME. It refuses on `entry['lock_reason']` and, for a date the entry is moved into, on "
+        "`self._lock_reason`, both the SQL function `journal_period_lock_reason` that the posted-row rewrite enforces "
+        "with, so the Python path and the SQL agree about what closed means. This guard recognises only `assert_open`, "
+        "which is why the entry is still listed. `create` is done too (ACC-12).",
     "services/banking_service.py:post_transaction":
-        "Posts at the bank transaction's own date, which can be months back.",
-    "services/bank_posting_service.py:post":
-        "The Pass path — posts at the statement line's date, and a statement "
-        "imported late covers months whose returns are filed.",
+        "DELIBERATE, on migration 361's argument. A bank line is posted when it is reconciled, which is after the returns "
+        "for its month: GSTR-1 on the 11th and GSTR-3B on the 20th, June's reconciliation in July. Refusing it from the "
+        "11th would stop routine bookkeeping for every client. This older path posts no GST split; the path that does, "
+        "`bank_posting_service.post`, asks the lock when a split is posted.",
     "services/trial_balance_import_service.py:import_trial_balance":
-        "A bulk dated import, the one path that can move a whole year at once.",
+        "DELIBERATE. An imported trial balance is the position of a client brought over from another system, dated at a "
+        "year-end by construction. The filed-return branch would refuse the very migration the importer exists for; the "
+        "closure lock (a locked or finalised year) and the double-opening check are what apply.",
     "domain/currency/fx_revaluation_service.py:revalue":
-        "Posts at a period-end date and reverses the day after; both dates "
-        "need the test, not just the FY.",
+        "DELIBERATE. The AS 11 revaluation posts at a period end and reverses the next day: balance sheet and P&L only, "
+        "no GST, no TDS. The kernel's closure lock reaches both dates.",
 }
 
 _FY_CHECKS = ("validate_posting_date", "validate_posting_date_cached")

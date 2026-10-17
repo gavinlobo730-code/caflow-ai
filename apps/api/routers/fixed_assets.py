@@ -1264,6 +1264,18 @@ def dispose_asset(
     # task #232 audit finding: fixed_assets.py never checked the FY lock —
     # checked before any mutation, same as the purchase/depreciation paths.
     period_validation_service.validate_posting_date(current_user["firm_id"], disposal_date)
+    # A disposal that STATES a GST rate is a supply (CGST Act s.18(6), the tax posted below): its journal credits GST Output
+    # and `gst_return_service._disposals_declaring_gst` reads exactly these rows (disposal_gst_rate_bps NOT NULL) into GSTR-3B
+    # Table 3.1(a). So the client's FILED-RETURN lock applies to it as it does to create_asset, correct_asset and
+    # delete_asset (POST-A-089). A disposal that states no rate (a scrapping, a write-off) posts no tax leg and is declared
+    # nowhere, so it is not asked: refusing it would stop routine bookkeeping that changes no return. Checked before the
+    # conditional claim below, so a refused disposal never touches the asset.
+    #
+    # THE LOCK IS THE COMBINED ONE (any return covering the date), not "GSTR-3B filed", as create_asset's is: from the day
+    # GSTR-1 is filed (the 11th) the disposal is refused although the open GSTR-3B (due the 20th) would still carry it. That
+    # nine-day window is the cost of one definition of "filed", recorded in the design record rather than hidden here.
+    if data.gst_rate_bps is not None:
+        period_lock_service.assert_open(db, current_user["firm_id"], asset.get("client_id"), disposal_date)
 
     # FA-08: the gain or loss is computed from what has been POSTED, so every
     # unposted month is a WDV that is too high and a gain that is too small.
