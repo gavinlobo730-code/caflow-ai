@@ -69,6 +69,7 @@ class _Q:
     def limit(self, _n): return self
     def order(self, c, desc=False): self.order_, self.desc = c, desc; return self
     def single(self): self.single_ = True; return self
+    def maybe_single(self): self.single_ = True; return self
 
     def _match(self):
         out = []

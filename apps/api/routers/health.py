@@ -953,7 +953,7 @@ def get_score(
             raise HTTPException(status_code=404, detail="Health score not found — run /calculate first")
         return api_response(True, score)
 
-    res = db.table("health_scores").select("*").eq("client_id", client_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    res = db.table("health_scores").select("*").eq("client_id", client_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data
     if not res:
         raise HTTPException(status_code=404, detail="Health score not found — run /calculate first")
     return api_response(True, res)
@@ -1008,7 +1008,7 @@ def calculate_score(
 
         return api_response(True, row)
 
-    client = db.table("clients").select("id, client_name, is_internal").eq("id", client_id).eq("firm_id", firm_id).single().execute().data
+    client = db.table("clients").select("id, client_name, is_internal").eq("id", client_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     # Guardrail G2: Health scoring is not applicable to the internal practice client.

@@ -57,6 +57,7 @@ def test_a_bad_provider_name_never_leaves_a_sync_job_running(monkeypatch):
         def select(self, *a, **k): return self
         def eq(self, *a, **k): return self
         def single(self): return self
+        def maybe_single(self): return self
         def update(self, payload): self._update = payload; updates.append(payload); return self
         def execute(self):
             if self._update is not None:

@@ -163,7 +163,7 @@ def run_sync_job(
     sb = _supabase()
     job_res = sb.table("gst_sync_jobs").select("*").eq("id", job_id).eq(
         "firm_id", firm_id
-    ).single().execute()
+    ).maybe_single().execute()
     if not job_res.data:
         raise ValueError("Sync job not found")
 

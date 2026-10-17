@@ -808,7 +808,7 @@ def update_lead(
                 return api_response(True, lead)
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    existing = db.table("leads").select("stage").eq("id", lead_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    existing = db.table("leads").select("stage").eq("id", lead_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data
     if not existing:
         raise HTTPException(status_code=404, detail="Lead not found")
 
@@ -1294,7 +1294,7 @@ def update_proposal_status(
                 return api_response(True, p)
         raise HTTPException(status_code=404, detail="Proposal not found")
 
-    existing = db.table("proposals").select("*").eq("id", proposal_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    existing = db.table("proposals").select("*").eq("id", proposal_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data
     if not existing:
         raise HTTPException(status_code=404, detail="Proposal not found")
 
@@ -1450,7 +1450,7 @@ def update_onboarding_task(
                     break
         return api_response(True, task_found)
 
-    task = db.table("onboarding_tasks").select("*").eq("id", task_id).eq("workflow_id", workflow_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    task = db.table("onboarding_tasks").select("*").eq("id", task_id).eq("workflow_id", workflow_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -1465,7 +1465,7 @@ def update_onboarding_task(
     all_tasks = db.table("onboarding_tasks").select("status").eq("workflow_id", workflow_id).execute().data or []
     all_done = all(t["status"] in ("done", "skipped") for t in all_tasks)
     if all_done:
-        wf = db.table("onboarding_workflows").select("client_id").eq("id", workflow_id).single().execute().data
+        wf = db.table("onboarding_workflows").select("client_id").eq("id", workflow_id).maybe_single().execute().data
         db.table("onboarding_workflows").update({"status": "completed", "completed_at": now, "updated_at": now}).eq("id", workflow_id).execute()
         if wf:
             timeline_service.log(
@@ -1527,7 +1527,7 @@ def update_onboarding_status(
                 return api_response(True, wf)
         raise HTTPException(status_code=404, detail="Onboarding workflow not found")
 
-    existing = db.table("onboarding_workflows").select("*").eq("id", workflow_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    existing = db.table("onboarding_workflows").select("*").eq("id", workflow_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data
     if not existing:
         raise HTTPException(status_code=404, detail="Onboarding workflow not found")
     if existing.get("status") == "cancelled":
@@ -1735,7 +1735,7 @@ def get_onboarding_checklist(
         steps = [s for s in _MOCK_ONBOARDING_TASKS if s.get("workflow_id") == workflow_id and "step_number" in s]
         return api_response(True, _enrich_workflow(wf, steps))
 
-    wf = db.table("onboarding_checklists").select("*").eq("id", workflow_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    wf = db.table("onboarding_checklists").select("*").eq("id", workflow_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data
     if not wf:
         raise HTTPException(status_code=404, detail="Onboarding workflow not found")
     steps = db.table("onboarding_checklist_steps").select("*").eq("workflow_id", workflow_id).order("step_number").execute().data or []
@@ -1779,7 +1779,7 @@ def update_checklist_step(
                 break
         return api_response(True, step_found)
 
-    step = db.table("onboarding_checklist_steps").select("*").eq("workflow_id", workflow_id).eq("step_number", step_number).eq("firm_id", current_user["firm_id"]).single().execute().data
+    step = db.table("onboarding_checklist_steps").select("*").eq("workflow_id", workflow_id).eq("step_number", step_number).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data
     if not step:
         raise HTTPException(status_code=404, detail="Step not found")
 
@@ -1836,7 +1836,7 @@ def complete_onboarding_checklist(
         )
         return api_response(True, _enrich_workflow(wf, steps))
 
-    wf = db.table("onboarding_checklists").select("*").eq("id", workflow_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    wf = db.table("onboarding_checklists").select("*").eq("id", workflow_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data
     if not wf:
         raise HTTPException(status_code=404, detail="Onboarding workflow not found")
 
@@ -1996,7 +1996,7 @@ def update_renewal_status(
                 return api_response(True, r)
         raise HTTPException(status_code=404, detail="Renewal not found")
 
-    existing = db.table("renewals").select("*").eq("id", renewal_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    existing = db.table("renewals").select("*").eq("id", renewal_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data
     if not existing:
         raise HTTPException(status_code=404, detail="Renewal not found")
 

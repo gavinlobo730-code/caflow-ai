@@ -493,10 +493,12 @@ def list_bf_losses(firm_id: str, client_id: str) -> list[dict]:
 def get_bf_loss(firm_id: str, loss_id: str) -> Optional[dict]:
     """Fetch a single brought-forward-loss row by id, scoped to firm_id.
     Used by the router to resolve the loss's client before checking
-    assignment scope. Deliberately NOT .single() — see utilize_bf_loss's
-    own .single() call a few lines down for the bug this avoids: Supabase's
-    real .single() raises (PGRST116) rather than returning no data on zero
-    rows, which would turn a routine 404 into an unhandled 500."""
+    assignment scope. Deliberately NOT .single(): Supabase's real .single()
+    raises (PGRST116) rather than returning no data on zero rows, which would
+    turn a routine 404 into an unhandled 500. A lookup that may find nothing
+    is .maybe_single() (see utilize_bf_loss a few lines down), and
+    tests/test_a_lookup_that_may_find_nothing_does_not_use_single.py holds
+    that for the tree."""
     if _USE_MOCK:
         l = _MOCK_LOSSES.get(loss_id)
         return l if l and l.get("firm_id") == firm_id else None
@@ -524,7 +526,7 @@ def utilize_bf_loss(
     sb = _supabase()
     existing = sb.table("brought_forward_losses").select("*").eq("id", loss_id).eq(
         "firm_id", firm_id
-    ).single().execute()
+    ).maybe_single().execute()
     if not existing.data:
         raise ValueError("Loss record not found")
     loss = existing.data

@@ -44,7 +44,7 @@ class BankReconciliationService:
     # ── session fetch / scoping ────────────────────────────────────────────────
     def _get_session(self, db, firm_id: str, recon_id: str) -> dict:
         res = (db.table("bank_reconciliations").select("*")
-               .eq("id", recon_id).eq("firm_id", firm_id).single().execute())
+               .eq("id", recon_id).eq("firm_id", firm_id).maybe_single().execute())
         if not res.data:
             raise HTTPException(status_code=404, detail="Reconciliation not found.")
         return res.data

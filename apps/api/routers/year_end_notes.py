@@ -1010,7 +1010,7 @@ def get_note(
         .eq("id", note_id)
         .eq("engagement_id", engagement_id)
         .eq("firm_id", current_user["firm_id"])
-        .single()
+        .maybe_single()
         .execute()
         .data
     )
@@ -1055,7 +1055,7 @@ def update_note(
         .select("*")
         .eq("id", note_id)
         .eq("engagement_id", engagement_id)
-        .single()
+        .maybe_single()
         .execute()
         .data
     )
@@ -1111,7 +1111,7 @@ def lock_note(
         .eq("id", note_id)
         .eq("engagement_id", engagement_id)
         .eq("firm_id", current_user["firm_id"])
-        .single()
+        .maybe_single()
         .execute()
         .data
     )

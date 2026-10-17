@@ -95,7 +95,7 @@ class BankMatchingService:
 
     def _get_txn(self, db, firm_id: str, txn_id: str) -> dict:
         res = (db.table("bank_transactions").select("*")
-               .eq("id", txn_id).eq("firm_id", firm_id).single().execute())
+               .eq("id", txn_id).eq("firm_id", firm_id).maybe_single().execute())
         if not res.data:
             raise HTTPException(status_code=404, detail="Bank transaction not found.")
         return res.data

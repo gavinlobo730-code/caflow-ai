@@ -247,7 +247,7 @@ def get_migration_job(firm_id: str, job_id: str) -> dict | None:
     sb = _supabase()
     res = sb.table("tally_migration_jobs").select("*").eq("id", job_id).eq(
         "firm_id", firm_id
-    ).single().execute()
+    ).maybe_single().execute()
     return _with_run_message(res.data)
 
 

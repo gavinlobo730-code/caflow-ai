@@ -83,6 +83,9 @@ class _Query:
         self._single = True
         return self
 
+    def maybe_single(self):
+        return self.single()
+
     def execute(self):
         rows = self._store.setdefault(self._table, [])
         if self._op in ("insert", "upsert"):

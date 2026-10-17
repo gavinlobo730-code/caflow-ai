@@ -83,6 +83,7 @@ class _Q:
     def limit(self, _n): return self
     def order(self, *_a, **_k): return self
     def single(self): self.single_ = True; return self
+    def maybe_single(self): self.single_ = True; return self
 
     def or_(self, expr, *_a, **_k):
         # Only the client_id-or-null scope is modelled; anything else would be
