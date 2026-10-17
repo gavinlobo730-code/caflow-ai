@@ -91,7 +91,7 @@ class JournalPostingService:
         FK-enforced against users(id)). actor_auth_id is the Supabase auth id
         and is used only for audit_log attribution; it falls back to actor_id."""
         res = (db.table("journal_entries").select(self._SELECT)
-               .eq("id", journal_id).eq("firm_id", firm_id).single().execute())
+               .eq("id", journal_id).eq("firm_id", firm_id).maybe_single().execute())
         je = res.data
         if not je:
             raise HTTPException(status_code=404, detail="Journal entry not found.")

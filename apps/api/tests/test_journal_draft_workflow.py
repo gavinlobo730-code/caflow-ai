@@ -48,6 +48,7 @@ class _Q:
     def order(self, c, desc=False): self.order_, self.desc = c, desc; return self
     def range(self, *_a, **_k): return self
     def single(self): self.single_ = True; return self
+    def maybe_single(self): self.single_ = True; return self
 
     def _match(self):
         out = []

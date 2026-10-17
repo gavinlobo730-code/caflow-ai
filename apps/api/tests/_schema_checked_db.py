@@ -204,6 +204,11 @@ class _Query:
         self._single = True
         return self
 
+    def maybe_single(self):
+        # Same read; `data` is None where nothing matches, which is what the double's `single` already answers and what
+        # core/supabase_client makes the real `.maybe_single()` answer.
+        return self.single()
+
     # ── write ────────────────────────────────────────────────────────────────
 
     def insert(self, row):

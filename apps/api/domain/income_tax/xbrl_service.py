@@ -176,7 +176,7 @@ def validate_xbrl_package(
     sb = _supabase()
     pkg_res = sb.table("xbrl_packages").select("*").eq("id", package_id).eq(
         "firm_id", firm_id
-    ).single().execute()
+    ).maybe_single().execute()
     if not pkg_res.data:
         raise ValueError("XBRL package not found")
 
@@ -265,7 +265,7 @@ def generate_xbrl_xml(
         sb = _supabase()
         pkg_res = sb.table("xbrl_packages").select("*").eq("id", package_id).eq(
             "firm_id", firm_id
-        ).single().execute()
+        ).maybe_single().execute()
         if not pkg_res.data:
             raise ValueError("XBRL package not found")
         pkg = pkg_res.data

@@ -121,6 +121,10 @@ class _Q:
         self._single = True
         return self
 
+    def maybe_single(self):
+        # What the code under test calls for a lookup that may find nothing: the same read, `data=None` when absent.
+        return self.single()
+
     def _matches(self):
         return [r for r in self.store.setdefault(self.table, [])
                 if all(p(r) for p in self._pred)]

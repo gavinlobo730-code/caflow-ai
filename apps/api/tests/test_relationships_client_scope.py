@@ -348,6 +348,9 @@ class _FakeQ:
         self.single_ = True
         return self
 
+    def maybe_single(self):
+        return self.single()
+
     def execute(self):
         self.log.append((self.name, self.op, self.cols))
         out = list(self.rows)

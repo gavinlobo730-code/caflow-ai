@@ -289,18 +289,16 @@ def test_live_posting_a_draft_journal_for_an_own_client_is_allowed(deny, monkeyp
     assert resp["success"] is True
 
 
-def test_live_posting_a_missing_draft_journal_500s_on_a_pre_existing_single_bug(deny, monkeypatch):
-    """Not the fix under test: journal_posting_service.post_draft's own
-    lookup uses .single(), which raises on zero rows instead of resolving to
-    a clean 404 — the same pre-existing shape already found (and left
-    unfixed, out of proportion to a client-scope pass) in health.py,
-    relationships.py, lifecycle.py, engagement_letters.py, fixed_assets.py
-    and form_26as.py. _assert_draft_scope itself does not raise here (the
-    row genuinely does not exist, so there is nothing to hide) — the crash
-    happens one line further in, in code this phase did not touch."""
+def test_live_posting_a_missing_draft_journal_is_a_404(deny, monkeypatch):
+    """journal_posting_service.post_draft's own lookup used `.single()`, which raises on zero rows, so a draft that does
+    not exist answered 500 (PGRST116) instead of a clean 404 (POST-A-198). `_assert_draft_scope` does not raise here (the
+    row genuinely does not exist, so there is nothing to hide); the lookup one line further in is `.maybe_single()` now and
+    the refusal beneath it finally runs."""
     _e2e_setup(monkeypatch)
-    with pytest.raises(Exception, match="PGRST116"):
+    with pytest.raises(HTTPException) as exc:
         acct.post_draft_journal("J-does-not-exist", current_user=PARTNER_USER)
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "Journal entry not found."
 
 
 def test_live_reversing_a_hidden_clients_journal_is_refused(deny, monkeypatch):

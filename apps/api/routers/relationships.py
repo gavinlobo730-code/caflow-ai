@@ -349,7 +349,7 @@ def update_entity(
                 return api_response(True, _MOCK_ENTITIES[i])
         raise HTTPException(status_code=404, detail="Entity not found")
 
-    existing = db.table("entities").select("id").eq("id", entity_id).eq("firm_id", firm_id).single().execute().data
+    existing = db.table("entities").select("id").eq("id", entity_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not existing:
         raise HTTPException(status_code=404, detail="Entity not found")
 
@@ -380,7 +380,7 @@ def get_entity(
         ]
         return api_response(True, {**entity, "roles": roles, "relationships": relationships})
 
-    entity = db.table("entities").select("*").eq("id", entity_id).eq("firm_id", firm_id).single().execute().data
+    entity = db.table("entities").select("*").eq("id", entity_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not entity:
         raise HTTPException(status_code=404, detail="Entity not found")
 
@@ -434,7 +434,7 @@ def add_entity_role(
         )
         return api_response(True, row)
 
-    entity = db.table("entities").select("id, full_name").eq("id", entity_id).eq("firm_id", firm_id).single().execute().data
+    entity = db.table("entities").select("id, full_name").eq("id", entity_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not entity:
         raise HTTPException(status_code=404, detail="Entity not found")
 
@@ -478,7 +478,7 @@ def remove_entity_role(
         _MOCK_ENTITY_ROLES = [r for r in _MOCK_ENTITY_ROLES if r["id"] != role_id]
         return api_response(True, {"deleted": True, "role_id": role_id})
 
-    existing = db.table("entity_roles").select("id, client_id").eq("id", role_id).eq("firm_id", firm_id).single().execute().data
+    existing = db.table("entity_roles").select("id, client_id").eq("id", role_id).eq("firm_id", firm_id).maybe_single().execute().data
     _assert_role_scope(current_user, existing)
 
     db.table("entity_roles").delete().eq("id", role_id).eq("firm_id", firm_id).execute()
@@ -522,8 +522,8 @@ def create_relationship(
         )
         return api_response(True, row)
 
-    from_e = db.table("entities").select("id").eq("id", data.from_entity_id).eq("firm_id", firm_id).single().execute().data
-    to_e   = db.table("entities").select("id").eq("id", data.to_entity_id).eq("firm_id", firm_id).single().execute().data
+    from_e = db.table("entities").select("id").eq("id", data.from_entity_id).eq("firm_id", firm_id).maybe_single().execute().data
+    to_e   = db.table("entities").select("id").eq("id", data.to_entity_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not from_e or not to_e:
         raise HTTPException(status_code=404, detail="One or both entities not found in firm")
 
@@ -746,7 +746,7 @@ def review_cross_client_match(
 
     # client_id_a/client_id_b are selected so the check below has both ends —
     # confirming a match is a judgement recorded against two named clients.
-    existing = db.table("cross_client_matches").select("id, client_id_a, client_id_b").eq("id", match_id).eq("firm_id", firm_id).single().execute().data
+    existing = db.table("cross_client_matches").select("id, client_id_a, client_id_b").eq("id", match_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not existing or not _match_visible(current_user, existing):
         raise HTTPException(status_code=404, detail="Match not found")
 
@@ -800,8 +800,8 @@ def create_entity_to_entity_relationship(
     # task #231 audit finding: unlike create_relationship immediately above
     # this in the same file, this endpoint inserted from_entity_id/to_entity_id
     # with NO ownership check at all — mirror that endpoint's exact guard.
-    from_e = db.table("entities").select("id").eq("id", data.from_entity_id).eq("firm_id", firm_id).single().execute().data
-    to_e   = db.table("entities").select("id").eq("id", data.to_entity_id).eq("firm_id", firm_id).single().execute().data
+    from_e = db.table("entities").select("id").eq("id", data.from_entity_id).eq("firm_id", firm_id).maybe_single().execute().data
+    to_e   = db.table("entities").select("id").eq("id", data.to_entity_id).eq("firm_id", firm_id).maybe_single().execute().data
     if not from_e or not to_e:
         raise HTTPException(status_code=404, detail="One or both entities not found in firm")
 
@@ -854,7 +854,7 @@ def create_loan(
     # another firm's real client_id/entity_id.
     assert_client_access(current_user, data.client_id)
     if db:
-        entity = db.table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).single().execute().data
+        entity = db.table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).maybe_single().execute().data
         if not entity:
             raise HTTPException(status_code=404, detail="Entity not found in firm")
     else:
@@ -1008,7 +1008,7 @@ def create_property(
     # cross-referencing another firm's real client_id/entity_id.
     assert_client_access(current_user, data.client_id)
     if db and data.entity_id:
-        entity = db.table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).single().execute().data
+        entity = db.table("entities").select("id").eq("id", data.entity_id).eq("firm_id", firm_id).maybe_single().execute().data
         if not entity:
             raise HTTPException(status_code=404, detail="Entity not found in firm")
     elif not db and data.entity_id:

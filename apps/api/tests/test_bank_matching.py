@@ -380,6 +380,9 @@ class _Q:
         self._single = True
         return self
 
+    def maybe_single(self):
+        return self.single()
+
     def _matches(self):
         rows = self.store.setdefault(self.table, [])
         # THE GENERATED COLUMNS, BEFORE THE FILTER (BANK-10). Postgres

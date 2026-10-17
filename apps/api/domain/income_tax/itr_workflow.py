@@ -337,7 +337,7 @@ def transition_itr_status(
     sb = _supabase()
     existing = sb.table("itr_filings").select(
         "status, computation_snapshot_id"
-    ).eq("id", filing_id).eq("firm_id", firm_id).single().execute()
+    ).eq("id", filing_id).eq("firm_id", firm_id).maybe_single().execute()
     if not existing.data:
         raise ValueError("Filing not found")
 

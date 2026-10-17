@@ -167,12 +167,13 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE PURCHASE CYCLE BEGINS BEFORE THE BILL, AND THE GOODS RECEIPT IS A STATUTORY FACT
 - A VENDOR PAYMENT RECORDS WHICH BILLS IT SETTLED IN TWO SHAPES, AND EVERY READER MUST KNOW BOTH
 
-### `docs/design-record/engineering-and-ci.md` (4 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
+### `docs/design-record/engineering-and-ci.md` (5 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
 - THE BACKEND HAS A LINT RATCHET, A PROPERTY SUITE, ONE PAGER, ONE DOOR TO THE DATABASE CLIENT AND A COVERAGE FLOOR, AND EACH IS A R
 - THE SMOKE WALK RUNS BY ITSELF, NIGHTLY AND ON DEMAND, AND IS NOT A CHECK ANYTHING WAITS ON
 - EACH MIGRATION IS ONE TRANSACTION, AND A REMEMBERED FAILURE KEEPS THE PIPELINE RED
 - THE SCHEMA-DRIFT CHECK HEALS ITSELF AND COVERS THE TABLES AND FUNCTIONS THE CODE CALLS
+- A LOOKUP THAT MAY FIND NOTHING IS `.maybe_single()`, AND A `.single()` THAT SLIPS THROUGH ANYWAY ANSWERS 404 AND NOT 500
 
 ### `docs/design-record/filing-and-compliance.md` (3 entries): Filing to government portals, trackers and the period lock
 

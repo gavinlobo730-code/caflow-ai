@@ -93,6 +93,23 @@ def _sqlstate(exc: Exception) -> str:
     return ""
 
 
+def is_absent_single_row(exc: Exception) -> bool:
+    """True when `exc` is PostgREST's answer to `.single()` finding NO row (406, code PGRST116, details "The result
+    contains 0 rows"), the same reading `core.supabase_client._maybe_single_execute` makes. Every read guarded."""
+    code = details = None
+    try:
+        code = getattr(exc, "code", None)
+        details = getattr(exc, "details", None)
+        if code is None or details is None:
+            first = (getattr(exc, "args", ()) or [None])[0]
+            if isinstance(first, dict):
+                code = code if code is not None else first.get("code")
+                details = details if details is not None else first.get("details")
+    except Exception:                                           # noqa: BLE001
+        return False
+    return code == "PGRST116" and isinstance(details, str) and "contains 0 rows" in details
+
+
 # SQLSTATEs a retry cannot fix. Saying "please try again" to any of these is
 # advice that has never once worked — the walkthrough's 24th purchase bill
 # failed exactly like its first, on 42501.
@@ -318,12 +335,20 @@ def unhandled_failure(exc: Exception) -> "tuple[int, str] | None":
         can name the action and can afford a fallback sentence for an unknown
         error. This one runs over every unhandled exception in the process —
         a KeyError, a timeout, a bug — so it speaks ONLY where the exception
-        carries a SQLSTATE it recognises, and returns None otherwise. Silence
+        carries a SQLSTATE it recognises (or is PostgREST's "no row" answer to
+        `.single()`, which has no SQLSTATE), and returns None otherwise. Silence
         keeps "Internal server error", which for an actual internal error is
         the honest answer.
 
     Returns None when there is nothing it can honestly say.
     """
+    if is_absent_single_row(exc):
+        # A `.single()` that found NO row. PostgREST answers it 406 / PGRST116, which is an eight-character code and
+        # so never reached the SQLSTATE branch below: a wrong or foreign id came back as "Internal server error"
+        # with a traceback in the log (POST-A-198). Nothing was wrong on our side, so this is a 404. Only the
+        # ZERO-rows reading: two rows where one was promised is a genuine inconsistency and stays a 500.
+        return 404, "That record was not found."
+
     state = _sqlstate(exc)
     if not state:
         return None
