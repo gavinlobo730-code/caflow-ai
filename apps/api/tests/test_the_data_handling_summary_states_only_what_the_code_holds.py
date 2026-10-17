@@ -781,7 +781,7 @@ def test_no_client_name_is_attached_to_a_figure_the_product_sends(name, sent, mo
 
 def test_the_workflow_report_sends_the_names_the_firm_gave_its_workflows_and_no_client_name(sent, monkeypatch):
     """The one builder left out of the list above, and why. The copilot's workflow report names the firm's failing
-    and slow workflow TEMPLATES and counts their failure reasons: words the firm typed when it built them. They are
+    and slow workflow TEMPLATES and counts their failure reasons: words the firm typed when it built them (delimited as data since POST-A-047). They are
     not a client's name field and the product adds none, which is the sentence the page makes; but a firm that
     named a template after a client sends that name, and the page's figures paragraph does not claim otherwise because
     it does not list this report. If this stops being true, reword the header of this file."""
@@ -798,9 +798,18 @@ def test_the_workflow_report_sends_the_names_the_firm_gave_its_workflows_and_no_
     monkeypatch.setattr(mod, "_get_workflow_repo", lambda: _Failing())
     asyncio.run(svc.get_workflow_intelligence("f1", allowed_client_ids=None))
     everything = _text(sent[0])
-    assert "Failing workflows: 1 (Onboarding checklist)" in everything
-    assert "Slow workflows (>1h avg): Onboarding checklist" in everything
-    assert "step timed out" in everything
+    # The names are still sent (the page says the product attaches no CLIENT name, and a firm's own words are not that),
+    # but since POST-A-047 they sit between the untrusted markers and the instruction carries only counts.
+    from domain.ai import untrusted
+
+    user = [m for m in sent[0] if m.get("role") == "user"][-1]["content"]      # the system message names the markers too
+    head, rest = user.split(untrusted.BEGIN, 1)
+    block = rest.split(untrusted.END, 1)[0]
+    assert "Failing workflows: 1 (the first 1 are named below)" in head
+    assert "Slow workflows (>1h avg): 1 (the first 1 are named below)" in head
+    assert "Onboarding checklist" not in head and "step timed out" not in head
+    assert "Failing workflow: Onboarding checklist" in block and "Slow workflow: Onboarding checklist" in block
+    assert "step timed out" in block
     assert not [p for p in PLANTED if p in everything]
 
 

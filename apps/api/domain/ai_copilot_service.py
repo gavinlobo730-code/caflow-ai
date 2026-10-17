@@ -21,7 +21,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from core.ist_clock import ist_now, ist_today
-from domain.ai import gateway, groq_text
+from domain.ai import gateway, groq_text, untrusted
 
 _logger = logging.getLogger("caflow.ai_copilot")
 
@@ -52,6 +52,23 @@ def _get_compliance_records_repo():
     matching the pattern services/compliance_obligation_service.py already uses."""
     from repositories.compliance_records_repository import compliance_records_repo
     return compliance_records_repo
+
+
+#: The two contexts the copilot page used to offer that attach no data (ai-10): conversations stored under
+#: them still exist. The only values `_build_context` will repeat back to the model from a stored context.
+_RETIRED_CONTEXTS = ("executive", "relationship")
+
+#: The kinds of compliance record there are: the CHECK on `compliance_records.compliance_type`
+#: (migration 003, read from production on 17-10-2026). A prompt names a kind from this list or
+#: calls it "Other", so the safety of the text a prompt carries does not rest on a database
+#: constraint staying as it is. `tests/test_a_prompt_that_names_what_a_firm_typed_delimits_it.py`
+#: holds this to the migration.
+COMPLIANCE_TYPES = ("GST", "Income Tax", "TDS", "MCA", "Payroll", "Bookkeeping")
+
+
+def _compliance_kind(value) -> str:
+    """A compliance record's kind as a prompt may name it: one of `COMPLIANCE_TYPES`, else "Other"."""
+    return value if value in COMPLIANCE_TYPES else "Other"
 
 
 def _overdue_compliance_records(firm_id=None, client_id=None):
@@ -243,9 +260,13 @@ class AICopilotService:
             f"CONTEXT TYPE: {context_type}",
         ]
         if requested_context != context_type:
+            # Named only if it is one of the two the page used to offer. The stored
+            # `ai_conversations.context_type` is free TEXT that a signed-in session can
+            # write, so any other value is called "unrecognised" and never repeated.
+            opened_in = requested_context if requested_context in _RETIRED_CONTEXTS else "unrecognised"
             lines.append(
                 f"CONTEXT NOTE: this conversation was opened in a "
-                f"'{requested_context}' context that carries no data of its own. "
+                f"'{opened_in}' context that carries no data of its own. "
                 f"The firm-wide figures below are the only ones attached; do not "
                 f"claim to know anything about executive or relationship matters "
                 f"beyond them.")
@@ -295,7 +316,6 @@ class AICopilotService:
                             "CLIENT: the client this conversation is about (name and tax IDs withheld)",
                             f"CLIENT STATUS: {client.get('status', 'unknown')}",
                             f"HEALTH SCORE: {client.get('health_score', 'N/A')}",
-                            f"LIFECYCLE STAGE: {client.get('lifecycle_stage', 'N/A')}",
                         ]
                         # Compliance records for this client
                         try:
@@ -516,7 +536,9 @@ class AICopilotService:
             )
             overdue_count = len([t for t in comp_records if t.get("status") == "Overdue"])
             pending_count = len([t for t in comp_records if t.get("status") == "Not Started"])
-            compliance_types = list({t.get("compliance_type", "") for t in comp_records if t.get("compliance_type")})
+            compliance_types = sorted({
+                _compliance_kind(t.get("compliance_type")) for t in comp_records if t.get("compliance_type")
+            })
         except Exception:
             pass
 
@@ -666,7 +688,7 @@ Format as a structured professional report. Cite relevant sections of IT Act / C
         overdue_clients = list({t.get("client_id") for t in overdue_tasks if t.get("client_id")})
         due_soon_by_type: dict[str, int] = {}
         for t in due_soon_tasks:
-            ct = t.get("compliance_type", "Other")
+            ct = _compliance_kind(t.get("compliance_type"))
             due_soon_by_type[ct] = due_soon_by_type.get(ct, 0) + 1
 
         compliance_score = max(0, 100 - len(overdue_tasks) * 5)
@@ -742,6 +764,7 @@ Cite CGST Act / IT Act sections where relevant."""
             pass
 
         failing = [a for a in analytics if a.get("failed", 0) > 0]
+        failing_names = [a["template_name"] for a in failing[:3]]
         bottleneck_names = [
             a["template_name"]
             for a in analytics
@@ -760,15 +783,21 @@ Cite CGST Act / IT Act sections where relevant."""
             reason = f.get("error_type") or f.get("step_name") or "unknown"
             failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
 
+        slow_names = bottleneck_names[:untrusted.LABEL_LIST_LIMIT]
+        top_reasons = sorted(failure_reasons.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
+        failing_note = f" (the first {len(failing_names)} are named below)" if failing_names else ""
+        slow_note = f" (the first {len(slow_names)} are named below)" if slow_names else ""
+        reasons_note = f" (the {len(top_reasons)} most frequent are named below)" if top_reasons else ""
+
         prompt = f"""Analyse workflow automation performance and provide recommendations.
 
 REAL DATA AS OF {ist_now().strftime('%d %B %Y')}:
 - Total workflow types: {len(analytics)}
-- Failing workflows: {len(failing)} ({', '.join(a['template_name'] for a in failing[:3])})
+- Failing workflows: {len(failing)}{failing_note}
 - Pending approvals: {len(approvals)} ({len(overdue_approvals)} overdue)
 - Unresolved failures: {len(failures)}
-- Slow workflows (>1h avg): {', '.join(bottleneck_names) if bottleneck_names else 'None'}
-- Top failure reasons: {failure_reasons if failure_reasons else 'None recorded'}
+- Slow workflows (>1h avg): {len(bottleneck_names)}{slow_note}
+- Distinct failure reasons: {len(failure_reasons)}{reasons_note}
 
 Provide:
 1. Root cause analysis for top failures
@@ -776,8 +805,20 @@ Provide:
 3. Workflow optimisation suggestions
 4. Priority actions"""
 
+        # What somebody at the firm TYPED (POST-A-047) goes in its own block between the
+        # markers, never inline in the instruction: the instruction above carries counts and
+        # nothing a person wrote. That is the workflow template names, and also the failure
+        # reasons, because `workflow_failures` is a table a signed-in session can insert
+        # into (migration 095), so `error_type` is text the firm controls and not only the
+        # engine's own exception class names.
+        named = [f"- Failing workflow: {untrusted.label(n)}" for n in failing_names]
+        named += [f"- Slow workflow: {untrusted.label(n)}" for n in slow_names]
+        named += [f"- Failure reason ({int(count)} times): {untrusted.label(reason)}" for reason, count in top_reasons]
+        if named:
+            prompt += "\n\nThe names and reasons counted above:\n" + untrusted.wrap("\n".join(named))
+
         messages = [
-            {"role": "system", "content": _system_prompt()},
+            {"role": "system", "content": f"{_system_prompt()}\n\n{untrusted.LABEL_RULE}"},
             {"role": "user", "content": prompt},
         ]
         content, tokens = await self._call_groq(messages)

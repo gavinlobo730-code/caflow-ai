@@ -147,6 +147,18 @@ PREMISES: dict[str, Premise] = {
         routes=(("GET", "/api/ai-copilot/firm-context"),
                 ("POST", "/api/ai-copilot/chat")),
     ),
+    "ai_copilot_workflow_report": Premise(
+        claim=("No screen calls GET /api/copilot/intelligence/workflows: "
+               "`api.workflowIntelligence` in lib/api has no caller."),
+        held_down=("POST-A-047: the workflow report's template names and failure "
+                   "reasons are now delimited as data, and the harm of a hostile one "
+                   "was rated a misleading paragraph. The first screen that shows "
+                   "the report makes that paragraph something a person acts on, and "
+                   "the reasons come from a table any signed-in session can write "
+                   "(POST-A-248), and the template names from the firm's own writers."),
+        kind="route",
+        routes=(("GET", "/api/copilot/intelligence/workflows"),),
+    ),
     "amt_only_for_firms": Premise(
         claim=("compute_amt has one non-test caller, ITREngine._compute_entity, "
                "and the branch that reaches it is the firm/LLP one."),
