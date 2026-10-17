@@ -34,6 +34,9 @@ export default function ApprovalsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A refused decision is shown BESIDE the list, which is reloaded: a load failure replaces the list, a refused action
+  // does not.
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -52,14 +55,20 @@ export default function ApprovalsPage() {
   useEffect(() => { load(); }, [load]);
 
   async function act(id: string, action: "approve" | "reject" | "cancel") {
-    setBusy(id); setError(null);
+    setBusy(id); setError(null); setActionError(null);
     try {
       if (action === "approve") await api.approvals.approve(id);
       else if (action === "reject") await api.approvals.reject(id, "Rejected by Partner");
       else await api.approvals.cancel(id);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Action failed");
+      const message = e instanceof Error ? e.message : "Action failed";
+      // Show the list as it is NOW: a refused decision (somebody else decided first, or the action failed and the
+      // request is back to pending) leaves the page showing a stale row otherwise. A refusal to sign in without a second
+      // factor keeps its own panel.
+      await load();
+      if (isMfaRefusal(message)) setError(message);
+      else setActionError(message);
     } finally {
       setBusy(null);
     }
@@ -70,7 +79,7 @@ export default function ApprovalsPage() {
       <PageHeader
         icon={<ShieldCheck size={18} className="text-brand" />}
         title="Approvals"
-        subtitle="Sensitive actions (user &amp; role changes, client assignments, master Chart-of-Accounts changes) require Partner approval. Every decision is recorded in the audit log."
+        subtitle="A Partner approves or rejects requests for user and role changes and client assignments here. Every decision is recorded in the audit log."
         className="mb-4"
       />
 
@@ -78,7 +87,7 @@ export default function ApprovalsPage() {
         {(["pending", "history"] as const).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => { setTab(t); setActionError(null); }}
             className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px capitalize ${
               tab === t ? "border-brand text-brand" : "border-transparent text-gray-500"
             }`}
@@ -109,6 +118,8 @@ export default function ApprovalsPage() {
       ) : (
         <div className="text-xs text-red-600 mb-3">{error}</div>
       ))}
+
+      {actionError && <div role="alert" className="text-xs text-state-problem mb-3">{actionError}</div>}
 
       {!error && loading ? (
         <ListSkeleton rows={4} />

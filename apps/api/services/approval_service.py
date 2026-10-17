@@ -9,9 +9,15 @@ transition is mirrored to the immutable audit_log.
 Request types (handlers execute against existing server paths):
   user_create / user_activation / role_change        -> user_repo
   assignment_create / assignment_remove / assignment_transfer -> assignment_repo
-  coa_create / coa_update / coa_delete (archive)      -> accounting_service
+
+The chart-of-accounts types (coa_create / coa_update / coa_delete) were RETIRED on 17-10-2026 (POST-A-007's review): their
+handlers called the in-memory `domain.accounting_service`, which the REST routes had already been moved off because a change
+made there "was reported as saved and was not", so an approved request recorded success and wrote no account. Nothing
+creates one (no screen, no job). A stored request of a retired type can still be rejected or cancelled and is refused on
+approval in words (`RETIRED_TYPES`).
 """
-from typing import Callable, Optional
+import logging
+from typing import Optional
 
 from fastapi import HTTPException
 
@@ -19,6 +25,8 @@ from repositories.approval_repository import approval_repo
 from services.audit_service import log_event
 
 _CANONICAL_ROLES = {"Partner", "Manager", "Executive", "Reviewer", "Client"}
+
+logger = logging.getLogger(__name__)
 
 
 # ── Execution handlers (run on approval) ─────────────────────────────────────
@@ -64,23 +72,6 @@ def _h_assignment_transfer(firm_id: str, p: dict) -> dict:
     return {"transferred": True, "assignment": created}
 
 
-def _h_coa_create(firm_id: str, p: dict) -> dict:
-    from domain.accounting_service import accounting_service
-    return accounting_service.create_account(p)
-
-
-def _h_coa_update(firm_id: str, p: dict) -> dict:
-    from domain.accounting_service import accounting_service
-    fields = {k: v for k, v in p.items() if k != "account_id"}
-    return accounting_service.update_account(p["account_id"], fields)
-
-
-def _h_coa_delete(firm_id: str, p: dict) -> dict:
-    # Accounts are archived, never hard-deleted, for financial-record integrity.
-    from domain.accounting_service import accounting_service
-    return accounting_service.update_account(p["account_id"], {"is_active": False})
-
-
 # type -> (required payload keys, summary builder, handler)
 _SPECS: dict[str, dict] = {
     "user_create":        {"required": ["full_name", "email", "role"],
@@ -101,18 +92,12 @@ _SPECS: dict[str, dict] = {
     "assignment_transfer": {"required": ["from_user_id", "to_user_id", "client_id"],
                            "summary": lambda p: f"Transfer client {p.get('client_id')} from {p.get('from_user_id')} to {p.get('to_user_id')}",
                            "handler": _h_assignment_transfer},
-    "coa_create":         {"required": ["account_name", "account_type"],
-                           "summary": lambda p: f"Create account {p.get('account_name')} ({p.get('account_type')})",
-                           "handler": _h_coa_create},
-    "coa_update":         {"required": ["account_id"],
-                           "summary": lambda p: f"Update account {p.get('account_id')}",
-                           "handler": _h_coa_update},
-    "coa_delete":         {"required": ["account_id"],
-                           "summary": lambda p: f"Archive account {p.get('account_id')}",
-                           "handler": _h_coa_delete},
 }
 
 REQUEST_TYPES = tuple(_SPECS.keys())
+
+# Types an earlier version accepted, that a stored row may still carry. Reading one is fine; carrying one out is not.
+RETIRED_TYPES = frozenset({"coa_create", "coa_update", "coa_delete"})
 
 
 def _audit(firm_id: str, req: dict, action: str, actor: dict, **extra) -> None:
@@ -152,24 +137,58 @@ def _load_pending(firm_id: str, request_id: str) -> dict:
     return req
 
 
+def _lost_the_race() -> HTTPException:
+    return HTTPException(409, "Request already decided")
+
+
+# A decision is CLAIMED before anything else happens: one `UPDATE ... WHERE status = 'pending'`
+# (`approval_repo.decide_if_pending`), so of two simultaneous decisions exactly one gets a row back
+# and the other is refused. Reading the status and writing it later left a window in which two
+# approvals both passed the check and the handler (a user created, a role changed, an account
+# archived) ran twice, and in which a rejection could overwrite an approval whose action had
+# already run (POST-A-007).
+
 def approve(firm_id: str, request_id: str, approver: dict) -> dict:
     req = _load_pending(firm_id, request_id)
-    spec = _SPECS[req["request_type"]]
-    result = spec["handler"](firm_id, req["payload"])  # executes the real mutation
-    updated = approval_repo.update(firm_id, request_id, {
+    spec = _SPECS.get(req["request_type"])
+    if spec is None:
+        # Refused before the claim, so the request stays pending and can still be rejected or cancelled.
+        raise HTTPException(409, "This kind of request can no longer be carried out. Reject it instead.")
+    claimed = approval_repo.decide_if_pending(firm_id, request_id, {
         "status": "approved", "decided_by": approver.get("id"),
-        "decided_by_email": approver.get("email"), "decided_at": _now(), "result": result,
+        "decided_by_email": approver.get("email"), "decided_at": _now(),
     })
+    if claimed is None:
+        raise _lost_the_race()
+    try:
+        result = spec["handler"](firm_id, req["payload"])  # executes the real mutation
+    except Exception:
+        # The action raised, so the request is not decided: put it back for the next try. A handler is one repository
+        # call or two (the same as before the claim existed, when a failure also left the request pending), so the
+        # retry is the same attempt again. If even the put-back fails, or the process dies between the claim and the
+        # result, the request is left reading approved with no result: the API refuses a second approval of it (409),
+        # and the log says so at ERROR in the first case.
+        try:
+            approval_repo.update(firm_id, request_id, {
+                "status": "pending", "decided_by": None, "decided_by_email": None, "decided_at": None,
+            })
+        except Exception:  # noqa: BLE001 - the original failure is the one to raise
+            logger.error("approval %s: the action failed AND the request could not be put back to pending",
+                         request_id, exc_info=True)
+        raise
+    updated = approval_repo.update(firm_id, request_id, {"result": result})
     _audit(firm_id, req, "approved", approver)
     return updated
 
 
 def reject(firm_id: str, request_id: str, approver: dict, reason: Optional[str] = None) -> dict:
     req = _load_pending(firm_id, request_id)
-    updated = approval_repo.update(firm_id, request_id, {
+    updated = approval_repo.decide_if_pending(firm_id, request_id, {
         "status": "rejected", "decided_by": approver.get("id"),
         "decided_by_email": approver.get("email"), "decided_at": _now(), "reason": reason,
     })
+    if updated is None:
+        raise _lost_the_race()
     _audit(firm_id, req, "rejected", approver, reason=reason)
     return updated
 
@@ -180,10 +199,12 @@ def cancel(firm_id: str, request_id: str, actor: dict) -> dict:
     is_partner = str(actor.get("role", "")).strip().lower() in ("partner", "owner")
     if not is_partner and actor.get("id") != req.get("requested_by"):
         raise HTTPException(403, "Only the requester or a Partner may cancel this request")
-    updated = approval_repo.update(firm_id, request_id, {
+    updated = approval_repo.decide_if_pending(firm_id, request_id, {
         "status": "cancelled", "decided_by": actor.get("id"),
         "decided_by_email": actor.get("email"), "decided_at": _now(),
     })
+    if updated is None:
+        raise _lost_the_race()
     _audit(firm_id, req, "cancelled", actor)
     return updated
 
