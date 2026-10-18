@@ -26,3 +26,16 @@ def give_the_signed_in_writes_back(dsn: str) -> None:
     done = subprocess.run(["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-f", "-"],
                           input=rollback_sql(), capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
+
+
+_ROLLBACK_515 = (Path(__file__).resolve().parents[1] / "migrations" /
+                 "515_the_leave_allotments_and_the_activity_feed_are_written_by_the_api_only_rollback.sql")
+
+
+def give_the_leave_and_feed_writes_back(dsn: str) -> None:
+    """The same, for migration 515: `leave_balances` (all four write verbs) and `client_timeline_events` (INSERT) were the
+    two tables the browser used to write that now go through the API. A module that measures their policies as a signed-in
+    role calls this once its rows are seeded; the privilege itself is measured by `test_515_*_pg.py`."""
+    done = subprocess.run(["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-f", "-"],
+                          input=_ROLLBACK_515.read_text(encoding="utf-8"), capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr

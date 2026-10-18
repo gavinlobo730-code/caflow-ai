@@ -692,23 +692,26 @@ export default function AttendancePage() {
       return;
     }
     setLeaveSaveError(null);
-    const sb = getSupabaseClient();
-    const { error } = await sb.from("leave_balances").upsert({
-      firm_id: firmId,
-      employee_id: lb.employee_id,
-      year: lb.year,
-      // A blank box is NULL — "not recorded" — and is stored as that
-      // (migration 428). Writing 0 for it asserted an entitlement of none
-      // that nobody gave, and omitting it let migration 027's DEFAULT put
-      // back the 12/12/15 PAY-24 took off this screen.
-      casual_leave_balance: lb.casual_leave_balance ?? null,
-      sick_leave_balance: lb.sick_leave_balance ?? null,
-      earned_leave_balance: lb.earned_leave_balance ?? null,
-    }, { onConflict: "employee_id,year" });
-    if (error) {
+    // Through the server, not straight to the table (POST-A-235): `payroll:write` and the per-person grid apply, the employee
+    // is checked against the caller's clients, and the change is written to the audit log with what it replaced. A blank box
+    // is NULL, "not recorded" (migration 428): writing 0 for it asserted an entitlement of none that nobody gave, and
+    // omitting it let migration 027's DEFAULT put back the 12/12/15 PAY-24 took off this screen.
+    try {
+      const res = await api.payroll.saveLeaveBalance({
+        employee_id: lb.employee_id,
+        year: lb.year,
+        casual_leave_balance: lb.casual_leave_balance ?? null,
+        sick_leave_balance: lb.sick_leave_balance ?? null,
+        earned_leave_balance: lb.earned_leave_balance ?? null,
+      }) as { success?: boolean; error?: string | null; detail?: string };
+      if (res?.success === false) {
+        setLeaveSaveError(`Couldn't save the leave allocation: ${res.error || res.detail || "the request was refused"}`);
+        return;
+      }
+    } catch (e) {
       // The editor stays open with what was typed. Closing it on a refused
       // write is what made a failed save look like a saved one.
-      setLeaveSaveError(`Couldn't save the leave allocation: ${error.message}`);
+      setLeaveSaveError(`Couldn't save the leave allocation: ${e instanceof Error ? e.message : "the request failed"}`);
       return;
     }
     setEditingLeave(null);

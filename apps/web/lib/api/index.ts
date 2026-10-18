@@ -4444,6 +4444,25 @@ export const api = {
     update: (id: string, body: unknown) => request(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     dashboardSummary: () => request("/api/tasks/summary/dashboard"),
   },
+  timeline: {
+    /** Record an event on a client's activity feed AS THE SIGNED-IN PERSON. The firm and the actor are the server's to
+     *  set (POST-A-228): there is deliberately no field here for either. */
+    write: (body: {
+      client_id: string;
+      financial_year: string;
+      category: string;
+      event_type: string;
+      title: string;
+      severity?: string;
+      description?: string;
+      action_label?: string;
+      action_url?: string;
+      entity_type?: string;
+      entity_id?: string;
+      amount_paise?: number;
+      visibility?: string;
+    }) => request("/api/timeline/events", { method: "POST", body: JSON.stringify(body) }),
+  },
   team: {
     list: () => request("/api/team"),
   },
@@ -5440,6 +5459,16 @@ export const api = {
     // is refused rather than corrected.
     saveAttendance: (body: { client_id: string; month: string; rows: unknown[] }) =>
       request("/api/payroll/attendance", { method: "PUT", body: JSON.stringify(body) }),
+    /** One employee's leave ALLOTMENT for a calendar year. A box left empty is `null`, "not recorded", and is stored as
+     *  that; at least one of the three must be given. Through the API so that `payroll:write` and the per-person grid
+     *  apply (POST-A-235); the browser no longer writes `leave_balances`. */
+    saveLeaveBalance: (body: {
+      employee_id: string;
+      year: number;
+      casual_leave_balance: number | null;
+      sick_leave_balance: number | null;
+      earned_leave_balance: number | null;
+    }) => request("/api/payroll/leave-balance", { method: "PUT", body: JSON.stringify(body) }),
     /** One-time and variable earnings — incentive, bonus, ex-gratia, arrears.
      *
      *  Through the API, never straight to PostgREST, because saving one is not

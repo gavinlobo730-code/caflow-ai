@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 
 export type EventCategory =
   | "accounting" | "compliance" | "payroll" | "tax"
@@ -8,55 +9,51 @@ export type EventSeverity = "info" | "success" | "warning" | "critical";
 export type EventActorType = "user" | "system" | "ai" | "client";
 export type EventVisibility = "all" | "internal" | "partner_only";
 
+/** What a browser may SAY about an event it wants recorded. There is deliberately no firm, no actor and no pin here
+ *  (POST-A-228): the server sets the firm from the signed-in person, the actor to that person, and a new event is unpinned.
+ *  The row it stores is `TimelineEvent`. */
 export interface TimelineEventInput {
   client_id: string;
-  firm_id: string;
   financial_year: string;
-  period?: string;
   category: EventCategory;
   event_type: string;
   severity?: EventSeverity;
   title: string;
   description?: string;
   action_label?: string;
+  /** A path inside the product, starting with a single "/". */
   action_url?: string;
   entity_type?: string;
   entity_id?: string;
-  actor_type?: EventActorType;
-  actor_id?: string;
-  actor_name?: string;
   amount_paise?: number;
-  is_pinned?: boolean;
   visibility?: EventVisibility;
 }
 
+/** An event as it is held: what was said, plus the facts the server decided. */
 export interface TimelineEvent extends TimelineEventInput {
   id: string;
+  firm_id: string;
+  period?: string;
+  actor_type?: EventActorType;
+  actor_id?: string;
+  actor_name?: string;
+  is_pinned?: boolean;
   created_at: string;
   deleted_at: string | null;
 }
 
+/** Record an event on a client's activity feed, AS THE SIGNED-IN PERSON, through the server. The browser used to INSERT
+ *  into the table itself and choose the actor; it can no longer (migration 515). A failure comes back as `success: false`
+ *  with the server's own sentence, and every caller treats the timeline as non-blocking. */
 export async function writeTimelineEvent(
   input: TimelineEventInput
 ): Promise<{ success: boolean; data: TimelineEvent | null; error: string | null }> {
   try {
-    const supabase = getSupabaseClient();
-    const { data, error } = await supabase
-      .from("client_timeline_events")
-      .insert({
-        ...input,
-        severity: input.severity ?? "info",
-        actor_type: input.actor_type ?? "system",
-        is_pinned: input.is_pinned ?? false,
-        visibility: input.visibility ?? "all",
-      })
-      .select()
-      .single();
-
-    if (error) return { success: false, data: null, error: error.message };
-    return { success: true, data: data as TimelineEvent, error: null };
+    const res = await api.timeline.write(input) as { success?: boolean; data?: TimelineEvent; error?: string | null };
+    if (res?.success === false) return { success: false, data: null, error: res.error ?? "The event was not recorded." };
+    return { success: true, data: (res?.data ?? null) as TimelineEvent | null, error: null };
   } catch (err) {
-    return { success: false, data: null, error: String(err) };
+    return { success: false, data: null, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

@@ -401,7 +401,12 @@ UNFIXED: dict[str, str] = {}
 # rather than an inline literal, the same "genuinely dynamic, no literal exists
 # to read" shape already budgeted above for `routers/payroll.py`'s declaration
 # VERIFY path.
-MAX_UNREADABLE = 469
+# `services/timeline_service.py` +2 (18-10-2026, POST-A-228): `log_timeline_event` and `record_event` insert
+# `{**self._stored(row), "firm_id": row["firm_id"]}`, a payload assembled from the row `_row` builds, so there is no
+# literal to read. It used to be one literal dict with the optional columns added by item assignment. The compensating
+# control is `tests/test_a_leave_allotment_and_a_timeline_event_are_written_through_the_server.py`, which asserts that every
+# key `_row` can produce is a column of `client_timeline_events` in the production snapshot.
+MAX_UNREADABLE = 471
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

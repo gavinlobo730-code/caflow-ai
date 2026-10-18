@@ -739,6 +739,21 @@ class AttendanceIn(BaseModel):
     rows: list[AttendanceRowIn]
 
 
+class LeaveBalanceIn(BaseModel):
+    """One employee's leave ALLOTMENT for one calendar year (`leave_balances`, migration 027).
+
+    A box left empty is NULL, "not recorded", and is stored as that (migration 428): it is not an allotment of none, and the
+    columns have no default any more that would make it twelve. At least one of the three must be given, because a row of
+    three NULLs says "recorded" and holds no entitlement. The columns are INTEGER, so a fractional day is refused here
+    instead of failing in the database; the ceiling is a year's days.
+    """
+    employee_id: str
+    year: int = Field(..., ge=2000, le=2100)
+    casual_leave_balance: Optional[int] = Field(None, ge=0, le=366)
+    sick_leave_balance: Optional[int] = Field(None, ge=0, le=366)
+    earned_leave_balance: Optional[int] = Field(None, ge=0, le=366)
+
+
 class OneTimeEarningIn(BaseModel):
     """One amount paid to one employee in one payroll month that is not a rate.
 

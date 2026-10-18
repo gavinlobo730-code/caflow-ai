@@ -13,9 +13,14 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
+from core import db_provider
 from core.ist_clock import ist_now, ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
+# Events are written with the privileged client and by nobody signed in (POST-A-228, migration 515): under the production
+# default (USE_USER_JWT) `get_supabase()` is the CALLER's own session, so this table's INSERT grant to `authenticated` was
+# what let a browser name any actor it liked. The firm is always named by the caller of this service, never read from a row.
+_write_db = db_provider.service_db
 _logger = logging.getLogger("caflow.timeline_service")
 
 # In-memory store for mock mode — enables GET /api/timeline in dev
@@ -72,79 +77,24 @@ class TimelineService:
         """
         # The YYYY-MM period is the INDIAN month: on the 1st between 00:00 and 05:30 IST the UTC clock still reads the
         # month before. `now` stays the UTC instant, which is what `created_at` stores.
-        now = datetime.now(timezone.utc)
-        period = ist_now().strftime("%Y-%m")
+        row = self._row(
+            client_id=client_id, firm_id=firm_id, financial_year=financial_year, category=category,
+            event_type=event_type, title=title, description=description, severity=severity,
+            entity_type=entity_type, entity_id=entity_id, amount_paise=amount_paise, actor_id=actor_id,
+            actor_name=actor_name, actor_type=actor_type, action_label=action_label, action_url=action_url,
+            visibility=visibility,
+        )
 
         if _USE_MOCK:
             _logger.info(
                 "[MOCK] timeline_event firm=%s client=%s fy=%s category=%s type=%s title=%r",
                 firm_id, client_id, financial_year, category, event_type, title,
             )
-            MOCK_TIMELINE_EVENTS.append({
-                "id":             str(uuid.uuid4()),
-                "client_id":      client_id,
-                "firm_id":        firm_id,
-                "financial_year": financial_year,
-                "period":         period,
-                "category":       category,
-                "event_type":     event_type,
-                "title":          title,
-                "description":    description,
-                "severity":       severity,
-                "entity_type":    entity_type,
-                "entity_id":      entity_id,
-                "amount_paise":   amount_paise,
-                "actor_id":       actor_id,
-                "actor_name":     actor_name,
-                "actor_type":     actor_type,
-                "action_label":   action_label,
-                "action_url":     action_url,
-                "visibility":     visibility,
-                "is_pinned":      False,
-                "created_at":     now.isoformat(),
-            })
+            MOCK_TIMELINE_EVENTS.append(row)
             return
 
         try:
-            # Lazy import to avoid circular dependency at module load time
-            from core.supabase_client import get_supabase
-            db = get_supabase()
-
-            payload: dict = {
-                "id":             str(uuid.uuid4()),
-                "client_id":      client_id,
-                "firm_id":        firm_id,
-                "financial_year": financial_year,
-                "period":         period,
-                "category":       category,
-                "event_type":     event_type,
-                "title":          title,
-                "severity":       severity,
-                "actor_type":     actor_type,
-                "visibility":     visibility,
-                "is_pinned":      False,
-                "created_at":     now.isoformat(),
-            }
-
-            if description is not None:
-                payload["description"] = description
-            if entity_type is not None:
-                payload["entity_type"] = entity_type
-            if entity_id is not None:
-                payload["entity_id"] = entity_id
-            if amount_paise is not None:
-                # All money in integer paise (BIGINT) — never float
-                payload["amount_paise"] = int(amount_paise)
-            if actor_id is not None:
-                payload["actor_id"] = actor_id
-            if actor_name is not None:
-                payload["actor_name"] = actor_name
-            if action_label is not None:
-                payload["action_label"] = action_label
-            if action_url is not None:
-                payload["action_url"] = action_url
-
-            db.table("client_timeline_events").insert(payload).execute()
+            self._insert(row)
 
             _logger.debug(
                 "timeline_event inserted: firm=%s client=%s type=%s",
@@ -155,6 +105,67 @@ class TimelineService:
                 "timeline_service.log_timeline_event failed (non-fatal): %s", exc
             )
 
+    def record_event(self, **fields) -> dict:
+        """Write one event and SAY WHETHER IT WAS WRITTEN: the door the browser's own events come through.
+
+        `log_timeline_event` is for the server's own bookkeeping and swallows a failure on purpose (a failed log must
+        never look like a failed posting). A person who asked for an event to be recorded is owed the truth, so this
+        raises, and the route answers 503 with a sentence. Same row, same insert; only the swallowing differs.
+        Takes the same keywords as `log_timeline_event` and returns the stored row.
+        """
+        row = self._row(**fields)
+        if _USE_MOCK:
+            MOCK_TIMELINE_EVENTS.append(row)
+            return row
+        return self._insert(row)
+
+    def _insert(self, row: dict) -> dict:
+        """The ONE insert into the feed, so the server's own log and a requested record write it the same way.
+
+        The firm is named last, on purpose: nothing in `row` can override it. Returns the stored row (or `row` when the
+        database answers nothing back). Raises on failure; `log_timeline_event` is what swallows it."""
+        payload = {**self._stored(row), "firm_id": row["firm_id"]}
+        saved = _write_db().table("client_timeline_events").insert(payload).execute().data or []
+        return saved[0] if saved else row
+
+    @staticmethod
+    def _row(
+        *, client_id, firm_id, financial_year, category, event_type, title, description=None, severity="info",
+        entity_type=None, entity_id=None, amount_paise=None, actor_id=None, actor_name=None, actor_type="user",
+        action_label=None, action_url=None, visibility="all",
+    ) -> dict:
+        """The event as it is held: every key present, an unset optional one None."""
+        return {
+            "id":             str(uuid.uuid4()),
+            "client_id":      client_id,
+            "firm_id":        firm_id,
+            "financial_year": financial_year,
+            "period":         ist_now().strftime("%Y-%m"),
+            "category":       category,
+            "event_type":     event_type,
+            "title":          title,
+            "description":    description,
+            "severity":       severity,
+            "entity_type":    entity_type,
+            "entity_id":      entity_id,
+            # All money in integer paise (BIGINT) — never float
+            "amount_paise":   int(amount_paise) if amount_paise is not None else None,
+            "actor_id":       actor_id,
+            "actor_name":     actor_name,
+            "actor_type":     actor_type,
+            "action_label":   action_label,
+            "action_url":     action_url,
+            "visibility":     visibility,
+            "is_pinned":      False,
+            "created_at":     datetime.now(timezone.utc).isoformat(),
+        }
+
+    @staticmethod
+    def _stored(row: dict) -> dict:
+        """The row as the table receives it: an optional column left unset is OMITTED, not sent as NULL."""
+        required = ("id", "client_id", "firm_id", "financial_year", "period", "category", "event_type", "title",
+                    "severity", "actor_type", "visibility", "is_pinned", "created_at")
+        return {k: v for k, v in row.items() if k in required or v is not None}
 
     def log(
         self,

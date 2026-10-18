@@ -140,7 +140,9 @@ def test_the_scan_reads_real_frontend_writes():
     # 24 -> 20 payloads on 14-10-2026, and the per-file tally moved on exactly two pages: app/income-tax/page.tsx
     # 3 -> 1 and app/mca/page.tsx 3 -> 1. The ITR filed tick and the MCA filing record (each single and bulk) went
     # to the API, where rbac, the state machine and the period lock run (POST-A-224, POST-A-225).
-    assert len(seen) > 19, (
+    # 20 -> 19 on 18-10-2026: app/payroll/attendance/page.tsx 1 -> 0, the only page that moved. The leave allotment went to
+    # PUT /api/payroll/leave-balance (POST-A-235). The timeline writes were never in this tally: they are in `.ts` files.
+    assert len(seen) > 18, (
         f"only {len(seen)} frontend write payloads found — the scan is not "
         "reading the code it claims to")
     assert "client_documents" in seen, (

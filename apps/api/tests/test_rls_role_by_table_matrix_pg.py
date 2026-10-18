@@ -138,6 +138,9 @@ EXPECTED_PATH = Path(__file__).resolve().parent / "fixtures" / "rls_expected_acc
 #: privilege" in every write cell of them.
 SECOND_LOCK_PATH = Path(__file__).resolve().parent / "fixtures" / "rls_expected_second_lock.json"
 _M499_ROLLBACK = "499_a_signed_in_session_writes_none_of_the_payroll_tables_the_browser_never_writes_rollback.sql"
+#: Migration 515 took the same privilege from `leave_balances` (the attendance screen now saves through the API) and the INSERT
+#: from `client_timeline_events`; its rollback gives them back, and `leave_balances` joins the second-lock file.
+_M515_ROLLBACK = "515_the_leave_allotments_and_the_activity_feed_are_written_by_the_api_only_rollback.sql"
 _ADMIN = os.environ.get("HARNESS_PG")
 
 _NEEDS_PG = pytest.mark.skipif(
@@ -1050,8 +1053,9 @@ def _migration_sql(name: str) -> str:
     return (_MIGRATIONS / name).read_text()
 
 
-#: The controls that apply migration 499's rollback before the rollback they are about; see the use below.
-_AGAINST_THE_SECOND_LOCK = {"payroll-tier-485-reopened", "payroll-tier-490-reopened"}
+#: The controls that apply migration 499's (and 515's) rollback before the rollback they are about; see the use below.
+_AGAINST_THE_SECOND_LOCK = {"payroll-tier-485-reopened", "payroll-tier-490-reopened",
+                            "liveness-dropped-from-every-helper", "payroll-write-tier-dropped"}
 
 #: (id, what is re-introduced, SQL, tables observed, cells that must turn red)
 #: A cell is (actor, table, op). Each control is a hole this repository already
@@ -1060,14 +1064,18 @@ CONTROLS = (
     ("liveness-dropped-from-every-helper",
      "migration 468 rolled back: get_my_firm_id/get_my_role/get_my_user_id, can_access_client and "
      "my_permission stop asking whether the session is live",
-     lambda: _migration_sql("468_a_suspended_or_signed_out_member_is_nobody_to_the_database_rollback.sql"),
+     # 515 took the signed-in write from leave_balances, so its privilege comes back first and the liveness rollback is
+     # what the control measures on that table.
+     lambda: _migration_sql(_M515_ROLLBACK) + "\n"
+     + _migration_sql("468_a_suspended_or_signed_out_member_is_nobody_to_the_database_rollback.sql"),
      ("clients", "tasks", "leave_balances", "storage/Documents"),
      {("suspended_partner", "clients", "select"), ("suspended_partner", "tasks", "delete"),
       ("suspended_partner", "leave_balances", "update"), ("suspended_partner", "storage/Documents", "select")}),
     ("payroll-write-tier-dropped",
-     "the payroll:write policies of migration 261 dropped from leave_balances (attendance is no longer a candidate: migration 499 took its write privilege away), and with them the parent scope of "
+     "the payroll:write policies of migration 261 dropped from leave_balances (attendance is no longer a candidate: migration 499 took its write privilege away, and 515 took leave_balances' own), and with them the parent scope of "
      "485 that would otherwise still refuse an Executive or a Reviewer (two layers close this hole now)",
-     lambda: "".join(f"DROP POLICY leave_balances_role_{c} ON public.leave_balances;" for c in ("insert", "update", "delete"))
+     lambda: _migration_sql(_M515_ROLLBACK) + "\n"
+     + "".join(f"DROP POLICY leave_balances_role_{c} ON public.leave_balances;" for c in ("insert", "update", "delete"))
      + "DROP POLICY leave_balances_employee_in_reach ON public.leave_balances;",
      ("leave_balances",),
      {("exec_assigned", "leave_balances", "insert"), ("reviewer", "leave_balances", "update"),
@@ -1118,6 +1126,7 @@ CONTROLS = (
      # 499 revoked the signed-in write privilege on these tables, so the write cells stay closed after 485 alone is
      # rolled back; the privilege comes back first so the policy rollback is what the control measures.
      lambda: _migration_sql("499_a_signed_in_session_writes_none_of_the_payroll_tables_the_browser_never_writes_rollback.sql") + "\n"
+     + _migration_sql(_M515_ROLLBACK) + "\n"
      + _migration_sql("485_the_database_asks_the_payroll_tier_and_the_clients_in_reach_of_the_employee_run_and_payslip_rows_rollback.sql"),
      ("payroll_employees", "payroll_runs", "payroll_slips", "attendance", "leave_balances",
       "payroll_it_declarations", "payroll_it_declaration_items"),
@@ -1418,14 +1427,18 @@ def test_no_cell_differs_from_the_expectation_except_the_known_deviations(world,
                       for (a, t, op), (w, h) in sorted(unexplained.items())))
 
 
-def test_the_second_lock_file_covers_exactly_the_tables_migration_499_revokes():
+def test_the_second_lock_file_covers_exactly_the_tables_migrations_499_and_515_revoke():
     """No database: the file measuring the policies and the list the migration revokes are one set, so a table added to
     the revoke without a second-lock row (its policies would then be measured by nothing) fails here."""
     sql = (_MIGRATIONS / "499_a_signed_in_session_writes_none_of_the_payroll_tables_the_browser_never_writes.sql").read_text()
     revoked = set(re.findall(r"'([a-z_]+)'", sql.split("tables text[] := ARRAY[", 1)[1].split("]", 1)[0]))
+    # and the table migration 515 took every signed-in write from (the feed keeps a column-level UPDATE for the pin button,
+    # so only INSERT left it, and its policies are measured by test_role_write_policies_pg.py with the privilege given back)
+    sql_515 = (_MIGRATIONS / _M515_ROLLBACK.replace("_rollback", "")).read_text()
+    revoked |= set(re.findall(r"leave_table\s+text := 'public\.([a-z_]+)'", sql_515))
     second = load_second_lock()
     assert {t for _a, t in second} == revoked, (
-        f"rls_expected_second_lock.json covers a different set of tables than migration 499 revokes: "
+        f"rls_expected_second_lock.json covers a different set of tables than migrations 499 and 515 revoke: "
         f"missing {sorted(revoked - {t for _a, t in second})}, extra {sorted({t for _a, t in second} - revoked)}")
     assert len(second) == len(revoked) * len(ACTORS)
     # and the main expectation reads "no privilege" in every write cell of them, which is what 499 does
@@ -1445,6 +1458,7 @@ def test_the_second_lock_decides_when_the_first_is_lifted(world):
     copy = clone_world(_ADMIN, world)
     try:
         _ok(copy.dsn, _migration_sql(_M499_ROLLBACK))
+        _ok(copy.dsn, _migration_sql(_M515_ROLLBACK))
         expected = load_second_lock()
         tables = sorted({t for _a, t in expected})
         again = observe(copy, tables=tables)

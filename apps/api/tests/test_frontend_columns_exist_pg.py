@@ -395,7 +395,19 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     #   lib/data/gst.ts:         50 -> 48  (the CA-approval stamp on a GSTR-1 / GSTR-3B)
     #
     # 8 + 6 + 2 = 16 columns, and 220 - 16 = 204 exactly.
-    assert len(scan_writes(WEB)) >= 204, "write scan found too little — parser likely broke"
+    #
+    # 204 -> 194 on 18-10-2026 (POST-A-235 and POST-A-228), diagnosed the same way. Two places stopped writing a table
+    # straight over PostgREST and send it to the API, where `payroll:write` and the per-person grid run (the leave
+    # allotment) and where the firm and the actor are set from the signed-in person (the client activity feed):
+    #
+    #   app/payroll/attendance/page.tsx: 6 -> 0   (the leave allotment upsert: firm_id, employee_id, year and the
+    #                                               three balances)
+    #   lib/services/timeline.ts:        4 -> 0   (severity, actor_type, is_pinned and visibility, the defaults the
+    #                                               insert filled in)
+    #
+    # 6 + 4 = 10 columns, and 204 - 10 = 194 exactly. The per-file tally against the previous commit moved on these
+    # two files and nothing else, which is the evidence that the browser really did lose the writes.
+    assert len(scan_writes(WEB)) >= 194, "write scan found too little — parser likely broke"
 
 
 @_NEEDS_PG
