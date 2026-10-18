@@ -131,19 +131,25 @@ def test_dropping_them_leaves_every_table_with_exactly_the_policies_the_migratio
 
 
 def test_the_trap_a_setting_nothing_sets_admits_another_firms_rows_until_502(db):
-    """With one of them in place, any signed-in member who can cause `app.current_firm_id` to be set reads that firm's rows."""
+    """With one of them in place, any signed-in member who can cause `app.current_firm_id` to be set reads that firm's rows.
+
+    The probe table is `ai_recommendations`, the one of the seven a signed-in member can still READ: it was `ai_actions` until
+    migration 512 (POST-A-260) took every read privilege on that one from the signed-in roles, and a table the role cannot read
+    at all cannot show whether a stray policy admits another firm's rows. A recommendation with no client passes the
+    assignment-scope policy for a Partner, so the only thing between this member and the other firm's row is the firm policy."""
     _ok(db, f"""
         INSERT INTO auth.users (id, email) VALUES ('{MEMBER_AUTH}', 'm@m502.test');
         INSERT INTO firms (id, name, email) VALUES ('{FIRM1}','M502 One','a@m502.test'), ('{FIRM2}','M502 Two','b@m502.test');
         INSERT INTO users (id, firm_id, auth_user_id, email, full_name, role, is_active)
           VALUES (gen_random_uuid(), '{FIRM1}', '{MEMBER_AUTH}', 'm@m502.test', 'M', 'Partner', true);
-        INSERT INTO ai_actions (firm_id, action_type) VALUES ('{FIRM2}', 'other-firm-action');
+        INSERT INTO ai_recommendations (firm_id, recommendation_type, title, description)
+          VALUES ('{FIRM2}', 'risk', 'other-firm-recommendation', 'x');
     """)
     claims = json.dumps({"sub": MEMBER_AUTH, "role": "authenticated"})
 
     def other_firms_rows() -> str:
         r = _psql(db, f"SET request.jwt.claims = '{claims}'; SET ROLE authenticated; "
-                      f"SET app.current_firm_id = '{FIRM2}'; SELECT count(*) FROM ai_actions;")
+                      f"SET app.current_firm_id = '{FIRM2}'; SELECT count(*) FROM ai_recommendations;")
         assert r.returncode == 0, r.stderr
         return r.stdout.strip().splitlines()[-1]
 

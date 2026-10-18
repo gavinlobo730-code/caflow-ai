@@ -74,7 +74,7 @@ def _calls_in_methods(path: Path = REPO) -> list[ast.Call]:
     return out
 
 
-def _db_chain(call: ast.Call, db_names=("_get_db", "_write_db")) -> bool:
+def _db_chain(call: ast.Call, db_names=("_get_db", "_write_db", "_summary_read_db")) -> bool:
     """A call chain that starts at a database client: `_get_db()`, `_write_db()`, or a local bound to one of them."""
     return _chain_root(call) in set(db_names)
 
@@ -85,7 +85,7 @@ def _method_bindings(fn: ast.FunctionDef) -> dict[str, str]:
     for node in ast.walk(fn):
         if (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
                 and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
-                and node.value.func.id in {"_get_db", "_write_db"}):
+                and node.value.func.id in {"_get_db", "_write_db", "_summary_read_db"}):
             out[node.targets[0].id] = node.value.func.id
     return out
 
@@ -99,7 +99,7 @@ def _client_calls(path: Path):
             bound = _method_bindings(fn)
             for call in [n for n in ast.walk(fn) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)]:
                 root = _chain_root(call)
-                client = root if root in {"_get_db", "_write_db"} else bound.get(root or "")
+                client = root if root in {"_get_db", "_write_db", "_summary_read_db"} else bound.get(root or "")
                 if client:
                     yield fn.name, call, client
 
@@ -114,11 +114,36 @@ def test_every_write_the_repository_makes_goes_through_the_privileged_client(pat
 
 
 @pytest.mark.parametrize("path", REPOSITORY_FILES, ids=lambda p: p.name)
-def test_every_read_stays_on_the_callers_own_session(path):
+def test_every_read_stays_on_the_callers_own_session_except_the_summary_cache(path):
+    """Reads stay on the caller's session so row security narrows them, with ONE exception: `ai_summaries`, which no signed-in
+    session may read at all since migration 512 (POST-A-260) because it holds the Partner's firm-wide dashboard under no
+    scope key. Its read goes through `_summary_read_db()`, and nothing else does."""
     reads = [(fn, c, client) for fn, c, client in _client_calls(path) if c.func.attr == "select"]
     assert reads, "the scan found no read at all: the collector is broken"
-    wrong = [(fn, c.lineno, client) for fn, c, client in reads if client != "_get_db"]
-    assert wrong == [], f"reads made through anything but _get_db(): {wrong}"
+    wrong = []
+    for fn, c, client in reads:
+        wanted = "_summary_read_db" if '"ai_summaries"' in ast.unparse(c) or "'ai_summaries'" in ast.unparse(c) else "_get_db"
+        if client != wanted:
+            wrong.append((fn, c.lineno, client, wanted))
+    assert wrong == [], f"reads made through the wrong client (method, line, used, wanted): {wrong}"
+
+
+def test_the_summary_cache_is_read_privileged_and_names_its_firm():
+    """The one reader of `ai_summaries`: through the privileged client, firm and type and freshness named."""
+    reads = [(fn, c) for fn, c, client in _client_calls(REPO)
+             if c.func.attr == "select" and "ai_summaries" in ast.unparse(c)]
+    assert [fn for fn, _c in reads] == ["get_summary"], "the cache has one reader; a second must be added here deliberately"
+    text = ast.unparse(reads[0][1])
+    assert text.startswith("_summary_read_db()")
+    assert re.search(r"""\.eq\(['"]firm_id['"]""", ast.unparse(next(
+        fn for cls in ast.parse(REPO.read_text(encoding="utf-8")).body if isinstance(cls, ast.ClassDef)
+        for fn in cls.body if isinstance(fn, ast.FunctionDef) and fn.name == "get_summary")))
+
+
+def test_the_summary_accessor_is_the_privileged_client():
+    import inspect
+    src = inspect.getsource(repo_mod._summary_read_db)
+    assert "db_provider.service_db()" in src and "request_db" not in src
 
 
 def _topmost_chain(fn: ast.FunctionDef, node: ast.Call) -> ast.AST:

@@ -85,6 +85,15 @@ NOT_FOR_THE_API = {
     # (`form_3cd_service`); no screen touches it over PostgREST, and a signed-in write of the status would have bypassed
     # the approver check the route asks.
     "tax_audit_checklists",
+    # Migration 512 (POST-A-260): four AI tables whose read policy nobody had read, taken from every signed-in role. None of the
+    # four is read over PostgREST: `ai_summaries` (the executive dashboard and compliance summary cache, keyed by the asker's
+    # client scope, so a Partner's row names every client and the practice's revenue) has one reader, the repository's
+    # `get_summary`, on the service-role client; the other three have no reader at all. The deny-list test below proves the
+    # denial is real for each name.
+    "ai_context_windows",
+    "ai_summaries",
+    "ai_feedback",
+    "ai_actions",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.
