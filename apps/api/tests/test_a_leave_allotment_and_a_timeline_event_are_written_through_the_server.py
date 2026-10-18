@@ -380,3 +380,12 @@ def test_the_team_screens_sentence_says_the_database_refuses_a_leave_write():
     assert "any write to employees, runs, payslips, attendance, leave balances" in text
     assert "Leave balances and tax declarations can still be saved" not in text
     assert "An employee's own tax declaration can still be saved from the browser" in text
+
+
+def test_the_team_screens_sentence_says_a_blocked_staff_member_is_refused_a_declaration_too():
+    """Migration 519 put the grid on the two declaration tables for STAFF; the sentence used to say the database judged the
+    person's role and not the block there, which was true until then (an independent review found it stale)."""
+    from services.user_permission_service import DENIAL_REACH_NOTICE as notice
+    text = " ".join(notice.split())
+    assert "judges the person's role and not this block" not in text
+    assert "for a member of the firm's staff the database also refuses a tax declaration and its items to a person blocked from writing payroll" in text

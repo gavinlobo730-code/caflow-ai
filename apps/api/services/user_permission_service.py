@@ -66,13 +66,19 @@ class PermissionWriteRefused(ValueError):
 # history are scoped through the employee, settlement or run, so they follow).
 # Since migration 499, and 515 for leave balances, the database refuses a
 # signed-in session ANY write to the payroll records the sentence lists, except
-# the employee's own tax declaration, which the browser still saves and which
-# asks the person's role alone (ledger POST-A-219). The privilege is the first lock and
-# the write policies of 485 and 490 are the second, so the sentence says the
-# server is where a write to those records happens. It does NOT speak for the
-# payroll settings tables (a client's payroll switch, its statutory identity,
-# its professional-tax registrations and the firm's slabs), which are not among
-# the records it lists and keep their own grants.
+# the employee's own tax declaration, which the browser still saves (the
+# employee has no staff principal to go through the API with). Since migration
+# 519 a member of the STAFF is held to this grid on the two declaration tables as
+# well: a person blocked from writing payroll is refused a declaration and its
+# items by the database, and a delete asks payroll:finalize, which is Partner-only
+# by default, so a write grant does not carry a delete. The privilege is the
+# first lock and the write policies of 485 and 490 are the second, so the sentence
+# says the server is where a write to those records happens. Migration 519 also
+# took every signed-in write away from a client's payroll switch and day attendance
+# is due, its statutory identity (TAN, EPF, ESIC, LIN) and its professional-tax
+# registrations, so those too are written by the server alone; the notice does
+# not list them (they are not payroll records in the sentence's sense) and does not
+# speak for the firm's slabs, which keep their own grants.
 # It is NOT read by any other table's SELECT policy, so a screen that reads a
 # table straight from the browser over PostgREST — the documents pages, the
 # bank-account pickers — is governed there by the person's firm, their client
@@ -101,8 +107,9 @@ DENIAL_REACH_NOTICE = (
     "to employees, runs, payslips, attendance, leave balances, salary "
     "history, salary structures, loans, settlements, bonus records, "
     "remittances or ECR filings. An employee's own tax declaration can "
-    "still be saved from the browser, and for that the database judges the "
-    "person's role and not this block. Billing works the same way for reading: a "
+    "still be saved from the browser by that employee; for a member of the "
+    "firm's staff the database also refuses a tax declaration and its items "
+    "to a person blocked from writing payroll. Billing works the same way for reading: a "
     "person blocked from reading "
     "billing cannot read the practice's fee engagements, fee invoices or "
     "fee receipts from the browser either. Nothing else is checked against "

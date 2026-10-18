@@ -108,6 +108,12 @@ from domain.money_text import rupees_paise
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
+# A route that releases, pays, reverses or settles asks `payroll:finalize` (a Partner's act) AND `payroll:read` (POST-A-219).
+# A Partner whom the Team screen has blocked from READING payroll but not from finalising it used to pass the finalize guard and then
+# fail later on a message about something else; refusing at the door says what is wrong. Declared as a route-level dependency so it is
+# resolved BEFORE the endpoint's own `rbac("payroll", "finalize")`, and `tests/test_a_finalise_act_also_asks_for_payroll_read.py` holds the rule.
+_NEEDS_PAYROLL_READ = [Depends(rbac("payroll", "read"))]
+
 # Mock mode is determined per-request by _db() returning None when SUPABASE_URL
 # is unset (dev/test). No module-level flag — the live backend always uses the
 # real Supabase client. _MOCK_FINALIZED_RUNS only holds state under that fallback.
@@ -3581,7 +3587,7 @@ def update_run_status(
     return api_response(True, row.data[0])
 
 
-@router.post("/runs/{run_id}/finalize")
+@router.post("/runs/{run_id}/finalize", dependencies=_NEEDS_PAYROLL_READ)
 def finalize_run(
     run_id: str,
     current_user: dict = Depends(rbac("payroll", "finalize")),
@@ -3739,7 +3745,7 @@ def finalize_run(
                                "loan_writedown_owed": writedown is None})
 
 
-@router.post("/runs/{run_id}/loan-writedown")
+@router.post("/runs/{run_id}/loan-writedown", dependencies=_NEEDS_PAYROLL_READ)
 def write_down_owed_loans(
     run_id: str,
     current_user: dict = Depends(rbac("payroll", "finalize")),
@@ -3798,7 +3804,7 @@ def write_down_owed_loans(
     return api_response(True, {"id": run_id, "written_down": written, "loan_writedown_owed": False})
 
 
-@router.post("/runs/{run_id}/disburse")
+@router.post("/runs/{run_id}/disburse", dependencies=_NEEDS_PAYROLL_READ)
 def disburse_run(
     run_id: str,
     data: PayrollDisburseIn,
@@ -3975,7 +3981,7 @@ def _reversal_reason(body: Optional[ReverseRunIn]) -> Optional[str]:
     return reason
 
 
-@router.post("/runs/{run_id}/reverse")
+@router.post("/runs/{run_id}/reverse", dependencies=_NEEDS_PAYROLL_READ)
 def reverse_run(
     run_id: str,
     current_user: dict = Depends(rbac("payroll", "finalize")),
@@ -7963,7 +7969,7 @@ class SettlementRecordIn(SettlementIn):
     payment_date: Optional[str] = None
 
 
-@router.post("/employees/{employee_id}/settlement/record")
+@router.post("/employees/{employee_id}/settlement/record", dependencies=_NEEDS_PAYROLL_READ)
 def record_settlement(
     employee_id: str,
     body: SettlementRecordIn,
