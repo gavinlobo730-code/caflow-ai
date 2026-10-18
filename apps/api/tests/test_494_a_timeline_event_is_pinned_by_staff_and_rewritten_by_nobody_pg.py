@@ -129,8 +129,16 @@ def test_staff_still_write_the_feed(db):
 
 
 def test_its_own_rollback_puts_the_drift_back(db):
-    """The negative control: on the table-level grant a Reviewer rewrites an event."""
+    """The negative control: on the table-level grant a Reviewer rewrites an event.
+
+    Since migration 512 the append-only trigger is a SECOND lock on the same rewrite, so the grant alone no longer lets it
+    through: with the trigger in place the rewrite is refused by the trigger (the privilege is back, the event is intact), and
+    only with the trigger dropped as well does the drift of 494's rollback show again."""
     r = _psql(db, ROLLBACK.read_text(), tuples=False)
     assert r.returncode == 0, r.stderr
+    held = _changed(db, "reviewer", "title = 'Rewritten'")
+    assert held.returncode != 0 and "append-only" in held.stderr, held.stderr
+    assert _ok(db, f"SELECT title FROM client_timeline_events WHERE id = '{EVENT}';") == "Original title"
+    assert _psql(db, "DROP TRIGGER client_timeline_events_append_only ON public.client_timeline_events;").returncode == 0
     assert _changed(db, "reviewer", "title = 'Rewritten'").returncode == 0
     assert _ok(db, f"SELECT title FROM client_timeline_events WHERE id = '{EVENT}';") == "Rewritten"

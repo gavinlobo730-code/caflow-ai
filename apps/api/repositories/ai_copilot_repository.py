@@ -46,6 +46,17 @@ def _write_db():
     return db_provider.service_db()
 
 
+def _summary_read_db():
+    """The client the READ of `ai_summaries` goes through: the privileged one (POST-A-260, migration 512).
+
+    The table caches the executive dashboard and the compliance summary under a key built from the asker's client scope,
+    and a firm-wide (Partner) answer sits in it under no scope at all, so a signed-in member reading it directly would read
+    figures and client names the product withholds from them everywhere else. A row policy cannot narrow it (the scope key
+    is a digest computed in Python), so no signed-in session may read the table. The API serves the row only after
+    `_scope_key` has put the asker's scope into the lookup, and this read names its firm like every other query here."""
+    return db_provider.service_db()
+
+
 def _now() -> str:
     """The instant, as an AWARE UTC string.
 
@@ -352,7 +363,7 @@ class AICopilotRepository(BaseRepository):
             return None
 
         query = (
-            _get_db()
+            _summary_read_db()
             .table("ai_summaries")
             .select("*")
             .eq("firm_id", firm_id)
