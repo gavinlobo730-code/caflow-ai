@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from models.common import api_response
 from models.invoices import InvoiceLineIn
+from core import db_provider
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
@@ -69,6 +70,13 @@ MOCK_CREDIT_NOTE_LINES: list[dict] = []
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+#: The client `credit_note_allocations` is written through: the privileged one (POST-A-018, migration 513). A signed-in session
+#: holds no write privilege on the table, so an application of a credit note to an invoice is written here and not as the
+#: caller. Row security is no longer the second lock, so both writes name their firm.
+_write_db = db_provider.service_db
+
 
 def _cn_owner(current_user: dict, cn_id: str) -> tuple[bool, Optional[str]]:
     """`(row_exists, client_id)` for this credit note, firm-scoped.
@@ -710,7 +718,7 @@ def issue_credit_note(
             else:
                 raise HTTPException(status_code=409, detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
             try:
-                db.table("credit_note_allocations").insert({
+                _write_db().table("credit_note_allocations").insert({
                     "firm_id": firm_id, "credit_note_id": cn_id,
                     "sales_invoice_id": inv_id, "allocated_paise": cn_total,
                 }).execute()
@@ -732,7 +740,8 @@ def issue_credit_note(
         except Exception as jerr:
             if prior_inv is not None and inv_id:
                 try:
-                    db.table("credit_note_allocations").delete().eq("credit_note_id", cn_id).eq("sales_invoice_id", inv_id).execute()
+                    (_write_db().table("credit_note_allocations").delete()
+                     .eq("credit_note_id", cn_id).eq("sales_invoice_id", inv_id).eq("firm_id", firm_id).execute())
                     db.table("client_sales_invoices").update({
                         "credited_paise": prior_inv["credited_paise"], "status": prior_inv["status"],
                     }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()

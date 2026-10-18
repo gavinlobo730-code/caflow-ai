@@ -171,6 +171,7 @@ def test_add_tag_rejects_another_firms_task(monkeypatch):
     monkeypatch.setattr(task_repo_module, "_get_db", lambda: db)
     monkeypatch.setattr(task_repo_module, "_USE_MOCK", False)
     monkeypatch.setattr(extras_repo_module, "_get_db", lambda: db)
+    monkeypatch.setattr(extras_repo_module, "_write_db", lambda: db)
     _seed_task(db, "task-foreign", "F2")
     with pytest.raises(HTTPException) as ei:
         task_extras_router.add_tag("task-foreign", AddTagBody(tag="urgent"), current_user=PARTNER_F1)
@@ -185,6 +186,7 @@ def test_add_tag_accepts_own_firms_task(monkeypatch):
     monkeypatch.setattr(task_repo_module, "_get_db", lambda: db)
     monkeypatch.setattr(task_repo_module, "_USE_MOCK", False)
     monkeypatch.setattr(extras_repo_module, "_get_db", lambda: db)
+    monkeypatch.setattr(extras_repo_module, "_write_db", lambda: db)
     _seed_task(db, "task-owned", "F1")
     result = task_extras_router.add_tag("task-owned", AddTagBody(tag="urgent"), current_user=PARTNER_F1)
     assert result["success"] is True
@@ -198,6 +200,7 @@ def test_add_dependency_rejects_foreign_dependency_task(monkeypatch):
     monkeypatch.setattr(task_repo_module, "_get_db", lambda: db)
     monkeypatch.setattr(task_repo_module, "_USE_MOCK", False)
     monkeypatch.setattr(extras_repo_module, "_get_db", lambda: db)
+    monkeypatch.setattr(extras_repo_module, "_write_db", lambda: db)
     _seed_task(db, "task-owned", "F1")
     _seed_task(db, "task-foreign", "F2")
     body = AddDependencyBody(depends_on_task_id="task-foreign")

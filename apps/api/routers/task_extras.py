@@ -74,7 +74,7 @@ def remove_tag(task_id: str, tag: str, current_user: dict = Depends(rbac("task",
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     _assert_task_scope(current_user, task)
-    task_extras_repo.remove_tag(task_id, tag)
+    task_extras_repo.remove_tag(task_id, tag, firm_id=current_user.get("firm_id"))
     return api_response(True, {"removed": True})
 
 
@@ -110,7 +110,7 @@ def add_dependency(task_id: str, body: AddDependencyBody, current_user: dict = D
     # dep_task["title"], so linking to another client's task discloses it.
     _assert_task_scope(current_user, dep_task)
     try:
-        dep = task_extras_repo.add_dependency(task_id, body.depends_on_task_id)
+        dep = task_extras_repo.add_dependency(task_id, body.depends_on_task_id, firm_id=firm_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     try:
@@ -133,7 +133,7 @@ def remove_dependency(task_id: str, dependency_id: str, current_user: dict = Dep
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     _assert_task_scope(current_user, task)
-    task_extras_repo.remove_dependency(task_id, dependency_id)
+    task_extras_repo.remove_dependency(task_id, dependency_id, firm_id=current_user.get("firm_id"))
     return api_response(True, {"removed": True})
 
 

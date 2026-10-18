@@ -6,6 +6,17 @@ from core import db_provider
 _get_db = db_provider.request_db
 
 
+def _write_db():
+    """The client every INSERT, UPSERT and DELETE on `task_tags`, `task_dependencies` and `task_timeline_events` goes through:
+    the privileged one (POST-A-018, migration 513).
+
+    A signed-in session holds no write privilege on these tables, so nothing here may write as the caller. Reads stay on
+    `_get_db` (the caller's own session). The price of writing privileged is that row security is no longer the second lock on
+    a write: a tag and an event carry the firm they are written for, and `task_dependencies`, which has no firm of its own
+    (migration 063 scopes it through `tasks`), is only written after both tasks are shown to be the firm's."""
+    return db_provider.service_db()
+
+
 class TaskExtrasRepository(BaseRepository[dict]):
 
     # ── Tags ─────────────────────────────────────────────────────────────────
@@ -15,7 +26,7 @@ class TaskExtrasRepository(BaseRepository[dict]):
         return result.data or []
 
     def add_tag(self, firm_id: str, task_id: str, tag: str) -> dict:
-        result = _get_db().table("task_tags").upsert({
+        result = _write_db().table("task_tags").upsert({
             "firm_id": firm_id,
             "task_id": task_id,
             "tag": tag.lower().strip(),
@@ -23,11 +34,11 @@ class TaskExtrasRepository(BaseRepository[dict]):
         }, on_conflict="task_id,tag").execute()
         return result.data[0]
 
-    def remove_tag(self, task_id: str, tag: str, firm_id: Optional[str] = None) -> bool:
-        query = _get_db().table("task_tags").delete().eq("task_id", task_id).eq("tag", tag.lower().strip())
-        if firm_id:
-            query = query.eq("firm_id", firm_id)
-        result = query.execute()
+    def remove_tag(self, task_id: str, tag: str, *, firm_id: str) -> bool:
+        """The firm is required, not optional: this deletes with the privileged client, so the firm filter is the only thing
+        that keeps a task id from another firm out of reach."""
+        result = (_write_db().table("task_tags").delete()
+                  .eq("task_id", task_id).eq("tag", tag.lower().strip()).eq("firm_id", firm_id).execute())
         return len(result.data) > 0
 
     def get_firm_tags(self, firm_id: str,
@@ -118,24 +129,33 @@ class TaskExtrasRepository(BaseRepository[dict]):
             })
         return out
 
-    def add_dependency(self, task_id: str, depends_on_task_id: str) -> dict:
+    def _assert_tasks_in_firm(self, firm_id: str, *task_ids: str) -> None:
+        """Every task named is the firm's, or ValueError. `task_dependencies` has no `firm_id`, so before migration 513 the
+        row policy asked this question of the caller's session; the privileged writes below ask it themselves."""
+        wanted = sorted({str(t) for t in task_ids})
+        rows = (_write_db().table("tasks").select("id").in_("id", wanted).eq("firm_id", firm_id).execute().data) or []
+        if len(rows) != len(wanted):
+            raise ValueError("Task not found")
+
+    def add_dependency(self, task_id: str, depends_on_task_id: str, *, firm_id: str) -> dict:
         if task_id == depends_on_task_id:
             raise ValueError("A task cannot depend on itself")
+        self._assert_tasks_in_firm(firm_id, task_id, depends_on_task_id)
         if self._detect_cycle(task_id, depends_on_task_id):
             raise ValueError("Adding this dependency would create a circular chain")
-        result = _get_db().table("task_dependencies").upsert({
+        result = _write_db().table("task_dependencies").upsert({
             "task_id": task_id,
             "depends_on_task_id": depends_on_task_id,
             "created_at": self.now_iso(),
         }, on_conflict="task_id,depends_on_task_id").execute()
         return result.data[0]
 
-    def remove_dependency(self, task_id: str, dependency_id: str) -> bool:
-        # Scoped to task_id (not just the dependency row's own id) so a
-        # dependency_id belonging to a different task can't be deleted via
-        # this route -- the caller has already verified task_id's firm.
+    def remove_dependency(self, task_id: str, dependency_id: str, *, firm_id: str) -> bool:
+        # Scoped to task_id (not just the dependency row's own id) so a dependency_id belonging to a different task can't be
+        # deleted via this route, and task_id itself is shown to be the firm's before anything is deleted.
+        self._assert_tasks_in_firm(firm_id, task_id)
         result = (
-            _get_db().table("task_dependencies").delete()
+            _write_db().table("task_dependencies").delete()
             .eq("id", dependency_id).eq("task_id", task_id).execute()
         )
         return len(result.data) > 0
@@ -162,7 +182,11 @@ class TaskExtrasRepository(BaseRepository[dict]):
         old_value: Optional[dict] = None,
         new_value: Optional[dict] = None,
     ) -> dict:
-        result = _get_db().table("task_timeline_events").insert({
+        if not firm_id:
+            # `firm_id` stayed Optional in the signature for the callers that pass it by keyword, but a row with no firm is
+            # one the old row policy (`firm_id = get_my_firm_id()`) would have refused and the privileged client would not.
+            raise ValueError("A task timeline event is written for a firm")
+        result = _write_db().table("task_timeline_events").insert({
             "task_id": task_id,
             "firm_id": firm_id,
             "event_type": event_type,
