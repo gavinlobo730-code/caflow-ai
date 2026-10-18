@@ -3,14 +3,14 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, Query
 from models.common import api_response
 from models.fy import OptionalFYLabel
-from core.permissions import can_user, rbac
-from datetime import date, timedelta
+from core.permissions import rbac
+from datetime import timedelta
 from repositories.time_tracking_analytics_repository import time_tracking_analytics_repo
 from repositories.invoice_repository import invoice_repo
 from repositories.engagement_repository import engagement_repo
 from repositories.user_repository import user_repo
 from repositories.client_repository import client_repo
-from core.ist_clock import fy_quarters, ist_day_window, ist_fy_label, ist_today
+from core.ist_clock import fy_quarters, ist_fy_label, ist_today
 from core import db_provider
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -31,9 +31,10 @@ def _period_range(period: str) -> tuple[str, str, str]:
         # Indian financial year, so no window ever moved. But the label was
         # `f"Q{(q_start_month - 1) // 3 + 1} {today.year}"`, so January to
         # March read as "Q1 2026" where a CA in this market reads Q1 as
-        # April-June and calls that window Q4 of FY 2025-26. Five endpoints
-        # carry this label — /team, /clients, /firm, /profitability and
-        # /revenue-vs-effort — and Phase 3a is about to put it on a screen.
+        # April-June and calls that window Q4 of FY 2025-26. Two endpoints
+        # carry this label — /profitability and /revenue-vs-effort (it also sat
+        # on /team, /clients and /firm until those no-screen roll-ups were deleted,
+        # POST-A-185).
         #
         # `core.ist_clock.fy_quarters` is the one authority for which months a
         # quarter is, and the LABEL is taken from it rather than recomputed:
@@ -54,246 +55,6 @@ def _period_range(period: str) -> tuple[str, str, str]:
         start = today.replace(day=1)
         label = today.strftime("%B %Y")
     return start.isoformat(), today.isoformat(), label
-
-
-@router.get("/team")
-def team_analytics(
-    period: str = "month",
-    current_user: dict = Depends(rbac("analytics", "read")),
-):
-    firm_id = current_user.get("firm_id")
-    db = _get_db()
-    date_from, date_to, label = _period_range(period)
-    today = ist_today().isoformat()
-
-    # All users in firm
-    users_result = db.table("users").select("id, full_name, email, role").eq("firm_id", firm_id).execute()
-    users = users_result.data or []
-
-    # Completed tasks in period
-    completed_result = db.table("tasks").select("id, assigned_to, assignee_id, updated_at").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", ist_day_window(date_from, None)[0]).lt("updated_at", ist_day_window(None, date_to)[1]).execute()
-    completed_tasks = completed_result.data or []
-
-    # Open and overdue tasks
-    open_result = db.table("tasks").select("id, assigned_to, assignee_id, status, due_date").eq("firm_id", firm_id).neq("status", "completed").execute()
-    open_tasks = open_result.data or []
-
-    def get_uid(t: dict) -> str:
-        return t.get("assignee_id") or t.get("assigned_to") or ""
-
-    completed_by_user: dict[str, int] = {}
-    for t in completed_tasks:
-        uid = get_uid(t)
-        completed_by_user[uid] = completed_by_user.get(uid, 0) + 1
-
-    in_progress_by_user: dict[str, int] = {}
-    overdue_by_user: dict[str, int] = {}
-    for t in open_tasks:
-        uid = get_uid(t)
-        if t.get("status") == "in_progress":
-            in_progress_by_user[uid] = in_progress_by_user.get(uid, 0) + 1
-        if t.get("due_date") and t["due_date"] < today:
-            overdue_by_user[uid] = overdue_by_user.get(uid, 0) + 1
-
-    total_open_by_user: dict[str, int] = {}
-    for t in open_tasks:
-        uid = get_uid(t)
-        total_open_by_user[uid] = total_open_by_user.get(uid, 0) + 1
-
-    members = []
-    for u in users:
-        uid = u["id"]
-        c = completed_by_user.get(uid, 0)
-        o = total_open_by_user.get(uid, 0)
-        rate = round((c / (c + o) * 100), 1) if (c + o) > 0 else 0.0
-        members.append({
-            "user_id": uid,
-            "user_name": u.get("full_name") or u.get("email") or "Unknown",
-            "role": u.get("role", ""),
-            "tasks_completed": c,
-            "tasks_in_progress": in_progress_by_user.get(uid, 0),
-            "overdue_tasks": overdue_by_user.get(uid, 0),
-            "avg_completion_rate": rate,
-        })
-
-    # Get hours by employee from time tracking
-    hours_by_employee = time_tracking_analytics_repo.get_hours_by_employee(firm_id, date_from, date_to)
-
-    enriched_members = [{
-        "user_id": m["user_id"],
-        "user_name": m["user_name"],
-        "role": m["role"],
-        "total_minutes": hours_by_employee.get(m["user_id"], {}).get("total_minutes", 0),
-        "billable_minutes": hours_by_employee.get(m["user_id"], {}).get("billable_minutes", 0),
-        "tasks_completed": m["tasks_completed"],
-        "tasks_active": total_open_by_user.get(m["user_id"], 0),
-        "utilisation_pct": m["avg_completion_rate"],
-    } for m in members]
-
-    enriched_members.sort(key=lambda m: m["tasks_completed"], reverse=True)
-    avg_util = round(sum(m["utilisation_pct"] for m in enriched_members) / len(enriched_members), 1) if enriched_members else 0.0
-
-    # Get total firm hours
-    firm_hours = time_tracking_analytics_repo.get_firm_hours(firm_id, date_from, date_to)
-
-    return api_response(True, {
-        "period": label,
-        "members": enriched_members,
-        "total_minutes": firm_hours["total_minutes"],
-        "billable_minutes": firm_hours["billable_minutes"],
-        "avg_utilisation_pct": avg_util,
-    })
-
-
-@router.get("/clients")
-def client_analytics(
-    period: str = "month",
-    current_user: dict = Depends(rbac("analytics", "read")),
-):
-    firm_id = current_user.get("firm_id")
-    db = _get_db()
-    date_from, date_to, label = _period_range(period)
-    today = ist_today().isoformat()
-
-    # Guardrail G2: exclude the internal practice client from analytics.
-    clients_result = db.table("clients").select("id, client_name").eq("firm_id", firm_id).eq("is_internal", False).execute()
-    clients = clients_result.data or []
-
-    # Bounded to the period, not the firm's entire task history (same pattern
-    # already used correctly by team_analytics above) — completed tasks from
-    # years ago were previously fetched in full just to be filtered out here.
-    completed_result = db.table("tasks").select("id, client_id, status, due_date, updated_at").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", ist_day_window(date_from, None)[0]).lt("updated_at", ist_day_window(None, date_to)[1]).execute()
-    completed_tasks = completed_result.data or []
-
-    open_result = db.table("tasks").select("id, client_id, status, due_date, updated_at").eq("firm_id", firm_id).neq("status", "completed").execute()
-    open_tasks = open_result.data or []
-
-    # M6 #6: per-client analytics must respect assignment — a non-Partner must not
-    # infer activity for clients they cannot access directly. effective set None
-    # (Partner) ⇒ no filtering.
-    from core.authz import effective_client_ids
-    _eff = effective_client_ids(current_user)
-    if _eff is not None:
-        clients = [c for c in clients if str(c["id"]) in _eff]
-        completed_tasks = [t for t in completed_tasks if str(t.get("client_id")) in _eff]
-        open_tasks = [t for t in open_tasks if str(t.get("client_id")) in _eff]
-
-    stats: dict[str, dict] ={c["id"]: {"client_id": c["id"], "client_name": c["client_name"], "tasks_completed": 0, "tasks_overdue": 0, "open_tasks": 0} for c in clients}
-    for t in completed_tasks:
-        cid = t.get("client_id")
-        if cid in stats:
-            stats[cid]["tasks_completed"] += 1
-    for t in open_tasks:
-        cid = t.get("client_id")
-        if cid in stats:
-            stats[cid]["open_tasks"] += 1
-            if t.get("due_date") and t["due_date"] < today:
-                stats[cid]["tasks_overdue"] += 1
-
-    result_list = []
-    for s in stats.values():
-        c = s["tasks_completed"]
-        o = s["open_tasks"]
-        rate = round((c / (c + o) * 100), 1) if (c + o) > 0 else 0.0
-        result_list.append({**s, "completion_rate": rate})
-
-    # Get hours by client from time tracking
-    hours_by_client = time_tracking_analytics_repo.get_hours_by_client(firm_id, date_from, date_to)
-
-    enriched_clients = [{
-        "client_id": s["client_id"],
-        "client_name": s["client_name"],
-        "total_minutes": hours_by_client.get(s["client_id"], {}).get("total_minutes", 0),
-        "billable_minutes": hours_by_client.get(s["client_id"], {}).get("billable_minutes", 0),
-        "tasks_completed": s["tasks_completed"],
-        "tasks_active": s["open_tasks"],
-        "revenue_paise": 0,
-    } for s in result_list]
-
-    enriched_clients.sort(key=lambda x: x["tasks_completed"], reverse=True)
-
-    # Get total firm hours
-    firm_hours = time_tracking_analytics_repo.get_firm_hours(firm_id, date_from, date_to)
-
-    return api_response(True, {
-        "period": label,
-        "clients": enriched_clients,
-        "total_minutes": firm_hours["total_minutes"],
-        "total_revenue_paise": 0,
-    })
-
-
-@router.get("/firm")
-def firm_analytics(
-    period: str = "month",
-    current_user: dict = Depends(rbac("analytics", "read")),
-):
-    firm_id = current_user.get("firm_id")
-    db = _get_db()
-    date_from, date_to, label = _period_range(period)
-    today = ist_today().isoformat()
-
-    # Bounded to the period, not the firm's entire task history (same pattern
-    # already used correctly by team_analytics above) — completed tasks from
-    # years ago were previously fetched in full just to be filtered out here.
-    # The per-client column was in both SELECTs and read by nothing here — this
-    # handler returns firm-level TOTALS only and names no client. Dropped so the
-    # column list matches what the code actually uses; see this route's entry in
-    # the client-scope ratchet's EXEMPT table for the full reasoning.
-    completed_result = db.table("tasks").select("id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", ist_day_window(date_from, None)[0]).lt("updated_at", ist_day_window(None, date_to)[1]).execute()
-    completed = completed_result.data or []
-
-    open_result = db.table("tasks").select("id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).neq("status", "completed").execute()
-    open_tasks = open_result.data or []
-
-    # Guardrail G2: the internal practice client is not part of the active-client KPI.
-    clients_result = db.table("clients").select("id").eq("firm_id", firm_id).eq("status", "active").eq("is_internal", False).execute()
-    active_clients = len(clients_result.data or [])
-
-    overdue = [t for t in open_tasks if t.get("due_date") and t["due_date"] < today]
-
-    total_c = len(completed)
-    total_ov = len(overdue)
-    total_open = len(open_tasks)
-    total = total_c + total_open
-    completion_rate = round((total_c / total * 100), 1) if total > 0 else 0.0
-    overdue_rate = round((total_ov / total * 100), 1) if total > 0 else 0.0
-    tasks_per_client = round(total / active_clients, 1) if active_clients > 0 else 0.0
-
-    # Revenue analytics. These four figures are the practice's fee economics (billing:read, a Partner's, or a grant),
-    # so a caller without it is given NONE of them (null, never zero: a zero says nothing was billed), and so is a
-    # caller whose read of the fee table failed, which used to be swallowed into four zeros. `fees_withheld` says
-    # which of the two it is.
-    revenue_paise = outstanding_paise = invoices_issued = invoices_paid = None
-    fees_withheld = not can_user(current_user, "billing", "read")
-    if not fees_withheld:
-        try:
-            inv_result = db.table("fee_invoices").select("total_paise, invoice_date, status").eq("firm_id", firm_id).gte("invoice_date", date_from).execute()
-            inv_list = inv_result.data or []
-            invoices_issued = len(inv_list)
-            invoices_paid = sum(1 for i in inv_list if i.get("status") == "Paid")
-            revenue_paise = sum(i["total_paise"] for i in inv_list if i.get("status") == "Paid")
-            outstanding_paise = sum(i["total_paise"] for i in inv_list if i.get("status") not in ("Paid", "Draft"))
-        except Exception:
-            invoices_issued = invoices_paid = revenue_paise = outstanding_paise = None
-
-    # Get firm hours from time tracking
-    firm_hours = time_tracking_analytics_repo.get_firm_hours(firm_id, date_from, date_to)
-
-    return api_response(True, {
-        "period": label,
-        "total_minutes": firm_hours["total_minutes"],
-        "billable_minutes": firm_hours["billable_minutes"],
-        "utilisation_pct": completion_rate,
-        "tasks_completed": total_c,
-        "tasks_active": total_open,
-        "tasks_overdue": total_ov,
-        "revenue_paise": revenue_paise,
-        "outstanding_paise": outstanding_paise,
-        "invoices_issued": invoices_issued,
-        "invoices_paid": invoices_paid,
-        "fees_withheld": fees_withheld,
-    })
 
 
 @router.get("/profitability")

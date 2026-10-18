@@ -4444,7 +4444,6 @@ export const api = {
     delete: (id: string) => request(`/api/tasks/${id}`, { method: "DELETE" }),
     /** Which status a task may move to from each status: the server's machine, so a screen offers only moves it accepts. */
     transitions: () => request("/api/tasks/transitions"),
-    dashboardSummary: () => request("/api/tasks/summary/dashboard"),
   },
   timeline: {
     /** Record an event on a client's activity feed AS THE SIGNED-IN PERSON. The firm and the actor are the server's to
@@ -5233,9 +5232,6 @@ export const api = {
     update: (id: string, data: unknown) => request(`/api/compliance-records/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     clientHealth: (clientId: string) => request(`/api/compliance-records/client/${clientId}/health`),
     firmSummary: () => request("/api/compliance-records/firm/summary"),
-  },
-  dashboard: {
-    summary: () => request("/api/tasks/summary/dashboard"),
   },
   // Phase 4.4 — Compliance & Engagement operations (canonical = compliance_records).
   // Thin wrappers; all due-date/aggregation/workflow logic is server-side.

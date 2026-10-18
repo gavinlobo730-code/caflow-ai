@@ -57,17 +57,6 @@ ANSWER_WORDS = (
 #: Statements tab), and `/banking/reconciliations/{id}/items` was DELETED as a
 #: byte-identical duplicate of `/report`, which the screen already calls.
 UNREACHED_COMPUTED_ANSWERS: dict[str, str] = {
-    "/api/analytics/clients":
-        "Superseded by the per-client screens and the hub, which answer the same "
-        "questions at the scope a CA asks them. A candidate for D21's treatment "
-        "(delete a dead endpoint that duplicates a live one) once somebody has "
-        "confirmed nothing in it is unique.",
-    "/api/analytics/firm":
-        "Same as /analytics/clients. `/practice/profitability` and `/insights` "
-        "are the live firm-level answers.",
-    "/api/analytics/team":
-        "Same again; `/team/workload` is the live one (`/team/work-allocation` was "
-        "merged into it and is a redirect).",
     "/api/banking/statements/column-mappings":
         "Its own docstring says it exists 'so a CA can see and correct what a "
         "bank taught us' — and no screen shows them. A real gap, and a small "
@@ -89,9 +78,6 @@ UNREACHED_COMPUTED_ANSWERS: dict[str, str] = {
         "The same stored recollection, for one client and one year. Unreached "
         "for the same reason as the list above it: the year-end pack is the "
         "document a CA works from and it is live.",
-    "/api/tasks/summary/dashboard":
-        "A task roll-up. `/work` and the hub's Compliance tile are the live "
-        "answers; this predates both.",
     "/api/time-entries/summary/me":
         "'My time this week'. `/time` lists the entries and totals them on the "
         "screen, so the figure is visible; the endpoint is the server's version "

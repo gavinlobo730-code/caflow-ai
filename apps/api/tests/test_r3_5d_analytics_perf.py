@@ -1,24 +1,15 @@
 """
-R3.5d — proves routers/analytics.py's fixes:
+R3.5d — proves routers/analytics.py's fix:
 
-1. client_analytics/firm_analytics no longer fetch the firm's entire task
-   history (every status, every FY) just to discard out-of-period
-   completed tasks in Python — completed tasks are now fetched with
-   status="completed" + a date range pushed to the query, matching the
-   pattern team_analytics already used correctly. A completed task from
-   last year must not appear in this period's completed count.
-2. revenue_vs_effort no longer raises NameError (`client_repo =
-   ClientRepository()` referenced a class that was never imported — only
-   the client_repo singleton was, at module scope).
+revenue_vs_effort no longer raises NameError (`client_repo =
+ClientRepository()` referenced a class that was never imported — only
+the client_repo singleton was, at module scope).
+
+(Its first half held the bounded completed-task read of the team, clients and
+firm roll-ups. Those three routes had no screen and were deleted on
+18-10-2026, POST-A-185, so the tests of them went too.)
 """
-from datetime import date
-
 import routers.analytics as mod
-import core.authz as authz_mod
-
-
-def _today() -> str:
-    return date.today().isoformat()
 
 
 def _instant(value):
@@ -91,54 +82,6 @@ class FakeDB:
 
 
 FIRM = "firm-r35d"
-
-
-def _seed_tasks(db):
-    db.store["tasks"] = [
-        {"id": "t-old-completed", "client_id": "c1", "firm_id": FIRM,
-         "status": "completed", "due_date": "2020-01-01", "updated_at": "2020-01-15"},
-        {"id": "t-recent-completed", "client_id": "c1", "firm_id": FIRM,
-         "status": "completed", "due_date": _today(), "updated_at": _today()},
-        {"id": "t-open", "client_id": "c1", "firm_id": FIRM,
-         "status": "open", "due_date": "2020-01-01", "updated_at": _today()},
-    ]
-    db.store["clients"] = [{"id": "c1", "client_name": "Client One", "firm_id": FIRM, "is_internal": False}]
-
-
-def _patch_common(monkeypatch, db):
-    monkeypatch.setattr(mod, "_get_db", lambda: db)
-    monkeypatch.setattr(mod.time_tracking_analytics_repo, "get_hours_by_client", lambda *a, **k: {})
-    monkeypatch.setattr(mod.time_tracking_analytics_repo, "get_firm_hours", lambda *a, **k: {"total_minutes": 0, "billable_minutes": 0})
-    monkeypatch.setattr(authz_mod, "effective_client_ids", lambda user: None)
-
-
-def test_client_analytics_excludes_old_completed_tasks_from_current_period(monkeypatch):
-    db = FakeDB()
-    _seed_tasks(db)
-    _patch_common(monkeypatch, db)
-
-    result = mod.client_analytics(period="month", current_user={"firm_id": FIRM, "id": "u1", "role": "Partner"})
-    client_row = result["data"]["clients"][0]
-    assert client_row["tasks_completed"] == 1  # only the in-period one
-    assert client_row["tasks_active"] == 1
-
-    # Confirm the completed-task query actually pushed status+date to the
-    # query (bounded), rather than fetching the whole table unfiltered.
-    task_calls = [c for c in db.calls if c["table"] == "tasks"]
-    assert any(
-        ("eq", "status", "completed") in c["filters"] and any(op == "gte" for op, *_ in c["filters"])
-        for c in task_calls
-    ), f"no bounded completed-tasks query found: {task_calls}"
-
-
-def test_firm_analytics_excludes_old_completed_tasks_from_current_period(monkeypatch):
-    db = FakeDB()
-    _seed_tasks(db)
-    _patch_common(monkeypatch, db)
-
-    result = mod.firm_analytics(period="month", current_user={"firm_id": FIRM, "id": "u1", "role": "Partner"})
-    assert result["data"]["tasks_completed"] == 1
-    assert result["data"]["tasks_active"] == 1
 
 
 def test_revenue_vs_effort_no_longer_raises_nameerror(monkeypatch):
