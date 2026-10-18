@@ -141,7 +141,7 @@ def _assert_row_scope(db, current_user: dict, table: str, row_id: str, label: st
             .limit(1).execute().data) or []
     if not rows:
         raise HTTPException(status_code=404, detail=f"{label} not found.")
-    assert_client_access(current_user, rows[0].get("client_id"))
+    assert_client_access(current_user, rows[0].get("client_id"), detail=f"{label} not found.")
     return rows[0].get("client_id")
 
 
@@ -728,7 +728,7 @@ def delete_bank_account(
                .eq("id", account_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
     if not account:
         raise HTTPException(status_code=404, detail="Bank account not found.")
-    assert_client_access(current_user, account.get("client_id"))
+    assert_client_access(current_user, account.get("client_id"), detail="Bank account not found.")
 
     # Re-checked server-side. The client asked /deletable to decide what to show;
     # it is not what decides whether the row goes.
@@ -1379,7 +1379,7 @@ def delete_column_mapping(
             .limit(1).execute().data) or []
     if not rows:
         raise HTTPException(status_code=404, detail="Column mapping not found.")
-    assert_client_access(current_user, rows[0].get("client_id"))
+    assert_client_access(current_user, rows[0].get("client_id"), detail="Column mapping not found.")
     ok = column_mappings.delete_mapping(db, current_user["firm_id"], mapping_id)
     return api_response(True, {"deleted": ok})
 

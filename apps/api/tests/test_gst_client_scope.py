@@ -39,10 +39,10 @@ def deny(monkeypatch):
     catches a guard that resolves the wrong row's client."""
     seen = []
 
-    def _assert(user, client_id):
+    def _assert(user, client_id, *, detail="Not found"):
         seen.append(client_id)
         if client_id == THEIRS:
-            raise HTTPException(status_code=404, detail="Not found")
+            raise HTTPException(status_code=404, detail=detail)
 
     def _can(user, client_id):
         seen.append(client_id)

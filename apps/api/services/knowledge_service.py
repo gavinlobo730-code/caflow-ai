@@ -81,13 +81,22 @@ def is_assigned(firm_id: str, user_id: Optional[str], client_id: Optional[str]) 
     return is_client_assigned(user_id, client_id)
 
 
-def _assert_client_access(current_user: dict, client_id: str, *, write: bool = False) -> None:
+def _assert_client_access(current_user: dict, client_id: str, *, write: bool = False,
+                          hide_as: Optional[str] = None) -> None:
+    """Refuse a caller who may not act on this client's knowledge.
+
+    `hide_as` is for a row looked up BY ID: when the caller may not even VIEW the client's content, the refusal is a 404 with
+    this text, word for word what a row that does not exist answers, so a 403 (or a different 404 body) cannot tell a real
+    article id from an invented one (POST-A-017). A caller who can view the row but may not write it still gets the 403: they
+    can already read the article, so the refusal discloses nothing."""
     firm_id = current_user.get("firm_id")
     internal = is_internal_client(client_id, firm_id)
     assigned = is_assigned(firm_id, current_user.get("id"), client_id)
-    ok = (can_write_instruction(current_user, internal, assigned) if write
-          else can_view_client_content(current_user, client_id, internal, assigned))
+    can_view = can_view_client_content(current_user, client_id, internal, assigned)
+    ok = can_write_instruction(current_user, internal, assigned) if write else can_view
     if not ok:
+        if hide_as is not None and not can_view:
+            raise HTTPException(status_code=404, detail=hide_as)
         # 404 for internal client (don't disclose); 403 otherwise.
         raise HTTPException(status_code=404 if internal else 403,
                             detail="Not found" if internal else "Not authorised for this client")
@@ -204,7 +213,7 @@ def _load_article_or_404(db, current_user: dict, article_id: str,
         raise HTTPException(status_code=404, detail="Article not found")
     art = res.data[0]
     if art.get("client_id"):
-        _assert_client_access(current_user, art["client_id"], write=write)
+        _assert_client_access(current_user, art["client_id"], write=write, hide_as="Article not found")
     return art
 
 

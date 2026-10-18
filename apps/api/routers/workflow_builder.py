@@ -70,7 +70,7 @@ def _assert_instance_scope(current_user: dict, instance_id: str) -> Optional[str
         raise HTTPException(404, "Workflow instance not found")
     # A NULL client_id is a firm-level run, which assert_client_access(user,
     # None) correctly lets through — not something to 404.
-    assert_client_access(current_user, instance.get("client_id"))
+    assert_client_access(current_user, instance.get("client_id"), detail="Workflow instance not found")
     return instance.get("client_id")
 
 

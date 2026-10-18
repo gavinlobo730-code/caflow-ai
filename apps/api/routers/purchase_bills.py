@@ -97,7 +97,7 @@ def _assert_bill_scope(current_user: dict, bill_id: str) -> Optional[str]:
         if _USE_MOCK:
             return None
         raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
-    assert_client_access(current_user, client_id)
+    assert_client_access(current_user, client_id, detail=f"Purchase bill {bill_id} not found")
     return client_id
 
 

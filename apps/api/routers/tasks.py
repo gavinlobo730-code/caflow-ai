@@ -189,7 +189,7 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
     # tasks.client_id is NOT NULL and the row is already in hand, so this costs
     # no extra query. 404, not 403, matching the firm check just above — the
     # status code must not become an oracle for which task ids are real.
-    assert_client_access(current_user, task.get("client_id"))
+    assert_client_access(current_user, task.get("client_id"), detail="Task not found")
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
 

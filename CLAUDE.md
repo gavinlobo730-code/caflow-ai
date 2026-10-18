@@ -338,7 +338,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - The 26AS reconciliation is the same rule and had the same defect (TDS-21)
 - NOT EVERY PART OF FORM 26AS IS A CREDIT, and the client-as-DEDUCTEE reconciliation used to sum all of them
 
-### `docs/design-record/tenancy-and-security.md` (36 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (37 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -376,6 +376,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE WORKFLOW TABLES TAKE NO WRITE FROM A SIGNED-IN SESSION, A WRITE THAT NAMES A TEMPLATE OR A RUN BY ITS ID ASKS WHOSE IT IS, AND A CONVERSATION IS READ ONLY BY THE MEMBER WHO HAD IT
 - NO SIGNED-IN SESSION READS THE FOUR AI TABLES THAT HAVE NO READER OF THEIR OWN, AND THE CLIENT ACTIVITY FEED REFUSES A REWRITE OR A DELETE EVEN FROM THE API
 - EIGHT TABLES ARE WRITTEN BY THE API'S PRIVILEGED CLIENT AND BY NOBODY SIGNED IN, AND A WRITE THAT USED TO LEAN ON ROW SECURITY NOW ASKS WHAT THE POLICY ASKED
+- A MISSING ROW AND A ROW IN SOMEBODY ELSE'S CLIENT SAY THE SAME WORDS, AND A RULE OVER EVERY ROUTER HOLDS IT
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 

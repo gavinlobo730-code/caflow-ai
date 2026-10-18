@@ -140,8 +140,8 @@ def test_an_unassigned_caller_cannot_reach_it(monkeypatch):
     own scope helper and removes nothing when it refuses."""
     db, stmt_id = _setup(monkeypatch)
 
-    def _refuse(user, client_id):
-        raise HTTPException(status_code=404, detail="Not found")
+    def _refuse(user, client_id, *, detail="Not found"):
+        raise HTTPException(status_code=404, detail=detail)
     monkeypatch.setattr(bank, "assert_client_access", _refuse)
 
     with pytest.raises(HTTPException) as exc:

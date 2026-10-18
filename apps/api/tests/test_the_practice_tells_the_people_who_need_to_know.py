@@ -362,7 +362,7 @@ def test_the_patch_door_mails_the_new_assignee_once(world, wire, monkeypatch):
     import routers.tasks as tr
     monkeypatch.setattr(tr.task_repo, "find_by_id", lambda tid, firm_id=None, **k: {**TASK, "assigned_to": None})
     monkeypatch.setattr(tr.task_repo, "update", lambda tid, upd: {**TASK, **upd})
-    monkeypatch.setattr(tr, "assert_client_access", lambda u, c: None)
+    monkeypatch.setattr(tr, "assert_client_access", lambda u, c, **_k: None)
     res = _staff_client(PARTNER, tr).patch("/api/tasks/t-1", json={"assigned_to": PREPARER["id"]})
     assert res.status_code == 200, res.text
     assert _recipients(wire) == [PREPARER["email"]]
@@ -370,7 +370,7 @@ def test_the_patch_door_mails_the_new_assignee_once(world, wire, monkeypatch):
 
 def test_the_create_door_mails_the_assignee_once(world, wire, monkeypatch):
     import routers.tasks as tr
-    monkeypatch.setattr(tr, "assert_client_access", lambda u, c: None)
+    monkeypatch.setattr(tr, "assert_client_access", lambda u, c, **_k: None)
     monkeypatch.setattr(tr.client_repo, "find_by_id", lambda cid, fid=None: {"id": cid})
     monkeypatch.setattr(tr.task_repo, "create", lambda d: {**d, "id": "t-new"})
     res = _staff_client(PARTNER, tr).post("/api/tasks", json={
@@ -704,7 +704,7 @@ def test_instantiating_a_template_for_somebody_mails_them_like_the_other_doors(w
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: _DB())
     monkeypatch.setattr(tt.task_template_repo, "find_by_id",
                         lambda tid, firm_id=None: {"id": tid, "name": "Monthly GST", "firm_id": FIRM})
-    monkeypatch.setattr(tt, "assert_client_access", lambda u, c: None)
+    monkeypatch.setattr(tt, "assert_client_access", lambda u, c, **_k: None)
     monkeypatch.setattr("repositories.task_extras_repository.task_extras_repo.log_event", lambda **k: None)
     res = _staff_client(PARTNER, tt).post("/api/task-templates/tpl-1/instantiate", json={
         "client_id": CLIENT, "assignee_id": PREPARER["id"], "due_date": "2026-10-20"})

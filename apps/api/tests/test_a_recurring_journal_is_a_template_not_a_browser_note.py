@@ -476,7 +476,7 @@ def test_the_routers_scope_helper_actually_asks(monkeypatch):
 
     asked: list = []
     monkeypatch.setattr(mod, "assert_client_access",
-                        lambda user, cid: asked.append(cid))
+                        lambda user, cid, **_k: asked.append(cid))
     monkeypatch.setattr(mod.svc, "get_template",
                         lambda firm_id, tid: {"id": tid, "client_id": "C9"})
     mod._scoped({"firm_id": "F1"}, "T1")

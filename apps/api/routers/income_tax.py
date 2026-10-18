@@ -2217,7 +2217,7 @@ def delete_self_assessment_challan(
              .limit(1).execute())
     if not found.data:
         raise HTTPException(status_code=404, detail="Challan not found")
-    assert_client_access(current_user, str(found.data[0].get("client_id")))
+    assert_client_access(current_user, str(found.data[0].get("client_id")), detail="Challan not found")
     (db.table("self_assessment_challans").delete().eq("id", challan_id)
      .eq("firm_id", current_user["firm_id"]).execute())
     return api_response(True, {"id": challan_id})

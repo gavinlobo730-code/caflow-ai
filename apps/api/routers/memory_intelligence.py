@@ -47,7 +47,7 @@ def _assert_trigger_scope(current_user: dict, trigger_id: str) -> Optional[str]:
     t = _get_repo().get_trigger(current_user["firm_id"], trigger_id)
     if not t:
         raise HTTPException(status_code=404, detail="Trigger not found")
-    assert_client_access(current_user, t.get("client_id"))
+    assert_client_access(current_user, t.get("client_id"), detail="Trigger not found")
     return t.get("client_id")
 
 
@@ -55,7 +55,7 @@ def _assert_anomaly_scope(current_user: dict, anomaly_id: str) -> Optional[str]:
     a = _get_repo().get_anomaly(current_user["firm_id"], anomaly_id)
     if not a:
         raise HTTPException(status_code=404, detail="Anomaly not found")
-    assert_client_access(current_user, a.get("client_id"))
+    assert_client_access(current_user, a.get("client_id"), detail="Anomaly not found")
     return a.get("client_id")
 
 

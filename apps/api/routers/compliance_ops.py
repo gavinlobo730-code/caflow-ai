@@ -41,7 +41,7 @@ def _assert_obligation_scope(current_user: dict, record_id: str) -> dict:
         rec = compliance_record_service.get_record(record_id, firm_id=current_user["firm_id"])
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Compliance obligation not found.")
-    assert_client_access(current_user, rec.get("client_id"))
+    assert_client_access(current_user, rec.get("client_id"), detail="Compliance obligation not found.")
     return rec
 
 

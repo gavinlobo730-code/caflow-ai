@@ -181,7 +181,7 @@ def update_schedule(schedule_id: str = Path(...),
         raise HTTPException(status_code=404, detail="Billing schedule not found")
     # Same guard as create_schedule and generate: get_schedule firm-scopes its
     # query, and nothing asserted the CLIENT-scope invariant at the router.
-    assert_client_access(current_user, sched.get("client_id"))
+    assert_client_access(current_user, sched.get("client_id"), detail="Billing schedule not found")
     out = billing_service.update_schedule(
         current_user["firm_id"], schedule_id,
         body.model_dump(exclude_unset=True), current_user.get("id"))
@@ -252,7 +252,7 @@ def generate(schedule_id: str = Path(...),
     # nothing asserted the client-scope invariant explicitly at the router —
     # the same "guards the body, not the record" gap this sweep has found in
     # every prior router. Same reasoning as create_schedule's guard above.
-    assert_client_access(current_user, sched.get("client_id"))
+    assert_client_access(current_user, sched.get("client_id"), detail="Billing schedule not found")
     result = billing_service.generate_for_schedule(current_user["firm_id"], sched, current_user, period)
     return api_response(True, result)
 

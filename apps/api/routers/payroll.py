@@ -160,7 +160,7 @@ def _assert_run_scope(db, current_user: dict, run_id: str) -> Optional[str]:
     found, client_id = _run_client_id(db, current_user, run_id)
     if not found:
         raise HTTPException(status_code=404, detail="Payroll run not found")
-    assert_client_access(current_user, client_id)
+    assert_client_access(current_user, client_id, detail="Payroll run not found")
     return client_id
 
 
@@ -172,7 +172,7 @@ def _assert_employee_scope(db, current_user: dict, employee_id: str) -> Optional
             .limit(1).execute().data) or []
     if not rows:
         raise HTTPException(status_code=404, detail="Employee not found")
-    assert_client_access(current_user, rows[0].get("client_id"))
+    assert_client_access(current_user, rows[0].get("client_id"), detail="Employee not found")
     return rows[0].get("client_id")
 
 
@@ -6089,7 +6089,7 @@ def retract_ecr_filing(
            .maybe_single().execute().data)
     if not row:
         raise HTTPException(status_code=404, detail="Filing record not found")
-    assert_client_access(current_user, row.get("client_id"))
+    assert_client_access(current_user, row.get("client_id"), detail="Filing record not found")
     done = ecr_filings.retract_filing(db, firm_id=current_user["firm_id"],
                                       filing_id=filing_id)
     if not done:

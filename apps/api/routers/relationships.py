@@ -62,7 +62,7 @@ def _assert_role_scope(current_user: dict, role: Optional[dict]) -> dict:
     """Check the client on an entity_role the caller has already loaded."""
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
-    assert_client_access(current_user, role.get("client_id"))
+    assert_client_access(current_user, role.get("client_id"), detail="Role not found")
     return role
 
 

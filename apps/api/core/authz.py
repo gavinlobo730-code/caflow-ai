@@ -148,10 +148,14 @@ def can_access_client(user: dict, client_id: Optional[str]) -> bool:
     return str(client_id) in assigned_client_ids(user)
 
 
-def assert_client_access(user: dict, client_id: Optional[str]) -> None:
-    """Raise 404 (existence not disclosed) if the user may not access the client."""
+def assert_client_access(user: dict, client_id: Optional[str], *, detail: str = "Not found") -> None:
+    """Raise 404 (existence not disclosed) if the user may not access the client.
+
+    `detail` is what the 404 says. A handler that looks a ROW up by id and answers "Invoice X not found" for a missing one MUST
+    pass the same words here: with the default "Not found" a caller who knows an id can tell a row that exists in somebody
+    else's client from one that does not by the wording alone, the same status code notwithstanding (POST-A-017)."""
     if not can_access_client(user, client_id):
-        raise HTTPException(status_code=404, detail="Not found")
+        raise HTTPException(status_code=404, detail=detail)
 
 
 def authorize(user: dict, resource: str, action: str, *, client_id: Optional[str] = None) -> bool:
