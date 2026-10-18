@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from core.list_window import probe
 from domain.banking.normalizer import (
     MAPPING_KEYS, StatementParseError, header_fingerprint, validate_mapping,
 )
@@ -89,20 +90,27 @@ def find_mapping(db, firm_id: str, bank_account_id: str,
     return {**rows[0], "match_scope": "firm"} if rows else None
 
 
+#: What a saved layout shows a person. `header_fingerprint` is a key, `created_by` an internal id, and `firm_id` is what the read
+#: was keyed on; none is for the screen.
+LIST_COLUMNS = "id, client_id, bank_account_id, header_labels, mapping, created_at, updated_at"
+
+
 def list_mappings(db, firm_id: str, client_id: Optional[str] = None,
-                  bank_account_id: Optional[str] = None) -> list[dict]:
+                  bank_account_id: Optional[str] = None, *, limit: int) -> list[dict]:
+    """The newest `limit` saved layouts PLUS ONE (`core.list_window.probe`): the caller splits the extra row off to learn
+    whether older ones exist. Ordered by `created_at` then `id`, newest first, so a tie is never on two windows.
+
+    A FAILED READ RAISES. It used to be logged and answered as an empty list, which a screen that exists to show "what a bank
+    taught us" would have drawn as "nothing has been taught", a different statement from "could not be read". The two other
+    functions here that tolerate a failure (`find_mapping`) do so on purpose, because an import must not be blocked by a lookup."""
     if not db:
         return []
-    q = db.table("bank_statement_column_mappings").select("*").eq("firm_id", firm_id)
+    q = db.table("bank_statement_column_mappings").select(LIST_COLUMNS).eq("firm_id", firm_id)
     if client_id:
         q = q.eq("client_id", client_id)
     if bank_account_id:
         q = q.eq("bank_account_id", bank_account_id)
-    try:
-        return (q.order("created_at", desc=True).execute().data) or []
-    except Exception as e:                                       # noqa: BLE001
-        _logger.warning("column mapping list failed: %s", e)
-        return []
+    return (q.order("created_at", desc=True).order("id", desc=True).limit(probe(limit)).execute().data) or []
 
 
 def save_mapping(db, firm_id: str, client_id: str, bank_account_id: str,

@@ -23,6 +23,7 @@ from services import bank_erasure
 from services.audit_service import log_event
 from core.authz import assert_client_access, filter_by_client
 from core.observability import capture_soft_failure, capture_posting_failure
+from core.list_window import MAX_LIST_LIMIT, split
 
 _logger = logging.getLogger("caflow.banking")
 
@@ -1347,16 +1348,29 @@ def preview_statement_with_mapping(
 def list_column_mappings(
     client_id: Optional[str] = Query(None),
     bank_account_id: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=MAX_LIST_LIMIT),
     current_user: dict = Depends(rbac("banking", "read")),
 ):
-    """Saved column mappings, so a CA can see and correct what a bank taught us."""
+    """Saved column mappings, so a CA can see and correct what a bank taught us: a window of the newest, and whether older exist.
+
+    `has_more` is the read's (one row more than the window is asked for) and not what is left after the caller's client scope
+    removed rows; a failed read is an error, never an empty list."""
     if client_id:
         assert_client_access(current_user, client_id)
     db = _db()
     rows = column_mappings.list_mappings(db, current_user["firm_id"],
                                          client_id=client_id,
-                                         bank_account_id=bank_account_id)
-    return api_response(True, _scope_rows(current_user, client_id, rows))
+                                         bank_account_id=bank_account_id,
+                                         limit=limit)
+    window, has_more = split(rows, limit)
+    mappings = _scope_rows(current_user, client_id, window)
+    return api_response(True, {
+        "mappings": mappings,
+        "returned": len(mappings),
+        "has_more": has_more,
+        "limit": limit,
+        "max_limit": MAX_LIST_LIMIT,
+    })
 
 
 @router.delete("/statements/column-mappings/{mapping_id}")
