@@ -81,10 +81,14 @@ def compute_compliance_risk(
                 overdue.append(r)
             elif due and today <= due <= week_ahead and status not in ("filed", "not_applicable"):
                 due_soon.append(r)
-            # Late history: filed after the due date
-            if status == "filed" and due and r.get("filed_at"):
+            # Late history: filed after the due date. The evidence is `filed_date`, the DATE the CA recorded the filing
+            # on (`compliance_records` has no `filed_at`; this read used the wrong name for as long as the rule existed, so
+            # the +20 below never applied to anyone, POST-A-261). It is a calendar date and not a stamp, so there is no
+            # Indian-day conversion to make. A filed record with no `filed_date` is not counted: absent evidence is not
+            # evidence of lateness.
+            if status == "filed" and due and r.get("filed_date"):
                 try:
-                    filed = date.fromisoformat(str(r["filed_at"])[:10])
+                    filed = date.fromisoformat(str(r["filed_date"])[:10])
                     if filed > due:
                         late_history += 1
                 except ValueError:
