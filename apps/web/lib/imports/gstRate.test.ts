@@ -54,18 +54,25 @@ const BILLS: OriginalDocRef[] = [{ id: "bill-1", no: "BILL-001", partyId: "v1", 
 const SSERVICES: SalesServiceRef[] = [{ id: "svc-1", name: "Widget", description: "A widget", hsn_sac: "8501", gst_rate_bps: 1800, default_rate_paise: 100000, unit: "NOS" }];
 const PSVC: PurchaseServiceRef[] = [{ id: "psvc-1", name: "Steel Rod", description: "TMT", hsn_sac: "7213", gst_rate_bps: 1800, purchase_price_paise: 50000, unit: "KGS" }];
 
+// The credit-note and debit-note builders return different note shapes, so neither is the other's type; this test reads
+// only `errors`, which is the one thing they share.
+type SalesNoteBuilder = (rows: Record<string, string>[], clientId: string, customers: NameRef[],
+  invoices: OriginalDocRef[], services?: SalesServiceRef[]) => { errors: string[] };
+type PurchaseNoteBuilder = (rows: Record<string, string>[], clientId: string, vendors: NameRef[],
+  bills: OriginalDocRef[], services?: PurchaseServiceRef[]) => { errors: string[] };
+
 test("the four note importers refuse a GST % over 100 in the preview too", () => {
-  const sales = (fn: typeof buildSalesCreditNotes, dateKey: string) =>
+  const sales = (fn: SalesNoteBuilder, dateKey: string) =>
     fn([row({ customer: "Acme Pvt Ltd", [dateKey]: "2026-04-10", product_service: "Widget", quantity: "1", rate: "100", gst_rate: "1800" })],
       "client-1", [{ id: "cust-1", name: "Acme Pvt Ltd" }], INVOICES, SSERVICES);
-  const purchase = (fn: typeof buildPurchaseCreditNotes, dateKey: string) =>
+  const purchase = (fn: PurchaseNoteBuilder, dateKey: string) =>
     fn([row({ vendor: "Supplier A", [dateKey]: "2026-04-10", product_service: "Steel Rod", quantity: "1", rate: "100", gst_rate: "1800" })],
       "client-1", VENDORS, BILLS, PSVC);
   for (const out of [
     sales(buildSalesCreditNotes, "credit_note_date"), sales(buildSalesDebitNotes, "debit_note_date"),
     purchase(buildPurchaseCreditNotes, "credit_note_date"), purchase(buildPurchaseDebitNotes, "debit_note_date"),
   ]) {
-    const errors = (out as { errors: string[] }).errors;
+    const errors = out.errors;
     assert.match(errors.join(" "), /GST % "1800" is more than 100/);
   }
 });
