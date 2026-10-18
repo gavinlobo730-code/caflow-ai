@@ -158,7 +158,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TWO SITES AND THE API SEND SECURITY HEADERS, THE POLICY'S HOSTS ARE READ FROM THE BUILD AND NEVER WILDCARDED, AND EVERY ROUTE 
 - A BACKEND EVENT NAMES THE BUILD IT CAME FROM, AN UNLABELLED AI ROW NAMES NO RETIRED MODEL, AND A ROUTE NOTHING CALLED IS GONE
 
-### `docs/design-record/documents-sales-purchase.md` (11 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
+### `docs/design-record/documents-sales-purchase.md` (12 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 
 - THE DEMO SEEDER HAS BEEN RUN OVER A REAL DATABASE, AND EVERY DEFECT IT EXPOSED IS A RULE NOW
 - A TEMPLATE CHANGES THE LAYOUT AND NEVER THE PARTICULARS, AND THE PRACTICE'S TEMPLATE REACHES THE PRACTICE'S OWN DOCUMENT ONLY
@@ -171,6 +171,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE PURCHASE CYCLE BEGINS BEFORE THE BILL, AND THE GOODS RECEIPT IS A STATUTORY FACT
 - A VENDOR PAYMENT RECORDS WHICH BILLS IT SETTLED IN TWO SHAPES, AND EVERY READER MUST KNOW BOTH
 - A BILLING SCHEDULE KEEPS THE DAY IT STARTED ON, A DUE SCHEDULE WHOSE PERIOD IS ALREADY BILLED ADVANCES, A PLACEHOLDER NUMBER IS NOT ISSUED, AND TWO EDITORS OF AN ARTICLE BOTH KEEP THEIR TEXT
+- A LINE ON A DOCUMENT NAMES AN ITEM OF THE DOCUMENT'S OWN CLIENT, AND THE API ASKS ONCE BEFORE IT WRITES
 
 ### `docs/design-record/engineering-and-ci.md` (7 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 

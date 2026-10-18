@@ -36,6 +36,7 @@ from fastapi import HTTPException
 from domain import recurrence as _rec
 from models.invoices import SalesInvoiceIn, SalesInvoiceLineIn
 from services.numbering import draft_placeholder_invoice_no
+from services.line_item_ownership import assert_items_are_the_clients
 from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -173,6 +174,8 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None
         MOCK_RECURRING_TEMPLATES.append(payload)
         return dict(payload)
     db = db or _db()
+    # A template whose line names another client's item could never generate (every run would refuse it): say so now (POST-A-246).
+    assert_items_are_the_clients(db, firm_id, data["client_id"], data["lines"])
     row = db.table("recurring_invoice_templates").insert(payload).execute().data[0]
     for ln in lines:
         ln["template_id"] = row["id"]
@@ -180,6 +183,12 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None
         db.table("recurring_invoice_template_lines").insert(lines).execute()
     row["lines"] = lines
     return row
+
+
+def _assert_edited_lines_are_the_clients(db, firm_id: str, existing: dict, data: dict) -> None:
+    """An edit that replaces the lines names only items of the template's own client (POST-A-246); one that does not asks nothing."""
+    if data.get("lines") is not None:
+        assert_items_are_the_clients(db, firm_id, existing.get("client_id") or "", data["lines"])
 
 
 def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict:
@@ -218,6 +227,7 @@ def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict
                     t["lines"] = new_lines
         return dict(existing)
     db = db or _db()
+    _assert_edited_lines_are_the_clients(db, firm_id, existing, data)
     db.table("recurring_invoice_templates").update(fields).eq("id", template_id).eq("firm_id", firm_id).execute()
     if new_lines is not None:
         db.table("recurring_invoice_template_lines").delete().eq("template_id", template_id).execute()

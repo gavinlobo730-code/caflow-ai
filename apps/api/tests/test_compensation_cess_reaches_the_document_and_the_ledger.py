@@ -82,13 +82,20 @@ class _Query:
     def is_(self, *a, **k): return self
     def ilike(self, *a, **k): return self
     def or_(self, *a, **k): return self
-    def in_(self, *a, **k): return self
+    def in_(self, col, vals):
+        self._filters[col + "__in"] = list(vals)
+        return self
     def limit(self, *a, **k): return self
     def order(self, *a, **k): return self
     def range(self, *a, **k): return self
     def maybe_single(self): return self
 
     def execute(self):
+        if self._table == "service_catalogue" and self._op == "select":
+            # Item ownership (POST-A-246) is not what this file is about, and it is held where it is about:
+            # tests/test_an_item_on_a_document_line_is_the_documents_clients.py. This stand-in vouches for every item a
+            # document names, as the database's own foreign key would for an item that exists.
+            return _Resp(data=[{"id": i} for i in self._filters.get("id__in", [])])
         event = {"table": self._table, "op": self._op, "payload": self._payload,
                  "filters": dict(self._filters), "count": self._count}
         self._rec.append(event)

@@ -123,6 +123,8 @@ def _bulk_setup(monkeypatch):
     db.seed("vendors", {"id": "VEND1", "firm_id": FIRM, "client_id": "CLI", "name": "Supplier",
                         "state_code": "27", "tds_applicable": False, "is_active": True})
     seed_standard_coa(db, FIRM, "CLI")
+    # The "good" rows name this item, and every line must name an item of its own client (POST-A-246).
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI", "name": "Consulting", "kind": "service"})
     return si, pb, db
 
 

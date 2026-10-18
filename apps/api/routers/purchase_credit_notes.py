@@ -41,6 +41,7 @@ from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from core.uploads import accept_upload, safe_path_segment
 from services.audit_service import log_event
+from services.line_item_ownership import ItemOwner, check as check_items_are_the_clients
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
@@ -140,7 +141,9 @@ def _compute_line_gst(taxable: int, gst_rate_bps: int, is_interstate: bool) -> t
     return cgst, full_gst - cgst, 0
 
 
-def _compute_lines(lines_data: list, is_interstate: bool):
+def _compute_lines(lines_data: list, is_interstate: bool, owner: Optional[ItemOwner] = None):
+    # Every line names an item of the note's own client (POST-A-246); None means there is no catalogue to read (mock mode).
+    check_items_are_the_clients(owner, lines_data)
     computed, total_taxable, total_cgst, total_sgst, total_igst = [], 0, 0, 0, 0
     for ln in lines_data:
         ln = ln if isinstance(ln, dict) else ln.model_dump()
@@ -198,7 +201,8 @@ def create_purchase_credit_note(data: PurchaseCreditNoteIn, current_user: dict =
         assert_client_access(current_user, client_id)
         is_interstate = bool(data.get("is_interstate"))
         computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
-            data.get("lines", []), is_interstate)
+            data.get("lines", []), is_interstate,
+            owner=None if _USE_MOCK else ItemOwner.live(firm_id or "", client_id))
         total_paise = total_taxable + total_cgst + total_sgst + total_igst
         if total_paise <= 0:
             raise HTTPException(status_code=422, detail="Credit note total must be positive.")
@@ -305,7 +309,8 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
                     computed = []
                     if lines_data is not None:
                         is_interstate = data.get("is_interstate", d.get("is_interstate", False))
-                        computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(lines_data, is_interstate)
+                        computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
+                            lines_data, is_interstate, owner=None)   # mock mode has no catalogue
                         total_paise = total_taxable + total_cgst + total_sgst + total_igst
                         if total_paise <= 0:
                             raise HTTPException(status_code=422, detail="Credit note total must be positive.")
@@ -348,7 +353,9 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
 
         if lines_data is not None:
             is_interstate = data.get("is_interstate", d.get("is_interstate", False))
-            computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(lines_data, is_interstate)
+            computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
+                lines_data, is_interstate,
+                owner=ItemOwner.live(current_user.get("firm_id") or "", d.get("client_id") or ""))
             total_paise = total_taxable + total_cgst + total_sgst + total_igst
             if total_paise <= 0:
                 raise HTTPException(status_code=422, detail="Credit note total must be positive.")
