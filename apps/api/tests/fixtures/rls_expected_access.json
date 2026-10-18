@@ -4,15 +4,15 @@
   "ops": ["select", "insert", "update", "delete"],
   "tables": {
     "ai_insights": {
-      "partner": ["A,B", "A,B", "A,B", "A,B"],
-      "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "-", "-", "-"],
-      "exec_unassigned": ["-", "-", "-", "-"],
-      "reviewer": ["A", "-", "-", "-"],
-      "portal_client": ["-", "-", "-", "-"],
-      "employee": ["-", "-", "-", "-"],
-      "other_firm_partner": ["X", "X", "X", "X"],
-      "suspended_partner": ["-", "-", "-", "-"],
+      "partner": ["A,B", "x", "x", "x"],
+      "manager": ["A", "x", "x", "x"],
+      "exec_assigned": ["A", "x", "x", "x"],
+      "exec_unassigned": ["-", "x", "x", "x"],
+      "reviewer": ["A", "x", "x", "x"],
+      "portal_client": ["-", "x", "x", "x"],
+      "employee": ["-", "x", "x", "x"],
+      "other_firm_partner": ["X", "x", "x", "x"],
+      "suspended_partner": ["-", "x", "x", "x"],
       "anon": ["x", "x", "x", "x"]
     },
     "attendance": {

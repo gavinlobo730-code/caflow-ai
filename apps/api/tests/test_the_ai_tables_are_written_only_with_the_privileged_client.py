@@ -1,4 +1,4 @@
-"""The AI tables are written with the privileged client, firm by firm, and a conversation is its owner's (POST-A-250).
+"""The AI tables are written with the privileged client, firm by firm, and a conversation is its owner's (POST-A-250, POST-A-257).
 
 THE DEFECT
     `ai_conversations`, `ai_messages`, `ai_summaries`, `ai_recommendations` and `ai_feedback` were written by
@@ -9,7 +9,12 @@ THE DEFECT
     prompt as the model's own. On the API path the same hole had a second face: a conversation was looked up by firm and id
     alone, so any member who knew an id could read it, post into it or archive it.
 
-WHAT IS HELD (migration 505 revokes the grants; its own test is the real-Postgres one)
+POST-A-257 REPEATS IT FOR THE INSIGHT AND MEMORY REPOSITORIES (migration 507): `ai_insights_repository` and
+    `memory_repository` write `ai_insights`, `ai_memory_triggers`, the client and firm profiles, their history,
+    `pattern_anomalies` and `year_end_reports`, all of which `authenticated` was granted writes on. The three source scans
+    below run over all three repository files, so a write added to any of them on the caller's session fails here.
+
+WHAT IS HELD (migrations 505 and 507 revoke the grants; their own tests are the real-Postgres ones)
     (The scan follows a chain that STARTS at `_get_db()` or `_write_db()`. A client held in a variable and written through
     later would be invisible to it; the repository has none, and the behavioural tests below would still catch it.)
     * every write the repository makes (insert, update, delete, rpc) is made through `_write_db()`, never `_get_db()`, and the
@@ -35,6 +40,11 @@ from repositories.ai_copilot_repository import AICopilotRepository
 from tests.test_a_copilot_conversation_is_titled_from_its_first_message import FakeDB, _Query
 
 REPO = Path(repo_mod.__file__)
+REPOSITORY_FILES = [
+    REPO,
+    REPO.with_name("ai_insights_repository.py"),
+    REPO.with_name("memory_repository.py"),
+]
 WRITE_VERBS = {"insert", "update", "delete", "upsert", "rpc"}
 
 
@@ -55,8 +65,8 @@ def _chain_text(node: ast.AST) -> str:
     return ast.unparse(node)
 
 
-def _calls_in_methods() -> list[ast.Call]:
-    tree = ast.parse(REPO.read_text(encoding="utf-8"))
+def _calls_in_methods(path: Path = REPO) -> list[ast.Call]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     out: list[ast.Call] = []
     for cls in [n for n in tree.body if isinstance(n, ast.ClassDef)]:
         for fn in [n for n in cls.body if isinstance(n, ast.FunctionDef)]:
@@ -64,40 +74,89 @@ def _calls_in_methods() -> list[ast.Call]:
     return out
 
 
-def test_every_write_the_repository_makes_goes_through_the_privileged_client():
+def _db_chain(call: ast.Call, db_names=("_get_db", "_write_db")) -> bool:
+    """A call chain that starts at a database client: `_get_db()`, `_write_db()`, or a local bound to one of them."""
+    return _chain_root(call) in set(db_names)
+
+
+def _method_bindings(fn: ast.FunctionDef) -> dict[str, str]:
+    """Locals bound to a database client inside one method: `db = _get_db()` and `write = _write_db()`."""
+    out: dict[str, str] = {}
+    for node in ast.walk(fn):
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
+                and node.value.func.id in {"_get_db", "_write_db"}):
+            out[node.targets[0].id] = node.value.func.id
+    return out
+
+
+def _client_calls(path: Path):
+    """(method, call, client) for every `.insert/.update/.delete/.upsert/.rpc/.select` call whose chain starts at a database
+    client, where `client` is `_get_db` or `_write_db`, following one local alias per method."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for cls in [n for n in tree.body if isinstance(n, ast.ClassDef)]:
+        for fn in [n for n in cls.body if isinstance(n, ast.FunctionDef)]:
+            bound = _method_bindings(fn)
+            for call in [n for n in ast.walk(fn) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)]:
+                root = _chain_root(call)
+                client = root if root in {"_get_db", "_write_db"} else bound.get(root or "")
+                if client:
+                    yield fn.name, call, client
+
+
+@pytest.mark.parametrize("path", REPOSITORY_FILES, ids=lambda p: p.name)
+def test_every_write_the_repository_makes_goes_through_the_privileged_client(path):
     # A chain that starts at a database client. `r.update(updates)` on a mock-mode dict is a dict method, not a write.
-    writes = [c for c in _calls_in_methods()
-              if isinstance(c.func, ast.Attribute) and c.func.attr in WRITE_VERBS
-              and _chain_root(c) in {"_get_db", "_write_db"}]
+    writes = [(fn, c, client) for fn, c, client in _client_calls(path) if c.func.attr in WRITE_VERBS]
     assert writes, "the scan found no write at all: the collector is broken"
-    wrong = [(c.lineno, _chain_root(c)) for c in writes if _chain_root(c) != "_write_db"]
+    wrong = [(fn, c.lineno, client) for fn, c, client in writes if client != "_write_db"]
     assert wrong == [], f"writes made through anything but _write_db(): {wrong}"
 
 
-def test_every_read_stays_on_the_callers_own_session():
-    reads = [c for c in _calls_in_methods()
-             if isinstance(c.func, ast.Attribute) and c.func.attr == "select"]
+@pytest.mark.parametrize("path", REPOSITORY_FILES, ids=lambda p: p.name)
+def test_every_read_stays_on_the_callers_own_session(path):
+    reads = [(fn, c, client) for fn, c, client in _client_calls(path) if c.func.attr == "select"]
     assert reads, "the scan found no read at all: the collector is broken"
-    wrong = [(c.lineno, _chain_root(c)) for c in reads if _chain_root(c) != "_get_db"]
+    wrong = [(fn, c.lineno, client) for fn, c, client in reads if client != "_get_db"]
     assert wrong == [], f"reads made through anything but _get_db(): {wrong}"
 
 
-def test_every_update_names_its_firm():
-    updates = [c for c in _calls_in_methods()
-               if isinstance(c.func, ast.Attribute) and c.func.attr == "update" and _chain_root(c) == "_write_db"]
-    assert updates, "the scan found no update at all: the collector is broken"
-    # an update is filtered by `.eq("firm_id", ...)` further along the SAME chain, which the parent call holds; the stale
-    # query in upsert_summary is built in a variable first, so the whole method body is searched for its filter.
-    tree = ast.parse(REPO.read_text(encoding="utf-8"))
-    missing = []
+def _topmost_chain(fn: ast.FunctionDef, node: ast.Call) -> ast.AST:
+    """The outermost call of the chain `node` sits in (`....update(x).eq(a).eq(b).execute()` for the `.update(x)` node)."""
+    parents = {child: parent for parent in ast.walk(fn) for child in ast.iter_child_nodes(parent)}
+    top: ast.AST = node
+    while True:
+        up = parents.get(top)
+        if isinstance(up, ast.Attribute) and parents.get(up) is not None and isinstance(parents.get(up), ast.Call):
+            top = parents[up]
+        else:
+            return top
+
+
+@pytest.mark.parametrize("path", REPOSITORY_FILES, ids=lambda p: p.name)
+def test_every_update_names_its_firm(path):
+    """On the update's OWN chain when it is written inline (`.update(x).eq("id", i).eq("firm_id", f).execute()`), and
+    anywhere in the method when the chain is built in a variable first (the stale-summary query in upsert_summary)."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    firm = re.compile(r"""\.eq\(['"]firm_id['"]""")
+    updates = 0
+    bad: list[tuple[str, int]] = []
     for cls in [n for n in tree.body if isinstance(n, ast.ClassDef)]:
         for fn in [n for n in cls.body if isinstance(n, ast.FunctionDef)]:
-            body = ast.unparse(fn)
+            bound = _method_bindings(fn)
             for call in [n for n in ast.walk(fn) if isinstance(n, ast.Call)
-                         and isinstance(n.func, ast.Attribute) and n.func.attr == "update" and _chain_root(n) == "_write_db"]:
-                if not re.search(r"""\.eq\(['"]firm_id['"]""", body):
-                    missing.append((fn.name, call.lineno))
-    assert missing == [], f"updates with no firm filter in their method: {missing}"
+                         and isinstance(n.func, ast.Attribute) and n.func.attr == "update"]:
+                root = _chain_root(call)
+                if (root if root in {"_get_db", "_write_db"} else bound.get(root or "")) != "_write_db":
+                    continue
+                updates += 1
+                top = _topmost_chain(fn, call)
+                inline = isinstance(top, ast.Call) and isinstance(top.func, ast.Attribute) and top.func.attr == "execute"
+                text = ast.unparse(top) if inline else ast.unparse(fn)
+                if not firm.search(text):
+                    bad.append((fn.name, call.lineno))
+    assert updates, "the scan found no update at all: the collector is broken"
+    assert bad == [], f"updates with no firm filter: {bad}"
 
 
 def test_negative_control_the_scan_catches_a_write_on_the_callers_session():
@@ -293,3 +352,89 @@ def test_the_archive_write_itself_is_scoped_to_the_owner_not_only_the_lookup_bef
     out = v2.archive_conversation("CONV-1", current_user=user)
     assert out["success"] is True
     assert seen["archive"] == ("F1", "CONV-1", "U-CALLER")
+
+
+# ── the insight and memory repositories, behaviourally (POST-A-257) ───────────────────────────────────────────────────
+
+@pytest.fixture
+def memory(monkeypatch):
+    import repositories.memory_repository as mem_mod
+    write = _WriteDB()
+
+    class _ReadOnly(_ReadOnlyDB):
+        pass
+
+    read = _ReadOnly()
+    read.store = write.store
+    monkeypatch.setattr(mem_mod, "_USE_MOCK", False)
+    monkeypatch.setattr(mem_mod, "_get_db", lambda: read)
+    monkeypatch.setattr(mem_mod, "_write_db", lambda: write)
+    return mem_mod.MemoryRepository(), write
+
+
+def test_the_memory_repository_writes_every_table_through_the_write_client(memory):
+    r, write = memory
+    trig = r.create_trigger("F1", "C1", "deadline_at_risk", "t", "w", [], "m", "a", 80.0, "high")
+    assert r.acknowledge_trigger("F1", trig["id"], "U1")["status"] == "acknowledged"
+    assert r.resolve_trigger("F1", trig["id"])["status"] == "resolved"
+    assert r.dismiss_trigger("F1", trig["id"])["status"] == "dismissed"
+    r.upsert_profile("F1", "C1", {"compliance_score": 60})
+    second = r.upsert_profile("F1", "C1", {"compliance_score": 70})
+    assert second["profile_version"] == 2, "the second upsert retires the first and numbers the next"
+    r.upsert_firm_profile("F1", {"portfolio_compliance_score": 80})
+    r.upsert_firm_profile("F1", {"portfolio_compliance_score": 85})
+    r.create_anomaly("F1", "C1", "late_filing", "m", 1.0, 2.0, "2026-09")
+    r.create_year_end_report("F1", "C1", "2025-26", {})
+    assert {"ai_memory_triggers", "client_profiles", "client_profile_history", "firm_profiles",
+            "pattern_anomalies", "year_end_reports"} <= set(write.store)
+    assert len(write.store["client_profile_history"]) == 1, "the retired profile is snapshotted once"
+
+
+def test_a_trigger_of_another_firm_is_not_touched_by_acknowledge_resolve_or_dismiss(memory):
+    r, write = memory
+    trig = r.create_trigger("F1", "C1", "deadline_at_risk", "t", "w", [], "m", "a", 80.0, "high")
+    assert r.acknowledge_trigger("OTHER", trig["id"], "U1") is None
+    assert r.resolve_trigger("OTHER", trig["id"]) is None
+    assert r.dismiss_trigger("OTHER", trig["id"]) is None
+    assert write.store["ai_memory_triggers"][0]["status"] == "active"
+
+
+def test_the_retire_step_of_a_profile_upsert_does_not_touch_another_firms_profile(memory):
+    r, write = memory
+    r.upsert_profile("F1", "C1", {})
+    mine = write.store["client_profiles"][0]
+    write.store["client_profiles"].append({**mine, "id": "OTHERS", "firm_id": "F2", "is_current": True})
+    r.upsert_profile("F1", "C1", {})
+    others = next(p for p in write.store["client_profiles"] if p["id"] == "OTHERS")
+    assert others["is_current"] is True and others["firm_id"] == "F2"
+
+
+@pytest.fixture
+def insights(monkeypatch):
+    import repositories.ai_insights_repository as ins_mod
+    write = _WriteDB()
+    read = _ReadOnlyDB()
+    read.store = write.store
+    monkeypatch.setattr(ins_mod, "_USE_MOCK", False)
+    monkeypatch.setattr(ins_mod, "_get_db", lambda: read)
+    monkeypatch.setattr(ins_mod, "_write_db", lambda: write)
+    return ins_mod.AIInsightsRepository(), write
+
+
+def test_an_insight_is_created_and_its_status_changed_through_the_write_client(insights):
+    r, write = insights
+    row = r.create({"firm_id": "F1", "client_id": "C1", "category": "compliance", "severity": "high",
+                    "title": "t", "description": "d", "status": "open"})
+    assert write.store["ai_insights"][0]["firm_id"] == "F1"
+    assert r.update_status(row["id"], "acknowledged", firm_id="F1")["status"] == "acknowledged"
+    assert r.update_status(row["id"], "dismissed", firm_id="OTHER") is None
+    assert write.store["ai_insights"][0]["status"] == "acknowledged"
+
+
+def test_an_insight_with_no_firm_is_refused_before_it_is_written_privileged(insights):
+    r, write = insights
+    with pytest.raises(ValueError):
+        r.create({"client_id": "C1", "title": "t", "description": "d", "severity": "high"})
+    with pytest.raises(ValueError):
+        r.update_status("anything", "dismissed", firm_id=None)
+    assert "ai_insights" not in write.store

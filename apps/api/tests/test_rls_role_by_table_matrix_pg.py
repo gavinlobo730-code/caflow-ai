@@ -1148,12 +1148,14 @@ CONTROLS = (
       ("reviewer", "year_end_engagements", "delete"), ("reviewer", "mca_directors", "insert"),
       ("reviewer", "tax_disallowances", "update"), ("reviewer", "xbrl_packages", "insert")}),
     ("reviewer-writes-slice-3-489-reopened",
-     "migration 489 rolled back: a Reviewer assigned to the client writes its insights, instructions, compliance records, "
+     "migration 489 rolled back: a Reviewer assigned to the client writes its instructions, compliance records, "
      "notices, health records, onboarding workflows and renewals again",
      lambda: _migration_sql("489_a_reviewer_cannot_write_the_client_level_tables_rollback.sql"),
-     ("ai_insights", "client_instructions", "compliance_records", "government_notices", "health_alerts",
+     # `ai_insights` is not in this list since migration 507: no signed-in role holds a write on it at all, so rolling back
+     # 489 changes nothing there and the control cannot turn a cell red on it.
+     ("client_instructions", "compliance_records", "government_notices", "health_alerts",
       "health_score_history", "health_scores", "onboarding_workflows", "renewals"),
-     {("reviewer", "ai_insights", "insert"), ("reviewer", "client_instructions", "update"),
+     {("reviewer", "client_instructions", "update"),
       ("reviewer", "compliance_records", "delete"), ("reviewer", "renewals", "insert"),
       ("reviewer", "health_scores", "update"), ("reviewer", "government_notices", "insert")}),
     ("payroll-tier-490-reopened",
