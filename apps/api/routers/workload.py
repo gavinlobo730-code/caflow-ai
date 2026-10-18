@@ -73,11 +73,15 @@ def list_capacity(current_user: dict = Depends(rbac("workload", "read"))):
 def set_capacity(body: CapacityUpdate, current_user: dict = Depends(rbac("workload", "write"))):
     """Set a user's weekly capacity (Manager+)."""
     firm_id = current_user.get("firm_id")
-    record = capacity_repo.upsert(firm_id, body.user_id, {
-        "weekly_capacity_hours": body.weekly_capacity_hours,
-        "max_concurrent_tasks": body.max_concurrent_tasks,
-        "updated_by": current_user.get("id"),
-    })
+    try:
+        record = capacity_repo.upsert(firm_id, body.user_id, {
+            "weekly_capacity_hours": body.weekly_capacity_hours,
+            "max_concurrent_tasks": body.max_concurrent_tasks,
+            "updated_by": current_user.get("id"),
+        })
+    except ValueError:
+        # Not a member of this firm: the same answer for a person who does not exist and one who belongs to another firm.
+        raise HTTPException(status_code=404, detail="User not found") from None
     return api_response(True, {"capacity": record})
 
 

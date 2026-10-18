@@ -19,6 +19,15 @@ DEFAULT_MAX_TASKS = 15
 _get_db = db_provider.request_db
 
 
+def _write_db():
+    """The client the upsert of `user_capacity` goes through: the privileged one (POST-A-018, migration 513).
+
+    A signed-in session holds no write privilege on the table, so nothing here may write as the caller. Reads stay on
+    `_get_db`. Row security is no longer the second lock on the write, so the write names its firm and asks that the person
+    whose capacity it sets is a member of that firm (the table has no foreign key on `user_id`)."""
+    return db_provider.service_db()
+
+
 class CapacityRepository(BaseRepository[dict]):
 
     def find_all(self, firm_id: Optional[str] = None, **filters) -> list[dict]:
@@ -69,8 +78,12 @@ class CapacityRepository(BaseRepository[dict]):
             }
             _MOCK_CAPACITY.append(record)
             return record
+        member = (_write_db().table("users").select("id").eq("id", user_id).eq("firm_id", firm_id)
+                  .limit(1).execute().data) or []
+        if not member:
+            raise ValueError("User not found")
         result = (
-            _get_db().table("user_capacity")
+            _write_db().table("user_capacity")
             .upsert({"firm_id": firm_id, "user_id": user_id, **payload}, on_conflict="firm_id,user_id")
             .execute()
         )
