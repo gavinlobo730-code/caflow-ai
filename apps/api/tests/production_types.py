@@ -100,6 +100,9 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("payroll_slips", "pf_on_actual_wages"): "migration 477",
     # POST-A-239. The lease a request takes on a finalized run before it posts the salary disbursement.
     ("payroll_runs", "disbursement_claimed_at"): "migration 504",
+    # POST-A-253, POST-A-254. The loan write-down a release still owes, and the lease a reversal takes on a released run.
+    ("payroll_runs", "loan_writedown_owed_at"): "migration 508",
+    ("payroll_runs", "reversal_claimed_at"): "migration 508",
 }
 
 

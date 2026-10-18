@@ -1,10 +1,10 @@
-"""The s.2(y) wage base: the 50% rule, and everything it must NOT disturb.
+"""The s.2(88) wage base: the 50% rule, and everything it must NOT disturb.
 
 WHY THIS EXISTS
 
     Until 21-11-2025 the PF base was `basic + DA` and that was right. The Code
     on Social Security subsumed the EPF Act that day and adopts the Code on
-    Wages §2(y) definition, which caps the listed exclusions at half of total
+    Wages §2(88) definition, which caps the listed exclusions at half of total
     remuneration and deems the excess to be wages.
 
     The failure this prevents is silent and it lands in somebody's provident
@@ -199,7 +199,7 @@ def test_esi_is_deliberately_not_touched():
 
 
 def test_a_one_time_bonus_does_not_shrink_the_add_back():
-    """One-time earnings are outside the §2(y) denominator, on purpose.
+    """One-time earnings are outside the §2(88) denominator, on purpose.
 
     Putting a bonus into total remuneration would raise the 50% half and
     SHRINK the add-back — the direction that under-deducts. A bonus is an
@@ -220,18 +220,18 @@ def test_a_one_time_bonus_does_not_shrink_the_add_back():
 
 
 def test_arrears_of_basic_still_reach_the_pf_base_on_top():
-    """`ot.pf_wages_paise` is added AFTER the §2(y) figure, as it always was."""
+    """`ot.pf_wages_paise` is added AFTER the §2(88) figure, as it always was."""
     from domain.payroll.one_time_earnings import Bundle
 
     slip = _compute_slip(_breaching_employee(), fy="2025-26", pt_month=12,
                          one_time=Bundle(total_paise=2_000_00, pf_wages_paise=2_000_00,
                                          taxable_paise=2_000_00, lines=("arrears",)))
     # 14,000 from the wage base + 2,000 arrears, then the 15,000 ceiling bites.
-    assert slip["pf_wages_paise"] == 14_000_00      # the §2(y) figure alone
+    assert slip["pf_wages_paise"] == 14_000_00      # the §2(88) figure alone
     assert slip["pf_employee_paise"] == 1_800_00    # 12% of the capped 15,000
 
 
-# ── The pre-commencement branch is EPF Act s.6, not a narrower s.2(y) ────────
+# ── The pre-commencement branch is EPF Act s.6, not a narrower s.2(88) ────────
 
 def test_a_month_before_commencement_charges_pf_on_basic_and_da_only():
     """The claim this module's docstring made, now actually true.
@@ -239,7 +239,7 @@ def test_a_month_before_commencement_charges_pf_on_basic_and_da_only():
     It said the pre-commencement branch "reproduces the old basic + DA
     exactly". It returned `wage_components_paise`, and routers/payroll.py had
     folded medical, special and other allowance into that — correctly, for
-    s.2(y), which sweeps in everything that is not an enumerated exclusion.
+    s.2(88), which sweeps in everything that is not an enumerated exclusion.
     EPF Act s.6 named three things: "basic wages, dearness allowance and
     retaining allowance". So an October 2025 month on Rs 10,000 basic with
     Rs 2,000 medical and Rs 3,000 special computed PF on Rs 15,000 and
@@ -263,7 +263,7 @@ def test_a_month_before_commencement_charges_pf_on_basic_and_da_only():
 
 
 def test_the_same_month_after_commencement_takes_the_whole_wage_side():
-    """The fork is the point: s.2(y) DOES reach medical and special allowance,
+    """The fork is the point: s.2(88) DOES reach medical and special allowance,
     so the identical pay computes a larger base from 21-11-2025. Pinning both
     sides together is what stops the fix being read as "allowances never count"."""
     r = wage_base.compute(
@@ -288,7 +288,7 @@ def test_the_pre_code_figure_is_optional_and_falls_back():
 def test_the_payroll_route_passes_the_section_6_base():
     """The defect was at the CALL SITE, so assert the call site, not only the
     function: routers/payroll.py::_pf_wage_base folds five components into the
-    s.2(y) figure and must hand s.6 its own."""
+    s.2(88) figure and must hand s.6 its own."""
     from routers.payroll import _pf_wage_base
 
     r = _pf_wage_base(basic_paise=10_000_00, da_paise=0, hra_paise=0, lta_paise=0,

@@ -78,13 +78,9 @@ function unreadDeletes(src: string): number {
 const NOT_FIXED_HERE: Record<string, number> = {
   // POST-A-227 moves the task delete behind the API, which is the real fix and removes the call.
   "lib/data/tasks.ts": 1,
-  // The employee's declaration lines are replaced inside one save (delete the saved lines, insert the new ones) and the
-  // delete's result is not read, so a failed delete leaves the old lines beside the new: POST-A-255, a different shape
-  // from a button that deletes a row, and the fix is to read it or to replace the lines in one transaction.
-  "components/portal/TaxDeclarationTab.tsx": 1,
 };
 
-test("no browser delete drops its result, apart from the two named ones", () => {
+test("no browser delete drops its result, apart from the one named", () => {
   const found: Record<string, number> = {};
   for (const root of ["app", "components", "lib"]) {
     for (const file of walk(join(WEB, root))) {
@@ -135,4 +131,16 @@ test("negative control: the scan fails a delete that reads nothing, and one that
   assert.equal(unreadDeletes(`const { error } = await sb${from("t")}.delete().eq("id", id);\nif (error) throw error;`), 1);
   assert.equal(unreadDeletes(`const r = await sb${from("t")}.delete().eq("id", id).select("id");`), 0);
   assert.equal(unreadDeletes(`// await sb${from("t")}.delete().eq("id", id);`), 0);
+});
+
+// POST-A-255. The employee's declaration save deletes the saved lines and inserts the new ones. The delete's result was
+// not read, so a refusal let the insert run and the declared amounts sat twice. It is read now: its error stops the save,
+// and an answer of no rows for a declaration whose lines were loaded stops it too (row security hides a refused delete
+// without an error), and a failed read of the lines is a failed load rather than an empty form.
+test("the declaration save reads its delete and does not show empty boxes for lines it could not read", () => {
+  const code = stripComments(readFileSync(join(WEB, "components/portal/TaxDeclarationTab.tsx"), "utf8"));
+  assert.match(code, /\.delete\(\)\s*\.eq\("declaration_id", saved\.id\)\s*\.select\("id"\)/);
+  assert.match(code, /if \(delErr\) throw delErr;/);
+  assert.match(code, /savedLineCount\.current > 0 && \(removed \?\? \[\]\)\.length === 0/);
+  assert.match(code, /if \(rowsErr\) throw rowsErr;/);
 });

@@ -691,7 +691,7 @@ def _loan_instalments_for_run(db, firm_id: str, client_id: str) -> dict:
 
 def _record_loan_movement(db, firm_id: str, client_id: str, loan: dict,
                           run_id: str, amount_paise: int, kind: str,
-                          closed_the_loan: bool, created_by: str | None) -> None:
+                          closed_the_loan: bool, created_by: str | None) -> bool:
     """One append-only row saying what a run did to one loan (migration 367).
 
     `amount_paise` is given UNSIGNED and signed here from `kind`, so no caller
@@ -703,9 +703,14 @@ def _record_loan_movement(db, firm_id: str, client_id: str, loan: dict,
     payroll because a history row would not insert is the worse failure. A
     missing row degrades a later reversal to the fallback path, which SAYS it
     is falling back.
+
+    Returns whether the row is on record (POST-A-253): the apply path needs to
+    know, because a balance written down with no row behind it is the state a
+    later reversal cannot see, and a rerun cannot tell from a loan that was
+    never touched.
     """
     if amount_paise <= 0:
-        return
+        return True
     try:
         db.table("payroll_loan_recoveries").insert({
             "firm_id": firm_id,
@@ -718,13 +723,26 @@ def _record_loan_movement(db, firm_id: str, client_id: str, loan: dict,
             "closed_the_loan": closed_the_loan,
             "created_by": created_by,
         }).execute()
+        return True
     except Exception:                                           # noqa: BLE001
         _logger.exception("could not record loan movement for run %s loan %s",
                           run_id, loan.get("id"))
+        return False
+
+
+def _net_recovered_per_loan(rows: list) -> dict:
+    """{loan_id: what this run has taken from the loan and not given back}, from its signed history rows."""
+    net: dict[str, int] = {}
+    for row in rows:
+        loan_id = row.get("loan_id")
+        if loan_id:
+            net[loan_id] = net.get(loan_id, 0) + int(row.get("amount_paise") or 0)
+    return net
 
 
 def _undo_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
-                          created_by: str | None = None) -> list[str]:
+                          created_by: str | None = None,
+                          writedown_owed: bool = False) -> list[str]:
     """Put back what this run recovered. Returns anything the CA must be told.
 
     THE DEFECT THIS CLOSES (PAY-08). `_apply_loan_recoveries` writes a loan
@@ -753,6 +771,15 @@ def _undo_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
     balance was restored on a best-effort basis and should be checked. A
     restored balance that is right for a single-loan employee (which is nearly
     all of them) beats a balance left one instalment short with nothing said.
+
+    A WRITE-DOWN THAT IS STILL OWED RESTORES NOTHING BY GUESSING (POST-A-253).
+    `writedown_owed` is the run's own record that its release claimed the run and
+    the loans were never (fully) written down. With no rows the slip-based
+    fallback below would add `min(slip amount, principal - outstanding)` back
+    onto a loan the run never reduced, and for a borrower with earlier
+    repayments that is an instalment that was never taken. So a run that still
+    owes its write-down and has no recovery rows restores nothing and says so;
+    with SOME rows the exact path above puts back precisely what was taken.
     """
     notes: list[str] = []
     try:
@@ -785,16 +812,18 @@ def _undo_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
         # nothing to do. This is the invariant migration 367's own test names —
         # the balance reconstructs from the history — rather than a second rule
         # sitting beside it.
-        net: dict[str, int] = {}
-        for row in rows:
-            loan_id = row.get("loan_id")
-            if loan_id:
-                net[loan_id] = net.get(loan_id, 0) + int(row.get("amount_paise") or 0)
+        net = _net_recovered_per_loan(rows)
         for loan_id, outstanding in net.items():
             if outstanding > 0:
                 _restore_one_loan(db, firm_id, client_id, loan_id,
                                   outstanding, run_id, created_by)
         return notes
+
+    # ── A release whose write-down never happened ───────────────────────────
+    if writedown_owed:
+        return ["This run was released but its loan balances were never written "
+                "down, so there was nothing to put back and no balance was "
+                "changed."]
 
     # ── Fallback: a run finalised before migration 367 ──────────────────────
     try:
@@ -895,7 +924,7 @@ def _restore_one_loan(db, firm_id: str, client_id: str, loan_id: str,
 
 
 def _apply_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
-                           created_by: str | None = None) -> int:
+                           created_by: str | None = None) -> Optional[int]:
     """Reduce each loan's outstanding balance by what this run recovered.
 
     Done at FINALISATION and nowhere else. A draft run can be deleted and
@@ -908,11 +937,21 @@ def _apply_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
     A loan whose balance reaches zero is closed, so it stops being read at all
     next month rather than being filtered out every time.
 
-    Returns how many loans were touched. Never raises: the run's journal has
-    already posted by the time this is called, and refusing to finalise a
-    correct payroll because a balance could not be written down would be the
-    worse failure. A missed write-down leaves the balance too high, which is
-    visible on the next payslip and on the loan list.
+    RETURNS how many loans were written down, or NONE WHEN IT DID NOT COMPLETE
+    (POST-A-253). It still never raises: the run's journal has already posted
+    by the time this is called, and refusing to finalise a correct payroll
+    because a balance could not be written down would be the worse failure. But
+    "zero loans touched" and "the write-down failed" used to be the same
+    return, so a release whose write-down died left a run that read as complete.
+    The caller records the difference on the run (`loan_writedown_owed_at`,
+    migration 508) and clears it only for an int.
+
+    SAFE TO RUN AGAIN. A loan that already carries a positive net recovery row
+    for THIS run was written down by an earlier attempt, so it is skipped:
+    running the owed write-down a second time finishes the loans an interrupted
+    first attempt did not reach and touches none it did. A balance written down
+    whose history row would not insert is put back, because a balance moved with
+    no row behind it is exactly what neither the reversal nor a rerun can see.
     """
     try:
         recovered = {}
@@ -924,11 +963,25 @@ def _apply_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
         if not recovered:
             return 0
 
+        history = (db.table("payroll_loan_recoveries").select("loan_id, employee_id, amount_paise")
+                   .eq("firm_id", firm_id).eq("run_id", run_id).execute().data) or []
+        already = _net_recovered_per_loan(history)
+        # What an earlier attempt already took from each EMPLOYEE's slip amount, whichever of their loans it hit: a loan
+        # that attempt closed is no longer in the open-loans list below, so its share has to come off the pool here or it
+        # would be taken again from the next loan.
+        for row in history:
+            emp = row.get("employee_id")
+            if emp in recovered:
+                recovered[emp] = max(0, recovered[emp] - int(row.get("amount_paise") or 0))
+
         loans = (db.table("payroll_loans").select("*")
                  .eq("firm_id", firm_id).eq("client_id", client_id)
                  .is_("closed_on", "null").execute().data) or []
         touched = 0
+        complete = True
         for loan in loans:
+            if already.get(loan.get("id"), 0) > 0:
+                continue                      # written down by an earlier attempt; its share is off the pool above
             left = recovered.get(loan.get("employee_id"), 0)
             if left <= 0:
                 continue
@@ -950,13 +1003,39 @@ def _apply_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
             # afterwards do not say which one moved, and a loan this closes
             # drops out of the `closed_on IS NULL` query the undo would use to
             # find it. Also the loan's repayment history, which nothing held.
-            _record_loan_movement(db, firm_id, client_id, loan, run_id, applied,
-                                  "recovered", new_balance == 0, created_by)
+            if not _record_loan_movement(db, firm_id, client_id, loan, run_id, applied,
+                                         "recovered", new_balance == 0, created_by):
+                # Balance written, history not: put the balance back so a rerun
+                # (which skips a loan by its row) cannot miss it and a reversal
+                # does not restore an instalment nobody can see was taken.
+                try:
+                    db.table("payroll_loans").update({
+                        "outstanding_paise": owed,
+                        "closed_on": loan.get("closed_on"),
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }).eq("id", loan["id"]).execute()
+                except Exception:                               # noqa: BLE001
+                    _logger.exception(
+                        "could not put loan %s back after its history row failed for run %s; "
+                        "its balance is %s paise lower than the record shows", loan.get("id"), run_id, applied)
+                complete = False
+                continue
             touched += 1
-        return touched
+        return touched if complete else None
     except Exception:
         _logger.exception("could not apply loan recoveries for run %s", run_id)
-        return 0
+        return None
+
+
+def _clear_loan_writedown_owed(db, firm_id: str, run_id: str, stamp: str) -> None:
+    """The write-down is done: clear the run's record that it was owed, if the record is still THIS release's.
+    Never raises. A clear that fails leaves the debt on the run, and the owed write-down (which skips every loan already
+    on record) finishes it and clears it."""
+    try:
+        (db.table("payroll_runs").update({"loan_writedown_owed_at": None})
+           .eq("id", run_id).eq("firm_id", firm_id).eq("loan_writedown_owed_at", stamp).execute())
+    except Exception:                                                       # noqa: BLE001
+        _logger.exception("could not clear the owed loan write-down on payroll run %s", run_id)
 
 
 def _perquisites_for_run(db, firm_id: str, client_id: str, fy: str) -> dict:
@@ -1348,13 +1427,12 @@ def _pf_wage_base(*, basic_paise: int, da_paise: int, hra_paise: int,
                   lta_paise: int, medical_paise: int,
                   special_allowance_paise: int, other_allowances_paise: int,
                   fy: Optional[str], month: Optional[int]):
-    """The PF wage base for one employee-month, and its §2(y) working.
+    """The PF wage base for one employee-month, and its §2(88) working.
 
     Until 21-11-2025: EPF Act §6, PF wages = Basic + DA (task #229 — basic alone
     under-computed PF). From the commencement of the four Labour Codes the Code
-    on Social Security subsumed the EPF Act and adopts the Code on Wages §2(y)
-    definition, which caps the listed EXCLUSIONS at half of total remuneration
-    and deems the excess to be wages.
+    on Social Security subsumed the EPF Act and adopts its own definition of wages (§2(88)), which caps the listed EXCLUSIONS at
+    half of total remuneration and deems the excess to be wages.
 
     HRA is clause (f) verbatim and LTA is clause (d), "the value of any
     travelling concession". Everything else — medical, special, other — stays on
@@ -1378,7 +1456,7 @@ def _pf_wage_base(*, basic_paise: int, da_paise: int, hra_paise: int,
         excluded_components_paise=hra_paise + lta_paise,
         # EPF Act §6 for any month before the Codes commenced: basic wages,
         # dearness allowance and retaining allowance, and nothing else. The
-        # §2(y) aggregate above is the right base only from 21-11-2025 — passing
+        # §2(88) aggregate above is the right base only from 21-11-2025 — passing
         # it for an earlier month deducted PF on medical and special allowance
         # too, which §6 never reached.
         pre_code_wages_paise=basic_paise + da_paise,
@@ -1473,7 +1551,7 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         other_allowances_paise=other,
         fy=fy, month=pt_month,
     )
-    # One-time earnings are deliberately outside the §2(y) test — a bonus is an
+    # One-time earnings are deliberately outside the §2(88) test — a bonus is an
     # exclusion at (a) and a commission at (i), and putting them in the
     # DENOMINATOR would raise the half and shrink the add-back. Arrears of basic
     # and DA still reach the base here exactly as they always did, which under
@@ -1645,7 +1723,7 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         "one_time_pf_wages_paise":  ot.pf_wages_paise,
         "one_time_esi_wages_paise": ot.esi_wages_paise,
         "one_time_taxable_paise":   ot.taxable_paise,
-        # The §2(y) working, kept so a CA reconciling a challan can see WHY the
+        # The §2(88) working, kept so a CA reconciling a challan can see WHY the
         # base differs from basic + DA rather than only that it does. Zero and
         # false for every month before 21-11-2025.
         "pf_wages_paise":              _wb.wages_paise,
@@ -2561,7 +2639,7 @@ def _compute_and_store_slips(db, firm_id: str, client_id: str, month: str,
     totals["admin"] = payroll_admin_charge(totals["admin"], fy)
 
     # Update run totals
-    db.table("payroll_runs").update({
+    header = db.table("payroll_runs").update({
         "total_gross_paise": totals["gross"],
         "total_net_paise":   totals["net"],
         "total_pf_paise":    totals["pf"],
@@ -2576,7 +2654,15 @@ def _compute_and_store_slips(db, firm_id: str, client_id: str, month: str,
         # month" before anybody opens a slip.
         "total_one_time_paise": totals["one_time"],
         "headcount":         len(emps),
-    }).eq("id", run_id).execute()
+    }).eq("id", run_id).in_("status", list(_PAYROLL_UNRELEASED)).execute()
+    if not header.data:
+        # POST-A-254. The run was released between the status check at the top of the request and this write. Its slips
+        # have just been rebuilt under a journal that was posted from the old ones, so say so instead of reporting a
+        # rebuild: the way back is to reverse the run (which posts the contra entry) and recompute the reopened run.
+        raise HTTPException(
+            status_code=409,
+            detail="This payroll run was released while it was being rebuilt, so its totals were not updated. The "
+                   "slips may no longer match the journal that was posted: reverse the run, then recompute it.")
 
     # States this run deducts professional tax in with no PTRC on file. Added
     # to statutory_gaps rather than a list of its own: it is the same kind of
@@ -2752,6 +2838,17 @@ def recompute_run(
     run = _assert_run_is_unreleased(db, run_id, firm_id, "recomputed")
     client_id, month = run["client_id"], run["month"]
 
+    # The status read above told this request what it saw, not what is true by now (POST-A-254). Hold it with one
+    # conditional UPDATE that only a run still in the status we saw satisfies, BEFORE the slips are deleted: a release
+    # that landed in between would otherwise lose its slips to this request. A release can still land after this and
+    # before the totals are written; that is caught there and said.
+    if not (db.table("payroll_runs").update({"status": run["status"]})
+            .eq("id", run_id).eq("firm_id", firm_id).eq("status", run["status"]).execute().data):
+        raise HTTPException(
+            status_code=409,
+            detail="This payroll run changed while it was being recomputed, so nothing was rebuilt. Reload and try "
+                   "again.")
+
     # The slips go first and the run keeps its header. If the computation below
     # fails the run is left with none, which is recoverable by recomputing
     # again — deliberately NOT the create path's compensating delete, which
@@ -2813,11 +2910,23 @@ def delete_run(
     run = _assert_run_is_unreleased(db, run_id, firm_id, "deleted")
     client_id, month = run["client_id"], run["month"]
 
-    # WHAT IT WAS, recorded BEFORE the row goes. A delete that logs only an id
+    # WHAT IT WAS, read BEFORE the row goes (the slips cascade with it). A delete that logs only an id
     # leaves an audit trail nobody can read afterwards — the same reason a
     # journal deletion writes the whole entry and its lines (migration 275).
     slips = (db.table("payroll_slips").select("employee_id, gross_paise, net_paise")
              .eq("run_id", run_id).execute().data) or []
+
+    # CONDITIONAL ON STILL BEING A DRAFT (POST-A-254). The status was read by `_assert_run_is_unreleased` and a release
+    # can land before this DELETE; an unconditional delete would then remove a finalized run whose journal is posted,
+    # and the cascade takes its slips and its transition log with it. Only a delete that removed a row is logged, so the
+    # edit log never says a run was deleted when it was not.
+    removed = (db.table("payroll_runs").delete().eq("id", run_id).eq("firm_id", firm_id)
+               .in_("status", list(_PAYROLL_UNRELEASED)).execute())
+    if not removed.data:
+        raise HTTPException(
+            status_code=409,
+            detail="This payroll run was released while it was being deleted, so it was not deleted. A released run "
+                   "has posted its journal: reverse it first, then delete the reopened run.")
     from services.audit_service import log_event
     log_event(firm_id, "payroll_run", run_id, "delete",
               actor_id=current_user.get("auth_user_id"),
@@ -2827,8 +2936,6 @@ def delete_run(
                         "slip_count": len(slips),
                         "total_gross_paise": sum(int(x.get("gross_paise") or 0) for x in slips),
                         "total_net_paise": sum(int(x.get("net_paise") or 0) for x in slips)})
-
-    db.table("payroll_runs").delete().eq("id", run_id).eq("firm_id", firm_id).execute()
 
     timeline_service.log(
         client_id, "work", "Payroll Run Deleted",
@@ -3282,6 +3389,42 @@ def _claim_the_run_for_disbursement(db, firm_id: str, run_id: str) -> Optional[s
     return None
 
 
+#: How long a reversal claim holds the run. Released the moment the reversal finishes or fails; this only matters when the
+#: process died in the middle of it.
+_REVERSAL_LEASE = timedelta(minutes=15)
+
+
+def _claim_the_run_for_reversal(db, firm_id: str, run_id: str) -> Optional[str]:
+    """Take the reversal lease on a released run (POST-A-254). Returns the claim's timestamp if THIS call changed a row.
+
+    The same shape as `_claim_the_run_for_disbursement`, for the same reason: `reverse_entry` hands a second request the
+    first one's reversal entry instead of refusing it, so two overlapping reversals both get past it and both go on to
+    put the loans back. One conditional UPDATE per attempt (the run nobody holds, then the run whose claim lapsed), and
+    only the request whose UPDATE changed a row reverses anything."""
+    now_utc = datetime.now(timezone.utc)
+    stamp = now_utc.isoformat()
+    lapsed = (now_utc - _REVERSAL_LEASE).isoformat()
+
+    def attempt():
+        return (db.table("payroll_runs").update({"reversal_claimed_at": stamp})
+                .eq("id", run_id).eq("firm_id", firm_id).in_("status", ["finalized", "paid"]))
+
+    if attempt().is_("reversal_claimed_at", "null").execute().data:
+        return stamp
+    if attempt().lt("reversal_claimed_at", lapsed).execute().data:
+        return stamp
+    return None
+
+
+def _release_reversal_claim(db, firm_id: str, run_id: str, stamp: str) -> None:
+    """Give the run back after a reversal that did not finish, if the claim is still THIS request's. Never raises."""
+    try:
+        (db.table("payroll_runs").update({"reversal_claimed_at": None})
+           .eq("id", run_id).eq("firm_id", firm_id).eq("reversal_claimed_at", stamp).execute())
+    except Exception:                                                       # noqa: BLE001
+        _logger.exception("could not release the reversal claim on payroll run %s", run_id)
+
+
 def _release_disbursement_claim(db, firm_id: str, run_id: str, stamp: str) -> None:
     """Give the run back after a posting that did not happen, if the claim is still THIS request's.
     Never raises: the lease expires on its own."""
@@ -3543,10 +3686,16 @@ def finalize_run(
     # double-submitted form all arrive here with the same `draft` in their hands. Claimed before the write-down, which
     # is how that function already treats failure: it never raises and a missed write-down leaves the balance too high,
     # visible on the next payslip, so a run that is finalized with the write-down missed is a state it already named.
+    owed_stamp = datetime.now(timezone.utc).isoformat()
     claimed = (db.table("payroll_runs").update({
         "status":          "finalized",
         "finalized_at":    datetime.now(timezone.utc).isoformat(),
         "journal_entry_id": journal_id,
+        # THE WRITE-DOWN IS OWED FROM THE MOMENT THE RUN IS CLAIMED (POST-A-253, migration 508), in the same UPDATE, and
+        # is cleared only when `_apply_loan_recoveries` reports it completed. A process that dies between the claim and
+        # the write-down, or a write-down that fails part-way, leaves this set: the screen offers to finish it, and a
+        # reversal does not guess at what was taken.
+        "loan_writedown_owed_at": owed_stamp,
         # A lease left on a run that was reopened while a payment was in flight (reverse_run clears it too; this is the
         # second hand on the same switch) must not block the payment of the run released here.
         "disbursement_claimed_at": None,
@@ -3556,7 +3705,11 @@ def finalize_run(
         raise HTTPException(status_code=409, detail="Run already finalized or paid by another request")
 
     # The recovery is real now that the run has released: write the balances down. Once, by the request that won.
-    _apply_loan_recoveries(db, firm_id, client_id, run_id, current_user.get("id"))
+    # An int means it completed (the number of loans touched, possibly none), and only then is the debt on the run
+    # cleared; None means it did not, and the run keeps saying so.
+    writedown = _apply_loan_recoveries(db, firm_id, client_id, run_id, current_user.get("id"))
+    if writedown is not None:
+        _clear_loan_writedown_owed(db, firm_id, run_id, owed_stamp)
 
     # The claim made the run `finalized` before this write-down, so a reversal can land in between: it passes its status
     # check, reverses the journals and reopens the run, and finds no recovery rows to put back because none exist yet.
@@ -3582,7 +3735,67 @@ def finalize_run(
 
     return api_response(True, {"id": run_id, "status": "finalized",
                                "journal_entry_id": journal_id,
-                               "overridden_gaps": gaps})
+                               "overridden_gaps": gaps,
+                               "loan_writedown_owed": writedown is None})
+
+
+@router.post("/runs/{run_id}/loan-writedown")
+def write_down_owed_loans(
+    run_id: str,
+    current_user: dict = Depends(rbac("payroll", "finalize")),
+):
+    """Finish the loan write-down a release did not complete (POST-A-253) — Partner only.
+
+    A release claims the run and writes each borrower's balance down afterwards; if the process died between the two,
+    or the write-down failed part-way, the run says so (`loan_writedown_owed_at`, migration 508) and this is the way to
+    finish it. It is SAFE TO PRESS TWICE: the debt is taken off the run by one conditional UPDATE first (the request that
+    changed a row proceeds, the other answers 409), every loan already on record for the run is skipped, and a write-down
+    that fails again puts the debt back on the run.
+
+    # CA REVIEW REQUIRED — it moves loan balances: look at the Loans list afterwards.
+    """
+    _assert_run_scope(_db(), current_user, run_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"id": run_id, "written_down": 0, "loan_writedown_owed": False})
+
+    firm_id = current_user["firm_id"]
+    run = (db.table("payroll_runs").select("*").eq("id", run_id)
+           .eq("firm_id", firm_id).maybe_single().execute().data)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    owed_at = run.get("loan_writedown_owed_at")
+    if not owed_at or run.get("status") not in ("finalized", "paid"):
+        raise HTTPException(status_code=409,
+                            detail="No loan write-down is owed on this payroll run.")
+
+    taken = (db.table("payroll_runs").update({"loan_writedown_owed_at": None})
+             .eq("id", run_id).eq("firm_id", firm_id).eq("loan_writedown_owed_at", owed_at)
+             .in_("status", ["finalized", "paid"]).execute())
+    if not taken.data:
+        raise HTTPException(status_code=409,
+                            detail="Another request is already writing these loan balances down, or the run was "
+                                   "reversed. Reload to see where it stands.")
+
+    written = _apply_loan_recoveries(db, firm_id, run["client_id"], run_id, current_user.get("id"))
+    if written is None:
+        # Put the debt back, so the screen keeps offering it. Only onto a run nobody has since marked owed or reversed.
+        try:
+            (db.table("payroll_runs").update({"loan_writedown_owed_at": owed_at})
+               .eq("id", run_id).eq("firm_id", firm_id).is_("loan_writedown_owed_at", "null")
+               .in_("status", ["finalized", "paid"]).execute())
+        except Exception:                                                   # noqa: BLE001
+            _logger.exception("could not put the owed loan write-down back on payroll run %s", run_id)
+        return api_response(False, None,
+                            "The loan balances could not be written down. Nothing was left half-done that a retry "
+                            "cannot finish: the write-down is still owed on this run, so try again, and check the "
+                            "Loans list if it keeps failing.")
+
+    timeline_service.log(run["client_id"], "work", "Payroll Loan Write-down Completed",
+        f"Loan balances written down for the payroll run of {run['month']} ({written} loan(s) updated)",
+        "success", firm_id=firm_id, entity_type="payroll_run", entity_id=run_id,
+        actor_id=current_user.get("auth_user_id"))
+    return api_response(True, {"id": run_id, "written_down": written, "loan_writedown_owed": False})
 
 
 @router.post("/runs/{run_id}/disburse")
@@ -3806,7 +4019,6 @@ def reverse_run(
         raise HTTPException(status_code=400,
                             detail="Only a finalized or paid payroll run can be reversed.")
 
-    from services.phase2_journal_service import phase2_journal_service
     from services.period_validation_service import period_validation_service
     # A reversal is a NEW posting dated when it happens — which is the Indian
     # business day, not the UTC one. Before 05:30 IST they are different days,
@@ -3816,6 +4028,26 @@ def reverse_run(
     reversal_date = ist_today().isoformat()
     # FY-lock: a reversal is a new posting — block it if its date is in a locked year.
     period_validation_service.validate_posting_date(firm_id, reversal_date)
+
+    # THE CLAIM (POST-A-254). Everything from here puts something back, and `reverse_entry` hands a second request the
+    # first one's reversal entry instead of refusing it, so two overlapping reversals both pass it and both go on to
+    # restore the loans. One conditional UPDATE decides which request reverses; the other answers 409 and writes nothing.
+    claim = _claim_the_run_for_reversal(db, firm_id, run_id)
+    if claim is None:
+        raise HTTPException(
+            status_code=409,
+            detail="This payroll run is already being reversed by another request. Wait for it to finish, then reload.")
+    try:
+        return _reverse_a_claimed_run(db, firm_id, run_id, run, claim, reason, reversal_date, current_user)
+    except Exception:
+        _release_reversal_claim(db, firm_id, run_id, claim)
+        raise
+
+
+def _reverse_a_claimed_run(db, firm_id: str, run_id: str, run: dict, claim: str, reason: Optional[str],
+                           reversal_date: str, current_user: dict):
+    """The body of `reverse_run`, run by the one request that holds the reversal claim."""
+    from services.phase2_journal_service import phase2_journal_service
 
     # Undo in reverse order: disbursement (if any) depends on the accrual
     # having been posted first, so it must be reversed before the accrual.
@@ -3844,9 +4076,10 @@ def reverse_run(
     # status reset is what makes the run re-finalisable — so the balances have
     # to be back before that becomes possible.
     loan_notes = _undo_loan_recoveries(db, firm_id, run["client_id"], run_id,
-                                       current_user.get("id"))
+                                       current_user.get("id"),
+                                       writedown_owed=bool(run.get("loan_writedown_owed_at")))
 
-    db.table("payroll_runs").update({
+    reopened = db.table("payroll_runs").update({
         "status":                        "review",
         "journal_entry_id":              None,
         "disbursement_journal_entry_id": None,
@@ -3856,7 +4089,18 @@ def reverse_run(
         "payment_reference":             None,
         # A payment that was in flight when the run was reversed must not leave its lease on the reopened run.
         "disbursement_claimed_at":       None,
-    }).eq("id", run_id).eq("firm_id", firm_id).execute()
+        # The run is reopened: it owes no write-down (its release is undone) and nobody holds its reversal any more.
+        "loan_writedown_owed_at":        None,
+        "reversal_claimed_at":           None,
+    }).eq("id", run_id).eq("firm_id", firm_id).eq("reversal_claimed_at", claim).execute()
+    if not reopened.data:
+        # This request's claim lapsed and another request took the run over (or it was reopened under us): that request
+        # owns the reopen and the log entries. The journals above are the same entries it reversed (the kernel hands the
+        # same one to both), so nothing is doubled, and nothing more is written here.
+        raise HTTPException(
+            status_code=409,
+            detail="This payroll run's reversal was taken over by another request, so this one stopped. Reload to see "
+                   "where the run stands.")
 
     # ONTO THE TRANSITION LOG, like every other status move (migration 328).
     # It was the only one that did not reach it — and it is the move a reviewer
@@ -7374,7 +7618,7 @@ def statutory_position(
             "basic_paise": basic,
             "da_paise": da,
             "gross_paise": gross,
-            # The §2(y) working, the same three fields the payslip stores
+            # The §2(88) working, the same three fields the payslip stores
             # (migration 334), so a CA reconciling this screen against a
             # challan can see WHY the base differs from basic + DA.
             "pf_wages_paise": wb_wages_paise,

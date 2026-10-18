@@ -226,7 +226,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A MIGRATED CLIENT'S BOOKS COME OVER IN BULK, AND EVERY IMPORT SAYS WHAT IT DID NOT DO
 - THE UPLOAD SCREENS WERE DRIVEN IN A BROWSER ONCE, AND AN EXCEL DATE CELL IS A SERIAL NUMBER
 
-### `docs/design-record/payroll.md` (8 entries): Payroll: accrual, PF on actual wages, bonus, monthly review, declarations
+### `docs/design-record/payroll.md` (9 entries): Payroll: accrual, PF on actual wages, bonus, monthly review, declarations
 
 - THE PAYROLL ACCRUAL HAS TWO DEBITS, AND THE EMPLOYER SHARE COMES OFF THE SLIPS
 - THE STATUTORY BONUS IS AN ANNUAL DEBT AND THE PRODUCT COMPUTED IT ONLY FOR LEAVERS
@@ -236,6 +236,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A DRAFT payroll run has deducted nothing
 - A DECLARED DEDUCTION HAS A DOCUMENT BEHIND IT, NOT A SENTENCE ABOUT ONE
 - A PAYROLL RUN IS RELEASED ONCE AND PAID ONCE BECAUSE THE FIRST REQUEST TO CLAIM IT PROCEEDS, AND THE PAYMENT'S CLAIM IS A LEASE, NOT A STATUS
+- A RELEASED PAYROLL RUN RECORDS THE LOAN WRITE-DOWN IT STILL OWES, A REVERSAL IS CLAIMED, AND A DELETE OR RECOMPUTE ACTS ONLY ON A RUN STILL IN THE STATE IT SAW
 
 ### `docs/design-record/reporting.md` (5 entries): Reporting: Schedule III captions, report performance, paging, exports
 
