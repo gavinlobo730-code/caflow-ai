@@ -16,6 +16,11 @@ import { formatDateTime } from "@/lib/services/formatting";
 import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
 import { Skeleton, TableSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
+import {
+  ACTIVITY_NOT_YET_ASKED, activityItems, activityStatusOf, documentActivityUrl, emptyActivityLine, readDocumentActivity,
+  type ActivityItem, type ActivityStatus,
+} from "@/lib/documents/activity";
+import { ActivityNote } from "@/components/documents/ActivityNote";
 
 const DN_STATUS_BADGE: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
@@ -24,8 +29,6 @@ const DN_STATUS_BADGE: Record<string, string> = {
 
 interface JournalLine { account_name?: string; account_id?: string; debit_paise: number; credit_paise: number }
 interface JournalEntry { id: string; lines?: JournalLine[] }
-interface TimelineEvent { entity_id?: string | null; entity_type?: string | null; title?: string | null; description?: string | null; event_type?: string | null; created_at?: string | null }
-interface ActivityItem { at: string; title: string; detail?: string }
 
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
@@ -72,6 +75,7 @@ export function DebitNoteViewDrawer({
 }) {
   const [dn, setDn] = useState<DebitNoteDetail | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [activityStatus, setActivityStatus] = useState<ActivityStatus>(ACTIVITY_NOT_YET_ASKED);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -87,7 +91,7 @@ export function DebitNoteViewDrawer({
       const token = await getAuthToken();
       const [d, tl] = await Promise.all([
         apiGet(`/api/debit-notes/${dnId}`, token),
-        apiGet(`/api/timeline?client_id=${clientId}&limit=100`, token),
+        apiGet(documentActivityUrl(clientId, "debit_note", dnId), token),
       ]);
       if (!d.success || !d.data) { setError(true); return; }
       // The payload is not its fields until something checks: `objectOrNull`
@@ -96,13 +100,11 @@ export function DebitNoteViewDrawer({
       // straight through `objectOrNull`, so `dn.lines.map(...)` would still throw.
       const parsed = objectOrNull<DebitNoteDetail>(d.data);
       setDn(parsed ? { ...parsed, lines: arrayOrEmpty<DebitNoteDetail["lines"][number]>(parsed.lines) } : null);
-      const events = (tl.data as TimelineEvent[]) ?? [];
-      const items: ActivityItem[] = events
-        .filter((e) => e.entity_type === "debit_note" && e.entity_id === dnId)
-        .map((e) => ({ at: e.created_at ?? "", title: e.title ?? e.event_type ?? "Activity", detail: e.description ?? undefined }))
-        .filter((i) => i.at)
-        .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-      setActivity(items);
+      // The server narrowed the read to this document (entity_type + entity_id) and said whether older entries exist;
+      // a read that failed is said so and is never drawn as an empty history.
+      const act = readDocumentActivity(tl, "debit_note", dnId);
+      setActivity(act ? activityItems(act.rows) : []);
+      setActivityStatus(activityStatusOf(act));
     } catch {
       setError(true);
     } finally {
@@ -322,7 +324,7 @@ export function DebitNoteViewDrawer({
           <section className="space-y-2">
             <h4 className="text-xs font-semibold text-ps-body flex items-center gap-1"><Clock size={11} /> Activity</h4>
             {activity.length === 0 ? (
-              <p className="text-xs text-ps-hint">No activity recorded yet.</p>
+              <p className="text-xs text-ps-hint">{emptyActivityLine(activityStatus)}</p>
             ) : (
               <ol className="space-y-2 border-l border-ps-border pl-3">
                 {activity.map((a, i) => (
@@ -335,6 +337,7 @@ export function DebitNoteViewDrawer({
                 ))}
               </ol>
             )}
+            <ActivityNote status={activityStatus} />
           </section>
         </div>
       )}

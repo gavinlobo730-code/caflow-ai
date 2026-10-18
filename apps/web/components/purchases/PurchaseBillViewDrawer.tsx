@@ -25,6 +25,11 @@ import { FormSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
+import {
+  ACTIVITY_NOT_YET_ASKED, activityItems, activityStatusOf, documentActivityUrl, emptyActivityLine, readDocumentActivity,
+  type ActivityItem, type ActivityStatus,
+} from "@/lib/documents/activity";
+import { ActivityNote } from "@/components/documents/ActivityNote";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
@@ -43,8 +48,6 @@ const PB_STATUS_BADGE: Record<string, string> = {
 
 interface JournalLine { account_name?: string; account_id?: string; debit_paise: number; credit_paise: number }
 interface JournalEntry { id: string; lines?: JournalLine[] }
-interface TimelineEvent { entity_id?: string | null; entity_type?: string | null; title?: string | null; description?: string | null; event_type?: string | null; created_at?: string | null }
-interface ActivityItem { at: string; title: string; detail?: string }
 
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
@@ -109,6 +112,7 @@ export function PurchaseBillViewDrawer({
 }) {
   const [bill, setBill] = useState<PurchaseBillDetail | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [activityStatus, setActivityStatus] = useState<ActivityStatus>(ACTIVITY_NOT_YET_ASKED);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -127,7 +131,7 @@ export function PurchaseBillViewDrawer({
       const token = await getAuthToken();
       const [d, tl] = await Promise.all([
         apiGet(`/api/purchase-bills/${billId}`, token),
-        apiGet(`/api/timeline?client_id=${clientId}&limit=100`, token),
+        apiGet(documentActivityUrl(clientId, "purchase_bill", billId), token),
       ]);
       if (!d.success || !d.data) { setError(true); return; }
       // The payload is not its fields until something checks: `objectOrNull`
@@ -136,13 +140,11 @@ export function PurchaseBillViewDrawer({
       // straight through `objectOrNull`, so `bill.lines.map(...)` would still throw.
       const parsed = objectOrNull<PurchaseBillDetail>(d.data);
       setBill(parsed ? { ...parsed, lines: arrayOrEmpty<PurchaseBillDetail["lines"][number]>(parsed.lines) } : null);
-      const events = (tl.data as TimelineEvent[]) ?? [];
-      const items: ActivityItem[] = events
-        .filter((e) => e.entity_type === "purchase_bill" && e.entity_id === billId)
-        .map((e) => ({ at: e.created_at ?? "", title: e.title ?? e.event_type ?? "Activity", detail: e.description ?? undefined }))
-        .filter((i) => i.at)
-        .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-      setActivity(items);
+      // The server narrowed the read to this document (entity_type + entity_id) and said whether older entries exist;
+      // a read that failed is said so and is never drawn as an empty history.
+      const act = readDocumentActivity(tl, "purchase_bill", billId);
+      setActivity(act ? activityItems(act.rows) : []);
+      setActivityStatus(activityStatusOf(act));
     } catch {
       setError(true);
     } finally {
@@ -430,7 +432,7 @@ export function PurchaseBillViewDrawer({
           <section className="space-y-2">
             <h4 className="text-xs font-semibold text-ps-body flex items-center gap-1"><Clock size={11} /> Activity</h4>
             {activity.length === 0 ? (
-              <p className="text-xs text-ps-hint">No activity recorded yet.</p>
+              <p className="text-xs text-ps-hint">{emptyActivityLine(activityStatus)}</p>
             ) : (
               <ol className="space-y-2 border-l border-ps-border pl-3">
                 {activity.map((a, i) => (
@@ -443,6 +445,7 @@ export function PurchaseBillViewDrawer({
                 ))}
               </ol>
             )}
+            <ActivityNote status={activityStatus} />
           </section>
         </div>
       )}

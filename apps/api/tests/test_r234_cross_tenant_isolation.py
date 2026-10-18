@@ -140,11 +140,11 @@ def test_list_timeline_events_scopes_by_firm_even_when_client_owned(enforced, mo
     db.seed("client_timeline_events", {"client_id": "C1", "firm_id": "F2", "category": "compliance"})
     result = timeline_router.list_timeline_events(
         client_id="C1", category=None, severity=None, financial_year=None,
-        limit=50, offset=0, current_user=PARTNER_F1,
+        entity_type=None, entity_id=None, limit=50, offset=0, current_user=PARTNER_F1,
     )
     assert result["success"] is True
-    assert len(result["data"]) == 1
-    assert result["data"][0]["firm_id"] == "F1"
+    assert len(result["data"]["events"]) == 1
+    assert result["data"]["events"][0]["firm_id"] == "F1"
 
 
 # ── Task extras (tags / dependencies / timeline) ─────────────────────────────

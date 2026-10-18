@@ -47,7 +47,7 @@ def test_list_entities_excludes_another_firms_entities():
     rel._MOCK_ENTITIES.append({"id": "e-b", "firm_id": FIRM_B, "full_name": "Firm B Entity", "entity_type": "Individual", "pan": None, "email": None})
 
     resp = rel.list_entities(entity_type=None, search=None, limit=50, offset=0, current_user=USER_A)
-    names = [e["full_name"] for e in resp["data"]]
+    names = [e["full_name"] for e in resp["data"]["entities"]]
     assert names == ["Firm A Entity"]
 
 

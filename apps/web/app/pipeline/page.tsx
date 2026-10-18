@@ -26,6 +26,8 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { readWindow } from "@/lib/lists/readWindow";
+import { LEAD_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -233,17 +235,19 @@ function toApiBody(lead: Lead) {
   };
 }
 
-// Backend enforces no upper bound on this endpoint's limit (routers/lifecycle.py
-// list_leads) — request a generously high ceiling so it's never hit in practice.
-const LEADS_FETCH_LIMIT = 2000;
+// The board loads its leads whole and groups them by stage here, so it asks for the most the server allows
+// (LEAD_LIST_MAX in routers/lifecycle.py; a test holds the two equal). Whether that was all of them is the server's
+// `has_more`, not a guess from the row count.
+const LEADS_FETCH_LIMIT = LEAD_REGISTER_WINDOW_MAX;
 
 async function apiLoadLeads(): Promise<{ leads: Lead[]; capped: boolean }> {
   const json = await apiFetch(`/api/lifecycle/leads?limit=${LEADS_FETCH_LIMIT}`);
   if (!json.success) throw new Error(json.error ?? "Failed to load leads");
-  const rawRows = json.data as Record<string, unknown>[];
+  const win = readWindow<Record<string, unknown>>(json.data, "leads", LEADS_FETCH_LIMIT);
+  if (!win) throw new Error("The pipeline came back in a form this screen cannot read.");
   // Drop soft-deleted rows on the raw stage string before mapping to Lead.
-  const leads = rawRows.filter((row) => row.stage !== "_deleted").map(fromApiLead);
-  return { leads, capped: rawRows.length === LEADS_FETCH_LIMIT };
+  const leads = win.rows.filter((row) => row.stage !== "_deleted").map(fromApiLead);
+  return { leads, capped: win.hasMore };
 }
 
 async function apiCreateLead(lead: Lead): Promise<Lead> {

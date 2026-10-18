@@ -41,6 +41,11 @@ import { useDateProblems } from "@/lib/dates/useDateProblems";
 import {
   complianceTimelineItems, type EInvoiceRecord, type EWayRecord,
 } from "@/lib/invoices/compliance";
+import {
+  ACTIVITY_NOT_YET_ASKED, activityStatusOf, documentActivityUrl, emptyActivityLine, readDocumentActivity,
+  type ActivityStatus,
+} from "@/lib/documents/activity";
+import { ActivityNote } from "@/components/documents/ActivityNote";
 
 const fmtDateTime = formatDateTime;
 
@@ -99,6 +104,7 @@ export function InvoiceViewDrawer({
   const [einvoiceRecords, setEinvoiceRecords] = useState<EInvoiceRecord[]>([]);
   const [ewayRecords, setEwayRecords] = useState<EWayRecord[]>([]);
   const [activity, setActivity] = useState<TimelineItem[]>([]);
+  const [activityStatus, setActivityStatus] = useState<ActivityStatus>(ACTIVITY_NOT_YET_ASKED);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -117,7 +123,7 @@ export function InvoiceViewDrawer({
       const [d, del, tl] = await Promise.all([
         apiGet(`/api/sales-invoices/${invoiceId}`, token),
         apiGet(`/api/sales-invoices/${invoiceId}/deliveries`, token),
-        apiGet(`/api/timeline?client_id=${clientId}&limit=100`, token),
+        apiGet(documentActivityUrl(clientId, "sales_invoice", invoiceId), token),
       ]);
       if (!d.success || !d.data) { setError(true); return; }
       const detail = d.data as InvoiceDetail;
@@ -143,7 +149,10 @@ export function InvoiceViewDrawer({
       // invoice's own compliance events (IRN / E-Way generated / cancelled).
       const compItems: TimelineItem[] = complianceTimelineItems(invoiceId, eiRecs, ewRecs)
         .map((c) => ({ at: c.at, title: c.title, detail: c.detail, kind: "compliance" as const }));
-      setActivity(buildActivity(invoiceId, (tl.data as Parameters<typeof buildActivity>[1]) ?? [], dels, compItems));
+      // The server narrowed the read to this invoice and said whether older entries exist; a failed read is said so.
+      const act = readDocumentActivity(tl, "sales_invoice", invoiceId);
+      setActivity(buildActivity(invoiceId, act?.rows ?? [], dels, compItems));
+      setActivityStatus(activityStatusOf(act));
     } catch {
       setError(true);
     } finally {
@@ -384,7 +393,7 @@ export function InvoiceViewDrawer({
           <section className="space-y-2">
             <h4 className="text-xs font-semibold text-ps-body flex items-center gap-1"><Clock size={11} /> Activity</h4>
             {activity.length === 0 ? (
-              <p className="text-xs text-ps-hint">No activity recorded yet.</p>
+              <p className="text-xs text-ps-hint">{emptyActivityLine(activityStatus)}</p>
             ) : (
               <ol className="space-y-2 border-l border-ps-border pl-3">
                 {activity.map((a, i) => (
@@ -397,6 +406,7 @@ export function InvoiceViewDrawer({
                 ))}
               </ol>
             )}
+            <ActivityNote status={activityStatus} />
           </section>
         </div>
       )}

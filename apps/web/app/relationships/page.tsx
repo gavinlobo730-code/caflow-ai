@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
-import { arrayOrEmpty } from "@/lib/api/shape";
+import { readWindow } from "@/lib/lists/readWindow";
+import { ENTITY_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
 import { errorMessage } from "@/lib/api";
 import { Plus, X } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -11,9 +12,9 @@ import { formatDate } from "@/lib/services/formatting";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// See loadEntities() below — no server-side ceiling on this endpoint, so this
-// is just a generous request size, not an enforced cap.
-const ENTITY_FETCH_LIMIT = 2000;
+// See loadEntities() below. The register is loaded whole and searched, sorted and filtered here, so it asks for the most the
+// server allows; whether that was everything is the server's `has_more`, not a guess from the row count.
+const ENTITY_FETCH_LIMIT = ENTITY_REGISTER_WINDOW_MAX;
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
@@ -287,10 +288,14 @@ export default function RelationshipsPage() {
       // Backend defaults to 50 rows with no upper bound enforced (routers/relationships.py
       // list_entities) — request a generously high ceiling so it's never hit in practice,
       // and still detect it below in case some firm's registry ever does exceed it.
-      const json: ApiResponse<Entity[]> = await apiFetch(`/api/relationships/entities?limit=${ENTITY_FETCH_LIMIT}`);
+      const json: ApiResponse<unknown> = await apiFetch(`/api/relationships/entities?limit=${ENTITY_FETCH_LIMIT}`);
       if (!json.success) throw new Error(json.error ?? "Failed to load entities");
-      setEntities(arrayOrEmpty(json.data));
-      setEntitiesCapped(json.data.length === ENTITY_FETCH_LIMIT);
+      // The server says whether more exist than it returned; the old guess, "the row count equals the limit asked for",
+      // is wrong for a window that comes back short while more exist.
+      const win = readWindow<Entity>(json.data, "entities", ENTITY_FETCH_LIMIT);
+      if (!win) throw new Error("The entity register came back in a form this screen cannot read.");
+      setEntities(win.rows);
+      setEntitiesCapped(win.hasMore);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -380,7 +385,7 @@ export default function RelationshipsPage() {
         subtitle={
           <>
             {entities.length}{entitiesCapped ? "+" : ""} entities across all clients
-            {entitiesCapped && " — refine your search to see more"}
+            {entitiesCapped && " — more exist that are not listed here"}
           </>
         }
         actions={

@@ -18,6 +18,9 @@ import type {
   RelationshipEntity,
 } from "@/lib/api";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
+import { windowDescription } from "@/lib/lists/window";
+import { useEntityRegister } from "@/lib/relationships/useEntityRegister";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 
@@ -84,10 +87,13 @@ export default function ClientRelatedPartiesPage() {
   const [roles, setRoles] = useState<ClientEntityRole[]>([]);
   const [note, setNote] = useState<RelatedPartyDisclosure | null>(null);
   const [matches, setMatches] = useState<CrossClientMatch[]>([]);
-  const [entities, setEntities] = useState<RelationshipEntity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addRoleModal, setAddRoleModal] = useState(false);
+  // The register is read when the picker opens, as a window: the server says whether more entities exist than the select
+  // lists, and "Show more" widens it. It used to take the first 200 and say nothing, so an entity past them could not be chosen.
+  const register = useEntityRegister<RelationshipEntity>(200, addRoleModal);
+  const entities = register.entities;
   const [roleForm, setRoleForm] = useState({ entity_id: "", role_type: "Director", ownership_percent: "" });
   const [savingRole, setSavingRole] = useState(false);
   const [detectLoading, setDetectLoading] = useState(false);
@@ -142,15 +148,6 @@ export default function ClientRelatedPartiesPage() {
   }, [clientId]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
-
-  // The register is fetched when the picker opens, not on every page load: a
-  // firm's entity list has nothing to do with rendering this client's note.
-  useEffect(() => {
-    if (!addRoleModal || entities.length) return;
-    api.relatedParties.entities()
-      .then((r) => { if (r?.success) setEntities(arrayOrEmpty<RelationshipEntity>(r.data)); })
-      .catch(() => { /* the picker falls back to its empty state */ });
-  }, [addRoleModal, entities.length]);
 
   async function handleDetectMatches() {
     if (actionInFlight) return;
@@ -448,7 +445,7 @@ export default function ClientRelatedPartiesPage() {
                   className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   <option value="">
-                    {entities.length ? "Choose an entity…" : "Loading the entity register…"}
+                    {register.loading ? "Loading the entity register…" : entities.length ? "Choose an entity…" : "No entity to choose"}
                   </option>
                   {entities.map((e) => (
                     <option key={e.id} value={e.id}>
@@ -456,10 +453,24 @@ export default function ClientRelatedPartiesPage() {
                     </option>
                   ))}
                 </select>
-                {entities.length === 0 && (
+                {register.error ? (
+                  <p role="alert" className="mt-1 text-3xs text-state-problem">
+                    The entity register could not be loaded: {register.error}
+                  </p>
+                ) : !register.loading && entities.length === 0 ? (
                   <p className="mt-1 text-3xs text-ps-hint">
                     No entity is registered yet — add one in the firm&apos;s Entity Registry first.
                   </p>
+                ) : null}
+                {register.window && (
+                  <ListWindowNotice
+                    hasMore={register.window.hasMore}
+                    what={windowDescription(register.window.limit, "entities", "first", "by name")}
+                    limit={register.window.limit}
+                    maxLimit={register.window.maxLimit}
+                    onShowMore={register.showMore}
+                    busy={register.moreBusy}
+                  />
                 )}
               </div>
               <div>

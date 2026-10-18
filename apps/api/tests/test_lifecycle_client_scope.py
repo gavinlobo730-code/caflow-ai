@@ -272,4 +272,4 @@ def test_leads_are_still_firm_scoped(monkeypatch):
     out = lc.list_leads(stage=None, assigned_to=None, limit=50, offset=0,
                         current_user=USER)
     assert filters == {"firm_id": FIRM}
-    assert [l["id"] for l in out["data"]] == ["L1"]
+    assert [l["id"] for l in out["data"]["leads"]] == ["L1"]

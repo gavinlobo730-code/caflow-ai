@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { PieChart, Search, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/ui/page-header";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
+import { windowDescription } from "@/lib/lists/window";
+import { useEntityRegister } from "@/lib/relationships/useEntityRegister";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -53,39 +56,21 @@ const ENTITY_TYPE_COLORS: Record<string, string> = {
   Other:             "bg-gray-100 text-gray-600",
 };
 
+/** The first window of the register the map lists; "Show more" widens it by a hundred at a time. It used to take the server's
+ *  default of fifty and say nothing when the firm had more. */
+const MAP_FIRST_WINDOW = 500;
+
 export default function OwnershipMapPage() {
-  const [entities, setEntities] = useState<Entity[]>([]);
+  const register = useEntityRegister<Entity>(MAP_FIRST_WINDOW);
+  const { entities, loading, error } = register;
   const [selected, setSelected] = useState<Entity | null>(null);
   const [detail, setDetail] = useState<Entity | null>(null);
-  const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   // Distinguishes "detail fetch failed" from "no ownership relationships" —
   // a masked failure previously left a dead panel with no roles/relationship
   // sections and no error, indistinguishable from a slow/broken load.
   const [detailError, setDetailError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-
-  useEffect(() => {
-    loadEntities();
-  }, []);
-
-  async function loadEntities() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res: ApiResponse<Entity[]> = await apiFetch("/api/relationships/entities");
-      if (res.success) {
-        setEntities(res.data ?? []);
-      } else {
-        setError(res.error ?? "Failed to load entities");
-      }
-    } catch {
-      setError("Network error — could not reach server");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function loadDetail(id: string) {
     setDetailLoading(true);
@@ -149,7 +134,11 @@ export default function OwnershipMapPage() {
           )}
 
           {!loading && !error && filtered.length === 0 && (
-            <p className="text-center py-8 text-gray-400 text-sm">No entities found.</p>
+            <p className="text-center py-8 text-gray-400 text-sm">
+              {register.window?.hasMore && entities.length > 0
+                ? "None of the entities listed match. More exist that are not listed; show more to search them."
+                : "No entities found."}
+            </p>
           )}
 
           <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
@@ -177,6 +166,16 @@ export default function OwnershipMapPage() {
               </button>
             ))}
           </div>
+          {register.window && (
+            <ListWindowNotice
+              hasMore={register.window.hasMore}
+              what={windowDescription(register.window.limit, "entities", "first", "by name")}
+              limit={register.window.limit}
+              maxLimit={register.window.maxLimit}
+              onShowMore={register.showMore}
+              busy={register.moreBusy}
+            />
+          )}
         </div>
 
         {/* Ownership detail panel */}

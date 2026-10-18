@@ -40,7 +40,7 @@ class TestListLeadsMockPath:
             result = list_leads(stage=None, assigned_to=None, limit=50, offset=0,
                                 current_user=USER_MANAGER)
         assert result["success"] is True
-        ids = {l["id"] for l in result["data"]}
+        ids = {l["id"] for l in result["data"]["leads"]}
         # active (False) and NULL-converted kept; deleted + converted dropped
         assert ids == {"1", "4"}
 

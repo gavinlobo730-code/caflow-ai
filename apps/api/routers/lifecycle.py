@@ -22,6 +22,7 @@ from services.timeline_service import timeline_service
 from services.audit_service import log_event
 from models.fy import FYLabel, OptionalFYLabel
 from core import db_provider
+from core.list_window import probe, split
 
 _logger = logging.getLogger("caflow.lifecycle")
 
@@ -622,14 +623,35 @@ class RenewalStatusIn(BaseModel):
 
 # ─── Leads ────────────────────────────────────────────────────────────────────
 
+#: The most leads one read of the pipeline may ask for. The pipeline board loads its leads whole and groups them by stage in
+#: the browser, so it asks for the most the server allows; it is served to the screen as `max_limit`, and a test holds the one
+#: browser-side copy (`LEADS_FETCH_LIMIT`) equal to this line.
+LEAD_LIST_MAX = 2000
+
+
+def _lead_window(rows: list, limit: int):
+    """The answer: the window, and whether the read found a row beyond it (`split` drops the probe row)."""
+    leads, has_more = split(rows, limit)
+    return api_response(True, {
+        "leads": leads,
+        "returned": len(leads),
+        "has_more": has_more,
+        "limit": limit,
+        "max_limit": LEAD_LIST_MAX,
+    })
+
+
 @router.get("/leads")
 def list_leads(
     stage: Optional[str] = Query(None),
     assigned_to: Optional[str] = Query(None),
-    limit: int = Query(50),
-    offset: int = Query(0),
+    limit: Annotated[int, Query(ge=1, le=LEAD_LIST_MAX)] = 50,
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    """A window of the firm's active pipeline leads, newest first, and whether more exist beyond it. The board used to
+    decide it had been cut short by asking whether the row count equalled the limit it had asked for (POST-A-259's family);
+    `has_more` comes from the read now: one row more than the window is asked for and it is never returned."""
     db = _db()
     if not db:
         # Exclude soft-deleted and converted leads — only active pipeline leads.
@@ -641,7 +663,7 @@ def list_leads(
             result = [l for l in result if l.get("stage") == stage]
         if assigned_to:
             result = [l for l in result if l.get("assigned_to") == assigned_to]
-        return api_response(True, result[offset: offset + limit])
+        return _lead_window(result[offset: offset + probe(limit)], limit)
 
     # Exclude soft-deleted and converted leads at the query level so the pipeline
     # only ever receives active leads. is_converted is nullable, so treat NULL as
@@ -657,8 +679,9 @@ def list_leads(
         q = q.eq("stage", stage)
     if assigned_to:
         q = q.eq("assigned_to", assigned_to)
-    res = q.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
-    return api_response(True, res.data or [])
+    # `id` breaks a tie between two leads created at the same instant, so the same row is never on two windows.
+    res = q.order("created_at", desc=True).order("id", desc=True).range(offset, offset + probe(limit) - 1).execute()
+    return _lead_window(res.data or [], limit)
 
 
 @router.post("/leads")

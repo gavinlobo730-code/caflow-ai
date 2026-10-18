@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { arrayOrEmpty } from "@/lib/api/shape";
+import { useState } from "react";
 import { Search, Network, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,6 +9,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
+import { windowDescription } from "@/lib/lists/window";
+import { useEntityRegister } from "@/lib/relationships/useEntityRegister";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -56,35 +58,20 @@ const ENTITY_TYPE_COLORS: Record<string, string> = {
   Other:             "bg-gray-100 text-gray-600",
 };
 
+/** The first window of the register this browse list asks for; "Show more" widens it by a hundred at a time. */
+const EXPLORER_FIRST_WINDOW = 100;
+
 export default function RelationshipExplorerPage() {
-  const [entities, setEntities] = useState<Entity[]>([]);
+  // The register comes as a window: the server says whether more entities exist than are listed.
+  const register = useEntityRegister<Entity>(EXPLORER_FIRST_WINDOW);
+  const { entities, loading, error } = register;
   const [selected, setSelected] = useState<Entity | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   // Distinguishes "detail fetch failed" from "genuinely no roles/relationships"
   // — a masked failure previously fell back to the list row's stale data
   // (which never has roles/relationships populated) and rendered identically
   // to a real empty state.
   const [detailError, setDetailError] = useState<string | null>(null);
-
-  useEffect(() => {
-    loadEntities();
-  }, []);
-
-  async function loadEntities() {
-    setLoading(true);
-    setError(null);
-    try {
-      const json: ApiResponse<Entity[]> = await apiFetch("/api/relationships/entities?limit=100");
-      if (!json.success) throw new Error(json.error ?? "Failed to load");
-      setEntities(arrayOrEmpty(json.data));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function handleSelect(entity: Entity) {
     // Load full entity data (includes embedded roles + relationships)
@@ -141,7 +128,11 @@ export default function RelationshipExplorerPage() {
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-gray-500 py-4 text-center">No entities found</p>
+            <p className="text-sm text-gray-500 py-4 text-center">
+              {register.window?.hasMore && entities.length > 0
+                ? "None of the entities listed match. More exist that are not listed; show more to search them."
+                : "No entities found"}
+            </p>
           ) : (
             <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
               {filtered.map((e) => (
@@ -164,6 +155,16 @@ export default function RelationshipExplorerPage() {
                 </button>
               ))}
             </div>
+          )}
+          {register.window && (
+            <ListWindowNotice
+              hasMore={register.window.hasMore}
+              what={windowDescription(register.window.limit, "entities", "first", "by name")}
+              limit={register.window.limit}
+              maxLimit={register.window.maxLimit}
+              onShowMore={register.showMore}
+              busy={register.moreBusy}
+            />
           )}
         </div>
 
