@@ -494,6 +494,10 @@ def maturing_deposits(
                 "Bank": str(fd.get("bank_name") or "—"),
                 "Maturity Date": maturity.isoformat(),
                 "Days Left": str(days_left),
+                # Migration 521. A row that does not carry the flag (an older database, a test double) is an estimate:
+                # the register computed this amount itself until a CA could type the receipt's.
+                "Maturity Amount": ("Per the deposit receipt" if fd.get("maturity_amount_is_estimate") is False
+                                    else "Estimated (annual compounding); the receipt governs"),
             },
         ))
     return sorted(rows, key=lambda r: r.on_date or "")

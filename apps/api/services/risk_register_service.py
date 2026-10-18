@@ -138,7 +138,7 @@ def build_register(db, firm_id: str, client_ids: Optional[set[str]] = None) -> d
     deposits = fetch_all(
         lambda: _scoped(
             db.table("fixed_deposits")
-            .select("id, client_id, bank_name, maturity_date, maturity_amount_paise")
+            .select("id, client_id, bank_name, maturity_date, maturity_amount_paise, maturity_amount_is_estimate")
             .eq("firm_id", firm_id)
             .eq("status", "active"),
             client_ids,

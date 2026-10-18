@@ -30,6 +30,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
 import { daysBetweenLocalISO, todayLocalISO } from "@/lib/dateMath";
+import { chooseMaturity, estimateFDMaturityPaise, isEstimate } from "@/lib/loans/fdMaturity";
 import { formatDate } from "@/lib/dates/format";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -86,6 +87,8 @@ interface FixedDeposit {
   start_date: string;
   maturity_date: string;
   maturity_amount_paise: number;
+  // false = typed from the deposit receipt; true or absent = the product's estimate (migration 521).
+  maturity_amount_is_estimate?: boolean;
   is_auto_renewed: boolean;
   tds_applicable: boolean;
   status: FDStatus;
@@ -125,29 +128,6 @@ function calculateEMIPaise(
   const pow = Math.pow(1 + r, tenureMonths);
   const emi = (principalPaise * r * pow) / (pow - 1);
   return Math.round(emi); // integer paise
-}
-
-/**
- * Compound interest maturity amount for FD.
- * Formula: P × (1 + r/100)^(days/365) — annual compounding
- * Returns maturity amount in paise (integer arithmetic).
- * Per standard bank FD calculation practice.
- */
-function calculateFDMaturityPaise(
-  principalPaise: number,
-  annualRatePercent: number,
-  startDate: string,
-  maturityDate: string
-): number {
-  if (!startDate || !maturityDate) return principalPaise;
-  // Both sides are date-only strings, so the old inline subtraction was exact
-  // — but it was exact by luck (two UTC midnights cancelling), and the next
-  // person to pass a live instant here would not have noticed. daysToDate below
-  // already delegates; this now does too.
-  const days = daysBetweenLocalISO(startDate, maturityDate) ?? 0;
-  if (days <= 0) return principalPaise;
-  const factor = Math.pow(1 + annualRatePercent / 100, days / 365);
-  return Math.round(principalPaise * factor); // integer paise
 }
 
 /**
@@ -219,6 +199,7 @@ export default function LoansAndFDPage() {
     interest_rate: "",
     start_date: todayLocalISO(),
     maturity_date: "",
+    maturity_receipt: "",
     is_auto_renewed: false,
     tds_applicable: true,
     notes: "",
@@ -370,7 +351,13 @@ export default function LoansAndFDPage() {
     if (!fdForm.maturity_date) { setFDError("Maturity date is required"); return; }
     if (fdForm.maturity_date <= fdForm.start_date) { setFDError("Maturity date must be after start date"); return; }
 
-    const maturityPaise = calculateFDMaturityPaise(principal, rate, fdForm.start_date, fdForm.maturity_date);
+    // The receipt's amount when the CA typed it, otherwise the estimate, and the row says which.
+    const maturity = chooseMaturity(
+      fdForm.maturity_receipt,
+      principal,
+      estimateFDMaturityPaise(principal, rate, fdForm.start_date, fdForm.maturity_date),
+    );
+    if (!maturity.ok) { setFDError(maturity.error); return; }
 
     setFDSaving(true);
     try {
@@ -385,7 +372,8 @@ export default function LoansAndFDPage() {
         interest_rate_percent: rate,
         start_date: fdForm.start_date,
         maturity_date: fdForm.maturity_date,
-        maturity_amount_paise: maturityPaise,
+        maturity_amount_paise: maturity.paise,
+        maturity_amount_is_estimate: maturity.isEstimate,
         is_auto_renewed: fdForm.is_auto_renewed,
         // TDS on FD interest per IT Act Section 194A (the limit is the TDS engine's, not this screen's)
         tds_applicable: fdForm.tds_applicable,
@@ -412,6 +400,7 @@ export default function LoansAndFDPage() {
       interest_rate: "",
       start_date: todayLocalISO(),
       maturity_date: "",
+      maturity_receipt: "",
       is_auto_renewed: false,
       tds_applicable: true,
       notes: "",
@@ -452,6 +441,7 @@ export default function LoansAndFDPage() {
   const totalFDMaturityPaise = fds
     .filter((f) => f.status === "active")
     .reduce((s, f) => s + f.maturity_amount_paise, 0);
+  const anyFDMaturityEstimated = fds.some((f) => f.status === "active" && isEstimate(f));
   const maturingThisMonthCount = fds.filter((f) => {
     if (f.status !== "active") return false;
     const days = daysToDate(f.maturity_date);
@@ -467,7 +457,7 @@ export default function LoansAndFDPage() {
   const fdPreviewMaturityPaise =
     fdForm.principal && fdForm.interest_rate && fdForm.start_date && fdForm.maturity_date
       && fdPreviewPrincipalPaise !== null && fdPreviewRatePercent !== null
-      ? calculateFDMaturityPaise(
+      ? estimateFDMaturityPaise(
           fdPreviewPrincipalPaise,
           fdPreviewRatePercent,
           fdForm.start_date,
@@ -744,7 +734,7 @@ export default function LoansAndFDPage() {
               iconBg="bg-purple-50"
               label="Total Maturity Value"
               value={loading ? "…" : formatPaise(totalFDMaturityPaise)}
-              sub="on maturity"
+              sub={anyFDMaturityEstimated ? "includes estimates" : "per the deposit receipts"}
             />
             <SummaryCard
               icon={<Bell className="w-4 h-4 text-amber-600" />}
@@ -814,6 +804,14 @@ export default function LoansAndFDPage() {
                           <td className="px-4 py-3 text-xs text-ps-label">{formatDate(fd.maturity_date)}</td>
                           <td className="px-4 py-3 text-right text-xs tabular-nums font-medium text-ps-ink">
                             {formatPaise(fd.maturity_amount_paise)}
+                            {isEstimate(fd) && (
+                              <span
+                                className="ml-1 text-ps-hint font-normal"
+                                title="Estimated by annual compounding. The amount on the deposit receipt governs; banks usually compound a cumulative deposit quarterly."
+                              >
+                                est.
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-right text-xs tabular-nums">
                             {fd.status !== "active" ? (
@@ -968,12 +966,28 @@ export default function LoansAndFDPage() {
                 </FormField>
               </div>
 
-              {/* Auto-calculated maturity amount preview */}
-              {fdPreviewMaturityPaise !== null && !isNaN(fdPreviewMaturityPaise) && fdPreviewMaturityPaise > 0 && (
-                <div className="bg-green-50 rounded-lg px-4 py-3 text-xs space-y-1">
-                  <p className="text-green-700 font-semibold">Auto-calculated Maturity Amount</p>
-                  <p className="text-green-800 text-sm font-bold">{formatPaise(fdPreviewMaturityPaise)}</p>
-                  <p className="text-green-600">Formula: P × (1 + r/100)^(days/365) — annual compounding</p>
+              <FormField label="Maturity amount per the deposit receipt (₹)" optional>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="e.g. 107186.50"
+                  value={fdForm.maturity_receipt}
+                  onChange={(e) => setFDForm({ ...fdForm, maturity_receipt: e.target.value })}
+                  className={inputCls}
+                />
+              </FormField>
+
+              {/* What will be stored: the receipt's amount if typed, otherwise a labelled estimate */}
+              {fdForm.maturity_receipt.trim() === ""
+                && fdPreviewMaturityPaise !== null && !isNaN(fdPreviewMaturityPaise) && fdPreviewMaturityPaise > 0 && (
+                <div className="bg-state-attention-surface rounded-lg px-4 py-3 text-xs space-y-1">
+                  <p className="text-state-attention font-semibold">Estimated maturity amount</p>
+                  <p className="text-ps-ink text-sm font-bold">{formatPaise(fdPreviewMaturityPaise)}</p>
+                  <p className="text-ps-label">
+                    Annual compounding, P × (1 + r/100)^(days/365). Your bank&apos;s receipt governs: banks usually compound a
+                    cumulative deposit quarterly, and a payout deposit does not compound. Type the receipt&apos;s amount above
+                    to record it as stated.
+                  </p>
                 </div>
               )}
 
