@@ -24,7 +24,7 @@ from reportlab.platypus import (
 from services import pdf_style
 
 # ── Indian number formatting ──────────────────────────────────────────────────
-from core.ist_clock import ist_now
+from core.ist_clock import ist_day_iso, ist_now
 from domain.firm.letterhead import generated_note, prepared_by
 from domain.reporting.pdf_money import group_indian, whole_rupees
 from services.pdf_page_furniture import numbered
@@ -713,15 +713,15 @@ def generate_complete_pack_pdf(
     if engagement_data.get("submitted_at"):
         hist_rows.append(["Submitted for Review",
                            engagement_data.get("submitted_by", "—"),
-                           engagement_data.get("submitted_at", "—")[:10], "SUBMITTED"])
+                           ist_day_iso(engagement_data.get("submitted_at"), "—"), "SUBMITTED"])
     if engagement_data.get("approved_at"):
         hist_rows.append(["Manager Approved",
                            engagement_data.get("approved_by", "—"),
-                           engagement_data.get("approved_at", "—")[:10], "APPROVED"])
+                           ist_day_iso(engagement_data.get("approved_at"), "—"), "APPROVED"])
     if engagement_data.get("final_approved_at"):
         hist_rows.append(["Partner Final Approval",
                            engagement_data.get("final_approved_by", "—"),
-                           engagement_data.get("final_approved_at", "—")[:10], "LOCKED"])
+                           ist_day_iso(engagement_data.get("final_approved_at"), "—"), "LOCKED"])
     if len(hist_rows) == 1:
         hist_rows.append(["No approval history", "—", "—", "—"])
 

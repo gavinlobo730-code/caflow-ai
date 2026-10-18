@@ -24,6 +24,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
+from core.ist_clock import ist_day_iso
 from services import pdf_style
 
 from services.invoice_pdf_service import _load_firm, _paise_to_rupee_str
@@ -62,7 +63,7 @@ def build_reconciliation_pdf(report: dict, firm: dict) -> bytes:
          Paragraph(f"<b>Period:</b> {session.get('statement_start_date')} to "
                    f"{session.get('statement_end_date')}", small)],
         [Paragraph(f"<b>Status:</b> {status}", small),
-         Paragraph(f"<b>Completed:</b> {str(session.get('completed_at') or '—')[:10]}", small)],
+         Paragraph(f"<b>Completed:</b> {ist_day_iso(session.get('completed_at'), '—')}", small)],
     ]
     mt = Table(meta, colWidths=[89 * mm, 89 * mm])
     mt.setStyle(TableStyle([("BOTTOMPADDING", (0, 0), (-1, -1), 3),
@@ -75,7 +76,7 @@ def build_reconciliation_pdf(report: dict, firm: dict) -> bytes:
         elems.append(Spacer(1, 4))
         elems.append(Paragraph(
             f"<b>Reopened {session['reopen_count']} time(s).</b> Last reopened "
-            f"{str(session.get('reopened_at') or '')[:10]}"
+            f"{ist_day_iso(session.get('reopened_at'))}"
             + (f" — {session.get('reopen_reason')}" if session.get("reopen_reason") else ""),
             sub))
     elems.append(Spacer(1, 10))

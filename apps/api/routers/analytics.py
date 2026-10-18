@@ -10,7 +10,7 @@ from repositories.invoice_repository import invoice_repo
 from repositories.engagement_repository import engagement_repo
 from repositories.user_repository import user_repo
 from repositories.client_repository import client_repo
-from core.ist_clock import fy_quarters, ist_fy_label, ist_today
+from core.ist_clock import fy_quarters, ist_day_window, ist_fy_label, ist_today
 from core import db_provider
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -71,7 +71,7 @@ def team_analytics(
     users = users_result.data or []
 
     # Completed tasks in period
-    completed_result = db.table("tasks").select("id, assigned_to, assignee_id, updated_at").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", date_from).lte("updated_at", f"{date_to}T23:59:59Z").execute()
+    completed_result = db.table("tasks").select("id, assigned_to, assignee_id, updated_at").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", ist_day_window(date_from, None)[0]).lt("updated_at", ist_day_window(None, date_to)[1]).execute()
     completed_tasks = completed_result.data or []
 
     # Open and overdue tasks
@@ -162,7 +162,7 @@ def client_analytics(
     # Bounded to the period, not the firm's entire task history (same pattern
     # already used correctly by team_analytics above) — completed tasks from
     # years ago were previously fetched in full just to be filtered out here.
-    completed_result = db.table("tasks").select("id, client_id, status, due_date, updated_at").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", date_from).lte("updated_at", f"{date_to}T23:59:59Z").execute()
+    completed_result = db.table("tasks").select("id, client_id, status, due_date, updated_at").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", ist_day_window(date_from, None)[0]).lt("updated_at", ist_day_window(None, date_to)[1]).execute()
     completed_tasks = completed_result.data or []
 
     open_result = db.table("tasks").select("id, client_id, status, due_date, updated_at").eq("firm_id", firm_id).neq("status", "completed").execute()
@@ -240,7 +240,7 @@ def firm_analytics(
     # handler returns firm-level TOTALS only and names no client. Dropped so the
     # column list matches what the code actually uses; see this route's entry in
     # the client-scope ratchet's EXEMPT table for the full reasoning.
-    completed_result = db.table("tasks").select("id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", date_from).lte("updated_at", f"{date_to}T23:59:59Z").execute()
+    completed_result = db.table("tasks").select("id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).eq("status", "completed").gte("updated_at", ist_day_window(date_from, None)[0]).lt("updated_at", ist_day_window(None, date_to)[1]).execute()
     completed = completed_result.data or []
 
     open_result = db.table("tasks").select("id, status, due_date, updated_at, assigned_to").eq("firm_id", firm_id).neq("status", "completed").execute()

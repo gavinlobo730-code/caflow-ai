@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from repositories.base import BaseRepository
 from core import db_provider
 from core.db_paging import fetch_all
+from core.ist_clock import ist_day_window
 from core.list_window import probe, split
 
 
@@ -27,10 +28,12 @@ class TimeTrackingRepository(BaseRepository[dict]):
             query = query.eq("client_id", client_id)
         if task_id:
             query = query.eq("task_id", task_id)
-        if date_from:
-            query = query.gte("started_at", f"{date_from}T00:00:00Z")
-        if date_to:
-            query = query.lte("started_at", f"{date_to}T23:59:59Z")
+        # A range of days is a range of INDIAN days (POST-A-251): midnight IST to midnight IST, the end exclusive.
+        start, end = ist_day_window(date_from, date_to)
+        if start:
+            query = query.gte("started_at", start)
+        if end:
+            query = query.lt("started_at", end)
         return query
 
     def find_all(

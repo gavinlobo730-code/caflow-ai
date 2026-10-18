@@ -7,6 +7,8 @@ integer paise plus a display string so no float arithmetic touches money.
 import csv
 import io
 from typing import Optional
+
+from core.ist_clock import ist_day_iso
 from domain.money_text import rupees_paise
 
 EXPORT_COLUMNS = [
@@ -30,7 +32,7 @@ def build_export_rows(entries: list[dict], users_by_id: dict, clients_by_id: dic
         user = users_by_id.get(e.get("user_id"), {})
         client = clients_by_id.get(e.get("client_id"), {})
         rows.append({
-            "date": str(e.get("started_at", ""))[:10],
+            "date": ist_day_iso(e.get("started_at")),
             "user_name": user.get("full_name") or user.get("email") or e.get("user_id", ""),
             "client_name": client.get("client_name") or "",
             "task_id": e.get("task_id") or "",

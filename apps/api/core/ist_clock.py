@@ -17,7 +17,7 @@ _compute_next_run, _past_scheduled_hour).
 """
 import calendar
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -179,6 +179,40 @@ def ist_date_of(instant) -> "date | None":
         return instant.astimezone(IST).date()
     except OverflowError:                                  # 9999-12-31T23:00Z has no Indian day inside the calendar
         return None
+
+
+def ist_day_iso(stamp, default: str = "") -> str:
+    """The Indian calendar day of a stored instant as `YYYY-MM-DD`, or `default` when there is none. For display (a PDF that
+    prints the day something was approved) and for an export column: `str(stamp)[:10]` is the UTC day, which between 18:30
+    and 24:00 UTC is the day BEFORE the one in India."""
+    day = ist_date_of(stamp)
+    return day.isoformat() if day else default
+
+
+def ist_day_window(date_from, date_to) -> tuple["str | None", "str | None"]:
+    """The instants that bound a range of INDIAN days, as `(start, end)` for `.gte(col, start).lt(col, end)`.
+
+    `start` is midnight IST at the beginning of `date_from`; `end` is midnight IST at the END of `date_to` (the start of the
+    day after it) and is EXCLUSIVE. Either is None when its date is. A range of days a person typed means the Indian days: a
+    time entry started at 01:40 IST on 1 April is stored as 31 March 20:10 UTC and belongs to April, which
+    `started_at >= 'YYYY-MM-01T00:00:00Z'` puts in March (and `<= 'YYYY-MM-30T23:59:59Z'` drops the last second of a day).
+    The offset is written out (`+05:30`) so the database does the conversion and no Python clock is read."""
+    start = f"{_as_ist_date(date_from).isoformat()}T00:00:00+05:30" if date_from else None
+    end = (f"{(_as_ist_date(date_to) + timedelta(days=1)).isoformat()}T00:00:00+05:30" if date_to else None)
+    return start, end
+
+
+def in_ist_window(stamp, date_from, date_to) -> bool:
+    """Whether the Indian day of `stamp` lies in `date_from..date_to` inclusive (either end open when None). The in-memory twin
+    of `ist_day_window`, for the mock path and for rows already fetched; a stamp with no readable day is outside any range."""
+    day = ist_date_of(stamp)
+    if day is None:
+        return False
+    if date_from and day < _as_ist_date(date_from):
+        return False
+    if date_to and day > _as_ist_date(date_to):
+        return False
+    return True
 
 
 def _as_ist_date(d=None) -> date:

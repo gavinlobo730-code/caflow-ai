@@ -403,10 +403,10 @@ def _sql_schedule(dsn: str, as_of: str = "2026-03-31", client: str = CLIENT,
 
 
 def _db_today(dsn: str) -> date:
-    """The database's CURRENT_DATE, not Python's. The SQL half decides the
-    as-at gap from its own clock; passing it to the Python half is what stops
-    this suite flaking across midnight or a container timezone difference."""
-    r = _psql(dsn, "SELECT CURRENT_DATE;", tuples=True)
+    """The database's INDIAN day, not Python's. The SQL half decides the as-at gap from its own clock (migration 514: the
+    Indian day, not the session's `CURRENT_DATE`); passing it to the Python half is what stops this suite flaking across
+    midnight or a container timezone difference."""
+    r = _psql(dsn, "SELECT (now() AT TIME ZONE 'Asia/Kolkata')::date;", tuples=True)
     assert r.returncode == 0, r.stderr
     return date.fromisoformat(r.stdout.strip())
 
