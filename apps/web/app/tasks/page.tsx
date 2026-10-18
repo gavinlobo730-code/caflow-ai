@@ -8,8 +8,9 @@ import {
 import type { Task, TaskStatus, TaskPriority, Client, FirmUser } from "@/lib/types";
 import { TaskFormModal } from "@/components/TaskFormModal";
 import {
-  getTasksWindow, updateTaskStatus, deleteTask, updateTask, getTeamMembers,
+  getTasksWindow, updateTaskStatus, deleteTask, updateTask, getTeamMembers, getStatusTransitions,
 } from "@/lib/data/tasks";
+import { Callout } from "@/components/ui/callout";
 import { api } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 import { DataTable } from "@/components/ui/data-table";
@@ -195,17 +196,21 @@ interface DetailPanelProps {
   clients: Client[];
   teamMembers: FirmUser[];
   allTasks: Task[];
+  /** The moves the server's status machine allows from each status; null while unread, when every move is offered and the
+   *  server refuses the ones it will not make, in words. */
+  transitions: Record<string, string[]> | null;
   onClose: () => void;
   onUpdated: (task: Task) => void;
 }
 
-function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated }: DetailPanelProps) {
+function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClose, onUpdated }: DetailPanelProps) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<Task>>({});
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (task) { setForm(task); setEditing(false); }
+    if (task) { setForm(task); setEditing(false); setSaveError(null); }
   }, [task]);
 
   if (!task) return null;
@@ -217,22 +222,30 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
   async function handleSave() {
     if (!task) return;
     setSaving(true);
+    setSaveError(null);
     try {
       await updateTask(task.id, {
         title: form.title,
         description: form.description,
         priority: form.priority,
         status: form.status,
-        due_date: form.due_date,
+        due_date: form.due_date ?? "",
         client_id: form.client_id,
-        assignee_id: form.assignee_id,
+        assignee_id: form.assignee_id ?? "",
       });
       onUpdated({ ...task, ...form } as Task);
       setEditing(false);
+    } catch (e) {
+      // The panel stays open with what was typed, and says why. This used to close on a save the database had refused.
+      setSaveError(e instanceof Error ? e.message : "The task was not saved.");
     } finally {
       setSaving(false);
     }
   }
+
+  // The statuses this task may be saved as: the one it has, and the moves the server allows from it.
+  const statusChoices = (Object.keys(STATUS_LABEL) as TaskStatus[]).filter(
+    s => s === task.status || !transitions || (transitions[task.status] ?? []).includes(s));
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end pointer-events-none">
@@ -309,7 +322,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                     onChange={e => setForm(f => ({ ...f, status: e.target.value as TaskStatus }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                   >
-                    {(Object.keys(STATUS_LABEL) as TaskStatus[]).map(s => (
+                    {statusChoices.map(s => (
                       <option key={s} value={s}>{STATUS_LABEL[s]}</option>
                     ))}
                   </select>
@@ -333,6 +346,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, onClose, onUpdated 
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand resize-none"
                 />
               </div>
+              {saveError && <Callout tone="problem">{saveError}</Callout>}
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => setEditing(false)}
@@ -416,6 +430,12 @@ export default function TasksPage() {
   // Detail panel
   const [detailTask, setDetailTask] = useState<Task | null>(null);
 
+  // What the server said when it refused a move, a delete or a bulk action. A change is shown at once and put back by a
+  // re-read when it is refused, so the sentence is what tells the person why the row came back.
+  const [actionError, setActionError] = useState<string | null>(null);
+  // The server's status machine; null until read (or if it could not be), when every move is offered.
+  const [transitions, setTransitions] = useState<Record<string, string[]> | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -458,6 +478,7 @@ export default function TasksPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { getStatusTransitions().then(setTransitions).catch(() => setTransitions(null)); }, []);
 
   // Summary stats
   const stats = useMemo(() => {
@@ -486,30 +507,57 @@ export default function TasksPage() {
   }
 
   const handleDelete = useCallback(async (id: string) => {
+    setActionError(null);
     setTasks(prev => prev.filter(t => t.id !== id));
     setDetailTask(prev => (prev?.id === id ? null : prev));
-    try { await deleteTask(id); } catch { load(); }
+    try {
+      await deleteTask(id);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "The task was not deleted.");
+      load();
+    }
   }, [load]);
 
   async function handleMove(id: string, status: TaskStatus) {
+    setActionError(null);
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
-    try { await updateTaskStatus(id, status); } catch { load(); }
+    try {
+      await updateTaskStatus(id, status);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "The status was not changed.");
+      load();
+    }
   }
 
-  // Bulk "mark complete" over the DataTable's selected rows (reuses updateTaskStatus).
+  // What happened to a bulk action, in words: how many went and, for the ones that did not, the server's first reason.
+  const reportBulk = useCallback((verb: string, outcomes: PromiseSettledResult<void>[]) => {
+    const refused = outcomes.filter((o): o is PromiseRejectedResult => o.status === "rejected");
+    if (!refused.length) return;
+    const first = refused[0].reason instanceof Error ? refused[0].reason.message : "the request failed";
+    setActionError(`${refused.length} of ${outcomes.length} ${refused.length === 1 ? "was" : "were"} not ${verb}: ${first}`);
+  }, []);
+
+  // Bulk "mark complete" over the DataTable's selected rows (reuses updateTaskStatus). A task goes through the server's
+  // status machine like any other move, so one that is not yet in progress or in review is refused, and said so.
   const handleBulkComplete = useCallback(async (rows: Task[]) => {
+    setActionError(null);
     const ids = rows.map(r => r.id);
     setTasks(prev => prev.map(t => ids.includes(t.id) ? { ...t, status: "completed" as TaskStatus } : t));
-    await Promise.all(ids.map(id => updateTaskStatus(id, "completed").catch(() => null)));
-  }, []);
+    const outcomes = await Promise.allSettled(ids.map(id => updateTaskStatus(id, "completed")));
+    reportBulk("completed", outcomes);
+    if (outcomes.some(o => o.status === "rejected")) load();
+  }, [load, reportBulk]);
 
   // Bulk delete over the DataTable's selected rows (reuses deleteTask; confirm handled by DataTable).
   const handleBulkDelete = useCallback(async (rows: Task[]) => {
+    setActionError(null);
     const ids = rows.map(r => r.id);
     setTasks(prev => prev.filter(t => !ids.includes(t.id)));
     setDetailTask(prev => (prev && ids.includes(prev.id) ? null : prev));
-    await Promise.all(ids.map(id => deleteTask(id).catch(() => null)));
-  }, []);
+    const outcomes = await Promise.allSettled(ids.map(id => deleteTask(id)));
+    reportBulk("deleted", outcomes);
+    if (outcomes.some(o => o.status === "rejected")) load();
+  }, [load, reportBulk]);
 
   // ── DataTable columns ──────────────────────────────────────────────────────
   const columns: Column<Task>[] = useMemo(() => [
@@ -673,6 +721,8 @@ export default function TasksPage() {
         </div>
       )}
 
+      {actionError && <Callout tone="problem">{actionError}</Callout>}
+
       {/* Task list — shared DataTable (global search, sort, filters, pagination, export, prefs) */}
       <DataTable
         data={tasks}
@@ -722,7 +772,7 @@ export default function TasksPage() {
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ps-label">
           <span>Move {detailTask.title.slice(0, 30)}{detailTask.title.length > 30 ? "…" : ""}:</span>
           {(Object.keys(STATUS_LABEL) as TaskStatus[])
-            .filter(s => s !== detailTask.status)
+            .filter(s => s !== detailTask.status && (!transitions || (transitions[detailTask.status] ?? []).includes(s)))
             .map(s => (
               <button
                 key={s}
@@ -750,6 +800,7 @@ export default function TasksPage() {
         clients={clients}
         teamMembers={teamMembers}
         allTasks={tasks}
+        transitions={transitions}
         onClose={() => setDetailTask(null)}
         onUpdated={handleUpdated}
       />

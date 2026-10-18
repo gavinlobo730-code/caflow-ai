@@ -394,7 +394,7 @@ routers/tally_migration.py :: B904 :: rollback_import :: 2
 routers/task_extras.py :: B904 :: add_dependency :: 1
 routers/task_extras.py :: F401 :: <module> :: 1
 routers/task_recurring.py :: F541 :: update_recurring :: 1
-routers/tasks.py :: C901 :: update_task :: 24
+routers/tasks.py :: C901 :: update_task :: 19
 routers/tds.py :: B904 :: compute_24q_from_books :: 1
 routers/tds.py :: B904 :: compute_26q_from_books :: 1
 routers/tds.py :: B904 :: compute_27q_from_books :: 1

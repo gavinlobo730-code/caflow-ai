@@ -4442,6 +4442,10 @@ export const api = {
     kanban: () => request("/api/tasks?kanban=true"),
     create: (body: unknown) => request("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
     update: (id: string, body: unknown) => request(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    /** Delete a task. A task still linked to a reminder or a compliance record is refused (409) with a sentence that says so. */
+    delete: (id: string) => request(`/api/tasks/${id}`, { method: "DELETE" }),
+    /** Which status a task may move to from each status: the server's machine, so a screen offers only moves it accepts. */
+    transitions: () => request("/api/tasks/transitions"),
     dashboardSummary: () => request("/api/tasks/summary/dashboard"),
   },
   timeline: {

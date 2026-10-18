@@ -19,6 +19,19 @@ def _write_db():
 
 class TaskExtrasRepository(BaseRepository[dict]):
 
+    # ── Removing a task's satellites ─────────────────────────────────────────
+
+    def purge_task(self, task_id: str, *, firm_id: str) -> None:
+        """Remove what hangs off a task that has just been deleted: its tags, its dependencies in either direction and its
+        timeline events. None of the three has a foreign key to `tasks` (migration 063), so the database leaves them
+        behind. The task was shown to be the firm's by the caller; the tags and events are still filtered by the firm, and a
+        dependency row (which has no firm of its own) is removed only where this task id is one end of it."""
+        db = _write_db()
+        db.table("task_tags").delete().eq("task_id", task_id).eq("firm_id", firm_id).execute()
+        db.table("task_timeline_events").delete().eq("task_id", task_id).eq("firm_id", firm_id).execute()
+        db.table("task_dependencies").delete().eq("task_id", task_id).execute()
+        db.table("task_dependencies").delete().eq("depends_on_task_id", task_id).execute()
+
     # ── Tags ─────────────────────────────────────────────────────────────────
 
     def get_tags(self, task_id: str) -> list[dict]:

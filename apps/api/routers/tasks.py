@@ -12,9 +12,32 @@ from services.task_service import is_valid_transition, group_tasks_by_status
 from services.activity_service import log_activity
 from services.audit_service import log_event
 from domain.practice import task_estimate
-from datetime import datetime, timezone
+import logging
+from datetime import date, datetime, timezone
+
+_logger = logging.getLogger("caflow.tasks")
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+
+def _blank_to_none(value):
+    """A cleared box arrives as "" (an input's own value) and means "nothing": Postgres has no empty date and no empty user id."""
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
+def _check_due_date(value):
+    """A due date is a calendar date, YYYY-MM-DD, or nothing. Checked here so a bad one is a 422 that names the field and
+    never a database error halfway through a write."""
+    value = _blank_to_none(value)
+    if value is None:
+        return None
+    try:
+        date.fromisoformat(str(value))
+    except ValueError as exc:
+        raise ValueError("due_date must be a calendar date written YYYY-MM-DD") from exc
+    return str(value)
 
 
 class TaskCreate(BaseModel):
@@ -36,17 +59,44 @@ class TaskCreate(BaseModel):
     def _check_estimate(cls, v):
         return task_estimate.check_minutes(v)
 
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def _check_due(cls, v):
+        return _check_due_date(v)
+
+    @field_validator("assigned_to", mode="before")
+    @classmethod
+    def _unassigned_is_none(cls, v):
+        return _blank_to_none(v)
+
 
 class TaskUpdate(BaseModel):
+    """A PATCH: a field that is ABSENT is left as it is. Two fields can also be cleared, by sending them as null (or, for
+    a box a person emptied, as ""): `due_date` and `assigned_to`. A task with no due date and a task with no assignee are
+    both real states, and a form that could not set them back would leave the only way to do it a write straight to the
+    table. Nothing else is cleared by a null, so a caller that sends a whole form with some fields empty cannot wipe the
+    title or the priority by accident."""
     title: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None
     priority: Optional[str] = None
     assigned_to: Optional[str] = None
     due_date: Optional[str] = None
+    # Moving a task to another client. The caller must be able to act on the NEW client too.
+    client_id: Optional[str] = None
     # Changed here, not cleared: like every field of this PATCH, an absent value
     # means "leave it", so an estimate can be corrected but not taken off again.
     estimated_minutes: Optional[int] = None
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def _check_due(cls, v):
+        return _check_due_date(v)
+
+    @field_validator("assigned_to", mode="before")
+    @classmethod
+    def _unassigned_is_none(cls, v):
+        return _blank_to_none(v)
 
     @field_validator("estimated_minutes", mode="before")
     @classmethod
@@ -105,6 +155,11 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
             raise HTTPException(status_code=422, detail="Assignee not found in this firm")
     now = datetime.now(timezone.utc).isoformat()
     fields = body.model_dump()
+    if fields.get("assigned_to"):
+        # `tasks` carries the assignee TWICE (`assigned_to` and `assignee_id`, both pointing at users) and `/api/workload`
+        # reads `assignee_id` FIRST; a task made with only one is invisible to whichever reader looks at the other. Every
+        # task made from a template or a recurring configuration, and every reassignment below, writes both.
+        fields["assignee_id"] = fields["assigned_to"]
     if fields.get("estimated_minutes") is None:
         # An absent estimate is an absent KEY, not a NULL one: this is the hot path
         # for every task made by hand, and naming a column the table does not have
@@ -178,6 +233,57 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
     return api_response(True, {"task": task, "activity": activity})
 
 
+def _changes_in(body: "TaskUpdate", task: dict, current_user: dict, firm_id: str) -> dict:
+    """What a PATCH actually changes: the fields sent, minus any that equal what is held, plus the two a null clears."""
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    # An explicit null clears these two and nothing else (see TaskUpdate).
+    for cleared in ("due_date", "assigned_to"):
+        if cleared in body.model_fields_set and getattr(body, cleared) is None:
+            updates[cleared] = None
+    # A form sends the whole task. A value equal to what is held is not a change: the same status is not a transition (the
+    # machine would refuse it), and the same client is not a move.
+    for unchanged in ("status", "client_id"):
+        if unchanged in updates and updates[unchanged] == task.get(unchanged):
+            updates.pop(unchanged)
+
+    if "client_id" in updates:
+        # The new client must be one this caller may act on, and one of this firm: the old client was checked by the caller,
+        # and a task moved to a client nobody checked would be written into books the caller cannot open.
+        assert_client_access(current_user, updates["client_id"], detail="Client not found")
+        if not client_repo.find_by_id(updates["client_id"], firm_id):
+            raise HTTPException(status_code=404, detail="Client not found")
+    return updates
+
+
+def _notify_reassignment(task: dict, updated: dict, updates: dict, firm_id: str, current_user: dict) -> None:
+    """Tell the people concerned when a task's assignee changed. Best effort: a notification that fails never fails the PATCH."""
+    if "assigned_to" not in updates or updates["assigned_to"] == task.get("assigned_to"):
+        return
+    try:
+        from services.notification_service import notification_service
+        from repositories.user_repository import user_repo
+
+        new_assignee_id = updates["assigned_to"]
+        old_assignee_id = task.get("assigned_to")
+
+        if new_assignee_id:
+            new_assignee = user_repo.find_by_id(new_assignee_id, firm_id=firm_id)
+            if new_assignee:
+                if old_assignee_id:
+                    # This is a reassignment
+                    old_assignee = user_repo.find_by_id(old_assignee_id, firm_id=firm_id)
+                    if old_assignee:
+                        reason = "Task load rebalancing"
+                        notification_service.notify_task_reassigned(
+                            updated, old_assignee, new_assignee, reason,
+                            reassigned_by=current_user)
+                else:
+                    # This is a new assignment
+                    notification_service.notify_task_assigned(updated, new_assignee, current_user)
+    except Exception:
+        pass
+
+
 @router.patch("/{task_id}")
 def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rbac("task", "write"))):
     firm_id = current_user.get("firm_id")
@@ -191,7 +297,7 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
     # status code must not become an oracle for which task ids are real.
     assert_client_access(current_user, task.get("client_id"), detail="Task not found")
 
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    updates = _changes_in(body, task, current_user, firm_id)
 
     # C4: verify assignee belongs to the same firm before applying the update.
     if "assigned_to" in updates and updates["assigned_to"] is not None:
@@ -236,7 +342,8 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
                 new_value={"status": updates["status"]},
             )
         if "assigned_to" in updates and updates["assigned_to"] != task.get("assigned_to"):
-            event_type = "assigned" if not task.get("assigned_to") else "reassigned"
+            event_type = ("unassigned" if updates["assigned_to"] is None
+                          else "assigned" if not task.get("assigned_to") else "reassigned")
             task_extras_repo.log_event(
                 task_id=task_id,
                 event_type=event_type,
@@ -265,13 +372,22 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
         old_status = task.get("status")
         old_assignee = task.get("assigned_to")
         if "assigned_to" in updates and updates["assigned_to"] != old_assignee:
-            action = "reassign" if old_assignee else "assign"
+            action = ("unassign" if updates["assigned_to"] is None
+                      else "reassign" if old_assignee else "assign")
             log_event(
                 firm_id, "task", task_id, action,
                 actor_id=current_user.get("auth_user_id"),
                 actor_email=current_user.get("email"),
                 old_data={"assigned_to": old_assignee},
                 new_data={"assigned_to": updates["assigned_to"]},
+            )
+        if "client_id" in updates:
+            log_event(
+                firm_id, "task", task_id, "update",
+                actor_id=current_user.get("auth_user_id"),
+                actor_email=current_user.get("email"),
+                old_data={"client_id": task.get("client_id")},
+                new_data={"client_id": updates["client_id"]},
             )
         if "status" in updates and updates["status"] != old_status:
             if updates["status"] == "completed":
@@ -293,34 +409,66 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
     except Exception:
         pass
 
-    # Send notifications if task is reassigned (or newly assigned)
-    if "assigned_to" in updates and updates["assigned_to"] != task.get("assigned_to"):
-        try:
-            from services.notification_service import notification_service
-            from repositories.user_repository import user_repo
-
-            new_assignee_id = updates["assigned_to"]
-            old_assignee_id = task.get("assigned_to")
-
-            if new_assignee_id:
-                new_assignee = user_repo.find_by_id(new_assignee_id, firm_id=firm_id)
-                if new_assignee:
-                    if old_assignee_id:
-                        # This is a reassignment
-                        old_assignee = user_repo.find_by_id(old_assignee_id, firm_id=firm_id)
-                        if old_assignee:
-                            reason = "Task load rebalancing"
-                            notification_service.notify_task_reassigned(
-                                updated, old_assignee, new_assignee, reason,
-                                reassigned_by=current_user)
-                    else:
-                        # This is a new assignment
-                        notification_service.notify_task_assigned(updated, new_assignee, current_user)
-        except Exception:
-            pass
+    _notify_reassignment(task, updated, updates, firm_id, current_user)
 
     return api_response(True, {"task": updated})
 
+
+
+@router.get("/transitions")
+def status_transitions(current_user: dict = Depends(rbac("task", "read"))):
+    """Which status a task may move to from each status. Served so a screen offers only the moves the server will accept
+    (the machine lives here, in `services/task_service`; a copy in the browser would drift)."""
+    from services.task_service import VALID_TRANSITIONS
+    return api_response(True, {"transitions": VALID_TRANSITIONS})
+
+
+def _is_a_foreign_key_refusal(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "23503" in text or "foreign key" in text or "violates foreign key" in text
+
+
+@router.delete("/{task_id}")
+def delete_task(task_id: str, current_user: dict = Depends(rbac("task", "delete"))):
+    """Delete a task, and say so in the audit log with the whole row.
+
+    The browser used to delete straight from the table: no assignment check beyond row security, no record of what was
+    removed, and a task still linked to a reminder or a compliance record was refused by the database with an error the
+    screen never read, so it looked deleted until the next load. Here a refusal for that reason is a 409 that says so.
+
+    A hard delete, as it always was: `tasks` has a `deleted_at` column, but half a dozen readers (workload, analytics,
+    capacity, health) do not filter on it, so hiding a task by stamping it would leave it counted. Its tags, dependencies
+    and timeline events, which have no foreign key to `tasks` (migration 063), are removed with it.
+    """
+    firm_id = current_user.get("firm_id")
+    task = task_repo.find_by_id(task_id)
+    if not task or (task.get("firm_id") and task["firm_id"] != firm_id):
+        raise HTTPException(status_code=404, detail="Task not found")
+    assert_client_access(current_user, task.get("client_id"), detail="Task not found")
+
+    try:
+        task_repo.delete(task_id, firm_id=firm_id)
+    except Exception as exc:
+        if _is_a_foreign_key_refusal(exc):
+            raise HTTPException(
+                status_code=409,
+                detail=("This task is linked to a reminder or a compliance record, so it cannot be deleted. "
+                        "Complete it instead, or remove what refers to it first.")) from exc
+        raise
+
+    try:
+        from repositories.task_extras_repository import task_extras_repo
+        task_extras_repo.purge_task(task_id, firm_id=firm_id)
+    except Exception:
+        _logger.warning("task %s was deleted but its tags, dependencies or events were not all removed", task_id, exc_info=True)
+    log_event(
+        firm_id, "task", task_id, "delete",
+        actor_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
+        old_data={k: task.get(k) for k in ("title", "status", "priority", "client_id", "assigned_to", "assignee_id",
+                                           "due_date", "description", "workflow_id", "created_at")},
+    )
+    return api_response(True, {"deleted": True, "id": task_id})
 
 
 def _assert_firmwide_job(current_user: dict, what: str) -> None:

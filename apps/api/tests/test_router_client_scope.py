@@ -1155,6 +1155,9 @@ EXEMPT: dict[str, str] = {
         "high-risk-client TALLY. No client is named and no per-client figure is "
         "returned. Same line as the lifecycle dashboard: the counts are derived "
         "from client rows, and that is stated rather than glossed over.",
+    "/api/tasks/transitions":
+        "the status machine itself (which status a task may move to from each), a constant of the product. No row, no client "
+        "and no figure derived from either: the screens read it to offer only the moves the server will accept (POST-A-227).",
     "/api/gst/classify":
         "classifies transaction rows the CALLER supplied into GST buckets. "
         "TransactionClassifyRequest has no client_id — nothing to check.",
