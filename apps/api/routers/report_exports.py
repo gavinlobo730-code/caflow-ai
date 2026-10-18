@@ -29,6 +29,7 @@ from fastapi.responses import Response
 
 from core.authz import assert_client_access
 from core.permissions import rbac
+from core.validators import real_day_problem
 from domain.reporting.export_document import ExportRefused
 from services import report_export_service as exports
 from core import db_provider
@@ -42,7 +43,7 @@ router = APIRouter(prefix="/api/report-exports", tags=["accounting"])
 #: header, so it is refused at the door.
 _DATE = r"^\d{4}-\d{2}-\d{2}$"
 
-ReportName = Literal["ledger", "trial-balance", "cash-flow", "ar-ageing", "ap-ageing"]
+ReportName = Literal["ledger", "trial-balance", "cash-flow", "ar-ageing", "ap-ageing", "day-book"]
 
 
 # The privileged client, or None with no database (mock/dev).
@@ -65,11 +66,15 @@ def export_report(
     basis: str = Query("accrual", pattern="^(accrual|cash)$"),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
-    """Download one report as a PDF (or, for the ledger and cash flow, a
-    spreadsheet). The parameters are the screen's own: `start_date`/`end_date`
-    for the ledger and cash flow, `as_of_date` (+ optional `start_date`) for the
+    """Download one report as a PDF (or, for the ledger, the Day Book and cash
+    flow, a spreadsheet). The parameters are the screen's own: `start_date`/`end_date`
+    for the ledger, the Day Book and cash flow, `as_of_date` (+ optional `start_date`) for the
     trial balance, `as_of` for the two ageing reports."""
     assert_client_access(current_user, client_id)
+    for label, day in (("start_date", start_date), ("end_date", end_date), ("as_of_date", as_of_date), ("as_of", as_of)):
+        problem = real_day_problem(day, label)
+        if problem:
+            raise HTTPException(status_code=422, detail=problem)
     db = _prod_db()
     if db is None:
         raise HTTPException(

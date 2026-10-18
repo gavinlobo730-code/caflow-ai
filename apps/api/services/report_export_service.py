@@ -61,6 +61,13 @@ LEDGER_PAGE = 1000
 MAX_LEDGER_LINES_PDF = 6_000
 MAX_LEDGER_LINES_XLSX = 50_000
 
+#: A Day Book is one single-line row per entry, the cheap case of the ledger's measurement, so the
+#: ceilings are the ledger's. The largest client measured has 12,836 entries for the whole of its
+#: history, so a financial year of it prints; a decade does not, and is told so.
+MAX_DAY_BOOK_ENTRIES_PDF = 6_000
+MAX_DAY_BOOK_ENTRIES_XLSX = 50_000
+DAY_BOOK_PAGE = 1000
+
 #: A report's open documents are one row each in the ageing PDF. Its rows are
 #: short single-line strings (the cheap case above), so the ceiling is higher.
 MAX_AGEING_DOCUMENTS_PDF = 10_000
@@ -72,6 +79,7 @@ REPORTS: dict[str, tuple[str, ...]] = {
     B.CASH_FLOW: (PDF, XLSX),
     B.AR_AGEING: (PDF,),
     B.AP_AGEING: (PDF,),
+    B.DAY_BOOK: (PDF, XLSX),
 }
 
 
@@ -130,6 +138,32 @@ def fetch_ledger(svc, firm_id: str, client_id: str, account_id: str,
     return {**first, "lines": lines}
 
 
+def fetch_day_book(svc, firm_id: str, client_id: str, start: Optional[str], end: Optional[str],
+                   *, ceiling: int) -> dict:
+    """Every entry of one client's window, read through the paged function the screen reads.
+
+    The first page carries the WHOLE window's entry count and totals (the function computes them over the
+    window, not the page), so the pages after it only add entries, and `day_book_document` refuses a result
+    whose entries do not add up to those totals: a short read becomes a refusal and never a short book.
+    """
+    first = svc.day_book(firm_id, client_id, start, end, newest_first=False,
+                         limit=DAY_BOOK_PAGE, offset=0)
+    entries = list(first.get("entries") or [])
+    total = int(first.get("total_entries") or 0)
+    if total > ceiling:
+        raise ExportRefused(
+            f"This Day Book has {total:,} entries in the period, and an export is limited to "
+            f"{ceiling:,}. Choose a shorter period and export it in parts.")
+    while len(entries) < total:
+        page = svc.day_book(firm_id, client_id, start, end, newest_first=False,
+                            limit=DAY_BOOK_PAGE, offset=len(entries))
+        got = page.get("entries") or []
+        if not got:
+            break                           # short read: the builder refuses it
+        entries.extend(got)
+    return {**first, "entries": entries}
+
+
 def _too_many_lines(n: int, ceiling: int) -> ExportRefused:
     return ExportRefused(
         f"This ledger has {n:,} lines in the period, and an export is limited to "
@@ -146,6 +180,11 @@ def _document(report: str, fmt: str, *, svc, db, firm_id: str, client_id: str,
         led = fetch_ledger(svc, firm_id, client_id, p["account_id"],
                            p.get("start_date"), p.get("end_date"), ceiling=ceiling)
         return B.ledger_document(led)
+    if report == B.DAY_BOOK:
+        ceiling = MAX_DAY_BOOK_ENTRIES_XLSX if fmt == XLSX else MAX_DAY_BOOK_ENTRIES_PDF
+        book = fetch_day_book(svc, firm_id, client_id, p.get("start_date"), p.get("end_date"),
+                              ceiling=ceiling)
+        return B.day_book_document(book)
     if report == B.TRIAL_BALANCE:
         tb = svc.trial_balance(firm_id, client_id, p.get("as_of_date"),
                                basis=basis, start_date=p.get("start_date"))

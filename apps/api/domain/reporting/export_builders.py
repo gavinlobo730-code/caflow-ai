@@ -21,7 +21,9 @@ WHAT IS CHECKED, AND WHAT IS ONLY SAID
     the same words the screen would use, never softened.
 
     AN AGEING IS REFUSED if its rows do not add to its own total, for the same
-    reason a ledger is.
+    reason a ledger is. SO IS A DAY BOOK: its entries must add to the window's debit
+    total and to its credit total, and the two must agree, because every posted
+    entry balances.
 
 NOTHING IS COMPUTED. Where a sum is taken (a trial balance's opening and
 period columns, which the report returns per row and never as a grand total) it
@@ -44,6 +46,7 @@ TRIAL_BALANCE = "trial-balance"
 CASH_FLOW = "cash-flow"
 AR_AGEING = "ar-ageing"
 AP_AGEING = "ap-ageing"
+DAY_BOOK = "day-book"
 
 #: A sheet's name may not carry these, nor exceed 31 characters.
 _SHEET_BAD = re.compile(r"[\[\]:*?/\\]")
@@ -162,6 +165,96 @@ def ledger_document(led: dict) -> ReportDocument:
         tables=(table,), meta=tuple(meta), notes=tuple(notes),
         file_stem=f"ledger-{slug(name or code, 'account')}-{start}-{end}",
         sheet_name=sheet_name(name or "Ledger", "Ledger"),
+    )
+
+
+# ── Day Book ──────────────────────────────────────────────────────────────────
+
+def day_book_document(book: dict) -> ReportDocument:
+    """Every posted entry of one client in a window, in the order it was recorded.
+
+    `book` must carry EVERY entry of the window (the caller pages `public.day_book_page` and merges),
+    because the totals describe the whole window and a document of the first thousand entries under a
+    full window's totals would not add up, which is the reason this REFUSES rather than prints it.
+
+    One AMOUNT per entry: the total of its debit lines, which is also the total of its credit lines
+    because the posting kernel refuses an entry that does not balance. The refusal below is the check
+    that this is still true of what was read.
+    """
+    entries = list(book.get("entries") or [])
+    total_dr = int(book.get("total_debit_paise") or 0)
+    total_cr = int(book.get("total_credit_paise") or 0)
+    total_n = int(book.get("total_entries") or 0)
+
+    sum_dr = sum(int(e.get("debit_paise") or 0) for e in entries)
+    sum_cr = sum(int(e.get("credit_paise") or 0) for e in entries)
+    if len(entries) != total_n or sum_dr != total_dr or sum_cr != total_cr:
+        raise ExportRefused(
+            "This Day Book was not printed because its entries do not add up to the period's totals "
+            f"({len(entries):,} entries, {_rs(sum_dr)} debit / {_rs(sum_cr)} credit; the period holds "
+            f"{total_n:,} entries, {_rs(total_dr)} / {_rs(total_cr)}). Some entries were not read; try "
+            "again, and if it repeats the report itself needs a look.")
+    if total_dr != total_cr:
+        raise ExportRefused(
+            "This Day Book was not printed because the period's debits and credits differ "
+            f"({_rs(total_dr)} debit, {_rs(total_cr)} credit). Every posted entry balances, so an "
+            "entry in this period is out of balance and needs a look before a copy leaves the building.")
+    unbalanced = [e for e in entries if int(e.get("debit_paise") or 0) != int(e.get("credit_paise") or 0)]
+    if unbalanced:
+        first = unbalanced[0]
+        raise ExportRefused(
+            f"This Day Book was not printed because {len(unbalanced):,} entr"
+            f"{'y is' if len(unbalanced) == 1 else 'ies are'} out of balance, the first being "
+            f"{first.get('reference_no') or first.get('entry_id') or 'an entry'} dated "
+            f"{str(first.get('entry_date') or '')[:10]}.")
+
+    from domain.accounting.journal_source import label_for
+
+    def _origin(source_type: Optional[str]) -> str:
+        # An entry posted before its path stamped a source carries none: an empty cell says "no document"
+        # truthfully, where `label_for`'s generic fallback would invent a name for it.
+        if not (source_type or "").strip():
+            return ""
+        text = label_for(source_type)
+        return text[:1].upper() + text[1:]
+
+    rows: list[Row] = []
+    for e in entries:
+        rows.append(Row((
+            str(e.get("entry_date") or "")[:10],
+            e.get("reference_no") or "",
+            e.get("narration") or "",
+            e.get("entry_type") or "",
+            _origin(e.get("source_type")),
+            int(e.get("debit_paise") or 0),
+        )))
+    rows.append(Row(("", "", f"Total for the period ({total_n:,} entries)", "", "", total_dr), EMPHASIS))
+
+    table = Table(
+        columns=(
+            Column("date", "Date", TEXT, 1.0),
+            Column("ref", "Ref", TEXT, 1.7),
+            Column("particulars", "Narration", TEXT, 3.2),
+            Column("type", "Type", TEXT, 1.0),
+            Column("source", "Source", TEXT, 1.5),
+            Column("amount", "Amount", MONEY, 1.3),
+        ),
+        rows=tuple(rows),
+    )
+    start, end = book.get("start_date") or "", book.get("end_date") or ""
+    notes = [
+        "Every entry posted in the period, oldest first. Amount is the total of the entry's debit lines, "
+        "which equals the total of its credit lines.",
+        "Posted entries only. A draft entry has moved nothing in any account and is not listed; the "
+        "Journal tab holds it until it is posted or discarded.",
+        "A reversed entry and its reversal are both listed.",
+    ]
+    return ReportDocument(
+        report_id=DAY_BOOK, title="Day Book", subject="",
+        period=f"{start} to {end}" if start or end else "",
+        tables=(table,), notes=tuple(notes),
+        file_stem=f"day-book-{start}-{end}",
+        sheet_name="Day Book", landscape=True,
     )
 
 

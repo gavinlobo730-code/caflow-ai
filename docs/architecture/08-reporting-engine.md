@@ -20,6 +20,7 @@ The figures have one source: **posted, non-deleted** `journal_entries` with thei
 | Cash Flow, one client | AS-3 | `public.cash_flow_report` via `db.rpc`: classification needs each entry's legs together, which a monthly bucket has thrown away | 277, 279, latest 434 | `builders.cash_flow`; `tests/test_cash_flow_sql_parity_pg.py`. On an error: the passbook path, then the replay |
 | Cash Flow, all clients or mock | AS-3 | the replay (the function is per-client) | none | `builders.cash_flow` |
 | General Ledger, one account, paged | cumulative | `public.account_ledger_page` via `db.rpc` when a client and a limit are both given; the running balance runs over the account's whole history and is sliced afterwards | 283, latest 400 | `builders.ledger` over `_entries(account_id=...)`; `tests/test_account_ledger_sql_parity_pg.py` |
+| Day Book, one client, paged | posted entries | `public.day_book_page` via `db.rpc`, always paged (a limit is required with a database); each entry's debit and credit totals are summed in the database and the window's count, totals and source counts are the window's, never the page's. A failure is raised, never answered from a whole read | 517 | `builders.day_book` over the in-memory source only; `tests/test_day_book_sql_parity_pg.py` |
 | Schedule III (current and prior period) | accrual | `profit_loss` and `balance_sheet` above, twice each | as above | as above |
 | Multi-year trend, budgets | accrual | one bucket read, every window projected in memory (`multi_year_trend`, `period_net_by_account`) | 227/228 | the replay |
 
@@ -46,7 +47,7 @@ These answer a different question and each has its own function, for the same re
 | **Profit & Loss** | period | income = credit−debit, expense = debit−credit; net profit = revenue − opex |
 | **Cash Flow** | period | AS-3 indirect; O+I+F = Δcash = closing−opening (a paise identity) |
 
-Exposed at `GET /api/accounting/{ledger,trial-balance,balance-sheet,profit-loss,cash-flow}`, and beside them `schedule-iii`, `schedule-iii/ageing`, `schedule-iii/ratios`, `schedule-iii/trend`, `budgets`, `cash-book` and `GET /api/report-exports/{report}` for the server-made PDF or Excel. All amounts are raw integer `*_paise`; formatting to ₹ happens in the frontend.
+Exposed at `GET /api/accounting/{ledger,trial-balance,balance-sheet,profit-loss,cash-flow}`, and beside them `schedule-iii`, `schedule-iii/ageing`, `schedule-iii/ratios`, `schedule-iii/trend`, `budgets`, `cash-book`, `day-book` (one page of every posted entry in a period, cut by `public.day_book_page`) and `GET /api/report-exports/{report}` for the server-made PDF or Excel (the ledger, trial balance, cash flow, the two ageing reports and the Day Book). All amounts are raw integer `*_paise`; formatting to ₹ happens in the frontend.
 
 ### `period_net_by_account` — N windows, one fetch
 

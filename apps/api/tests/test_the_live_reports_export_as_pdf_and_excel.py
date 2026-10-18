@@ -433,9 +433,10 @@ def test_no_report_workbook_contains_a_formula_whatever_the_books_say():
                             ref="=2+2", narration="@evil")]
     svc = ReportingService(InMemoryLedgerSource(accounts=accounts, entries=entries))
     spreadsheets = [r for r, formats in ex.REPORTS.items() if ex.XLSX in formats]
-    assert set(spreadsheets) == {"ledger", "cash-flow"}, spreadsheets
+    assert set(spreadsheets) == {"ledger", "cash-flow", "day-book"}, spreadsheets
     params_for = {"ledger": {"account_id": "h", "start_date": START, "end_date": END},
-                  "cash-flow": {"start_date": START, "end_date": END}}
+                  "cash-flow": {"start_date": START, "end_date": END},
+                  "day-book": {"start_date": START, "end_date": END}}
     for report in spreadsheets:
         params = params_for[report]
         out = ex.export_report(report, "xlsx", svc=svc, db=FakeDB(), firm_id=FIRM,
@@ -598,7 +599,7 @@ def _called_names(path: Path) -> set[str]:
 
 
 def test_each_export_calls_the_function_the_screens_endpoint_calls():
-    """The five calls, by name, in BOTH files: the export service and the router
+    """The six calls, by name, in BOTH files: the export service and the router
     each screen's endpoint lives in. If the screen's report is renamed this
     fails, which is the point — the export would otherwise keep calling a
     function the screen no longer does."""
@@ -606,7 +607,7 @@ def test_each_export_calls_the_function_the_screens_endpoint_calls():
     screen_calls = (_called_names(API / "routers" / "accounting.py")
                     | _called_names(API / "routers" / "customers.py")
                     | _called_names(API / "routers" / "vendors.py"))
-    for name in ("ledger", "trial_balance", "cash_flow_statement", "ar_aging", "ap_aging"):
+    for name in ("ledger", "trial_balance", "cash_flow_statement", "ar_aging", "ap_aging", "day_book"):
         assert name in export_calls, f"the export no longer calls {name}"
         assert name in screen_calls, f"no screen endpoint calls {name} any more"
 
@@ -724,6 +725,30 @@ def test_a_client_is_required_and_a_date_must_be_a_date(monkeypatch):
     assert r.status_code == 422
     assert http.get("/api/report-exports/not-a-report",
                     params={"client_id": CLIENT}).status_code == 422
+
+
+@pytest.mark.parametrize("param", ["start_date", "end_date", "as_of_date", "as_of"])
+@pytest.mark.parametrize("day", ["2026-02-30", "2026-13-45", "2026-00-10", "2027-02-29", "2026-04-31"])
+def test_a_day_that_is_not_on_the_calendar_is_a_422_in_words_and_reads_nothing(monkeypatch, param, day):
+    """The query pattern admits any four-two-two digits, so `2026-02-30` used to reach the database's date cast and come back as a
+    500 (or, for the Day Book, a 400 worded 'try again')."""
+    called = []
+    monkeypatch.setattr(door.exports, "export_report", lambda *a, **k: called.append(1))
+    r = _http(monkeypatch).get("/api/report-exports/day-book", params={"client_id": CLIENT, param: day})
+    assert r.status_code == 422 and not called
+    assert param in r.json()["detail"] and "not a real date" in r.json()["detail"]
+
+
+def test_a_leap_day_is_a_day(monkeypatch):
+    seen = []
+
+    def stub(*a, **k):
+        seen.append(k["params"])
+        return ex.ExportedFile(b"%PDF-1.4 stub", "x.pdf", "application/pdf")
+
+    monkeypatch.setattr(door.exports, "export_report", stub)
+    r = _http(monkeypatch).get("/api/report-exports/day-book", params={"client_id": CLIENT, "start_date": "2028-02-29"})
+    assert r.status_code == 200 and seen[0]["start_date"] == "2028-02-29"
 
 
 def test_an_unoffered_format_is_a_422_through_the_real_service(monkeypatch):

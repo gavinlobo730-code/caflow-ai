@@ -16,6 +16,8 @@ import FinancialYearPicker from "@/components/FinancialYearPicker";
 import ReportExportButtons from "@/components/accounting/ReportExportButtons";
 import {
   api,
+  type DayBookEntry,
+  type DayBookPage,
   type ReconciliationRun,
   type ReconciliationFinding,
   type ReconciliationCheck,
@@ -45,7 +47,10 @@ import { StatementAnalysisPanel } from "@/components/accounting/StatementAnalysi
 import { DrCr } from "@/components/ui/drcr";
 import { Callout } from "@/components/ui/callout";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
-import { objectWithLists } from "@/lib/api/shape";
+import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
+import { readWindow } from "@/lib/lists/readWindow";
+import { windowDescription } from "@/lib/lists/window";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -112,6 +117,24 @@ interface JournalEntry {
   // system entries" toggle below.
   source_type: string | null;
   lines: { account_id: string; debit_paise: number; credit_paise: number; narration: string | null }[];
+  /** A Day Book row carries its own total, summed by the database, and no lines (POST-A-091). The Journal tab's rows
+   *  carry their lines and the total is summed from them. */
+  debit_paise?: number;
+}
+
+/** What an entry's Amount is: the Day Book's own total, or the sum of the debit lines a Journal row carries. */
+function entryAmountPaise(e: JournalEntry): number {
+  return e.debit_paise ?? (e.lines ?? []).reduce((sum, l) => sum + l.debit_paise, 0);
+}
+
+/** A Day Book entry as the table's row. The Day Book lists POSTED entries only, so the status is not asked of the
+ *  server and the Status column is not shown there. */
+function dayBookRow(e: DayBookEntry): JournalEntry {
+  return {
+    id: e.entry_id, entry_date: e.entry_date, reference_no: e.reference_no,
+    narration: e.narration ?? "", entry_type: e.entry_type ?? "", is_posted: true,
+    source_type: e.source_type, lines: [], debit_paise: e.debit_paise,
+  };
 }
 
 // Backend-computed ledger row (running balance comes from the engine, not React).
@@ -927,6 +950,17 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
   const [entriesError, setEntriesError] = useState<string | null>(null);
+  // THE DAY BOOK IS READ A WINDOW AT A TIME FROM THE SERVER (POST-A-091) and says when it stopped: `hasMore` is the
+  // server's answer, never a comparison of the rows to the limit asked for. "Show more" grew the window for ONE client and
+  // period: the ask carries the key it was made for, so a new period or client starts from the server's own window again in the
+  // very render that changes it (resetting it in an effect afterwards read the new period twice, and the slower answer won).
+  const [dayBookAsk, setDayBookAsk] = useState<{ key: string; limit: number } | null>(null);
+  // Only the newest read may write the screen: a slower answer for the client or period just left must not replace this one.
+  const entriesRequest = useRef(0);
+  const [dayBookWindow, setDayBookWindow] = useState<{
+    hasMore: boolean; limit: number; maxLimit: number; total: number;
+    sources: { source_type: string | null; entries: number }[];
+  } | null>(null);
   // THIS SCREEN SHOWS MANUAL ENTRIES ONLY, AND HAS NO WAY TO SHOW THE OTHERS.
   //
   // Every package a CA arrives from draws the same line. In TallyPrime the
@@ -975,11 +1009,36 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
     () => (dayBook ? entries : entries.filter((e) => e.source_type === "manual")),
     [entries, dayBook]
   );
+  const dayBookKey = `${clientId}|${journalRange.start}|${journalRange.end}`;
+  const dayBookLimit = dayBookAsk && dayBookAsk.key === dayBookKey ? dayBookAsk.limit : undefined;
 
   const loadEntries = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
+    const mine = ++entriesRequest.current;
     setEntriesLoading(true);
     try {
+      // THE DAY BOOK IS THE SERVER'S PAGE, NOT A BROWSER READ OF `journal_entries` (POST-A-091). It used to embed every
+      // entry's lines for the whole period and sum a debit column out of them here; the database now cuts the page and
+      // sums each entry's lines, and the PDF and Excel files beside it read the very same function, so the screen and
+      // the file cannot disagree. Newest first, as the table has always opened.
+      if (dayBook) {
+        const res = await api.accounting.dayBook(clientId, {
+          start: journalRange.start, end: journalRange.end, limit: dayBookLimit, newestFirst: true,
+        });
+        if (mine !== entriesRequest.current) return;
+        const win = res?.success ? readWindow<DayBookEntry>(res.data, "entries", dayBookLimit ?? 500) : null;
+        if (!win) throw new Error(res?.error || "Couldn't load the Day Book.");
+        const page = objectOrNull<DayBookPage>(res.data);
+        setEntries(win.rows.map(dayBookRow));
+        setDayBookWindow({
+          hasMore: win.hasMore, limit: win.limit, maxLimit: win.maxLimit,
+          total: Number(page?.total_entries ?? win.rows.length),
+          sources: arrayOrEmpty<{ source_type: string | null; entries: number }>(page?.sources),
+        });
+        setEntriesError(null);
+        return;
+      }
+      setDayBookWindow(null);
       const supabase = getSupabaseClient();
       // KEYSET, not .range(). This query embeds journal_lines, and with OFFSET
       // paging Postgres re-runs the line aggregate for every entry in the
@@ -988,26 +1047,23 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
       // four-wide. It did not just run slowly, it failed, and this tab showed
       // "Couldn't load journal entries". Keyset makes each page a bounded seek:
       // 835 aggregate runs, ~32 ms. See selectAllKeyset for the full numbers.
-      // MANUAL mode filters source_type ON THE SERVER (apex-accounting-reports-11):
-      // this tab shows only manual entries in that mode, so paging a client's
-      // whole FY of auto-posted entries just to discard them in the browser —
-      // and reading zero rows as "no manual journal entries" only after fetching
-      // everything — is exactly the read-proportional-to-the-ledger CLAUDE.md's
-      // reporting-performance rule forbids. Day Book needs every source_type by
-      // definition, so it carries no such filter.
-      const { data, error: fetchErr } = await selectAllKeyset(() => {
-        let q = supabase
-          .from("journal_entries")
-          // Alias the embed to `lines` so it matches the JournalEntry type (and the
-          // amount column, which sums debit_paise across the entry's lines).
-          .select("id, entry_date, reference_no, narration, entry_type, is_posted, source_type, lines:journal_lines(account_id, debit_paise, credit_paise, narration)")
-          .eq("client_id", clientId)
-          .is("deleted_at", null)
-          .gte("entry_date", journalRange.start)
-          .lte("entry_date", journalRange.end);
-        if (!dayBook) q = q.eq("source_type", "manual");
-        return q;
-      });
+      // The Journal tab shows MANUAL entries only, so it filters source_type ON THE
+      // SERVER (apex-accounting-reports-11): paging a client's whole FY of
+      // auto-posted entries just to discard them in the browser — and reading zero
+      // rows as "no manual journal entries" only after fetching everything — is
+      // exactly the read-proportional-to-the-ledger CLAUDE.md's
+      // reporting-performance rule forbids. (Every source is the Day Book's, above.)
+      const { data, error: fetchErr } = await selectAllKeyset(() => supabase
+        .from("journal_entries")
+        // Alias the embed to `lines` so it matches the JournalEntry type (and the
+        // amount column, which sums debit_paise across the entry's lines).
+        .select("id, entry_date, reference_no, narration, entry_type, is_posted, source_type, lines:journal_lines(account_id, debit_paise, credit_paise, narration)")
+        .eq("client_id", clientId)
+        .is("deleted_at", null)
+        .gte("entry_date", journalRange.start)
+        .lte("entry_date", journalRange.end)
+        .eq("source_type", "manual"));
+      if (mine !== entriesRequest.current) return;
       if (fetchErr) throw fetchErr;
       // Display order, applied after the walk: keyset pages by id, so the
       // newest-first ordering the table wants is restored here.
@@ -1018,11 +1074,14 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
       setEntries(sorted);
       setEntriesError(null);
     } catch (e) {
+      if (mine !== entriesRequest.current) return;
+      // The window notice belongs to a read that succeeded: after a failed one it would describe the period before.
+      setDayBookWindow(null);
       setEntriesError(e instanceof Error ? e.message : "Couldn't load journal entries.");
     } finally {
-      setEntriesLoading(false);
+      if (mine === entriesRequest.current) setEntriesLoading(false);
     }
-  }, [clientId, journalRange.start, journalRange.end, dayBook]);
+  }, [clientId, journalRange.start, journalRange.end, dayBook, dayBookLimit]);
 
   useEffect(() => { loadEntries(); }, [loadEntries]);
 
@@ -1037,11 +1096,13 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
       render: (e) => <span className="text-ps-body">{e.narration}</span> },
     { key: "entry_type", header: "Type", accessor: (e) => e.entry_type, sortable: true,
       render: (e) => <span className="text-ps-hint">{e.entry_type}</span> },
-    { key: "amount", header: "Amount", accessor: (e) => (e.lines ?? []).reduce((s, l) => s + l.debit_paise, 0), align: "right",
-      exportValue: (e) => (e.lines ?? []).reduce((s, l) => s + l.debit_paise, 0) / 100,
-      render: (e) => <span className="font-mono text-ps-body">{fmt((e.lines ?? []).reduce((s, l) => s + l.debit_paise, 0))}</span> },
-    { key: "status", header: "Status", accessor: (e) => (e.is_posted ? "Posted" : "Draft"),
-      render: (e) => <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>{e.is_posted ? "Posted" : "Draft"}</span> },
+    { key: "amount", header: "Amount", accessor: (e) => entryAmountPaise(e), align: "right",
+      exportValue: (e) => entryAmountPaise(e) / 100,
+      render: (e) => <span className="font-mono text-ps-body">{fmt(entryAmountPaise(e))}</span> },
+    // Not in the Day Book: it lists POSTED entries only, so the column would say "Posted" on every row. The Journal tab
+    // is where a draft is, and where it is posted or discarded.
+    ...(dayBook ? [] : [{ key: "status", header: "Status", accessor: (e: JournalEntry) => (e.is_posted ? "Posted" : "Draft"),
+      render: (e: JournalEntry) => <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>{e.is_posted ? "Posted" : "Draft"}</span> } as Column<JournalEntry>]),
     // Day book only: the manual list is by definition all one source, so the
     // column would say "manual" on every row. Here it is the point — it is what
     // tells a CA that a voucher came from an invoice rather than from someone's
@@ -1068,7 +1129,10 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
     ...(dayBook ? [{
       key: "source_type", label: "Source", type: "select" as const,
       accessor: (e: JournalEntry) => e.source_type ?? "",
-      options: Array.from(new Set(entries.map((e) => e.source_type ?? "").filter(Boolean)))
+      // The Day Book's options come from the server's count over the WHOLE period, so a document the loaded window
+      // happens not to hold is still offered (and the empty answer is then the window's, which the notice says).
+      options: Array.from(new Set((dayBookWindow?.sources ?? []).map((x) => x.source_type ?? "")
+        .concat(entries.map((e) => e.source_type ?? "")).filter(Boolean)))
         .sort()
         .map((v) => ({ value: v, label: sourceLabel(v) })),
     } as FilterDef<JournalEntry>] : []),
@@ -1223,6 +1287,12 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
               (accounting-17). Posts through the same kernel as the editor, and
               is its OWN branch beside New Journal Entry's rather than wrapping
               it — the day-book guard reads that button's own condition. */}
+          {/* THE FILE IS THE SCREEN (POST-A-091): the PDF and the spreadsheet are built by the server from the very
+              function this table reads, for the whole period and not just the window below. */}
+          {dayBook && (
+            <ReportExportButtons report="day-book" clientId={clientId} formats={["pdf", "xlsx"]}
+              params={{ start_date: journalRange.start, end_date: journalRange.end }} />
+          )}
           {!dayBook && (
             <VoucherImportButton clientId={clientId} onImported={loadEntries}
               onSummary={(description) => toast({ title: "Voucher import", description })} />
@@ -1237,6 +1307,18 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
           )}
         </div>
       </div>
+      {dayBook && dayBookWindow && (
+        <ListWindowNotice
+          hasMore={dayBookWindow.hasMore}
+          what={windowDescription(dayBookWindow.limit, "entries", "latest",
+            `of ${dayBookWindow.total.toLocaleString("en-IN")} posted in this period`)}
+          limit={dayBookWindow.limit}
+          maxLimit={dayBookWindow.maxLimit}
+          onShowMore={(n) => setDayBookAsk({ key: dayBookKey, limit: n })}
+          busy={entriesLoading}
+          elsewhere="Download the PDF or Excel file for the whole period, or choose a shorter one."
+        />
+      )}
       <DataTable
         data={visibleEntries}
         columns={journalColumns}
@@ -1274,7 +1356,9 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
         // document-sourced would be offering a refusal in bulk.
         bulkActions={dayBook ? undefined : journalBulkActions}
         initialSort={{ key: "entry_date", dir: "desc" }}
-        exportFilename={dayBook ? "day-book" : "journal"}
+        // The Day Book holds one WINDOW of the period, so a CSV of the table would be a partial file with nothing to say so:
+        // its PDF and Excel files beside it are the whole period, and the Journal tab (every manual entry) keeps the table's own.
+        exportFilename={dayBook ? undefined : "journal"}
         // A separate key: the two tables show different columns, so sharing one
         // would carry the day book's Source column preference back to the
         // Journal tab, which has no such column.

@@ -123,6 +123,77 @@ def ledger(entries_by_id: dict[str, JournalEntry], accounts: dict[str, Account],
     return out
 
 
+#: The most entries one Day Book page may carry. `public.day_book_page` clamps to the same figure.
+DAY_BOOK_MAX_PAGE = 1000
+
+
+def day_book(entries_by_id: dict[str, JournalEntry], start: Optional[str], end: Optional[str],
+             newest_first: bool = False, limit: Optional[int] = None, offset: int = 0) -> dict:
+    """One page of the Day Book: the POSTED entries of one client in a window, each with its debit and
+    credit totals, plus what the WHOLE window holds (entry count, totals, and which documents the entries
+    came from).
+
+    This is the no-database twin of `public.day_book_page` (migration 517), kept for mock mode and local
+    development, where there is no SQL function, and held identical to it by
+    `tests/test_day_book_sql_parity_pg.py`. The rule is the function's: only posted, live entries (the
+    source already filters `is_posted` and `deleted_at`), both ends of the window inclusive, ordered by
+    entry date, then the moment the entry was recorded, then its id, and reversed as a whole for
+    `newest_first`. Strings compare as code points, which is what the function's `COLLATE "C"` makes of them.
+
+    `limit` None means "the whole window", which only a caller with no database may ask for.
+    """
+    rows = []
+    for e in entries_by_id.values():
+        if start and e.entry_date < start:
+            continue
+        if end and e.entry_date > end:
+            continue
+        rows.append(e)
+    rows.sort(key=lambda e: (e.entry_date, e.created_at or "", e.id))
+
+    def _entry(e: JournalEntry) -> dict:
+        return {
+            "entry_id": e.id,
+            "entry_date": e.entry_date,
+            "reference_no": e.reference_no,
+            "narration": e.narration,
+            "entry_type": e.entry_type,
+            # Both keys ALWAYS present and null where the entry carries none, as on the ledger.
+            "source_type": e.source_type,
+            "source_id": e.source_id,
+            "debit_paise": sum(int(ln.debit_paise) for ln in e.lines),
+            "credit_paise": sum(int(ln.credit_paise) for ln in e.lines),
+        }
+
+    shaped = [_entry(e) for e in rows]
+    by_source: dict[Optional[str], int] = {}
+    for r in shaped:
+        by_source[r["source_type"]] = by_source.get(r["source_type"], 0) + 1
+    sources = [{"source_type": k, "entries": by_source[k]}
+               for k in sorted(by_source, key=lambda k: (k is None, k or ""))]
+
+    ordered = list(reversed(shaped)) if newest_first else shaped
+    off = max(int(offset or 0), 0)
+    if limit is None:
+        page = ordered[off:]
+        applied = None
+    else:
+        applied = min(max(int(limit), 1), DAY_BOOK_MAX_PAGE)
+        page = ordered[off:off + applied]
+    return {
+        "start_date": start,
+        "end_date": end,
+        "entries": page,
+        "total_entries": len(shaped),
+        "total_debit_paise": sum(r["debit_paise"] for r in shaped),
+        "total_credit_paise": sum(r["credit_paise"] for r in shaped),
+        "sources": sources,
+        "newest_first": bool(newest_first),
+        "limit": applied,
+        "offset": off,
+    }
+
+
 #: The id of the row a PERIOD trial balance needs and the ledger does not hold.
 #: Not an account — computed here, like balance_sheet's "__retained__", and for
 #: the same reason: this product deliberately posts no closing entries, so the

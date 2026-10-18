@@ -243,13 +243,14 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A PAYROLL RUN IS RELEASED ONCE AND PAID ONCE BECAUSE THE FIRST REQUEST TO CLAIM IT PROCEEDS, AND THE PAYMENT'S CLAIM IS A LEASE, NOT A STATUS
 - A RELEASED PAYROLL RUN RECORDS THE LOAN WRITE-DOWN IT STILL OWES, A REVERSAL IS CLAIMED, AND A DELETE OR RECOMPUTE ACTS ONLY ON A RUN STILL IN THE STATE IT SAW
 
-### `docs/design-record/reporting.md` (5 entries): Reporting: Schedule III captions, report performance, paging, exports
+### `docs/design-record/reporting.md` (6 entries): Reporting: Schedule III captions, report performance, paging, exports
 
 - The fixed-assets note is a MOVEMENT, and there is one of it
 - PAGING IS NOT THE SAME AS BOUNDING, AND A RECONCILIATION NEEDED BOTH
 - A read that IS a row set has its own rule, and it is one line: page it
 - THE RULE IS ABOUT THE BROWSER TOO, and that is where it was still being broken
 - AN OFFSET-PAGED READ NEEDS A UNIQUE TOTAL ORDERING, and the ordering a screen already had is usually not one
+- THE DAY BOOK IS A PAGE THE DATABASE CUTS, THE SCREEN AND THE FILE READ THE SAME FUNCTION, AND A DRAFT IS NOT A POSTING
 
 ### `docs/design-record/screens-and-site.md` (23 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 

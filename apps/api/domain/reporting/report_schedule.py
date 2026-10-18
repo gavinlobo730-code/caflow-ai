@@ -92,7 +92,8 @@ of mail sent from a row nobody can interpret is a report in the wrong inbox.
 NOT HERE, AND WHY. No row is written and no status vocabulary is defined (the run table's statuses are the
 service's); the rule says WHICH slot, not what to record about it. Nothing here decides who may press Send or whether
 a firm's mail is switched on (`practice_mail_service.mail_enabled` is the one switch and the send door asks it).
-`NOT_SCHEDULABLE_EXPORTS` names the one export a schedule cannot hold (the ledger: it needs an account).
+`NOT_SCHEDULABLE_EXPORTS` names the exports a schedule cannot hold (the ledger: it needs an account; the Day Book: it
+is a period's every entry, downloaded for a period somebody chooses, and a schedule has no kind for it).
 """
 from __future__ import annotations
 
@@ -177,6 +178,8 @@ REPORT_KINDS: tuple[ReportKind, ...] = (
 #: this is every name in `report_export_service.REPORTS`, in both directions, which a test holds.
 NOT_SCHEDULABLE_EXPORTS: dict[str, str] = {
     "ledger": "A ledger is one account's book and a schedule names no account, so a ledger cannot be scheduled.",
+    "day-book": "The Day Book lists every entry in a period and is downloaded from its own tab for the period you choose; "
+                "it is not offered as a scheduled report.",
 }
 
 #: For each export, the query parameter `report_export_service` reads the period's dates from. Keyed by the export's
