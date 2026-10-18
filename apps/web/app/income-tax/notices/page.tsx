@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
@@ -344,8 +345,8 @@ export default function ITNoticesPage() {
 
   async function deleteNotice(id: string) {
     if (!(await confirmDialog({ message: "Delete this notice?", danger: true, confirmLabel: "Delete" }))) return;
-    const sb = getSupabaseClient();
-    await sb.from("it_notices").delete().eq("id", id);
+    const out = await deleteRowAndConfirm(getSupabaseClient(), "it_notices", id);
+    if (!out.deleted) { toast({ title: out.message, variant: "destructive" }); return; }
     loadData();
   }
 

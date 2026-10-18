@@ -257,7 +257,8 @@ def test_the_portal_invoice_rows_say_which_are_payable(env, monkeypatch):
         {"id": "e", "status": "paid", "outstanding_paise": 0},
         {"id": "f", "status": "issued", "outstanding_paise": 0},
     ]
-    monkeypatch.setattr(pds, "list_invoices", lambda *a, **k: [dict(r) for r in rows])
+    # The route asks `fee_invoices_or_none` (POST-A-245), which keeps "no fee ledger" apart from "no invoices".
+    monkeypatch.setattr(pds, "fee_invoices_or_none", lambda *a, **k: [dict(r) for r in rows])
     got = env.client.get("/api/portal/self/invoices").json()["data"]["invoices"]
     assert {r["id"]: r["can_pay_online"] for r in got} == {
         "a": True, "b": True, "c": False, "d": False, "e": False, "f": False}

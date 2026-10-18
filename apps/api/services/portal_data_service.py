@@ -119,11 +119,23 @@ def resolve_fee_scope(firm_id: str, client_id: str, db) -> Optional[dict]:
 
 # ── Surfaces ─────────────────────────────────────────────────────────────────
 
-def list_invoices(firm_id: str, client_id: str, db=None, today: Optional[date] = None) -> list[dict]:
+# What a fee screen says when the practice's fee records for this client cannot be read. It is the portal-wide sentence:
+# the contact sees it on the client portal and the practice sees the same words in the staff preview.
+FEE_LEDGER_NOT_LINKED = (
+    "Outstanding fees can't be shown here yet: this account is not linked to the practice's fee records. "
+    "Please ask the practice for your balance.")
+
+
+def fee_invoices_or_none(firm_id: str, client_id: str, db=None, today: Optional[date] = None) -> Optional[list[dict]]:
+    """The fee invoices issued to this portal client, or None when the product cannot tell.
+
+    None is a different answer from an empty list: a client with no `client_firm_customer_links` row, or a firm with no
+    internal client, has no fee ledger the product can read, so "this client owes nothing" is not something it knows
+    (POST-A-245). An empty list means the ledger was read and nothing was issued."""
     db = db if db is not None else _db()
     scope = resolve_fee_scope(firm_id, client_id, db)
     if not scope:
-        return []
+        return None
     # What is OWED is total + debit notes - paid - credit notes (CGST Act s.34; `collections_service.assess_invoice` reads
     # all four), so the two note columns are selected with the rest. Without them the figure fell back to total - paid:
     # a fee invoice reduced by a credit note still showed its pre-credit balance, and a fully credited unpaid one was
@@ -138,6 +150,12 @@ def list_invoices(firm_id: str, client_id: str, db=None, today: Optional[date] =
     return [safe_invoice(r, today) for r in rows]
 
 
+def list_invoices(firm_id: str, client_id: str, db=None, today: Optional[date] = None) -> list[dict]:
+    """The same rows as a plain list, for the callers that only need to look an invoice up (a reminder's invoice
+    number). A screen that SAYS something about the client's fees asks `fee_invoices_or_none` and keeps the unknown."""
+    return fee_invoices_or_none(firm_id, client_id, db=db, today=today) or []
+
+
 def with_pay_flag(rows: list[dict]) -> list[dict]:
     """Each client-safe invoice row plus `can_pay_online`: True only for an issued or part-paid invoice with a
     balance (`domain/payments/availability.invoice_is_payable`). It is eligibility of the INVOICE, not a promise
@@ -149,8 +167,14 @@ def with_pay_flag(rows: list[dict]) -> list[dict]:
 
 def dues(firm_id: str, client_id: str, db=None, today: Optional[date] = None) -> dict:
     """Canonical AR (replaces the legacy `transactions` source): outstanding fee
-    invoices the client owes the firm, in integer paise."""
-    invoices = list_invoices(firm_id, client_id, db=db, today=today)
+    invoices the client owes the firm, in integer paise.
+
+    `available` says whether the fee ledger could be read at all. When it could not, the three totals are None and the
+    reason is served, because a zero here reads as "this client owes nothing" and the product does not know that."""
+    invoices = fee_invoices_or_none(firm_id, client_id, db=db, today=today)
+    if invoices is None:
+        return {"dues": [], "total_outstanding_paise": None, "overdue_paise": None, "overdue_count": None,
+                "available": False, "reason": FEE_LEDGER_NOT_LINKED}
     open_invs = [i for i in invoices if i["status"] in _OPEN and i["outstanding_paise"] > 0]
     overdue = [i for i in open_invs if i["is_overdue"]]
     return {
@@ -158,6 +182,8 @@ def dues(firm_id: str, client_id: str, db=None, today: Optional[date] = None) ->
         "total_outstanding_paise": sum(i["outstanding_paise"] for i in open_invs),
         "overdue_paise": sum(i["outstanding_paise"] for i in overdue),
         "overdue_count": len(overdue),
+        "available": True,
+        "reason": None,
     }
 
 

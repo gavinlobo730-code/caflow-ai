@@ -47,6 +47,10 @@ interface Dashboard {
    *  `readOnlinePayment` inside `PayOnlineControl`: absent or unclear means NOT available. */
   online_payment?: unknown;
 }
+/** Shown when the server says the fee ledger is unavailable and sends no sentence of its own. */
+const FEE_LEDGER_UNAVAILABLE_FALLBACK =
+  "Outstanding fees can't be shown here yet. Please ask the practice for your balance.";
+
 interface Membership { client_id: string; name: string | null }
 
 interface PortalInvoice {
@@ -58,7 +62,11 @@ interface PortalInvoice {
   can_pay_online?: boolean;
 }
 interface PortalDues {
-  dues: PortalInvoice[]; total_outstanding_paise: number; overdue_paise: number; overdue_count: number;
+  dues: PortalInvoice[];
+  /** Not numbers when `available` is false: the practice's fee records for this account could not be read, which is
+   *  not the same as owing nothing. `available` is absent from an older server and is then read as true. */
+  total_outstanding_paise: number | null; overdue_paise: number | null; overdue_count: number | null;
+  available?: boolean; reason?: string | null;
 }
 interface PortalReminder { invoice_no: string | null; status: string | null; sent_at: string | null; created_at: string | null }
 interface PortalCompliance {
@@ -115,6 +123,9 @@ export default function PortalDashboardPage() {
   const [active, setActive] = useState<string>("invoices");
   const [dues, setDues] = useState<PortalDues | null>(null);
   const [invoices, setInvoices] = useState<PortalInvoice[] | null>(null);
+  // The server's sentence when this account has no fee ledger the practice can read: neither a failed load nor an
+  // empty list of invoices, so it is kept apart from both (POST-A-245).
+  const [invoicesUnavailable, setInvoicesUnavailable] = useState<string | null>(null);
   const [reminders, setReminders] = useState<PortalReminder[] | null>(null);
   const [compliance, setCompliance] = useState<PortalCompliance[] | null>(null);
   const [statement, setStatement] = useState<PortalStatement | null>(null);
@@ -220,7 +231,7 @@ export default function PortalDashboardPage() {
   useEffect(() => {
     if (!activeClient) return;
     setDash(null); setDues(null);
-    setInvoices(null); setReminders(null); setCompliance(null); setStatement(null);
+    setInvoices(null); setInvoicesUnavailable(null); setReminders(null); setCompliance(null); setStatement(null);
     setDocuments(null); setRequests(null); setMessages(null);
     (async () => {
       try {
@@ -242,7 +253,8 @@ export default function PortalDashboardPage() {
     setSectionFailed((f) => ({ ...f, [key]: false }));
     try {
       if (key === "invoices" && invoices === null) {
-        const r = await api.portalSelf.invoices(client) as ApiResp<{ invoices: PortalInvoice[] }>;
+        const r = await api.portalSelf.invoices(client) as ApiResp<{ invoices: PortalInvoice[]; available?: boolean; reason?: string | null }>;
+        setInvoicesUnavailable(r.data?.available === false ? (r.data.reason ?? FEE_LEDGER_UNAVAILABLE_FALLBACK) : null);
         setInvoices(r.data?.invoices ?? []);
       } else if (key === "reminders" && reminders === null) {
         const r = await api.portalSelf.reminders(client) as ApiResp<{ reminders: PortalReminder[] }>;
@@ -388,6 +400,12 @@ export default function PortalDashboardPage() {
   }
 
   const activeSection = (dash?.sections ?? []).find((s) => s.key === active);
+  // The three headline figures, only when the server read the fee ledger and sent all three as numbers. An unavailable
+  // ledger, or a figure that did not arrive, is not shown as a zero.
+  const duesFigures = dues && dues.available !== false
+    && dues.total_outstanding_paise !== null && dues.overdue_paise !== null && dues.overdue_count !== null
+    ? { total: dues.total_outstanding_paise, overdue: dues.overdue_paise, count: dues.overdue_count }
+    : null;
 
   return (
     <PortalShell
@@ -415,20 +433,24 @@ export default function PortalDashboardPage() {
         <PageLoader />
       ) : (
         <>
-          {/* Dues summary — the headline "what do I owe the firm" figure. */}
-          {dues && (
+          {/* Dues summary — the headline "what do I owe the firm" figure. When the practice's fee records for this
+              account cannot be read there is no figure to show: three zeros would say "you owe nothing". */}
+          {dues && dues.available === false && (
+            <div className="mb-5"><Callout tone="note">{dues.reason ?? FEE_LEDGER_UNAVAILABLE_FALLBACK}</Callout></div>
+          )}
+          {duesFigures && (
             <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-ps-border bg-white p-4">
                 <p className="text-2xs uppercase tracking-wide text-ps-hint">Total Outstanding</p>
-                <p className="mt-1 text-xl font-semibold tabular-nums text-ps-ink">{formatPaise(dues.total_outstanding_paise)}</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-ps-ink">{formatPaise(duesFigures.total)}</p>
               </div>
-              <div className={`rounded-xl border p-4 ${dues.overdue_paise > 0 ? "border-state-problem-border bg-state-problem-surface" : "border-ps-border bg-white"}`}>
+              <div className={`rounded-xl border p-4 ${duesFigures.overdue > 0 ? "border-state-problem-border bg-state-problem-surface" : "border-ps-border bg-white"}`}>
                 <p className="text-2xs uppercase tracking-wide text-ps-hint">Overdue</p>
-                <p className={`mt-1 text-xl font-semibold tabular-nums ${dues.overdue_paise > 0 ? "text-state-problem" : "text-ps-ink"}`}>{formatPaise(dues.overdue_paise)}</p>
+                <p className={`mt-1 text-xl font-semibold tabular-nums ${duesFigures.overdue > 0 ? "text-state-problem" : "text-ps-ink"}`}>{formatPaise(duesFigures.overdue)}</p>
               </div>
               <div className="rounded-xl border border-ps-border bg-white p-4">
                 <p className="text-2xs uppercase tracking-wide text-ps-hint">Overdue Invoices</p>
-                <p className="mt-1 text-xl font-semibold tabular-nums text-ps-ink">{dues.overdue_count}</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-ps-ink">{duesFigures.count}</p>
               </div>
             </div>
           )}
@@ -467,7 +489,7 @@ export default function PortalDashboardPage() {
               {/* Once, above the table: why the Pay Now controls below are disabled, in the server's words. */}
               <OnlinePaymentNotice block={dash.online_payment}
                 anyPayable={(invoices ?? []).some((i) => i.can_pay_online === true)} />
-              {invoices === null ? (sectionFailed["invoices"] ? <ErrorRetry onRetry={() => loadSection("invoices", activeClient!)} /> : <Loading />) : invoices.length === 0 ? <Empty label="No invoices yet." /> : (
+              {invoices === null ? (sectionFailed["invoices"] ? <ErrorRetry onRetry={() => loadSection("invoices", activeClient!)} /> : <Loading />) : invoices.length === 0 ? <Empty label={invoicesUnavailable ?? "No invoices yet."} /> : (
                 <Table head={["Invoice", "Date", "Due", "Total", "Outstanding", "Status", ""]}>
                   {invoices.map((i) => (
                     <tr key={i.id} className="border-t border-ps-border">

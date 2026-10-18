@@ -297,6 +297,8 @@ function directWrite(call: ts.CallExpression, sf: ts.SourceFile): string | null 
   // out of this file's sight, so the call is named here (POST-A-151). Without this the three delete buttons dropped out
   // of the frozen table on the strength of a move, not of being guarded.
   if (name === "deleteStoredDocument") return "deleteStoredDocument(…)";
+  // The same for a plain row (POST-A-247): the write sits in lib/data/deleteRowAndConfirm.ts, so the call is named here.
+  if (name === "deleteRowAndConfirm") return "deleteRowAndConfirm(…)";
   if (name && FETCHERS.has(name)) {
     const method = stringLiteralArgs(call).find((s) => MUTATING_METHOD.test(s));
     if (method) return `${name}(…, "${method}")`;
