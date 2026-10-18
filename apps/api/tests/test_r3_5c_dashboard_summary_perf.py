@@ -52,16 +52,18 @@ def test_high_risk_clients_computed_without_per_client_repo_calls():
 
 
 def test_open_tasks_excludes_completed_server_side():
-    """find_all() must be called with exclude_statuses=["completed"] rather
-    than fetching every task and filtering completed ones out in Python."""
+    """The open-task counts come from `find_open`, which excludes completed tasks IN THE QUERY and reads every page,
+    rather than fetching every task and filtering completed ones out in Python (and, since POST-A-048, rather than the
+    unpaged `find_all`, which stopped at PostgREST's row cap while `find_overdue` beside it did not)."""
     with patch("domain.task_service.client_repo") as mock_clients, \
          patch("domain.task_service.task_repo") as mock_tasks, \
          patch("domain.compliance_record_service.compliance_record_service") as mock_records:
         mock_clients.find_all.return_value = []
-        mock_tasks.find_all.return_value = []
+        mock_tasks.find_open.return_value = []
         mock_tasks.find_overdue.return_value = []
         mock_records.list_records.return_value = []
 
         task_domain_service.get_dashboard_summary(firm_id=FIRM)
 
-        mock_tasks.find_all.assert_called_once_with(firm_id=FIRM, exclude_statuses=["completed"])
+        mock_tasks.find_open.assert_called_once_with(firm_id=FIRM)
+        mock_tasks.find_all.assert_not_called()

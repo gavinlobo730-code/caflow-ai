@@ -21,7 +21,7 @@ class ComplianceRecordIn(BaseModel):
     period_start: Optional[str] = None
     period_end: Optional[str] = None
     due_date: Optional[str] = None
-    status: str = "pending"
+    status: str = "Not Started"
     notes: Optional[str] = None
 
 

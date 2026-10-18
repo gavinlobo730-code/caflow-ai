@@ -303,13 +303,17 @@ class ComplianceRecordService:
         # was because an in-memory dict takes any value. Refusing here is what
         # production has always enforced, said out loud.
         period_end = data.get("period_end") or ""
+        due_date = data.get("due_date") or ""
+        # due_date is DATE NOT NULL with no default as well (migration 003), and the route's model carries it as
+        # Optional, so an omitted one reached the insert as None and came back as a 500 (23502). Said in words, here.
         missing = [n for n, v in (("period_start", period_start),
-                                  ("period_end", period_end)) if not v]
+                                  ("period_end", period_end),
+                                  ("due_date", due_date)) if not v]
         if missing:
             raise ValidationError(
                 missing[0],
-                "A compliance record needs a period: give period_start and "
-                "period_end as dates (YYYY-MM-DD). The obligation generator "
+                "A compliance record needs a period and a due date: give period_start, "
+                "period_end and due_date as dates (YYYY-MM-DD). The obligation generator "
                 "derives them from the financial year; a record created by hand "
                 "has to state them, because the table requires them."
             )
@@ -333,11 +337,13 @@ class ComplianceRecordService:
             # ever reached here as None — which the repository's None-filter
             # dropped — so it was one caller away from breaking every create.
             "compliance_type": compliance_type,
-            "period_label": data.get("period_label", ""),
+            # NOT NULL too: the key is PRESENT with None when the request omitted it, so a `.get(key, "")` default never
+            # applied and the insert came back 23502.
+            "period_label": data.get("period_label") or "",
             "period_start": period_start,
             "period_end": period_end,
             "status": data.get("status", "Not Started"),
-            "due_date": data["due_date"],
+            "due_date": due_date,
             "assigned_to": data.get("assigned_to"),
             "priority": data.get("priority", "medium"),
             "notes": data.get("notes"),

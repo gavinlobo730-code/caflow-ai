@@ -34,7 +34,9 @@ class TaskDomainService:
         # Nothing below needs a completed task's row — push the exclusion to
         # the query instead of fetching every task ever created and
         # discarding the completed ones in Python.
-        open_tasks = task_repo.find_all(firm_id=firm_id, exclude_statuses=["completed"])
+        # `find_open` reads every page, like `find_overdue` below it: through `find_all` a firm with more open tasks than
+        # PostgREST's row cap was told a smaller open count than its overdue count on the same payload.
+        open_tasks = task_repo.find_open(firm_id=firm_id)
 
         # R3.13d: compliance_records (System A) is the sole source now —
         # compliance_tasks (System B) is being retired.

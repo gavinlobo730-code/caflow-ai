@@ -123,17 +123,6 @@ class Premise:
 
 #: Every premise below was verified true on 08-10-2026 against origin/main.
 PREMISES: dict[str, Premise] = {
-    "compliance_records_create": Premise(
-        claim=("No screen names /api/compliance-records: `api.complianceRecords.*` "
-               "has no caller outside lib/api/index.ts, so nobody can send the "
-               "create that POST /api/compliance-records takes."),
-        held_down=("POST-A-209 is rated low and latent: ComplianceRecordIn.status "
-                   "defaults to 'pending', which migration 108's CHECK refuses, so "
-                   "the first screen that creates a record without a status fails "
-                   "against a real database while the mock suite accepts it."),
-        kind="route",
-        routes=(("POST", "/api/compliance-records"),),
-    ),
     "ai_copilot_firm_context_and_chat": Premise(
         claim=("No screen calls GET /api/ai-copilot/firm-context or "
                "POST /api/ai-copilot/chat."),
