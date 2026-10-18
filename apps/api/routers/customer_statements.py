@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access
+from core.list_window import MAX_LIST_LIMIT, split
 from services.customer_statement_service import customer_statement_service
 from services.audit_service import log_event
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
@@ -30,6 +31,9 @@ router = APIRouter(prefix="/api/customer-statements", tags=["customer-statements
 
 
 _db = db_provider.request_db_or_none
+
+#: A customer is emailed a statement perhaps monthly, so a page of fifty is a few years; the screen can ask for more.
+DELIVERY_LIST_LIMIT = 50
 
 
 class StatementEmailIn(BaseModel):
@@ -152,20 +156,38 @@ def email_statement(
     return api_response(True, {"sent": True, "to": to_email, "delivery_id": delivery_id})
 
 
+def _delivery_window(rows: list[dict], limit: int):
+    """The answer: the newest `limit` deliveries and whether the read found one beyond them (the probe row is dropped)."""
+    window, has_more = split(rows, limit)
+    return api_response(True, {
+        "deliveries": window,
+        "returned": len(window),
+        "has_more": has_more,
+        "limit": limit,
+        "max_limit": MAX_LIST_LIMIT,
+    })
+
+
 @router.get("/deliveries")
 def list_deliveries(
     client_id: str = Query(...),
     customer_id: str = Query(...),
+    limit: int = Query(DELIVERY_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
     current_user: dict = Depends(rbac("invoice", "read")),
 ):
+    """The newest statement emails sent to one customer, newest first, and whether older ones exist.
+
+    A row says what the MAIL SERVICE reported: `sent` means it accepted the message, not that anyone opened it, and
+    `bounced` is set later by the provider's own event. `failed` carries the generic reason the send path stores.
+    """
     # Mount-guard-covered (client_id is required here); explicit so the scope
     # check is visible at the read, and AHEAD of the no-DB early return.
     assert_client_access(current_user, client_id)
     db = _db()
     if not db:
-        return api_response(True, [])
-    return api_response(True, customer_statement_service.deliveries(
-        db, current_user["firm_id"], client_id, customer_id))
+        return _delivery_window([], limit)
+    return _delivery_window(customer_statement_service.deliveries(
+        db, current_user["firm_id"], client_id, customer_id, limit), limit)
 
 
 def _audit(current_user, customer_id, action, client_id, start, end, extra=None):

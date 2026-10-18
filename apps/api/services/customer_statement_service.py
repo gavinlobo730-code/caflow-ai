@@ -31,6 +31,7 @@ from domain.reporting.party_advances import (
     AdvanceInput, aging_bucket as _aging_bucket, empty_buckets, unapplied_advances,
 )
 from core.db_paging import fetch_all
+from core.list_window import probe
 
 _logger = logging.getLogger("caflow.customer_statement")
 
@@ -442,10 +443,17 @@ class CustomerStatementService:
             update["error_message"] = error[:200]
         db.table("customer_statement_deliveries").update(update).eq("id", delivery_id).execute()
 
-    def deliveries(self, db, firm_id, client_id, customer_id) -> list[dict]:
-        return (db.table("customer_statement_deliveries").select("*")
+    #: What a delivery row shows a person. `provider_message_id` is the mail service's own reference and `firm_id`,
+    #: `client_id` and `customer_id` are what the read was keyed on; none is for the screen.
+    DELIVERY_COLUMNS = ("id, period_start, period_end, sent_to, sent_by_email, status, error_message, sent_at, created_at")
+
+    def deliveries(self, db, firm_id, client_id, customer_id, limit: int) -> list[dict]:
+        """The newest `limit` rows PLUS ONE (`core.list_window.probe`): the caller splits the extra row off to learn whether
+        older deliveries exist. Ordered by `created_at` then `id`, both newest first, so a tie is never on two windows."""
+        return (db.table("customer_statement_deliveries").select(self.DELIVERY_COLUMNS)
                 .eq("firm_id", firm_id).eq("client_id", client_id).eq("customer_id", customer_id)
-                .order("created_at", desc=True).execute().data or [])
+                .order("created_at", desc=True).order("id", desc=True)
+                .limit(probe(limit)).execute().data or [])
 
 
 customer_statement_service = CustomerStatementService()

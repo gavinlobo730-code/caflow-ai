@@ -180,7 +180,7 @@ BUDGET: dict[str, int] = {
     "/api/identity": 2, "/api/insights": 2, "/api/notifications": 2,
     "/api/public": 2, "/api/sales-cycle": 2,
     "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 1,
-    "/api/approvals": 1, "/api/customer-statements": 1,
+    "/api/approvals": 1,
     "/api/document-intelligence-v2": 1, "/api/documents": 1,
     "/api/knowledge": 1,
     "/api/purchase-bills": 1,
