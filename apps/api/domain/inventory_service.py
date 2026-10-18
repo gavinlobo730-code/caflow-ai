@@ -56,21 +56,22 @@ _logger = logging.getLogger("caflow.inventory")
 
 
 def _note_unresolved_catalogue_ids(document: str, wanted: list, resolved: list) -> None:
-    """Say, in the log, that a document line named an item this firm does not hold.
+    """Say, in the log, that a document line named an item this client does not hold.
 
-    Since the lookup is made under the firm (engineering-28) an id that is not this
-    firm's, or no longer exists, resolves to nothing and the line is not a goods
-    line here: it moves no stock and earns no cost-of-goods entry. That is the right
-    outcome and it used to be invisible, because the same id was silently processed
-    against whichever firm owned it. Only the COUNT is logged: an id the firm does
-    not own is not the firm's to be told about, and a service line, which does
-    resolve, is not counted.
+    Since the lookup is made under the firm (engineering-28) AND the client (the
+    catalogue is the client's, POST-A-109) an id that is not this client's, or no
+    longer exists, resolves to nothing and the line is not a goods line here: it
+    moves no stock and earns no cost-of-goods entry. That is the right outcome and it
+    used to be invisible, because the same id was silently processed against whichever
+    firm or client owned it. Only the COUNT is logged: an id the client does not own is
+    not the client's to be told about, and a service line, which does resolve, is not
+    counted.
     """
     missing = len(wanted) - len(resolved)
     if missing > 0:
         _logger.warning(
-            "%s: %d line item id(s) did not resolve to an item of this firm "
-            "and moved no stock", document, missing)
+            "%s: %d line item id(s) did not resolve to an item of this firm and "
+            "client and moved no stock", document, missing)
 
 
 def _round_paise(value) -> int:
@@ -1225,10 +1226,14 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
         # caller's firm. Resolved WITHOUT the firm, a line naming another firm's
         # item moved that firm's stock, wrote the movement under this one and
         # priced the COGS off the other firm's average cost. An item that is not
-        # this firm's is simply not a goods line here.
+        # this firm's is simply not a goods line here. The catalogue is also
+        # CLIENT-owned (migration 182: `client_id` NOT NULL), and the firm filter
+        # alone left a line for one client naming another client's item of the
+        # same firm moving THAT client's stock and pricing off ITS average cost,
+        # so the client is part of the lookup too (POST-A-109).
         items = (
             db.table("service_catalogue").select("id, kind, name")
-            .in_("id", catalogue_ids).eq("firm_id", firm_id).execute().data
+            .in_("id", catalogue_ids).eq("firm_id", firm_id).eq("client_id", client_id).execute().data
         ) or []
         _note_unresolved_catalogue_ids("sale", catalogue_ids, items)
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
@@ -1431,11 +1436,11 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
         catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
         if not catalogue_ids:
             return
-        # The firm filter is what keeps a line naming another firm's item out;
-        # see apply_sale_to_inventory for why.
+        # The firm and client filters are what keep a line naming another firm's
+        # or another client's item out; see apply_sale_to_inventory for why.
         items = (
             db.table("service_catalogue").select("id, kind, name")
-            .in_("id", catalogue_ids).eq("firm_id", firm_id).execute().data
+            .in_("id", catalogue_ids).eq("firm_id", firm_id).eq("client_id", client_id).execute().data
         ) or []
         _note_unresolved_catalogue_ids("purchase", catalogue_ids, items)
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
@@ -1572,9 +1577,14 @@ def reverse_sale_stock(db, *, firm_id: str, client_id: str, invoice_id: str, inv
         # (CLAUDE.md, "Reporting performance"). The policy carries its own
         # client so a line cannot be priced on another client's formula.
         policy = resolve_costing_policy(db, client_id)
+        # The ledger is read by the document's id, which is only unique within
+        # its own table: asking for the movements of THIS firm's and THIS
+        # client's document is what keeps a reversal from reading (and then
+        # reversing) another's rows (POST-A-109).
         already = (
             db.table("inventory_stock_ledger").select("id")
             .eq("source_type", "sales_invoice").eq("source_id", invoice_id).eq("movement_type", "sale_reversal")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
             .limit(1).execute().data
         )
         if already:
@@ -1582,6 +1592,7 @@ def reverse_sale_stock(db, *, firm_id: str, client_id: str, invoice_id: str, inv
         original_moves = (
             db.table("inventory_stock_ledger").select("*")
             .eq("source_type", "sales_invoice").eq("source_id", invoice_id).eq("movement_type", "sale")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data
         ) or []
         today = _today()
@@ -1750,11 +1761,11 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
         catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
         if not catalogue_ids:
             return
-        # The firm filter is what keeps a line naming another firm's item out;
-        # see apply_sale_to_inventory for why.
+        # The firm and client filters are what keep a line naming another firm's
+        # or another client's item out; see apply_sale_to_inventory for why.
         items = (
             db.table("service_catalogue").select("id, kind, name")
-            .in_("id", catalogue_ids).eq("firm_id", firm_id).execute().data
+            .in_("id", catalogue_ids).eq("firm_id", firm_id).eq("client_id", client_id).execute().data
         ) or []
         _note_unresolved_catalogue_ids("credit note", catalogue_ids, items)
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
@@ -1820,11 +1831,11 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
         catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
         if not catalogue_ids:
             return
-        # The firm filter is what keeps a line naming another firm's item out;
-        # see apply_sale_to_inventory for why.
+        # The firm and client filters are what keep a line naming another firm's
+        # or another client's item out; see apply_sale_to_inventory for why.
         items = (
             db.table("service_catalogue").select("id, kind, name")
-            .in_("id", catalogue_ids).eq("firm_id", firm_id).execute().data
+            .in_("id", catalogue_ids).eq("firm_id", firm_id).eq("client_id", client_id).execute().data
         ) or []
         _note_unresolved_catalogue_ids("debit note", catalogue_ids, items)
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
@@ -1870,6 +1881,7 @@ def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bi
         already = (
             db.table("inventory_stock_ledger").select("id")
             .eq("source_type", "purchase_bill").eq("source_id", bill_id).eq("movement_type", "purchase_reversal")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
             .limit(1).execute().data
         )
         if already:
@@ -1877,6 +1889,7 @@ def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bi
         original_moves = (
             db.table("inventory_stock_ledger").select("*")
             .eq("source_type", "purchase_bill").eq("source_id", bill_id).eq("movement_type", "purchase")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data
         ) or []
         today = _today()
@@ -2192,7 +2205,8 @@ def apply_stock_adjustment(
     try:
         items = (
             db.table("service_catalogue").select("id, name, gst_rate_bps")
-            .eq("id", service_catalogue_id).limit(1).execute().data
+            .eq("id", service_catalogue_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .limit(1).execute().data
         ) or []
         if not items:
             return None
@@ -2339,13 +2353,19 @@ def apply_nrv_writedown(
 ) -> Optional[dict]:
     """One call per manual NRV write-down (routers/inventory.py). Fail-soft
     — never raises. Returns None when there's no stock to write down or NRV
-    is already >= cost (both legitimate no-ops, not failures)."""
+    is already >= cost (both legitimate no-ops, not failures), and when the
+    item is not this firm's and this client's: the route asks that already,
+    but this function is the one that moves the stock, so it asks too, as
+    `apply_stock_adjustment` now does (POST-A-109)."""
     try:
         items = (
             db.table("service_catalogue").select("id, name")
-            .eq("id", service_catalogue_id).limit(1).execute().data
+            .eq("id", service_catalogue_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .limit(1).execute().data
         ) or []
-        item_name = items[0].get("name") if items else "item"
+        if not items:
+            return None
+        item_name = items[0].get("name") or "item"
 
         movement = record_nrv_writedown(
             db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,

@@ -28,6 +28,8 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
+from fastapi import HTTPException
+
 from core.db_paging import fetch_all
 from domain.inventory import batches as batch_domain
 from domain.inventory import location as loc
@@ -184,6 +186,17 @@ def create_batch(db, *, firm_id: str, client_id: str, service_catalogue_id: str,
                  batch_no: str, manufactured_on: Optional[str],
                  expiry_date: Optional[str], notes: Optional[str],
                  actor_id: Optional[str]) -> dict:
+    # A batch names an item, and the id arrives in the request body. Foreign keys are checked without row security, so
+    # the database accepts ANY item's id: another firm's or another client's item would carry this client's batch, take its
+    # lot number (UNIQUE per item) away from the item's real owner, and answer as an existence oracle. The item is asked for
+    # under the firm AND the client, like the adjustment and write-down doors (POST-A-109).
+    item = (db.table("service_catalogue").select("id, kind")
+            .eq("id", service_catalogue_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .limit(1).execute().data or [])
+    if not item:
+        raise HTTPException(status_code=404, detail="Stock item not found.")
+    if item[0].get("kind") != "good":
+        raise HTTPException(status_code=422, detail="Only stock-tracked products have batches.")
     rows = db.table("inventory_batches").insert({
         "firm_id": firm_id,
         "client_id": client_id,
