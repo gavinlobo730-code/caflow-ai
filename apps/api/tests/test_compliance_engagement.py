@@ -685,9 +685,9 @@ def test_mark_filed_endpoint_404_other_firm():
 def _co_deny(monkeypatch, refuse_client="CL-B"):
     import routers.compliance_ops as co
 
-    def _assert(user, client_id):
+    def _assert(user, client_id, *, detail="Not found"):
         if client_id == refuse_client:
-            raise HTTPException(status_code=404, detail="Not found")
+            raise HTTPException(status_code=404, detail=detail)
 
     monkeypatch.setattr(co, "assert_client_access", _assert)
     monkeypatch.setattr(co, "effective_client_ids",

@@ -134,9 +134,9 @@ def deny(monkeypatch):
     mock mode, so without this there is nothing to observe."""
     asked = []
 
-    def _deny(user, client_id):
+    def _deny(user, client_id, *, detail="Not found"):
         asked.append((user.get("id"), client_id))
-        raise HTTPException(status_code=404, detail="Not found")
+        raise HTTPException(status_code=404, detail=detail)
 
     monkeypatch.setattr(rb, "assert_client_access", _deny)
     return asked

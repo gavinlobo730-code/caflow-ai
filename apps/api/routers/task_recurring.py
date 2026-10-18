@@ -91,7 +91,7 @@ def _assert_config_scope(current_user: dict, config_id: str) -> dict:
     config = getattr(res, "data", None)
     if not config:
         raise HTTPException(status_code=404, detail="Recurring config not found")
-    assert_client_access(current_user, config.get("client_id"))
+    assert_client_access(current_user, config.get("client_id"), detail="Recurring config not found")
     return config
 
 

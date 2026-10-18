@@ -35,7 +35,7 @@ def _assert_job_scope(current_user: dict, job_id: str) -> dict:
     job = get_sync_job(current_user["firm_id"], job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Sync job not found")
-    assert_client_access(current_user, job.get("client_id"))
+    assert_client_access(current_user, job.get("client_id"), detail="Sync job not found")
     return job
 
 

@@ -87,7 +87,7 @@ def _assert_row_scope(db, current_user: dict, table: str, row_id: str, label: st
     found, client_id = _row_owner(db, current_user, table, row_id, mock_rows)
     if not found:
         raise HTTPException(status_code=404, detail=f"{label} not found")
-    assert_client_access(current_user, client_id)
+    assert_client_access(current_user, client_id, detail=f"{label} not found")
     return client_id
 
 

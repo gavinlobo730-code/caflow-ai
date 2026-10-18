@@ -600,7 +600,7 @@ def mark_calendar_entry_filed(
     # The caller may only touch a client they are assigned to (M2). Reading the
     # row firm-scoped is not enough: firm_id alone let one staff member mark
     # another's client filed.
-    assert_client_access(current_user, row.get("client_id"))
+    assert_client_access(current_user, row.get("client_id"), detail="Compliance entry not found")
 
     ctype = str(row.get("compliance_type") or "")
     arn = (body.arn or "").strip() or None

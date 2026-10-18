@@ -203,4 +203,45 @@ def test_the_check_keys_on_client_id_not_on_the_scope_label(db, monkeypatch):
                                       "client_id": THEIRS, "is_archived": False}]))
     with pytest.raises(HTTPException) as e:
         kb._load_article_or_404(kb._db(), _user("executive"), "A-ODD")
-    assert e.value.status_code == 403
+    # Refused, and refused as "no such article": the caller cannot view that client's content, so a 403 would say the id is real.
+    assert e.value.status_code == 404
+    assert e.value.detail == "Article not found"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 3. An article the caller cannot see answers exactly as one that is not there (POST-A-017)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _refusal(call):
+    with pytest.raises(HTTPException) as e:
+        call()
+    return e.value.status_code, e.value.detail
+
+
+@pytest.mark.parametrize("write", [False, True])
+def test_an_article_in_a_client_the_caller_is_not_on_looks_like_a_missing_one(db, write):
+    missing = _refusal(lambda: kb._load_article_or_404(kb._db(), _user("executive"), "A-NOPE", write=write))
+    hidden = _refusal(lambda: kb._load_article_or_404(kb._db(), _user("executive"), "A-THEIRS", write=write))
+    assert missing == hidden == (404, "Article not found")
+
+
+def test_an_internal_practice_article_looks_like_a_missing_one_to_a_manager(db, monkeypatch):
+    monkeypatch.setattr(kb, "is_internal_client", lambda cid, fid: cid == THEIRS)
+    missing = _refusal(lambda: kb._load_article_or_404(kb._db(), _user("manager"), "A-NOPE"))
+    hidden = _refusal(lambda: kb._load_article_or_404(kb._db(), _user("manager"), "A-THEIRS"))
+    assert missing == hidden == (404, "Article not found")
+
+
+def test_every_path_that_loads_an_article_by_id_hides_a_hidden_one(db):
+    for call in (lambda: kb.get_article(_user("executive"), "A-THEIRS"),
+                 lambda: kb.list_versions(_user("executive"), "A-THEIRS"),
+                 lambda: kb.edit_article(_user("executive"), "A-THEIRS", "x"),
+                 lambda: kb.archive_article(_user("executive"), "A-THEIRS"),
+                 lambda: kb.restore_version(_user("executive"), "A-THEIRS", 1)):
+        assert _refusal(call) == (404, "Article not found")
+
+
+def test_a_caller_who_can_read_an_article_but_not_write_it_is_still_told_so(db):
+    """They can already see it, so the 403 discloses nothing and is the honest answer."""
+    assert _refusal(lambda: kb._load_article_or_404(kb._db(), _user("reviewer"), "A-MINE", write=True)) \
+        == (403, "Not authorised for this client")

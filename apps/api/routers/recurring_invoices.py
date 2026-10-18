@@ -119,7 +119,7 @@ def _assert_template_scope(current_user: dict, template_id: str) -> Optional[str
     t = recurring.get_template(current_user["firm_id"], template_id)
     if not t:
         raise HTTPException(status_code=404, detail="Recurring template not found.")
-    assert_client_access(current_user, t.get("client_id"))
+    assert_client_access(current_user, t.get("client_id"), detail="Recurring template not found.")
     return t.get("client_id")
 
 

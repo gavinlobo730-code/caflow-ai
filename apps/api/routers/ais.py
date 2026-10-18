@@ -178,7 +178,7 @@ def delete_record(
         if not record:
             raise HTTPException(404, detail="Record not found")
         # Row-addressed, so the mount guard never fires: scope it here.
-        assert_client_access(current_user, record["client_id"])
+        assert_client_access(current_user, record["client_id"], detail="Record not found")
         return api_response(True, ais_service.delete_record(
             firm_id=current_user["firm_id"], record_id=record_id))
     except ais_service.AISRefused as e:

@@ -83,10 +83,10 @@ def deny(monkeypatch):
     catches a guard that resolves the wrong id."""
     seen = []
 
-    def _check(user, client_id):
+    def _check(user, client_id, *, detail="Not found"):
         seen.append(client_id)
         if client_id == THEIRS:
-            raise HTTPException(status_code=404, detail="Not found")
+            raise HTTPException(status_code=404, detail=detail)
 
     monkeypatch.setattr(mem, "assert_client_access", _check)
     return seen

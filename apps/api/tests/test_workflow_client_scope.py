@@ -110,10 +110,10 @@ def deny(monkeypatch):
     pass — that is the case a blunt "deny everything" fixture would hide."""
     seen = []
 
-    def _check(user, client_id):
+    def _check(user, client_id, *, detail="Not found"):
         seen.append(client_id)
         if client_id == THEIRS:
-            raise HTTPException(status_code=404, detail="Not found")
+            raise HTTPException(status_code=404, detail=detail)
 
     monkeypatch.setattr(wb, "assert_client_access", _check)
     return seen

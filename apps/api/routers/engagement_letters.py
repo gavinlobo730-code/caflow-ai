@@ -94,7 +94,7 @@ def _assert_engagement_scope(db, current_user: dict, engagement_id: str) -> Opti
     found, client_id = _engagement_owner(db, current_user, engagement_id)
     if not found:
         raise HTTPException(status_code=404, detail="Engagement not found")
-    assert_client_access(current_user, client_id)
+    assert_client_access(current_user, client_id, detail="Engagement not found")
     return client_id
 
 
