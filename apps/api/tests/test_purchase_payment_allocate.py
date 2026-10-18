@@ -147,10 +147,11 @@ def test_allocate_rejects_bill_from_another_client(monkeypatch):
     db, vend_id = _setup(monkeypatch)
     db.seed("clients", {"id": "CLI2", "firm_id": FIRM, "gstin": "27ABCDE9999F1Z5"})
     seed_standard_coa(db, FIRM, "CLI2")
+    db.seed("service_catalogue", {"id": "SVC-2", "firm_id": FIRM, "client_id": "CLI2", "name": "Material", "kind": "service"})
     other_vend = ve.create_vendor(VendorIn(client_id="CLI2", name="Other Vendor", state_code="27"), CALLER)["data"]
     other_bill = pb.create_purchase_bill(PurchaseBillIn(
         client_id="CLI2", vendor_id=other_vend["id"], bill_date="2026-06-01", bill_no="OTHER-1",
-        lines=[PurchaseBillLineIn(service_catalogue_id="SVC-1", description="m", rate_paise=50000,
+        lines=[PurchaseBillLineIn(service_catalogue_id="SVC-2", description="m", rate_paise=50000,
                                   quantity=1, gst_rate_percent=0.0)]), CALLER)["data"]
 
     payment = pps.create_payment_core(FIRM, {

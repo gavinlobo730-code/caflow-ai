@@ -29,6 +29,7 @@ from services.credit_terms import resolve_credit_terms, apply_credit_days_due_da
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services import vendor_tds
+from services.line_item_ownership import ItemOwner, check as check_items_are_the_clients
 from services.timeline_service import timeline_service
 from core.ist_clock import ist_fy_label, ist_today
 
@@ -364,6 +365,7 @@ def preview_purchase_bill_tds(
             # aggregate — the same reason update_purchase_bill passes it.
             exclude_bill_id=exclude_bill_id,
             is_reverse_charge=bool(body.get("is_reverse_charge", False)),
+            owner=ItemOwner(None if _USE_MOCK else db, firm_id, body["client_id"]),
         )
         return api_response(True, {
             "taxable_amount_paise": computed["taxable_amount_paise"],
@@ -491,6 +493,7 @@ def _compute_bill_lines_and_totals(
     db=None,
     exclude_bill_id: Optional[str] = None,
     is_reverse_charge: bool = False,
+    owner: Optional[ItemOwner] = None,
 ) -> dict:
     """Compute GST-split lines + vendor TDS for a purchase bill, in integer
     paise. Shared by create (_create_purchase_bill_core) and update
@@ -512,7 +515,12 @@ def _compute_bill_lines_and_totals(
     / line_total_paise / net_payable — is the taxable value only. Previously
     RCM bills were computed identically to normal bills, overstating Trade
     Payables by the GST the vendor never charged.
+
+    `owner` (POST-A-246) is whose catalogue the lines' items are checked against: every line must name an item of the bill's
+    own client, or the bill would post its payable and credit and move no stock. A caller that has no catalogue to read (mock
+    mode) passes None, and `tests/test_an_item_on_a_document_line_is_the_documents_clients.py` fails a router call that omits it.
     """
+    check_items_are_the_clients(owner, lines_data)
     computed_lines: list[dict] = []
     total_taxable = 0
     total_cgst    = 0
@@ -524,8 +532,7 @@ def _compute_bill_lines_and_totals(
     # counts toward the vendor's total_paise/net_payable (the bill amount
     # owed is unaffected by ITC eligibility, only the ITC claim is).
     total_ineligible_cgst = 0
-    total_ineligible_sgst = 0
-    total_ineligible_igst = 0
+    total_ineligible_sgst = total_ineligible_igst = 0   # (one statement: the function sits at the 75-statement limit)
     # GST (Compensation to States) Act 2017 s.8 — a fourth head, kept apart from
     # the three above the whole way. s.11(2)'s proviso ring-fences its credit
     # ("shall be utilised only towards payment of cess"), so it must never be
@@ -889,6 +896,9 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         lines_data, is_interstate, vendor, data["bill_date"], firm_id or "", dc,
         db=(db if not _USE_MOCK else None),
         is_reverse_charge=is_reverse_charge,
+        # In a bulk import the batch keeps the items it has already found, so it costs one read per distinct item.
+        owner=ItemOwner(None if _USE_MOCK else db, firm_id or "", client_id,
+                        None if bulk_cache is None else bulk_cache.setdefault("owned_items", {}).setdefault(client_id, set())),
     )
     computed_lines    = computed["computed_lines"]
     total_taxable     = computed["taxable_amount_paise"]
@@ -1262,6 +1272,9 @@ def bulk_create_purchase_bills(
     # The client lock is the same question at a finer grain — one answer per
     # (client, date) rather than per FY, since a filed GSTR-3B closes a month.
     period_lock_cache: dict = {}
+    # The items each client's catalogue has already been found to hold, shared across the loop (POST-A-246): a batch costs
+    # one read per distinct item, not one per bill.
+    owned_items: dict = {}
 
     for i, bill_no, data in parsed:
         try:
@@ -1273,6 +1286,7 @@ def bulk_create_purchase_bills(
                     "client_state_code": (client_gstin_by_id.get(data.client_id) or {}).get("state_code"),
                     "locked_fy_cache": locked_fy_cache,
                     "period_lock_cache": period_lock_cache,
+                    "owned_items": owned_items,
                 }
             bill = _create_purchase_bill_core(data.model_dump(), current_user, bulk_cache=bulk_cache)
             created.append(bill)
@@ -1553,6 +1567,7 @@ def update_purchase_bill(
                             lines_data, is_interstate, vendor, bill_date_for_calc,
                             current_user.get("firm_id") or "", dc, db=None, exclude_bill_id=bill_id,
                             is_reverse_charge=bool(b.get("is_reverse_charge")),
+                            owner=None,   # mock mode has no catalogue to read
                         )
                         MOCK_PURCHASE_BILL_LINES[:] = [ln for ln in MOCK_PURCHASE_BILL_LINES if ln.get("bill_id") != bill_id]
                         for ln in computed["computed_lines"]:
@@ -1657,6 +1672,7 @@ def update_purchase_bill(
                 lines_data, is_interstate, vendor, data.get("bill_date") or existing_date,
                 firm_id, dc, db=db, exclude_bill_id=bill_id,
                 is_reverse_charge=bool(bill_row.get("is_reverse_charge")),
+                owner=ItemOwner(db, firm_id or "", bill_row.get("client_id") or ""),
             )
             db.table("purchase_bill_lines").delete().eq("bill_id", bill_id).execute()
             line_payloads = [

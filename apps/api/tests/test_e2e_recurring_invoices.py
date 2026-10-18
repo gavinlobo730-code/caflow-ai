@@ -30,6 +30,8 @@ def _setup(monkeypatch):
     db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27ABCDE1234F1Z5"})
     db.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": "CLI",
                           "name": "Acme", "state_code": "27", "credit_days": 15, "is_active": True})
+    # Every line names an item of the document's own client (POST-A-246): generation goes through the same create path.
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI", "name": "Retainer", "kind": "service"})
     return db
 
 

@@ -34,6 +34,7 @@ from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from core.ist_clock import ist_fy_label, ist_today
 from domain.gst import invoice_series
 from services import numbering, sales_numbering_service
+from services.line_item_ownership import assert_items_are_the_clients
 from domain.money_text import whole_rupees
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -827,6 +828,13 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     else:
         _assert_invoice_no_available(None if _USE_MOCK else db, firm_id, client_id, invoice_no)  # type: ignore[possibly-undefined]
 
+    # EVERY LINE NAMES AN ITEM OF THIS CLIENT (POST-A-246). The posting paths look an item up under the firm AND the client, so
+    # a line naming a sibling's item would otherwise issue, post revenue and GST, and move no stock. In a bulk import the
+    # batch keeps the set it has already found, so it costs one read per distinct item and not one per invoice.
+    assert_items_are_the_clients(
+        None if _USE_MOCK else db, firm_id or "", client_id, lines_data,  # type: ignore[possibly-undefined]
+        known=None if bulk_cache is None else bulk_cache.setdefault("owned_items", {}).setdefault(client_id, set()))
+
     # RULE 46(b)'s CONSECUTIVE LIMB, SAID ONCE, AT THE MOMENT THE NUMBER IS
     # CHOSEN. A warning and not a refusal — `domain/gst/invoice_series.py`
     # records why, and the short version is that a gap has legitimate causes (a
@@ -920,8 +928,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     computed_lines: list[dict] = []
     total_taxable_paise = 0
     total_cgst_paise    = 0
-    total_sgst_paise    = 0
-    total_igst_paise    = 0
+    total_sgst_paise = total_igst_paise = 0   # (one statement, so this function stays within its statement baseline)
     # GST (Compensation to States) Act 2017 s.8 — its own head, kept apart from
     # the three above all the way through, because s.11(2)'s proviso ring-fences
     # its credit ("shall be utilised only towards payment of cess") and
@@ -1446,6 +1453,9 @@ def bulk_create_invoices(
     # An import is usually one client and a handful of dates, so this turns a
     # round trip per row into a round trip per distinct date.
     period_lock_cache: dict = {}
+    # The items each client's catalogue has already been found to hold, shared across the loop (POST-A-246): a batch costs
+    # one read per distinct item, not one per invoice.
+    owned_items: dict = {}
 
     for i, invoice_no, data in parsed:
         try:
@@ -1455,6 +1465,7 @@ def bulk_create_invoices(
                 "existing_invoice_nos": existing_invoice_nos_by_client.setdefault(data.client_id, set()),
                 "locked_fy_cache": locked_fy_cache,
                 "period_lock_cache": period_lock_cache,
+                "owned_items": owned_items,
             }
             invoice = _create_invoice_core(data.model_dump(), current_user, bulk_cache=bulk_cache)
             created.append(invoice)
@@ -1844,6 +1855,7 @@ def update_invoice(
             # one. The GST math (_compute_line_gst) itself is unchanged.
             inv_resp = db.table("client_sales_invoices").select("*").eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
             inv = inv_resp.data[0]
+            assert_items_are_the_clients(db, current_user.get("firm_id") or "", inv.get("client_id") or "", data["lines"])
             is_interstate = data.get("is_interstate", inv.get("is_interstate", False))
             # task #103: currency/exchange_rate can never change on edit (no such
             # fields on SalesInvoiceUpdateIn) — reconstruct the FROZEN DocumentCurrency
@@ -1855,8 +1867,7 @@ def update_invoice(
             total_taxable = 0
             total_cgst    = 0
             total_sgst    = 0
-            total_igst    = 0
-            total_cess    = 0
+            total_igst = total_cess = 0   # (one statement, so this function stays within its statement baseline)
             total_discount = 0
 
             # §15(3)(a), identically to the create path and through the same

@@ -59,6 +59,7 @@ _d = _rec.to_date
 from domain.recurrence import next_occurrence                       # noqa: E402
 from core.ist_clock import ist_today
 from core import db_provider
+from services.line_item_ownership import assert_items_are_the_clients
 
 # Mock stores (mock mode only).
 MOCK_RECURRING_BILL_TEMPLATES: list[dict] = []
@@ -195,6 +196,8 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None
         MOCK_RECURRING_BILL_TEMPLATES.append(payload)
         return dict(payload)
     db = db or _db()
+    # A template whose line names another client's item could never generate (every run would refuse it): say so now (POST-A-246).
+    assert_items_are_the_clients(db, firm_id, data["client_id"], data["lines"])
     # Spelled out rather than `insert(payload)`: the column check above reads a
     # dict LITERAL at the call site, and `payload` is mutated by the mock branch
     # so it cannot be read even by the payload parser's local-binding pass.
@@ -219,6 +222,12 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None
         ln["template_id"] = row["id"]
     row["lines"] = lines
     return row
+
+
+def _assert_edited_lines_are_the_clients(db, firm_id: str, existing: dict, data: dict) -> None:
+    """An edit that replaces the lines names only items of the template's own client (POST-A-246); one that does not asks nothing."""
+    if data.get("lines") is not None:
+        assert_items_are_the_clients(db, firm_id, existing.get("client_id") or "", data["lines"])
 
 
 def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict:
@@ -259,6 +268,7 @@ def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict
                     t["lines"] = new_lines
         return dict(existing)
     db = db or _db()
+    _assert_edited_lines_are_the_clients(db, firm_id, existing, data)
     (db.table("recurring_purchase_bill_templates").update(fields)
        .eq("id", template_id).eq("firm_id", firm_id).execute())
     if new_lines is not None:
