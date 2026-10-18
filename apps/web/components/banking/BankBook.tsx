@@ -18,6 +18,7 @@ import { objectOrNull } from "@/lib/api/shape";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { formatDate } from "@/lib/dates/format";
 
 // ── Bank register (Tier 1.1) ───────────────────────────────────────────────
 // The ledger view of one account. READ-ONLY by design: posted journals are
@@ -299,7 +300,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
       {data?.divergence && (
         <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
           <p className="text-xs font-semibold text-amber-900">
-            This register stops agreeing with the statement on {data.divergence.transaction_date}
+            This register stops agreeing with the statement on {formatDate(data.divergence.transaction_date)}
           </p>
           <p className="text-2xs text-state-attention mt-1">
             After “{data.divergence.description}” the bank says the balance was{" "}
@@ -389,7 +390,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
                 {data.lines.map((l) => (
                   <tr key={l.transaction_id}
                       className={`hover:bg-ps-bg ${l.precedes_opening ? "text-ps-hint" : ""}`}>
-                    <td className="px-3 py-1.5 whitespace-nowrap text-ps-label">{l.transaction_date ?? "—"}</td>
+                    <td className="px-3 py-1.5 whitespace-nowrap text-ps-label">{formatDate(l.transaction_date)}</td>
                     <td className="px-3 py-1.5 min-w-[220px]">
                       <span className="text-ps-ink">{l.description}</span>
                       {l.reference_no && <span className="text-3xs text-ps-hint ml-1.5">{l.reference_no}</span>}

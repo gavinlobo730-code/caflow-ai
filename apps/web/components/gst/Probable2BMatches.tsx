@@ -24,6 +24,7 @@ import Link from "next/link";
 import type { ProbableMatch2B } from "@/lib/api";
 import { documentHref } from "@/lib/accounting/sourceDocument";
 import { formatPaise } from "@/lib/money/format";
+import { formatDate } from "@/lib/dates/format";
 
 const GRADE_LABEL: Record<ProbableMatch2B["grade"], string> = {
   strong: "Strong",
@@ -66,7 +67,7 @@ export function Probable2BMatches({
               <div>
                 <p className="text-ps-hint">In your books</p>
                 <p>
-                  {p.bill_no || "(no number)"} · {p.bill_date ?? "no date"}
+                  {p.bill_no || "(no number)"} · {formatDate(p.bill_date, "no date")}
                 </p>
                 <p className="text-3xs text-ps-hint">
                   {p.bill_supplier_gstin || "no GSTIN recorded"} · tax {formatPaise(p.book_tax_paise)}
@@ -75,7 +76,7 @@ export function Probable2BMatches({
               <div>
                 <p className="text-ps-hint">On GSTR-2B</p>
                 <p>
-                  {p.document_number} · {p.document_date ?? "no date"}
+                  {p.document_number} · {formatDate(p.document_date, "no date")}
                 </p>
                 <p className="text-3xs text-ps-hint">
                   {p.document_supplier_name ? `${p.document_supplier_name} · ` : ""}

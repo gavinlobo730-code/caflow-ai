@@ -42,6 +42,7 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { UnforeseenIncomePanel, type UnforeseenRow } from "@/components/tax/UnforeseenIncomePanel";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { formatDate } from "@/lib/dates/format";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
@@ -685,7 +686,7 @@ export default function AdvanceTaxPage() {
               </div>
               <div className="rounded-lg bg-ps-bg border border-ps-border px-3 py-2 space-y-1">
                 <p className="text-2xs text-ps-label">
-                  §139(1) due date <span className="font-medium tabular-nums">{lateResult.itr_due_date.due_date}</span>
+                  §139(1) due date <span className="font-medium tabular-nums">{formatDate(lateResult.itr_due_date.due_date)}</span>
                   {" — "}{lateResult.itr_due_date.basis}
                 </p>
                 {/* `decided: false` means the statute does not settle the date on
@@ -703,7 +704,7 @@ export default function AdvanceTaxPage() {
                 )}
                 {!lateResult.return_furnished_on && (
                   <p className="text-2xs text-ps-label">
-                    Not yet furnished — §234A is charged to {lateResult.assessment_date} and
+                    Not yet furnished — §234A is charged to {formatDate(lateResult.assessment_date)} and
                     grows by a further month, or part of one, until it is.
                   </p>
                 )}
@@ -850,7 +851,7 @@ export default function AdvanceTaxPage() {
                   {saPosition.challans.map(c => (
                     <tr key={c.id} className="border-t border-ps-border">
                       <td className="py-1.5 pr-3 font-mono">{c.bsr_code}</td>
-                      <td className="py-1.5 pr-3 tabular-nums">{c.deposit_date}</td>
+                      <td className="py-1.5 pr-3 tabular-nums">{formatDate(c.deposit_date)}</td>
                       <td className="py-1.5 pr-3 font-mono">{c.challan_serial_no}</td>
                       <td className="py-1.5 pr-3">{c.major_head}/{c.minor_head}</td>
                       <td className="py-1.5 pr-3 text-right tabular-nums">{formatPaise(c.total_paise)}</td>

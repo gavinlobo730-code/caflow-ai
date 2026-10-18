@@ -13,6 +13,7 @@ import { Callout } from "@/components/ui/callout";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
   if (paise === 0) return "₹0";
@@ -214,7 +215,7 @@ export default function AdjustmentsPage() {
                     <td className="px-3 py-2.5 text-right font-mono font-semibold text-ps-ink">
                       {fmt(adj.amount_paise)}
                     </td>
-                    <td className="px-3 py-2.5 text-ps-label whitespace-nowrap">{adj.adjustment_date}</td>
+                    <td className="px-3 py-2.5 text-ps-label whitespace-nowrap">{formatDate(adj.adjustment_date)}</td>
                     <td className="px-3 py-2.5">
                       <span className={`text-3xs font-medium px-1.5 py-0.5 rounded-full ${STATUS_BADGE[adj.status]}`}>
                         {STATUS_LABEL[adj.status]}

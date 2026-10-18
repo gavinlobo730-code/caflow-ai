@@ -39,6 +39,7 @@ import { gstPeriodLabel as periodLabel, isGstPeriod as isPeriod } from "@/lib/gs
 import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
+import { formatDate } from "@/lib/dates/format";
 
 function money(paise?: number | null) {
   const p = Number(paise ?? 0);
@@ -112,7 +113,7 @@ function DocList({ title, why, docs }: {
               <tr key={`${d.doc_no ?? "row"}-${i}`} className="border-b border-ps-border align-top">
                 <td className="py-1.5 pr-2">
                   <span className="font-mono text-ps-ink">{d.doc_no ?? "—"}</span>
-                  {d.doc_date && <span className="block text-3xs text-ps-hint">{d.doc_date}</span>}
+                  {d.doc_date && <span className="block text-3xs text-ps-hint">{formatDate(d.doc_date)}</span>}
                   {d.filed_section && d.books_section && (
                     <span className="block text-3xs text-state-attention">
                       {d.filed_section} → {d.books_section}

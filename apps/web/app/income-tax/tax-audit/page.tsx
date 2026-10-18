@@ -512,8 +512,8 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
               <p className="text-xs font-medium text-ps-ink">{applicability.basis}</p>
               {applicability.required && applicability.report_due_date && (
                 <p className="text-xs text-ps-body">
-                  Report (Form {applicability.form_type}) due {applicability.report_due_date};
-                  return due {applicability.return_due_date}. Explanation (ii) to §44AB puts
+                  Report (Form {applicability.form_type}) due {formatDate(applicability.report_due_date)};
+                  return due {formatDate(applicability.return_due_date)}. Explanation (ii) to §44AB puts
                   the report one month before the §139(1) date.
                 </p>
               )}
@@ -740,8 +740,8 @@ export default function TaxAuditPage() {
                         </span>
                       </td>
                       <td className="px-3 py-3 text-xs text-ps-label">{a.auditor_name ?? "—"}</td>
-                      <td className="px-3 py-3 text-xs text-ps-label">{a.audit_date ?? "—"}</td>
-                      <td className="px-3 py-3 text-xs text-ps-label">{a.filing_date ?? "—"}</td>
+                      <td className="px-3 py-3 text-xs text-ps-label">{formatDate(a.audit_date)}</td>
+                      <td className="px-3 py-3 text-xs text-ps-label">{formatDate(a.filing_date)}</td>
                       <td className="px-3 py-3 text-xs font-mono text-ps-label max-w-[120px] truncate" title={a.udin ?? undefined}>{a.udin ?? "—"}</td>
                       <td className="px-5 py-3">
                         <button onClick={() => setEditAudit(a)}

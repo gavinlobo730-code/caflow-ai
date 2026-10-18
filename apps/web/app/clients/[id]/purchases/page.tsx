@@ -64,6 +64,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { formatDate } from "@/lib/dates/format";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -919,7 +920,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     { key: "vendor", header: "Vendor", accessor: (b) => b.vendors?.name ?? "", searchable: true, sticky: true, hideable: false,
       render: (b) => <span className="font-medium text-ps-ink">{b.vendors?.name ?? "—"}</span> },
     { key: "bill_date", header: "Date", accessor: (b) => b.bill_date, sortable: true,
-      render: (b) => <span className="text-ps-label">{b.bill_date}</span> },
+      render: (b) => <span className="text-ps-label">{formatDate(b.bill_date)}</span> },
     { key: "taxable", header: "Taxable", accessor: (b) => b.taxable_amount_paise, align: "right",
       render: (b) => <span className="font-mono text-ps-body">{fmt(b.taxable_amount_paise)}</span> },
     { key: "gst", header: "GST", accessor: (b) => b.total_gst_paise, align: "right",
@@ -2860,7 +2861,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
     { key: "payment_no", header: "Payment No", accessor: (p) => p.payment_no, searchable: true, sticky: true, hideable: false,
       render: (p) => <span className="font-mono text-3xs text-ps-label">{p.payment_no}</span> },
     { key: "payment_date", header: "Date", accessor: (p) => p.payment_date, sortable: true,
-      render: (p) => <span className="text-ps-label">{p.payment_date}</span> },
+      render: (p) => <span className="text-ps-label">{formatDate(p.payment_date)}</span> },
     { key: "vendor", header: "Vendor", accessor: (p) => p.vendors?.name ?? "", searchable: true,
       render: (p) => <span className="font-medium text-ps-ink">{p.vendors?.name ?? "—"}</span> },
     { key: "amount", header: "Amount", accessor: (p) => p.amount_paise, sortable: true, align: "right",
@@ -3100,7 +3101,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                         return (
                           <tr key={b.id} className="border-t border-ps-border">
                             <td className="px-3 py-1.5 text-ps-ink">{b.our_reference ?? b.bill_no ?? "—"}</td>
-                            <td className="px-3 py-1.5 text-ps-label">{b.bill_date ?? "—"}</td>
+                            <td className="px-3 py-1.5 text-ps-label">{formatDate(b.bill_date)}</td>
                             <td className="px-3 py-1.5 text-right tabular-nums text-ps-label">{fmt(open)}</td>
                             <td className="px-3 py-1.5 text-right">
                               <input
@@ -3478,7 +3479,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     { key: "debit_note_no", header: "DN No", accessor: (d) => d.debit_note_no ?? "", searchable: true, sortable: true, sticky: true, hideable: false,
       render: (d) => <span className="font-mono font-medium text-ps-ink">{d.debit_note_no ?? "—"}</span> },
     { key: "debit_note_date", header: "Date", accessor: (d) => d.debit_note_date, sortable: true,
-      render: (d) => <span className="text-ps-label whitespace-nowrap">{d.debit_note_date}</span> },
+      render: (d) => <span className="text-ps-label whitespace-nowrap">{formatDate(d.debit_note_date)}</span> },
     { key: "vendor_name", header: "Vendor", accessor: (d) => d.vendor_name ?? "", searchable: true,
       render: (d) => <span className="font-medium text-ps-ink">{d.vendor_name ?? "—"}</span> },
     { key: "linked_bill", header: "Linked Bill", accessor: (d) => d.purchase_bills?.our_reference ?? d.purchase_bills?.bill_no ?? "",
@@ -3945,7 +3946,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
     { key: "credit_note_no", header: "CN No", accessor: (d) => d.credit_note_no ?? "", searchable: true, sortable: true, sticky: true, hideable: false,
       render: (d) => <span className="font-mono font-medium text-ps-ink">{d.credit_note_no ?? "—"}</span> },
     { key: "credit_note_date", header: "Date", accessor: (d) => d.credit_note_date, sortable: true,
-      render: (d) => <span className="text-ps-label whitespace-nowrap">{d.credit_note_date}</span> },
+      render: (d) => <span className="text-ps-label whitespace-nowrap">{formatDate(d.credit_note_date)}</span> },
     { key: "vendor_name", header: "Vendor", accessor: (d) => d.vendor_name ?? "", searchable: true,
       render: (d) => <span className="font-medium text-ps-ink">{d.vendor_name ?? "—"}</span> },
     { key: "linked_bill", header: "Linked Bill", accessor: (d) => d.purchase_bills?.our_reference ?? d.purchase_bills?.bill_no ?? "",

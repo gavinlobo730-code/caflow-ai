@@ -37,6 +37,7 @@ import { api, type StockAgeing as Ageing } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { objectWithLists } from "@/lib/api/shape";
+import { formatDate } from "@/lib/dates/format";
 
 /** The two oldest bands, which are what an obsolescence review is opened for.
  *  Presentational only — no figure is derived from this. */
@@ -148,7 +149,7 @@ export function StockAgeingPanel({ clientId, asOf }: { clientId: string; asOf: s
                           )}
                           {!it.nothing_on_hand && it.oldest_holding_date && (
                             <span className="block text-ps-hint">
-                              Oldest unit held since {it.oldest_holding_date}
+                              Oldest unit held since {formatDate(it.oldest_holding_date)}
                             </span>
                           )}
                         </td>

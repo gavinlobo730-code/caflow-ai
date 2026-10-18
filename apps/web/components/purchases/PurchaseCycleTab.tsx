@@ -37,6 +37,7 @@ import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { formatDate } from "@/lib/dates/format";
 
 type Tab = "orders" | "receipts";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -338,7 +339,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
             {openObjections.map((g) => (
               <li key={g.id}>
                 <span className="font-mono">{g.document_no}</span> — objected{" "}
-                {g.objection_raised_on}
+                {formatDate(g.objection_raised_on)}
               </li>
             ))}
           </ul>
@@ -681,7 +682,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
             ))}
             {matched.acceptance_date && (
               <p className="text-ps-body">
-                Day of acceptance: {matched.acceptance_date}.{" "}
+                Day of acceptance: {formatDate(matched.acceptance_date)}.{" "}
                 {matched.acceptance_source}
               </p>
             )}

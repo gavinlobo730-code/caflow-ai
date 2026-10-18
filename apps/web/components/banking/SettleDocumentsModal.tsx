@@ -16,6 +16,7 @@ import { api } from "@/lib/api";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { fmt, rsToP, QueueTxn } from "@/components/banking/shared";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
 
 // ── Bank settlement modal ───────────────────────────────────────────────────
 // Allocates ONE bank transaction across one or more sales invoices (a credit
@@ -265,7 +266,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
                     <input type="checkbox" checked={checked.has(d.id)} onChange={() => toggle(d)} className="h-3.5 w-3.5 rounded border-ps-disabled shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium text-ps-ink truncate">{d.no}</p>
-                      <p className="text-3xs text-ps-hint">{d.date} · Outstanding {fmt(d.outstanding_paise)} {d.currency !== "INR" ? d.currency : ""}</p>
+                      <p className="text-3xs text-ps-hint">{formatDate(d.date)} · Outstanding {fmt(d.outstanding_paise)} {d.currency !== "INR" ? d.currency : ""}</p>
                     </div>
                     {checked.has(d.id) && (
                       <input

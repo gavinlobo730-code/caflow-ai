@@ -31,6 +31,7 @@ import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { api, type FxRate } from "@/lib/api/index";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
 
 /** A plain decimal, and nothing else. Not a parser — it never converts, so
  *  what is sent is exactly what was typed. */
@@ -189,7 +190,7 @@ export function FxRatesPanel() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id ?? `${r.rate_date}-${r.rate_type}`} className="border-b border-ps-border/60">
-                  <td className="py-1.5 text-ps-body">{r.rate_date}</td>
+                  <td className="py-1.5 text-ps-body">{formatDate(r.rate_date)}</td>
                   {/* Rendered as the stored TEXT. Formatting it through a
                       number would drop trailing precision the column keeps. */}
                   <td className="py-1.5 text-right font-mono text-ps-ink">{r.rate}</td>

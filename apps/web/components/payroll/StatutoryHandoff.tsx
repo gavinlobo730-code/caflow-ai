@@ -50,7 +50,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
-import { formatMonthYear } from "@/lib/dates/format";
+import { formatMonthYear, formatDate } from "@/lib/dates/format";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -435,7 +435,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
         <div className="text-right shrink-0">
           {o.due_date ? (
             <p className="text-2xs text-ps-body">
-              Due <span className="font-semibold">{o.due_date}</span>
+              Due <span className="font-semibold">{formatDate(o.due_date)}</span>
             </p>
           ) : (
             <p className="text-2xs text-ps-hint">No due date shown</p>
@@ -736,7 +736,7 @@ function UnmatchedRemittances({ clientId, onLinked }: {
             </p>
           </div>
           <p className="text-3xs text-ps-hint">
-            Paid {r.paid_on ?? "—"}
+            Paid {formatDate(r.paid_on)}
           </p>
 
           {r.candidates.length === 0 ? (
@@ -759,7 +759,7 @@ function UnmatchedRemittances({ clientId, onLinked }: {
                                             : "bg-slate-100 text-slate-600"}`}>
                         {c.grade}
                       </span>
-                      {c.entry_date}
+                      {formatDate(c.entry_date)}
                       {c.reference_no ? ` · ${c.reference_no}` : ""}
                     </p>
                     {/* The sentence is composed on the server. It carries the

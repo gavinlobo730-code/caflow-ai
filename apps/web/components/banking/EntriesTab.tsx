@@ -49,6 +49,7 @@ import { EntryDetailModal } from "@/components/banking/EntryDetailModal";
 import { BankAccounts, BankImportModal } from "@/components/banking/AccountsPanel";
 import { Button } from "@/components/ui/button";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { formatDate } from "@/lib/dates/format";
 
 // ── the row, as the server sends it ─────────────────────────────────────────
 
@@ -518,7 +519,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
     {
       key: "transaction_date", header: "Date", width: "6.5rem", sortable: true, hideable: false,
       accessor: (t) => t.transaction_date,
-      render: (t) => <span className="text-ps-label whitespace-nowrap tabular-nums">{t.transaction_date}</span>,
+      render: (t) => <span className="text-ps-label whitespace-nowrap tabular-nums">{formatDate(t.transaction_date)}</span>,
     },
     {
       key: "description", header: "Bank narration", sortable: true, searchable: true, hideable: false,

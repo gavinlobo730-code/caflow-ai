@@ -31,6 +31,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { formatDate } from "@/lib/dates/format";
 
 const NATURE_LABELS: Record<string, string> = {
   royalty: "Royalty",
@@ -265,7 +266,7 @@ export default function TreatyRatesPage() {
                         : <span className="font-medium text-ps-ink">{((r.rate_bps ?? 0) / 100).toFixed(2)}%</span>}
                     </td>
                     <td className="px-4 py-2 text-xs text-ps-label">{r.article_ref ?? "—"}</td>
-                    <td className="px-4 py-2 text-xs text-ps-hint">{r.verified_on ?? "—"}</td>
+                    <td className="px-4 py-2 text-xs text-ps-hint">{formatDate(r.verified_on)}</td>
                     <td className="px-4 py-2 text-right">
                       <button disabled={actionInFlight} onClick={() => remove(r)} aria-label={`Remove ${r.country_code} ${r.nature}`}
                         className="text-ps-hint hover:text-red-600"><Trash2 size={14} /></button>

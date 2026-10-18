@@ -35,7 +35,7 @@ import { api, type PTSlabRow } from "@/lib/api/index";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { TableSkeleton } from "@/components/ui/skeleton";
-import { MONTH_ABBREVIATIONS as MONTHS } from "@/lib/dates/format";
+import { MONTH_ABBREVIATIONS as MONTHS, formatDate } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 
 function rupees(paise: number) {
@@ -280,7 +280,7 @@ export default function StatutoryValuesPage() {
                           {/* The authority, printed beside the figures. It is the
                               reason these numbers may drive a deduction at all. */}
                           <p className="text-xs text-ps-label mt-0.5">
-                            {first.notification_reference} · notified {first.notification_date}
+                            {first.notification_reference} · notified {formatDate(first.notification_date)}
                             {first.months && first.months.length > 0 &&
                               ` · deducted in ${first.months.map((m: number) => MONTHS[m - 1]).join(", ")}`}
                           </p>

@@ -29,6 +29,7 @@ import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
+import { formatDate } from "@/lib/dates/format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -313,8 +314,8 @@ export default function ReceivablesAgingPage() {
                   <tr key={r.invoice.id} className={ROW_COLOR[r.bucket]}>
                     <td className="px-4 py-3 font-mono text-xs font-medium text-ps-ink">{r.invoice.invoice_no}</td>
                     <td className="px-4 py-3 text-ps-body">{r.clientName}</td>
-                    <td className="px-4 py-3 text-ps-label">{r.invoice.invoice_date}</td>
-                    <td className="px-4 py-3 text-ps-label">{r.invoice.due_date ?? "—"}</td>
+                    <td className="px-4 py-3 text-ps-label">{formatDate(r.invoice.invoice_date)}</td>
+                    <td className="px-4 py-3 text-ps-label">{formatDate(r.invoice.due_date)}</td>
                     <td className="px-4 py-3 text-right text-ps-body">{fmtRs(r.invoice.total_paise)}</td>
                     <td className="px-4 py-3 text-right font-semibold text-ps-ink">{fmtRs(r.outstandingPaise)}</td>
                     <td className="px-4 py-3 text-right text-ps-label">{r.daysOverdue > 0 ? r.daysOverdue : "—"}</td>

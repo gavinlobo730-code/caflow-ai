@@ -28,6 +28,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
 
 interface Project {
   id: string;
@@ -205,7 +206,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
                         <span className="ml-1.5 font-mono text-3xs text-ps-hint">{p.project_code}</span>
                       )}
                     </td>
-                    <td className="px-5 py-2 text-ps-label">{p.started_on}</td>
+                    <td className="px-5 py-2 text-ps-label">{formatDate(p.started_on)}</td>
                     <td className="px-5 py-2 text-right tabular-nums">{formatPaise(p.incurred_paise)}</td>
                     <td className="px-5 py-2 text-right tabular-nums">
                       {/* "Not recorded" and a figure are different facts: the

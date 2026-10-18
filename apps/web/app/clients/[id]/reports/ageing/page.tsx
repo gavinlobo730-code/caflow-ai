@@ -21,6 +21,7 @@ import { DataTable } from "@/components/ui/data-table";
 import ReportExportButtons from "@/components/accounting/ReportExportButtons";
 import type { Column } from "@/lib/table/types";
 import { DateInput } from "@/components/ui/date-input";
+import { formatDate } from "@/lib/dates/format";
 /**
  * Trade Receivables and Trade Payables ageing schedules — the notes to the
  * balance sheet required by Schedule III to the Companies Act 2013 as amended
@@ -690,7 +691,7 @@ function AdvancesPanel({ kind, section }: {
                   <td className="px-3 py-2 text-ps-label truncate max-w-[180px]">
                     {a.party_name || "—"}
                   </td>
-                  <td className="px-3 py-2 text-ps-label">{a.document_date || "—"}</td>
+                  <td className="px-3 py-2 text-ps-label">{formatDate(a.document_date)}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-ps-ink">
                     {formatPaise(a.unapplied_paise)}
                   </td>

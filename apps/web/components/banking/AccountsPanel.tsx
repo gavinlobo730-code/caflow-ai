@@ -34,6 +34,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
+import { formatDate } from "@/lib/dates/format";
 
 export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
@@ -350,7 +351,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                 <tbody className="divide-y divide-ps-border">
                   {stmtTxns.map((t) => (
                     <tr key={t.id} className="hover:bg-ps-bg">
-                      <td className="px-4 py-2 text-ps-label whitespace-nowrap">{t.transaction_date}</td>
+                      <td className="px-4 py-2 text-ps-label whitespace-nowrap">{formatDate(t.transaction_date)}</td>
                       <td className="px-3 py-2 text-ps-body max-w-xs truncate">{t.description}</td>
                       <td className="px-3 py-2 text-right font-mono text-money-out">{t.debit_paise > 0 ? fmt(t.debit_paise) : "—"}</td>
                       <td className="px-3 py-2 text-right font-mono text-money-in">{t.credit_paise > 0 ? fmt(t.credit_paise) : "—"}</td>
@@ -1202,7 +1203,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                         <tbody>
                           {preview.rows.map((r, i) => (
                             <tr key={i} className="border-t border-ps-border">
-                              <td className="px-2 py-1.5 whitespace-nowrap">{r.transaction_date}</td>
+                              <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(r.transaction_date)}</td>
                               <td className="px-2 py-1.5 max-w-[18rem] truncate" title={r.description}>{r.description}</td>
                               <td className="px-2 py-1.5 text-right">{r.debit_paise ? formatPaise(r.debit_paise) : ""}</td>
                               <td className="px-2 py-1.5 text-right">{r.credit_paise ? formatPaise(r.credit_paise) : ""}</td>

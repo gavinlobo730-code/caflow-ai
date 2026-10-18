@@ -36,11 +36,10 @@
 //
 // WHAT THIS CANNOT SEE, AND SAYS SO
 //   A date printed RAW — `{inv.invoice_date}` — calls no function at all, so no
-//   syntactic rule here can tell it from a reference number. The CA-facing
-//   money tables still print the API's `YYYY-MM-DD` that way (frontend_ux-20's
-//   own evidence missed it), and converting them is a per-field sweep that
-//   needs the column list, not a regex. Nor can it see a Date formatted by a
-//   hand-built template (`${d.getDate()}/${d.getMonth()+1}`); the name rule
+//   rule about CALLS can tell it from a reference number. That is its own rule,
+//   `a-date-a-table-prints-goes-through-the-one-module.test.ts` (POST-A-141),
+//   which reads what a JSX child renders and found 123 such renders in 58
+//   files. Nor can this one see a Date formatted by a hand-built template (`${d.getDate()}/${d.getMonth()+1}`); the name rule
 //   catches the helper such a template usually lives in and nothing else.
 //   There is no browser harness, so "the same date on five screens" means the
 //   five formatting paths the screens call, not five rendered pages.

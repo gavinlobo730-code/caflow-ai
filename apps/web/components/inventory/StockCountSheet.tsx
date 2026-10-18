@@ -25,6 +25,7 @@ import { parseQuantity } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
 
 export function StockCountSheetPanel({
   clientId, sessionId, onClose, onPosted,
@@ -120,7 +121,7 @@ export function StockCountSheetPanel({
                 Physical stock count — {sheet?.session.reference_no ?? ""}
               </p>
               <p className="text-2xs text-ps-hint">
-                Counted as at {sheet?.session.count_date ?? "—"} · {sheet?.session.status ?? ""}
+                Counted as at {formatDate(sheet?.session.count_date)} · {sheet?.session.status ?? ""}
               </p>
             </div>
           </div>
@@ -263,7 +264,7 @@ export function StockCountSheetPanel({
               <p className="text-2xs text-ps-label">
                 Posting writes one adjustment per varying line, all under{" "}
                 <span className="font-mono">{sheet?.session.reference_no}</span>, dated{" "}
-                {sheet?.session.count_date}. A line that needs you is left alone.
+                {formatDate(sheet?.session.count_date)}. A line that needs you is left alone.
               </p>
               <div className="flex gap-2">
                 <Button variant="plain" size="none" onClick={save} disabled={busy}

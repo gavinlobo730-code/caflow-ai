@@ -26,6 +26,7 @@ import { formatPaise } from "@/lib/money/format";
 import { Callout, GapList, StatutoryNotes } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
 
 export function RcmDocumentPanel({
   clientId, kind, purchaseBillId, purchasePaymentId, onClose, onIssued,
@@ -147,7 +148,7 @@ export function RcmDocumentPanel({
                 </label>
                 <div className="text-xs">
                   <span className="block text-ps-hint mb-1">Date</span>
-                  <p className="px-2.5 py-1.5">{p.document_date}</p>
+                  <p className="px-2.5 py-1.5">{formatDate(p.document_date)}</p>
                 </div>
               </div>
 

@@ -82,6 +82,7 @@ import { EmptyState } from "@/components/ui/states";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { formatDate } from "@/lib/dates/format";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements" | "interest" | "post-dated-cheques";
@@ -1073,7 +1074,7 @@ function RecurringHistoryDrawer({
                   {runs.map((r) => (
                     <div key={r.id} className="border border-ps-border rounded-lg p-3 text-xs flex items-center justify-between">
                       <div>
-                        <div className="font-medium text-ps-body">{r.occurrence_date}</div>
+                        <div className="font-medium text-ps-body">{formatDate(r.occurrence_date)}</div>
                         <div className="text-3xs text-ps-hint">
                           {r.invoice?.invoice_no ? `${r.invoice.invoice_no} · ${r.invoice.status ?? "draft"}` : "—"}
                         </div>
@@ -1309,7 +1310,7 @@ function Statements({ clientId }: { clientId: string }) {
           <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-ps-ink">{stmt.customer.name}</p>
-              <p className="text-3xs text-ps-hint">{stmt.period.start_date} → {stmt.period.end_date}{stmt.customer.gstin ? ` · GSTIN ${stmt.customer.gstin}` : ""}</p>
+              <p className="text-3xs text-ps-hint">{formatDate(stmt.period.start_date)} → {formatDate(stmt.period.end_date)}{stmt.customer.gstin ? ` · GSTIN ${stmt.customer.gstin}` : ""}</p>
             </div>
             <div className="text-right space-y-1">
               <div>
@@ -1346,7 +1347,7 @@ function Statements({ clientId }: { clientId: string }) {
               </tr>
               {stmt.transactions.map((t, i) => (
                 <tr key={i} className="hover:bg-ps-bg">
-                  <td className="px-3 py-2 whitespace-nowrap text-ps-label">{t.date}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-ps-label">{formatDate(t.date)}</td>
                   <td className="px-3 py-2 text-ps-body">{t.particulars}</td>
                   <td className="px-3 py-2 font-mono text-ps-hint">{t.reference ?? "—"}</td>
                   <td className="px-3 py-2 text-right font-mono text-ps-body">{stmtAmt(t.debit_paise)}</td>
@@ -1998,7 +1999,7 @@ function SalesInvoices({
     { key: "invoice_no", header: "Invoice No", accessor: (i) => i.invoice_no, searchable: true, sortable: true, sticky: true, hideable: false,
       render: (i) => <span className="font-mono font-medium text-ps-ink">{i.invoice_no}</span> },
     { key: "invoice_date", header: "Date", accessor: (i) => i.invoice_date, sortable: true,
-      render: (i) => <span className="text-ps-label whitespace-nowrap">{i.invoice_date}</span> },
+      render: (i) => <span className="text-ps-label whitespace-nowrap">{formatDate(i.invoice_date)}</span> },
     { key: "customer_name", header: "Customer", accessor: (i) => i.customer_name ?? "", searchable: true,
       render: (i) => <span className="text-ps-body">{i.customer_name}</span> },
     { key: "taxable_paise", header: "Taxable", accessor: (i) => i.taxable_paise, align: "right", exportValue: (i) => formatPaise(i.taxable_paise),
@@ -2029,7 +2030,7 @@ function SalesInvoices({
     { key: "due_date", header: "Due", accessor: (i) => i.due_date ?? "", sortable: true,
       render: (i) => (
         <span className={`whitespace-nowrap ${isOverdueForUi(i) ? "text-red-600 font-medium" : "text-ps-label"}`}>
-          {i.due_date ?? "—"}
+          {formatDate(i.due_date)}
           {isOverdueForUi(i) && (i.days_overdue ?? 0) > 0 ? <span className="ml-1 text-3xs">({i.days_overdue}d)</span> : null}
         </span>
       ) },
@@ -2662,7 +2663,7 @@ function RemindInvoiceModal({
             <div className="flex justify-between">
               <span className="text-ps-label">Due date</span>
               <span className="text-red-600 font-medium">
-                {invoice.due_date ?? "—"}{(invoice.days_overdue ?? 0) > 0 ? ` (${invoice.days_overdue}d overdue)` : ""}
+                {formatDate(invoice.due_date)}{(invoice.days_overdue ?? 0) > 0 ? ` (${invoice.days_overdue}d overdue)` : ""}
               </span>
             </div>
             <div className="flex justify-between">
@@ -3589,7 +3590,7 @@ function Receipts({
     { key: "receipt_no", header: "Receipt No", accessor: (r) => r.receipt_no, searchable: true, sortable: true, sticky: true, hideable: false,
       render: (r) => <span className="font-mono font-medium text-ps-ink">{r.receipt_no}</span> },
     { key: "receipt_date", header: "Date", accessor: (r) => r.receipt_date, sortable: true,
-      render: (r) => <span className="text-ps-label whitespace-nowrap">{r.receipt_date}</span> },
+      render: (r) => <span className="text-ps-label whitespace-nowrap">{formatDate(r.receipt_date)}</span> },
     { key: "customer_name", header: "Customer", accessor: (r) => r.customer_name ?? "", searchable: true,
       render: (r) => <span className="text-ps-body">{r.customer_name}</span> },
     { key: "amount_paise", header: "Amount", accessor: (r) => r.amount_paise, sortable: true, align: "right", exportValue: (r) => formatPaise(r.amount_paise),
@@ -4229,7 +4230,7 @@ function ReceiptForm({
             {visibleInvoices.map((inv) => (
               <div key={inv.id} className="flex items-center gap-3">
                 <span className="text-xs text-ps-label flex-1">
-                  {inv.invoice_no} — {inv.invoice_date} — {fmtAmt(invoiceOutstanding(inv))} due
+                  {inv.invoice_no} — {formatDate(inv.invoice_date)} — {fmtAmt(invoiceOutstanding(inv))} due
                   {isForeign && inv.exchange_rate && (
                     <span className="ml-1 text-3xs text-ps-hint">(booked @ {inv.exchange_rate})</span>
                   )}
@@ -4538,7 +4539,7 @@ function CreditNotes({
     { key: "credit_note_no", header: "CN No", accessor: (cn) => cn.credit_note_no, searchable: true, sortable: true, sticky: true, hideable: false,
       render: (cn) => <span className="font-mono font-medium text-ps-ink">{cn.credit_note_no}</span> },
     { key: "credit_note_date", header: "Date", accessor: (cn) => cn.credit_note_date, sortable: true,
-      render: (cn) => <span className="text-ps-label whitespace-nowrap">{cn.credit_note_date}</span> },
+      render: (cn) => <span className="text-ps-label whitespace-nowrap">{formatDate(cn.credit_note_date)}</span> },
     { key: "customer_name", header: "Customer", accessor: (cn) => cn.customer_name ?? "", searchable: true,
       render: (cn) => <span className="text-ps-body">{cn.customer_name}</span> },
     { key: "original_invoice_no", header: "Orig. Invoice", accessor: (cn) => cn.original_invoice_no ?? "",
@@ -4969,7 +4970,7 @@ function SalesDebitNotes({
     { key: "debit_note_no", header: "DN No", accessor: (dn) => dn.debit_note_no, searchable: true, sortable: true, sticky: true, hideable: false,
       render: (dn) => <span className="font-mono font-medium text-ps-ink">{dn.debit_note_no}</span> },
     { key: "debit_note_date", header: "Date", accessor: (dn) => dn.debit_note_date, sortable: true,
-      render: (dn) => <span className="text-ps-label whitespace-nowrap">{dn.debit_note_date}</span> },
+      render: (dn) => <span className="text-ps-label whitespace-nowrap">{formatDate(dn.debit_note_date)}</span> },
     { key: "customer_name", header: "Customer", accessor: (dn) => dn.customer_name ?? "", searchable: true,
       render: (dn) => <span className="text-ps-body">{dn.customer_name}</span> },
     { key: "original_invoice_no", header: "Orig. Invoice", accessor: (dn) => dn.original_invoice_no ?? "",

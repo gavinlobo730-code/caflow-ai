@@ -539,8 +539,8 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
       {state.phase === "ok" && (
         <>
           <div className="px-5 py-3 border-b border-ps-border flex flex-wrap gap-x-6 gap-y-1 text-xs text-ps-label">
-            <span>Due <span className="font-medium text-ps-ink">{state.sheet.due_date}</span></span>
-            <span>Computed as at {state.sheet.as_at}</span>
+            <span>Due <span className="font-medium text-ps-ink">{formatDate(state.sheet.due_date)}</span></span>
+            <span>Computed as at {formatDate(state.sheet.as_at)}</span>
           </div>
           {state.sheet.sections.length === 0 ? (
             <p className="px-5 py-8 text-center text-xs text-ps-hint">

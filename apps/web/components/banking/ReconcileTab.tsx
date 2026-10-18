@@ -15,6 +15,7 @@ import { StatementSkeleton } from "@/components/ui/skeleton";
 import { fmt } from "@/components/banking/shared";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
 
 // ── Bank Reconciliation ────────────────────────────────────────────────────
 
@@ -397,7 +398,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
           {loading ? <div className="h-9 bg-ps-bg rounded animate-pulse" /> : (
             <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
               <option value="">— Select a reconciliation —</option>
-              {sessions.map((s) => <option key={s.id} value={s.id}>{s.statement_start_date} → {s.statement_end_date} · {s.account_no ?? "account"} · {s.status}</option>)}
+              {sessions.map((s) => <option key={s.id} value={s.id}>{formatDate(s.statement_start_date)} → {formatDate(s.statement_end_date)} · {s.account_no ?? "account"} · {s.status}</option>)}
             </select>
           )}
         </div>
@@ -436,7 +437,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
             <>
               <p className="text-3xs text-ps-hint">
                 {opening.source === "previous_reconciliation" && opening.previous_reconciliation ? (
-                  <>Carried forward from the reconciliation completed to {opening.previous_reconciliation.period_end} — closing {fmt(opening.suggested_opening_paise)}.</>
+                  <>Carried forward from the reconciliation completed to {formatDate(opening.previous_reconciliation.period_end)} — closing {fmt(opening.suggested_opening_paise)}.</>
                 ) : (
                   <>First reconciliation for this account — starting from its opening balance of {fmt(opening.suggested_opening_paise)}.</>
                 )}
@@ -626,7 +627,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                 <div className="px-5 py-4 border-b border-ps-border">
                   <h3 className="text-sm font-semibold text-ps-ink">Reopen this reconciliation</h3>
                   <p className="text-xs text-ps-label mt-0.5">
-                    {report.reconciliation.statement_start_date} → {report.reconciliation.statement_end_date}
+                    {formatDate(report.reconciliation.statement_start_date)} → {formatDate(report.reconciliation.statement_end_date)}
                   </p>
                 </div>
                 <div className="px-5 py-4 space-y-3">
@@ -809,7 +810,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium text-ps-ink truncate">{t.description}</p>
-                    <p className="text-3xs text-ps-hint">{t.transaction_date} · {t.reference_no ?? ""}{t.exception_reason ? ` · ⚠ ${t.exception_reason}` : ""}</p>
+                    <p className="text-3xs text-ps-hint">{formatDate(t.transaction_date)} · {t.reference_no ?? ""}{t.exception_reason ? ` · ⚠ ${t.exception_reason}` : ""}</p>
                   </div>
                   <div className="shrink-0 text-right font-mono">
                     {t.credit_paise > 0 ? <span className="text-xs text-money-in">{fmt(t.credit_paise)} Cr</span> : <span className="text-xs text-money-out">{fmt(t.debit_paise)} Dr</span>}
@@ -844,7 +845,7 @@ function BrsBucketRows({ label, bucket }: { label: string; bucket: BrsBucket }) 
       {bucket.items.map((it) => (
         <div key={it.id} className="flex items-center justify-between text-ps-hint pl-4">
           <span className="font-sans text-3xs truncate pr-2" title={it.particulars}>
-            {it.date} · {it.particulars}
+            {formatDate(it.date)} · {it.particulars}
             {it.reference_no ? ` · ${it.reference_no}` : ""}
           </span>
           <span className="text-3xs">{fmt(it.amount_paise)}</span>

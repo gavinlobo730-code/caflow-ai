@@ -38,6 +38,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { formatDate } from "@/lib/dates/format";
 
 type Kind = "receivable" | "payable";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -355,8 +356,8 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
                 <tr key={d.id}>
                   <td className="py-2 font-mono text-ps-ink">{d.document_no}</td>
                   <td className="py-2 text-ps-body">{d.party_name ?? "—"}</td>
-                  <td className="py-2 text-ps-label">{d.document_date ?? "—"}</td>
-                  <td className="py-2 text-ps-label">{d.due_date ?? "—"}</td>
+                  <td className="py-2 text-ps-label">{formatDate(d.document_date)}</td>
+                  <td className="py-2 text-ps-label">{formatDate(d.due_date)}</td>
                   <td className="py-2 text-right tabular-nums">{rupees(d.outstanding_paise)}</td>
                   <td className="py-2 text-right">
                     <Button variant="plain" size="none" onClick={() => handleRemove(d.id, d.document_no)} disabled={busy}
