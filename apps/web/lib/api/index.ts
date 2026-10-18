@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { withReference } from "@/lib/api/requestReference";
 import { exportQuery, type ExportFormat, type ExportParams, type ExportReport } from "@/lib/export/reportExport";
+import { recordsUrl } from "@/lib/einvoice/invoiceRecords";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1614,6 +1615,16 @@ export type EInvoiceRecord = {
   gst_treatment?: string | null;
   lut_number?: string | null;
   created_at: string;
+};
+
+/** The server's window over a client's IRN records (apps/api/core/list_window.py). A bare array is what a server that
+ *  predates the window answered; `readWindow` reads either. */
+export type EInvoiceRecordWindow = {
+  records: EInvoiceRecord[];
+  returned?: number;
+  has_more: boolean;
+  limit: number;
+  max_limit: number;
 };
 
 export type IrnWorklist = {
@@ -4859,11 +4870,11 @@ export const api = {
       return request<ApiResp<IrnWorklist>>(
         `/api/einvoice/missing-irn${qs ? `?${qs}` : ""}`);
     },
-    /** The IRN records prepared for one client, newest first. Reads only: a
-     *  record is prepared and its IRN recorded on the invoice itself. */
-    records: (clientId: string) =>
-      request<ApiResp<EInvoiceRecord[]>>(
-        `/api/einvoice/records?client_id=${encodeURIComponent(clientId)}`),
+    /** The IRN records prepared for one client, newest first, as a WINDOW (`{records, has_more, limit, max_limit}`; read it
+     *  through `readWindow(data, "records", limit)`), optionally those of one invoice. Reads only: a record is prepared and
+     *  its IRN recorded on the invoice itself. */
+    records: (clientId: string, opts: { salesInvoiceId?: string; limit?: number } = {}) =>
+      request<ApiResp<EInvoiceRecordWindow | EInvoiceRecord[]>>(recordsUrl("einvoice", clientId, opts)),
   },
   // Stock register + per-item ledger (migration 188). Read-only — all
   // movements are written as a side effect of issuing/receiving documents.

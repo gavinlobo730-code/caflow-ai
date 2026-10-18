@@ -21,7 +21,9 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Zap } from "lucide-react";
 import { api, type EInvoiceRecord } from "@/lib/api";
-import { arrayOrEmpty } from "@/lib/api/shape";
+import { readWindow } from "@/lib/lists/readWindow";
+import { windowDescription } from "@/lib/lists/window";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { MissingIrnPanel } from "@/components/gst/MissingIrnPanel";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
@@ -31,6 +33,9 @@ import { formatDate } from "@/lib/dates/format";
 import { describeRecord } from "@/lib/einvoice/recordRow";
 import { treatmentLabel } from "@/lib/invoices/compliance";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
+
+/** The window the screen first asks for; "Show more" widens it by the shared step up to the server's ceiling. */
+const DEFAULT_WINDOW = 100;
 
 const STATUS_COLOR: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
@@ -47,6 +52,9 @@ function treatmentText(code: string | null | undefined): string | null {
 export default function EInvoicePage() {
   const { clients, clientId, setClientId } = useClientPicker();
   const [records, setRecords] = useState<EInvoiceRecord[]>([]);
+  // The server's window over the client's records: the list stops at a number, and the screen says so.
+  const [recordWindow, setWindow] = useState<{ hasMore: boolean; limit: number; maxLimit: number } | null>(null);
+  const [limit, setLimit] = useState(DEFAULT_WINDOW);
   const [loading, setLoading] = useState(false);
   // Distinguishes "fetch failed" from "no e-invoice records yet" — a masked
   // failure previously rendered an empty list with no indication of failure.
@@ -55,21 +63,26 @@ export default function EInvoicePage() {
   // loaded yet, which is a different thing from "loaded, and there are none".
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
-  const load = useCallback(async (cid: string, isCurrent: () => boolean) => {
+  const load = useCallback(async (cid: string, askedLimit: number, isCurrent: () => boolean) => {
     setLoading(true);
     try {
-      const res = await api.einvoice.records(cid);
+      const res = await api.einvoice.records(cid, { limit: askedLimit });
       if (!isCurrent()) return;
-      if (res?.success) {
-        setRecords(arrayOrEmpty<EInvoiceRecord>(res.data));
+      const win = res?.success ? readWindow<EInvoiceRecord>(res.data, "records", askedLimit) : null;
+      if (win) {
+        setRecords(win.rows);
+        setWindow({ hasMore: win.hasMore, limit: win.limit, maxLimit: win.maxLimit });
         setLoadError(null);
       } else {
+        // A refusal, or a payload that is not a list: said, and never drawn as "no records".
         setRecords([]);
-        setLoadError(res?.error ?? "Couldn't load e-invoice records.");
+        setWindow(null);
+        setLoadError((res?.success ? null : res?.error) ?? "Couldn't load e-invoice records.");
       }
     } catch {
       if (!isCurrent()) return;
       setRecords([]);
+      setWindow(null);
       setLoadError("Couldn't load e-invoice records. Please try again.");
     } finally {
       if (isCurrent()) {
@@ -85,14 +98,15 @@ export default function EInvoicePage() {
   useEffect(() => {
     if (!clientId) {
       setRecords([]);
+      setWindow(null);
       setLoadError(null);
       setLoadedFor(null);
       return;
     }
     let current = true;
-    void load(clientId, () => current);
+    void load(clientId, limit, () => current);
     return () => { current = false; };
-  }, [clientId, attempt, load]);
+  }, [clientId, attempt, limit, load]);
 
   return (
     <div className="p-6 max-w-4xl space-y-4">
@@ -121,7 +135,8 @@ export default function EInvoicePage() {
             id="einvoice-client"
             clients={clients}
             value={clientId}
-            onChange={setClientId}
+            // Another client starts again from the default window.
+            onChange={(id) => { setLimit(DEFAULT_WINDOW); setClientId(id); }}
             ariaLabel="Client"
             placeholder="Select a client to see its e-invoice records…"
           />
@@ -154,6 +169,18 @@ export default function EInvoicePage() {
           />
         </div>
       ) : (
+        <>
+        {recordWindow && (
+          <ListWindowNotice
+            hasMore={recordWindow.hasMore}
+            what={windowDescription(records.length, "e-invoice records", "latest")}
+            limit={recordWindow.limit}
+            maxLimit={recordWindow.maxLimit}
+            onShowMore={setLimit}
+            busy={loading}
+            elsewhere="Open an invoice to see the records prepared for it."
+          />
+        )}
         <ul className="space-y-2">
           {records.map((r) => {
             const row = describeRecord(r);
@@ -183,6 +210,7 @@ export default function EInvoicePage() {
             );
           })}
         </ul>
+        </>
       )}
     </div>
   );

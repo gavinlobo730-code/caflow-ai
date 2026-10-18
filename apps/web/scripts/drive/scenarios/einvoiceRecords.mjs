@@ -24,6 +24,10 @@ const RECORDS = [
     irn: IRN, ack_number: "112600000002", status: "generated", gst_treatment: null, created_at: "2026-04-02T05:00:00Z" },
 ];
 
+/** The server's window over a client's records (apps/api/core/list_window.py). */
+const windowOf = (rows, { hasMore = false, limit = 100 } = {}) =>
+  ok({ records: rows, returned: rows.length, has_more: hasMore, limit, max_limit: 500 });
+
 const WORKLIST = { scope: "firm", invoices: [], counts: {}, caveats: [], clients_not_assessed: [] };
 
 function stubScreen(env, recordsReply) {
@@ -49,7 +53,7 @@ export const scenarios = [
     title: "picking a client lists its records, each says where its next step is, a record with no invoice says so, and nothing is written",
     async run(env) {
       const { page, stub } = env;
-      const asked = stubScreen(env, () => ok(RECORDS));
+      const asked = stubScreen(env, () => windowOf(RECORDS));
       await page.goto(`${env.base}/einvoice/`, { waitUntil: "networkidle" });
       await page.getByText("Select a client to see its e-invoice records.").waitFor();
       assert.equal(asked.length, 0, "records were requested before any client was picked");
@@ -60,6 +64,10 @@ export const scenarios = [
       await page.getByText("INV-0001").waitFor();
       assert.equal(asked.length, 1, `expected one read of the records, saw ${asked.length}`);
       assert.match(asked[0], new RegExp(`client_id=${CLIENT_ID}`), "the read was not for the picked client");
+      assert.match(asked[0], /limit=100/, "the read did not ask for a window");
+      assert.doesNotMatch(asked[0], /sales_invoice_id/, "the screen lists the client's records, not one invoice's");
+      assert.equal(await page.getByText("More exist that are not shown here").count(), 0,
+        "a whole list was reported as cut short");
 
       const rows = page.locator("ul > li");
       assert.equal(await rows.count(), 3);
@@ -90,7 +98,7 @@ export const scenarios = [
     title: "a failed read says so in words, never an empty list, and Retry reads again",
     async run(env) {
       const { page } = env;
-      const asked = stubScreen(env, (n) => (n === 1 ? { success: false, data: null, error: "The records could not be read." } : ok(RECORDS)));
+      const asked = stubScreen(env, (n) => (n === 1 ? { success: false, data: null, error: "The records could not be read." } : windowOf(RECORDS)));
       await openAndPick(env);
       await page.getByText("The records could not be read.").waitFor();
       assert.equal(await page.getByText("No e-invoice records found").count(), 0, "a failed read was shown as an empty list");
@@ -104,12 +112,31 @@ export const scenarios = [
     title: "a client with no records is told to prepare one from the invoice, with nothing to click here",
     async run(env) {
       const { page } = env;
-      stubScreen(env, () => ok([]));
+      stubScreen(env, () => windowOf([]));
       await openAndPick(env);
       await page.getByText("No e-invoice records found").waitFor();
       const body = await page.locator("body").innerText();
       assert.match(body, /compliance panel/, "the empty state does not say where a record is prepared");
       assert.equal(await page.getByRole("button", { name: /New E-Invoice|Create/ }).count(), 0);
+    },
+  },
+  {
+    id: "a-cut-short-list-says-so-and-show-more-asks-for-a-bigger-window",
+    title: "a client with more records than the window says the list stopped, and Show more reads again with a larger limit",
+    async run(env) {
+      const { page } = env;
+      const asked = stubScreen(env, (n) => windowOf(RECORDS, { hasMore: n < 2, limit: n < 2 ? 100 : 200 }));
+      await openAndPick(env);
+      await page.getByText("INV-0001").waitFor();
+      const body = await page.locator("body").innerText();
+      assert.match(body, /Showing the latest 3 e-invoice records\. More exist that are not shown here\./,
+        "a list the server said was cut short was not reported as cut short");
+      await page.getByRole("button", { name: "Show more" }).click();
+      await page.waitForLoadState("networkidle");
+      assert.equal(asked.length, 2, `Show more should read once more, saw ${asked.length} reads`);
+      assert.match(asked[1], /limit=200/, "the next window is not one step larger");
+      assert.equal(await page.getByText("More exist that are not shown here").count(), 0,
+        "the server said nothing more exists, so the notice goes away");
     },
   },
 ];

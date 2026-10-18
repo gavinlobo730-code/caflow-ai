@@ -210,20 +210,32 @@ def list_eway_bills(
     firm_id: str,
     client_id: str,
     status: str | None = None,
+    sales_invoice_id: str | None = None,
+    limit: int | None = None,
 ) -> list[dict]:
+    """The client's e-way bill records, newest first, optionally those of one invoice (POST-A-263) and at most `limit`
+    rows. An invoice may carry several (a second consignment, a new vehicle), so this lists them all and nothing here
+    treats a second as a duplicate."""
     if _USE_MOCK:
         records = [r for r in _MOCK_RECORDS.values()
                    if r["firm_id"] == firm_id and r["client_id"] == client_id]
         if status:
             records = [r for r in records if r["status"] == status]
-        return records
+        if sales_invoice_id:
+            records = [r for r in records if r.get("sales_invoice_id") == sales_invoice_id]
+        records.sort(key=lambda r: (str(r.get("created_at") or ""), str(r.get("id"))), reverse=True)
+        return records[:limit] if limit else records
 
     sb = _supabase()
     q = sb.table("eway_bill_records").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
     if status:
         q = q.eq("status", status)
-    res = q.order("created_at", desc=True).execute()
-    return res.data or []
+    if sales_invoice_id:
+        q = q.eq("sales_invoice_id", sales_invoice_id)
+    q = q.order("created_at", desc=True).order("id", desc=True)
+    if limit:
+        q = q.limit(limit)
+    return q.execute().data or []
 
 
 def live_eway_bills(firm_id: str, client_ids=None) -> list[dict]:

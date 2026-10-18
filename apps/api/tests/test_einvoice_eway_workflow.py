@@ -65,7 +65,7 @@ def test_irn_full_lifecycle_with_treatment(client):
     assert gen["qr_data"] == "QRPAYLOAD"
 
     # 3) It appears in the list; 4) cancellation moves it to cancelled.
-    listed = client.get("/api/einvoice/records?client_id=cl-1").json()["data"]
+    listed = client.get("/api/einvoice/records?client_id=cl-1").json()["data"]["records"]
     assert any(x["id"] == rid and x["status"] == "generated" for x in listed)
 
     c = client.post(f"/api/einvoice/records/{rid}/cancel", json={"cancellation_reason": "wrong value"})

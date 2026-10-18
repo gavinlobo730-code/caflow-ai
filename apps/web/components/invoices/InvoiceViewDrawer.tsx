@@ -34,6 +34,8 @@ import {
   type TimelineItem,
 } from "@/lib/invoices/hub";
 import { CompliancePanel } from "@/components/invoices/CompliancePanel";
+import { INVOICE_RECORDS_WINDOW, recordsReadNote, recordsUrl } from "@/lib/einvoice/invoiceRecords";
+import { readWindow } from "@/lib/lists/readWindow";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
@@ -103,6 +105,7 @@ export function InvoiceViewDrawer({
   const [deliveries, setDeliveries] = useState<InvoiceDelivery[]>([]);
   const [einvoiceRecords, setEinvoiceRecords] = useState<EInvoiceRecord[]>([]);
   const [ewayRecords, setEwayRecords] = useState<EWayRecord[]>([]);
+  const [recordsNote, setRecordsNote] = useState<string | null>(null);
   const [activity, setActivity] = useState<TimelineItem[]>([]);
   const [activityStatus, setActivityStatus] = useState<ActivityStatus>(ACTIVITY_NOT_YET_ASKED);
   const [loading, setLoading] = useState(true);
@@ -134,15 +137,23 @@ export function InvoiceViewDrawer({
       // Compliance records only matter once a document exists (issued+).
       let eiRecs: EInvoiceRecord[] = [];
       let ewRecs: EWayRecord[] = [];
+      setRecordsNote(null);
       if (detail.status !== "draft") {
+        // THIS INVOICE'S OWN records, in a window (POST-A-263): the drawer used to read every record the client had and
+        // look for its invoice among them, which grew with the client's history and was cut silently at the row cap.
+        const ask = { salesInvoiceId: invoiceId, limit: INVOICE_RECORDS_WINDOW };
         const [ei, ew] = await Promise.all([
-          apiGet(`/api/einvoice/records?client_id=${clientId}`, token),
-          apiGet(`/api/eway-bill/records?client_id=${clientId}`, token),
+          apiGet(recordsUrl("einvoice", clientId, ask), token),
+          apiGet(recordsUrl("eway-bill", clientId, ask), token),
         ]);
-        eiRecs = (ei.data as EInvoiceRecord[]) ?? [];
-        ewRecs = (ew.data as EWayRecord[]) ?? [];
+        const eiWin = ei.success ? readWindow<EInvoiceRecord>(ei.data, "records", INVOICE_RECORDS_WINDOW) : null;
+        const ewWin = ew.success ? readWindow<EWayRecord>(ew.data, "records", INVOICE_RECORDS_WINDOW) : null;
+        eiRecs = eiWin?.rows ?? [];
+        ewRecs = ewWin?.rows ?? [];
         setEinvoiceRecords(eiRecs);
         setEwayRecords(ewRecs);
+        // A read that did not come back whole is said; an empty panel beside it would read as "none prepared".
+        setRecordsNote(recordsReadNote(eiWin, ewWin));
       }
 
       // One merged, newest-first activity feed: lifecycle + deliveries + the
@@ -378,6 +389,9 @@ export function InvoiceViewDrawer({
           )}
 
           {/* ── GST compliance (IRN / E-Way workflows) ──────────────────── */}
+          {inv.status !== "draft" && recordsNote && (
+            <p className="text-xs text-state-attention" role="status">{recordsNote}</p>
+          )}
           {inv.status !== "draft" && (
             <CompliancePanel
               invoice={inv}
