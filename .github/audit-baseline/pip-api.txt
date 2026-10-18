@@ -15,8 +15,6 @@
 #
 # Format: one advisory id per line, then `# package version [severity] - title (fix: ...)`.
 
-PYSEC-2026-1433          # gunicorn 21.2.0 — Gunicorn version 21.2.0 does not properly validate the value of the 'Transfer-Encoding' he (fix: 22.0.0)
-PYSEC-2026-1434          # gunicorn 21.2.0 — Gunicorn fails to properly validate Transfer-Encoding headers, leading to HTTP Request Smu (fix: 22.0.0)
 PYSEC-2026-161           # starlette 0.36.3 — Starlette reconstructs the requested URL based on the HTTP Host request header and request (fix: 1.0.1)
 PYSEC-2026-1941          # starlette 0.36.3 — ### Summary When parsing a multi-part form with large files (greater than the [default max (fix: 0.47.2)
 PYSEC-2026-1943          # starlette 0.36.3 — ### Summary Starlette treats `multipart/form-data` parts without a `filename` as text form (fix: 0.40.0)
