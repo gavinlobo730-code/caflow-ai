@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
@@ -598,12 +599,16 @@ export default function GSTPage() {
 
         // Load from compliance_calendar with client join for GST types
         if (resolvedFirmId) {
-          const { data, error: dbErr } = await sb
+          // One row per return per client per period, every year: 25 a year for a client filing monthly, 1,250 a year
+          // for fifty of them. PostgREST cuts an unpaged read at ~1000 rows without a word, and this one is ordered
+          // oldest first, so what went missing was the NEWEST filings, the ones the counts above the table are about.
+          const { data, error: dbErr } = await selectAll(() => sb
             .from("compliance_calendar")
             .select("id, firm_id, client_id, compliance_type, period_start, period_end, due_date, filing_status, filed_date, created_at, clients(client_name, gstin)")
             .eq("firm_id", resolvedFirmId)
             .in("compliance_type", ["GSTR1", "GSTR3B", "GSTR9"])
-            .order("due_date", { ascending: true });
+            .order("due_date", { ascending: true })
+            .order("id"));
 
           if (dbErr) {
             if (dbErr.code === "42P01" || dbErr.message?.includes("does not exist")) {
