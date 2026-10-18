@@ -163,11 +163,7 @@ def test_an_open_risk_is_old_after_seven_indian_days_not_seven_utc_days(monkeypa
 
 # ── the rule ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 #: Frozen: a `[:10]` slice of a value named `..._at` that is knowingly left, with the reason. It may only shrink.
-LEFT_ALONE = {
-    ("services/intelligence_service.py", "compute_compliance_risk"):
-        "reads compliance_records.filed_at, a column that does not exist (the table has filed_date, a date), so the slice never "
-        "runs; making the late-history rule live changes every client's risk score and is a decision (POST-A-261)",
-}
+LEFT_ALONE: dict[tuple[str, str], str] = {}
 
 
 def _stamp_key(node: ast.AST) -> str | None:
