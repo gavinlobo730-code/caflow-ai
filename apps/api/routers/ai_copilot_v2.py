@@ -27,14 +27,23 @@ def _service():
     return ai_copilot_service
 
 
+def _caller_id(current_user: dict) -> str:
+    """The id a conversation is stored under: the caller's sign-in id (`ai_conversations.user_id`)."""
+    return current_user.get("auth_user_id", "user-dev")
+
+
 def _assert_conversation_scope(current_user: dict, conversation_id: str) -> dict:
-    """Resolve an ai_conversations row and 404 unless it belongs to the
-    caller's firm and (if client-scoped) the caller may access its client.
+    """Resolve an ai_conversations row and 404 unless it is the CALLER'S OWN conversation in the caller's firm and
+    (if client-scoped) the caller may access its client.
+
+    A conversation is one member's chat: the list shows only the caller's, and its stored turns are replayed into that
+    member's next prompt as if the model had said them. Resolving it by firm and id alone let any member who knew an id
+    read it, post into it or archive it (POST-A-250), so the owner is part of the lookup.
 
     Does NOT apply MessageIn.context_id's per-message override — send_message
     layers that check on top of this one, since a message may target a
     different (still caller-authorized) context than its conversation."""
-    conv = _repo().get_conversation(current_user["firm_id"], conversation_id)
+    conv = _repo().get_conversation(current_user["firm_id"], conversation_id, user_id=_caller_id(current_user))
     if not conv or not can_access_client(current_user, conv.get("context_id")):
         raise HTTPException(404, "Conversation not found")
     return conv
@@ -47,7 +56,7 @@ def _assert_message_scope(current_user: dict, message_id: str) -> dict:
     msg = _repo().get_message(current_user["firm_id"], message_id)
     if not msg:
         raise HTTPException(404, "Message not found")
-    conv = _repo().get_conversation(current_user["firm_id"], msg["conversation_id"])
+    conv = _repo().get_conversation(current_user["firm_id"], msg["conversation_id"], user_id=_caller_id(current_user))
     if not conv or not can_access_client(current_user, conv.get("context_id")):
         raise HTTPException(404, "Message not found")
     return msg
@@ -107,7 +116,7 @@ def archive_conversation(
 ):
     # M2 audit finding: same shape as get_conversation above.
     _assert_conversation_scope(current_user, conversation_id)
-    updated = _repo().archive_conversation(current_user["firm_id"], conversation_id)
+    updated = _repo().archive_conversation(current_user["firm_id"], conversation_id, user_id=_caller_id(current_user))
     if not updated:
         raise HTTPException(404, "Conversation not found")
     return api_response(True, updated)
@@ -124,7 +133,7 @@ async def send_message(
 ):
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id", "user-dev")
-    conv = _repo().get_conversation(firm_id, conversation_id)
+    conv = _repo().get_conversation(firm_id, conversation_id, user_id=user_id)
     if not conv:
         raise HTTPException(404, "Conversation not found")
     ctx_id = payload.context_id or conv.get("context_id")

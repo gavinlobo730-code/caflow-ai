@@ -35,6 +35,17 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _get_db = db_provider.request_db
 
 
+def _write_db():
+    """The client every INSERT and UPDATE on the `ai_*` tables goes through: the privileged one (POST-A-250).
+
+    A signed-in session holds no write privilege on these tables (migration 505), so nothing here may write as the
+    caller. Reads stay on `_get_db` (the caller's own session, so row security still narrows what is read). The price
+    of writing privileged is that row security is no longer the second lock on a write: every write below therefore
+    names its firm, and an update addresses a row by firm AND id (a conversation also by its owner where the caller is a
+    person), the way the rest of this repository's reads already did."""
+    return db_provider.service_db()
+
+
 def _now() -> str:
     """The instant, as an AWARE UTC string.
 
@@ -91,11 +102,19 @@ class AICopilotRepository(BaseRepository):
         )
         return result.data or []
 
-    def get_conversation(self, firm_id: str, conversation_id: str) -> Optional[dict]:
+    def get_conversation(
+        self, firm_id: str, conversation_id: str, user_id: Optional[str] = None
+    ) -> Optional[dict]:
+        """One conversation with its messages, or None.
+
+        `user_id`, when given, is the conversation's OWNER: a conversation is one member's own chat, and its stored turns
+        are replayed into that member's next prompt, so another member of the firm who knows the id is told it is not
+        found (POST-A-250). Left out only by a caller that is not a person (none today)."""
         if _USE_MOCK:
             conv = next(
                 (c for c in MOCK_CONVERSATIONS
-                 if c["id"] == conversation_id and c["firm_id"] == firm_id),
+                 if c["id"] == conversation_id and c["firm_id"] == firm_id
+                 and (user_id is None or c["user_id"] == user_id)),
                 None,
             )
             if conv:
@@ -103,15 +122,16 @@ class AICopilotRepository(BaseRepository):
                 conv["messages"] = self.list_messages(conversation_id)
             return conv
 
-        result = (
+        query = (
             _get_db()
             .table("ai_conversations")
             .select("*")
             .eq("id", conversation_id)
             .eq("firm_id", firm_id)
-            .maybe_single()
-            .execute()
         )
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.maybe_single().execute()
         conv = result.data
         if conv:
             conv["messages"] = self.list_messages(conversation_id)
@@ -135,44 +155,51 @@ class AICopilotRepository(BaseRepository):
             MOCK_CONVERSATIONS.append(record)
             return record
 
-        result = _get_db().table("ai_conversations").insert(record).execute()
+        result = _write_db().table("ai_conversations").insert(record).execute()
         return result.data[0]
 
-    def archive_conversation(self, firm_id: str, conversation_id: str) -> Optional[dict]:
+    def archive_conversation(
+        self, firm_id: str, conversation_id: str, user_id: Optional[str] = None
+    ) -> Optional[dict]:
+        """Archive a conversation. `user_id`, when given, is its owner: another member's conversation is not found."""
         if _USE_MOCK:
             for c in MOCK_CONVERSATIONS:
-                if c["id"] == conversation_id and c["firm_id"] == firm_id:
+                if (c["id"] == conversation_id and c["firm_id"] == firm_id
+                        and (user_id is None or c["user_id"] == user_id)):
                     c["is_archived"] = True
                     c["updated_at"] = _now()
                     return c
             return None
 
-        result = (
-            _get_db()
+        query = (
+            _write_db()
             .table("ai_conversations")
             .update({"is_archived": True, "updated_at": _now()})
             .eq("id", conversation_id)
             .eq("firm_id", firm_id)
-            .execute()
         )
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        result = query.execute()
         return result.data[0] if result.data else None
 
     def update_conversation_title(
-        self, conversation_id: str, title: str
+        self, firm_id: str, conversation_id: str, title: str
     ) -> Optional[dict]:
         if _USE_MOCK:
             for c in MOCK_CONVERSATIONS:
-                if c["id"] == conversation_id:
+                if c["id"] == conversation_id and c["firm_id"] == firm_id:
                     c["title"] = title
                     c["updated_at"] = _now()
                     return c
             return None
 
         result = (
-            _get_db()
+            _write_db()
             .table("ai_conversations")
             .update({"title": title, "updated_at": _now()})
             .eq("id", conversation_id)
+            .eq("firm_id", firm_id)
             .execute()
         )
         return result.data[0] if result.data else None
@@ -239,7 +266,7 @@ class AICopilotRepository(BaseRepository):
                     break
             return msg
 
-        result = _get_db().table("ai_messages").insert(msg).execute()
+        result = _write_db().table("ai_messages").insert(msg).execute()
         saved = result.data[0]
         # Conversation stats: the RPC atomically increments message_count and
         # stamps last_message_at/updated_at (migration 156), RETURNING the new
@@ -253,14 +280,14 @@ class AICopilotRepository(BaseRepository):
         # at "New Conversation" forever, since nothing else ever called
         # update_conversation_title.
         new_count = (
-            _get_db()
+            _write_db()
             .rpc("increment_message_count", {"conv_id": conversation_id})
             .execute()
             .data
         )
         if role == "user" and new_count == 1:
             title = content[:60] + ("..." if len(content) > 60 else "")
-            self.update_conversation_title(conversation_id, title)
+            self.update_conversation_title(firm_id, conversation_id, title)
         return saved
 
     def get_message(self, firm_id: str, message_id: str) -> Optional[dict]:
@@ -293,7 +320,7 @@ class AICopilotRepository(BaseRepository):
             return None
 
         result = (
-            _get_db()
+            _write_db()
             .table("ai_messages")
             .update({"feedback_rating": rating})
             .eq("id", message_id)
@@ -369,7 +396,7 @@ class AICopilotRepository(BaseRepository):
 
         # Mark old summaries stale
         stale_query = (
-            _get_db()
+            _write_db()
             .table("ai_summaries")
             .update({"is_stale": True})
             .eq("firm_id", firm_id)
@@ -390,7 +417,7 @@ class AICopilotRepository(BaseRepository):
             "generated_at": _now(),
             **data,
         }
-        result = _get_db().table("ai_summaries").insert(record).execute()
+        result = _write_db().table("ai_summaries").insert(record).execute()
         return result.data[0]
 
     # ── Recommendations ───────────────────────────────────────────────────────
@@ -476,7 +503,7 @@ class AICopilotRepository(BaseRepository):
             MOCK_RECOMMENDATIONS.append(record)
             return record
 
-        result = _get_db().table("ai_recommendations").insert(record).execute()
+        result = _write_db().table("ai_recommendations").insert(record).execute()
         return result.data[0]
 
     def update_recommendation_status(
@@ -504,7 +531,7 @@ class AICopilotRepository(BaseRepository):
             return None
 
         result = (
-            _get_db()
+            _write_db()
             .table("ai_recommendations")
             .update(updates)
             .eq("id", rec_id)
@@ -546,7 +573,7 @@ class AICopilotRepository(BaseRepository):
             self.rate_message(firm_id, message_id, rating)
             return record
 
-        result = _get_db().table("ai_feedback").insert(record).execute()
+        result = _write_db().table("ai_feedback").insert(record).execute()
         self.rate_message(firm_id, message_id, rating)
         return result.data[0]
 
