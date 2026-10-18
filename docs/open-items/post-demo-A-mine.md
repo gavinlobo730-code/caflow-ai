@@ -115,7 +115,6 @@ IDs `POST-A-NNN` are stable: never renumber; add new items at the next free numb
 
 ## Filing, integrations and registrations
 
-- **POST-A-118** · `filing-integrations-registrations` · low · hours — **Version the MCA XBRL taxonomy as a registry with verified marker.** Claude restructures the XBRL taxonomy as a *_BY_VERSION registry with a LATEST_VERIFIED marker plus a hand-download step (the rate-registry / ITR-JSON pattern; routers/xbrl_engine.py TODO(compliance), docs/compliance/07 section 3.9, docs/compliance/08 A.7), because the schema URL moves with MCA's validation tool version. Today apps/api/domain/income_tax/xbrl_service.py and routers/xbrl_engine.py hard-code taxonomy_version 'MCA_2023' (the default) with namespace http://www.mca.gov.in/taxonomy/2023/in-bse-fin and no verification marker. Do not 'fix' the http://www.mca.gov.in/... strings: they are XML namespace URIs, never dereferenced. Claude can restructure, add the marker and a test now with MCA_2023 as the one unverified entry; promoting any version to verified, or adding a newer one, waits on the human check of the MCA page (separate item: tool V5.0 of July 2025, nothing newer found, vendor changelog 06-08-2026 reports no C&I 2016 taxonomy change). _When: Restructure first; promoting any version to verified waits on the human check of the MCA page._ — _Sources:_ docs/compliance/07-getting-permission-to-file.md §3.9 ('Code seam'); apps/api/routers/xbrl_engine.py header; docs/compliance/08-government-api-access-the-verified-position.md A.7
 
 ## Marketing, commercial and legal
 

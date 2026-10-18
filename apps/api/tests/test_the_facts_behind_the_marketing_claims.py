@@ -181,7 +181,10 @@ _PORTAL_SUFFIXES = ("gov.in", "nic.in", "gstn.org.in", "esic.in", "proteantech.i
 # An XBRL namespace is an identifier written into a document the CA uploads; it is never
 # requested. Named with the reason, so the exemption is a decision and not a silence.
 _NAMESPACE_ONLY = {
+    # The service keeps the entity-identifier scheme it writes into the instance; the taxonomy registry (POST-A-118) holds the
+    # taxonomy namespace the service reads from it.
     "domain/income_tax/xbrl_service.py": ("http://www.mca.gov.in",),
+    "domain/income_tax/xbrl_taxonomy.py": ("http://www.mca.gov.in",),
 }
 
 

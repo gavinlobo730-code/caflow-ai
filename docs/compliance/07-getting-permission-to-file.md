@@ -551,9 +551,11 @@ vendor changelog dated 6 August 2026 reports **no change in the C&I 2016
 **Code seam.** `apps/api/routers/xbrl_engine.py` and
 `apps/api/domain/income_tax/xbrl_service.py` (whose `http://www.mca.gov.in/...`
 strings are XML **namespace URIs**, never dereferenced — do not "fix" them), plus
-`apps/api/routers/mca_workspace.py`. Version the taxonomy/schema URL the way the
-rate registries are versioned: a `LATEST_VERIFIED` marker plus a hand-download
-step.
+`apps/api/routers/mca_workspace.py`. The taxonomy is versioned the way the rate
+registries are, in `apps/api/domain/income_tax/xbrl_taxonomy.py` (a registry and a
+`LATEST_VERIFIED_TAXONOMY` marker, built 18-10-2026): `MCA_2023` is the one entry and
+it is **unverified**, and the hand-download step that would promote it (the
+validator, the taxonomies and the schema URL) is still open.
 
 ---
 
