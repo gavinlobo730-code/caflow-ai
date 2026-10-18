@@ -23,6 +23,20 @@ export const WINDOW_STEP = 100;
  */
 export const DIRECT_READ_WINDOW_MAX = 500;
 
+/**
+ * The most entities one read of the firm's entity register may ask for. The register screen loads the list whole and
+ * searches, sorts and filters it in the browser, so it asks for the ceiling. It is the one browser-side copy of
+ * `ENTITY_LIST_MAX` in apps/api/routers/relationships.py and a test holds the two equal.
+ */
+export const ENTITY_REGISTER_WINDOW_MAX = 2000;
+
+/**
+ * The most pipeline leads one read may ask for. The pipeline board loads its leads whole and groups them by stage, so it
+ * asks for the ceiling. It is the one browser-side copy of `LEAD_LIST_MAX` in apps/api/routers/lifecycle.py and a test
+ * holds the two equal.
+ */
+export const LEAD_REGISTER_WINDOW_MAX = 2000;
+
 /** The limit to ask for next, or null when the ceiling has been reached. */
 export function nextWindowLimit(limit: number, maxLimit: number): number | null {
   if (!Number.isFinite(limit) || !Number.isFinite(maxLimit)) return null;

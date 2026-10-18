@@ -79,9 +79,10 @@ def test_timeline_allows_assigned_client_in_mock_mode(monkeypatch, only_mine):
     # used as ints.
     resp = tl.list_timeline_events(client_id=MINE, current_user=USER,
                                    category=None, severity=None,
-                                   financial_year=None, limit=50, offset=0)
+                                   financial_year=None, entity_type=None,
+                                   entity_id=None, limit=50, offset=0)
     assert resp["success"] is True
-    assert [e["id"] for e in resp["data"]] == ["e1"]
+    assert [e["id"] for e in resp["data"]["events"]] == ["e1"]
 
 
 # ── receipts / purchase_payments: mock branches that diverged ────────────────

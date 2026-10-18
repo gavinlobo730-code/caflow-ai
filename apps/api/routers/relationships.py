@@ -11,7 +11,7 @@ CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List
+from typing import Annotated, Optional, List
 from datetime import datetime, timezone
 import uuid
 
@@ -24,6 +24,7 @@ from core.permissions import rbac
 from services.timeline_service import timeline_service
 from domain.money_text import whole_rupees
 from core import db_provider
+from core.list_window import probe, split
 
 router = APIRouter(prefix="/api/relationships", tags=["relationships"])
 
@@ -254,14 +255,37 @@ class PropertyIn(BaseModel):
 
 # ─── Entities ─────────────────────────────────────────────────────────────────
 
+#: The most entities one read of the register may ask for. It is the register's own ceiling and not
+#: `core.list_window.MAX_LIST_LIMIT`: the register screen loads the whole list at once and searches, sorts and filters it in the
+#: browser, and a firm's directors, shareholders and counterparties run well past the shared 500. It is served to the screen
+#: as `max_limit`, and `apps/web/lib/lists/window.ts` pins its one browser-side copy to this line.
+ENTITY_LIST_MAX = 2000
+
+
+def _entity_window(rows: list[dict], limit: int):
+    """The answer: the window, and whether the read found a row beyond it (`split` drops the probe row)."""
+    entities, has_more = split(rows, limit)
+    return api_response(True, {
+        "entities": entities,
+        "returned": len(entities),
+        "has_more": has_more,
+        "limit": limit,
+        "max_limit": ENTITY_LIST_MAX,
+    })
+
+
 @router.get("/entities")
 def list_entities(
     entity_type: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
-    limit: int = Query(50),
-    offset: int = Query(0),
+    limit: Annotated[int, Query(ge=1, le=ENTITY_LIST_MAX)] = 50,
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("client", "read")),
 ):
+    """A window of the firm's entity register by name, and whether more exist beyond it. Every screen that lists the register
+    used to take whatever came back as all of it (the explorer asked for 100, the ownership map took the default 50, the
+    register page guessed from `rows == 2000`), so a firm with more entities had some of them missing without a word
+    (POST-A-259). `has_more` comes from the read: one row more than the window is asked for and it is never returned."""
     db = _db()
     if not db:
         result = [e for e in _MOCK_ENTITIES if e.get("firm_id") == current_user["firm_id"]]
@@ -275,15 +299,17 @@ def list_entities(
                 or s in (e.get("pan") or "").lower()
                 or s in (e.get("email") or "").lower()
             ]
-        return api_response(True, result[offset: offset + limit])
+        result = sorted(result, key=lambda e: ((e.get("full_name") or ""), str(e.get("id"))))
+        return _entity_window(result[offset: offset + probe(limit)], limit)
 
     q = db.table("entities").select("*").eq("firm_id", current_user["firm_id"])
     if entity_type:
         q = q.eq("entity_type", entity_type)
     if search:
         q = q.or_(f"full_name.ilike.%{search}%,pan.ilike.%{search}%,email.ilike.%{search}%")
-    res = q.order("full_name").range(offset, offset + limit - 1).execute()
-    return api_response(True, res.data or [])
+    # `id` breaks a tie between two entities with one name, so the same row is never on two windows.
+    res = q.order("full_name").order("id").range(offset, offset + probe(limit) - 1).execute()
+    return _entity_window(res.data or [], limit)
 
 
 @router.post("/entities")

@@ -4123,11 +4123,11 @@ export const api = {
     disclosure: (clientId: string) =>
       request<ApiResp<RelatedPartyDisclosure>>(
         `/api/relationships/related-party-report?client_id=${encodeURIComponent(clientId)}`),
-    /** The firm's entity register, for the picker. The role form used to ask a
-     *  CA to paste a UUID copied from another screen. */
-    entities: (search?: string) =>
-      request<ApiResp<RelationshipEntity[]>>(
-        `/api/relationships/entities?limit=200${search ? `&search=${encodeURIComponent(search)}` : ""}`),
+    /** A window of the firm's entity register by name (`{ entities, has_more, limit, max_limit }`; read it with
+     *  `lib/lists/readWindow`). The role form used to ask a CA to paste a UUID copied from another screen. */
+    entities: (search?: string, limit: number = 200) =>
+      request<ApiResp<unknown>>(
+        `/api/relationships/entities?limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ""}`),
     addRole: (entityId: string, body: unknown) =>
       request<ApiResp<ClientEntityRole>>(
         `/api/relationships/entities/${encodeURIComponent(entityId)}/roles`,

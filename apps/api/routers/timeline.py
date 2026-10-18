@@ -3,10 +3,13 @@ Timeline REST endpoint — exposes client_timeline_events for the UI audit trail
 """
 import logging
 import os
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Annotated, Literal, Optional
 
+from core.list_window import MAX_LIST_LIMIT, probe, split
 from models.common import api_response
 from core.permissions import rbac
 from models.fy import FYLabel, OptionalFYLabel
@@ -18,19 +21,39 @@ router = APIRouter(prefix="/api/timeline", tags=["timeline"])
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 
+def _window(rows: list[dict], limit: int):
+    """The answer: the window, and whether the read found a row beyond it (the probe row is dropped by `split`)."""
+    events, has_more = split(rows, limit)
+    return api_response(True, {
+        "events": events,
+        "returned": len(events),
+        "has_more": has_more,
+        "limit": limit,
+        "max_limit": MAX_LIST_LIMIT,
+    })
+
+
 @router.get("")
 def list_timeline_events(
     client_id: str = Query(...),
     category: Optional[str] = Query(None),
     severity: Optional[str] = Query(None),
     financial_year: Annotated[OptionalFYLabel, Query()] = None,
-    limit: int = Query(50),
-    offset: int = Query(0),
+    entity_type: Optional[str] = Query(None, max_length=64),
+    entity_id: Optional[UUID] = Query(None),
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT)] = 50,
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """
-    Return paginated timeline events for a client.
-    Events are ordered newest-first.
+    A window of a client's timeline events, newest first, and whether older ones exist.
+
+    `entity_type` and `entity_id` narrow the read to the events of ONE record (a sales invoice, a purchase bill), which is
+    what a document's own activity panel needs. Before they existed the panels read the client's latest hundred events of
+    every kind and kept the ones that named their document in the browser, so a document older than the client's hundredth
+    event read "No activity recorded yet" - an empty state that was only an artefact of where the window stopped
+    (POST-A-259). `has_more` comes from the read (core/list_window): one row more than the window is asked for, and it is
+    never returned.
     """
     # Hoisted ABOVE the mock branch: it returns real (mock) events and used to
     # sit before this check, so the whole in-memory test run — which is where
@@ -49,8 +72,12 @@ def list_timeline_events(
             events = [e for e in events if e.get("severity") == severity]
         if financial_year:
             events = [e for e in events if e.get("financial_year") == financial_year]
+        if entity_type:
+            events = [e for e in events if e.get("entity_type") == entity_type]
+        if entity_id:
+            events = [e for e in events if str(e.get("entity_id")) == str(entity_id)]
         events = sorted(events, key=lambda e: e["created_at"], reverse=True)
-        return api_response(True, events[offset: offset + limit])
+        return _window(events[offset: offset + probe(limit)], limit)
 
     from core.supabase_client import get_supabase
     db = get_supabase()
@@ -67,8 +94,13 @@ def list_timeline_events(
         q = q.eq("severity", severity)
     if financial_year:
         q = q.eq("financial_year", financial_year)
-    res = q.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
-    return api_response(True, res.data or [])
+    if entity_type:
+        q = q.eq("entity_type", entity_type)
+    if entity_id:
+        q = q.eq("entity_id", str(entity_id))
+    # `id` breaks a tie between two events stamped the same instant, so the same row is never on two pages.
+    res = q.order("created_at", desc=True).order("id", desc=True).range(offset, offset + probe(limit) - 1).execute()
+    return _window(res.data or [], limit)
 
 
 class TimelineEventIn(BaseModel):

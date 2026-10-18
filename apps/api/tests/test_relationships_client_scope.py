@@ -239,7 +239,7 @@ def test_the_entity_register_is_not_narrowed(roles, deny):
     Over-guarding is a real failure mode; this fails if somebody narrows it."""
     out = rel.list_entities(entity_type=None, search=None, limit=50, offset=0,
                             current_user=USER)
-    assert [e["id"] for e in out["data"]] == ["E-1"]
+    assert [e["id"] for e in out["data"]["entities"]] == ["E-1"]
 
 
 def test_the_roles_embedded_in_an_entity_ARE_narrowed(roles, deny):
