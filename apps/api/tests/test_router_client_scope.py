@@ -1150,11 +1150,6 @@ EXEMPT: dict[str, str] = {
         "writes it is limited to firm-wide roles; the resulting figures are "
         "firm-level and are what every member of the firm already sees on the "
         "dashboards.",
-    "/api/tasks/summary/dashboard":
-        "aggregate counts only — open tasks by status, overdue counts, a "
-        "high-risk-client TALLY. No client is named and no per-client figure is "
-        "returned. Same line as the lifecycle dashboard: the counts are derived "
-        "from client rows, and that is stated rather than glossed over.",
     "/api/tasks/transitions":
         "the status machine itself (which status a task may move to from each), a constant of the product. No row, no client "
         "and no figure derived from either: the screens read it to offer only the moves the server will accept (POST-A-227).",
@@ -1596,7 +1591,7 @@ EXEMPT: dict[str, str] = {
     "/api/risks/stats":
         "counts by severity plus a resolved tally across the firm. No client "
         "is named and no per-client figure is returned — the same line drawn "
-        "for /api/tasks/summary/dashboard and /api/lifecycle/dashboard. The "
+        "for /api/lifecycle/dashboard. The "
         "counts ARE derived from client rows, which is stated rather than "
         "glossed over.",
     "/api/risks/firm/score":
@@ -1641,19 +1636,6 @@ EXEMPT: dict[str, str] = {
         "book. Covers GET (list_capacity) and PUT (set_capacity), which "
         "share this path.",
     # analytics.py — the two routes that aggregate over STAFF, not clients.
-    "/api/analytics/team":
-        "per-EMPLOYEE task counts and hours (users joined to tasks by "
-        "assigned_to/assignee_id). Names staff, never a client — the same "
-        "reasoning as /api/workload/capacity.",
-    "/api/analytics/firm":
-        "firm-level totals only — task counts, active-client COUNT, revenue "
-        "sum, hours. No client is named and no per-client figure is returned, "
-        "the same line drawn for /api/copilot/intelligence/* and "
-        "/api/risks/stats. Its two task SELECTs did list the per-client column "
-        "while reading it nowhere; that dead column was removed so this "
-        "exemption is literally true rather than true-in-spirit — the exact "
-        "mirror of workload.get_team_workload, where the same column was ADDED "
-        "to the SELECT precisely so the rows COULD be narrowed.",
     # intelligence.py — the one route built on the workload engine.
     "/api/intelligence/workload-insights":
         "overloaded/idle team members and the unassigned backlog COUNT, keyed "
@@ -1837,7 +1819,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/notifications": 10, "/api/documents": 5, "/api/workload": 4,
               "/api/team": 1, "/api/ai-copilot": 3,
               "/api/einvoice": 4, "/api/form-26as": 5, "/api/fixed-assets": 5,
-              "/api/analytics": 5, "/api/intelligence": 6, "/api/hsn": 1,
+              "/api/analytics": 4, "/api/intelligence": 6, "/api/hsn": 1,
               "/api/fx-reports": 5, "/api/currencies": 4,
               "/api/customer-statements": 4, "/api/party-credits": 3,
               "/api/timeline": 1, "/api/search": 1,

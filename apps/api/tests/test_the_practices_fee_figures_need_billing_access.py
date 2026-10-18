@@ -10,17 +10,15 @@ WHAT WAS WRONG
       * the analytics profitability, concentration and revenue-vs-effort endpoints (`analytics:read`, a Manager's) turn
         those invoices into revenue, margin and a share of the book, per client;
       * `/api/analytics/firm` summed revenue and outstanding for the firm and, on any failure, swallowed it into four
-        zeros.
+        zeros. (That route had no screen and no other caller, and was deleted on 18-10-2026, POST-A-185; the two tests that
+        held its fee figures withheld went with it, because the exposure went with the route.)
 
     Once the database refuses the fee tables to everyone below `billing:read` (the next migration), each of those would
-    have answered an Executive or a Manager with a confident zero. They now refuse at the door, in words, or (the firm
-    totals) say that the figures are withheld and give null, never zero.
+    have answered an Executive or a Manager with a confident zero. They now refuse at the door, in words.
 
 NEGATIVE CONTROL (each of these fails against the previous code)
     * test_a_manager_is_refused_the_revenue_analytics
     * test_each_revenue_endpoint_asks_both_analytics_and_billing
-    * test_the_firm_totals_withhold_the_fee_figures_from_a_manager
-    * test_an_unreadable_fee_table_is_not_four_zeros
     * test_an_executive_is_refused_the_practices_fee_invoices
     * test_no_route_in_the_invoices_router_asks_the_invoice_resource
 """
@@ -73,59 +71,6 @@ def test_a_partner_holds_both_permissions_the_revenue_endpoints_ask():
     for resource in ("analytics", "billing"):
         assert can_user({"role": "Partner"}, resource, "read")
     assert not can_user({"role": "Manager"}, "billing", "read")
-
-
-# ── the firm totals ────────────────────────────────────────────────────────────────────────────────────────────────
-
-class _Chain:
-    """A chainable stand-in for the request client that answers a table with fixed rows, or fails it."""
-
-    def __init__(self, rows, fail=(), name=None):
-        self._rows, self._fail, self._name = rows, set(fail), name
-
-    def table(self, name):
-        if name in self._fail:
-            raise RuntimeError(f"{name} unreadable")
-        return _Chain(self._rows, self._fail, name)
-
-    def __getattr__(self, _):
-        return lambda *a, **k: self
-
-    def execute(self):
-        class R:
-            data: list = []
-        R.data = self._rows.get(self._name, [])
-        return R()
-
-
-def _firm(monkeypatch, user, *, fail=()):
-    from routers import analytics as routes
-    rows = {"fee_invoices": [
-        {"total_paise": 100_00, "invoice_date": "2026-10-01", "status": "Paid"},
-        {"total_paise": 50_00, "invoice_date": "2026-10-02", "status": "Issued"}]}
-    monkeypatch.setattr(routes, "_get_db", lambda: _Chain(rows, fail))
-    monkeypatch.setattr(routes.time_tracking_analytics_repo, "get_firm_hours",
-                        lambda *a, **k: {"total_minutes": 0, "billable_minutes": 0})
-    return routes.firm_analytics(period="month", current_user=user)["data"]
-
-
-def test_the_firm_totals_withhold_the_fee_figures_from_a_manager(monkeypatch):
-    md = _firm(monkeypatch, {"firm_id": FIRM, "role": "Manager"})
-    pd = _firm(monkeypatch, {"firm_id": FIRM, "role": "Partner"})
-    assert md["fees_withheld"] is True
-    for k in ("revenue_paise", "outstanding_paise", "invoices_issued", "invoices_paid"):
-        assert md[k] is None, f"{k} must be absent for a role that may not read fees, never 0"
-    assert pd["fees_withheld"] is False
-    assert pd["revenue_paise"] == 100_00 and pd["outstanding_paise"] == 50_00 and pd["invoices_issued"] == 2
-    assert md["tasks_completed"] == pd["tasks_completed"], "the work figures are not fee economics"
-
-
-def test_an_unreadable_fee_table_is_not_four_zeros(monkeypatch):
-    """The read used to sit in `except: pass` over initial zeros, so an outage printed as 'nothing was billed'."""
-    data = _firm(monkeypatch, {"firm_id": FIRM, "role": "Partner"}, fail={"fee_invoices"})
-    assert data["fees_withheld"] is False
-    assert data["revenue_paise"] is None and data["outstanding_paise"] is None, (
-        "an outage must read as unknown (null), not as zero billed")
 
 
 # ── the fee invoices ───────────────────────────────────────────────────────────────────────────────────────────────

@@ -104,13 +104,6 @@ class TaskUpdate(BaseModel):
         return task_estimate.check_minutes(v)
 
 
-@router.get("/summary/dashboard")
-def dashboard_summary(current_user: dict = Depends(rbac("task", "read"))):
-    from domain.task_service import task_domain_service
-    firm_id = current_user.get("firm_id")
-    return api_response(True, task_domain_service.get_dashboard_summary(firm_id=firm_id))
-
-
 @router.get("")
 def list_tasks(
     client_id: Optional[str] = None,

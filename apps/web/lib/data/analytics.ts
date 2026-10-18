@@ -1,12 +1,6 @@
 import { formatWhole } from "@/lib/money/format";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import type {
-  TeamAnalyticsReport,
-  ClientAnalyticsReport,
-  FirmAnalyticsReport,
-  TeamWorkload,
-  ApiResponse,
-} from "@/lib/types";
+import type { TeamWorkload, ApiResponse } from "@/lib/types";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -21,26 +15,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<ApiRespons
     },
   });
   return res.json();
-}
-
-export type AnalyticsPeriod = "week" | "month" | "quarter";
-
-export async function getTeamAnalytics(period: AnalyticsPeriod = "month"): Promise<TeamAnalyticsReport> {
-  const resp = await apiFetch<TeamAnalyticsReport>(`/api/analytics/team?period=${period}`);
-  if (!resp.success) throw new Error(resp.error ?? "Failed to load team analytics");
-  return resp.data;
-}
-
-export async function getClientAnalytics(period: AnalyticsPeriod = "month"): Promise<ClientAnalyticsReport> {
-  const resp = await apiFetch<ClientAnalyticsReport>(`/api/analytics/clients?period=${period}`);
-  if (!resp.success) throw new Error(resp.error ?? "Failed to load client analytics");
-  return resp.data;
-}
-
-export async function getFirmAnalytics(period: AnalyticsPeriod = "month"): Promise<FirmAnalyticsReport> {
-  const resp = await apiFetch<FirmAnalyticsReport>(`/api/analytics/firm?period=${period}`);
-  if (!resp.success) throw new Error(resp.error ?? "Failed to load firm analytics");
-  return resp.data;
 }
 
 export async function getTeamWorkload(): Promise<TeamWorkload> {

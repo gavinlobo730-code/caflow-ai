@@ -92,7 +92,7 @@ BUDGET: dict[str, int] = {
     # having executed nothing, the second filtered an in-memory fixture list.
     # (`/recommendations` and its action route were reached by the Insights tab
     # and were deleted with it: nothing ever generated a recommendation.)
-    "/api/task-recurring": 9, "/api/tasks": 9, "/api/copilot": 6,
+    "/api/task-recurring": 9, "/api/tasks": 8, "/api/copilot": 6,
     # /api/income-tax 6 -> 5 on 18-09-2026: POST /book-to-tax-bridge got its
     # first caller (FA-06). The engine and the endpoint had been complete for
     # months with two comments in apps/web and nothing calling either.
@@ -140,7 +140,7 @@ BUDGET: dict[str, int] = {
     # named a column the table lacked, repaired by migration 450). It goes
     # through the API now, so that door is reached, and the new unread count and
     # mark-read endpoints are reached from the same screen.
-    "/api/analytics": 3, "/api/automation": 5, "/api/gst-portal": 5,
+    "/api/automation": 5, "/api/gst-portal": 5,
     "/api/itr": 5, "/api/lifecycle": 5, "/api/portal": 3,
     # /api/risks 5 -> 3 on 24-09-2026: `app/risks/page.tsx` derived its
     # whole register in the browser from six PostgREST reads and called no

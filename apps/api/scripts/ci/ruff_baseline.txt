@@ -157,9 +157,7 @@ routers/ais.py :: B904 :: delete_record :: 1
 routers/ais.py :: B904 :: save_working :: 1
 routers/ais.py :: B904 :: upload_statement :: 2
 routers/analytics.py :: C901 :: revenue_vs_effort :: 16
-routers/analytics.py :: F401 :: <module> :: 1
 routers/analytics.py :: F401 :: _client_period_metrics :: 1
-routers/analytics.py :: F841 :: firm_analytics :: 2
 routers/analytics.py :: F841 :: profitability_analytics :: 1
 routers/analytics.py :: F841 :: revenue_vs_effort :: 1
 routers/assignments.py :: F401 :: <module> :: 1

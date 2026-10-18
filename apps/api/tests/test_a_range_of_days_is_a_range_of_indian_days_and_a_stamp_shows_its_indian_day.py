@@ -132,13 +132,13 @@ def test_no_bound_is_added_for_a_range_nobody_asked_for(monkeypatch):
     assert _calls(db, "gte") == [] and _calls(db, "lt") == []
 
 
-def test_the_three_completed_in_the_period_reads_use_indian_midnights():
-    """`routers/analytics.py` filters tasks completed in a period on `updated_at` in three places; all three go through the one
-    window, and no UTC end-of-day string is left in the module."""
+def test_analytics_holds_no_utc_day_boundary():
+    """`routers/analytics.py` once filtered tasks completed in a period on `updated_at` in three roll-ups, each through the one
+    Indian-day window. Those three routes had no screen and were deleted (POST-A-185), so the window is gone with them; what
+    stays true, and is held here, is that no UTC end-of-day string was left in the module and the window is not half-used."""
     source = (API_ROOT / "routers" / "analytics.py").read_text(encoding="utf-8")
-    window = '.gte("updated_at", ist_day_window(date_from, None)[0]).lt("updated_at", ist_day_window(None, date_to)[1])'
-    assert source.count(window) == 3
     assert "T23:59:59Z" not in source and "T00:00:00Z" not in source
+    assert "ist_day_window" not in source, "a half of the Indian-day window came back; use both bounds through the one helper"
 
 
 # ── the export and the ageing of a risk ──────────────────────────────────────────────────────────────────────────────
