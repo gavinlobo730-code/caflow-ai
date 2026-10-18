@@ -8,9 +8,10 @@
  * second one is exactly how the salary register and the ECR each ended up
  * implemented twice, once per surface, with only one of them right.
  *
- * Nothing here computes a statutory figure. `employeeGrossPaise` is the single
- * calculation, it is a DISPLAY preview of the backend's gross, and its own
- * comment says so.
+ * Nothing here computes a figure. The roster's monthly gross is the server's
+ * (`full_month_gross_paise` on each row of GET /api/payroll/employees): the
+ * browser used to add basic, HRA and DA itself, with float arithmetic and under
+ * the label "CTC", and a copy of a calculation is the thing that drifts from it.
  */
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -33,14 +34,20 @@ export type Employee = {
   // Optional fixed components. The one employee form does not capture them —
   // they are set through EmployeeDrawer's salary revision, which records the
   // whole component set AS AT A DATE so arrears have something to compute
-  // from — and the backend slip folds all of them into gross. Included here so
-  // the on-screen CTC preview matches the computed slip for every employee.
+  // from — and the backend slip folds all of them into gross. They are read
+  // here as stored; nothing in the browser adds them up (see below).
   //
   // (This used to say "an employee created via the per-client payroll page can
   // carry them", which described the second form PAY-13 deleted.)
   lta_paise?: number;
   medical_paise?: number;
   special_allowance_paise?: number;
+  // What the employee's recorded rates add up to for a FULL month, computed by
+  // the server with the slip's own rounding: no attendance loss and no one-time
+  // earnings, so it is neither a month's pay nor the cost to company. null = the
+  // server could not read a component; absent = an API that predates the field.
+  // Both are shown as "—", never as a zero.
+  full_month_gross_paise?: number | null;
   pf_applicable: boolean;
   esi_applicable: boolean;
   pt_applicable?: boolean;
@@ -159,21 +166,6 @@ export function apiErr(e: unknown, fallback: string): string {
     return m[1].trim() || fallback;
   }
   return e.message || fallback;
-}
-
-/** Monthly gross CTC for an employee, in integer paise. Mirrors the backend
- *  slip's gross = basic + HRA + DA + LTA + medical + special + other (any
- *  component not captured on this page is absent → treated as 0). */
-export function employeeGrossPaise(emp: Employee): number {
-  return (
-    emp.basic_paise +
-    Math.round((emp.basic_paise * emp.hra_percent) / 100) +
-    Math.round((emp.basic_paise * emp.da_percent) / 100) +
-    (emp.lta_paise ?? 0) +
-    (emp.medical_paise ?? 0) +
-    (emp.special_allowance_paise ?? 0) +
-    emp.other_allowances_paise
-  );
 }
 
 // Professional Tax states this build knows a slab for — must stay in sync
