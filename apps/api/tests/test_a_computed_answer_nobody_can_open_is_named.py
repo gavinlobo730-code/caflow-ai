@@ -81,12 +81,6 @@ UNREACHED_COMPUTED_ANSWERS: dict[str, str] = {
         "The delivery LOG for statements the CA has emailed. The send path is "
         "live and writes it; nothing reads it back, so a CA cannot see whether a "
         "statement they sent actually went out.",
-    "/api/form-26as/reconciliation":
-        "The client-as-DEDUCTEE 26AS reconciliation. The client-as-DEDUCTOR one "
-        "(`/tds-workspace/form26as/upload`) has a screen; this one does not. "
-        "⚠️ NOT the same reconciliation — `domain/income_tax/form26as_matcher` "
-        "keys on the DEDUCTOR's TAN and `domain/tds/deductor_26as` on the "
-        "DEDUCTEE's PAN, and each module says so.",
     "/api/memory/year-end-reports":
         "The copilot's stored year-end summaries. The year-end pack itself is "
         "live and is the document a CA works from; this is the AI's own "

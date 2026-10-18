@@ -89,7 +89,7 @@ class SummaryOut(BaseModel):
     content: str
     key_points: List[str]
     metadata: dict[str, Any]
-    model_used: str
+    model_used: Optional[str]
     generated_at: datetime
     expires_at: Optional[datetime]
     is_stale: bool

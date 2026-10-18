@@ -215,3 +215,60 @@ def test_health_says_whether_error_reporting_is_on(monkeypatch):
     assert off.json()["data"]["error_reporting"] == "off"
     assert on.json()["data"]["error_reporting"] == "on"
     assert on.json()["data"]["schema"] == "ok", "the field is added beside the existing ones, not instead of them"
+
+
+# ── the release (POST-A-044) ───────────────────────────────────────────────────
+
+def _one_event_with(monkeypatch, **env):
+    for name in ("SENTRY_RELEASE", "RENDER_GIT_COMMIT"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    events: list = []
+    assert obs.init_error_reporting(DSN, environment="test", transport=events.append) is True
+    try:
+        try:
+            raise ValueError("boom")
+        except ValueError as exc:
+            sentry_sdk.capture_exception(exc)
+        sentry_sdk.flush()
+    finally:
+        sentry_sdk.init()
+    return events
+
+
+def _release_of(events):
+    # the transport receives the envelope's parts; the release is on the event payload
+    for part in events:
+        payload = getattr(part, "payload", None)
+        data = getattr(payload, "json", None) if payload is not None else None
+        if isinstance(data, dict) and "release" in data:
+            return data["release"]
+        if isinstance(part, dict) and "release" in part:
+            return part["release"]
+    return None
+
+
+def test_an_event_carries_the_commit_render_built(monkeypatch):
+    events = _one_event_with(monkeypatch, RENDER_GIT_COMMIT="9f2c1d7")
+    assert events, "nothing would have left the process"
+    assert _release_of(events) == "9f2c1d7"
+
+
+def test_an_explicit_release_wins_over_the_platforms(monkeypatch):
+    events = _one_event_with(monkeypatch, RENDER_GIT_COMMIT="9f2c1d7", SENTRY_RELEASE="2026.10.18-hotfix")
+    assert _release_of(events) == "2026.10.18-hotfix"
+
+
+def test_no_variable_means_no_release_is_passed_and_none_is_invented(monkeypatch):
+    """What this code controls: with neither variable it hands the SDK no release. (In a git checkout the SDK then infers the
+    HEAD commit itself, which is why this is asserted on `_release` and not on the event; the image has no `.git`, which is the
+    gap `RENDER_GIT_COMMIT` fills.)"""
+    for name in ("SENTRY_RELEASE", "RENDER_GIT_COMMIT"):
+        monkeypatch.delenv(name, raising=False)
+    assert obs._release() is None
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "")
+    assert obs._release() is None            # a blank variable is not a release either
+    monkeypatch.setenv("SENTRY_RELEASE", "x")
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "9f2c1d7")
+    assert obs._release() is None            # an explicit one is the SDK's to use, not ours to override

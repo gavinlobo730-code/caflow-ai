@@ -135,6 +135,14 @@ EXEMPT: dict[str, str] = {
         "workflow-command error annotation for a failed migration; the service never "
         "reads it. Declaring it in the manifest would invite a value on Render, where "
         "it would turn a CI formatting convention on for no reader.",
+    "RENDER_GIT_COMMIT":
+        "Set by Render itself, on every deploy, to the commit it built. core/observability reads it only to tag Sentry events "
+        "with the build they came from (POST-A-044). It is not ours to declare: a value in the manifest would shadow the "
+        "platform's and tag every event with a commit that is not the one running.",
+    "SENTRY_RELEASE":
+        "An optional override of the release tag, read by core/observability only to let the SDK's own reading of it win over "
+        "RENDER_GIT_COMMIT. Unset by default on purpose: a hand-set release is a thing to choose, and a stale one would "
+        "mislabel every event after the next deploy.",
     "MOCK_WEBHOOK_SECRET":
         "Mock payment provider's webhook signing secret. services/payments/"
         "mock.py refuses a hardcoded default on purpose, so an unset value "

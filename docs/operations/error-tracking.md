@@ -151,9 +151,12 @@ fails if a replay integration appears.
    Sentry offers, and keep *spike protection* on. The browser's per-session budget
    (`lib/monitoring/scrub.ts`, 20 events and 3 of any one error) is what stops one broken page spending
    the month.
-5. **A release tag is not sent today** from the backend: the SDK reads `SENTRY_RELEASE` and a few CI
-   variables, and Render's `RENDER_GIT_COMMIT` is not among them. Adding it is a one-line change and an
-   entry in the render manifest test; it was left alone as outside this finding.
+5. **The backend sends a release tag** (POST-A-044, 18-10-2026): `core/observability._release` uses
+   `SENTRY_RELEASE` when somebody sets it (the SDK reads it itself) and otherwise Render's
+   `RENDER_GIT_COMMIT`, the commit Render built, which the SDK does not know. Both are on the render
+   manifest test's exemption list with their reasons (platform-set; optional override). No variable, no
+   release: nothing is invented. An event from a deploy is therefore filtered by its commit in Sentry; the
+   browser's release is derived separately by `next.config.mjs` (§ above).
 
 ## 5. What to do when an alert fires
 

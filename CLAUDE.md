@@ -148,13 +148,14 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 
 - Register as an FIU
 
-### `docs/design-record/deployment-and-operations.md` (5 entries): Deployment, monitoring, request ids, service levels, runbooks and security headers
+### `docs/design-record/deployment-and-operations.md` (6 entries): Deployment, monitoring, request ids, service levels, runbooks and security headers
 
 - A CHECK ASKS THE THING ITSELF, AND AN ALERT MUST BE ABLE TO MATCH WHAT IS SENT
 - EVERY REQUEST HAS AN ID, AND ONE JSON LINE, AND THE LINE NEVER NAMES THE PATH THE CALLER TYPED
 - A TARGET IS JUDGED OVER A MONTH AND FAILS NOTHING; A BUDGET FAILS ONE RUN
 - THE INCIDENT RUNBOOK SAYS IT HAS NOT BEEN TESTED AND LEAVES THE FACTS ONLY A HUMAN HOLDS AS BLANKS
 - THE TWO SITES AND THE API SEND SECURITY HEADERS, THE POLICY'S HOSTS ARE READ FROM THE BUILD AND NEVER WILDCARDED, AND EVERY ROUTE 
+- A BACKEND EVENT NAMES THE BUILD IT CAME FROM, AN UNLABELLED AI ROW NAMES NO RETIRED MODEL, AND A ROUTE NOTHING CALLED IS GONE
 
 ### `docs/design-record/documents-sales-purchase.md` (11 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 
@@ -491,8 +492,8 @@ guard that states the rule rather than a spelling of it:
 - **A stored reply names the model that gave it.** `add_message` and
   `create_recommendation` defaulted `model_used` to the retired Llama and the column's
   own default (migration 069) is the same string; they record `groq_text.text_model()`
-  now. The column default is left — changing it is a migration — and is wrong only for a
-  row written by something that does not set the label.
+  now. Migration 516 (18-10-2026) dropped that column default, so a row written by
+  something that does not set the label stores NULL (unknown) and not the retired model.
 
 _Longer design records for this area were moved to `docs/design-record/ai.md`; see the Design record index._
 
