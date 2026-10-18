@@ -16,9 +16,11 @@ CGST Act Section 31B, Rule 48(4) — E-Invoice mandate.
 """
 from __future__ import annotations
 import logging
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
+from core.exceptions import _sqlstate
+from core.list_window import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, probe, split
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, effective_client_ids
 from models.common import api_response
@@ -88,6 +90,14 @@ class RecordIRNRequest(BaseModel):
 
 class CancelIRNRequest(BaseModel):
     cancellation_reason: str
+
+
+def _already_has_a_record(record: dict) -> str:
+    """The sentence a second record for one invoice is refused with: which record is there and what to do with it."""
+    state = {"draft": "a draft, with no IRN recorded yet", "generated": "recorded with its IRN"}.get(
+        str(record.get("status")), str(record.get("status") or "on file"))
+    return (f"This invoice already has an e-invoice record ({state}). Open the invoice and record the IRN on it, "
+            f"or cancel that record first if the IRN was cancelled on the portal.")
 
 
 def _invoice_treatment(firm_id: str, client_id: str, sales_invoice_id: Optional[str]) -> Optional[str]:
@@ -164,7 +174,15 @@ def create_record(
     if refusal:
         raise HTTPException(422, detail=refusal)
 
-    from domain.income_tax.einvoice_service import create_einvoice_record
+    from domain.income_tax.einvoice_service import create_einvoice_record, live_einvoice_for_invoice
+    # AN INVOICE HAS ONE IRN (POST-A-263). A second live record for it is a draft that is never recorded or cancelled,
+    # so the one that is there is named and nothing is created. A cancelled record does not count: after a cancelled
+    # IRN the invoice is prepared again. Asked here so the refusal can say WHICH record; the unique index of migration
+    # 518 is the same rule held by the database against two requests at the same moment.
+    if req.sales_invoice_id:
+        existing = live_einvoice_for_invoice(current_user["firm_id"], req.sales_invoice_id)
+        if existing:
+            raise HTTPException(409, detail=_already_has_a_record(existing))
     try:
         rec = create_einvoice_record(
             firm_id=current_user["firm_id"],
@@ -179,6 +197,11 @@ def create_record(
         )
         return api_response(True, {**rec, "ca_review_required": True})
     except Exception as e:
+        if _sqlstate(e) == "23505":
+            # Two requests for one invoice at the same moment: the first made the record, this one lost the race.
+            raise HTTPException(409, detail=(
+                "This invoice already has an e-invoice record that is not cancelled, made a moment ago. "
+                "Open the invoice to see it.")) from e
         raise HTTPException(500, detail=str(e))
 
 
@@ -243,13 +266,23 @@ def invoices_that_owe_an_irn_and_have_none(
 def list_records(
     client_id: str,
     status: Optional[str] = None,
+    sales_invoice_id: Optional[str] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT)] = DEFAULT_LIST_LIMIT,
     current_user: dict = Depends(rbac("gst", "read")),
 ):
+    """A client's e-invoice records, newest first, as a WINDOW: `{records, returned, has_more, limit, max_limit}`
+    (core/list_window). `sales_invoice_id` asks for one invoice's own records, which is what the invoice drawer wants;
+    the whole list is for the e-invoice screen, which says when it stopped short (POST-A-263)."""
     from domain.income_tax.einvoice_service import list_einvoices
     # client_id is a required query param, so main.py's mount-level guard
     # already fired; explicit so the scope check is visible at the read.
     assert_client_access(current_user, client_id)
-    return api_response(True, list_einvoices(current_user["firm_id"], client_id, status))
+    records, has_more = split(list_einvoices(
+        current_user["firm_id"], client_id, status, sales_invoice_id=sales_invoice_id, limit=probe(limit)), limit)
+    return api_response(True, {
+        "records": records, "returned": len(records), "has_more": has_more,
+        "limit": limit, "max_limit": MAX_LIST_LIMIT,
+    })
 
 
 @router.post("/records/{record_id}/irn-generated")

@@ -210,17 +210,51 @@ def list_einvoices(
     firm_id: str,
     client_id: str,
     status: str | None = None,
+    sales_invoice_id: str | None = None,
+    limit: int | None = None,
 ) -> list[dict]:
+    """The client's e-invoice records, newest first. `sales_invoice_id` asks for one invoice's own (POST-A-263): the
+    invoice drawer used to read every record the client had ever had and look for its invoice among them, which grows
+    with the client's history and was cut silently at the database's row cap. `limit` is the number of rows to READ, so
+    a caller that reports a window passes `core.list_window.probe(window)` and splits the answer with `split`."""
     if _USE_MOCK:
         records = [r for r in _MOCK_RECORDS.values()
                    if r["firm_id"] == firm_id and r["client_id"] == client_id]
         if status:
             records = [r for r in records if r["status"] == status]
-        return records
+        if sales_invoice_id:
+            records = [r for r in records if r.get("sales_invoice_id") == sales_invoice_id]
+        records.sort(key=lambda r: (str(r.get("created_at") or ""), str(r.get("id"))), reverse=True)
+        return records[:limit] if limit else records
 
     sb = _supabase()
     q = sb.table("einvoice_records").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
     if status:
         q = q.eq("status", status)
-    res = q.order("created_at", desc=True).execute()
-    return res.data or []
+    if sales_invoice_id:
+        q = q.eq("sales_invoice_id", sales_invoice_id)
+    # `id` breaks a tie between two records made in the same instant, so the same rows come back in the same order.
+    q = q.order("created_at", desc=True).order("id", desc=True)
+    if limit:
+        q = q.limit(limit)
+    return q.execute().data or []
+
+
+def live_einvoice_for_invoice(firm_id: str, sales_invoice_id: str) -> dict | None:
+    """The e-invoice record for this invoice that is not cancelled, or None (POST-A-263).
+
+    An invoice has one IRN. A record prepared for it is live until it is cancelled, and a second live one is a draft
+    that is never recorded or cancelled: `uq_einvoice_records_one_live_per_invoice` (migration 518) is the database's
+    half of this question and the create route asks it first so the refusal can name the record that is there."""
+    if _USE_MOCK:
+        live = [r for r in _MOCK_RECORDS.values()
+                if r["firm_id"] == firm_id and r.get("sales_invoice_id") == sales_invoice_id
+                and r["status"] != "cancelled"]
+        live.sort(key=lambda r: (str(r.get("created_at") or ""), str(r.get("id"))), reverse=True)
+        return live[0] if live else None
+
+    sb = _supabase()
+    res = (sb.table("einvoice_records").select("*").eq("firm_id", firm_id)
+           .eq("sales_invoice_id", sales_invoice_id).neq("status", "cancelled")
+           .order("created_at", desc=True).order("id", desc=True).limit(1).execute())
+    return (res.data or [None])[0]

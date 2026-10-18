@@ -12,9 +12,10 @@ E-Way Bill Integration — CGST Act Section 68, Rule 138.
 from __future__ import annotations
 import logging
 from datetime import date, datetime, time, timezone
-from typing import Literal, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated, Literal, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
+from core.list_window import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, probe, split
 from core.permissions import rbac
 from domain.gst import eway_validity
 from core.authz import assert_client_access, can_access_client, effective_client_ids
@@ -141,11 +142,21 @@ def create_eway_bill(
 def list_eway_bills(
     client_id: str,
     status: Optional[str] = None,
+    sales_invoice_id: Optional[str] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT)] = DEFAULT_LIST_LIMIT,
     current_user: dict = Depends(rbac("gst", "read")),
 ):
+    """A client's e-way bill records, newest first, as a WINDOW: `{records, returned, has_more, limit, max_limit}`
+    (core/list_window). `sales_invoice_id` asks for one invoice's own. An invoice may carry several e-way bills (a second
+    consignment, a new vehicle), so nothing here or at create treats a second as a duplicate (POST-A-263)."""
     assert_client_access(current_user, client_id)
     from domain.income_tax.eway_service import list_eway_bills as _list
-    return api_response(True, _list(current_user["firm_id"], client_id, status))
+    records, has_more = split(_list(
+        current_user["firm_id"], client_id, status, sales_invoice_id=sales_invoice_id, limit=probe(limit)), limit)
+    return api_response(True, {
+        "records": records, "returned": len(records), "has_more": has_more,
+        "limit": limit, "max_limit": MAX_LIST_LIMIT,
+    })
 
 
 def _computed_validity(rec: dict, ewb_date: Optional[str]) -> dict:

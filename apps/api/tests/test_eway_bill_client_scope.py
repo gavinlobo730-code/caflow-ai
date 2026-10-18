@@ -56,7 +56,8 @@ def test_listing_another_clients_eway_bills_is_refused(deny, monkeypatch):
 def test_listing_your_own_clients_eway_bills_still_works(deny, monkeypatch):
     monkeypatch.setattr(eway_service, "list_eway_bills", lambda *a, **kw: [{"id": "e1"}])
     out = ewb.list_eway_bills(client_id=MINE, current_user=USER)
-    assert out["data"] == [{"id": "e1"}]
+    assert out["data"]["records"] == [{"id": "e1"}]
+    assert out["data"]["has_more"] is False
     assert deny == [MINE]
 
 
