@@ -758,7 +758,6 @@ tests/test_gst_return_reconciliation.py :: F401 :: <module> :: 2
 tests/test_gst_tds_schema_drift_pg.py :: F401 :: <module> :: 2
 tests/test_gstr1_amendment_service.py :: F541 :: _file :: 1
 tests/test_gstr3b_itc_reversal_from_books.py :: F401 :: <module> :: 1
-tests/test_health.py :: F841 :: test_overall_score_correct_value :: 1
 tests/test_health_answers_before_the_slow_boot.py :: B007 :: test_the_slow_work_is_not_done_at_import :: 1
 tests/test_health_answers_before_the_slow_boot.py :: B010 :: test_a_failing_step_does_not_stop_the_rest :: 4
 tests/test_health_answers_before_the_slow_boot.py :: B010 :: test_the_boot_thread_runs_all_four_steps_in_order :: 4

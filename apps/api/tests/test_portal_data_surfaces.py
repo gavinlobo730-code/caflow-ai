@@ -396,7 +396,8 @@ def test_routes_use_portal_auth_and_envelope(client):
 
     assert client.get("/api/portal/self/invoices").json()["data"] == {
         "invoices": [], "available": False, "reason": pds.FEE_LEDGER_NOT_LINKED}
-    assert client.get("/api/portal/self/reminders").json()["data"] == {"reminders": []}
+    assert client.get("/api/portal/self/reminders").json()["data"] == {
+        "reminders": [], "available": False, "reason": pds.FEE_LEDGER_NOT_LINKED}
 
     s = client.get("/api/portal/self/statement").json()
     assert s["success"] is True and s["data"]["available"] is False

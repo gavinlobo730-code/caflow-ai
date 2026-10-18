@@ -17,6 +17,7 @@ here), since that check needs a DB read.
 from pydantic import BaseModel, field_validator, model_validator
 
 from domain.gst import uqc as _uqc
+from domain.gst.goods_or_services import catalogue_kind
 from typing import Optional
 
 
@@ -64,9 +65,11 @@ class ServiceCatalogueIn(BaseModel):
     @field_validator("kind")
     @classmethod
     def kind_valid(cls, v: str) -> str:
-        if v not in ("good", "service"):
+        # Either door's word is accepted and the catalogue's own is stored (POST-A-107): `goods` is `good`, `services` is `service`.
+        word = catalogue_kind(v)
+        if word is None:
             raise ValueError("kind must be 'good' or 'service'.")
-        return v
+        return word
 
     @field_validator("gst_rate_bps")
     @classmethod

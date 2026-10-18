@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, Query
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access
+from domain.gst.goods_or_services import kind_word
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.hsn")
@@ -162,8 +163,8 @@ async def search_hsn(
                 .order("hsn_code")
                 .limit(limit * 3)
             )
-            if type in ("goods", "services"):
-                lq = lq.eq("hsn_type", type)
+            if kind_word(type):
+                lq = lq.eq("hsn_type", kind_word(type))
             return lq.execute().data or []
 
         # The history and library reads are independent — profiling this endpoint
