@@ -145,18 +145,13 @@ test("a document drawer asks the server for the document's own events, says if o
 });
 
 /**
- * Screens that still decide "this list was cut short" by `rows.length === the limit they asked for`. That guess is wrong in
- * both directions (a list of exactly that many rows is reported as cut short, and a window handed back short because the
- * caller may see fewer rows hides that more exist), and the server's `has_more` is the answer (apps/api/core/list_window.py).
- * Four screens, five sites, are left (ledger POST-A-262), each a different API list that needs the one-row-more probe. THE LIST
- * ONLY SHRINKS: a screen fixed must be removed from it, and a new one may not be added.
+ * Screens that decide "this list was cut short" by `rows.length === the limit they asked for`. That guess is wrong in both
+ * directions (a list of exactly that many rows is reported as cut short, and a window handed back short because the caller
+ * may see fewer rows hides that more exist), and the server's `has_more` is the answer (apps/api/core/list_window.py). POST-A-262
+ * moved the last four (login history, approvals, the HSN library, the memory screen) onto the server's window, so the list is
+ * EMPTY and a new screen may not be added to it.
  */
-const STILL_GUESSING = [
-  "app/memory/page.tsx",
-  "app/settings/firm-hsn-library/page.tsx",
-  "app/team/login-history/page.tsx",
-  "app/workflows/approvals/page.tsx",
-];
+const STILL_GUESSING: string[] = [];
 
 test("no list screen decides it was cut short by comparing the row count to the limit it asked for", () => {
   const offenders: string[] = [];
@@ -194,4 +189,25 @@ test("the rule finds the URL-limit and register-hook shapes (negative control)",
   assert.equal(passesALimit("apiFetch(`/api/relationships/entities?limit=${n}`)"), true);
   assert.equal(passesALimit("const r = useEntityRegister<Entity>(100);"), true);
   assert.equal(readsTheMoreSignal("const r = useEntityRegister<Entity>(100);"), false);
+});
+
+test("the five lists POST-A-262 moved read the server's window and say when it stopped", () => {
+  const screens: Array<[string, RegExp]> = [
+    ["app/team/login-history/page.tsx", /readWindow<LoginEvent>\(/],
+    ["app/workflows/approvals/page.tsx", /readWindow<Approval>\(/],
+    ["app/settings/firm-hsn-library/page.tsx", /readWindow<FirmHsnLibraryRow>\(/],
+    ["app/memory/page.tsx", /readWindow<ClientProfile>\(/],
+    ["app/memory/page.tsx", /readWindow<PatternAnomaly>\(/],
+  ];
+  for (const [f, reader] of screens) {
+    const code = stripComments(readFileSync(join(WEB, f), "utf8"));
+    assert.match(code, reader, `${f} does not read its list through the shared reader`);
+    assert.match(code, /<ListWindowNotice/, `${f} does not say when the list stopped short`);
+  }
+});
+
+test("the HSN library's Archived tab asks the server for retired codes and does not filter a window in the browser", () => {
+  const code = stripComments(readFileSync(join(WEB, "app/settings/firm-hsn-library/page.tsx"), "utf8"));
+  assert.match(code, /archived_only: filter === "archived"/);
+  assert.doesNotMatch(code, /rows\.filter\(\(r\) => r\.is_active === false\)/, "the Archived tab filters a window of everything again");
 });

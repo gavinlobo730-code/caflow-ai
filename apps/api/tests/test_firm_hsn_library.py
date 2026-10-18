@@ -74,7 +74,7 @@ def test_add_and_list(client):
     assert data["hsn_code"] == "998221"
     assert data["is_active"] is True
     assert data["source"] == "manual"
-    lst = client.get("/api/firm-hsn-library/").json()["data"]
+    lst = client.get("/api/firm-hsn-library/").json()["data"]["codes"]
     assert len(lst) == 1
 
 
@@ -95,7 +95,7 @@ def test_hsn_code_is_immutable_via_update_model(client):
     # dropped by Pydantic) rather than mutating the code's identity.
     lid = _add(client).json()["data"]["id"]
     client.patch(f"/api/firm-hsn-library/{lid}", json={"hsn_code": "999999", "description": "still valid"})
-    row = client.get("/api/firm-hsn-library/").json()["data"][0]
+    row = client.get("/api/firm-hsn-library/").json()["data"]["codes"][0]
     assert row["hsn_code"] == "998221"
     assert row["description"] == "still valid"
 
@@ -129,10 +129,10 @@ def test_accepts_goods_code_without_rate(client):
 def test_retire_hides_then_restore_shows(client):
     lid = _add(client).json()["data"]["id"]
     client.delete(f"/api/firm-hsn-library/{lid}")
-    assert client.get("/api/firm-hsn-library/").json()["data"] == []
-    assert len(client.get("/api/firm-hsn-library/?include_archived=true").json()["data"]) == 1
+    assert client.get("/api/firm-hsn-library/").json()["data"]["codes"] == []
+    assert len(client.get("/api/firm-hsn-library/?include_archived=true").json()["data"]["codes"]) == 1
     client.patch(f"/api/firm-hsn-library/{lid}", json={"is_active": True})
-    assert len(client.get("/api/firm-hsn-library/").json()["data"]) == 1
+    assert len(client.get("/api/firm-hsn-library/").json()["data"]["codes"]) == 1
 
 
 def test_readding_a_retired_code_reactivates_not_duplicates(client):
@@ -141,14 +141,14 @@ def test_readding_a_retired_code_reactivates_not_duplicates(client):
     again = _add(client, description="Financial auditing services (updated)")
     assert again.json()["data"]["id"] == lid
     assert again.json()["data"]["is_active"] is True
-    assert len(client.get("/api/firm-hsn-library/").json()["data"]) == 1
+    assert len(client.get("/api/firm-hsn-library/").json()["data"]["codes"]) == 1
 
 
 def test_readding_an_active_code_returns_duplicate_flag(client):
     _add(client)
     again = _add(client)
     assert again.json()["data"].get("duplicate") is True
-    assert len(client.get("/api/firm-hsn-library/").json()["data"]) == 1
+    assert len(client.get("/api/firm-hsn-library/").json()["data"]["codes"]) == 1
 
 
 # ── Search + type filter ───────────────────────────────────────────────────────
@@ -156,14 +156,14 @@ def test_readding_an_active_code_returns_duplicate_flag(client):
 def test_search_by_code_and_description(client):
     _add(client, hsn_code="998221", description="Financial auditing services")
     _add(client, hsn_code="998231", description="Corporate tax consulting")
-    assert [r["hsn_code"] for r in client.get("/api/firm-hsn-library/?q=tax").json()["data"]] == ["998231"]
-    assert [r["hsn_code"] for r in client.get("/api/firm-hsn-library/?q=998221").json()["data"]] == ["998221"]
+    assert [r["hsn_code"] for r in client.get("/api/firm-hsn-library/?q=tax").json()["data"]["codes"]] == ["998231"]
+    assert [r["hsn_code"] for r in client.get("/api/firm-hsn-library/?q=998221").json()["data"]["codes"]] == ["998221"]
 
 
 def test_type_filter(client):
     _add(client, hsn_code="998221", hsn_type="services")
     _add(client, hsn_code="8471", description="Computers", hsn_type="goods")
-    goods = client.get("/api/firm-hsn-library/?hsn_type=goods").json()["data"]
+    goods = client.get("/api/firm-hsn-library/?hsn_type=goods").json()["data"]["codes"]
     assert [r["hsn_code"] for r in goods] == ["8471"]
 
 
@@ -172,10 +172,10 @@ def test_type_filter(client):
 def test_firm_isolation(client):
     _add(client, hsn_code="998221")
     other = _client_as(OTHER_FIRM_USER)
-    assert other.get("/api/firm-hsn-library/").json()["data"] == []
+    assert other.get("/api/firm-hsn-library/").json()["data"]["codes"] == []
     other.post("/api/firm-hsn-library/", json={
         "hsn_code": "998231", "description": "Tax consulting", "hsn_type": "services",
     })
     # Each firm sees only its own rows.
-    assert len(client.get("/api/firm-hsn-library/").json()["data"]) == 1
-    assert len(other.get("/api/firm-hsn-library/").json()["data"]) == 1
+    assert len(client.get("/api/firm-hsn-library/").json()["data"]["codes"]) == 1
+    assert len(other.get("/api/firm-hsn-library/").json()["data"]["codes"]) == 1

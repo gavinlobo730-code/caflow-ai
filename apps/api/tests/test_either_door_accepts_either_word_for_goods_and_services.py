@@ -96,7 +96,7 @@ def test_the_library_filter_applies_a_filter_for_the_singular_word(monkeypatch):
     monkeypatch.setattr(mod, "MOCK_LIBRARY", rows)
     caller = {"firm_id": "F1", "role": "Partner", "id": "u1"}
     for word, expected in (("good", ["1001"]), ("goods", ["1001"]), ("Service", ["9983"]), ("services", ["9983"])):
-        out = mod.list_library(q="", hsn_type=word, include_archived=False, limit=50, current_user=caller)
-        assert [r["hsn_code"] for r in out["data"]] == expected, word
-    unfiltered = mod.list_library(q="", hsn_type=None, include_archived=False, limit=50, current_user=caller)
-    assert len(unfiltered["data"]) == 2
+        out = mod.list_library(q="", hsn_type=word, include_archived=False, archived_only=False, limit=50, current_user=caller)
+        assert [r["hsn_code"] for r in out["data"]["codes"]] == expected, word
+    unfiltered = mod.list_library(q="", hsn_type=None, include_archived=False, archived_only=False, limit=50, current_user=caller)
+    assert len(unfiltered["data"]["codes"]) == 2

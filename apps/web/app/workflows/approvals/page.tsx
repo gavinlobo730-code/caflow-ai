@@ -6,6 +6,9 @@ import {
   Building2, RefreshCw,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
+import { readWindow } from "@/lib/lists/readWindow";
+import { windowDescription } from "@/lib/lists/window";
 import { formatDateTime } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -36,13 +39,13 @@ function isOverdue(due?: string) {
   return new Date(due) < new Date();
 }
 
-// Backend hard-caps this endpoint at 200 (routers/workflow_builder.py list_approvals,
-// `le=200`) — request the max allowed and detect if we still hit it.
+// The window the screen asks for. The server caps this endpoint (routers/workflow_builder.py list_approvals) and answers
+// `has_more` and its own ceiling, so the screen never compares a row count to this number (POST-A-262).
 const APPROVALS_FETCH_LIMIT = 200;
 
 export default function ApprovalsPage() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
-  const [approvalsCapped, setApprovalsCapped] = useState(false);
+  const [win, setWin] = useState<{ hasMore: boolean; limit: number; maxLimit: number } | null>(null);
   const [status, setStatus] = useState("pending");
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no pending approvals" — a masked
@@ -58,13 +61,16 @@ export default function ApprovalsPage() {
     try {
       const params: Record<string, string> = { limit: String(APPROVALS_FETCH_LIMIT) };
       if (status !== "all") params.status = status;
-      const res = (await api.workflowEngine.listApprovals(params)) as { data: { approvals: Approval[] } };
-      const rows = res.data?.approvals || [];
-      setApprovals(rows);
-      setApprovalsCapped(rows.length === APPROVALS_FETCH_LIMIT);
+      const res = (await api.workflowEngine.listApprovals(params)) as { success?: boolean; data: unknown; error?: string };
+      // A refusal or a payload that is not a list is said, and never drawn as "no approvals".
+      const w = res.success === false ? null : readWindow<Approval>(res.data, "approvals", APPROVALS_FETCH_LIMIT);
+      if (!w) throw new Error(res.error ?? "Couldn't load approvals. Please try again.");
+      setApprovals(w.rows);
+      setWin({ hasMore: w.hasMore, limit: w.limit, maxLimit: w.maxLimit });
       setLoadError(null);
     } catch (e) {
       setApprovals([]);
+      setWin(null);
       setLoadError(e instanceof Error ? e.message : "Couldn't load approvals. Please try again.");
     } finally {
       setLoading(false);
@@ -113,15 +119,15 @@ export default function ApprovalsPage() {
         <div className="grid grid-cols-3 gap-4">
           <div className="bg-white border border-ps-border rounded-xl p-4">
             <p className="text-xs text-ps-label uppercase tracking-wide font-medium">Pending</p>
-            <p className="text-2xl font-bold text-orange-600 mt-1">{pendingCount}</p>
+            <p className="text-2xl font-bold text-orange-600 mt-1">{pendingCount}{win?.hasMore ? "+" : ""}</p>
           </div>
           <div className="bg-white border border-ps-border rounded-xl p-4">
             <p className="text-xs text-ps-label uppercase tracking-wide font-medium">Overdue</p>
-            <p className="text-2xl font-bold text-red-600 mt-1">{overdueCount}</p>
+            <p className="text-2xl font-bold text-red-600 mt-1">{overdueCount}{win?.hasMore ? "+" : ""}</p>
           </div>
           <div className="bg-white border border-ps-border rounded-xl p-4">
             <p className="text-xs text-ps-label uppercase tracking-wide font-medium">All Today</p>
-            <p className="text-2xl font-bold text-brand mt-1">{approvals.length}{approvalsCapped ? "+" : ""}</p>
+            <p className="text-2xl font-bold text-brand mt-1">{approvals.length}{win?.hasMore ? "+" : ""}</p>
           </div>
         </div>
 
@@ -148,6 +154,18 @@ export default function ApprovalsPage() {
             <p className="text-xs text-state-problem">{respondError}</p>
             <button onClick={() => setRespondError(null)} className="text-xs text-state-problem hover:underline shrink-0">Dismiss</button>
           </div>
+        )}
+
+        {win && !loading && !loadError && (
+          <ListWindowNotice
+            hasMore={win.hasMore}
+            what={windowDescription(approvals.length, "approvals", "latest")}
+            limit={win.limit}
+            maxLimit={win.maxLimit}
+            elsewhere={status === "pending"
+              ? "Respond to these and the next ones will appear."
+              : "Pick a status to narrow the list."}
+          />
         )}
 
         {/* Approvals list */}

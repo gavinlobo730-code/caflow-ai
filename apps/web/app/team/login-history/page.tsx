@@ -8,11 +8,14 @@ import { usePermissions } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
+import { readWindow } from "@/lib/lists/readWindow";
+import { windowDescription } from "@/lib/lists/window";
 
 // M6 — administrative login history + global force-logout (Partner oversight).
-// Backend defaults to this many rows (routers/identity.py firm_login_history)
-// — used only to detect the cap below, not to request a different size.
-const LOGIN_HISTORY_DEFAULT_LIMIT = 200;
+// The server answers a window and says whether older events exist (POST-A-262); the first window is the size it defaults
+// to, and "Show more" widens it up to the ceiling the server serves.
+const FIRST_WINDOW = 200;
 
 const EVENT_STYLE: Record<string, string> = {
   login: "bg-state-ready-surface text-state-ready",
@@ -32,7 +35,8 @@ export default function LoginHistoryPage() {
   const canViewHistory = can("team", "read");
   const canForceLogout = can("team", "write");
   const [events, setEvents] = useState<LoginEvent[]>([]);
-  const [capped, setCapped] = useState(false);
+  const [win, setWin] = useState<{ hasMore: boolean; limit: number; maxLimit: number } | null>(null);
+  const [limit, setLimit] = useState(FIRST_WINDOW);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,16 +45,17 @@ export default function LoginHistoryPage() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const r = await api.identity.loginHistory();
-      const rows = r.data?.events ?? [];
-      setEvents(rows);
-      setCapped(rows.length === LOGIN_HISTORY_DEFAULT_LIMIT);
+      const r = await api.identity.loginHistory(limit);
+      const w = r.success ? readWindow<LoginEvent>(r.data, "events", limit) : null;
+      if (!w) throw new Error("Login history could not be read");
+      setEvents(w.rows);
+      setWin({ hasMore: w.hasMore, limit: w.limit, maxLimit: w.maxLimit });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load login history");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [limit]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -76,14 +81,13 @@ export default function LoginHistoryPage() {
         meta={
           !loading ? (
             <span className="text-xs text-ps-hint">
-              {events.length}{capped ? "+" : ""} event{events.length === 1 ? "" : "s"}
+              {events.length}{win?.hasMore ? "+" : ""} event{events.length === 1 ? "" : "s"}
             </span>
           ) : undefined
         }
         subtitle={
           <>
             Login, logout, and forced-logout events for your firm (audited).
-            {capped && ` Showing the most recent ${LOGIN_HISTORY_DEFAULT_LIMIT} events.`}
           </>
         }
         actions={
@@ -103,6 +107,15 @@ export default function LoginHistoryPage() {
         </div>
       )}
       {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
+      {win && !loading && (
+        <ListWindowNotice
+          hasMore={win.hasMore}
+          what={windowDescription(events.length, "login events", "latest")}
+          limit={win.limit}
+          maxLimit={win.maxLimit}
+          onShowMore={setLimit}
+        />
+      )}
       {notice && <div className="text-xs text-emerald-700 mb-2">{notice}</div>}
 
       {loading ? (

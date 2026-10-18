@@ -253,7 +253,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN OFFSET-PAGED READ NEEDS A UNIQUE TOTAL ORDERING, and the ordering a screen already had is usually not one
 - THE DAY BOOK IS A PAGE THE DATABASE CUTS, THE SCREEN AND THE FILE READ THE SAME FUNCTION, AND A DRAFT IS NOT A POSTING
 
-### `docs/design-record/screens-and-site.md` (23 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
+### `docs/design-record/screens-and-site.md` (24 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
 - AN ABSENT VALUE IS UNKNOWN, AND A GENUINE ZERO IS A READING
 - A RETURN FOR ONE OF SEVERAL REGISTRATIONS SAYS ITS DOCUMENTS ARE NOT SPLIT
@@ -278,6 +278,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A DOCUMENT'S ACTIVITY IS ASKED FOR THE DOCUMENT, AND A REGISTER LIST SAYS WHEN IT STOPPED
 - A SCORE THAT SAYS IT COUNTS LATE FILINGS COUNTS THEM
 - THE PRACTICE'S WORDING REACHES THE TWO MAILS IT SENDS IN ITS OWN NAME, THE SCREEN OFFERS ONLY WHAT EACH CAN FILL, AND A SHIPPED DEFAULT IS ASKED OF THE SERVER'S OWN VALIDATOR
+- FIVE MORE LISTS ANSWER A WINDOW, AND THE LAST SCREEN THAT GUESSED A LIST WAS CUT SHORT FROM A ROW COUNT IS GONE
 
 ### `docs/design-record/tax-gst.md` (36 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 
