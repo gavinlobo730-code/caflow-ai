@@ -129,7 +129,8 @@ def document_requested(firm_id: str, client_id: str, request: dict) -> dict:
                 contact["email"], contact.get("name") or "", firm_name,
                 request.get("title") or "A document", bool(request.get("is_urgent")),
                 mail.pretty_date(request["due_date"]) if request.get("due_date") else None,
-                portal_login_url(), sender_name=practice_name, reply_to=practice_email)
+                portal_login_url(), firm_id=firm_id,
+                sender_name=practice_name, reply_to=practice_email)
         return _notify_contacts(firm_id, client_id, "document_request_notice",
                                 Ref("document_request", str(request.get("id"))), send)
     except Exception:                                           # noqa: BLE001

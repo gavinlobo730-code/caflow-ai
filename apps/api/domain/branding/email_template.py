@@ -66,27 +66,42 @@ MERGE_FIELDS: dict[str, str] = {
     "due_date": "Due Date",
     "financial_year": "Financial Year",
     "portal_link": "Portal Link",
+    "engagement_number": "Engagement #",
+    "engagement_title": "Engagement Title",
+    "request_title": "Request",
 }
 
 #: WHICH FIELDS A KIND CAN ACTUALLY FILL, **MEASURED AT THE SENDER**.
 #:
 #: Only the LIVE kinds appear. `engagement` is measured off
 #: `routers/engagement_letters._deliver_engagement_email`, which holds the firm
-#: name, the recipient's name and the signing URL — and NOT a financial year,
-#: because `public.engagements` (migration 115) has no such column. Guessing
-#: one from the clock would put a year on a letter nobody stated.
+#: name, the recipient's name, the signing URL, the engagement's own number and
+#: title — and NOT a financial year, because `public.engagements` (migration
+#: 115) has no such column. Guessing one from the clock would put a year on a
+#: letter nobody stated. `document_request` is measured off
+#: `services/portal_notice_service.document_requested`, which holds the firm
+#: name, the contact's name, the request's title and, when the request has one,
+#: its due date — and NOT a financial year (a document request holds none) and
+#: NOT an invoice's figures. It offers no portal link either: the mail always
+#: ends with its own sign-in link, so a link in the wording would be said twice.
+#: A request with no due date has no value for `{{due_date}}`, and `render`
+#: refuses a template that uses a field it has no value for, so such a request
+#: goes out in the built-in wording rather than with a gap in the CA's sentence.
 #:
 #: A kind's set is the CONTRACT its sender must honour. A sender that stops
 #: supplying one of these breaks the template silently, so a test asserts the
 #: sender passes every field its kind promises.
 #:
-#: THE THREE KINDS WITH NO LIVE MAIL ARE ABSENT, DELIBERATELY. Their contract
-#: cannot be measured — there is no call site to measure it at — and asserting
-#: one would refuse the very defaults the Settings screen ships. For those the
-#: write door checks the field is REAL and says the kind is not applied yet;
-#: it does not claim to know what a mail nobody sends would hold.
+#: THE KINDS WITH NO LIVE MAIL ARE ABSENT, DELIBERATELY. Their contract cannot
+#: be measured — there is no call site to measure it at — and asserting one
+#: would refuse the very defaults the Settings screen ships. For those the write
+#: door checks the field is REAL and says the kind is not applied yet; it does
+#: not claim to know what a mail nobody sends would hold.
 FIELDS_BY_KIND: dict[str, frozenset[str]] = {
-    "engagement": frozenset({"firm_name", "client_name", "portal_link"}),
+    "engagement": frozenset({"firm_name", "client_name", "portal_link",
+                             "engagement_number", "engagement_title"}),
+    "document_request": frozenset({"firm_name", "client_name", "request_title",
+                                   "due_date"}),
 }
 
 #: WHETHER A KIND HAS A MAIL TO APPLY TO, AND WHY NOT WHERE IT HAS NOT.
@@ -94,15 +109,15 @@ FIELDS_BY_KIND: dict[str, frozenset[str]] = {
 #: MEASURED against `services/email_service.py` and its callers on 18-09-2026,
 #: not assumed from the four names. The Settings screen offers the four as
 #: equals; they are not, and a CA rewriting a template that will never be sent
-#: is writing into a void. The three reasons are DIFFERENT and a test says so —
-#: one kind has no mail at all, one has a mail nothing calls, and one's only
-#: mail is sent on the CLIENT's behalf and must never carry the practice's
-#: wording.
+#: is writing into a void. Two kinds were still inert on 18-10-2026 (the
+#: document request was switched on that day), and their reasons are DIFFERENT
+#: and a test says so — one has no mail at all, and one's only mail is sent on
+#: the CLIENT's behalf and must never carry the practice's wording.
 KIND_IS_LIVE: dict[str, bool] = {
     "engagement": True,
     "invoice": False,
     "reminder": False,
-    "document_request": False,
+    "document_request": True,
 }
 
 KIND_NOT_LIVE_REASON: dict[str, str] = {
@@ -121,13 +136,6 @@ KIND_NOT_LIVE_REASON: dict[str, str] = {
         "go from your client to their customer about your client's own sales "
         "invoice, and they carry your client's name rather than the practice's."
     ),
-    "document_request": (
-        "Not applied yet. Creating a document request now emails the client's "
-        "portal contact, but in the product's own wording: this kind's shipped "
-        "default promises an upload the portal cannot do and names a financial "
-        "year a document request does not hold, so applying your own wording "
-        "waits until that contract is settled."
-    ),
 }
 
 
@@ -135,7 +143,7 @@ def kind_status(kind: str) -> dict:
     """Whether a template of this kind will actually be sent, and why not.
 
     Served beside the templates so the Settings screen can say it where the
-    CA is writing. The alternative — four kinds offered as equals, three of
+    CA is writing. The alternative — four kinds offered as equals, some of
     them inert — is the `BrowserOnlyNotice` shape this repository has already
     had to delete once.
     """

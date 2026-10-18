@@ -26,7 +26,7 @@ interface EmailTemplate {
 const TEMPLATE_TABS: { type: TemplateType; label: string; desc: string }[] = [
   { type: "invoice", label: "Invoice", desc: "For the practice's own fee invoice to a client." },
   { type: "engagement", label: "Engagement", desc: "Sent when an engagement letter is ready for client review." },
-  { type: "document_request", label: "Document Request", desc: "For a request for documents from a client." },
+  { type: "document_request", label: "Document Request", desc: "Sent to the client's portal contact when you create a document request." },
   { type: "reminder", label: "Reminder", desc: "For a compliance deadline reminder to a client." },
 ];
 
@@ -41,7 +41,24 @@ const MERGE_FIELDS = [
   { field: "{{due_date}}", label: "Due Date" },
   { field: "{{financial_year}}", label: "Financial Year" },
   { field: "{{portal_link}}", label: "Portal Link" },
+  { field: "{{engagement_number}}", label: "Engagement #" },
+  { field: "{{engagement_title}}", label: "Engagement Title" },
+  { field: "{{request_title}}", label: "Request" },
 ];
+
+// WHERE EACH APPLIED KIND'S WORDING IS USED. Said per kind: the one sentence for all of them said
+// "every engagement letter" under a kind that is not one.
+const APPLIED_SENTENCE: Partial<Record<TemplateType, string>> = {
+  engagement: "This wording is used on every engagement letter you send.",
+  document_request: "This wording is used in the email to your client's portal contact when you create a document request. If it uses {{due_date}}, a request with no needed-by date goes out in the built-in wording.",
+};
+
+// WHAT THE MAIL ADDS UNDER THE FIRM'S WORDING. The wording replaces the subject and the opening
+// paragraph and nothing else, because the rest is what the mail is for. Said where it is written.
+const WORDING_NOTE: Partial<Record<TemplateType, string>> = {
+  engagement: "The engagement letter itself and the closing note are added under your wording.",
+  document_request: "The request, the date it is needed by (where it has one) and the sign-in link are added under your wording.",
+};
 
 const DEFAULT_TEMPLATES: Record<TemplateType, Omit<EmailTemplate, "id">> = {
   invoice: {
@@ -83,20 +100,18 @@ With regards,
 {{firm_name}}`,
     is_active: true,
   },
+  // NO {{financial_year}} AND NO UPLOAD PROMISE, AND THAT IS NOT A TRIM. A document request holds no
+  // financial year, and the portal cannot take an upload (a client reads a request there and answers
+  // by reply). The server refuses the field on this kind and the shipped default has to be one a CA
+  // can save. It is only the OPENING: the request, its needed-by date and the sign-in link follow it.
   document_request: {
     template_type: "document_request",
-    subject: "Documents Required — {{firm_name}}",
+    subject: "{{firm_name}} has asked you for: {{request_title}}",
     body: `Dear {{client_name}},
 
-To complete your compliance filings for {{financial_year}}, we require the following documents from you.
+{{firm_name}} has asked you for the following: {{request_title}}.
 
-Please upload the requested documents through your secure client portal by {{due_date}}:
-{{portal_link}}
-
-If you have any questions about what is required, please don't hesitate to reach out.
-
-With regards,
-{{firm_name}}`,
+The details of the request, and the date it is needed by where there is one, are below.`,
     is_active: true,
   },
   reminder: {
@@ -138,10 +153,14 @@ function TemplateEditor({
   templateType,
   initial,
   onSave,
+  allowedFields,
 }: {
   templateType: TemplateType;
   initial: Omit<EmailTemplate, "id"> | null;
   onSave: (data: Omit<EmailTemplate, "id">) => Promise<void>;
+  /** The merge fields this kind of mail can fill, as the server measured them. Absent for a kind
+   *  with no live mail, where every field is offered and the save says it is not applied yet. */
+  allowedFields?: string[];
 }) {
   const [subject, setSubject] = useState(initial?.subject ?? DEFAULT_TEMPLATES[templateType].subject);
   const [body, setBody] = useState(initial?.body ?? DEFAULT_TEMPLATES[templateType].body);
@@ -205,7 +224,8 @@ function TemplateEditor({
       <div>
         <p className="text-xs font-medium text-ps-label mb-2">Insert merge field</p>
         <div className="flex flex-wrap gap-1.5">
-          {MERGE_FIELDS.map(({ field }) => (
+          {MERGE_FIELDS.filter(({ field }) =>
+            !allowedFields || allowedFields.includes(field.replace(/[{}]/g, ""))).map(({ field }) => (
             <button
               key={field}
               onClick={() => insertMergeField(field)}
@@ -217,6 +237,9 @@ function TemplateEditor({
           ))}
         </div>
         <p className="text-xs text-ps-hint mt-1.5">Merge fields are replaced with real values when the email is sent.</p>
+        {WORDING_NOTE[templateType] && (
+          <p className="text-xs text-ps-hint mt-1.5">{WORDING_NOTE[templateType]}</p>
+        )}
       </div>
 
       <div className="flex justify-end pt-2">
@@ -250,6 +273,9 @@ export default function EmailTemplatesPage() {
   // service and its callers. Three of the four are not sent today, and a CA
   // rewriting one of those is writing into a void unless the screen says so.
   const [kindStatus, setKindStatus] = useState<Record<string, KindStatus>>({});
+  // The merge fields each LIVE kind can fill, as the server measured them at the sender. A kind with
+  // no entry is one whose mail does not exist, and offers every field.
+  const [fieldsByKind, setFieldsByKind] = useState<Record<string, string[]>>({});
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const showToast = (message: string, type: "success" | "error") => setToast({ message, type });
@@ -261,6 +287,7 @@ export default function EmailTemplatesPage() {
       const res = await api.emailTemplates.list() as ApiResp<{
         templates: EmailTemplate[];
         status_by_kind?: Record<string, KindStatus>;
+        by_kind?: Record<string, string[]>;
       }>;
       if (res.success) {
         const map: Record<TemplateType, EmailTemplate | null> = {
@@ -271,6 +298,7 @@ export default function EmailTemplatesPage() {
         }
         setTemplates(map);
         setKindStatus(res.data.status_by_kind ?? {});
+        setFieldsByKind(res.data.by_kind ?? {});
       }
       setLoadError(null);
     } catch (e) {
@@ -301,7 +329,7 @@ export default function EmailTemplatesPage() {
         <PageHeader
           back={{ href: "/settings", label: "Settings" }}
           title="Email Templates"
-          subtitle="Customize the emails sent to clients for invoices, engagements, and reminders."
+          subtitle="Customize the wording of the emails your practice sends to clients. Each tab says whether that email is sent today."
         />
 
         {loadError && !loading && (
@@ -354,7 +382,7 @@ export default function EmailTemplatesPage() {
             )}
             {activeStatus?.is_applied && (
               <p className="text-xs text-state-ready bg-state-ready-surface border border-state-ready-border rounded-lg px-3 py-2 mb-4">
-                This wording is used on every engagement letter you send.
+                {APPLIED_SENTENCE[activeTab] ?? "This wording is used on the email it is written for."}
               </p>
             )}
             {loading ? (
@@ -365,6 +393,7 @@ export default function EmailTemplatesPage() {
                 templateType={activeTab}
                 initial={templates[activeTab]}
                 onSave={handleSave}
+                allowedFields={fieldsByKind[activeTab]}
               />
             )}
           </div>

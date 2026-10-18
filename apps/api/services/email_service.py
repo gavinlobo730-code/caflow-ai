@@ -471,6 +471,7 @@ def send_document_request_notice(
     is_urgent: bool,
     due_date: Optional[str],
     login_url: str,
+    firm_id: Optional[str] = None,
     *,
     sender_name: Optional[str] = None,
     reply_to: Optional[str] = None,
@@ -486,22 +487,39 @@ def send_document_request_notice(
     (routers/portal_data.portal_document_requests), and a mail promising a
     button that is not there is worse than no mail.
 
-    Built-in wording only — the firm's own `document_request` template is NOT
-    applied (see domain/branding/email_template.KIND_NOT_LIVE_REASON).
+    THE FIRM'S OWN WORDING REPLACES THE SUBJECT AND THE OPENING PARAGRAPH, and
+    nothing else, the way it does on the engagement letter: the request and its
+    due date (the particulars), the urgent notice and the sign-in link are what
+    the mail is FOR, and no template chooses them. `firm_id` is optional so every
+    existing caller keeps working; without it, or with no template saved, or
+    where the template uses a field this request has no value for (a due date it
+    does not hold), the built-in wording goes out, which is what the product has
+    always sent.
     """
     urgent = "<p><strong>This request is marked urgent.</strong></p>" if is_urgent else ""
     needed = (f"<tr><td><strong>Needed by</strong></td><td>{_esc(due_date)}</td></tr>"
               if due_date else "")
     subject = _oneline(
         f"{'Urgent: ' if is_urgent else ''}{firm_name} has asked you for: {request_title}")
-    html = (f"<p>Dear {_esc(contact_name or 'Client')},</p>"
-            f"<p><strong>{_esc(firm_name)}</strong> has asked you for a document.</p>"
-            f"{urgent}"
+    intro = (f"<p>Dear {_esc(contact_name or 'Client')},</p>"
+             f"<p><strong>{_esc(firm_name)}</strong> has asked you for a document.</p>")
+    rest = (f"{urgent}"
             f'<table cellpadding="8"><tr><td><strong>Request</strong></td>'
             f"<td>{_esc(request_title)}</td></tr>{needed}</table>"
             f'<p><a href="{_esc(login_url)}">Sign in to your portal</a> to see the details, '
             f"or reply to this email.</p>")
-    return _send(to, subject, html, sender_name=sender_name, reply_to=reply_to)
+    override = _firm_wording("document_request", firm_id, {
+        "firm_name": firm_name,
+        "client_name": contact_name or "Client",
+        "request_title": request_title,
+        "due_date": due_date,
+    })
+    if override:
+        subject, intro_html = override
+        # The request's title is typed by a person and now lands in a subject line.
+        subject = _oneline(subject)
+        intro = intro_html
+    return _send(to, subject, intro + rest, sender_name=sender_name, reply_to=reply_to)
 
 
 def send_portal_message_notice(
@@ -799,9 +817,13 @@ def send_engagement_letter(
         "firm_name": firm_name,
         "client_name": recipient_name or "Client",
         "portal_link": sign_url,
+        "engagement_number": engagement_number,
+        "engagement_title": title,
     })
     if override:
         subject, intro_html = override
+        # The engagement's title is typed by a person and can now land in a subject line.
+        subject = _oneline(subject)
         html = intro_html + "<hr/>" + (letter_html or "") + closing
 
     if pdf_bytes and pdf_filename:

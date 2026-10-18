@@ -273,26 +273,30 @@ def test_the_engagement_contract_is_measured_and_excludes_the_financial_year():
 def test_a_kind_with_no_live_mail_refuses_no_field_and_says_why_instead():
     """There is nothing to be unfilled by a mail nobody sends, and refusing on
     a contract nobody has measured is a guess wearing a validator's clothes."""
-    for kind in ("invoice", "reminder", "document_request"):
+    for kind in ("invoice", "reminder"):
         assert kind not in et.FIELDS_BY_KIND
         assert et.unfillable_fields(kind, "x", "{{invoice_amount}}") == []
         status = et.kind_status(kind)
         assert status["is_applied"] is False and status["reason"]
 
 
-def test_the_three_not_applied_reasons_are_different():
-    """One kind has no mail at all, one has a mail nothing calls, and one's
-    only mail is sent on the CLIENT's behalf. A shared sentence would say the
-    wrong thing about two of them."""
-    reasons = [et.kind_status(k)["reason"]
-               for k in ("invoice", "reminder", "document_request")]
-    assert len(set(reasons)) == 3
+def test_the_not_applied_reasons_are_different():
+    """One kind has no mail at all and one's only mail is sent on the
+    CLIENT's behalf. A shared sentence would say the wrong thing about one of
+    them. (The document request was a third until it was switched on,
+    POST-A-102.)"""
+    reasons = [et.kind_status(k)["reason"] for k in ("invoice", "reminder")]
+    assert len(set(reasons)) == 2
 
 
-def test_exactly_one_kind_is_live_and_it_is_the_engagement_letter():
+def test_the_live_kinds_are_the_two_the_practice_sends_in_its_own_name():
+    """The engagement letter and the document request: the practice writing
+    to its own client. The other two go from a CLIENT to its customer, or
+    nowhere."""
     live = [k for k, v in et.KIND_IS_LIVE.items() if v]
-    assert live == ["engagement"]
-    assert et.kind_status("engagement")["reason"] is None
+    assert live == ["engagement", "document_request"]
+    for kind in live:
+        assert et.kind_status(kind)["reason"] is None
 
 
 def test_a_render_refuses_rather_than_leaving_a_hole():
@@ -427,18 +431,11 @@ def test_the_email_screen_says_which_wordings_are_actually_sent():
     assert "activeStatus" in src and "is_applied" in src
 
 
-def test_the_shipped_engagement_default_is_one_the_server_will_accept():
-    """It used {{financial_year}}, which the engagement mail cannot fill — so
-    a CA pressing Reset to default then Save would have been refused by the
-    door this change adds."""
-    src = _screen("web/app/settings/email-templates/page.tsx")
-    engagement = src[src.index("  engagement: {"):src.index("  document_request: {")]
-    assert "{{financial_year}}" not in engagement
-    problem = et.problem_with(
-        "engagement",
-        engagement[engagement.index('subject: "') + 10:engagement.index('",\n')],
-        engagement)
-    assert problem is None or "not a merge field" not in problem
+# `test_the_shipped_engagement_default_is_one_the_server_will_accept` lived here and checked ONE kind with an
+# assertion that passed on any problem but a typo. It is replaced by the parametrised
+# `test_a_shipped_default_is_one_the_server_will_accept` in
+# `test_the_practice_mail_templates_match_what_the_senders_hold.py`, which asks the server's own validator
+# of the default of EVERY live kind.
 
 
 def test_the_invoice_template_screen_renders_the_served_notes():
