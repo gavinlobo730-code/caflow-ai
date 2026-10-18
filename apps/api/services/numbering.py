@@ -11,8 +11,19 @@ in the common case.
 """
 import logging
 import uuid
+from typing import Optional
 
 _logger = logging.getLogger("caflow.numbering")
+
+
+#: What an unattended process puts in `invoice_no` until a CA replaces it.
+PLACEHOLDER_INVOICE_NO_PREFIX = "DRAFT-"
+
+
+def is_placeholder_invoice_no(invoice_no: Optional[str]) -> bool:
+    """True for a number `draft_placeholder_invoice_no` made, or one typed to look like it. Case-blind and
+    whitespace-tolerant, because the point is that nobody issues one by accident."""
+    return str(invoice_no or "").strip().upper().startswith(PLACEHOLDER_INVOICE_NO_PREFIX)
 
 
 def draft_placeholder_invoice_no() -> str:
@@ -36,7 +47,7 @@ def draft_placeholder_invoice_no() -> str:
     firm's own series. Fits CGST Rule 46(b)'s 16-character cap exactly (6 + 10),
     and its character set: letters, digits and a hyphen.
     """
-    return f"DRAFT-{uuid.uuid4().hex[:10].upper()}"
+    return f"{PLACEHOLDER_INVOICE_NO_PREFIX}{uuid.uuid4().hex[:10].upper()}"
 
 
 #: Every auto-numbered document series in the product: table -> (number column,

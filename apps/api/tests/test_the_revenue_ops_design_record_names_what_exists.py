@@ -22,8 +22,8 @@ WHAT THIS HOLDS, AS RULES AND NOT AS A LIST OF TODAY'S NAMES
       14 June 2026 it records about who may do what are the ones the table holds.
     * Each guardrail section cites a test that holds it.
     * **Statements about what is NOT built or NOT decided expire.** The record says knowledge-base search is
-      title-only, that the Manager is firm-wide in the knowledge base alone, and lists six defects observed while
-      writing it. Each is asserted here against the code, so the day one is built or fixed this file fails and says
+      title-only, that the Manager is firm-wide in the knowledge base alone, and lists the two defects still open of
+      the six observed while writing it. Each is asserted here against the code, so the day one is built or fixed this file fails and says
       to change the record the same day. That is the point of them: a design record that is wrong in the
       reassuring direction is worse than none.
 
@@ -356,36 +356,17 @@ def test_the_manager_is_firm_wide_in_the_knowledge_base_alone_and_the_record_say
     assert "get_my_role() IN ('Partner','Manager')" in _migrations()["079_knowledge_rls.sql"]
 
 
-def _called_names(rel: str, scope: str) -> set[str]:
-    fn = next(n for n in _function_nodes(rel) if n.name == scope)
-    return {getattr(c.func, "attr", getattr(c.func, "id", "")) for c in ast.walk(fn) if isinstance(c, ast.Call)}
-
-
 def test_the_defects_observed_while_writing_the_record_are_still_there():
-    """EXPIRES. §9 lists six things seen on 8 October 2026 and changed by nobody. Each is asserted here.
+    """EXPIRES. §9 lists what was seen on 8 October 2026 and not yet changed. Each is asserted here.
+
+    Four of the six were fixed on 18 October 2026 (POST-A-215, POST-A-216): a due schedule whose period already has an
+    invoice now advances, billing's cadence is `domain/recurrence` against the schedule's anchor day, a `DRAFT-` number is
+    refused at issue, and `edit_article` retries a version collision. What is left is the snapshot customer (5) and the
+    unscheduled sweep (6), the second of which is DECIDED: a billing run prepares drafts a Partner has to number, so it runs
+    when a Partner presses it (§4, §9).
 
     When one fails: it was fixed. Delete its bullet from §9, delete its assertion, and say so in the commit.
     """
-    from routers import sales_invoices
-    from services import billing_service
-
-    # 1. A due schedule whose period already has an invoice returns without advancing, so it stays due.
-    generate = next(n for n in _function_nodes("services/billing_service.py") if n.name == "generate_for_schedule")
-    early = next(n for n in ast.walk(generate) if isinstance(n, ast.If) and ast.unparse(n.test) == "existing")
-    assert not any(isinstance(c, ast.Call) and getattr(c.func, "id", "") == "_advance_schedule"
-                   for c in ast.walk(early)), "the early return now advances the schedule; fix §9"
-
-    # 2. Cadence arithmetic is the schedule's own, and a run date above the 28th becomes the 28th.
-    assert billing_service.next_run_after("monthly", "2026-10-31") == "2026-11-28"
-
-    # 3. Nothing at issue refuses a number that still begins DRAFT-.
-    sales_invoices._assert_invoice_no_legal(billing_service.draft_placeholder_invoice_no())
-
-    # 4. edit_article has no retry on the version collision.
-    edit = next(n for n in _function_nodes("services/knowledge_service.py") if n.name == "edit_article")
-    assert not any(isinstance(n, (ast.Try, ast.For, ast.While)) for n in ast.walk(edit)), (
-        "edit_article now handles the UNIQUE (article_id, version) collision; fix §7 and §9")
-
     # 5. The G3 customer is a snapshot: only the billing service and the portal reader touch the link at all.
     touching = {rel for rel, text in _production().items()
                 if re.search(r"""table\(["']client_firm_customer_links["']\)""", text)}

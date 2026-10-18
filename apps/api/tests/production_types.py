@@ -103,6 +103,8 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     # POST-A-253, POST-A-254. The loan write-down a release still owes, and the lease a reversal takes on a released run.
     ("payroll_runs", "loan_writedown_owed_at"): "migration 508",
     ("payroll_runs", "reversal_claimed_at"): "migration 508",
+    # POST-A-215. The date a billing schedule's cadence is measured from.
+    ("billing_schedules", "anchor_date"): "migration 511",
 }
 
 

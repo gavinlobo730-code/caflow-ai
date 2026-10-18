@@ -33,7 +33,7 @@ from services.internal_client_service import is_internal_client, assert_partner_
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from core.ist_clock import ist_fy_label, ist_today
 from domain.gst import invoice_series
-from services import sales_numbering_service
+from services import numbering, sales_numbering_service
 from domain.money_text import whole_rupees
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -141,6 +141,20 @@ def _assert_invoice_no_legal(invoice_no: str) -> None:
     problem = invoice_series.format_violation(invoice_no)
     if problem:
         raise HTTPException(status_code=422, detail=problem)
+
+
+def _assert_invoice_no_is_not_a_placeholder(invoice_no: str) -> None:
+    """Refuse to ISSUE a number an unattended process made up (POST-A-216).
+
+    Billing, recurring invoices and late-interest drafts carry `DRAFT-XXXXXXXXXX` "the CA must replace". That string is a legal
+    Rule 46(b) number (sixteen characters of letters, digits and a hyphen), so `_assert_invoice_no_legal` cannot refuse it, and
+    until now replacing it was a convention: issue it and it is a tax invoice number in the books, the GSTR-1 and the
+    customer's copy, correctable only by a §34 credit note. A draft may hold it; an invoice may not.
+    """
+    if numbering.is_placeholder_invoice_no(invoice_no):
+        raise HTTPException(status_code=422, detail=(
+            f"This invoice still carries the placeholder number {invoice_no}. Replace it with the next number in your "
+            "invoice series before issuing: once issued, the number is the one on the tax invoice."))
 
 
 def _assert_invoice_no_available(
@@ -2094,6 +2108,7 @@ def issue_invoice(
                     if inv.get("status") != "draft":
                         raise HTTPException(status_code=422, detail="Only draft invoices can be issued")
                     _assert_invoice_no_legal(inv.get("invoice_no") or "")
+                    _assert_invoice_no_is_not_a_placeholder(inv.get("invoice_no") or "")
                     # Post journal FIRST — failure keeps the invoice a draft.
                     try:
                         jid = phase2_journal_service.journal_for_sales_invoice(
@@ -2149,6 +2164,7 @@ def issue_invoice(
         # becomes a tax invoice, and it is the last moment the number can be
         # corrected without a §34 credit note.
         _assert_invoice_no_legal(inv.get("invoice_no") or "")
+        _assert_invoice_no_is_not_a_placeholder(inv.get("invoice_no") or "")
 
         _pos = (inv.get("supply_state_code") or "").strip()
         if _pos not in VALID_STATE_CODES:

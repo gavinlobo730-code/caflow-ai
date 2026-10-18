@@ -36,6 +36,7 @@ from models.invoices import SalesInvoiceIn, SalesInvoiceLineIn
 from services.internal_client_service import get_internal_client_id
 from services.numbering import draft_placeholder_invoice_no
 from core.ist_clock import ist_today
+from domain import recurrence
 from domain.billing import time_rate
 from core import db_provider
 
@@ -72,22 +73,25 @@ def period_for(cadence: str, run_date: Optional[str]) -> str:
     return "ONCE"  # one_time
 
 
-def _add_months(d: date, months: int) -> date:
-    m = d.month - 1 + months
-    y = d.year + m // 12
-    return date(y, m % 12 + 1, min(d.day, 28))
+#: The cadence engine's name for each billing cadence. Billing keeps its own vocabulary ("annual"); the arithmetic is
+#: `domain/recurrence`, the one engine recurring invoices and journals use (POST-A-215).
+_RECURRENCE_FREQUENCY = {"monthly": "monthly", "quarterly": "quarterly", "annual": "yearly"}
 
 
-def next_run_after(cadence: str, current: Optional[str]) -> Optional[str]:
-    """Next run date after a generated period (None for one_time → schedule closes)."""
+def next_run_after(cadence: str, current: Optional[str], anchor: Optional[str] = None) -> Optional[str]:
+    """Next run date after a generated period (None for one_time → schedule closes).
+
+    Month ends CLAMP AGAINST THE ANCHOR, the day the schedule began on, and not against the previous run: a retainer that
+    starts on the 31st runs 31 Oct, 30 Nov, 31 Dec, 31 Jan, 28 Feb. This used to cap the day at 28 and step from the previous
+    date, so it ran on the 28th from the first short month on. A schedule with no anchor (one made before migration 511 and
+    never edited) is measured from `current`, which is no worse than before.
+    """
+    frequency = _RECURRENCE_FREQUENCY.get(cadence)
+    if frequency is None:
+        return None
     base = date.fromisoformat(current) if current else ist_today()
-    if cadence == "monthly":
-        return _add_months(base, 1).isoformat()
-    if cadence == "quarterly":
-        return _add_months(base, 3).isoformat()
-    if cadence == "annual":
-        return _add_months(base, 12).isoformat()
-    return None
+    start = date.fromisoformat(str(anchor)[:10]) if anchor else base
+    return recurrence.next_occurrence(frequency, start, after=base).isoformat()
 
 
 # ── Guardrail G3 — one customer per practice client (idempotent) ─────────────
@@ -216,6 +220,13 @@ def generate_for_schedule(firm_id: str, schedule: dict, current_user: dict,
 
     existing = _find_generated(firm_id, schedule["id"], period)
     if existing:
+        # A draft for THIS run's period is already on file. If the schedule is still sitting on the run date that period
+        # belongs to, the advance after the earlier generation never happened (the invoice was stamped and the schedule
+        # update then failed), and returning here without advancing left the schedule due for ever, counted "skipped" by
+        # every run. Advance it. A period asked for explicitly that is NOT the schedule's own current period is a re-read
+        # of an old one and moves nothing.
+        if period == period_for(cadence, schedule.get("next_run_date")):
+            _advance_schedule(firm_id, schedule, cadence)
         return {"invoice": existing, "period": period, "created": False, "idempotent": True}
 
     internal_id = internal_id or "mock-internal"
@@ -252,7 +263,7 @@ def generate_for_schedule(firm_id: str, schedule: dict, current_user: dict,
 
 
 def _advance_schedule(firm_id: str, schedule: dict, cadence: str) -> None:
-    nxt = next_run_after(cadence, schedule.get("next_run_date"))
+    nxt = next_run_after(cadence, schedule.get("next_run_date"), schedule.get("anchor_date"))
     updates = {"next_run_date": nxt}
     if nxt is None:  # one_time schedule completes after a single run
         updates["is_active"] = False
@@ -296,6 +307,8 @@ def create_schedule(firm_id: str, data: dict, created_by: Optional[str]) -> dict
         "is_active": data.get("is_active", True),
         "created_by": created_by,
     }
+    # The cadence is measured from the day the schedule starts on (migration 511).
+    payload["anchor_date"] = payload["next_run_date"]
     if _USE_MOCK:
         payload["id"] = str(uuid.uuid4())
         payload["created_at"] = datetime.now(timezone.utc).isoformat()
@@ -317,6 +330,7 @@ def create_schedule(firm_id: str, data: dict, created_by: Optional[str]) -> dict
         "gst_rate": payload["gst_rate"],
         "cadence": payload["cadence"],
         "next_run_date": payload["next_run_date"],
+        "anchor_date": payload["anchor_date"],
         "is_active": payload["is_active"],
         "created_by": payload["created_by"],
     }).execute().data[0]
@@ -358,6 +372,9 @@ def update_schedule(firm_id: str, schedule_id: str, data: dict,
         fields["gst_rate"] = float(fields["gst_rate"])
     if "is_active" in fields:
         fields["is_active"] = bool(fields["is_active"])
+    if "next_run_date" in fields:
+        # Editing the next run date by hand re-bases the schedule: the new date is the day it is measured from now.
+        fields["anchor_date"] = fields["next_run_date"]
     # The filter above is `is not None`, NOT truthiness, and that is the whole
     # point: `is_active: False` and `amount_paise: 0` are real values a caller
     # means, and `if data[k]` would silently drop both — the first making it

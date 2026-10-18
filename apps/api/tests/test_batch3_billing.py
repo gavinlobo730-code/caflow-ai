@@ -6,6 +6,7 @@ partner-only access. DB-level guarantees (unique index, restrictive RLS,
 collections lifecycle at the data layer) are in test_batch3_billing_migration.py.
 """
 import pytest
+from fastapi import HTTPException
 
 from core.permissions import can
 import services.billing_service as billing
@@ -86,6 +87,12 @@ def test_ca_confirm_gate_draft_until_issued():
     sched = _make_schedule()
     inv = billing.generate_for_schedule("F1", sched, PARTNER)["invoice"]
     assert inv["status"] == "draft"
+    # The generated draft carries a placeholder number: issue is refused until the CA replaces it (POST-A-216).
+    with pytest.raises(HTTPException) as refused:
+        issue_invoice(inv["id"], PARTNER)
+    assert refused.value.status_code == 422 and "placeholder" in refused.value.detail
+    assert inv["status"] == "draft", "a refused issue changes nothing"
+    inv["invoice_no"] = "SINV-0001"
     # CA-confirm = the existing issue transition (reused, partner-gated for internal client)
     issued = issue_invoice(inv["id"], PARTNER)
     assert issued["data"]["status"] == "issued"

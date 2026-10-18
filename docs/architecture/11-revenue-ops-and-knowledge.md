@@ -195,19 +195,25 @@ billing_schedules  (Partner; arrangement retainer | one_time | package;
    v
 period_for(cadence, next_run_date)   "2026-10" | "2026-Q4" | "2026-27" | "ONCE"
    v
-an invoice already exists for (schedule, period)?  -- yes -->  return it: created = false,
-   | no                                                        and nothing advances
+an invoice already exists for (schedule, period)?  -- yes -->  return it: created = false;
+   | no                                                        if the period is the schedule's
+                                                               own current one, the schedule
+                                                               advances (a failed advance after
+                                                               an earlier run is finished here)
    v
 ensure_customer_link()    G3: the client's ONE customer in the practice's books
    v
-create_invoice            the sales engine: GST, insert  ->  DRAFT, number DRAFT-xxxxxxxxxx,
-   |                      line at SAC 998211, NO journal
+create_invoice            the sales engine: GST, insert  ->  DRAFT, number DRAFT-xxxxxxxxxx
+   |                      (refused at issue until a person replaces it), line at SAC 998211,
+   |                      NO journal
    v
 _stamp_billing_fields     billing_schedule_id, billing_period, source = 'billing'
    |    unique violation (uq_client_sales_invoices_billing_run): delete the orphan draft
    |    and its lines, return the invoice that won
    v
-_advance_schedule         next_run_date moves on; a one_time schedule closes (is_active false)
+_advance_schedule         next_run_date moves on, measured from the schedule's anchor_date
+                          (migration 511) by domain/recurrence, so a run on the 31st keeps the
+                          31st; a one_time schedule closes (is_active false)
 
    ---- a person ----
 reads the draft, replaces the number, checks the GST
@@ -363,24 +369,21 @@ None of these is decided here.
 | Time is billed | nothing bills it | POST-B-194 |
 | Bridge residue: two rate columns, two provisioners | both remain | POST-A-169 |
 
-**Observed on 8 October 2026 while writing this, in no ledger line, not changed:**
+**Observed on 8 October 2026 while writing this, in no ledger line.** Four of the six were fixed on 18 October 2026
+(POST-A-215, POST-A-216): `billing_service.generate_for_schedule()` now advances a due schedule whose period already
+has an invoice; billing's cadence is
+`domain/recurrence.py` measured from the schedule's `anchor_date` (migration 511), so a run date above the 28th keeps its
+day (the quarterly key is still the calendar quarter, which is a key and not a statutory period); a `DRAFT-` number is
+refused at issue (`routers/sales_invoices._assert_invoice_no_is_not_a_placeholder`), while a draft may still hold it; and
+`knowledge_service.edit_article()` reads the highest version actually written and retries a `UNIQUE (article_id, version)`
+collision, so the loser's text is saved as the version after the winner's. Two remain:
 
-- `billing_service.generate_for_schedule()` returns early when an invoice exists for the
-  period and never calls `_advance_schedule()`. A schedule whose invoice was stamped but
-  whose advance failed stays due for ever, and `billing_service.run_due()` counts it as
-  skipped every time.
-- The cadence arithmetic is its own (`billing_service.next_run_after()`), not
-  `domain/recurrence.py`: a run date above the 28th becomes the 28th and stays there. The
-  quarterly key is the calendar quarter, not the financial-year quarter; it is a key, not
-  a statutory period.
-- A draft carries a `DRAFT-` number "the CA must replace". Nothing at issue refuses a
-  number that still begins `DRAFT-`: it is sixteen characters of letters, digits and a
-  hyphen, which CGST Rule 46(b) allows.
-- `knowledge_service.edit_article()` does not retry on a `UNIQUE (article_id, version)`
-  collision; the design said it would.
 - The G3 customer is never refreshed from the client (§3).
 - Nothing schedules draft generation: `billing_service.run_due()` is reached only from
-  `POST /api/billing/run`.
+  `POST /api/billing/run`. **Decided, 18 October 2026: it stays that way.** A billing run prepares drafts that carry a
+  placeholder number a Partner has to replace before issue, so an unattended sweep would only fill the Partner's list with
+  drafts nobody asked for that morning; the Partner presses Run when they are ready to number them. If a firm wants a
+  morning preparation, it is a deliberate, switchable job, not the default.
 
 ## 10. Index
 
