@@ -216,7 +216,8 @@ def test_the_two_live_writers_ask_the_clock_at_call_time():
     the clock inside the function rather than close over a constant."""
     src = (API / "domain" / "ai_insight_service.py").read_text(encoding="utf-8")
     assert "days_left = (due - ist_today()).days" in src
-    assert "(ist_today() - date.fromisoformat(" in src
+    # The risk's age: the clock is asked inside the function, and the stamp is converted to its Indian day (POST-A-251).
+    assert '(ist_today() - ist_date_of(r["created_at"])).days' in src
 
     auto = (API / "domain" / "automation_engine.py").read_text(encoding="utf-8")
     # The statistic asks the clock INSIDE the function (its day is then compared with each execution's Indian day).

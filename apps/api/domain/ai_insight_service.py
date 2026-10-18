@@ -13,10 +13,10 @@ own.
 Note: Uses MOCK_AI_INSIGHTS_V2 — separate from MOCK_AI_INSIGHTS in mock_data.py.
 Serves from /api/ai-insights (new router) — does not conflict with /api/insights.
 """
-from datetime import date, timedelta, datetime
+from datetime import timedelta, datetime
 from typing import Optional
 import uuid
-from core.ist_clock import ist_today
+from core.ist_clock import ist_date_of, ist_today
 
 # THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. A module-level
 # `today = ist_today()` is evaluated ONCE, when the module is imported — so on
@@ -243,7 +243,8 @@ def generate_insights_for_client(client_id: str, firm_id: Optional[str] = None) 
         # ist_today(), for the reason on `days_left` above: an open risk stops
         # ageing the moment the process stops restarting, so nothing ever
         # crosses seven days on a deployment that has been up a week.
-        and (ist_today() - date.fromisoformat(str(r["created_at"])[:10])).days > 7
+        and ist_date_of(r["created_at"]) is not None
+        and (ist_today() - ist_date_of(r["created_at"])).days > 7
     ]
     if old_risks:
         insight = ai_insights_repo.create({

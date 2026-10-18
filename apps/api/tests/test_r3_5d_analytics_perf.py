@@ -21,6 +21,15 @@ def _today() -> str:
     return date.today().isoformat()
 
 
+def _instant(value):
+    """A stored value or a bound as an instant. A bare date is midnight UTC, as Postgres reads one against a timestamptz in a
+    UTC session; an offset is honoured (the Indian-day bounds carry `+05:30`)."""
+    from datetime import datetime, timezone
+    text = str(value)
+    parsed = datetime.fromisoformat(text if "T" in text else text + "T00:00:00+00:00")
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 class _Resp:
     def __init__(self, data):
         self.data = data
@@ -46,6 +55,9 @@ class _Q:
     def lte(self, k, v):
         self.f.append(("lte", k, v)); return self
 
+    def lt(self, k, v):
+        self.f.append(("lt", k, v)); return self
+
     def execute(self):
         self.calls.append({"table": self.t, "filters": list(self.f)})
         rows = self.s.get(self.t, [])
@@ -58,7 +70,9 @@ class _Q:
                     ok = False; break
                 if op == "neq" and rv == v:
                     ok = False; break
-                if op == "gte" and (rv is None or str(rv) < str(v)):
+                if op == "gte" and (rv is None or _instant(rv) < _instant(v)):
+                    ok = False; break
+                if op == "lt" and (rv is None or _instant(rv) >= _instant(v)):
                     ok = False; break
                 if op == "lte" and (rv is None or str(rv) > str(v)):
                     ok = False; break

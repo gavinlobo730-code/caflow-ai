@@ -2,6 +2,7 @@ import os
 from typing import Optional
 from repositories.base import BaseRepository
 from core import db_provider
+from core.ist_clock import in_ist_window, ist_day_window
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -10,6 +11,17 @@ if _USE_MOCK:
 
 
 _get_db = db_provider.request_db
+
+
+def _starts(date_from: str) -> str:
+    """Midnight IST at the start of `date_from`: a report range is a range of INDIAN days (POST-A-251), so an entry started
+    at 01:40 IST on 1 April, which is stored as 31 March 20:10 UTC, is April's."""
+    return ist_day_window(date_from, None)[0]
+
+
+def _ends(date_to: str) -> str:
+    """Midnight IST at the END of `date_to`, to be used as an EXCLUSIVE bound (`.lt`)."""
+    return ist_day_window(None, date_to)[1]
 
 
 class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
@@ -33,14 +45,14 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
         """
         if _USE_MOCK:
             entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if e.get("started_at", "")[:10] >= date_from and e.get("started_at", "")[:10] <= date_to]
+            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
         else:
             query = (
                 _get_db().table("time_entries")
                 .select("user_id, duration_minutes, is_billable")
                 .eq("firm_id", firm_id)
-                .gte("started_at", f"{date_from}T00:00:00Z")
-                .lte("started_at", f"{date_to}T23:59:59Z")
+                .gte("started_at", _starts(date_from))
+                .lt("started_at", _ends(date_to))
                 .not_.is_("ended_at", "null")
             )
             result = query.execute()
@@ -87,14 +99,14 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
         """
         if _USE_MOCK:
             entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if e.get("started_at", "")[:10] >= date_from and e.get("started_at", "")[:10] <= date_to]
+            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
         else:
             query = (
                 _get_db().table("time_entries")
                 .select("client_id, duration_minutes, is_billable")
                 .eq("firm_id", firm_id)
-                .gte("started_at", f"{date_from}T00:00:00Z")
-                .lte("started_at", f"{date_to}T23:59:59Z")
+                .gte("started_at", _starts(date_from))
+                .lt("started_at", _ends(date_to))
                 .not_.is_("ended_at", "null")
             )
             result = query.execute()
@@ -137,14 +149,14 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
         """
         if _USE_MOCK:
             entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if e.get("started_at", "")[:10] >= date_from and e.get("started_at", "")[:10] <= date_to]
+            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
         else:
             query = (
                 _get_db().table("time_entries")
                 .select("duration_minutes, is_billable")
                 .eq("firm_id", firm_id)
-                .gte("started_at", f"{date_from}T00:00:00Z")
-                .lte("started_at", f"{date_to}T23:59:59Z")
+                .gte("started_at", _starts(date_from))
+                .lt("started_at", _ends(date_to))
                 .not_.is_("ended_at", "null")
             )
             result = query.execute()
@@ -185,14 +197,14 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
         """
         if _USE_MOCK:
             entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if e.get("started_at", "")[:10] >= date_from and e.get("started_at", "")[:10] <= date_to]
+            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
         else:
             query = (
                 _get_db().table("time_entries")
                 .select("engagement_id, duration_minutes, is_billable, hourly_rate_paise")
                 .eq("firm_id", firm_id)
-                .gte("started_at", f"{date_from}T00:00:00Z")
-                .lte("started_at", f"{date_to}T23:59:59Z")
+                .gte("started_at", _starts(date_from))
+                .lt("started_at", _ends(date_to))
                 .not_.is_("ended_at", "null")
             )
             result = query.execute()
@@ -253,14 +265,14 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
         """
         if _USE_MOCK:
             entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if e.get("started_at", "")[:10] >= date_from and e.get("started_at", "")[:10] <= date_to]
+            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
         else:
             query = (
                 _get_db().table("time_entries")
                 .select("client_id, duration_minutes, hourly_rate_paise")
                 .eq("firm_id", firm_id)
-                .gte("started_at", f"{date_from}T00:00:00Z")
-                .lte("started_at", f"{date_to}T23:59:59Z")
+                .gte("started_at", _starts(date_from))
+                .lt("started_at", _ends(date_to))
                 .not_.is_("ended_at", "null")
             )
             result = query.execute()
@@ -310,14 +322,14 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
         """
         if _USE_MOCK:
             entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if e.get("started_at", "")[:10] >= date_from and e.get("started_at", "")[:10] <= date_to]
+            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
         else:
             query = (
                 _get_db().table("time_entries")
                 .select("engagement_id, duration_minutes, hourly_rate_paise")
                 .eq("firm_id", firm_id)
-                .gte("started_at", f"{date_from}T00:00:00Z")
-                .lte("started_at", f"{date_to}T23:59:59Z")
+                .gte("started_at", _starts(date_from))
+                .lt("started_at", _ends(date_to))
                 .not_.is_("ended_at", "null")
             )
             result = query.execute()
@@ -354,14 +366,14 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
         """
         if _USE_MOCK:
             entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if e.get("started_at", "")[:10] >= date_from and e.get("started_at", "")[:10] <= date_to]
+            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
         else:
             query = (
                 _get_db().table("time_entries")
                 .select("user_id, duration_minutes, hourly_rate_paise, is_billable")
                 .eq("firm_id", firm_id)
-                .gte("started_at", f"{date_from}T00:00:00Z")
-                .lte("started_at", f"{date_to}T23:59:59Z")
+                .gte("started_at", _starts(date_from))
+                .lt("started_at", _ends(date_to))
                 .not_.is_("ended_at", "null")
             )
             result = query.execute()

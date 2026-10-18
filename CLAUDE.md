@@ -212,7 +212,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE FIRM'S OWN GSTIN LIVES IN TWO COLUMNS AND ONLY ONE IS READ
 - THE SEVEN ITR FORMS ARE `domain/income_tax/itr_json.ITR_FORMS`, derived from the `ITRForm` Literal the field mappings and the comm
 
-### `docs/design-record/ledger-and-money.md` (7 entries): The general ledger, posting kernel, period locks, money columns, reports and interest/cheque/price-list features
+### `docs/design-record/ledger-and-money.md` (8 entries): The general ledger, posting kernel, period locks, money columns, reports and interest/cheque/price-list features
 
 - A VOUCHER'S LINES HAVE AN ORDER AND TWO FUNCTIONS RECORD IT
 - THE LIVE REPORTS LEAVE AS A SERVER-MADE PDF OR EXCEL THAT IS THE SCREEN, AND A REPORT THAT DOES NOT FOOT IS NOT PRINTED
@@ -221,6 +221,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A PRICE LIST IS A PRE-FILL SOURCE FOR AN INVOICE LINE'S RATE AND NOTHING ELSE
 - THE INDIAN DAY IS NEVER READ OFF THE UTC CLOCK, AND THE RULE IS A TEST WITH AN EMPTY ALLOWLIST, WHOSE LIMITS ARE WRITTEN DOWN
 - A STOCK, DISPOSAL OR BANK POSTING ASKS THE FILED-RETURN LOCK WHEN ITS EFFECT REACHES A RETURN, AND THE OTHERS THE LEDGER LISTED STAY OPEN ON PURPOSE, EACH FOR A REASON WRITTEN BESIDE IT
+- A RANGE OF DAYS IS A RANGE OF INDIAN DAYS, A STORED STAMP IS SHOWN AS THE INDIAN DAY IT FELL ON, AND THE AGEING NOTE'S "TODAY" IS THE INDIAN ONE
 
 ### `docs/design-record/opening-balances-and-imports.md` (2 entries): Opening balances as documents and the bulk imports of a migrated client's books
 
