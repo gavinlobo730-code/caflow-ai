@@ -26,7 +26,7 @@ Written on 30 Sep 2026 from the per-area improvement plans. Each decision gates 
 
 ### Decision 4. Decide the two-factor rule and the payroll read rule
 - **Why it matters:** Two-factor today covers Partner and Manager on some routes only, and any assigned Executive or Reviewer can read salary, PAN and bank details through the browser. You must choose: all staff, or all staff who can see client data; and who may read payroll.
-- **Cost or time:** No cash cost. Time: a short decision, then days of work. Staff who lose a phone need a recovery path (security_privacy-29).
+- **Cost or time:** No cash cost. Time: a short decision, then days of work. Staff who lose a phone have a recovery path since 18-10-2026 (security_privacy-29, an approval by a second Partner), built and tested but not yet run against the live sign-in service.
 - **Roadmap points it unlocks:** security_privacy-04, security_privacy-02, payroll-11, security_privacy-15, a truthful two-factor sentence on the site
 - **Open ledger items carrying them:** POST-B-013, POST-B-023
 

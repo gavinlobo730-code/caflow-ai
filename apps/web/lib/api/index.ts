@@ -6763,7 +6763,7 @@ export const api = {
       >,
     get: (id: string) => request(`/api/approvals/${id}`) as Promise<ApiResp<ApprovalRequest>>,
     create: (request_type: string, payload: Record<string, unknown>) =>
-      request("/api/approvals", { method: "POST", body: JSON.stringify({ request_type, payload }) }),
+      request<ApiResp<ApprovalRequest>>("/api/approvals", { method: "POST", body: JSON.stringify({ request_type, payload }) }),
     approve: (id: string) => request(`/api/approvals/${id}/approve`, { method: "POST" }),
     reject: (id: string, reason?: string) =>
       request(`/api/approvals/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),

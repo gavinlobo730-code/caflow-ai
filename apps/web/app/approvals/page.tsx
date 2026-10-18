@@ -9,6 +9,9 @@ import { ListSkeleton } from "@/components/ui/skeleton";
 import { MFA_SETUP_HREF, isMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { AUTHENTICATOR_RESET, askedWithText } from "@/lib/auth/authenticatorReset";
+import { formatRelativeTime } from "@/lib/services/formatting";
 
 // Module 9.0 M4 — Governance Approval Inbox (maker-checker).
 // Partners approve/reject; everyone with access sees pending + history.
@@ -55,6 +58,20 @@ export default function ApprovalsPage() {
   useEffect(() => { load(); }, [load]);
 
   async function act(id: string, action: "approve" | "reject" | "cancel") {
+    const request = items.find((x) => x.id === id);
+    if (action === "approve" && request?.request_type === AUTHENTICATOR_RESET) {
+      // Removing somebody's second factor cannot be taken back, and the person is only as safe as the check made here: the
+      // request says WHO asked and WHY, and only a Partner can establish that it really was them. Asked before the click
+      // does anything, and a "no" leaves the request exactly as it was.
+      const who = typeof request.payload?.target_name === "string" ? request.payload.target_name : "this person";
+      const ok = await confirmDialog({
+        title: "Reset this authenticator?",
+        message: `This removes every authenticator ${who} has; their next sign-in is a password and a new authenticator, though a sign-in they already have open may carry on until it expires. Approve only after you have confirmed with ${who}, by a call or in person, that they asked for it.`,
+        confirmLabel: "Reset authenticator",
+        danger: true,
+      });
+      if (!ok) return;
+    }
     setBusy(id); setError(null); setActionError(null);
     try {
       if (action === "approve") await api.approvals.approve(id);
@@ -79,7 +96,7 @@ export default function ApprovalsPage() {
       <PageHeader
         icon={<ShieldCheck size={18} className="text-brand" />}
         title="Approvals"
-        subtitle="A Partner approves or rejects requests for user and role changes and client assignments here. Every decision is recorded in the audit log."
+        subtitle="A Partner approves or rejects requests here, including a request to reset a lost authenticator app. Every decision is recorded in the audit log."
         className="mb-4"
       />
 
@@ -139,6 +156,14 @@ export default function ApprovalsPage() {
                   {r.requested_by_email ? ` · by ${r.requested_by_email}` : ""}
                   {r.reason ? ` · ${r.reason}` : ""}
                 </p>
+                {r.request_type === AUTHENTICATOR_RESET && typeof r.payload?.reason === "string" && (
+                  <p className="text-2xs text-gray-500 mt-0.5">Reason given: {r.payload.reason}</p>
+                )}
+                {r.request_type === AUTHENTICATOR_RESET && r.status === "pending" && (
+                  <p className="text-2xs text-gray-500 mt-0.5">
+                    {r.created_at ? `Asked ${formatRelativeTime(r.created_at)}. ` : ""}{askedWithText(r.payload?.asker_aal)}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <span className={`text-2xs px-2 py-0.5 rounded-full font-medium capitalize ${STATUS_STYLE[r.status] ?? ""}`}>

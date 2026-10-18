@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { authErrorMessage } from "@/lib/auth/authErrorMessage";
+import AuthenticatorResetRequest from "@/components/auth/AuthenticatorResetRequest";
 import { Shield, Zap, TrendingUp, ArrowRight } from "lucide-react";
 
 const FEATURES = [
@@ -36,6 +37,9 @@ export default function LoginPage() {
   // own dead end.
   const [mfaFactorLoadFailed, setMfaFactorLoadFailed] = useState(false);
   const mfaFactorReady = mfaFactorId !== "";
+  // A lost authenticator is asked about from this step (POST-A-006): the person is signed in at the password level, which
+  // is all the request needs, and it is the one place a locked-out person is.
+  const [askingForReset, setAskingForReset] = useState(false);
 
   // The challenge is driven by the global auth state (mfaPending) so it survives
   // the post-sign-in redirect race and page refreshes. When pending, fetch the
@@ -160,6 +164,7 @@ export default function LoginPage() {
           </div>
 
           {mfaStep ? (
+            <>
             <form onSubmit={handleMfaSubmit} className="space-y-5">
               <div className="space-y-1.5">
                 <label htmlFor="login-mfa-code" className="block text-sm font-semibold text-ps-ink">Authentication code</label>
@@ -211,6 +216,30 @@ export default function LoginPage() {
                 )}
               </button>
             </form>
+            <div className="mt-6">
+              {askingForReset ? (
+                <div className="space-y-3 rounded-lg border border-ps-border bg-white p-4">
+                  <p className="text-sm font-semibold text-ps-ink">Ask a Partner to reset your authenticator</p>
+                  <p className="text-xs text-ps-label">
+                    A Partner at your firm has to approve this. Once they do, sign in again with your password and you will
+                    be asked to set up a new authenticator app.
+                  </p>
+                  <AuthenticatorResetRequest
+                    target={{ kind: "self" }}
+                    sentMessage="Request sent. A Partner will see it under Approvals. Once they approve it, sign in again with your password."
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAskingForReset(true)}
+                  className="w-full text-center text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                >
+                  Lost your authenticator app?
+                </button>
+              )}
+            </div>
+            </>
           ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">

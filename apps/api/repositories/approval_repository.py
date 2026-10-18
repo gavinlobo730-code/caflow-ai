@@ -58,6 +58,21 @@ class ApprovalRepository:
         res = q.order("created_at", desc=True).limit(limit).execute()
         return res.data or []
 
+    def pending_with_payload(self, firm_id: str, request_type: str, key: str, value, limit: int = 50) -> "list[dict]":
+        """The PENDING requests of one type whose payload names `value` under `key`, asked of the database directly
+        (a JSON field filter) and not read out of the firm's latest hundred, where an old one is missed once the inbox
+        is long. `key` is a name this code chose, never a caller's word."""
+        if not isinstance(value, str) or not value.strip():
+            return []
+        if _USE_MOCK:
+            rows = [r for r in _MOCK_REQUESTS if r["firm_id"] == firm_id and r["status"] == "pending"
+                    and r["request_type"] == request_type and (r.get("payload") or {}).get(key) == value]
+            return sorted(rows, key=lambda r: r["created_at"], reverse=True)[:limit]
+        res = (_db().table("approval_requests").select("*").eq("firm_id", firm_id).eq("status", "pending")
+               .eq("request_type", request_type).eq(f"payload->>{key}", value)
+               .order("created_at", desc=True).limit(limit).execute())
+        return res.data or []
+
     def update(self, firm_id: str, request_id: str, data: dict) -> Optional[dict]:
         if _USE_MOCK:
             row = self.get(firm_id, request_id)
