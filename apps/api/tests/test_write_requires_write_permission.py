@@ -59,6 +59,68 @@ def test_identity_write_is_not_available_to_portal_clients():
     assert can("Client", "identity", "write") is False
 
 
+MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _read_level_offenders(routes, allowed) -> list[str]:
+    """Mutating `/api/` routes that no permission above a read-only role's reach guards.
+
+    A route guarded by `read` alone is an offender. A route that asks `read` AND another action is satisfied only when that other
+    action EXCLUDES a Reviewer (a read-only role): then the read is a SECOND guard. That is the shape of the payroll finalise tier
+    (finalize, disburse, reverse, the loan write-down and a leaver's settlement ask payroll:finalize and payroll:read, so a Partner
+    blocked from reading payroll is told so at the door, POST-A-219) and of Form 24Q from the books (tds:compute, plus payroll:read
+    because a 24Q lists every employee's PAN, salary and tax, migration 485). A second action a Reviewer holds (`time_entry:write`,
+    `report:export`) does not make the route a write guard, and the first version of this refinement, which only asked that the
+    actions not ALL be `read`, let that through (an independent review of it). A route with NO rbac dependency at all is not this
+    test's question and is not flagged."""
+    offenders = []
+    for route in routes:
+        path = getattr(route, "path", "")
+        if not path.startswith("/api/") or path in allowed:
+            continue
+        methods = (getattr(route, "methods", set()) or set()) - {"HEAD", "OPTIONS"}
+        if not (methods & MUTATING):
+            continue
+
+        pairs = set()
+        for dep in getattr(getattr(route, "dependant", None), "dependencies", []) or []:
+            name = getattr(getattr(dep, "call", None), "__name__", "")
+            if name.startswith("rbac_"):
+                resource, action = name[len("rbac_"):].rsplit("_", 1)
+                pairs.add((resource, action))
+
+        actions = {action for _, action in pairs}
+        if not actions:
+            continue
+        beyond_read = {(r, a) for r, a in pairs if a not in READ_LEVEL}
+        if actions <= READ_LEVEL or (READ_LEVEL & actions and all(can("Reviewer", r, a) for r, a in beyond_read)):
+            offenders.append(f"{sorted(methods & MUTATING)[0]} {path} -> {sorted(actions)}")
+    return offenders
+
+
+def test_a_read_level_guard_beside_a_stronger_one_is_not_an_offender_and_read_alone_is():
+    """The negative control for the refinement above: on a small app, a POST guarded by read alone is flagged, and one guarded by
+    read AND write is not (the same two routes the old rule flagged together)."""
+    from fastapi import APIRouter, Depends, FastAPI
+
+    from core.permissions import rbac
+
+    app = FastAPI()
+    r = APIRouter(prefix="/api/probe")
+    r.post("/read-only", dependencies=[Depends(rbac("payroll", "read"))])(lambda: {})
+    r.post("/read-and-write", dependencies=[Depends(rbac("payroll", "read")), Depends(rbac("payroll", "write"))])(lambda: {})
+    r.post("/write-only", dependencies=[Depends(rbac("payroll", "write"))])(lambda: {})
+    # read beside an action a REVIEWER also holds is still read-level: it is not a write guard
+    r.post("/read-and-a-weak-one", dependencies=[Depends(rbac("payroll", "read")), Depends(rbac("time_entry", "write"))])(lambda: {})
+    # read beside an action a Reviewer does not hold is the finalise-tier shape
+    r.post("/read-and-finalize", dependencies=[Depends(rbac("payroll", "read")), Depends(rbac("payroll", "finalize"))])(lambda: {})
+    app.include_router(r)
+    assert _read_level_offenders(app.routes, set()) == [
+        "POST /api/probe/read-only -> ['read']",
+        "POST /api/probe/read-and-a-weak-one -> ['read', 'write']",
+    ]
+
+
 def test_no_mutating_route_is_guarded_by_a_read_level_action():
     """The ratchet. Walks every POST/PUT/PATCH/DELETE route and reads the rbac
     dependency off it — rbac() names its dependency rbac_{resource}_{action},
@@ -115,14 +177,6 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         # against is built by _build_run_esic, the same read-only assembly
         # GET /runs/{run_id}/esic already uses.
         "/api/payroll/runs/{run_id}/esic/mapped-ips",
-        # Form 24Q from the books is built and returned, never stored, and is
-        # guarded at tds:compute. It carries payroll:read as a SECOND guard
-        # (migration 485): a 24Q lists every employee's PAN, salary and tax, and
-        # the payroll rows it is built from are visible to the caller's own
-        # sign-in only with that permission. The read-level action here is that
-        # requirement, not the route's tier. Nothing is written
-        # (tests/test_a_salary_tds_statement_needs_payroll_read.py drives it).
-        "/api/tds/24q/from-books",
         # PUR-32's preflight: reads this vendor's live bills and answers
         # which of them the one being typed may be a second copy of. POST
         # rather than GET because the request carries an invoice NUMBER, and a
@@ -146,25 +200,7 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         "/api/copilot/messages/{message_id}/feedback",
     }
 
-    MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
-    offenders = []
-
-    for route in main.app.routes:
-        path = getattr(route, "path", "")
-        if not path.startswith("/api/") or path in ALLOWED:
-            continue
-        methods = (getattr(route, "methods", set()) or set()) - {"HEAD", "OPTIONS"}
-        if not (methods & MUTATING):
-            continue
-
-        actions = set()
-        for dep in getattr(getattr(route, "dependant", None), "dependencies", []) or []:
-            name = getattr(getattr(dep, "call", None), "__name__", "")
-            if name.startswith("rbac_"):
-                actions.add(name.rsplit("_", 1)[-1])
-
-        if actions & READ_LEVEL:
-            offenders.append(f"{sorted(methods & MUTATING)[0]} {path} -> {sorted(actions)}")
+    offenders = _read_level_offenders(main.app.routes, ALLOWED)
 
     assert not offenders, (
         "these routes change data but are satisfied by a read-level permission:\n  "

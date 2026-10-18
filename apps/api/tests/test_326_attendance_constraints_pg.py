@@ -43,7 +43,7 @@ from pathlib import Path
 
 import pytest
 
-from tests._signed_in_payroll_writes import give_the_signed_in_writes_back
+from tests._signed_in_payroll_writes import give_the_client_payroll_writes_back, give_the_signed_in_writes_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -125,6 +125,10 @@ def db(pg_template):
         # Migration 499 is the first lock (no signed-in write privilege on this table); this module measures the second
         # (the policies and triggers), so the privilege is given back in this throwaway database.
         give_the_signed_in_writes_back(dsn)
+        # Migration 519 is the first lock (no signed-in write privilege on the three client payroll tables); this module
+        # measures the second (the policies, the column grants and the triggers), so the privilege is given back in this
+        # throwaway database. The privilege itself is measured by test_519.
+        give_the_client_payroll_writes_back(dsn)
         yield dsn
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')

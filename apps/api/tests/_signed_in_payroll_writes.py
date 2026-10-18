@@ -39,3 +39,21 @@ def give_the_leave_and_feed_writes_back(dsn: str) -> None:
     done = subprocess.run(["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-f", "-"],
                           input=_ROLLBACK_515.read_text(encoding="utf-8"), capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
+
+
+_ROLLBACK_519 = (Path(__file__).resolve().parents[1] / "migrations" /
+                 "519_the_declaration_tables_ask_the_grid_and_the_three_client_payroll_tables_are_written_by_the_api_only_rollback.sql")
+_PART_2 = "-- ===== PART 2 ROLLBACK"
+
+
+def give_the_client_payroll_writes_back(dsn: str) -> None:
+    """The same, for migration 519: `client_payroll_settings`, `client_statutory_identity` and `client_pt_registrations` lost
+    their signed-in write because the payroll router writes them with the privileged client and no screen writes them. A module
+    that measures their row policies or column grants as a signed-in role calls this once its rows are seeded; the privilege
+    itself is measured by `test_519_*_pg.py`. Only the grants are given back (the part of the rollback below its marker), not the
+    declaration policies' role form, which is a different half of the same migration."""
+    text = _ROLLBACK_519.read_text(encoding="utf-8")
+    assert _PART_2 in text, "migration 519's rollback lost the marker the test helper splits on"
+    done = subprocess.run(["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-f", "-"],
+                          input=text[text.index(_PART_2):], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
