@@ -469,7 +469,7 @@ class TestAiCopilotFirmContextScoping:
         captured = {}
 
         class FakeTaskDomainService:
-            def get_dashboard_summary(self, firm_id=None):
+            def get_dashboard_summary(self, firm_id=None, allowed_client_ids=None):
                 captured["dashboard_firm_id"] = firm_id
                 return {"active_clients": 1, "overdue_tasks": 0}
 
@@ -483,7 +483,7 @@ class TestAiCopilotFirmContextScoping:
                 captured["clients_firm_id"] = firm_id
                 return []
 
-        def fake_risk_stats(firm_id=None):
+        def fake_risk_stats(firm_id=None, allowed_client_ids=None):
             captured["risk_firm_id"] = firm_id
             return {"critical": 0, "high": 0, "medium": 0, "total_open": 0}
 
@@ -514,7 +514,7 @@ class TestAiCopilotFirmContextScoping:
         ]
 
         class FakeTaskDomainService:
-            def get_dashboard_summary(self, firm_id=None):
+            def get_dashboard_summary(self, firm_id=None, allowed_client_ids=None):
                 return {"active_clients": len([c for c in ALL_CLIENTS if c["firm_id"] == firm_id])}
 
         class FakeComplianceService:
@@ -525,7 +525,7 @@ class TestAiCopilotFirmContextScoping:
             def find_all(self, firm_id=None):
                 return [c for c in ALL_CLIENTS if c["firm_id"] == firm_id]
 
-        def fake_risk_stats(firm_id=None):
+        def fake_risk_stats(firm_id=None, allowed_client_ids=None):
             return {}
 
         monkeypatch.setattr(task_mod, "TaskDomainService", FakeTaskDomainService)
@@ -567,7 +567,7 @@ class TestAiCopilotGetFirmContextScoping:
         captured = {}
 
         class FakeTaskDomainService:
-            def get_dashboard_summary(self, firm_id=None):
+            def get_dashboard_summary(self, firm_id=None, allowed_client_ids=None):
                 captured["dashboard_firm_id"] = firm_id
                 return {"active_clients": 0, "overdue_tasks": 0}
 
@@ -595,7 +595,7 @@ class TestAiCopilotGetFirmContextScoping:
         ALL_TASKS_OVERDUE = {FIRM_A: 1, FIRM_B: 5}
 
         class FakeTaskDomainService:
-            def get_dashboard_summary(self, firm_id=None):
+            def get_dashboard_summary(self, firm_id=None, allowed_client_ids=None):
                 return {
                     "active_clients": len([c for c in ALL_CLIENTS if c["firm_id"] == firm_id]),
                     "overdue_tasks": ALL_TASKS_OVERDUE.get(firm_id, 0),
@@ -609,7 +609,7 @@ class TestAiCopilotGetFirmContextScoping:
             def find_all(self, firm_id=None):
                 return [c for c in ALL_CLIENTS if c["firm_id"] == firm_id]
 
-        def fake_risk_stats(firm_id=None):
+        def fake_risk_stats(firm_id=None, allowed_client_ids=None):
             return {}
 
         monkeypatch.setattr(task_mod, "TaskDomainService", FakeTaskDomainService)
