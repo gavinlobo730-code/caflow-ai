@@ -22,6 +22,7 @@ from services.customer_statement_service import customer_statement_service
 from services.audit_service import log_event
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from core import db_provider
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.customer_statements")
 
@@ -173,5 +174,5 @@ def _audit(current_user, customer_id, action, client_id, start, end, extra=None)
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
                   new_data={"client_id": client_id, "period_start": start, "period_end": end, **(extra or {})},
                   metadata={"source": "customer_statement"})
-    except Exception:  # pragma: no cover - audit must never block
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="customer_statement.audit_log", firm_id=current_user['firm_id'], customer_id=customer_id)

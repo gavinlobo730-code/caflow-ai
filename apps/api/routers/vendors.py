@@ -22,6 +22,7 @@ from services import party_erasure
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from core.ist_clock import ist_fy_label
+from core.observability import capture_posting_failure
 
 
 
@@ -316,8 +317,8 @@ def create_vendor(
                 _logger.error("create_vendor opening-balance sync failed; rolling back: %s", sync_err)
                 try:
                     db.table("vendors").delete().eq("id", vendor_id).eq("firm_id", payload["firm_id"]).execute()
-                except Exception:
-                    pass
+                except Exception as swallowed:
+                    capture_posting_failure(swallowed, operation="vendor.create_rollback", firm_id=payload['firm_id'], vendor_id=vendor_id)
                 return api_response(False, None, "Unable to save vendor. Please try again.")
 
         log_event(
@@ -406,8 +407,8 @@ def _finish_vendor_creation(db, vendor: dict, payload: dict, current_user: dict)
                           vendor_id, sync_err)
             try:
                 db.table("vendors").delete().eq("id", vendor_id).eq("firm_id", firm_id).execute()
-            except Exception:
-                pass
+            except Exception as swallowed:
+                capture_posting_failure(swallowed, operation="vendor.bulk_create_rollback", firm_id=firm_id, vendor_id=vendor_id)
             return "Unable to save vendor. Please try again."
 
     log_event(
@@ -721,8 +722,8 @@ def update_vendor(
                 _logger.error("update_vendor opening-balance sync failed; rolling back: %s", sync_err)
                 try:
                     db.table("vendors").update({k: prior.get(k) for k in data.keys()}).eq("id", vendor_id).eq("firm_id", firm_id).execute()
-                except Exception:
-                    pass
+                except Exception as swallowed:
+                    capture_posting_failure(swallowed, operation="vendor.update_rollback", firm_id=firm_id, vendor_id=vendor_id)
                 return api_response(False, None, "Unable to save vendor. Please try again.")
 
         log_event(

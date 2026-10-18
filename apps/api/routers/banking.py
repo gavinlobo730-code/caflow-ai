@@ -22,7 +22,7 @@ from models.common import api_response
 from services import bank_erasure
 from services.audit_service import log_event
 from core.authz import assert_client_access, filter_by_client
-from core.observability import capture_soft_failure
+from core.observability import capture_soft_failure, capture_posting_failure
 
 _logger = logging.getLogger("caflow.banking")
 
@@ -584,8 +584,8 @@ def create_bank_account(
             try:
                 if account.get("id"):
                     db.table("bank_accounts").delete().eq("id", account["id"]).eq("firm_id", current_user["firm_id"]).execute()
-            except Exception:
-                pass
+            except Exception as swallowed:
+                capture_posting_failure(swallowed, operation="bank_account.create_rollback", firm_id=current_user['firm_id'], account_id=account.get('id'))
             return api_response(False, None, "Unable to save bank account. Please try again.")
     return api_response(True, account)
 
@@ -648,8 +648,8 @@ def update_bank_account(
         if client_id and not _sync_opening_balances(db, firm_id, client_id, current_user.get("id")):
             try:
                 db.table("bank_accounts").update({k: prior.get(k) for k in update.keys()}).eq("id", account_id).eq("firm_id", firm_id).execute()
-            except Exception:
-                pass
+            except Exception as swallowed:
+                capture_posting_failure(swallowed, operation="bank_account.update_rollback", firm_id=firm_id, account_id=account_id)
             return api_response(False, None, "Unable to save bank account. Please try again.")
     account = dict(account)
     account["opening_balance_paise"] = account_kind.to_statement_sign(

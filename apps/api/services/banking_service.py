@@ -36,6 +36,7 @@ from domain.banking.account_category import category_for_account
 from domain.banking.entry import kind_for
 from domain.banking.posting_map import AUTO_COUNTER
 from domain.banking import posting_map as pmap
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.banking")
 
@@ -429,8 +430,8 @@ class BankingService:
                       metadata={"source": "bank_feed_import",
                                 "file_name": (file_meta or {}).get("file_name"),
                                 "totals_acknowledgement": totals_acknowledgement})
-        except Exception:  # pragma: no cover - audit must never block import
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_import.audit_log", firm_id=firm_id, client_id=client_id)
         return {"statement_id": statement_id, "imported": len(new_rows),
                 "duplicates_skipped": duplicates, "total_rows": total_rows,
                 # How many rows in THIS file repeated an earlier row of the same

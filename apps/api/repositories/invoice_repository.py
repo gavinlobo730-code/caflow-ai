@@ -5,6 +5,7 @@ from repositories.base import BaseRepository
 from core.exceptions import NotFoundError
 from core.ist_clock import ist_today
 from core import db_provider
+from core.observability import capture_soft_failure
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -186,8 +187,8 @@ class InvoiceRepository(BaseRepository[dict]):
                 prefix = (settings.get("prefix") or "CF").strip() or "CF"
                 include_fy = bool(settings.get("include_financial_year", True))
                 seq_length = max(3, min(6, int(settings.get("sequence_length", 3))))
-        except Exception:
-            pass  # Non-fatal — fall back to defaults
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="invoice_number.prefix_settings", firm_id=firm_id)
 
         def _format(seq: int) -> str:
             fy_part = f"-{fiscal_year}" if include_fy else ""

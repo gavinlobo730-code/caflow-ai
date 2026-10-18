@@ -27,6 +27,7 @@ from typing import Optional
 from fastapi import HTTPException, Request, Depends
 from core.auth import get_current_user
 from core import db_provider
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.internal_client")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -212,6 +213,6 @@ def provision(
             new_data={"is_internal": True, "client_name": legal_name},
             metadata={"source": "internal_client_provision", "state_code": derived_state_code},
         )
-    except Exception:  # pragma: no cover - audit must never block provisioning
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="internal_client.audit_log", firm_id=firm_id, client_id=new_id)
     return new_id

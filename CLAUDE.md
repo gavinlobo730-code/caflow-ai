@@ -150,7 +150,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 
 - Register as an FIU
 
-### `docs/design-record/deployment-and-operations.md` (6 entries): Deployment, monitoring, request ids, service levels, runbooks and security headers
+### `docs/design-record/deployment-and-operations.md` (7 entries): Deployment, monitoring, request ids, service levels, runbooks and security headers
 
 - A CHECK ASKS THE THING ITSELF, AND AN ALERT MUST BE ABLE TO MATCH WHAT IS SENT
 - EVERY REQUEST HAS AN ID, AND ONE JSON LINE, AND THE LINE NEVER NAMES THE PATH THE CALLER TYPED
@@ -158,6 +158,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE INCIDENT RUNBOOK SAYS IT HAS NOT BEEN TESTED AND LEAVES THE FACTS ONLY A HUMAN HOLDS AS BLANKS
 - THE TWO SITES AND THE API SEND SECURITY HEADERS, THE POLICY'S HOSTS ARE READ FROM THE BUILD AND NEVER WILDCARDED, AND EVERY ROUTE 
 - A BACKEND EVENT NAMES THE BUILD IT CAME FROM, AN UNLABELLED AI ROW NAMES NO RETIRED MODEL, AND A ROUTE NOTHING CALLED IS GONE
+- A BROAD HANDLER ON A MONEY OR LEDGER PATH REPORTS WHAT IT SWALLOWS, AND A ROLLBACK THAT DID NOT RUN IS A POSTING FAILURE
 
 ### `docs/design-record/documents-sales-purchase.md` (12 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 

@@ -21,6 +21,7 @@ from core.exceptions import NotFoundError
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from core.ist_clock import ist_fy_label
+from core.observability import capture_posting_failure
 
 
 
@@ -332,8 +333,8 @@ def create_customer(
                 _logger.error("create_customer opening-balance sync failed; rolling back: %s", sync_err)
                 try:
                     db.table("customers").delete().eq("id", customer_id).eq("firm_id", firm_id).execute()
-                except Exception:
-                    pass
+                except Exception as swallowed:
+                    capture_posting_failure(swallowed, operation="customer.create_rollback", firm_id=firm_id, customer_id=customer_id)
                 return api_response(False, None, "Unable to save customer. Please try again.")
 
         log_event(
@@ -539,8 +540,8 @@ def bulk_create_customers(
                             MOCK_CUSTOMERS[:] = [c for c in MOCK_CUSTOMERS if c.get("id") != customer_id]
                         else:
                             db.table("customers").delete().eq("id", customer_id).eq("firm_id", firm_id).execute()
-                    except Exception:
-                        pass
+                    except Exception as swallowed:
+                        capture_posting_failure(swallowed, operation="customer.bulk_create_rollback", firm_id=firm_id, customer_id=customer_id)
                     errors.append({"index": idx, "name": row.get("name"), "error": "Unable to save customer. Please try again."})
                     continue
 
@@ -718,8 +719,8 @@ def update_customer(
                 _logger.error("update_customer opening-balance sync failed; rolling back: %s", sync_err)
                 try:
                     db.table("customers").update({k: prior.get(k) for k in data.keys()}).eq("id", customer_id).eq("firm_id", firm_id).execute()
-                except Exception:
-                    pass
+                except Exception as swallowed:
+                    capture_posting_failure(swallowed, operation="customer.update_rollback", firm_id=firm_id, customer_id=customer_id)
                 return api_response(False, None, "Unable to save customer. Please try again.")
 
         log_event(

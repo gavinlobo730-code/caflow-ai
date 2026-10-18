@@ -23,6 +23,7 @@ from fastapi import HTTPException
 from domain.banking.splits import (
     parse_splits, validate_splits, unallocated_paise, SplitError,
 )
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.bank_splits")
 
@@ -159,8 +160,8 @@ class BankSplitService:
             log_event(firm_id, "bank_transaction", txn_id, "update", actor_id=actor_id,
                       new_data={"splits": payload, "split_count": len(payload)},
                       metadata={"source": "bank_split"})
-        except Exception:  # pragma: no cover - audit must never block
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_split.audit_log", firm_id=firm_id, txn_id=txn_id)
 
         return self.get(db, firm_id, txn_id)
 

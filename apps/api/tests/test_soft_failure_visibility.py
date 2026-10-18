@@ -20,8 +20,8 @@ WHAT IS ASSERTED
     that it keeps posting and non-posting failures in separate Sentry groups,
     and that health.py no longer swallows anything without saying so.
 
-    Plus a ratchet on the rest of the backend: 171 bare `except …: pass` blocks
-    remain outside health.py, and that number may only go down.
+    Plus a ratchet on the rest of the backend: the bare `except …: pass` blocks
+    outside health.py (the budget below), and that number may only go down.
 """
 from __future__ import annotations
 
@@ -161,7 +161,11 @@ def test_every_health_swallow_names_the_operation_it_lost():
 # say_what_went_wrong.py::test_an_exception_whose_attributes_raise_is_still_
 # reported pins that it survives an object whose getters throw, which is the
 # thing the swallow exists for.
-MAX_SILENT_SWALLOWS_ELSEWHERE = 175
+#
+# 175 -> 124 (POST-A-021, 18-10-2026): forty-six silent handlers on the money and ledger paths now report through
+# capture_soft_failure (a best-effort audit, timeline, delivery-log or settings read) or capture_posting_failure (a rollback that
+# did not run); tests/test_a_swallowed_failure_on_a_money_path_is_reported_not_silent.py holds those files at zero.
+MAX_SILENT_SWALLOWS_ELSEWHERE = 124
 
 _SCAN_DIRS = ("routers", "services", "domain", "repositories", "jobs", "core")
 

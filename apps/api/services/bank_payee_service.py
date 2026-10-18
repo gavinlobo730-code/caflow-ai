@@ -28,6 +28,7 @@ from domain.banking.history import (
     KEY_PAYEE_ID, KEY_COUNTERPARTY,
 )
 from domain.banking.narration import parse_narration, party_matches
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.bank_payee")
 
@@ -95,8 +96,8 @@ class BankPayeeService:
             log_event(firm_id, "bank_transaction", txn_id, "update", actor_id=actor_id,
                       new_data={k: v for k, v in update.items() if k != "updated_at"},
                       metadata={"source": "bank_payee"})
-        except Exception:  # pragma: no cover - audit must never block
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_payee.audit_log", firm_id=firm_id, txn_id=txn_id)
         return {**txn, **update}
 
     # ── BANK-11 step 3: the party a RULE proposed ───────────────────────────

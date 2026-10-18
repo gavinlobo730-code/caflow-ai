@@ -30,6 +30,7 @@ from services.bank_transfer_service import bank_transfer_service
 from services.bank_reconciliation_service import bank_reconciliation_service
 from services.banking_service import assert_bank_account_is_inr
 from core.ist_clock import ist_today
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.bank_posting")
 
@@ -683,8 +684,8 @@ class BankPostingService:
             log_event(firm_id, "bank_transaction", txn_id, "status_change",
                       actor_id=actor_auth_id or actor_id, new_data=new_data,
                       metadata={"source": "bank_post", "stage": "posted"})
-        except Exception:  # pragma: no cover - audit must never block
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_posting.audit_log", firm_id=firm_id, txn_id=txn_id)
         # settle_on_post already writes the timeline entry for a posted
         # transaction, so there is no second one here.
 
@@ -751,8 +752,8 @@ class BankPostingService:
                                  f"Posted to ledger ({txn.get('category') or 'mapped'})", "success",
                                  firm_id=firm_id, entity_type="bank_transaction",
                                  entity_id=txn_id, actor_id=actor_id)
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_posting.timeline", firm_id=firm_id, txn_id=txn_id)
         return settled
 
     # ── B.3.4 settlement ──────────────────────────────────────────────────────
@@ -960,15 +961,15 @@ class BankPostingService:
                       old_data={"match_status": "posted", "posted_journal_id": journal_id},
                       new_data={"match_status": back_to, "reversal_journal_id": reversal_id},
                       metadata={"source": "bank_undo", "reversal_date": reversal_date})
-        except Exception:  # pragma: no cover - audit must never block
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_undo.audit_log", firm_id=firm_id, txn_id=txn_id)
         try:
             timeline_service.log(client_id, "accounting", "Bank Transaction Undone",
                                  f"Posting reversed ({reversal_date}); back in the queue", "warning",
                                  firm_id=firm_id, entity_type="bank_transaction",
                                  entity_id=txn_id, actor_id=actor_id)
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_undo.timeline", firm_id=firm_id, txn_id=txn_id)
 
         return {"id": txn_id, "match_status": back_to, "reversal_journal_id": reversal_id,
                 "reversal_date": reversal_date, "unsettled": unsettled,
@@ -1246,8 +1247,8 @@ class BankPostingService:
                 "success", firm_id=firm_id, entity_type="bank_transaction",
                 entity_id=txn_id, actor_id=(actor or {}).get("auth_user_id"),
             )
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_match_multi.timeline", firm_id=firm_id, txn_id=txn_id)
 
         return {
             "id": txn_id, "match_status": "posted", "matched_entity_type": new_entity_type,

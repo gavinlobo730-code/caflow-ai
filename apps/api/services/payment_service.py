@@ -34,6 +34,7 @@ from services.payments import availability as online_payment
 from services.payments.factory import configured_provider
 from domain.money_text import whole_rupees
 from domain.payments import availability as payable
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.payment_service")
 
@@ -211,8 +212,8 @@ def send_link_email(db, firm_id: str, link_id: str, actor: dict) -> dict:
         frows = db.table("firms").select("name").eq("id", firm_id).limit(1).execute().data or []
         if frows:
             firm_name = frows[0].get("name") or firm_name
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="payment_link.firm_name", firm_id=firm_id)
 
     ok = email_service.send_payment_link_to_customer(
         to=to, customer_name=cust.get("name") or "", firm_name=firm_name,
