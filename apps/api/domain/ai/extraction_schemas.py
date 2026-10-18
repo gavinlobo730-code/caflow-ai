@@ -305,14 +305,20 @@ def _normalise_type(value: Optional[str]) -> Optional[str]:
     return re.sub(r"[\s\-/]+", "_", value.strip().lower())
 
 
-def validate_notice_dates(issue: Optional[date], due: Optional[date], today: date) -> None:
-    """Refuse a pair of dates no notice could carry. Raises `ExtractionRefused`."""
+def validate_notice_dates(issue: Optional[date], due: Optional[date], today: date, *, correcting: bool = False) -> None:
+    """Refuse a pair of dates no notice could carry. Raises `ExtractionRefused`.
+
+    `correcting` is a CA's own correction of a staged reading (`correct_notice`): the sentence then speaks to a person who typed a
+    date, not about text they pasted."""
     oldest = today - timedelta(days=MAX_PAST_YEARS * 366)
 
     def refuse(what: str, reason: str) -> None:
+        tail = ("The correction was not saved. Check the date against the notice."
+                if correcting else
+                "Nothing was saved. Check the text you pasted, or enter the notice by hand.")
         raise ExtractionRefused(
-            f"The notice reading was refused: the {what} is {reason}, which no notice could "
-            "carry. Nothing was saved. Check the text you pasted, or enter the notice by hand.",
+            f"The notice {'correction' if correcting else 'reading'} was refused: the {what} is {reason}, which no notice could "
+            f"carry. {tail}",
             http_status=422)
 
     if issue is not None:
@@ -374,6 +380,65 @@ def parse_notice(raw: Any, *, today: date) -> dict:
     data["description"] = data.get("description") or ""
     data["not_read"] = not_read
     return data
+
+
+#: The fields of a staged reading a CA may correct before approving it. The model's own reading is never overwritten:
+#: `extracted_data` keeps it, and each correction is appended to `extracted_data["corrections"]` by the route.
+CORRECTABLE_NOTICE_FIELDS = ("authority", "notice_type", "reference_no", "issue_date", "response_due_date", "description")
+
+
+def correct_notice(current: dict, patch: dict, *, today: date) -> tuple[dict, dict]:
+    """(the changed fields, the changes) for a CA's correction of a staged notice reading, or `ExtractionRefused` (HTTP 422).
+
+    `current` is the stored row, `patch` the fields the CA changed. Each is checked by the rule that checks the model's reading
+    (the notice-type vocabulary, ISO dates, the length limits and `validate_notice_dates` on the MERGED pair, so moving the issue
+    date past the response date is refused as much as typing a bad response date), with one difference in kind: a person's
+    typo is refused, not quietly demoted. An unknown notice type is NOT stored as `other`, a date that is not YYYY-MM-DD is NOT
+    "unread"; the CA is told what is wrong. An empty string clears a reference or a date (the notice does not state one); the
+    authority cannot be cleared. A correction that changes nothing is refused rather than recorded."""
+    def refuse(sentence: str) -> None:
+        raise ExtractionRefused(sentence, http_status=422)
+
+    unknown = sorted(set(patch) - set(CORRECTABLE_NOTICE_FIELDS))
+    if unknown:
+        refuse(f"These cannot be corrected: {', '.join(unknown)}. You can correct "
+               f"{', '.join(CORRECTABLE_NOTICE_FIELDS)}.")
+
+    new: dict[str, Any] = {}
+    for key, raw in patch.items():
+        if key == "authority":
+            text = _stringish(raw)
+            text = text.strip() if isinstance(text, str) else ""
+            if not text:
+                refuse("The issuing authority cannot be left empty.")
+            if len(text) > NOTICE_FIELD_LIMITS["authority"]:
+                refuse(f"The authority is longer than {NOTICE_FIELD_LIMITS['authority']} characters.")
+            new[key] = text
+        elif key == "notice_type":
+            ntype = _normalise_type(_stringish(raw)) if raw is not None else None
+            if ntype not in NOTICE_TYPES:
+                refuse(f"The notice type must be one of: {', '.join(NOTICE_TYPES)}.")
+            new[key] = ntype
+        elif key in ("reference_no", "description"):
+            text = _stringish(raw) if raw is not None else None
+            text = text.strip() if isinstance(text, str) else None
+            if text and len(text) > NOTICE_FIELD_LIMITS[key]:
+                refuse(f"The {key.replace('_', ' ')} is longer than {NOTICE_FIELD_LIMITS[key]} characters.")
+            new[key] = (text or "") if key == "description" else (text or None)
+        else:  # issue_date, response_due_date
+            parsed, unreadable = _iso_date(raw)
+            if unreadable:
+                refuse(f"The {key.replace('_', ' ')} must be written YYYY-MM-DD, or left empty when the notice states none.")
+            new[key] = parsed.isoformat() if parsed else None
+
+    changes = {k: {"from": current.get(k), "to": v} for k, v in new.items() if (current.get(k) or None) != (v or None)}
+    if not changes:
+        refuse("Nothing was changed: the corrected values are the ones already held.")
+
+    issue_after = new.get("issue_date", current.get("issue_date"))
+    due_after = new.get("response_due_date", current.get("response_due_date"))
+    validate_notice_dates(_iso_date(issue_after)[0], _iso_date(due_after)[0], today, correcting=True)
+    return {k: new[k] for k in changes}, changes
 
 
 NOTICE_SCHEMA = JsonSchema(name="notice_reading", schema={
