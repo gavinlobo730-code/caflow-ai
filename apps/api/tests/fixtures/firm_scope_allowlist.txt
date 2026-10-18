@@ -34,7 +34,6 @@ jobs/scheduler.py | _list_firm_ids | tasks | read | 1 | system-job
 jobs/scheduler.py | run_due_schedules | repo:workflow_repo.list_schedules_due | read | 1 | system-job
 jobs/scheduler.py | run_due_schedules | repo:workflow_repo.update_schedule_run | update | 2 | system-job
 repositories/ai_copilot_repository.py | AICopilotRepository.list_messages | ai_messages | read | 1 | repository-contract
-repositories/ai_copilot_repository.py | AICopilotRepository.update_conversation_title | ai_conversations | update | 1 | repository-contract
 repositories/ai_insights_repository.py | AIInsightsRepository.create | ai_insights | insert | 1 | repository-contract
 repositories/approval_repository.py | ApprovalRepository.create | approval_requests | insert | 1 | repository-contract
 repositories/assignment_repository.py | AssignmentRepository.create | user_client_assignments | read | 1 | repository-contract

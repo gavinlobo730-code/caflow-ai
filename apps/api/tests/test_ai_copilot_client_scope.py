@@ -64,17 +64,21 @@ class _FakeRepo:
         self.messages = {}
         self.archived = []
 
-    def get_conversation(self, firm_id, conversation_id):
+    def get_conversation(self, firm_id, conversation_id, user_id=None):
         c = self.conversations.get(conversation_id)
-        return dict(c) if c and c.get("firm_id") == firm_id else None
+        if not c or c.get("firm_id") != firm_id:
+            return None
+        if user_id is not None and c.get("user_id") != user_id:
+            return None          # a conversation is its owner's (POST-A-250)
+        return dict(c)
 
     def list_conversations(self, firm_id, user_id, is_archived=False, limit=30):
         return [dict(c) for c in self.conversations.values()
                 if c["firm_id"] == firm_id and c["user_id"] == user_id]
 
-    def archive_conversation(self, firm_id, conversation_id):
+    def archive_conversation(self, firm_id, conversation_id, user_id=None):
         c = self.conversations.get(conversation_id)
-        if not c or c["firm_id"] != firm_id:
+        if not c or c["firm_id"] != firm_id or (user_id is not None and c["user_id"] != user_id):
             return None
         c["is_archived"] = True
         self.archived.append(conversation_id)
@@ -135,8 +139,12 @@ def _seed_convs(repo):
     repo.conversations.update({
         "C-MINE": {"id": "C-MINE", "firm_id": FIRM, "user_id": "u1",
                    "context_id": MINE, "is_archived": False},
-        "C-THEIRS": {"id": "C-THEIRS", "firm_id": FIRM, "user_id": "u2",
+        # The caller's OWN conversation about a client they are not assigned to (the case the router's comment names:
+        # assigned to the client when it was opened, unassigned since). Another member's conversation is C-OTHERS.
+        "C-THEIRS": {"id": "C-THEIRS", "firm_id": FIRM, "user_id": "u1",
                      "context_id": THEIRS, "is_archived": False},
+        "C-OTHERS": {"id": "C-OTHERS", "firm_id": FIRM, "user_id": "u2",
+                     "context_id": MINE, "is_archived": False},
         "C-ALIEN": {"id": "C-ALIEN", "firm_id": "firm-2", "user_id": "u9",
                     "context_id": "c-x", "is_archived": False},
         "C-GLOBAL": {"id": "C-GLOBAL", "firm_id": FIRM, "user_id": "u1",
@@ -207,6 +215,20 @@ def test_archiving_your_own_conversation_still_works(deny, repo):
     _seed_convs(repo)
     out = cp.archive_conversation("C-MINE", current_user=USER)
     assert out["data"]["is_archived"] is True
+
+
+def test_another_members_conversation_is_not_found_even_about_a_client_i_may_see(deny, repo):
+    """A conversation is its owner's (POST-A-250): its stored turns are replayed into the owner's next prompt, so a member
+    of the firm who knows the id is told it is not found, whatever client it is about and by whichever route."""
+    _seed_convs(repo)
+    with pytest.raises(HTTPException) as e:
+        cp._assert_conversation_scope(USER, "C-OTHERS")
+    assert e.value.status_code == 404 and e.value.detail == "Conversation not found"
+    with pytest.raises(HTTPException):
+        cp.get_conversation("C-OTHERS", current_user=USER)
+    with pytest.raises(HTTPException):
+        cp.archive_conversation("C-OTHERS", current_user=USER)
+    assert repo.archived == []
 
 
 def test_listing_conversations_narrows_out_a_since_revoked_client(deny, repo, monkeypatch):

@@ -129,6 +129,8 @@ def repo(monkeypatch):
     fake = FakeDB()
     monkeypatch.setattr(repo_mod, "_USE_MOCK", False)
     monkeypatch.setattr(repo_mod, "_get_db", lambda: fake)
+    # Writes go through the privileged client since migration 505 (POST-A-250); one store serves both here.
+    monkeypatch.setattr(repo_mod, "_write_db", lambda: fake)
     return AICopilotRepository()
 
 
