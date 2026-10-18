@@ -7,6 +7,7 @@ Risk score: 0–100 (critical=100, high=75, medium=50, low=25, info=10)
 from datetime import date, timedelta
 from typing import Optional
 from core.ist_clock import ist_today
+from core.authz import within_client_scope
 
 # THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. `ist_today()` at
 # module level is evaluated ONCE, at import, so on the long-lived uvicorn
@@ -251,15 +252,15 @@ def get_all_risks(
     return sorted(risks, key=lambda r: _SEVERITY_SCORE.get(r["severity"], 0), reverse=True)
 
 
-def get_risk_dashboard_stats(firm_id: Optional[str] = None) -> dict:
-    """Return counts by severity."""
-    all_risks = get_all_risks(firm_id=firm_id, status="open")
+def get_risk_dashboard_stats(firm_id: Optional[str] = None, allowed_client_ids: Optional[set] = None) -> dict:
+    """Return counts by severity, for the caller's own clients when `allowed_client_ids` is given (None is no restriction)."""
+    all_risks = within_client_scope(get_all_risks(firm_id=firm_id, status="open"), allowed_client_ids)
     # R2.8/F19: this previously scanned the raw global MOCK_RISKS list with no
     # firm_id filter at all — in production (SUPABASE_URL set) it always
     # returned demo-data counts instead of the real firm's document_risks.
     # get_all_risks() already supports status="resolved" with the same
     # firm-scoped real-DB path used for "open" above.
-    resolved = len(get_all_risks(firm_id=firm_id, status="resolved"))
+    resolved = len(within_client_scope(get_all_risks(firm_id=firm_id, status="resolved"), allowed_client_ids))
     return {
         "critical": len([r for r in all_risks if r["severity"] == "critical"]),
         "high": len([r for r in all_risks if r["severity"] == "high"]),
@@ -291,9 +292,9 @@ def get_client_risk_summary(client_id: str, firm_id: Optional[str] = None) -> di
     }
 
 
-def compute_firm_risk_score(firm_id: Optional[str] = None) -> int:
-    """Aggregate 0-100 score for the firm."""
-    open_risks = get_all_risks(firm_id=firm_id, status="open")
+def compute_firm_risk_score(firm_id: Optional[str] = None, allowed_client_ids: Optional[set] = None) -> int:
+    """Aggregate 0-100 score for the firm, or for the caller's own clients when `allowed_client_ids` is given."""
+    open_risks = within_client_scope(get_all_risks(firm_id=firm_id, status="open"), allowed_client_ids)
     if not open_risks:
         return 0
     total_weight = sum(_SEVERITY_SCORE.get(r["severity"], 0) for r in open_risks)

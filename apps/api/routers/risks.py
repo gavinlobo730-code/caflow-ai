@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from models.common import api_response
 from core.permissions import rbac
-from core.authz import assert_client_access, can_access_client, filter_by_client
+from core.authz import assert_client_access, can_access_client, effective_client_ids, filter_by_client
 from domain.risk_engine import (
     get_all_risks,
     get_risk,
@@ -41,14 +41,15 @@ def list_risks(severity: str = None, client_id: str = None, status: str = "open"
 @router.get("/stats")
 def risk_stats(current_user: dict = Depends(rbac("risk", "read"))):
     firm_id = current_user.get("firm_id")
-    stats = get_risk_dashboard_stats(firm_id=firm_id)
+    # The caller's own clients: an Executive or Manager is told counts of their book, not the firm's (POST-A-054).
+    stats = get_risk_dashboard_stats(firm_id=firm_id, allowed_client_ids=effective_client_ids(current_user))
     return api_response(True, stats)
 
 
 @router.get("/firm/score")
 def firm_score(current_user: dict = Depends(rbac("risk", "read"))):
     firm_id = current_user.get("firm_id")
-    score = compute_firm_risk_score(firm_id=firm_id)
+    score = compute_firm_risk_score(firm_id=firm_id, allowed_client_ids=effective_client_ids(current_user))
     return api_response(True, {"score": score})
 
 

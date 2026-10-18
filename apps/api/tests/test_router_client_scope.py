@@ -853,10 +853,9 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # simply ask the copilot to list them. Narrowed via filter_by_client(...,
     # key="id") — `clients` rows key their own id as "id", not "client_id" —
     # and get_firm_summary now takes allowed_client_ids (the F2 convention).
-    # The task-dashboard and risk tallies expose no per-client scoping
-    # parameter and are left firm-wide COUNTS with no client named, the same
-    # line already drawn for /api/copilot/intelligence/* and recorded in the
-    # audit doc.
+    # So do the task-dashboard and risk tallies (POST-A-054): they were left
+    # firm-wide COUNTS while they had no scoping parameter, and a scoped caller
+    # is now told counts of their own clients.
     "/api/ai-copilot": (
         "assert_client_access", "filter_by_client", "effective_client_ids",
     ),
@@ -1587,16 +1586,10 @@ EXEMPT: dict[str, str] = {
         "assignment check to run against. Protected instead by provider "
         "signature verification, replay protection (unique "
         "provider_event_id) and idempotency, all inside payment_service.",
-    # risks.py — the two firm-wide aggregates.
-    "/api/risks/stats":
-        "counts by severity plus a resolved tally across the firm. No client "
-        "is named and no per-client figure is returned — the same line drawn "
-        "for /api/lifecycle/dashboard. The "
-        "counts ARE derived from client rows, which is stated rather than "
-        "glossed over.",
-    "/api/risks/firm/score":
-        "a single 0-100 integer: the severity-weighted average over the "
-        "firm's open risks. Nothing per-client is returned at all.",
+    # risks.py — the two firm-wide aggregates were exempt here until POST-A-054:
+    # /api/risks/stats and /api/risks/firm/score now narrow to the caller's own
+    # clients (effective_client_ids) like the rest of the router, so neither is
+    # an exemption any more.
     # notifications.py — the recipient-owned routes. Every one is already "
     # scoped by user_id=the caller's own id, which is STRICTLER than a
     # client-assignment check: they read and write only the caller's own

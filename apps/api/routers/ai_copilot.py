@@ -81,18 +81,17 @@ def _build_firm_context(firm_id: str, current_user: dict) -> str:
     M2: the CLIENT NAMES below are the sharp part — they go verbatim into the
     Groq system prompt, so an unassigned Executive could simply ask the copilot
     to list them. They are narrowed to the caller's assigned book.
-    get_firm_summary takes allowed_client_ids (the F2 convention). The task
-    dashboard and risk tallies expose no per-client scoping parameter and are
-    left firm-wide COUNTS — no client is named in them; that is the same line
-    already drawn for /api/copilot/intelligence/*, recorded in the audit doc
-    rather than silently narrowed here.
+    All three tallies (the task dashboard, the compliance summary and the risk
+    counts) take `allowed_client_ids` (the F2 convention), so a scoped Executive
+    or Manager is told counts of their own book and not the firm's. They used to
+    be left firm-wide because two of them had no scoping parameter (POST-A-054).
     """
     allowed = effective_client_ids(current_user)
 
     try:
         from domain.task_service import TaskDomainService
         task_svc = TaskDomainService()
-        dashboard = task_svc.get_dashboard_summary(firm_id=firm_id)
+        dashboard = task_svc.get_dashboard_summary(firm_id=firm_id, allowed_client_ids=allowed)
     except Exception:
         dashboard = {}
 
@@ -105,7 +104,7 @@ def _build_firm_context(firm_id: str, current_user: dict) -> str:
 
     try:
         from domain.risk_engine import get_risk_dashboard_stats
-        risk_stats = get_risk_dashboard_stats(firm_id=firm_id)
+        risk_stats = get_risk_dashboard_stats(firm_id=firm_id, allowed_client_ids=allowed)
     except Exception:
         risk_stats = {}
 
@@ -145,29 +144,30 @@ def get_firm_context(current_user: dict = Depends(rbac("ai", "copilot"))):
     """Return structured firm-level context for the AI Copilot panel.
 
     M2: `clients` below is a NAMED list of every client in the firm — the same
-    leak _build_firm_context has, in structured form. Narrowed identically;
-    see that function for why the task/risk tallies are left firm-wide."""
+    leak _build_firm_context has, in structured form. Narrowed identically, and
+    so are the task, compliance and risk tallies (POST-A-054)."""
     firm_id = current_user.get("firm_id")
+    allowed = effective_client_ids(current_user)
 
     try:
         from domain.task_service import TaskDomainService
         # R2.8/F19 tenancy fix: must be scoped to firm_id — omitting it returns
         # platform-wide active_clients/overdue_tasks/due_today/due_this_week
         # counts instead of the caller's own firm's numbers.
-        dashboard = TaskDomainService().get_dashboard_summary(firm_id=firm_id)
+        dashboard = TaskDomainService().get_dashboard_summary(firm_id=firm_id, allowed_client_ids=allowed)
     except Exception:
         dashboard = {}
 
     try:
         from domain.compliance_record_service import compliance_record_service
         firm_summary = compliance_record_service.get_firm_summary(
-            firm_id=firm_id, allowed_client_ids=effective_client_ids(current_user))
+            firm_id=firm_id, allowed_client_ids=allowed)
     except Exception:
         firm_summary = {}
 
     try:
         from domain.risk_engine import get_risk_dashboard_stats
-        risk_stats = get_risk_dashboard_stats(firm_id=firm_id)
+        risk_stats = get_risk_dashboard_stats(firm_id=firm_id, allowed_client_ids=allowed)
     except Exception:
         risk_stats = {}
 

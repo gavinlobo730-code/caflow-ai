@@ -14,9 +14,10 @@ every client in the firm. copilot_chat puts those names verbatim into the Groq
 system prompt, so an unassigned Executive could simply ask the copilot to list
 them; get_firm_context returns the same leak in structured form.
 
-The task-dashboard and risk tallies expose no per-client scoping parameter and
-are deliberately left as firm-wide COUNTS with no client named — the same line
-already drawn for /api/copilot/intelligence/*, recorded in the audit doc.
+The task-dashboard and risk tallies were left as firm-wide COUNTS with no client
+named, because they had no scoping parameter. They take `allowed_client_ids` now
+and the copilot passes the caller's own clients (POST-A-054, held by
+test_a_scoped_caller_is_told_counts_of_their_own_clients.py).
 """
 import pytest
 from fastapi import HTTPException

@@ -7,6 +7,7 @@ from core.exceptions import NotFoundError, ValidationError
 from services.task_service import is_valid_transition
 from services.activity_service import log_activity
 from core.ist_clock import ist_today
+from core.authz import within_client_scope
 
 
 class TaskDomainService:
@@ -21,14 +22,16 @@ class TaskDomainService:
         # whenever no client was named.
         return task_repo.group_by_status(firm_id=firm_id) if not client_id else _group(enriched)
 
-    def get_dashboard_summary(self, firm_id: Optional[str] = None) -> dict:
+    def get_dashboard_summary(self, firm_id: Optional[str] = None, allowed_client_ids: Optional[set] = None) -> dict:
+        """The firm's task and compliance counts. `allowed_client_ids` (from `effective_client_ids`) narrows every
+        figure to the caller's own clients; None is a caller with no restriction, and an empty set is no clients."""
         from datetime import date, timedelta
         from domain.compliance_record_service import compliance_record_service
         today = ist_today()
         today_str = today.isoformat()
         week_end = (today + timedelta(days=7)).isoformat()
 
-        all_clients = client_repo.find_all(firm_id=firm_id)
+        all_clients = within_client_scope(client_repo.find_all(firm_id=firm_id), allowed_client_ids, "id")
         active_clients = [c for c in all_clients if c.get("status") == "active"]
 
         # Nothing below needs a completed task's row — push the exclusion to
@@ -36,11 +39,11 @@ class TaskDomainService:
         # discarding the completed ones in Python.
         # `find_open` reads every page, like `find_overdue` below it: through `find_all` a firm with more open tasks than
         # PostgREST's row cap was told a smaller open count than its overdue count on the same payload.
-        open_tasks = task_repo.find_open(firm_id=firm_id)
+        open_tasks = within_client_scope(task_repo.find_open(firm_id=firm_id), allowed_client_ids)
 
         # R3.13d: compliance_records (System A) is the sole source now —
         # compliance_tasks (System B) is being retired.
-        all_records = compliance_record_service.list_records(firm_id=firm_id)
+        all_records = within_client_scope(compliance_record_service.list_records(firm_id=firm_id), allowed_client_ids)
         compliance_overdue = len([r for r in all_records if r.get("status") == "Overdue"])
         compliance_due_week = len([
             r for r in all_records
@@ -62,7 +65,7 @@ class TaskDomainService:
 
         # find_overdue() now takes firm_id directly — pushed to the query
         # instead of scanning every firm's tasks and re-filtering in Python.
-        overdue_tasks = task_repo.find_overdue(firm_id=firm_id)
+        overdue_tasks = within_client_scope(task_repo.find_overdue(firm_id=firm_id), allowed_client_ids)
 
         return {
             "active_clients": len(active_clients),

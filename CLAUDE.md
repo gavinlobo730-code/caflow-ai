@@ -120,7 +120,7 @@ The long per-area design write-ups were moved out of this file on 10 October 202
 They are verbatim in `docs/design-record/`. **Before changing an area, open its record file** and read the entries
 listed for it below; each headline is the rule in one line. Entries that stayed in this file are not listed.
 
-### `docs/design-record/ai.md` (6 entries): AI providers, the model gateway, redaction, budgets and what a model may and may not do
+### `docs/design-record/ai.md` (7 entries): AI providers, the model gateway, redaction, budgets and what a model may and may not do
 
 - A MODEL MAY WORD A COMPUTED FACT AND MAY NOT ADD TO IT, AND A SCREEN THAT CANNOT COMPUTE A FIGURE SAYS SO
 - EVERY MODEL CALL GOES THROUGH ONE DOOR PER PROVIDER, AND A READING IS A PROPOSAL, NOT A WRITE
@@ -128,6 +128,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A FIRM MAY CAP ITS OWN MONTHLY AI USE AND A PARTNER CAN READ WHAT IT USED, AND NOTHING IS A DEFAULT
 - A SCREEN THAT SENDS A CA'S CONTENT TO A MODEL SAYS WHICH PROVIDER, AND THAT IT LEAVES INDIA, BEFORE THE CLICK
 - TEXT THE FIRM TYPED IS DATA IN A COPILOT PROMPT AS IT IS IN A DOCUMENT READER, AND THE ONE BUILDER THAT PUT IT IN THE INSTRUCTION NOW PUTS IT BETWEEN THE MARKERS
+- A COUNT SERVED TO A SCOPED CALLER IS A COUNT OF THEIR OWN CLIENTS, AND THE NARROWING IS ONE FUNCTION
 
 ### `docs/design-record/annual-update-and-statutory-data.md` (3 entries): What changes every financial year and the statutory data a human must supply
 

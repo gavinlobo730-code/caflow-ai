@@ -167,13 +167,22 @@ def authorize(user: dict, resource: str, action: str, *, client_id: Optional[str
     return True
 
 
+def within_client_scope(rows: list[dict], allowed_client_ids: Optional[set[str]], key: str = "client_id") -> list[dict]:
+    """The rows of a firm-scoped result that fall inside a client set already resolved by `effective_client_ids`.
+
+    `None` is "no restriction" (a Partner) and an EMPTY set is "no clients", never "no filter": the difference is the
+    whole bug in this shape, and getting it backwards hands an Executive the entire practice. A row with no client id
+    is firm-level and is kept. This is the one narrowing a domain function that takes `allowed_client_ids` applies, so
+    a count served to a scoped caller is a count of the caller's own book."""
+    if allowed_client_ids is None:
+        return rows
+    return [r for r in rows if not r.get(key) or str(r.get(key)) in allowed_client_ids]
+
+
 def filter_by_client(user: dict, rows: list[dict], key: str = "client_id") -> list[dict]:
     """Drop rows whose client is outside the user's effective client set.
     Rows with no client id (firm-level) are kept."""
-    eff = effective_client_ids(user)
-    if eff is None:
-        return rows
-    return [r for r in rows if not r.get(key) or str(r.get(key)) in eff]
+    return within_client_scope(rows, effective_client_ids(user), key)
 
 
 def require(resource: str, action: str):
