@@ -349,8 +349,15 @@ export function DataTable<T>({
           <FilterControl key={f.key} def={f} value={t.prefs.filters[f.key]} onChange={(v) => t.setFilter(f.key, v)} />
         ))}
 
-        {(t.activeFilterCount > 0 || t.prefs.search) && (
-          <button onClick={t.clearFilters} className="text-xs font-medium text-ps-label underline-offset-2 hover:underline">
+        {/* A server-paged table keeps its search on the server's side of the line (`serverPaged.search`), so "is a search in
+            force" is asked of THAT, not of the local preference, and clearing it goes through `setQ("")` into the debounce
+            above: `clearFilters` alone left the server still filtering while the page read as cleared (POST-A-146). */}
+        {(t.activeFilterCount > 0 || (serverSearch ? serverPaged?.search : t.prefs.search)) && (
+          <button
+            type="button"
+            onClick={() => { t.clearFilters(); setQ(""); }}
+            className="text-xs font-medium text-ps-label underline-offset-2 hover:underline"
+          >
             Clear
           </button>
         )}

@@ -1870,6 +1870,8 @@ const FX_VIEWS: { id: FXView; label: string }[] = [
 
 interface FXExposureRow {
   currency: string;
+  /** The currency master's exponent, sent by the server on every row; `null` = the master does not hold the code. */
+  minor_unit?: number | null;
   receivable_foreign_minor: number; receivable_base_paise: number;
   payable_foreign_minor: number; payable_base_paise: number;
   bank_foreign_minor: number; bank_base_paise: number;
@@ -1885,10 +1887,10 @@ interface FXUnrealizedData {
   lines: { period_end: string; currency: string; item_type: string; closing_rate: string | null; cumulative_delta_paise: number; runs: number }[];
   by_currency: { currency: string; net_paise: number }[];
 }
-interface FXOpenDoc { doc_no: string; currency: string; exchange_rate: string; foreign_outstanding_minor: number; base_outstanding_paise: number }
+interface FXOpenDoc { doc_no: string; currency: string; minor_unit?: number | null; exchange_rate: string; foreign_outstanding_minor: number; base_outstanding_paise: number }
 interface FXOpenData {
   receivables: FXOpenDoc[]; payables: FXOpenDoc[];
-  bank_accounts: { name: string; currency: string; foreign_balance_minor: number; base_balance_paise: number }[];
+  bank_accounts: { name: string; currency: string; minor_unit?: number | null; foreign_balance_minor: number; base_balance_paise: number }[];
 }
 interface FXAuditData {
   overridden_count: number;
@@ -2045,10 +2047,10 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
             {rows.map((r) => (
               <tr key={r.currency} className="hover:bg-ps-bg">
                 <td className="px-3 py-2"><CcyBadge code={r.currency} /></td>
-                <td className="px-3 py-2 text-right font-mono text-ps-body">{formatMoney(r.receivable_foreign_minor, r.currency)}</td>
-                <td className="px-3 py-2 text-right font-mono text-ps-body">{formatMoney(r.payable_foreign_minor, r.currency)}</td>
-                <td className="px-3 py-2 text-right font-mono text-ps-body">{formatMoney(r.bank_foreign_minor, r.currency)}</td>
-                <td className="px-3 py-2 text-right font-mono font-semibold text-ps-ink">{formatMoney(r.net_foreign_minor, r.currency)}</td>
+                <td className="px-3 py-2 text-right font-mono text-ps-body">{formatMoney(r.receivable_foreign_minor, r.currency, r.minor_unit)}</td>
+                <td className="px-3 py-2 text-right font-mono text-ps-body">{formatMoney(r.payable_foreign_minor, r.currency, r.minor_unit)}</td>
+                <td className="px-3 py-2 text-right font-mono text-ps-body">{formatMoney(r.bank_foreign_minor, r.currency, r.minor_unit)}</td>
+                <td className="px-3 py-2 text-right font-mono font-semibold text-ps-ink">{formatMoney(r.net_foreign_minor, r.currency, r.minor_unit)}</td>
                 <td className="px-3 py-2 text-right font-mono text-ps-body">{formatPaise(r.net_base_paise)}</td>
               </tr>
             ))}
@@ -2144,7 +2146,7 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
                   <td className="px-3 py-2 text-ps-label">{r.doc_no}</td>
                   <td className="px-3 py-2"><CcyBadge code={r.currency} /></td>
                   <td className="px-3 py-2 text-right font-mono text-ps-label">{r.exchange_rate}</td>
-                  <td className="px-3 py-2 text-right font-mono text-ps-body">{formatMoney(r.foreign_outstanding_minor, r.currency)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-ps-body">{formatMoney(r.foreign_outstanding_minor, r.currency, r.minor_unit)}</td>
                   <td className="px-3 py-2 text-right font-mono text-ps-body">{formatPaise(r.base_outstanding_paise)}</td>
                 </tr>
               ))}
@@ -2168,7 +2170,7 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
                     <tr key={i} className="hover:bg-ps-bg">
                       <td className="px-3 py-2 text-ps-label">{b.name}</td>
                       <td className="px-3 py-2"><CcyBadge code={b.currency} /></td>
-                      <td className="px-3 py-2 text-right font-mono text-ps-body">{formatMoney(b.foreign_balance_minor, b.currency)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-ps-body">{formatMoney(b.foreign_balance_minor, b.currency, b.minor_unit)}</td>
                       <td className="px-3 py-2 text-right font-mono text-ps-body">{formatPaise(b.base_balance_paise)}</td>
                     </tr>
                   ))}

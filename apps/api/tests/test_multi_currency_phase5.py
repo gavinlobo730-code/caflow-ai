@@ -215,6 +215,7 @@ class _AgingQ:
         self.notin: list[tuple] = []    # .not_.in_(col, vals)
         self.rangef: list[tuple] = []   # .gte / .lte (col, op, val)
     def select(self, *_a, **_k): return self
+    def order(self, *_a, **_k): return self        # the currency master is read ordered by code
     def eq(self, k, v): self.f.append((k, v)); return self
     def neq(self, k, v): self.nf.append((k, v)); return self
     def is_(self, k, _v): self.f.append((k, None)); return self
@@ -385,6 +386,48 @@ def test_currency_exposure_nets_ar_and_ap():
     assert usd["payable_foreign_minor"] == 50000 and usd["payable_base_paise"] == 4_100_000
     assert usd["net_foreign_minor"] == 50000            # 100000 AR − 50000 AP
     assert usd["net_base_paise"] == 3_900_000           # 8,000,000 − 4,100,000
+
+
+def _master():
+    return [
+        {"code": "USD", "symbol": "$", "display_name": "US Dollar", "minor_unit": 2, "is_active": True},
+        {"code": "JPY", "symbol": "¥", "display_name": "Japanese Yen", "minor_unit": 0, "is_active": True},
+        {"code": "KWD", "symbol": "KD", "display_name": "Kuwaiti Dinar", "minor_unit": 3, "is_active": True},
+    ]
+
+
+def test_every_exposure_row_carries_its_currencys_own_minor_unit():
+    """POST-A-129. A foreign amount is integer minor units and how many make one major unit is a fact about the CURRENCY
+    (`currencies.minor_unit`); the browser divided every one by 100, so a yen figure read a hundredth of itself."""
+    db = _exposure_db()
+    db.tables["currencies"] = _master()
+    db.tables["client_sales_invoices"] += [
+        {"id": "i2", "firm_id": FIRM, "client_id": CLIENT, "customer_id": "cu1", "invoice_no": "E2",
+         "invoice_date": "2025-06-01", "status": "issued", "total_paise": 100_000, "paid_paise": 0,
+         "credited_paise": 0, "txn_currency": "JPY", "exchange_rate": "0.5", "txn_total": 200000, "paid_txn": 0},
+        {"id": "i3", "firm_id": FIRM, "client_id": CLIENT, "customer_id": "cu1", "invoice_no": "E3",
+         "invoice_date": "2025-06-01", "status": "issued", "total_paise": 100_000, "paid_paise": 0,
+         "credited_paise": 0, "txn_currency": "KWD", "exchange_rate": "270", "txn_total": 5000, "paid_txn": 0},
+    ]
+    from tests.e2e_harness import _apply_generated
+    _apply_generated("client_sales_invoices", db.tables["client_sales_invoices"])
+    rep = FXR.currency_exposure(db, FIRM, CLIENT, as_of="2025-12-31")
+    units = {r["currency"]: r["minor_unit"] for r in rep["by_currency"]}
+    assert units == {"USD": 2, "JPY": 0, "KWD": 3}, units
+
+
+def test_a_currency_the_master_does_not_hold_is_unknown_and_not_two():
+    db = _exposure_db()
+    db.tables["currencies"] = [c for c in _master() if c["code"] != "USD"]
+    rep = FXR.currency_exposure(db, FIRM, CLIENT, as_of="2025-12-31")
+    assert [r["minor_unit"] for r in rep["by_currency"]] == [None]
+
+
+def test_open_foreign_balances_carry_the_minor_unit_on_documents_and_banks():
+    db = _exposure_db()
+    db.tables["currencies"] = _master()
+    rep = FXR.open_foreign_balances(db, FIRM, CLIENT, as_of="2025-12-31")
+    assert rep["receivables"][0]["minor_unit"] == 2 and rep["payables"][0]["minor_unit"] == 2
 
 
 def test_open_foreign_balances_lists_documents():

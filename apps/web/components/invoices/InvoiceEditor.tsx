@@ -530,7 +530,7 @@ export function InvoiceEditor({
     : null;
 
   function fmtAmt(minor: number): string {
-    return isForeign ? formatMoney(minor, currency) : fmt(minor);
+    return isForeign ? formatMoney(minor, currency, currencies.find((c) => c.code === currency)?.minor_unit) : fmt(minor);
   }
 
   const termValue = termCustom

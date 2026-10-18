@@ -29,10 +29,16 @@ export function formatPaise(paise: PaiseInput): string {
 /**
  * Format an integer minor-unit amount in ANY currency (Multi-Currency Phase 5).
  * `minor` is integer minor units (e.g. cents/paise); `minorUnits` is the ISO 4217
- * exponent (INR/USD → 2, JPY → 0). Display-only; the base (INR) amount stays
- * authoritative everywhere. Falls back to a plain code prefix for exotic codes.
+ * exponent (INR/USD → 2, JPY → 0, KWD → 3), which a screen takes from the currency master (`currencies.minor_unit`,
+ * served on every FX report row and on `/api/currencies`) and passes at every call site: dividing a yen figure by 100
+ * shows a hundredth of it (POST-A-129). Display-only; the base (INR) amount stays authoritative everywhere. Falls back
+ * to a plain code prefix for exotic codes.
  */
-export function formatMoney(minor: number, currency = "INR", minorUnits = 2): string {
+export function formatMoney(minor: number, currency = "INR", minorUnits: number | null = 2): string {
+  // `null` is the server saying it does not know this currency's exponent (a code the master does not hold): an unknown
+  // is shown as unknown and never divided by a guess. `undefined` takes the default of 2, which is what a caller that has
+  // not loaded the currency master yet, or a response from before the server sent the exponent, has always got.
+  if (minorUnits === null) return "—";
   const major = minor / Math.pow(10, minorUnits);
   try {
     return new Intl.NumberFormat("en-IN", {
