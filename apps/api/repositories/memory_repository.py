@@ -26,6 +26,16 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _get_db = db_provider.request_db
 
 
+def _write_db():
+    """The client every INSERT and UPDATE in this repository goes through: the privileged one (POST-A-257).
+
+    A signed-in session holds no write privilege on any of these tables (migration 507), so nothing here may write as the
+    caller. Reads stay on `_get_db` (the caller's own session, so row security still narrows them). Writing privileged means
+    row security is no longer the second lock on a write, so every write names its firm and an update addresses a row by
+    firm AND id."""
+    return db_provider.service_db()
+
+
 def _now() -> str:
     return datetime.utcnow().isoformat()
 
@@ -135,7 +145,8 @@ class MemoryRepository(BaseRepository):
             return new_profile
 
         # --- Supabase path ---
-        db = _get_db()
+        db = _get_db()          # reads, on the caller's own session
+        write = _write_db()     # every write below, privileged and firm-scoped
 
         # Determine next version
         existing = (
@@ -152,19 +163,20 @@ class MemoryRepository(BaseRepository):
 
         # Retire old profile and snapshot it
         if old_profile_id:
-            db.table("client_profiles").update(
+            write.table("client_profiles").update(
                 {"is_current": False, "updated_at": now}
-            ).eq("id", old_profile_id).execute()
+            ).eq("id", old_profile_id).eq("firm_id", firm_id).execute()
 
             snapshot_result = (
                 db.table("client_profiles")
                 .select("*")
                 .eq("id", old_profile_id)
+                .eq("firm_id", firm_id)
                 .maybe_single()
                 .execute()
             )
             if snapshot_result.data:
-                db.table("client_profile_history").insert({
+                write.table("client_profile_history").insert({
                     "id": _uid(),
                     "firm_id": firm_id,
                     "client_id": client_id,
@@ -181,7 +193,7 @@ class MemoryRepository(BaseRepository):
         # migrations' client_profiles had NINE columns while production had
         # twenty-nine, so this table's writes could not have run on any
         # database built from the repository (migration 320).
-        result = db.table("client_profiles").insert({
+        result = write.table("client_profiles").insert({
             "id": _uid(),
             "firm_id": firm_id,
             "client_id": client_id,
@@ -286,7 +298,7 @@ class MemoryRepository(BaseRepository):
 
         # Supabase: retire existing and insert fresh (UNIQUE constraint on firm_id
         # means we UPDATE if exists, else INSERT)
-        db = _get_db()
+        db = _get_db()          # the read, on the caller's own session
         existing = (
             db.table("firm_profiles")
             .select("id")
@@ -296,7 +308,7 @@ class MemoryRepository(BaseRepository):
         )
         if existing.data:
             result = (
-                db.table("firm_profiles")
+                _write_db().table("firm_profiles")
                 .update({**profile_data, "last_computed_at": now, "updated_at": now})
                 .eq("firm_id", firm_id)
                 .execute()
@@ -324,7 +336,7 @@ class MemoryRepository(BaseRepository):
             "updated_at": now,
             **profile_data,
         }
-        result = db.table("firm_profiles").insert(record).execute()
+        result = _write_db().table("firm_profiles").insert(record).execute()
         return result.data[0]
 
     # ── AI Memory Triggers ────────────────────────────────────────────────────
@@ -370,7 +382,7 @@ class MemoryRepository(BaseRepository):
             MOCK_TRIGGERS.append(record)
             return record
 
-        result = _get_db().table("ai_memory_triggers").insert(record).execute()
+        result = _write_db().table("ai_memory_triggers").insert(record).execute()
         return result.data[0]
 
     def list_triggers(
@@ -449,7 +461,7 @@ class MemoryRepository(BaseRepository):
             return None
 
         result = (
-            _get_db()
+            _write_db()
             .table("ai_memory_triggers")
             .update(updates)
             .eq("id", trigger_id)
@@ -473,7 +485,7 @@ class MemoryRepository(BaseRepository):
             return None
 
         result = (
-            _get_db()
+            _write_db()
             .table("ai_memory_triggers")
             .update(updates)
             .eq("id", trigger_id)
@@ -493,7 +505,7 @@ class MemoryRepository(BaseRepository):
             return None
 
         result = (
-            _get_db()
+            _write_db()
             .table("ai_memory_triggers")
             .update(updates)
             .eq("id", trigger_id)
@@ -574,7 +586,7 @@ class MemoryRepository(BaseRepository):
             MOCK_ANOMALIES.append(record)
             return record
 
-        result = _get_db().table("pattern_anomalies").insert(record).execute()
+        result = _write_db().table("pattern_anomalies").insert(record).execute()
         return result.data[0]
 
     def list_anomalies(
@@ -617,7 +629,7 @@ class MemoryRepository(BaseRepository):
             return None
 
         result = (
-            _get_db()
+            _write_db()
             .table("pattern_anomalies")
             .update({"status": status})
             .eq("id", anomaly_id)
@@ -655,7 +667,7 @@ class MemoryRepository(BaseRepository):
             MOCK_YEAR_END_REPORTS.append(record)
             return record
 
-        result = _get_db().table("year_end_reports").insert(record).execute()
+        result = _write_db().table("year_end_reports").insert(record).execute()
         return result.data[0]
 
     def get_year_end_report(
