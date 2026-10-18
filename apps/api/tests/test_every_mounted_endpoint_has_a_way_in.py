@@ -176,7 +176,7 @@ BUDGET: dict[str, int] = {
     # `lib/api.accounting.statementAnalysis` had carried with no caller
     # since the reporting engine was built.
     "/api/reminders": 3, "/api/tds": 3, "/api/accounting": 1,
-    "/api/assignments": 2, "/api/customers": 2, "/api/form-26as": 2,
+    "/api/assignments": 2, "/api/customers": 2, "/api/form-26as": 1,
     "/api/identity": 2, "/api/insights": 2, "/api/notifications": 2,
     "/api/public": 2, "/api/sales-cycle": 2,
     "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 1,

@@ -25,6 +25,7 @@ alert instead of a line in a log nobody is tailing.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Callable, Optional
 
 import sentry_sdk
@@ -188,10 +189,25 @@ def init_error_reporting(
         max_request_body_size="never",
         include_local_variables=False,
     )
+    release = _release()
+    if release:
+        options["release"] = release
     if transport is not None:
         options["transport"] = transport
     sentry_sdk.init(**options)
     return True
+
+
+def _release() -> Optional[str]:
+    """The build an event came from, so "which deploy broke this" is answered by the event and not by a guess from its date.
+
+    `SENTRY_RELEASE` wins when somebody sets it (the SDK reads it itself; it is read here only to let it). Otherwise Render's
+    own `RENDER_GIT_COMMIT`, which Render sets on every deploy to the commit it built, is used. The SDK does not know that
+    name, so before POST-A-044 every backend event arrived with no release at all (docs/operations/error-tracking.md §4).
+    Nothing is invented: no variable, no release."""
+    if os.environ.get("SENTRY_RELEASE"):
+        return None
+    return os.environ.get("RENDER_GIT_COMMIT") or None
 
 
 def error_reporting_enabled() -> bool:

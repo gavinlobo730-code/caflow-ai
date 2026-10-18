@@ -157,10 +157,11 @@ export default function Form26ASPage() {
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     // Plain reads — routed directly to Supabase (RLS: firm_isolation) instead
-    // of through the FastAPI backend, which cold-starts. Mirrors list_uploads
-    // and get_reconciliation in apps/api/domain/income_tax/form26as_service.py:
-    // get_reconciliation is just the last stored reconciliation row (no
-    // recompute) — the actual POST /reconcile matching logic stays backend-routed.
+    // of through the FastAPI backend, which cold-starts. The reconciliation read
+    // is the last stored row (no recompute): the server had a GET route for the
+    // same row that no screen called, and it was deleted rather than left beside
+    // this read (POST-A-081). The actual POST /reconcile matching logic stays
+    // backend-routed.
     const supabase = getSupabaseClient();
     const [
       { data: uploadsData, error: uploadsErr },

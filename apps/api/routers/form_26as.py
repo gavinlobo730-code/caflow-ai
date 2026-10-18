@@ -252,20 +252,6 @@ def get_claimable_credit(
         current_user["firm_id"], client_id, financial_year))
 
 
-@router.get("/reconciliation")
-def get_reconciliation(
-    client_id: str,
-    financial_year: FYLabel,
-    current_user: dict = Depends(rbac("income_tax", "read")),
-):
-    from domain.income_tax.form26as_service import get_reconciliation as _get
-    # Mount-guard-covered (required client_id query param); explicit so the
-    # scope check is visible at the read.
-    assert_client_access(current_user, client_id)
-    result = _get(current_user["firm_id"], client_id, financial_year)
-    return api_response(True, result)
-
-
 @router.post("/uploads/{upload_id}/uploaded")
 def mark_26as_uploaded(
     upload_id: str,

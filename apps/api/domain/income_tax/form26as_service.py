@@ -894,18 +894,3 @@ def list_uploads(firm_id: str, client_id: str, financial_year: str | None = None
         q = q.eq("financial_year", financial_year)
     res = q.order("uploaded_at", desc=True).execute()
     return res.data or []
-
-
-def get_reconciliation(firm_id: str, client_id: str, financial_year: str) -> dict | None:
-    if _USE_MOCK:
-        for r in _MOCK_RECONS.values():
-            if (r["firm_id"] == firm_id and r["client_id"] == client_id
-                    and r["financial_year"] == financial_year):
-                return r
-        return None
-
-    sb = _supabase()
-    res = sb.table("form_26as_reconciliations").select("*").eq("firm_id", firm_id).eq(
-        "client_id", client_id
-    ).eq("financial_year", financial_year).order("created_at", desc=True).limit(1).execute()
-    return res.data[0] if res.data else None
