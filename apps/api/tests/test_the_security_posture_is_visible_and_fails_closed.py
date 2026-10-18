@@ -136,7 +136,8 @@ def test_the_validator_logs_an_error_and_reports_a_false_flag(monkeypatch, caplo
 def test_the_validator_is_quiet_about_errors_when_production_is_right(monkeypatch, caplog):
     _production(monkeypatch, USE_USER_JWT="true", REQUIRE_MFA="true",
                 SUPABASE_ANON_KEY="anon-key", ENABLE_SCHEDULER="true",
-                ALLOWED_ORIGINS="https://app.example", FRONTEND_URL="https://app.example")
+                ALLOWED_ORIGINS="https://app.example,https://marketing.example",
+                MARKETING_URL="https://marketing.example", FRONTEND_URL="https://app.example")
     caplog.set_level(logging.INFO, logger="caflow.config")
 
     result = cv.validate_config()["security"]
@@ -274,3 +275,40 @@ def test_the_posture_is_mounted_on_the_real_app():
     paths = {getattr(r, "path", None) for r in main.app.routes}
     assert "/api/security/posture" in paths
     assert "/api/security/mfa-policy" in paths
+
+
+# ── POST-A-020: ALLOWED_ORIGINS that leaves out the marketing site ───────────────────────────────────────────────────────
+
+def _codes(monkeypatch, **env):
+    _production(monkeypatch, USE_USER_JWT="true", REQUIRE_MFA="true", SUPABASE_ANON_KEY="anon-key",
+                ENABLE_SCHEDULER="true", FRONTEND_URL="https://app.example", **env)
+    return {p["code"]: p for p in cv.validate_config()["security"]["problems"]}
+
+
+def test_a_list_that_leaves_out_the_marketing_origin_is_named_with_the_origin(monkeypatch):
+    problems = _codes(monkeypatch, ALLOWED_ORIGINS="https://app.example",
+                      MARKETING_URL="https://marketing.example")
+    assert "allowed_origins_missing_marketing" in problems
+    assert problems["allowed_origins_missing_marketing"]["level"] == "warning"
+    assert "https://marketing.example" in problems["allowed_origins_missing_marketing"]["message"]
+
+
+def test_the_built_in_marketing_origin_counts_when_none_is_configured(monkeypatch):
+    from core.urls import marketing_base
+    monkeypatch.delenv("MARKETING_URL", raising=False)
+    assert "allowed_origins_missing_marketing" in _codes(monkeypatch, ALLOWED_ORIGINS="https://app.example")
+    assert "allowed_origins_missing_marketing" not in _codes(
+        monkeypatch, ALLOWED_ORIGINS=f"https://app.example,{marketing_base()}")
+
+
+def test_a_trailing_slash_or_quotes_do_not_make_a_listed_origin_look_missing(monkeypatch):
+    problems = _codes(monkeypatch, ALLOWED_ORIGINS='"https://app.example/", "https://marketing.example/"',
+                      MARKETING_URL="https://marketing.example/")
+    assert "allowed_origins_missing_marketing" not in problems
+
+
+def test_an_unset_list_says_only_that_it_is_unset(monkeypatch):
+    """The built-in default list contains the marketing origin, so there is nothing more to say."""
+    monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
+    problems = _codes(monkeypatch)
+    assert "allowed_origins_not_set" in problems and "allowed_origins_missing_marketing" not in problems

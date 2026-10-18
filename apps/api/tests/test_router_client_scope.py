@@ -1715,8 +1715,6 @@ EXEMPT: dict[str, str] = {
         "manually fires the firm's automation pass.",
     "/api/onboarding/firm":
         "creates the FIRM itself — there is no client yet at this point.",
-    "/api/onboarding/invite":
-        "invites a STAFF member to the firm (users has no client_id).",
     "/api/onboarding/seed-coa":
         "seeds the firm-wide master Chart of Accounts (migration 057 seeds it "
         "with client_id NULL by design) so posting can always resolve "
@@ -1842,7 +1840,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/timeline": 1, "/api/search": 1,
               "/api/firm-hsn-rate-history": 4, "/api/assistant": 1,
               "/api/audit": 2, "/api/scheduler": 2, "/api/automation": 5,
-              "/api/onboarding": 4, "/api/practice": 3,
+              "/api/onboarding": 3, "/api/practice": 3,
               "/api/document-intelligence-v1": 1,
               "/api/portal/self": 8, "/api/portal/me": 1,
               "/api/portal/dashboard": 1, "/api/portal/memberships": 1,

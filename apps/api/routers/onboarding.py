@@ -1,11 +1,9 @@
 """
 Firm onboarding endpoints.
 POST /api/onboarding/firm       — create firm + first Partner user (JWT-authenticated)
-POST /api/onboarding/invite     — invite user to firm (Partner/Manager only)
 GET  /api/onboarding/status     — onboarding completeness + the first-run checklist (Partner/Manager only)
 """
 import re
-import secrets
 import logging
 from domain.firm import identity as firm_identity
 from domain.gst.gstin import problem_with as gstin_problem
@@ -43,11 +41,6 @@ class FirmCreate(BaseModel):
     state: Optional[str] = None
     partner_name: str
     entity_type: Optional[str] = None
-
-
-class InviteUser(BaseModel):
-    email: EmailStr
-    role: str
 
 
 @router.post("/firm", dependencies=[Depends(public_limit("signup"))])
@@ -150,51 +143,6 @@ def seed_coa(current_user: dict = Depends(rbac("accounting", "write"))):
         return api_response(False, None, "No firm found for the current user.")
     from services.coa_seed_service import seed_firm_coa
     return api_response(True, seed_firm_coa(firm_id))
-
-
-@router.post("/invite")
-def invite_user(
-    body: InviteUser,
-    current_user: dict = Depends(rbac("team", "write")),
-):
-    """
-    Invite a user to the authenticated Partner's firm. Sends email if RESEND_API_KEY is set.
-    Requires Partner role (team.write permission).
-    """
-    valid_roles = {"Partner", "Manager", "Executive", "Reviewer", "Client"}
-    if body.role not in valid_roles:
-        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(valid_roles)}")
-
-    firm_id = current_user["firm_id"]
-    db = get_service_supabase()
-
-    # Look up firm name — column is "name" not "firm_name"
-    firm = db.table("firms").select("name").eq("id", firm_id).maybe_single().execute().data
-    firm_name = firm["name"] if firm else "Your firm"
-
-    token = secrets.token_urlsafe(32)
-    from core.urls import frontend_base
-    invite_link = (f"{frontend_base()}/accept-invite"
-                   f"?token={token}&firm_id={firm_id}&role={body.role}")
-
-    db.table("pending_invites").insert({
-        "firm_id": firm_id,
-        "email": str(body.email),
-        "role": body.role,
-        "token": token,
-        "invited_by": current_user.get("auth_user_id"),
-    }).execute()
-
-    from services.email_service import send_firm_invite
-    send_firm_invite(
-        to=str(body.email),
-        firm_name=firm_name,
-        inviter_name=current_user.get("full_name", ""),
-        role=body.role,
-        invite_link=invite_link,
-    )
-
-    return api_response(True, {"message": f"Invitation sent to {body.email}"})
 
 
 @router.get("/status")

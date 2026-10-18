@@ -154,6 +154,21 @@ def security_posture() -> dict[str, Any]:
                 "allowed_origins_not_set", WARNING,
                 "ALLOWED_ORIGINS is not set; CORS is using the built-in default "
                 "list of origins."))
+        else:
+            # Setting it REPLACES the whole fallback list (core/urls.default_allowed_origins), the marketing origin
+            # included, and the marketing site posts its "Book a demo" form to this API from that origin: a browser
+            # refuses a cross-origin POST whose origin is not listed, so the form fails before reaching any of the
+            # endpoint's own refusals and nothing on the API side shows it. Compared the way the middleware compares
+            # (the same parse, no trailing slash, exact match), against the origin this process resolves for the
+            # marketing site (MARKETING_URL, else its built-in default).
+            from core.urls import marketing_base
+            marketing = marketing_base()
+            if marketing not in allowed_origins():
+                problems.append(_problem(
+                    "allowed_origins_missing_marketing", WARNING,
+                    f"ALLOWED_ORIGINS is set and does not list the marketing site's origin ({marketing}, from "
+                    "MARKETING_URL or its built-in default), so a browser blocks the 'Book a demo' form on that "
+                    "site. Add it to ALLOWED_ORIGINS, or set MARKETING_URL to the site's real origin."))
         if _blank("FRONTEND_URL"):
             problems.append(_problem(
                 "frontend_url_not_set", WARNING,
