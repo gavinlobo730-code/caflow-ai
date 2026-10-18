@@ -100,6 +100,11 @@ HELPERS = {
     # gives the privilege back in its own throwaway database through this one helper, which applies 499's rollback file
     # and so cannot drift from what the migration took away.
     "_signed_in_payroll_writes.py",
+    # POST-A-248, migration 509. The same device for the workflow tables: migration 509 takes INSERT, UPDATE and DELETE from the
+    # signed-in roles on the eleven `workflow_*` tables, and the migration 503 test measures their row policies by writing as a
+    # signed-in member, so it gives the privilege back in its throwaway database through this one helper, which applies 509's
+    # rollback file and so cannot drift from what the migration took away.
+    "_signed_in_workflow_writes.py",
     # POST-A-048 / POST-A-072. A PostgREST double that has the ~1000-row cap, for tests that exist to prove a read
     # PAGES: a double that returns everything from one `.execute()` passes against exactly the defect those tests are
     # written for. Imported by `test_a_read_that_pages_reads_every_page_and_the_indian_day.py`.

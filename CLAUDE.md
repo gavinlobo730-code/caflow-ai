@@ -334,7 +334,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - The 26AS reconciliation is the same rule and had the same defect (TDS-21)
 - NOT EVERY PART OF FORM 26AS IS A CREDIT, and the client-as-DEDUCTEE reconciliation used to sum all of them
 
-### `docs/design-record/tenancy-and-security.md` (33 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (34 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -369,6 +369,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE AI TABLES ARE WRITTEN BY THE API ALONE, A CONVERSATION IS ITS OWNER'S, AND NOBODY CAN AUTHOR ANOTHER MEMBER'S REPLAYED HISTORY
 - THE LAST FROZEN DEVIATION OF THE ROLE-BY-TABLE MATRIX IS CLOSED: A SUSPENDED MEMBER DOES NOT READ OR RENAME THEIR OWN `users` ROW
 - THE INSIGHT AND MEMORY TABLES FOLLOW THE SAME RULE, AND THREE OF THEIR SEVEN DO NOT EXIST ON A DATABASE BUILT FROM SCRATCH
+- THE WORKFLOW TABLES TAKE NO WRITE FROM A SIGNED-IN SESSION, A WRITE THAT NAMES A TEMPLATE OR A RUN BY ITS ID ASKS WHOSE IT IS, AND A CONVERSATION IS READ ONLY BY THE MEMBER WHO HAD IT
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 

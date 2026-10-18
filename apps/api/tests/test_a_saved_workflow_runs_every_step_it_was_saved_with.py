@@ -782,9 +782,12 @@ class _Chain:
 
     negate = False
 
-    def select(self, *_a, **_k):
-        self.op = "select"
+    def select(self, cols="*", *_a, **k):
+        self.op, self.cols, self.counting = "select", cols, "count" in k
         return self
+
+    cols = "*"
+    counting = False
 
     def insert(self, payload):
         self.op, self.payload = "insert", payload
@@ -823,6 +826,11 @@ class _Db:
         self.calls.append(chain)
         if self.fail(chain):
             raise RuntimeError("the database said no")
+        if (chain.op == "select" and chain.cols == "id" and not chain.counting
+                and chain.table in ("workflow_templates", "workflow_instances")):
+            # The ownership check every write that names a template or a run by its id makes first (POST-A-248): the
+            # firm's own row, so the write that follows is allowed.
+            return _Result([{"id": "owned"}])
         if chain.op == "insert":
             rows = chain.payload if isinstance(chain.payload, list) else [chain.payload]
             return _Result([dict(r) for r in rows])
@@ -837,6 +845,7 @@ def database(monkeypatch):
     def use(db):
         monkeypatch.setattr(wr, "_USE_MOCK", False)
         monkeypatch.setattr(wr, "_get_db", lambda: db)
+        monkeypatch.setattr(wr, "_write_db", lambda: db)       # every write goes through the privileged client
         return db
     return use
 
@@ -892,19 +901,20 @@ def test_a_template_with_no_steps_makes_no_step_statement_at_all(repo, database)
 def test_replacing_steps_stores_the_new_set_before_removing_the_old(repo, database):
     db = database(_Db())
     repo._replace_steps("t-1", [task_step("n1"), task_step("n2")],
-                        replacing=[{"id": "old-1"}, {"id": "old-2"}])
+                        replacing=[{"id": "old-1"}, {"id": "old-2"}], firm_id=FIRM)
 
-    kinds = [(c.table, c.op) for c in db.calls]
+    kinds = [(c.table, c.op) for c in db.calls if c.op != "select"]
     assert kinds == [("workflow_steps", "insert"), ("workflow_steps", "delete")]
-    [(_, _, old)] = [f for f in db.calls[1].filters if f[0] == "in"]
+    removal = [c for c in db.calls if c.op == "delete"][0]
+    [(_, _, old)] = [f for f in removal.filters if f[0] == "in"]
     assert old == ["old-1", "old-2"]
-    assert ("eq", "template_id", "t-1") in db.calls[1].filters
+    assert ("eq", "template_id", "t-1") in removal.filters
 
 
 def test_a_failed_insert_leaves_the_old_steps_alone(repo, database):
     db = database(_Db(fail=lambda c: c.op == "insert"))
     with pytest.raises(RuntimeError):
-        repo._replace_steps("t-1", [task_step("n1")], replacing=[{"id": "old-1"}])
+        repo._replace_steps("t-1", [task_step("n1")], replacing=[{"id": "old-1"}], firm_id=FIRM)
     assert writes(db, "workflow_steps", "delete") == [], "the old steps were removed anyway"
 
 
@@ -919,7 +929,7 @@ def test_a_failed_removal_of_the_old_steps_takes_the_new_ones_back_out(repo, dat
 
     db = database(_Db(fail=fail_first_delete))
     with pytest.raises(RuntimeError):
-        repo._replace_steps("t-1", [task_step("n1"), task_step("n2")], replacing=[{"id": "old-1"}])
+        repo._replace_steps("t-1", [task_step("n1"), task_step("n2")], replacing=[{"id": "old-1"}], firm_id=FIRM)
 
     inserted = [r["id"] for r in writes(db, "workflow_steps", "insert")[0].payload]
     taken_back = writes(db, "workflow_steps", "delete")[1]

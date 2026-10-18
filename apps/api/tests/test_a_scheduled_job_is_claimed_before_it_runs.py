@@ -434,7 +434,7 @@ class _Repo:
     def list_schedules_due(self, now_iso):
         return list(self.schedules)
 
-    def update_schedule_run(self, schedule_id, status, next_run):
+    def update_schedule_run(self, schedule_id, status, next_run, firm_id=None):
         self.updates.append((schedule_id, status))
 
 
@@ -499,9 +499,9 @@ def test_a_failed_fire_is_recorded_and_its_claim_is_ended_before_the_schedule_ad
     seen_when_advanced: list[int] = []
     real_update = repo.update_schedule_run
 
-    def update(schedule_id, status, next_run):
+    def update(schedule_id, status, next_run, firm_id=None):
         seen_when_advanced.append(sum(1 for r in mock_sched.rows() if r["status"] == "running"))
-        real_update(schedule_id, status, next_run)
+        real_update(schedule_id, status, next_run, firm_id=firm_id)
 
     repo.update_schedule_run = update
     sched.run_due_schedules()

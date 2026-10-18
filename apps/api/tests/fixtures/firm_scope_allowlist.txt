@@ -32,7 +32,6 @@ jobs/scheduler.py | _all_runs_today | scheduler_runs | read | 1 | system-job
 jobs/scheduler.py | _last_run_for_job | scheduler_runs | read | 1 | system-job
 jobs/scheduler.py | _list_firm_ids | tasks | read | 1 | system-job
 jobs/scheduler.py | run_due_schedules | repo:workflow_repo.list_schedules_due | read | 1 | system-job
-jobs/scheduler.py | run_due_schedules | repo:workflow_repo.update_schedule_run | update | 2 | system-job
 repositories/ai_copilot_repository.py | AICopilotRepository.list_messages | ai_messages | read | 1 | repository-contract
 repositories/ai_insights_repository.py | AIInsightsRepository.create | ai_insights | insert | 1 | repository-contract
 repositories/approval_repository.py | ApprovalRepository.create | approval_requests | insert | 1 | repository-contract
@@ -99,8 +98,6 @@ repositories/time_tracking_repository.py | TimeTrackingRepository.create | time_
 repositories/user_repository.py | UserRepository.create | users | insert | 1 | repository-contract
 repositories/user_repository.py | UserRepository.find_by_invite_token | users | read | 1 | repository-contract
 repositories/workflow_repository.py | WorkflowRepository.list_schedules_due | workflow_schedules | read | 1 | repository-contract
-repositories/workflow_repository.py | WorkflowRepository.update_schedule_run | workflow_schedules | read | 1 | repository-contract
-repositories/workflow_repository.py | WorkflowRepository.update_schedule_run | workflow_schedules | update | 1 | repository-contract
 routers/banking.py | _delete_blockers._rows | <dynamic> | read | 1 | from-scoped-row | source=routers/banking.py::delete_bank_account
 routers/compliance.py | seed_compliance_calendar | repo:compliance_repo.create | insert | 1 | payload-with-firm
 routers/engagement_sign_public.py | _load_by_token | engagements | read | 1 | bearer-token | token=sign_token

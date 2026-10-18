@@ -31,6 +31,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._signed_in_workflow_writes import give_the_signed_in_writes_back
+
 API_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = API_ROOT / "migrations"
 _STEM = "503_a_signed_in_session_writes_only_workflow_templates_of_its_own_firm_and_never_a_system_one"
@@ -100,6 +102,9 @@ def db(pg_template):
                  ('{TEMPLATE_B}', 1, 'action', 'b step');
         """)
         assert seed.returncode == 0, seed.stderr
+        # Migration 509 took the signed-in write away (the FIRST lock); this module measures the row policies (the SECOND), and
+        # a write refused for want of the privilege says nothing about them. See `_signed_in_workflow_writes`.
+        give_the_signed_in_writes_back(dsn)
         yield dsn
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{dbname}" WITH (FORCE);')
