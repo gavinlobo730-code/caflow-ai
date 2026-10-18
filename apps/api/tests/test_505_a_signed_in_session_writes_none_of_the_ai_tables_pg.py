@@ -113,7 +113,7 @@ def db(pg_template):
             INSERT INTO firms (id, name, email) VALUES ('{FIRM}','M505 Firm','m505@test.in');
             INSERT INTO users (id, firm_id, auth_user_id, email, full_name, role, is_active)
                  VALUES ('{MANAGER_USER}', '{FIRM}', '{MANAGER_AUTH}', 'manager@m505.test', 'M', 'Manager', true);
-            INSERT INTO ai_conversations (id, firm_id, user_id) VALUES ('{CONV}', '{FIRM}', '{MANAGER_USER}');
+            INSERT INTO ai_conversations (id, firm_id, user_id) VALUES ('{CONV}', '{FIRM}', '{MANAGER_AUTH}');
         """)
         assert seed.returncode == 0, seed.stderr
         yield dsn

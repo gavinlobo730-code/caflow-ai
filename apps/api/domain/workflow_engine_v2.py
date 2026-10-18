@@ -449,6 +449,7 @@ class WorkflowEngineV2:
                 action_type=current_step["step_type"],
                 config=current_step.get("config", {}),
                 status="running",
+                firm_id=firm_id,
             )
 
             try:
@@ -461,7 +462,8 @@ class WorkflowEngineV2:
                 if isinstance(result, dict) and result.get("_action_status") == "skipped":
                     log_status = "skipped"
                     result = {k: v for k, v in result.items() if k != "_action_status"}
-                self._repo.update_action_log(log["id"], log_status, result_data=result)
+                self._repo.update_action_log(log["id"], log_status, result_data=result,
+                                             firm_id=firm_id, instance_id=instance["id"])
 
                 context.update(result or {})
                 self._repo.log_execution(
@@ -478,7 +480,7 @@ class WorkflowEngineV2:
                     current_step = None  # end of flow
 
             except _ApprovalPause as pause:
-                self._repo.update_action_log(log["id"], "paused")
+                self._repo.update_action_log(log["id"], "paused", firm_id=firm_id, instance_id=instance["id"])
                 self._repo.log_execution(
                     instance["id"], firm_id, "approval_requested",
                     {"approval_id": pause.approval_id},
@@ -488,7 +490,8 @@ class WorkflowEngineV2:
 
             except Exception as exc:
                 _logger.exception("Workflow step permanently failed after retries: %s", exc)
-                self._repo.update_action_log(log["id"], "failed", error_message=str(exc))
+                self._repo.update_action_log(log["id"], "failed", error_message=str(exc),
+                                             firm_id=firm_id, instance_id=instance["id"])
                 self._repo.update_instance_status(
                     firm_id, instance["id"], "failed",
                     failed_at=datetime.utcnow().isoformat(),
@@ -824,6 +827,7 @@ class WorkflowEngineV2:
             self._repo.update_action_log(
                 paused[-1]["id"], "success",
                 result_data={"decision": "approved", "approved_by": user_id},
+                firm_id=firm_id, instance_id=instance_id,
             )
         approval_step = step_map.get(paused[-1].get("step_id") if paused else approval_step_id)
         if approval_step:

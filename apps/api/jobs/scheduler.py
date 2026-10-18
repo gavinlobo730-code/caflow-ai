@@ -1063,7 +1063,7 @@ def run_due_schedules() -> None:
                                "advancing it without firing again", schedule_id, due_at)
                 try:
                     repo.update_schedule_run(schedule_id, "success",
-                                             _compute_next_run(cron_expr, tz_str))
+                                             _compute_next_run(cron_expr, tz_str), firm_id=firm_id)
                 except Exception as e:
                     logger.error("Failed to advance schedule %s: %s", schedule_id, e)
             else:
@@ -1104,6 +1104,6 @@ def run_due_schedules() -> None:
 
         next_run = _compute_next_run(cron_expr, tz_str)
         try:
-            repo.update_schedule_run(schedule_id, run_status, next_run)
+            repo.update_schedule_run(schedule_id, run_status, next_run, firm_id=firm_id)
         except Exception as e:
             logger.error("Failed to update schedule metadata for %s: %s", schedule_id, e)

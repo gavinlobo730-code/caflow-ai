@@ -38,6 +38,51 @@ DID_NOT_RUN_STATUSES = ("failed", "cancelled")
 _get_db = db_provider.request_db
 
 
+def _write_db():
+    """The client every WRITE goes through (POST-A-248, migration 509).
+
+    `request_db` is the caller's own session under `USE_USER_JWT` (the production default), and the `workflow_*` tables
+    granted INSERT, UPDATE and DELETE to `authenticated`, so any signed-in member of a firm could write them straight over
+    PostgREST without `rbac()`. Migration 509 takes those grants off, which makes a write from the caller's session fail:
+    the writes go through the privileged client, and row security is no longer the second lock. So each write names its
+    firm and addresses a row by firm AND id, and a write that names a template or a run by its id alone checks first that
+    the template or run is the firm's (`_assert_owns_template` / `_assert_owns_run`). Reads still use the caller's session and row security.
+    """
+    return db_provider.service_db()
+
+
+class WorkflowOwnershipError(LookupError):
+    """A write named a workflow template or run that is not this firm's, or named no firm to check it against."""
+
+
+def _refuse_unowned(firm_id: Optional[str], what: str, row_id: str, rows: list) -> None:
+    if not rows:
+        raise WorkflowOwnershipError(f"workflow {what} {row_id} is not this firm's")
+
+
+def _assert_owns_template(firm_id: Optional[str], template_id: str) -> None:
+    """Refuse a write that names a template which is not the firm's.
+
+    This is the check the caller's row security did before the privileged client: `workflow_steps` and
+    `workflow_action_logs` carry no `firm_id`, so for them the parent row IS the only firm check. A write that names no
+    firm cannot be checked and is refused, not let through. (One function per table, each naming its table in the open:
+    the firm-scope reader cannot judge a table named by a variable.)"""
+    if not firm_id:
+        raise WorkflowOwnershipError("a write to a workflow template must name its firm")
+    rows = (_write_db().table("workflow_templates").select("id").eq("id", template_id).eq("firm_id", firm_id)
+            .limit(1).execute().data) or []
+    _refuse_unowned(firm_id, "template", template_id, rows)
+
+
+def _assert_owns_run(firm_id: Optional[str], instance_id: str) -> None:
+    """Refuse a write that names a run (`workflow_instances` row) which is not the firm's. See `_assert_owns_template`."""
+    if not firm_id:
+        raise WorkflowOwnershipError("a write to a workflow run must name its firm")
+    rows = (_write_db().table("workflow_instances").select("id").eq("id", instance_id).eq("firm_id", firm_id)
+            .limit(1).execute().data) or []
+    _refuse_unowned(firm_id, "run", instance_id, rows)
+
+
 def _now() -> str:
     return datetime.utcnow().isoformat()
 
@@ -134,7 +179,7 @@ class WorkflowRepository(BaseRepository):
                 **data,
             }
             MOCK_TEMPLATES.append(template)
-            template["steps"] = self._insert_steps(template["id"], step_links.prepare(steps))
+            template["steps"] = self._insert_steps(template["id"], step_links.prepare(steps), firm_id=firm_id)
             return template
 
         steps = data.pop("steps", [])
@@ -153,11 +198,11 @@ class WorkflowRepository(BaseRepository):
             "updated_at": _now(),
             **data,
         }
-        db = _get_db()
+        db = _write_db()
         result = db.table("workflow_templates").insert(payload).execute()
         template = result.data[0]
         try:
-            template["steps"] = self._insert_steps(template["id"], step_links.prepare(steps))
+            template["steps"] = self._insert_steps(template["id"], step_links.prepare(steps), firm_id=firm_id)
         except Exception:
             # The steps go in as ONE statement, so none of them is stored. Take
             # the template back out too: one with no steps "runs" and completes,
@@ -180,7 +225,7 @@ class WorkflowRepository(BaseRepository):
                     t["updated_by"] = user_id
                     t["updated_at"] = _now()
                     if steps is not None:
-                        self._replace_steps(template_id, steps)
+                        self._replace_steps(template_id, steps, firm_id=firm_id)
                     t["steps"] = self.list_steps(template_id)
                     return t
             return None
@@ -189,7 +234,7 @@ class WorkflowRepository(BaseRepository):
         update_payload = {k: v for k, v in data.items() if v is not None}
         update_payload["updated_by"] = user_id
         update_payload["updated_at"] = _now()
-        db = _get_db()
+        db = _write_db()
         # Increment version via raw expression isn't directly supported; fetch then bump
         existing = self.get_template(firm_id, template_id)
         if not existing or existing["firm_id"] != firm_id:
@@ -206,7 +251,7 @@ class WorkflowRepository(BaseRepository):
             return None
         template = result.data[0]
         if steps is not None:
-            self._replace_steps(template_id, steps, replacing=existing.get("steps") or [])
+            self._replace_steps(template_id, steps, replacing=existing.get("steps") or [], firm_id=firm_id)
         template["steps"] = self.list_steps(template_id)
         return template
 
@@ -216,7 +261,7 @@ class WorkflowRepository(BaseRepository):
             MOCK_TEMPLATES[:] = [t for t in MOCK_TEMPLATES if not (t["id"] == template_id and t["firm_id"] == firm_id)]
             return len(MOCK_TEMPLATES) < orig
 
-        db = _get_db()
+        db = _write_db()
         result = (
             db.table("workflow_templates")
             .delete()
@@ -238,7 +283,7 @@ class WorkflowRepository(BaseRepository):
         existing = self.get_template(firm_id, template_id)
         if not existing or existing["firm_id"] != firm_id:
             return None
-        db = _get_db()
+        db = _write_db()
         result = (
             db.table("workflow_templates")
             .update({"is_active": not existing["is_active"], "updated_at": _now()})
@@ -267,21 +312,22 @@ class WorkflowRepository(BaseRepository):
         )
         return result.data or []
 
-    def _create_step(self, template_id: str, data: dict) -> dict:
+    def _create_step(self, template_id: str, data: dict, firm_id: Optional[str] = None) -> dict:
         if _USE_MOCK:
             step = {"id": _uid(), "template_id": template_id, "created_at": _now(), **data}
             MOCK_STEPS.append(step)
             return step
 
-        db = _get_db()
+        _assert_owns_template(firm_id, template_id)
+        db = _write_db()
         payload = {"id": _uid(), "template_id": template_id, "created_at": _now(), **data}
         result = db.table("workflow_steps").insert(payload).execute()
         return result.data[0]
 
-    def create_step(self, template_id: str, data: dict) -> dict:
-        return self._create_step(template_id, data)
+    def create_step(self, template_id: str, data: dict, firm_id: Optional[str] = None) -> dict:
+        return self._create_step(template_id, data, firm_id=firm_id)
 
-    def _insert_steps(self, template_id: str, rows: list[dict]) -> list[dict]:
+    def _insert_steps(self, template_id: str, rows: list[dict], firm_id: Optional[str] = None) -> list[dict]:
         """Store a template's steps, already given their ids and links by
         `domain.workflow.step_links.prepare`, in ONE statement.
 
@@ -297,7 +343,8 @@ class WorkflowRepository(BaseRepository):
             MOCK_STEPS.extend(saved)
             return saved
 
-        db = _get_db()
+        _assert_owns_template(firm_id, template_id)
+        db = _write_db()
         result = db.table("workflow_steps").insert([
             {
                 "id": row["id"], "template_id": template_id, "created_at": created_at,
@@ -316,7 +363,8 @@ class WorkflowRepository(BaseRepository):
             return self.list_steps(template_id)
         return sorted(stored, key=lambda step: step["step_order"])
 
-    def _replace_steps(self, template_id: str, steps: list[dict], replacing: Optional[list[dict]] = None) -> None:
+    def _replace_steps(self, template_id: str, steps: list[dict], replacing: Optional[list[dict]] = None,
+                       firm_id: Optional[str] = None) -> None:
         """Swap a template's steps for a new list without a moment in which it has none.
 
         The new set is inserted BEFORE the old one is removed. The old order was
@@ -330,17 +378,20 @@ class WorkflowRepository(BaseRepository):
         """
         rows = step_links.prepare(steps)
         if _USE_MOCK:
-            self._insert_steps(template_id, rows)
+            self._insert_steps(template_id, rows, firm_id=firm_id)
             new_ids = {row["id"] for row in rows}
             MOCK_STEPS[:] = [s for s in MOCK_STEPS
                              if s["template_id"] != template_id or s["id"] in new_ids]
             return
 
+        # Asked BEFORE anything is written, not only inside `_insert_steps`: a replacement with no new steps inserts
+        # nothing, and the removal below still addresses the old steps by template id alone.
+        _assert_owns_template(firm_id, template_id)
         old_ids = [s["id"] for s in (replacing if replacing is not None else self.list_steps(template_id))]
-        self._insert_steps(template_id, rows)
+        self._insert_steps(template_id, rows, firm_id=firm_id)
         if not old_ids:
             return
-        db = _get_db()
+        db = _write_db()
         try:
             db.table("workflow_steps").delete().eq("template_id", template_id).in_("id", old_ids).execute()
         except Exception:
@@ -483,7 +534,8 @@ class WorkflowRepository(BaseRepository):
             MOCK_INSTANCES.append(instance)
             return instance
 
-        db = _get_db()
+        _assert_owns_template(firm_id, template_id)
+        db = _write_db()
         payload = {
             "id": _uid(),
             "firm_id": firm_id,
@@ -529,7 +581,7 @@ class WorkflowRepository(BaseRepository):
                     return i
             return None
 
-        db = _get_db()
+        db = _write_db()
         update_payload: dict = {"status": status, "updated_at": _now()}
         if current_step_id is not None:
             update_payload["current_step_id"] = current_step_id
@@ -608,6 +660,7 @@ class WorkflowRepository(BaseRepository):
         result_data: Optional[dict] = None,
         error_message: Optional[str] = None,
         duration_ms: Optional[int] = None,
+        firm_id: Optional[str] = None,
     ) -> dict:
         if _USE_MOCK:
             log = {
@@ -628,7 +681,8 @@ class WorkflowRepository(BaseRepository):
             MOCK_ACTION_LOGS.append(log)
             return log
 
-        db = _get_db()
+        _assert_owns_run(firm_id, instance_id)
+        db = _write_db()
         payload = {
             "id": _uid(),
             "instance_id": instance_id,
@@ -647,7 +701,9 @@ class WorkflowRepository(BaseRepository):
         result = db.table("workflow_action_logs").insert(payload).execute()
         return result.data[0]
 
-    def update_action_log(self, log_id: str, status: str, result_data: Optional[dict] = None, error_message: Optional[str] = None, duration_ms: Optional[int] = None) -> Optional[dict]:
+    def update_action_log(self, log_id: str, status: str, result_data: Optional[dict] = None,
+                          error_message: Optional[str] = None, duration_ms: Optional[int] = None,
+                          firm_id: Optional[str] = None, instance_id: Optional[str] = None) -> Optional[dict]:
         if _USE_MOCK:
             for log in MOCK_ACTION_LOGS:
                 if log["id"] == log_id:
@@ -662,7 +718,10 @@ class WorkflowRepository(BaseRepository):
                     return log
             return None
 
-        db = _get_db()
+        # A log row carries no firm of its own: it is the firm's because its RUN is, and the update names that run so a
+        # log id belonging to another run is not touched.
+        _assert_owns_run(firm_id, instance_id or "")
+        db = _write_db()
         payload: dict = {"status": status, "completed_at": _now()}
         if result_data is not None:
             payload["result_data"] = result_data
@@ -670,7 +729,8 @@ class WorkflowRepository(BaseRepository):
             payload["error_message"] = error_message
         if duration_ms is not None:
             payload["duration_ms"] = duration_ms
-        result = db.table("workflow_action_logs").update(payload).eq("id", log_id).execute()
+        result = (db.table("workflow_action_logs").update(payload)
+                  .eq("id", log_id).eq("instance_id", instance_id).execute())
         return result.data[0] if result.data else None
 
     def list_action_logs(self, instance_id: str) -> list[dict]:
@@ -712,7 +772,8 @@ class WorkflowRepository(BaseRepository):
             MOCK_EXECUTIONS.append(event)
             return event
 
-        db = _get_db()
+        _assert_owns_run(firm_id, instance_id)
+        db = _write_db()
         payload = {
             "id": _uid(),
             "instance_id": instance_id,
@@ -772,7 +833,8 @@ class WorkflowRepository(BaseRepository):
             MOCK_FAILURES.append(failure)
             return failure
 
-        db = _get_db()
+        _assert_owns_run(firm_id, instance_id)
+        db = _write_db()
         payload = {
             "id": _uid(),
             "instance_id": instance_id,
@@ -828,7 +890,7 @@ class WorkflowRepository(BaseRepository):
                     return f
             return None
 
-        db = _get_db()
+        db = _write_db()
         result = (
             db.table("workflow_failures")
             .update({"resolved": True, "resolved_at": _now(), "resolved_by": resolved_by})
@@ -875,7 +937,8 @@ class WorkflowRepository(BaseRepository):
             MOCK_APPROVALS.append(approval)
             return approval
 
-        db = _get_db()
+        _assert_owns_run(firm_id, instance_id)
+        db = _write_db()
         payload = {
             "id": _uid(),
             "firm_id": firm_id,
@@ -951,7 +1014,7 @@ class WorkflowRepository(BaseRepository):
                     return a
             return None
 
-        db = _get_db()
+        db = _write_db()
         result = (
             db.table("workflow_approvals")
             .update({
@@ -984,7 +1047,7 @@ class WorkflowRepository(BaseRepository):
                     escalated.append(a)
             return escalated
 
-        db = _get_db()
+        db = _write_db()
         result = (
             db.table("workflow_approvals")
             .update({"status": "escalated", "updated_at": _now()})
@@ -1050,7 +1113,8 @@ class WorkflowRepository(BaseRepository):
             MOCK_SCHEDULES.append(schedule)
             return schedule
 
-        db = _get_db()
+        _assert_owns_template(firm_id, template_id)
+        db = _write_db()
         payload = {
             "id": _uid(),
             "firm_id": firm_id,
@@ -1086,7 +1150,7 @@ class WorkflowRepository(BaseRepository):
                     return s
             return None
 
-        db = _get_db()
+        db = _write_db()
         # Fetch current state first to toggle
         result = (
             db.table("workflow_schedules")
@@ -1118,7 +1182,7 @@ class WorkflowRepository(BaseRepository):
             MOCK_SCHEDULES[:] = [s for s in MOCK_SCHEDULES if not (s["id"] == schedule_id and s["firm_id"] == firm_id)]
             return len(MOCK_SCHEDULES) < orig
 
-        db = _get_db()
+        db = _write_db()
         result = (
             db.table("workflow_schedules")
             .delete()
@@ -1133,6 +1197,7 @@ class WorkflowRepository(BaseRepository):
         schedule_id: str,
         status: str,
         next_run_at: Optional[str] = None,
+        firm_id: Optional[str] = None,
     ) -> Optional[dict]:
         if _USE_MOCK:
             for s in MOCK_SCHEDULES:
@@ -1146,7 +1211,9 @@ class WorkflowRepository(BaseRepository):
                     return s
             return None
 
-        db = _get_db()
+        if not firm_id:
+            raise WorkflowOwnershipError("a write to a workflow schedule must name its firm")
+        db = _write_db()
         payload: dict = {
             "last_run_at": _now(),
             "last_run_status": status,
@@ -1155,9 +1222,11 @@ class WorkflowRepository(BaseRepository):
         if next_run_at:
             payload["next_run_at"] = next_run_at
         # Increment run_count via fetch+update
-        cur = db.table("workflow_schedules").select("run_count").eq("id", schedule_id).maybe_single().execute()
+        cur = (db.table("workflow_schedules").select("run_count").eq("id", schedule_id)
+               .eq("firm_id", firm_id).maybe_single().execute())
         payload["run_count"] = (cur.data.get("run_count", 0) + 1) if cur.data else 1
-        result = db.table("workflow_schedules").update(payload).eq("id", schedule_id).execute()
+        result = (db.table("workflow_schedules").update(payload).eq("id", schedule_id)
+                  .eq("firm_id", firm_id).execute())
         return result.data[0] if result.data else None
 
     def list_schedules_due(self, now_iso: str) -> list[dict]:
@@ -1180,8 +1249,8 @@ class WorkflowRepository(BaseRepository):
         )
         return result.data or []
 
-    def _update_step(self, step_id: str, data: dict) -> Optional[dict]:
-        """Update a workflow step by id (mock only — used by tests for cycle/link setup)."""
+    def _update_step(self, step_id: str, data: dict, firm_id: Optional[str] = None) -> Optional[dict]:
+        """Update a workflow step by id (used by tests for cycle/link setup)."""
         if _USE_MOCK:
             for s in MOCK_STEPS:
                 if s["id"] == step_id:
@@ -1189,8 +1258,14 @@ class WorkflowRepository(BaseRepository):
                     s["updated_at"] = _now()
                     return s
             return None
-        db = _get_db()
-        result = db.table("workflow_steps").update(data).eq("id", step_id).execute()
+        # A step carries no firm: it is the firm's because its template is. Read the template from the step, then ask.
+        db = _write_db()
+        step = (db.table("workflow_steps").select("template_id").eq("id", step_id).limit(1).execute().data) or []
+        if not step:
+            return None
+        _assert_owns_template(firm_id, step[0]["template_id"])
+        result = (db.table("workflow_steps").update(data).eq("id", step_id)
+                  .eq("template_id", step[0]["template_id"]).execute())
         return result.data[0] if result.data else None
 
     # ── Analytics ─────────────────────────────────────────────────────────────
