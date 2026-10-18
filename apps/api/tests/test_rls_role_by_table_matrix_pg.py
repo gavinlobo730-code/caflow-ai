@@ -921,13 +921,10 @@ DEVIATION_CLASSES: tuple[Deviation, ...] = (
     # here (a payroll tier missing from three tables, and four children with no client scope). Migration 485
     # closed them and their entries went in the same commit; `test_the_matrix_turns_red_when_a_known_hole_is_put_back
     # [payroll-tier-485-reopened]` puts them back on purpose.
-    Deviation(
-        "suspended-member-keeps-their-own-user-row",
-        "users_own_row_select and users_own_row_rename compare auth_user_id with auth.uid() directly and never "
-        "ask staff_session_is_live(), so a suspended member still reads and renames their own users row.",
-        ("users",),
-        _cells(("suspended_partner",), ("select", "update"), "suspended", "-"),
-    ),
+    # `suspended-member-keeps-their-own-user-row` stood here, the last one (2 cells over users): users_own_row_select and
+    # users_own_row_rename compared auth_user_id with auth.uid() directly and never asked whether the session is live.
+    # Migration 506 closed it; `test_the_matrix_turns_red_when_a_known_hole_is_put_back[suspended-own-row-506-reopened]`
+    # puts it back on purpose. The tuple is empty now, which is the goal: every cell of the matrix agrees with the five rules.
 )
 
 
@@ -1193,6 +1190,12 @@ CONTROLS = (
      {("manager", "fee_engagements", "select"), ("exec_assigned", "fee_invoices", "select"),
       ("reviewer", "fee_invoices", "select"), ("reviewer", "fee_receipts", "select"),
       ("exec_unassigned", "fee_receipts", "select")}),
+    ("suspended-own-row-506-reopened",
+     "migration 506 rolled back: users_own_row_select and users_own_row_rename ask only the sign-in id again, so a "
+     "suspended member still reads and renames their own users row",
+     lambda: _migration_sql("506_a_suspended_member_does_not_read_or_rename_their_own_users_row_rollback.sql"),
+     ("users",),
+     {("suspended_partner", "users", "select"), ("suspended_partner", "users", "update")}),
     ("anon-granted-a-table",
      "GRANT SELECT ON clients TO anon: no policy would show a row, but the privilege itself is the hole",
      lambda: "GRANT SELECT ON public.clients TO anon;",
@@ -1256,7 +1259,11 @@ def test_the_expectation_obeys_the_five_rules():
 @_NEEDS_PG_SOURCE
 def test_every_known_deviation_is_one_sentence_a_real_cell_and_not_in_the_expectation():
     expected = load_expected()
-    assert KNOWN_DEVIATIONS, "an empty list is a claim that nothing deviates: delete the machinery with it"
+    # The list has been EMPTY since migration 506 closed the last class: every cell agrees with the five rules. The assertion
+    # that used to stand here ("an empty list is a claim that nothing deviates: delete the machinery with it") is gone with
+    # the last entry, and the machinery stays on purpose: it is how a gap an audit finds LATER is written down, with a
+    # ledger line, in the commit that finds it, and deleting it would touch the expected-file writer and four tests of a
+    # guard that CI runs on every migration. While the list is empty the loop below has nothing to check.
     for (actor, table, op), (observed_value, intended, cid, reason) in KNOWN_DEVIATIONS.items():
         assert actor in ACTORS and op in OPS and (actor, table) in expected, (actor, table, op)
         assert observed_value != intended, f"{(actor, table, op)} is not a deviation: observed == intended"
