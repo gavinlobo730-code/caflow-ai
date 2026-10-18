@@ -6,13 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { TaskFormModal } from "@/components/TaskFormModal";
-import { getTasks, getTeamMembers, updateTaskStatus } from "@/lib/data/tasks";
+import { getTasksWindow, getTeamMembers, updateTaskStatus } from "@/lib/data/tasks";
 import { getClient } from "@/lib/data/clients";
 import type { Task, Client, FirmUser } from "@/lib/types";
 import { formatDate } from "@/lib/services/formatting";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
+import { DIRECT_READ_WINDOW_MAX, windowDescription } from "@/lib/lists/window";
 /**
  * A client's tasks — and, since this change, a place to create and close them.
  *
@@ -47,6 +49,10 @@ const NEXT_STATUS: Record<string, { to: string; label: string }> = {
 export default function TasksPage() {
   const { clientId } = useClientNav();
   const [tasks, setTasks] = useState<Task[]>([]);
+  // The list is a WINDOW (soonest due first); `hasMore` is read from the
+  // database, and "Show more" widens the window.
+  const [limit, setLimit] = useState(100);
+  const [hasMore, setHasMore] = useState(false);
   const [client, setClient] = useState<Client | null>(null);
   const [teamMembers, setTeamMembers] = useState<FirmUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,17 +66,17 @@ export default function TasksPage() {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     Promise.all([
-      getTasks({ clientId, limit: 100 }),
+      getTasksWindow({ clientId, limit }),
       // The modal needs the client record (it lists clients) and the team (to
       // assign). Both are small and independent, so they load beside the tasks
       // rather than on first open, where the CA would wait for them.
       getClient(clientId).catch(() => null),
       getTeamMembers().catch(() => [] as FirmUser[]),
     ])
-      .then(([t, c, m]) => { setTasks(t); setClient(c); setTeamMembers(m); setLoadError(null); })
-      .catch((e) => { setTasks([]); setLoadError(e instanceof Error ? e.message : "Couldn't load tasks."); })
+      .then(([w, c, m]) => { setTasks(w.tasks); setHasMore(w.hasMore); setClient(c); setTeamMembers(m); setLoadError(null); })
+      .catch((e) => { setTasks([]); setHasMore(false); setLoadError(e instanceof Error ? e.message : "Couldn't load tasks."); })
       .finally(() => setLoading(false));
-  }, [clientId]);
+  }, [clientId, limit]);
 
   useEffect(load, [load]);
 
@@ -83,14 +89,15 @@ export default function TasksPage() {
       await updateTaskStatus(task.id, next.to);
       // Optimism would be wrong here: a status change that RLS refused would
       // stay on screen looking done. Re-read instead.
-      const fresh = await getTasks({ clientId, limit: 100 });
-      setTasks(fresh);
+      const fresh = await getTasksWindow({ clientId, limit });
+      setTasks(fresh.tasks);
+      setHasMore(fresh.hasMore);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Couldn't update the task.");
     } finally {
       setBusy(null);
     }
-  }, [clientId]);
+  }, [clientId, limit]);
 
   const open = tasks.filter((t) => t.status !== "completed").length;
 
@@ -99,7 +106,7 @@ export default function TasksPage() {
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-sm">
-            Tasks {loading ? "…" : `(${open} open of ${tasks.length})`}
+            Tasks {loading ? "…" : hasMore ? `(${open} open among the first ${tasks.length})` : `(${open} open of ${tasks.length})`}
           </CardTitle>
           <button
             onClick={() => setModalOpen(true)}
@@ -168,6 +175,14 @@ export default function TasksPage() {
                   })}
                 </div>
               )}
+              <ListWindowNotice
+                hasMore={hasMore}
+                what={windowDescription(tasks.length, "tasks", "first", "soonest due first")}
+                limit={limit}
+                maxLimit={DIRECT_READ_WINDOW_MAX}
+                onShowMore={setLimit}
+                elsewhere="All of this client's tasks are on the firm Tasks screen."
+              />
             </>
           )}
         </CardContent>

@@ -90,7 +90,7 @@ def test_listing_drops_notifications_about_clients_youre_no_longer_assigned(monk
                         [r for r in items if r.get(key) != THEIRS])
     out = nt.list_notifications(current_user=USER)
     assert [r["id"] for r in out["data"]["notifications"]] == ["N1", "N3"]
-    assert out["data"]["total"] == 2
+    assert out["data"]["returned"] == 2
 
 
 def test_listing_keeps_firm_level_notifications(monkeypatch):

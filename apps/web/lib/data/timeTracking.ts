@@ -93,6 +93,19 @@ export async function setEntryRate(entryId: string, billableRatePaise: number): 
   if (!resp.success) throw refusal(resp, "Failed to set the rate");
 }
 
+/** The server's window over the entries: the latest `limit`, and whether older
+ *  ones exist (apps/api/core/list_window.py). `total_minutes` and
+ *  `billable_minutes` are sums over THESE entries only. */
+export interface TimeEntryWindow {
+  entries: TimeEntry[];
+  returned: number;
+  has_more: boolean;
+  limit: number;
+  max_limit: number;
+  total_minutes: number;
+  billable_minutes: number;
+}
+
 export async function listTimeEntries(params?: {
   client_id?: string;
   task_id?: string;
@@ -101,14 +114,14 @@ export async function listTimeEntries(params?: {
   end_date?: string;
   is_billable?: boolean;
   limit?: number;
-}): Promise<{ entries: TimeEntry[]; total: number }> {
+}): Promise<TimeEntryWindow> {
   const qs = new URLSearchParams();
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null) qs.set(k, String(v));
     });
   }
-  const resp = await apiFetch<{ entries: TimeEntry[]; total: number }>(
+  const resp = await apiFetch<TimeEntryWindow>(
     `/api/time-entries${qs.toString() ? `?${qs}` : ""}`
   );
   if (!resp.success) throw refusal(resp, "Failed to load time entries");

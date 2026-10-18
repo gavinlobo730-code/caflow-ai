@@ -31,6 +31,8 @@ import { UnbilledWorkPanel } from "@/components/time/UnbilledWorkPanel";
 import { BillingRatesPanel } from "@/components/time/BillingRatesPanel";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
+import { windowDescription } from "@/lib/lists/window";
 import { DateInput } from "@/components/ui/date-input";
 
 type Tab = "mine" | "unbilled" | "rates";
@@ -45,6 +47,10 @@ export default function TimeTrackingPage() {
   const [tab, setTab] = useState<Tab>("mine");
   const [rateNotice, setRateNotice] = useState<string | null>(null);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
+  // The list is a WINDOW over the entries (the latest N); the server says
+  // whether older ones exist and how far the window may grow.
+  const [entryWindow, setEntryWindow] = useState({ limit: 100, maxLimit: 500, hasMore: false });
+  const [showingMore, setShowingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
@@ -54,6 +60,7 @@ export default function TimeTrackingPage() {
   const [runningEntry, setRunningEntry] = useState<TimeEntry | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const entryWindowRef = useRef({ limit: 100, maxLimit: 500, hasMore: false });
 
   // Start timer form
   const [showStart, setShowStart] = useState(false);
@@ -93,10 +100,15 @@ export default function TimeTrackingPage() {
     }
   }, []);
 
-  const loadEntries = useCallback(async () => {
+  const loadEntries = useCallback(async (limit?: number) => {
     try {
-      const { entries: e } = await listTimeEntries({ limit: 100 });
-      setEntries(arrayOrEmpty(e));
+      // Re-reads keep the window the person has opened, never snapping back to
+      // the first hundred after a timer stop or a delete.
+      const win = await listTimeEntries({ limit: limit ?? entryWindowRef.current.limit });
+      setEntries(arrayOrEmpty(win.entries));
+      const next = { limit: win.limit, maxLimit: win.max_limit, hasMore: win.has_more === true };
+      entryWindowRef.current = next;
+      setEntryWindow(next);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load entries");
     }
@@ -336,7 +348,9 @@ export default function TimeTrackingPage() {
           <CardContent className="py-4">
             <p className="text-xs text-ps-label">Total Hours</p>
             <p className="text-2xl font-bold text-ps-ink mt-1">{formatDuration(totalMinutes)}</p>
-            <p className="text-xs text-ps-hint">{entries.length} entries</p>
+            <p className="text-xs text-ps-hint">
+              {entryWindow.hasMore ? `latest ${entries.length} entries only` : `${entries.length} entries`}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -468,6 +482,20 @@ export default function TimeTrackingPage() {
               ))}
             </div>
           )}
+          <div className="px-5">
+            <ListWindowNotice
+              hasMore={entryWindow.hasMore}
+              what={windowDescription(entries.length, "entries", "latest")}
+              limit={entryWindow.limit}
+              maxLimit={entryWindow.maxLimit}
+              busy={showingMore}
+              elsewhere="The export has all of them."
+              onShowMore={async (next) => {
+                setShowingMore(true);
+                try { await loadEntries(next); } finally { setShowingMore(false); }
+              }}
+            />
+          </div>
         </CardContent>
       </Card>
 
