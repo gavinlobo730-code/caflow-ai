@@ -70,6 +70,9 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
   /** Refusals this stub sent ON PURPOSE (a route given a 4xx or 5xx status), so the runner can tell the browser's
    *  own "Failed to load resource" line for one of them from a request that failed for a reason nobody planned. */
   let refusals = 0;
+  /** The signed-in auth user, when a scenario needs one other than FAKE_USER (an account holding a verified second
+   *  factor, so the sign-in challenge is owed). Cleared by `reset()`. */
+  let authUser = null;
   let lastActivity = Date.now();
 
   const touch = () => { lastActivity = Date.now(); };
@@ -94,9 +97,9 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     const siteHeaders = headersFor(headerRules, pathname);
 
     if (pathname.startsWith("/__supabase/auth/v1/")) {
-      if (pathname.endsWith("/user")) return sendJson(res, FAKE_USER);
+      if (pathname.endsWith("/user")) return sendJson(res, authUser ?? FAKE_USER);
       if (pathname.endsWith("/logout")) return sendJson(res, {});
-      return sendJson(res, { ...FAKE_SESSION });
+      return sendJson(res, { ...FAKE_SESSION, user: authUser ?? FAKE_SESSION.user });
     }
 
     if (pathname.startsWith("/__supabase/rest/v1/")) {
@@ -167,10 +170,13 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
       writeDelayMs = 700;
       inFlight = 0;
       refusals = 0;
+      authUser = null;
       touch();
     },
     refusalsServed: () => refusals,
     setTable(name, rows) { tables[name] = rows; },
+    /** Sign in as this auth user from now on (call BEFORE the first navigation of a scenario). */
+    setAuthUser(user) { authUser = user; },
     /** Register an API route ahead of the defaults. */
     route(spec) { routes.unshift({ method: undefined, delay: undefined, status: undefined, ...spec }); },
     setWriteDelay(ms) { writeDelayMs = ms; },

@@ -45,6 +45,9 @@ def get_approval(request_id: str, current_user: dict = Depends(rbac("approval", 
     return api_response(True, req)
 
 
+# NOT behind mfa_guard, on purpose (POST-A-006): a person whose authenticator is lost is at the password level, and asking
+# for it to be reset (request_type "mfa_reset", services/mfa_reset_service) is the only thing they can do. Approving and
+# rejecting ARE behind it, so a password alone never removes anybody's authenticator. A test holds both halves.
 @router.post("")
 def create_approval(body: RequestBody, current_user: dict = Depends(rbac("approval", "request"))):
     row = approvals.create_request(current_user["firm_id"], body.request_type, body.payload, current_user)

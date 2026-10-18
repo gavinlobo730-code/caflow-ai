@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
-import { Users, UserPlus, Shield, Mail, MoreVertical, X, AlertCircle, Lock, SlidersHorizontal } from "lucide-react";
+import { Users, UserPlus, Shield, Mail, MoreVertical, X, AlertCircle, Lock, SlidersHorizontal, Smartphone } from "lucide-react";
 import MemberAccessDrawer from "@/components/team/MemberAccessDrawer";
+import ResetAuthenticatorModal from "@/components/team/ResetAuthenticatorModal";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/dates/format";
@@ -305,9 +307,11 @@ interface ActionsMenuProps {
   member: TeamMember;
   onEdit: () => void;
   onDeactivate: () => void;
+  /** Present only for a Partner and a member who has signed in: someone who never has no authenticator to reset. */
+  onResetAuthenticator?: () => void;
 }
 
-function ActionsMenu({ member, onEdit, onDeactivate }: ActionsMenuProps) {
+function ActionsMenu({ member, onEdit, onDeactivate, onResetAuthenticator }: ActionsMenuProps) {
   const [open, setOpen] = useState(false);
   const isActive = member.is_active !== false;
 
@@ -322,7 +326,7 @@ function ActionsMenu({ member, onEdit, onDeactivate }: ActionsMenuProps) {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-1 w-40 bg-white border border-ps-border rounded-lg shadow-lg z-20 py-1">
+          <div className="absolute right-0 mt-1 w-48 bg-white border border-ps-border rounded-lg shadow-lg z-20 py-1">
             <button
               onClick={() => { setOpen(false); onEdit(); }}
               className="w-full text-left px-3 py-2 text-xs text-ps-body hover:bg-ps-bg flex items-center gap-2"
@@ -330,6 +334,15 @@ function ActionsMenu({ member, onEdit, onDeactivate }: ActionsMenuProps) {
               <Shield className="w-3.5 h-3.5" />
               Edit Role
             </button>
+            {onResetAuthenticator && (
+              <button
+                onClick={() => { setOpen(false); onResetAuthenticator(); }}
+                className="w-full text-left px-3 py-2 text-xs text-ps-body hover:bg-ps-bg flex items-center gap-2"
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                Reset authenticator
+              </button>
+            )}
             <button
               onClick={() => { setOpen(false); onDeactivate(); }}
               className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 hover:bg-ps-bg ${
@@ -703,6 +716,11 @@ export default function TeamPage() {
   const [firmId, setFirmId] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [editMember, setEditMember] = useState<TeamMember | null>(null);
+  const [resetMember, setResetMember] = useState<TeamMember | null>(null);
+  // Asking for another person's authenticator to be reset is a Partner's act; the server enforces it, this only
+  // decides whether to offer it. approval:approve is held by Partners alone.
+  const { can } = usePermissions();
+  const canResetAuthenticators = can("approval", "approve");
   const [activeTab, setActiveTab] = useState<"members" | "permissions">("members");
 
   const loadTeam = useCallback(async () => {
@@ -1017,6 +1035,8 @@ export default function TeamPage() {
                               member={member}
                               onEdit={() => setEditMember(member)}
                               onDeactivate={() => handleDeactivate(member)}
+                              onResetAuthenticator={canResetAuthenticators && member.auth_user_id
+                                ? () => setResetMember(member) : undefined}
                             />
                           )}
                         </td>
@@ -1057,6 +1077,9 @@ export default function TeamPage() {
           onClose={() => setEditMember(null)}
           onSave={handleEditRole}
         />
+      )}
+      {resetMember && (
+        <ResetAuthenticatorModal member={resetMember} onClose={() => setResetMember(null)} />
       )}
     </div>
   );

@@ -9,6 +9,7 @@ transition is mirrored to the immutable audit_log.
 Request types (handlers execute against existing server paths):
   user_create / user_activation / role_change        -> user_repo
   assignment_create / assignment_remove / assignment_transfer -> assignment_repo
+  mfa_reset                                          -> services.mfa_reset_service (a lost authenticator, POST-A-006)
 
 The chart-of-accounts types (coa_create / coa_update / coa_delete) were RETIRED on 17-10-2026 (POST-A-007's review): their
 handlers called the in-memory `domain.accounting_service`, which the REST routes had already been moved off because a change
@@ -22,6 +23,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from repositories.approval_repository import approval_repo
+from services import mfa_reset_service
 from services.audit_service import log_event
 
 _CANONICAL_ROLES = {"Partner", "Manager", "Executive", "Reviewer", "Client"}
@@ -72,7 +74,11 @@ def _h_assignment_transfer(firm_id: str, p: dict) -> dict:
     return {"transferred": True, "assignment": created}
 
 
-# type -> (required payload keys, summary builder, handler)
+# type -> required payload keys, summary builder, handler, and optional hooks:
+#   prepare(firm_id, payload, actor) -> payload   validates when the request is MADE and returns what is stored
+#   check_decider(firm_id, req, decider)          refuses a decision BEFORE it is claimed (raises HTTPException)
+#   audit_extra(req, result, decider) -> dict     extra metadata on the "approved" audit entry
+#   after_approval(firm_id, req, result, decider) a second record the type owes once its action has run
 _SPECS: dict[str, dict] = {
     "user_create":        {"required": ["full_name", "email", "role"],
                            "summary": lambda p: f"Create user {p.get('email')} as {p.get('role')}",
@@ -92,6 +98,13 @@ _SPECS: dict[str, dict] = {
     "assignment_transfer": {"required": ["from_user_id", "to_user_id", "client_id"],
                            "summary": lambda p: f"Transfer client {p.get('client_id')} from {p.get('from_user_id')} to {p.get('to_user_id')}",
                            "handler": _h_assignment_transfer},
+    "mfa_reset":         {"required": [],
+                           "summary": mfa_reset_service.summary,
+                           "handler": mfa_reset_service.execute,
+                           "prepare": mfa_reset_service.prepare,
+                           "check_decider": mfa_reset_service.check_decider,
+                           "audit_extra": mfa_reset_service.audit_extra,
+                           "after_approval": mfa_reset_service.after_approval},
 }
 
 REQUEST_TYPES = tuple(_SPECS.keys())
@@ -118,6 +131,9 @@ def create_request(firm_id: str, request_type: str, payload: dict, actor: dict) 
     missing = [k for k in spec["required"] if k not in (payload or {})]
     if missing:
         raise HTTPException(422, f"Missing payload fields: {', '.join(missing)}")
+    if spec.get("prepare"):
+        # The stored payload is what the SERVER resolved, never the browser's words about whom the request is for.
+        payload = spec["prepare"](firm_id, payload or {}, actor)
     row = approval_repo.create({
         "firm_id": firm_id, "request_type": request_type,
         "summary": spec["summary"](payload), "payload": payload,
@@ -154,6 +170,9 @@ def approve(firm_id: str, request_id: str, approver: dict) -> dict:
     if spec is None:
         # Refused before the claim, so the request stays pending and can still be rejected or cancelled.
         raise HTTPException(409, "This kind of request can no longer be carried out. Reject it instead.")
+    if spec.get("check_decider"):
+        # Refused before the claim, like an unknown type: the request stays pending and the right person can decide it.
+        spec["check_decider"](firm_id, req, approver)
     claimed = approval_repo.decide_if_pending(firm_id, request_id, {
         "status": "approved", "decided_by": approver.get("id"),
         "decided_by_email": approver.get("email"), "decided_at": _now(),
@@ -177,7 +196,10 @@ def approve(firm_id: str, request_id: str, approver: dict) -> dict:
                          request_id, exc_info=True)
         raise
     updated = approval_repo.update(firm_id, request_id, {"result": result})
-    _audit(firm_id, req, "approved", approver)
+    extra = spec["audit_extra"](req, result, approver) if spec.get("audit_extra") else {}
+    _audit(firm_id, req, "approved", approver, **extra)
+    if spec.get("after_approval"):
+        spec["after_approval"](firm_id, req, result, approver)
     return updated
 
 
