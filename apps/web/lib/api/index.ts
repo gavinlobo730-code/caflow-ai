@@ -1537,6 +1537,39 @@ export type ExpiringEwayBill = {
 
 /** GST-20 — an in-scope invoice with no live IRN. `domain/gst/irn_worklist.py`
  *  decides every field and sentence; this carries shapes only. */
+/** One entry of the Day Book (POST-A-091): a POSTED entry with its debit and credit totals already summed by the
+ *  database. `source_type` and `source_id` are always present and null where the entry carries none. */
+export type DayBookEntry = {
+  entry_id: string;
+  entry_date: string;
+  reference_no: string | null;
+  narration: string | null;
+  entry_type: string | null;
+  source_type: string | null;
+  source_id: string | null;
+  debit_paise: number;
+  credit_paise: number;
+};
+
+/** One page of the Day Book and what the WHOLE period holds. `has_more` and `max_limit` are the list-window
+ *  fields (apps/api/core/list_window.py); `sources` counts the entries by the document they came from over the
+ *  whole period, so a filter's options are not just whatever the loaded page holds. */
+export type DayBookPage = {
+  start_date: string | null;
+  end_date: string | null;
+  entries: DayBookEntry[];
+  total_entries: number;
+  total_debit_paise: number;
+  total_credit_paise: number;
+  sources: { source_type: string | null; entries: number }[];
+  newest_first: boolean;
+  limit: number;
+  offset: number;
+  returned: number;
+  has_more: boolean;
+  max_limit: number;
+};
+
 export type IrnWorklistWindow = {
   /** Five states and none stands in for another: an invoice of a client below
    *  the IRP's turnover floor OWES an IRN and has NO clock. */
@@ -4528,6 +4561,19 @@ export const api = {
       `/api/accounting/accounts${clientId ? `?client_id=${encodeURIComponent(clientId)}` : ""}`,
       { method: "POST", body: JSON.stringify(data) }),
     updateAccount: (id: string, data: unknown) => request(`/api/accounting/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    /** The Day Book: every POSTED entry of one client in a period, one page of it, newest first by default
+     *  (POST-A-091). The page is cut in the database and the PDF and Excel files read the same function, so
+     *  the screen and the file cannot disagree. */
+    dayBook: (clientId: string, opts: { start?: string; end?: string; limit?: number; offset?: number;
+                                        newestFirst?: boolean } = {}) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (opts.start) q.set("start_date", opts.start);
+      if (opts.end) q.set("end_date", opts.end);
+      if (opts.limit !== undefined) q.set("limit", String(opts.limit));
+      if (opts.offset !== undefined) q.set("offset", String(opts.offset));
+      if (opts.newestFirst !== undefined) q.set("newest_first", String(opts.newestFirst));
+      return request<ApiResp<DayBookPage>>(`/api/accounting/day-book?${q.toString()}`);
+    },
     // The Schedule III captions a mapping may be set to, served by the module
     // that does the classifying. The mapping screen used to carry its own
     // hardcoded list, which had drifted in both directions — it offered five

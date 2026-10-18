@@ -19,6 +19,7 @@ from core.exceptions import (NotFoundError, ValidationError, postgres_message,
                              document_failure_detail)
 from core.observability import capture_posting_failure, capture_soft_failure
 from core.permissions import rbac
+from core.validators import real_day_problem
 from middleware.rate_limit import ai_limit
 # filter_by_client is not called by anything below any more (its one call site
 # was the retired GET /journal list route, apex-sales-purchases-01) but stays
@@ -1070,6 +1071,56 @@ def get_ledger(
         current_user["firm_id"], client_id, account_id, start_date, end_date,
         limit=limit, offset=offset,
     ))
+
+
+#: The Day Book's ceiling for one read. `public.day_book_page` clamps to the same figure, and it is served to the
+#: screen as `max_limit` so the browser carries no copy of it.
+DAY_BOOK_MAX_LIMIT = 1000
+_DAY = r"^\d{4}-\d{2}-\d{2}$"
+
+
+@router.get("/day-book")
+def get_day_book(
+    client_id: str = Query(..., description="Whose books: required, a Day Book is one client's"),
+    start_date: Annotated[Optional[str], Query(pattern=_DAY)] = None,
+    end_date: Annotated[Optional[str], Query(pattern=_DAY)] = None,
+    newest_first: bool = Query(True),
+    limit: int = Query(500, ge=1, le=DAY_BOOK_MAX_LIMIT),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The Day Book: every POSTED entry of one client in a period, one page of it, with the whole period's
+    entry count and totals and the documents the entries came from (POST-A-091).
+
+    THE SCREEN AND THE PDF/EXCEL FILE READ THIS AND NOTHING ELSE. The screen used to read `journal_entries`
+    with every entry's lines embedded, in the browser, which is a read proportional to the ledger to answer a
+    list, and which left the export nothing to be the same as. The page is cut in the database
+    (`public.day_book_page`, migration 517, with `builders.day_book` as its mock-mode twin) and each entry's
+    debit and credit totals are summed there, so the lines never cross the wire.
+
+    `has_more` is true when entries exist beyond this page in the period; the screen says so and the file is
+    the whole period. `client_id` is required and checked against the caller's scope: a firm-wide Day Book
+    would add together the books of unrelated businesses. A failed read is an error and never an empty book:
+    with a database there is no fallback that reads the whole period."""
+    assert_client_access(current_user, client_id)
+    for label, day in (("start_date", start_date), ("end_date", end_date)):
+        problem = real_day_problem(day, label)
+        if problem:
+            raise HTTPException(status_code=422, detail=problem)
+    try:
+        page = _reporting_service(current_user).day_book(
+            current_user["firm_id"], client_id, start_date, end_date,
+            newest_first=newest_first, limit=limit, offset=offset)
+    except Exception as exc:                                    # noqa: BLE001
+        _logger.error("accounting.day_book failed: %s", exc, exc_info=True)
+        return api_response(False, None, "The Day Book could not be read. Please try again.")
+    shown = int(page.get("offset") or 0) + len(page.get("entries") or [])
+    return api_response(True, {
+        **page,
+        "returned": len(page.get("entries") or []),
+        "has_more": shown < int(page.get("total_entries") or 0),
+        "max_limit": DAY_BOOK_MAX_LIMIT,
+    })
 
 
 @router.get("/cash-book")

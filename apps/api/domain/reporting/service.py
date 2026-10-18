@@ -527,6 +527,49 @@ class ReportingService:
                 "Python builder: %s", firm_id, client_id, account_id, start, end, e)
             return fallback()
 
+    def day_book(self, firm_id: str, client_id: str,
+                 start_date: Optional[str] = None, end_date: Optional[str] = None,
+                 *, newest_first: bool = False, limit: Optional[int] = None,
+                 offset: int = 0) -> dict:
+        """One page of the Day Book: every POSTED entry of one client in a window, each with its debit
+        and credit totals, and what the whole window holds (POST-A-091).
+
+        THE SCREEN AND THE FILE ASK THIS AND NOTHING ELSE. The Day Book screen used to read
+        `journal_entries` with every entry's lines embedded, in the browser, so a second reader inside
+        an export would have let the file and the screen disagree. `public.day_book_page` (migration
+        517) cuts the page in the database and sums each entry's lines there, so the lines never cross
+        the wire; `builders.day_book` is the identical rule for the in-memory source, and
+        `tests/test_day_book_sql_parity_pg.py` holds the two identical.
+
+        WITH A DATABASE THERE IS NO FALLBACK. The ledger falls back to its Python builder when its
+        function fails, which costs one account's entries; a Day Book fallback would read the client's
+        whole window of entries and their lines, which is the read this function exists to remove, and
+        it would do it silently. A failure is raised, and the caller says so.
+        """
+        start = start_date or _fy_start()
+        end = end_date or ist_today().isoformat()
+        db = getattr(self.source, "db", None)
+        if db is None:
+            snap = self.source.snapshot(firm_id, client_id, start, end)
+            return builders.day_book(snap.entries_by_id, start, end,
+                                     newest_first=newest_first, limit=limit, offset=offset)
+        if limit is None:
+            raise ValueError("A Day Book is read a page at a time; a limit is required.")
+        try:
+            res = db.rpc("day_book_page", {
+                "p_firm": firm_id, "p_client": client_id,
+                "p_start": start, "p_end": end,
+                "p_newest_first": bool(newest_first),
+                "p_limit": int(limit), "p_offset": int(offset),
+            }).execute()
+        except Exception as e:
+            _logger.error("day_book_page failed (%s %s %s..%s): %s", firm_id, client_id, start, end, e)
+            raise
+        out = getattr(res, "data", None)
+        if not isinstance(out, dict) or "entries" not in out:
+            raise ValueError(f"day_book_page returned {type(out).__name__}, not a Day Book page")
+        return out
+
     def profit_loss(self, firm_id: str, client_id: Optional[str],
                     start_date: Optional[str], end_date: Optional[str],
                     basis: str = "accrual") -> dict:

@@ -19,7 +19,8 @@ export type ExportReport =
   | "trial-balance"
   | "cash-flow"
   | "ar-ageing"
-  | "ap-ageing";
+  | "ap-ageing"
+  | "day-book";
 
 export type ExportFormat = "pdf" | "xlsx";
 

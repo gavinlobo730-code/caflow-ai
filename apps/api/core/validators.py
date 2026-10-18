@@ -6,6 +6,7 @@ CIN:   Companies Act 2013 — 21-char: L/U + 5 digit + 2 upper state + 3 digit c
 DIN:   Companies Act 2013 §153/154 — 8-digit Director Identification Number
 TAN:   IT Act §203A — AAAA99999A (4 upper + 5 digit + 1 upper)
 """
+import datetime
 import re
 from typing import Optional
 
@@ -115,6 +116,29 @@ def validate_din(value: Optional[str]) -> Optional[str]:
     v = value.strip()
     if not _DIN_RE.match(v):
         return "DIN format is invalid. Expected: 8 digits (e.g. 00012345)."
+    return None
+
+
+_DAY_RE = re.compile(r"^([0-9]{4})-([0-9]{2})-([0-9]{2})$")
+
+
+def real_day_problem(value: Optional[str], label: str) -> Optional[str]:
+    """A sentence when `value` is not a calendar day written YYYY-MM-DD, else None (an absent value is not a problem).
+
+    A query pattern of four digits, two digits and two digits admits `2026-02-30` and `2026-13-45`, which then reach a `::date`
+    cast in the database as a 400 the route can only word as "please try again", or a 500. The door that takes a day names the day.
+    The shape is matched first and the calendar asked second, because `date.fromisoformat` also reads `20260230` and the ISO week
+    date `2026-W09-1` on newer Pythons, and which Python runs this must not decide what a day is."""
+    if value is None:
+        return None
+    problem = f"{label} {value!r} is not a real date. Write it YYYY-MM-DD."
+    match = _DAY_RE.match(value)
+    if not match:
+        return problem
+    try:
+        datetime.date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    except ValueError:
+        return problem
     return None
 
 
