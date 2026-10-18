@@ -29,6 +29,7 @@ import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
+import { formatDate } from "@/lib/dates/format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -456,7 +457,7 @@ export default function ITNoticesPage() {
                       <td className="px-3 py-3 text-xs text-ps-label">{n.assessment_year}</td>
                       <td className="px-3 py-3 text-xs text-ps-label">{n.date_received}</td>
                       <td className={`px-3 py-3 text-xs ${overdue ? "text-state-problem font-semibold" : "text-ps-label"}`}>
-                        {n.response_due_date ?? "—"}
+                        {formatDate(n.response_due_date)}
                         {overdue && " ⚠"}
                       </td>
                       <td className="px-3 py-3 text-sm tabular-nums text-right font-medium text-state-problem">

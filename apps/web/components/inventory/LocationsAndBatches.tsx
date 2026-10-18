@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { formatDate } from "@/lib/dates/format";
 
 interface Godown {
   id: string;
@@ -321,7 +322,7 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
                       {r.godown_name ?? <span className="text-ps-hint">Unallocated</span>}
                     </td>
                     <td className="px-5 py-2 text-ps-label">{r.batch_no ?? "—"}</td>
-                    <td className="px-5 py-2 text-ps-label">{r.expiry_date ?? "—"}</td>
+                    <td className="px-5 py-2 text-ps-label">{formatDate(r.expiry_date)}</td>
                     <td className="px-5 py-2 text-right tabular-nums">{r.qty_units}</td>
                     <td className="px-5 py-2 text-right tabular-nums">{formatPaise(r.value_paise)}</td>
                   </tr>
@@ -374,7 +375,7 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
                     <td className="px-5 py-2 text-ps-label">
                       {items.find((i) => i.id === b.service_catalogue_id)?.name ?? "—"}
                     </td>
-                    <td className="px-5 py-2 text-ps-label">{b.manufactured_on ?? "—"}</td>
+                    <td className="px-5 py-2 text-ps-label">{formatDate(b.manufactured_on)}</td>
                     <td className="px-5 py-2 text-ps-label">
                       {/* Not recorded is its own answer: it is not the same as
                           stock that does not expire, and the server says so on
@@ -441,7 +442,7 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
                           {expiry.bucket_labels[r.bucket]}
                         </span>
                         {r.expiry_date && (
-                          <span className="ml-1.5 text-3xs text-ps-hint">{r.expiry_date}</span>
+                          <span className="ml-1.5 text-3xs text-ps-hint">{formatDate(r.expiry_date)}</span>
                         )}
                       </td>
                     </tr>

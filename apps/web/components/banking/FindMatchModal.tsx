@@ -10,6 +10,7 @@ import { useEffect, useState, useCallback } from "react";
 import { X } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmt, rsToP, QueueTxn } from "@/components/banking/shared";
+import { formatDate } from "@/lib/dates/format";
 
 // ── "Find other matches" (B.1.6) ───────────────────────────────────────────
 // "Suggest matches" ranks the best five WITHIN an amount band, which is right
@@ -139,7 +140,7 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-ps-ink">Find other matches</h3>
             <p className="text-xs text-ps-label mt-0.5 truncate">
-              {txn.description} · {txn.transaction_date} · {fmt(txnAmount)} {isCredit ? "credit" : "debit"}
+              {txn.description} · {formatDate(txn.transaction_date)} · {fmt(txnAmount)} {isCredit ? "credit" : "debit"}
             </p>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
@@ -216,7 +217,7 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
               <div className="min-w-0">
                 <p className="text-2xs text-ps-body truncate">{r.label}</p>
                 <p className="text-3xs text-ps-hint">
-                  {r.entity_date ?? "—"} · {fmt(r.amount_paise)}
+                  {formatDate(r.entity_date)} · {fmt(r.amount_paise)}
                   {r.outstanding_paise !== null && r.outstanding_paise !== r.amount_paise
                     ? ` · ${fmt(r.outstanding_paise)} open` : ""}
                   {" · "}{r.summary}

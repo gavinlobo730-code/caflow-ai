@@ -27,6 +27,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { formatDate } from "@/lib/dates/format";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -470,7 +471,7 @@ export default function RecurringPage() {
                     <td className="px-3 py-2.5 text-xs text-ps-label">{freqLabel(t.frequency)}</td>
                     <td className="px-3 py-2.5 text-xs">
                       <span className={due ? "text-state-attention font-medium" : "text-ps-label"}>
-                        {t.next_run_date}
+                        {formatDate(t.next_run_date)}
                       </span>
                       {t.status !== "active" && (
                         <Badge className="ml-2 bg-ps-muted text-ps-label">{t.status}</Badge>
@@ -570,7 +571,7 @@ export default function RecurringPage() {
                 <tbody className="divide-y divide-ps-border">
                   {runs.map(r => (
                     <tr key={r.id}>
-                      <td className="px-5 py-2 text-xs text-ps-label">{r.occurrence_date}</td>
+                      <td className="px-5 py-2 text-xs text-ps-label">{formatDate(r.occurrence_date)}</td>
                       <td className="px-3 py-2 text-xs">
                         {r.status === "generated"
                           ? <span className="text-green-700">Draft created</span>

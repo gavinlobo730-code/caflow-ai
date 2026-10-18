@@ -51,6 +51,7 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 import { objectWithLists } from "@/lib/api/shape";
 import { PageHeader } from "@/components/ui/page-header";
+import { formatDate } from "@/lib/dates/format";
 
 export default function MSME43BHPage() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -267,7 +268,7 @@ export default function MSME43BHPage() {
                       <tr key={b.bill_id} className={b.disallowed_paise > 0 ? "bg-state-problem-surface/40" : ""}>
                         <td className="px-5 py-3 text-sm font-medium text-ps-ink">{b.vendor_name}</td>
                         <td className="px-3 py-3 text-xs font-mono text-ps-label">{b.bill_no ?? "—"}</td>
-                        <td className="px-3 py-3 text-xs text-ps-label">{b.bill_date ?? "—"}</td>
+                        <td className="px-3 py-3 text-xs text-ps-label">{formatDate(b.bill_date)}</td>
                         <td className="px-3 py-3 text-xs text-ps-label" title={b.limit_source}>
                           {b.limit_days == null ? "—" : `${b.limit_days} days`}
                         </td>
@@ -351,7 +352,7 @@ function MsmedInterestPanel({ interest }: { interest: MSMEDInterest }) {
             </p>
           </div>
           <div className="text-right shrink-0">
-            <p className="text-xs text-ps-label">As at {interest.as_at ?? "—"}</p>
+            <p className="text-xs text-ps-label">As at {formatDate(interest.as_at)}</p>
             <p className="text-2xl font-bold tabular-nums mt-0.5 text-ps-ink">
               {unknownRate ? "—" : formatPaise(interest.interest_paise ?? 0)}
             </p>
@@ -386,9 +387,9 @@ function MsmedInterestPanel({ interest }: { interest: MSMEDInterest }) {
                 <td className="px-3 py-2.5 text-ps-ink">{a.vendor_name}</td>
                 <td className="px-3 py-2.5 text-ps-label">{a.bill_no ?? "—"}</td>
                 <td className="px-3 py-2.5 tabular-nums text-right">{formatPaise(a.principal_paise)}</td>
-                <td className="px-3 py-2.5 text-ps-label tabular-nums">{a.from_date ?? "—"}</td>
+                <td className="px-3 py-2.5 text-ps-label tabular-nums">{formatDate(a.from_date)}</td>
                 <td className="px-3 py-2.5 text-ps-label tabular-nums">
-                  {a.to_date ?? "—"}
+                  {formatDate(a.to_date)}
                   {a.still_running && (
                     <span className="ml-1.5 text-3xs text-state-attention">still accruing</span>
                   )}

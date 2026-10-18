@@ -33,6 +33,7 @@ import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { formatDate } from "@/lib/dates/format";
 
 const FREQUENCIES = ["weekly", "monthly", "quarterly", "half_yearly", "yearly"] as const;
 type Frequency = (typeof FREQUENCIES)[number];
@@ -821,7 +822,7 @@ function RecurringBillHistory({
                 <tbody>
                   {runs.map((r) => (
                     <tr key={r.id} className="border-t border-ps-border">
-                      <td className="py-1.5 tabular-nums text-ps-label">{r.occurrence_date}</td>
+                      <td className="py-1.5 tabular-nums text-ps-label">{formatDate(r.occurrence_date)}</td>
                       <td className="py-1.5 text-ps-ink">
                         {r.status === "failed" ? (
                           <span className="text-state-problem">

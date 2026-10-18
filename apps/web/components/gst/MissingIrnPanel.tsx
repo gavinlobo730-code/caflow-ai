@@ -31,6 +31,7 @@ import { StatutoryNotes } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { documentTarget } from "@/lib/accounting/sourceDocument";
 import { irnStateText, windowText, windowTone } from "@/lib/gst/irnWorklist";
+import { formatDate } from "@/lib/dates/format";
 
 const TONE_CLASS = {
   problem: "text-state-problem",
@@ -126,7 +127,7 @@ export function MissingIrnPanel({ clientId }: { clientId?: string | null }) {
                   </td>
                   {firm && <td className="px-5 py-2 text-ps-body">{r.client_name || "—"}</td>}
                   <td className="px-5 py-2 text-ps-body">{r.customer_name || "—"}</td>
-                  <td className="px-5 py-2 text-ps-body">{r.invoice_date}</td>
+                  <td className="px-5 py-2 text-ps-body">{formatDate(r.invoice_date)}</td>
                   <td className="px-5 py-2 text-right font-mono tabular-nums text-ps-body">
                     {formatPaise(r.total_paise)}
                   </td>

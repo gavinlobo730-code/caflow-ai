@@ -610,7 +610,7 @@ function AccountingDashboard({
             <tbody className="divide-y divide-ps-border">
               {recentEntries.map((e) => (
                 <tr key={e.id} className="hover:bg-ps-bg">
-                  <td className="px-4 py-2.5 text-ps-label whitespace-nowrap w-24">{e.entry_date}</td>
+                  <td className="px-4 py-2.5 text-ps-label whitespace-nowrap w-24">{formatDate(e.entry_date)}</td>
                   <td className="px-3 py-2.5 text-ps-body truncate max-w-xs">{e.narration}</td>
                   <td className="px-3 py-2.5 text-ps-hint">{e.entry_type}</td>
                   <td className="px-4 py-2.5">
@@ -1089,7 +1089,7 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
   // would rebuild the bulk actions on every keystroke in the table's search box.
   const journalColumns: Column<JournalEntry>[] = useMemo(() => [
     { key: "entry_date", header: "Date", accessor: (e) => e.entry_date, sortable: true, sticky: true, hideable: false, width: "7rem",
-      render: (e) => <span className="text-ps-label whitespace-nowrap">{e.entry_date}</span> },
+      render: (e) => <span className="text-ps-label whitespace-nowrap">{formatDate(e.entry_date)}</span> },
     { key: "reference_no", header: "Ref", accessor: (e) => e.reference_no ?? "", searchable: true,
       render: (e) => <span className="font-mono text-ps-hint">{e.reference_no || "—"}</span> },
     { key: "narration", header: "Narration", accessor: (e) => e.narration, searchable: true,
@@ -1492,7 +1492,7 @@ function LedgerDrillDown({
   // reorders rows but never recomputes it (Phase 3.4: no accounting math in React).
   const ledgerColumns: Column<LedgerLine>[] = [
     { key: "entry_date", header: "Date", accessor: (l) => l.entry_date, sortable: true, sticky: true, hideable: false, width: "7rem",
-      render: (l) => <span className="text-ps-label whitespace-nowrap">{l.entry_date}</span> },
+      render: (l) => <span className="text-ps-label whitespace-nowrap">{formatDate(l.entry_date)}</span> },
     { key: "narration", header: "Particulars", accessor: (l) => l.narration ?? "", searchable: true,
       render: (l) => <span className="text-ps-body">{l.narration ?? "—"}</span> },
     { key: "reference_no", header: "Ref", accessor: (l) => l.reference_no ?? "", searchable: true,
@@ -2161,7 +2161,7 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
             <tbody className="divide-y divide-ps-border">
               {lines.map((l, i) => (
                 <tr key={i} className="hover:bg-ps-bg">
-                  <td className="px-3 py-2 text-ps-label">{l.date}</td>
+                  <td className="px-3 py-2 text-ps-label">{formatDate(l.date)}</td>
                   <td className="px-3 py-2 text-ps-label">{(l.document_type ?? "").replace(/_/g, " ")}</td>
                   <td className="px-3 py-2"><CcyBadge code={l.currency} /></td>
                   <td className="px-3 py-2 text-right font-mono text-ps-label">{l.settlement_rate ?? "—"}</td>
@@ -2197,7 +2197,7 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
           <tbody className="divide-y divide-ps-border">
             {lines.map((l, i) => (
               <tr key={i} className="hover:bg-ps-bg">
-                <td className="px-3 py-2 text-ps-label">{l.period_end}</td>
+                <td className="px-3 py-2 text-ps-label">{formatDate(l.period_end)}</td>
                 <td className="px-3 py-2"><CcyBadge code={l.currency} /></td>
                 <td className="px-3 py-2 text-ps-label capitalize">{l.item_type}</td>
                 <td className="px-3 py-2 text-right font-mono text-ps-label">{l.closing_rate ?? "—"}</td>
@@ -2284,7 +2284,7 @@ function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
           <tbody className="divide-y divide-ps-border">
             {docs.map((r, i) => (
               <tr key={i} className="hover:bg-ps-bg">
-                <td className="px-3 py-2 text-ps-label">{r.date}</td>
+                <td className="px-3 py-2 text-ps-label">{formatDate(r.date)}</td>
                 <td className="px-3 py-2 text-ps-label">{r.document_no}</td>
                 <td className="px-3 py-2"><CcyBadge code={r.currency} /></td>
                 <td className="px-3 py-2 text-right font-mono text-ps-body">{r.exchange_rate}</td>

@@ -62,6 +62,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { formatDate } from "@/lib/dates/format";
 
 /** Anything the compute endpoint accepts. The calculator and the register
  *  have different vocabularies and the backend takes the union of both. */
@@ -897,8 +898,8 @@ export default function CapitalGainsPage() {
                         <tr key={r.id} className="hover:bg-ps-bg">
                           <td className="px-4 py-3 font-medium text-ps-ink max-w-[160px] truncate">{r.asset_description}</td>
                           <td className="px-4 py-3 text-ps-label text-xs">{ASSET_TYPES_REG.find(a => a.value === r.asset_type)?.label ?? r.asset_type}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.purchase_date}</td>
-                          <td className="px-4 py-3 text-ps-label">{r.sale_date}</td>
+                          <td className="px-4 py-3 text-ps-label">{formatDate(r.purchase_date)}</td>
+                          <td className="px-4 py-3 text-ps-label">{formatDate(r.sale_date)}</td>
                           <td className="px-4 py-3 text-right text-ps-body">{fmtRs(r.purchase_cost_paise)}</td>
                           <td className="px-4 py-3 text-right text-ps-body">{fmtRs(r.sale_value_paise)}</td>
                           <td className="px-4 py-3 text-right text-ps-label text-xs">{r.indexed_cost_paise != null ? fmtRs(r.indexed_cost_paise) : "—"}</td>

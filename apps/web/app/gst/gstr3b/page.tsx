@@ -51,7 +51,7 @@ import {
 } from "@/lib/data/gst";
 import { periodEndDate, splitRule37Bills } from "@/lib/gst/rule37Period";
 import { financialYearOfMonth } from "@/lib/dates/periods";
-import { formatMonthYear } from "@/lib/dates/format";
+import { formatMonthYear, formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { DateInput } from "@/components/ui/date-input";
 import { PageHeader } from "@/components/ui/page-header";
@@ -1088,7 +1088,7 @@ export default function GSTR3BPage() {
                           <span>
                             <span className="font-mono">{b.bill_no ?? b.bill_id.slice(0, 8)}</span>
                             <span className="text-state-attention ml-2">
-                              {b.bill_date} · {b.days_outstanding} days · {r(b.unpaid_paise)} unpaid
+                              {formatDate(b.bill_date)} · {b.days_outstanding} days · {r(b.unpaid_paise)} unpaid
                             </span>
                           </span>
                             <span className="font-mono shrink-0">{r(b.reversal.total_paise)}</span>

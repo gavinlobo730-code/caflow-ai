@@ -9,6 +9,7 @@ import {
 } from "@/lib/data/income-tax";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
+import { formatDate } from "@/lib/dates/format";
 
 /** One income the CA has put forward for §234C(1)'s proviso. The tax is held as
  *  TEXT and parsed with the one money parser by the page that owns the rows. */
@@ -132,7 +133,7 @@ export function UnforeseenIncomePanel({
               <div key={c.register_id ?? `${c.arose_on}-${c.description}`}
                    className="flex flex-wrap items-center justify-between gap-2 text-xs">
                 <span>
-                  <strong>{c.description || "Transfer"}</strong> — arose {c.arose_on}, gain{" "}
+                  <strong>{c.description || "Transfer"}</strong> — arose {formatDate(c.arose_on)}, gain{" "}
                   {formatPaise(c.gain_paise)}, tax about {formatPaise(c.tax_paise)}
                   {c.is_estimate && <span className="text-ps-hint"> (estimate)</span>}
                 </span>
@@ -187,7 +188,7 @@ export function UnforeseenIncomePanel({
                 ? <span className="inline-flex items-center gap-1 text-state-ready bg-state-ready-surface px-2 py-0.5 rounded-full shrink-0"><CheckCircle size={11} /> Excused</span>
                 : <span className="inline-flex items-center gap-1 text-state-attention bg-state-attention-surface px-2 py-0.5 rounded-full shrink-0"><AlertTriangle size={11} /> Not excused</span>}
               <span className="text-ps-label">
-                {ln.description || ln.kind} — {ln.arose_on}, tax {formatPaise(ln.tax_paise)}. {ln.reason}
+                {ln.description || ln.kind} — {formatDate(ln.arose_on)}, tax {formatPaise(ln.tax_paise)}. {ln.reason}
               </span>
             </div>
           ))}

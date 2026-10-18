@@ -23,6 +23,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
 
 interface PlanRow {
   currency: string;
@@ -107,7 +108,7 @@ export default function FxRevaluationPanel({
   if (plan.rows.length === 0) {
     return (
       <div className="bg-ps-bg border border-ps-border rounded-lg px-3 py-2 text-xs text-ps-label">
-        No open foreign monetary items at {plan.period_end}, so AS 11 has nothing to
+        No open foreign monetary items at {formatDate(plan.period_end)}, so AS 11 has nothing to
         retranslate.
       </div>
     );
@@ -143,12 +144,12 @@ export default function FxRevaluationPanel({
     <div className="bg-white rounded-xl border border-ps-border p-3 space-y-3">
       <div>
         <p className="text-xs font-semibold text-ps-body">
-          Revalue open foreign items at {plan.period_end}
+          Revalue open foreign items at {formatDate(plan.period_end)}
         </p>
         <p className="text-2xs text-ps-hint mt-0.5">
           AS 11 retranslates a monetary item at the closing rate on the balance sheet
           date and takes the difference to the profit and loss account. The entry is
-          posted at {plan.period_end} and auto-reversed on {plan.reversal_date}, so the
+          posted at {formatDate(plan.period_end)} and auto-reversed on {formatDate(plan.reversal_date)}, so the
           documents keep their original booking rates.
         </p>
       </div>

@@ -40,6 +40,7 @@ import {
 } from "@/components/banking/shared";
 import type { Entry } from "@/components/banking/EntriesTab";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
 
 interface EntryDetail extends Entry {
   suggestions: MatchSuggestion[];
@@ -309,7 +310,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
 
   return (
     <Shell onClose={onClose} title={t.parsed?.counterparty || t.description}
-      note={<>{t.transaction_date} · <span className="font-mono">{fmt(amount)}</span> {t.credit_paise > 0 ? "received" : "spent"} · {KIND_LABEL[t.kind]}</>}
+      note={<>{formatDate(t.transaction_date)} · <span className="font-mono">{fmt(amount)}</span> {t.credit_paise > 0 ? "received" : "spent"} · {KIND_LABEL[t.kind]}</>}
       footer={
         <>
           {editable && (

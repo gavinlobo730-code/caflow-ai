@@ -47,6 +47,7 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { formatPaise } from "@/lib/money/format";
 import { BLANK_LOT, clockText, clockTone, lotBody, type LotForm } from "@/lib/gst/itc04";
+import { formatDate } from "@/lib/dates/format";
 
 const TONE_CLASS = {
   problem: "text-state-problem",
@@ -216,7 +217,7 @@ export function Itc04Panel({ clientId, onChanged }: {
                     >
                       <span className="block font-medium text-ps-ink">{w.label}</span>
                       <span className="block text-ps-label">
-                        due {w.due_date} · {w.table_4_rows ?? 0} sent · {w.table_5a_rows ?? 0} returned
+                        due {formatDate(w.due_date)} · {w.table_4_rows ?? 0} sent · {w.table_5a_rows ?? 0} returned
                       </span>
                     </button>
                   ))}
@@ -229,7 +230,7 @@ export function Itc04Panel({ clientId, onChanged }: {
             <div className="px-5 py-3 border-b border-ps-border space-y-4">
               <p className="text-xs text-ps-label">
                 {sel.label} · {sel.start} to {sel.end}
-                {" "}· due {sel.due_date}
+                {" "}· due {formatDate(sel.due_date)}
               </p>
 
               <div>
@@ -260,7 +261,7 @@ export function Itc04Panel({ clientId, onChanged }: {
                                   {r.job_worker?.gstin || (r.job_worker?.state_code ? `State ${r.job_worker.state_code}` : "not identified")}
                                 </span>
                               </td>
-                              <td className="py-1 pr-3 text-ps-body">{r.challan_no} · {r.challan_date}</td>
+                              <td className="py-1 pr-3 text-ps-body">{r.challan_no} · {formatDate(r.challan_date)}</td>
                               <td className="py-1 pr-3 text-ps-body">{r.type_of_goods ?? "—"}</td>
                               <td className="py-1 pr-3 text-ps-body">{r.description}</td>
                               <td className="py-1 pr-3 text-ps-body">{r.hsn_sac || "—"}</td>
@@ -308,7 +309,7 @@ export function Itc04Panel({ clientId, onChanged }: {
                           {arrayOrEmpty<Itc04Table5aRow>(t5.rows).map((r, i) => (
                             <tr key={`${r.challan_line_id}-${r.returned_on}-${i}`}
                                 className="border-b border-ps-border last:border-0 align-top">
-                              <td className="py-1 pr-3 text-ps-body">{r.original_challan_no} · {r.original_challan_date}</td>
+                              <td className="py-1 pr-3 text-ps-body">{r.original_challan_no} · {formatDate(r.original_challan_date)}</td>
                               <td className="py-1 pr-3 text-ps-body">
                                 {r.job_worker_challan_no
                                   ? `${r.job_worker_challan_no}${r.job_worker_challan_date ? ` · ${r.job_worker_challan_date}` : ""}`
@@ -316,7 +317,7 @@ export function Itc04Panel({ clientId, onChanged }: {
                               </td>
                               <td className="py-1 pr-3 text-ps-body">{r.nature_of_job_work || "not recorded"}</td>
                               <td className="py-1 pr-3 text-ps-body">
-                                {r.returned_on}
+                                {formatDate(r.returned_on)}
                                 {r.derived_from_whole_challan_return && (
                                   <span className="block text-ps-hint">whole challan, not itemised</span>
                                 )}
@@ -362,7 +363,7 @@ export function Itc04Panel({ clientId, onChanged }: {
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-mono text-sm text-ps-ink">{b.challan_no}</span>
                     <span className="text-xs text-ps-label">
-                      sent {b.challan_date} to {b.job_worker?.name || "a job worker not named"}
+                      sent {formatDate(b.challan_date)} to {b.job_worker?.name || "a job worker not named"}
                     </span>
                     <ClockLine clock={objectOrNull<DeemedSupplyClock>(b.clock)} />
                   </div>

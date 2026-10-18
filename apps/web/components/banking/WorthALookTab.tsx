@@ -33,6 +33,7 @@ import { fmt } from "@/components/banking/shared";
 import { toLocalISO } from "@/lib/dateMath";
 import { GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { formatDate } from "@/lib/dates/format";
 
 /** The previous whole month, on the LOCAL calendar — the period a partner
  *  reviews, and a complete one, since half of this month is not a review.
@@ -160,7 +161,7 @@ function Row({ row }: { row: WorthALookRow }) {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="min-w-0">
           <span className="text-xs font-medium text-ps-ink">{row.payee_name || "—"}</span>
-          <span className="text-2xs text-ps-hint"> · {row.transaction_date}</span>
+          <span className="text-2xs text-ps-hint"> · {formatDate(row.transaction_date)}</span>
           {row.matched_document_no && (
             <span className="text-2xs text-ps-hint"> · {row.matched_document_no}</span>
           )}

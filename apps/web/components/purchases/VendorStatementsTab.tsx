@@ -11,6 +11,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { objectWithLists } from "@/lib/api/shape";
 import { DateInput } from "@/components/ui/date-input";
+import { formatDate } from "@/lib/dates/format";
 
 /**
  * The supplier's account, as the client's books have it.
@@ -233,7 +234,7 @@ export function VendorStatementsTab({ clientId }: { clientId: string }) {
               <div>
                 <h3 className="text-sm font-semibold text-ps-ink">{stmt.vendor.name}</h3>
                 <p className="text-2xs text-ps-hint">
-                  {stmt.period.start_date} to {stmt.period.end_date}
+                  {formatDate(stmt.period.start_date)} to {formatDate(stmt.period.end_date)}
                   {stmt.vendor.gstin ? ` · ${stmt.vendor.gstin}` : ""}
                 </p>
               </div>
@@ -264,7 +265,7 @@ export function VendorStatementsTab({ clientId }: { clientId: string }) {
                 </tr>
                 {stmt.transactions.map((t, i) => (
                   <tr key={`${t.type}-${t.reference ?? i}-${i}`} className="hover:bg-ps-hover">
-                    <td className="px-5 py-2.5 text-ps-label whitespace-nowrap">{t.date}</td>
+                    <td className="px-5 py-2.5 text-ps-label whitespace-nowrap">{formatDate(t.date)}</td>
                     <td className="px-3 py-2.5 text-ps-ink">{t.particulars}</td>
                     <td className="px-3 py-2.5 text-ps-hint">{t.reference ?? "—"}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-ps-body">{amount(t.debit_paise)}</td>

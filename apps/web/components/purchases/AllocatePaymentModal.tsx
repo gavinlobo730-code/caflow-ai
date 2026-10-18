@@ -46,6 +46,7 @@ import {
 } from "@/lib/purchases/paymentAllocation";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
 
 type OpenBill = {
   id: string;
@@ -221,7 +222,7 @@ export default function AllocatePaymentModal({
                     return (
                       <tr key={bill.id} className="border-b border-ps-border">
                         <td className="py-1.5 pr-2 font-mono text-ps-ink">{billLabel(bill)}</td>
-                        <td className="py-1.5 pr-2 text-ps-label">{bill.bill_date}</td>
+                        <td className="py-1.5 pr-2 text-ps-label">{formatDate(bill.bill_date)}</td>
                         <td className="py-1.5 pr-2 text-right font-mono">{fmt(bill.net_payable_paise)}</td>
                         <td className="py-1.5 pr-2 text-right font-mono text-state-attention">
                           {fmt(ceilingFor(bill))}

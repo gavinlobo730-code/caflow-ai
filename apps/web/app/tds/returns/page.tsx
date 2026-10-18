@@ -28,6 +28,7 @@ import {
 } from "@/lib/data/tds";
 import { Callout, GapList } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { formatDate } from "@/lib/dates/format";
 
 function r(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
@@ -399,7 +400,7 @@ export default function TDSReturnsPage() {
                   <div className="text-xs text-ps-label space-y-1">
                     <p>Form: <strong>{result.form}</strong>{result.act ? ` (${result.act})` : ""}</p>
                     <p>TAN: <strong className="font-mono">{result.tan}</strong></p>
-                    <p>Period: <strong>{result.financial_year} — {result.quarter} (ends {result.quarter_end_date})</strong></p>
+                    <p>Period: <strong>{result.financial_year} — {result.quarter} (ends {formatDate(result.quarter_end_date)})</strong></p>
                     <p>Deductor: <strong>{result.deductor_name}</strong></p>
                     {result.source && <p>Built from: <strong>{result.source.replace(/_/g, " ")}</strong></p>}
                     {result.reconciliation && (
@@ -491,7 +492,7 @@ export default function TDSReturnsPage() {
                           <tr key={i} className="bg-white">
                             <td className="px-3 py-2 font-mono">{c.challan_no}</td>
                             <td className="px-3 py-2 font-mono">{c.bsr_code}</td>
-                            <td className="px-3 py-2">{c.payment_date}</td>
+                            <td className="px-3 py-2">{formatDate(c.payment_date)}</td>
                             <td className="px-3 py-2 text-right">{r(c.tds_paise)}</td>
                             <td className="px-3 py-2 text-right">{r(c.interest_paise ?? 0)}</td>
                             <td className="px-3 py-2 text-right font-semibold">{r(c.total_paise)}</td>

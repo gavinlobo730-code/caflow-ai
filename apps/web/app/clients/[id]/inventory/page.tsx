@@ -34,6 +34,7 @@ import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { formatDate } from "@/lib/dates/format";
 interface StockItem {
   id: string;
   name: string;
@@ -367,7 +368,7 @@ export default function InventoryPage() {
   // against September would describe a different year.
   const asAtColumns: Column<StockItem>[] = [
     { key: "last_movement_date", header: "Last Moved", accessor: (i) => i.last_movement_date ?? "", sortable: true,
-      render: (i) => <span className="text-ps-label">{i.last_movement_date ?? "—"}</span> },
+      render: (i) => <span className="text-ps-label">{formatDate(i.last_movement_date)}</span> },
     { key: "days_idle", header: "Days Idle", accessor: (i) => daysIdle(i.last_movement_date, asAt) ?? -1,
       sortable: true, align: "right",
       exportValue: (i) => daysIdle(i.last_movement_date, asAt) ?? "",
@@ -679,7 +680,7 @@ function StockLedgerDrillDown({
               <tbody className="divide-y divide-ps-border">
                 {opening ? (
                   <tr className="bg-ps-bg">
-                    <td className="px-3 py-2 text-ps-label whitespace-nowrap">{opening.as_at ?? "—"}</td>
+                    <td className="px-3 py-2 text-ps-label whitespace-nowrap">{formatDate(opening.as_at)}</td>
                     <td className="px-3 py-2 text-ps-body font-medium" colSpan={2}>Opening Balance</td>
                     <td className="px-3 py-2" />
                     <td className="px-3 py-2" />
@@ -691,7 +692,7 @@ function StockLedgerDrillDown({
                   const delta = parseFloat(l.quantity_delta);
                   return (
                     <tr key={l.id} className="hover:bg-ps-bg">
-                      <td className="px-3 py-2 text-ps-label whitespace-nowrap">{l.movement_date}</td>
+                      <td className="px-3 py-2 text-ps-label whitespace-nowrap">{formatDate(l.movement_date)}</td>
                       <td className="px-3 py-2 text-ps-body">{MOVEMENT_LABELS[l.movement_type] ?? l.movement_type}</td>
                       <td className="px-3 py-2 font-mono text-ps-hint">{l.reference_no ?? "—"}</td>
                       <td className={`px-3 py-2 text-right font-mono ${delta >= 0 ? "text-green-700" : "text-state-problem"}`}>
@@ -708,7 +709,7 @@ function StockLedgerDrillDown({
                 })}
                 {closing ? (
                   <tr className="bg-ps-bg border-t-2 border-ps-border">
-                    <td className="px-3 py-2 text-ps-label whitespace-nowrap">{closing.as_at ?? "—"}</td>
+                    <td className="px-3 py-2 text-ps-label whitespace-nowrap">{formatDate(closing.as_at)}</td>
                     <td className="px-3 py-2 text-ps-body font-medium" colSpan={2}>Closing Balance</td>
                     <td className="px-3 py-2" />
                     <td className="px-3 py-2" />

@@ -40,6 +40,7 @@ import { Callout } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
 
 function money(paise?: number | null) {
   const p = Number(paise ?? 0);
@@ -431,7 +432,7 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
                 {advances.unadjusted_advances.map((a) => (
                   <tr key={a.receipt_id} className="border-b border-ps-border">
                     <td className="py-1.5 pr-2 font-mono text-ps-ink">{a.receipt_no ?? "—"}</td>
-                    <td className="py-1.5 pr-2 text-ps-label">{a.receipt_date ?? "—"}</td>
+                    <td className="py-1.5 pr-2 text-ps-label">{formatDate(a.receipt_date)}</td>
                     <td className="py-1.5 pr-2 text-ps-label">
                       {a.customer_name ?? "—"}
                       {a.customer_gstin && (

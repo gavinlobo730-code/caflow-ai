@@ -153,7 +153,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
           <div>
             <p className="text-base font-semibold text-ps-ink">Renew this DSC</p>
             <p className="text-2xs text-ps-label mt-0.5">
-              {record.holder_name} · {record.dsc_type} · expires {record.expiry_date}
+              {record.holder_name} · {record.dsc_type} · expires {formatDate(record.expiry_date)}
             </p>
           </div>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-body">

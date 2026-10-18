@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { formatDate } from "@/lib/dates/format";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -452,7 +453,7 @@ export default function RetainerPage() {
                         {sched ? (CADENCES.find(c => c.value === sched.cadence)?.label ?? sched.cadence) : "—"}
                       </td>
                       <td className="px-3 py-3 text-xs text-ps-label">
-                        {sched?.next_run_date ?? "—"}
+                        {formatDate(sched?.next_run_date)}
                       </td>
                       <td className="px-3 py-3">
                         {/* Whether this month's returns are filed is

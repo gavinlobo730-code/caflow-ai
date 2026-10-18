@@ -158,7 +158,7 @@ export function ItcTimeBarRadar({ clientId }: { clientId: string }) {
                       <td className="py-1.5 pr-3">
                         {it.label || "—"}
                         <span className="block text-3xs text-ps-hint">
-                          {KIND_LABEL[it.kind]} · {it.document_date}
+                          {KIND_LABEL[it.kind]} · {formatDate(it.document_date)}
                         </span>
                       </td>
                       <td className="py-1.5 pr-3">

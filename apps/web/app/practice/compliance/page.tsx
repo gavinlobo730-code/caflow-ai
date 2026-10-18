@@ -11,6 +11,7 @@ import { objectOrNull } from "@/lib/api/shape";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
 import { PageHeader } from "@/components/ui/page-header";
+import { formatDate } from "@/lib/dates/format";
 
 // Compliance lifecycle (mirrors the server-side VALID_TRANSITIONS — presentation
 // only; the backend is the source of truth and rejects invalid transitions).
@@ -245,7 +246,7 @@ function ComplianceDashboard() {
                     <td className="px-3 py-2.5 font-medium text-ps-ink">{o.period_label ?? o.obligation_type ?? "—"}</td>
                     <td className="px-3 py-2.5 text-gray-500">{o.compliance_type}</td>
                     <td className={`px-3 py-2.5 whitespace-nowrap ${overdue ? "text-red-600 font-medium" : "text-gray-600"}`}>
-                      {overdue && <AlertTriangle size={11} className="inline mr-1 -mt-0.5" />}{o.due_date}
+                      {overdue && <AlertTriangle size={11} className="inline mr-1 -mt-0.5" />}{formatDate(o.due_date)}
                     </td>
                     <td className="px-3 py-2.5">
                       <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${STATUS_BADGE[o.status] ?? "bg-gray-100 text-gray-600"}`}>{o.status}</span>

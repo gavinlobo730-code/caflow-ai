@@ -5,6 +5,7 @@ import { AlertTriangle } from "lucide-react";
 import { apiGet, getAuthToken } from "@/lib/invoices/shared";
 import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
+import { formatDate } from "@/lib/dates/format";
 
 /**
  * Cash Book — every Cash ledger in date order, and the one rule cash has.
@@ -185,7 +186,7 @@ export function CashRegister({ clientId }: { clientId: string }) {
                 <tbody>
                   {a.lines.map((l, i) => (
                     <tr key={`${a.account_id}-${i}`} className="border-b border-ps-border">
-                      <td className="px-4 py-1.5 whitespace-nowrap">{l.entry_date}</td>
+                      <td className="px-4 py-1.5 whitespace-nowrap">{formatDate(l.entry_date)}</td>
                       <td className="px-4 py-1.5">{l.narration ?? l.reference_no ?? ""}</td>
                       <td className="px-4 py-1.5 text-right font-mono">
                         {l.debit_paise ? rupees(l.debit_paise) : ""}

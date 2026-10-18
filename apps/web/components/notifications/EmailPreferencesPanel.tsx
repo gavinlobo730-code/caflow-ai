@@ -25,6 +25,7 @@ import { api } from "@/lib/api";
 import type { EmailLogRow, EmailPreferenceEvent } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
+import { formatDate } from "@/lib/dates/format";
 
 /** `true` or `false` only when the server said so; anything else is "not told". */
 function readMailEnabled(data: unknown): boolean | null {
@@ -152,7 +153,7 @@ export function EmailPreferencesPanel() {
                 <li key={row.id} className="flex justify-between gap-3 text-xs text-ps-label">
                   <span>{row.event_type.replace(/_/g, " ")}</span>
                   <span className={row.status === "failed" ? "text-state-problem" : "text-ps-hint"}>
-                    {row.status === "failed" ? "could not be delivered" : "sent"} · {row.sent_for_date}
+                    {row.status === "failed" ? "could not be delivered" : "sent"} · {formatDate(row.sent_for_date)}
                   </span>
                 </li>
               ))}

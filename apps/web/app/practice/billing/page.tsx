@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { formatDate } from "@/lib/dates/format";
 
 interface Schedule {
   id: string; client_id: string; arrangement: string; cadence: string;
@@ -222,7 +223,7 @@ function Billing() {
                 <td className="px-4 py-2.5 text-brand">{clientName(s.client_id)}</td>
                 <td className="px-4 py-2.5 text-gray-600 capitalize">{s.cadence}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(s.amount_paise)}</td>
-                <td className="px-4 py-2.5 text-gray-600">{s.next_run_date ?? "—"}</td>
+                <td className="px-4 py-2.5 text-gray-600">{formatDate(s.next_run_date)}</td>
                 <td className="px-4 py-2.5 text-right">
                   <Button variant="plain" size="none" disabled={rowBusy} onClick={() => generate(s.id)} className="text-xs text-blue-600 hover:underline">Generate draft</Button>
                 </td>

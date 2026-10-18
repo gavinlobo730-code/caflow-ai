@@ -14,7 +14,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
 import { todayLocalISO } from "@/lib/dateMath";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, formatDateTime } from "@/lib/dates/format";
 import { fyRangeFor } from "@/lib/dates/periods";
 import { CwipTab } from "@/components/fixed-assets/CwipTab";
 import { OpeningRegisterImportButton } from "@/components/fixed-assets/OpeningRegisterImport";
@@ -1455,7 +1455,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
               {runResult.assets.filter(a => a.reason).map(a => (
                 <li key={a.asset_id} className="text-2xs text-amber-800">
                   <span className="font-medium">{a.asset_code ?? a.asset_name}</span>
-                  {a.months_posted > 0 && <> — {a.months_posted} posted, then</>} stopped at {a.stopped_at}: {a.reason}
+                  {a.months_posted > 0 && <> — {a.months_posted} posted, then</>} stopped at {formatDateTime(a.stopped_at)}: {a.reason}
                 </li>
               ))}
             </ul>
@@ -2200,7 +2200,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
           <p className="text-xs font-semibold text-ps-body mb-2">Disposed in FY {financialYear} ({disposedThisYear.length})</p>
           {disposedThisYear.length === 0 ? <p className="text-xs text-ps-hint">No disposals in this financial year.</p> : (
             <ul className="space-y-1">{disposedThisYear.slice(0, 5).map(a => (
-              <li key={a.id} className="text-xs text-ps-label">{a.asset_name}<span className="text-ps-hint"> · {a.disposal_date}</span></li>
+              <li key={a.id} className="text-xs text-ps-label">{a.asset_name}<span className="text-ps-hint"> · {formatDate(a.disposal_date)}</span></li>
             ))}</ul>
           )}
         </div>

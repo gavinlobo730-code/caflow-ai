@@ -73,7 +73,7 @@ test("the notification reference and date are required before saving", () => {
 test("the authority is printed beside the figures", () => {
   // It is the reason these numbers may drive a deduction at all, so it belongs
   // on the card and not only in the form.
-  assert.match(code, /\{first\.notification_reference\} · notified \{first\.notification_date\}/);
+  assert.match(code, /\{first\.notification_reference\} · notified \{formatDate\(first\.notification_date\)\}/);
 });
 
 test("states that still deduct nothing are named, not counted", () => {

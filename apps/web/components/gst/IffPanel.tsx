@@ -41,6 +41,7 @@ import { api, type IffWorking } from "@/lib/api";
 import { Callout, GapList } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { objectOrNull } from "@/lib/api/shape";
+import { formatDate } from "@/lib/dates/format";
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
                      "July", "August", "September", "October", "November",
@@ -173,7 +174,7 @@ export function IffPanel({ clientId, months: windowMonths, isQuarter, gstin }: I
             </div>
             <div>
               <dt className="text-ps-hint">Furnish by</dt>
-              <dd className="text-ps-ink font-medium">{data.due_date ?? "—"}</dd>
+              <dd className="text-ps-ink font-medium">{formatDate(data.due_date)}</dd>
             </div>
           </dl>
 

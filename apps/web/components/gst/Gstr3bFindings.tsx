@@ -28,6 +28,7 @@ import type {
   Gstr1TieOutDocuments, Gstr1TieOutRow, LateFilingBlock, ReturnPeriodWindow,
   UndeclarableRow,
 } from "@/lib/data/gst";
+import { formatDate } from "@/lib/dates/format";
 
 function rupees(paise: number): string {
   return "₹" + (paise / 100).toLocaleString("en-IN",
@@ -118,7 +119,7 @@ export function Gstr3bLateFiling({ lateFiling }: { lateFiling?: LateFilingBlock 
     <div className="rounded-lg border border-state-attention-border bg-state-attention-surface p-3 text-sm space-y-1">
       <p className="font-medium text-amber-900">
         Table 5.1 — {lf.days_late} day{lf.days_late === 1 ? "" : "s"} after the
-        due date of {lf.due_date}
+        due date of {formatDate(lf.due_date)}
       </p>
       <div className="flex justify-between text-amber-900">
         <span>§50(1) interest at 18% on the cash payable</span>

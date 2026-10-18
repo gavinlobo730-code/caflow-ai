@@ -668,7 +668,7 @@ export default function ITRFilingPage() {
               <CheckCircle size={14} className="text-green-500" />
               <div>
                 <p className="text-xs font-medium text-green-800">Filed Successfully</p>
-                <p className="text-3xs text-green-600">Ack: {selectedFiling.acknowledgement_number} · {selectedFiling.filing_date}</p>
+                <p className="text-3xs text-green-600">Ack: {selectedFiling.acknowledgement_number} · {formatDate(selectedFiling.filing_date)}</p>
               </div>
             </div>
           )}

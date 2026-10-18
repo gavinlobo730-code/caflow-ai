@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/ui/page-header";
+import { formatDate } from "@/lib/dates/format";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -312,7 +313,7 @@ export default function RelationshipIntelligencePage() {
                           {loan.interest_rate}%
                         </td>
                         <td className="px-3 py-3 text-gray-500 text-xs">
-                          {loan.sanction_date ?? "—"}
+                          {formatDate(loan.sanction_date)}
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex gap-1 flex-wrap">
@@ -378,7 +379,7 @@ export default function RelationshipIntelligencePage() {
                           </span>
                         </span>
                         {prop.acquisition_date && (
-                          <span>Acquired: {prop.acquisition_date}</span>
+                          <span>Acquired: {formatDate(prop.acquisition_date)}</span>
                         )}
                       </div>
                     </div>
