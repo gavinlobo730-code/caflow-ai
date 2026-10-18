@@ -64,10 +64,10 @@ class PermissionWriteRefused(ValueError):
 # filings name the grid; attendance, leave, tax declarations, salary history,
 # loans, perquisites, settlements, one-off earnings, bonus records and the run
 # history are scoped through the employee, settlement or run, so they follow).
-# Since migration 499 the database refuses a signed-in session ANY write to the
-# payroll records the sentence lists, except leave balances and the tax
-# declarations, which the browser still saves and which ask the person's role
-# alone (ledger POST-A-219 and POST-A-235). The privilege is the first lock and
+# Since migration 499, and 515 for leave balances, the database refuses a
+# signed-in session ANY write to the payroll records the sentence lists, except
+# the employee's own tax declaration, which the browser still saves and which
+# asks the person's role alone (ledger POST-A-219). The privilege is the first lock and
 # the write policies of 485 and 490 are the second, so the sentence says the
 # server is where a write to those records happens. It does NOT speak for the
 # payroll settings tables (a client's payroll switch, its statutory identity,
@@ -98,11 +98,11 @@ DENIAL_REACH_NOTICE = (
     "remittances or ECR filings from the browser either. A block on writing "
     "payroll is applied by the PracticeSync server, where the payroll records "
     "are written: the database refuses a signed-in browser session any write "
-    "to employees, runs, payslips, attendance, salary history, salary "
-    "structures, loans, settlements, bonus records, remittances or ECR "
-    "filings. Leave balances and tax declarations can still be saved from "
-    "the browser, and for those the database judges the person's role and "
-    "not this block. Billing works the same way for reading: a "
+    "to employees, runs, payslips, attendance, leave balances, salary "
+    "history, salary structures, loans, settlements, bonus records, "
+    "remittances or ECR filings. An employee's own tax declaration can "
+    "still be saved from the browser, and for that the database judges the "
+    "person's role and not this block. Billing works the same way for reading: a "
     "person blocked from reading "
     "billing cannot read the practice's fee engagements, fee invoices or "
     "fee receipts from the browser either. Nothing else is checked against "

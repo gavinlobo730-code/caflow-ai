@@ -21,7 +21,7 @@ from models.common import api_response
 from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn,
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn,
                            StatutoryIdentityIn, PTRegistrationIn,
-                           AttendanceIn, PayrollSettingsIn, PTSlabSetIn,
+                           AttendanceIn, LeaveBalanceIn, PayrollSettingsIn, PTSlabSetIn,
                            OneTimeEarningsIn, PayrollEnablementIn,
                            ReleaseIn, ApplyStructureIn, EmployeeImportIn)
 from core.authz import assert_client_access, filter_by_client
@@ -4889,6 +4889,66 @@ def put_attendance(
     )
     return api_response(True, {"client_id": body.client_id, "month": body.month,
                                "saved": len(rows)})
+
+
+_MOCK_LEAVE_BALANCES: dict[tuple, dict] = {}
+
+
+@router.put("/leave-balance")
+def put_leave_balance(
+    body: LeaveBalanceIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """Record one employee's leave allotment for a calendar year (POST-A-235).
+
+    The attendance screen used to upsert `leave_balances` straight over PostgREST, where the only rule was the ROLE (a
+    Manager passed, whatever the per-person grid said about payroll:write). It asks the grid here, like every other payroll
+    write, and migration 515 takes the signed-in write away.
+
+    The employee is resolved first and refused as "no such employee" when it is not in the caller's firm or client scope.
+    A row of three empty boxes is refused: it would say "recorded" and hold no entitlement (migration 428). The change is
+    written to the audit log with what it replaced, because an entitlement is what the leave in a payslip is judged against.
+    """
+    db = _db()
+    firm_id = current_user["firm_id"]
+    _assert_employee_scope(db, current_user, body.employee_id)
+
+    allotment = {
+        "casual_leave_balance": body.casual_leave_balance,
+        "sick_leave_balance": body.sick_leave_balance,
+        "earned_leave_balance": body.earned_leave_balance,
+    }
+    if all(v is None for v in allotment.values()):
+        raise HTTPException(
+            status_code=422,
+            detail=("Give at least one of casual, sick or earned leave. A row with none of them would say the allotment was "
+                    "recorded and hold no entitlement."))
+
+    if not db:
+        key = (firm_id, body.employee_id, body.year)
+        _MOCK_LEAVE_BALANCES[key] = {"firm_id": firm_id, "employee_id": body.employee_id, "year": body.year, **allotment}
+        return api_response(True, _MOCK_LEAVE_BALANCES[key])
+
+    before = (db.table("leave_balances")
+              .select("id, casual_leave_balance, sick_leave_balance, earned_leave_balance")
+              .eq("firm_id", firm_id).eq("employee_id", body.employee_id).eq("year", body.year)
+              .limit(1).execute().data) or []
+    saved = (db.table("leave_balances")
+             .upsert({"firm_id": firm_id, "employee_id": body.employee_id, "year": body.year,
+                      "casual_leave_balance": allotment["casual_leave_balance"],
+                      "sick_leave_balance": allotment["sick_leave_balance"],
+                      "earned_leave_balance": allotment["earned_leave_balance"]},
+                     on_conflict="employee_id,year")
+             .execute().data) or []
+    row = saved[0] if saved else {}
+    old = {k: before[0].get(k) for k in allotment} if before else None
+    from services.audit_service import log_event
+    log_event(
+        firm_id, "leave_balance", str(row.get("id") or body.employee_id), "update" if before else "create",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        old_data=old, new_data={"employee_id": body.employee_id, "year": body.year, **allotment},
+    )
+    return api_response(True, row)
 
 
 @router.get("/one-time-earnings")

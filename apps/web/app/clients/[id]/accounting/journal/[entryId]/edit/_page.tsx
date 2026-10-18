@@ -20,7 +20,6 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { getFirmId } from "@/lib/data/getFirmId";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { clearReports } from "@/lib/accounting/reportCache";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
@@ -109,11 +108,10 @@ export default function JournalEntryPageClient() {
     // failed timeline write must never look like a failed post.
     void (async () => {
       try {
-        const firmId = await getFirmId();
         await writeTimelineEvent({
-          client_id: clientId, firm_id: firmId, financial_year: getCurrentFinancialYear(),
+          client_id: clientId, financial_year: getCurrentFinancialYear(),
           category: "accounting", event_type: eventType, severity: "info",
-          title, description, entity_type: "journal_entry", entity_id: id, actor_type: "user",
+          title, description, entity_type: "journal_entry", entity_id: id,
         });
       } catch { /* non-blocking */ }
     })();

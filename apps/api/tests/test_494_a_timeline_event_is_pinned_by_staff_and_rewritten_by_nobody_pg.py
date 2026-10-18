@@ -11,7 +11,7 @@ WHAT IS ASSERTED, AS A REAL AUTHENTICATED SESSION
     * `authenticated` holds no table-level UPDATE and a column-level UPDATE on `is_pinned` alone;
     * a Reviewer assigned to the client pins and unpins an event;
     * the same Reviewer cannot change its title, its description, who it names, or `deleted_at`, and a Manager cannot either;
-    * insert is unaffected (the feed is still written from the browser);
+    * (since migration 515) nobody signed in INSERTS either: the feed is written by the API as the signed-in person;
     * the rollback puts the drift back, which is the negative control.
 
 Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode CI job.
@@ -122,10 +122,13 @@ def test_nobody_signed_in_rewrites_an_event(db, who, set_clause):
     assert _ok(db, f"SELECT title FROM client_timeline_events WHERE id = '{EVENT}';") == "Original title"
 
 
-def test_staff_still_write_the_feed(db):
+def test_staff_no_longer_write_the_feed_themselves(db):
+    """Since migration 515 the feed is written by the API as the signed-in person (POST-A-228): a Reviewer's own session
+    holds no INSERT, so the actor on an event cannot be chosen by the browser. (The privilege is proved in
+    test_515_*_pg.py; this keeps the 494 file honest about what became of the line it used to assert.)"""
     r = _as(db, "reviewer", f"INSERT INTO client_timeline_events (firm_id, client_id, financial_year, category, event_type, title) "
                             f"VALUES ('{FIRM}','{CLIENT}','2026-27','general','note','Added by a Reviewer');")
-    assert r.returncode == 0, r.stderr
+    assert r.returncode != 0 and "permission denied for table client_timeline_events" in r.stderr, r.stderr
 
 
 def test_its_own_rollback_puts_the_drift_back(db):

@@ -14,7 +14,6 @@ import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate } from "@/lib/services/formatting";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { writeTimelineEvent } from "@/lib/services/timeline";
-import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
@@ -395,10 +394,8 @@ export default function CompliancePage() {
 
       // Emit timeline event
       try {
-        const firmId = await getFirmId();
         await writeTimelineEvent({
           client_id: clientId,
-          firm_id: firmId,
           financial_year: getCurrentFinancialYear(),
           category: "compliance",
           event_type: "filing_marked_filed",
@@ -407,7 +404,6 @@ export default function CompliancePage() {
           description: [`Filed on ${v.filedDate}`, v.arn ? `ARN: ${v.arn}` : null].filter(Boolean).join(" · "),
           entity_type: "compliance_record",
           entity_id: markFiled.id,
-          actor_type: "user",
         });
       } catch { /* timeline is non-blocking */ }
     } catch (e) {

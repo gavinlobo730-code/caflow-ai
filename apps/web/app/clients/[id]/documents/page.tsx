@@ -160,7 +160,6 @@ export default function DocumentsPage() {
       try {
         await writeTimelineEvent({
           client_id: clientId,
-          firm_id: firmId,
           financial_year: getCurrentFinancialYear(),
           category: "document",
           event_type: asNewVersion ? "document_version_uploaded" : "document_uploaded",
@@ -169,7 +168,6 @@ export default function DocumentsPage() {
             ? `New version uploaded: ${uploadLabel.trim()}`
             : `Document uploaded: ${uploadLabel.trim()}`,
           description: `${uploadFile.name} (${formatFileSize(uploadFile.size)})`,
-          actor_type: "user",
         });
       } catch { /* timeline is non-blocking */ }
     } catch (err) {
@@ -205,16 +203,13 @@ export default function DocumentsPage() {
 
       // Emit timeline event
       try {
-        const firmId = await getFirmId();
         await writeTimelineEvent({
           client_id: clientId,
-          firm_id: firmId,
           financial_year: getCurrentFinancialYear(),
           category: "document",
           event_type: "document_deleted",
           severity: "warning",
           title: `Document deleted: ${docLabel(doc)}`,
-          actor_type: "user",
         });
       } catch { /* timeline is non-blocking */ }
     } finally {

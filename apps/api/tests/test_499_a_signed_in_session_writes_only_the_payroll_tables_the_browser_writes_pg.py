@@ -2,16 +2,18 @@
 
 THE RULE, NOT A LIST OF TODAY'S TABLES (ledger POST-A-234)
     A payroll table is written from a signed-in session only if a screen in `apps/web` writes it. Today that is
-    exactly three: `leave_balances` (the attendance screen's upsert) and an employee's own tax declaration with its
-    items (the portal's declaration tab). Every other payroll table is read from the browser and written by the payroll
-    router with the privileged client. Migration 499 revokes the write privileges on the rest; before it, an assigned
-    Manager could write a draft run and its payslips directly, and the finalise journal is built from the run's totals.
+    exactly two: an employee's own tax declaration with its items (the portal's declaration tab). It was three until
+    migration 515 (POST-A-235): the attendance screen's leave-allotment upsert went behind `PUT /api/payroll/leave-balance`
+    and `leave_balances` lost its signed-in write in that migration, which this file's database half now proves with the
+    rest. Every other payroll table is read from the browser and written by the payroll router with the privileged
+    client. Migration 499 revokes the write privileges on sixteen of them; before it, an assigned Manager could write a
+    draft run and its payslips directly, and the finalise journal is built from the run's totals.
 
 WHAT IS HELD
-    * (no database) the browser's direct writes to payroll tables are exactly the three, so a new screen that writes a
+    * (no database) the browser's direct writes to payroll tables are exactly the two, so a new screen that writes a
       fourth fails here and has to decide, in the open, instead of finding the privilege already gone or already there;
     * (database) the payroll tables on which a signed-in role EFFECTIVELY holds a write privilege (table level, column
-      level, or reaching the role through PUBLIC) are exactly those three, so a payroll table whose own migration grants
+      level, or reaching the role through PUBLIC) are exactly those two, so a payroll table whose own migration grants
       a write to a signed-in role fails this, naming itself. It cannot see the privilege a hosting platform's default
       privileges would give a table created in production (the migration-built database carries none), so a new payroll
       table needs its own REVOKE in its migration;
@@ -20,8 +22,8 @@ WHAT IS HELD
     * (database) an assigned Manager is refused a direct write by the PRIVILEGE ("permission denied for table <the
       table>"), and reads are unaffected; the explicit-grid-grant variant of this is in
       test_the_per_person_grid_reaches_the_database_pg.py;
-    * (database) the three tables the browser writes still hold INSERT and UPDATE for a signed-in role, and a Manager can
-      still insert into two of them;
+    * (database) the two tables the browser writes still hold INSERT and UPDATE for a signed-in role, and a Manager can
+      still insert into the declaration table;
     * (database) the migration is idempotent, REMOVES what the hosting platform's defaults give (TRUNCATE for
       `authenticated` and `anon`, and a write reaching a role through PUBLIC or through a column grant), and its own
       rollback puts the holes back (the negative control).
@@ -54,7 +56,7 @@ _ADMIN = os.environ.get("HARNESS_PG")
 
 #: What the browser writes among the payroll tables. Add to it only with a decision about who may write the table and
 #: why it cannot go through the API.
-WRITTEN_BY_THE_BROWSER = {"leave_balances", "payroll_it_declarations", "payroll_it_declaration_items"}
+WRITTEN_BY_THE_BROWSER = {"payroll_it_declarations", "payroll_it_declaration_items"}
 
 #: The payroll family: every `payroll_*` table, plus the ones named for their job and not their prefix.
 _FAMILY = re.compile(r"^(payroll_.+|attendance|leave_balances|bonus_declarations|bonus_disqualifications|"
@@ -215,18 +217,15 @@ def test_reading_is_unaffected(db):
 
 @_NEEDS_PG
 def test_the_tables_the_browser_does_write_are_still_writable_by_a_manager(db):
-    leave = _as_manager(db, f"INSERT INTO leave_balances (firm_id, employee_id, year) "
-                            f"SELECT '{FIRM}', id, 2026 FROM payroll_employees;")
-    assert leave.returncode == 0, leave.stderr
     decl = _as_manager(db, f"INSERT INTO payroll_it_declarations (firm_id, client_id, employee_id, fy) "
                            f"SELECT '{FIRM}', '{CLIENT}', id, '2026-27' FROM payroll_employees;")
     assert decl.returncode == 0, decl.stderr
 
 
 @_NEEDS_PG
-def test_the_three_tables_the_browser_writes_still_hold_insert_and_update_for_a_signed_in_role(db):
-    """The revoke did not overreach: the attendance screen's upsert needs INSERT and UPDATE on `leave_balances`, and an
-    employee's own declaration needs both on the declaration and its items."""
+def test_the_tables_the_browser_writes_still_hold_insert_and_update_for_a_signed_in_role(db):
+    """The revoke did not overreach: an employee's own declaration needs INSERT and UPDATE on the declaration and its
+    items. (`leave_balances` is no longer one of them: migration 515, proved in its own test file.)"""
     for t in sorted(WRITTEN_BY_THE_BROWSER):
         for verb in ("INSERT", "UPDATE"):
             assert _ok(db, f"SELECT has_table_privilege('authenticated', 'public.{t}', '{verb}');") == "t", (t, verb)

@@ -160,15 +160,15 @@
       "anon": ["x", "x", "x", "x"]
     },
     "client_timeline_events": {
-      "partner": ["A,B", "A,B", "A,B", "x"],
-      "manager": ["A", "A", "A", "x"],
-      "exec_assigned": ["A", "A", "A", "x"],
-      "exec_unassigned": ["-", "-", "-", "x"],
-      "reviewer": ["A", "A", "A", "x"],
-      "portal_client": ["-", "-", "-", "x"],
-      "employee": ["-", "-", "-", "x"],
-      "other_firm_partner": ["X", "X", "X", "x"],
-      "suspended_partner": ["-", "-", "-", "x"],
+      "partner": ["A,B", "x", "A,B", "x"],
+      "manager": ["A", "x", "A", "x"],
+      "exec_assigned": ["A", "x", "A", "x"],
+      "exec_unassigned": ["-", "x", "-", "x"],
+      "reviewer": ["A", "x", "A", "x"],
+      "portal_client": ["-", "x", "-", "x"],
+      "employee": ["-", "x", "-", "x"],
+      "other_firm_partner": ["X", "x", "X", "x"],
+      "suspended_partner": ["-", "x", "-", "x"],
       "anon": ["x", "x", "x", "x"]
     },
     "clients": {
@@ -580,15 +580,15 @@
       "anon": ["x", "x", "x", "x"]
     },
     "leave_balances": {
-      "partner": ["A,B", "A,B", "A,B", "A,B"],
-      "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["-", "-", "-", "-"],
-      "exec_unassigned": ["-", "-", "-", "-"],
-      "reviewer": ["-", "-", "-", "-"],
-      "portal_client": ["-", "-", "-", "-"],
-      "employee": ["A", "-", "-", "-"],
-      "other_firm_partner": ["X", "X", "X", "X"],
-      "suspended_partner": ["-", "-", "-", "-"],
+      "partner": ["A,B", "x", "x", "x"],
+      "manager": ["A", "x", "x", "x"],
+      "exec_assigned": ["-", "x", "x", "x"],
+      "exec_unassigned": ["-", "x", "x", "x"],
+      "reviewer": ["-", "x", "x", "x"],
+      "portal_client": ["-", "x", "x", "x"],
+      "employee": ["A", "x", "x", "x"],
+      "other_firm_partner": ["X", "x", "x", "x"],
+      "suspended_partner": ["-", "x", "x", "x"],
       "anon": ["x", "x", "x", "x"]
     },
     "loans": {

@@ -5,7 +5,6 @@ import { Globe, Copy, X } from "lucide-react";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClient } from "@/lib/data/clients";
-import { getFirmId } from "@/lib/data/getFirmId";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { api, type PortalContact } from "@/lib/api";
 import type { Client } from "@/lib/types";
@@ -135,17 +134,14 @@ export default function PortalPage() {
       setInviteSent(true);
 
       try {
-        const firmId = await getFirmId();
         await writeTimelineEvent({
           client_id: clientId,
-          firm_id: firmId,
           financial_year: getCurrentFinancialYear(),
           category: "portal",
           event_type: "portal_invite_sent",
           severity: "info",
           title: "Portal invite sent",
           description: `Invite sent to ${email}`,
-          actor_type: "user",
         });
       } catch { /* timeline is non-blocking */ }
     } catch (err) {

@@ -1,13 +1,17 @@
 """
 Timeline REST endpoint — exposes client_timeline_events for the UI audit trail.
 """
+import logging
 import os
-from fastapi import APIRouter, Depends, Query
-from typing import Annotated, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from typing import Annotated, Literal, Optional
 
 from models.common import api_response
 from core.permissions import rbac
-from models.fy import OptionalFYLabel
+from models.fy import FYLabel, OptionalFYLabel
+
+_logger = logging.getLogger("caflow.timeline")
 
 router = APIRouter(prefix="/api/timeline", tags=["timeline"])
 
@@ -65,3 +69,70 @@ def list_timeline_events(
         q = q.eq("financial_year", financial_year)
     res = q.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
     return api_response(True, res.data or [])
+
+
+class TimelineEventIn(BaseModel):
+    """What a browser may say about an event it wants recorded, and nothing it may say about WHO recorded it.
+
+    There is no firm, no actor and no pin here, on purpose (POST-A-228): the firm is the caller's, the actor is the signed-in
+    person, and an event is born unpinned. A field a caller adds anyway is ignored rather than refused, so a browser tab left
+    open across the deploy that still sends them is not broken by it.
+    """
+    client_id: str
+    financial_year: FYLabel
+    category: Literal["accounting", "compliance", "payroll", "tax", "document", "work", "ai", "portal", "team"]
+    event_type: str = Field(..., min_length=1, max_length=80, pattern=r"^[a-z0-9_]+$")
+    severity: Literal["info", "success", "warning", "critical"] = "info"
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=2000)
+    action_label: Optional[str] = Field(None, max_length=80)
+    # A path inside the product. A link to somewhere else on a client's activity feed is a phishing link with the firm's name
+    # on it, so only a path that starts with a single "/" is accepted.
+    action_url: Optional[str] = Field(None, max_length=300, pattern=r"^/([^/\s][^\s]*)?$")
+    entity_type: Optional[str] = Field(None, max_length=60)
+    entity_id: Optional[str] = Field(None, max_length=80)
+    amount_paise: Optional[int] = Field(None, ge=0)
+    visibility: Literal["all", "internal", "partner_only"] = "all"
+
+
+@router.post("/events")
+def write_timeline_event(
+    body: TimelineEventIn,
+    current_user: dict = Depends(rbac("timeline", "write")),
+):
+    """Record an event on a client's activity feed, as the signed-in person.
+
+    The browser used to INSERT these over PostgREST with the actor type, id and name it chose, so a staff member could write an
+    entry naming someone else (the audit log is a separate append-only table and was never affected). The server door sets the
+    firm from the caller, the actor type to "user", the actor id to the signed-in person's sign-in id (the convention
+    `audit_log` already uses) and the name to their full name or email, and migration 515 takes the signed-in INSERT away.
+    The client must be one the caller may act on: 404 for a client in another firm or outside their assignment, the same
+    answer as a client that does not exist.
+    """
+    from core.authz import assert_client_access
+    from repositories.client_repository import client_repo
+    from services.timeline_service import timeline_service
+
+    assert_client_access(current_user, body.client_id, detail="Client not found")
+    firm_id = current_user.get("firm_id")
+    if not client_repo.find_by_id(body.client_id, firm_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    try:
+        event = timeline_service.record_event(
+            client_id=body.client_id, firm_id=firm_id, financial_year=body.financial_year,
+            category=body.category, event_type=body.event_type, title=body.title,
+            description=body.description, severity=body.severity, entity_type=body.entity_type,
+            entity_id=body.entity_id, amount_paise=body.amount_paise,
+            actor_id=current_user.get("auth_user_id"),
+            actor_name=current_user.get("full_name") or current_user.get("email"),
+            actor_type="user", action_label=body.action_label, action_url=body.action_url,
+            visibility=body.visibility,
+        )
+    except Exception as exc:
+        _logger.exception("timeline event not written for client=%s", body.client_id)
+        raise HTTPException(
+            status_code=503,
+            detail="The event could not be recorded on the client's activity feed. Nothing else was changed; try again.",
+        ) from exc
+    return api_response(True, event)
