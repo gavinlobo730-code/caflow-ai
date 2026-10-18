@@ -9,7 +9,7 @@ PT: State-specific professional tax slab, keyed on the employee's pt_state; an
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Annotated, Optional
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal as _Decimal, ROUND_HALF_UP as _ROUND_HALF_UP
 import math
 
@@ -901,8 +901,9 @@ def _apply_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
     Done at FINALISATION and nowhere else. A draft run can be deleted and
     recomputed, so reducing a balance when the slips are first computed would
     let one recovery be applied twice — and the second application would look
-    exactly like the first. Finalisation is guarded against running twice
-    (status is checked and set), so this runs once per run.
+    exactly like the first. Finalisation is guarded against running twice: the
+    run is claimed by one conditional UPDATE (POST-A-239) and only the request
+    that changed a row calls this, so it runs once per run.
 
     A loan whose balance reaches zero is closed, so it stops being read at all
     next month rather than being filtered out every time.
@@ -3251,6 +3252,92 @@ def _release_gaps(db, firm_id: str, run: dict) -> list[str]:
     return gaps
 
 
+#: How long a disbursement claim holds the run before another request may take it over. A claim is released the moment the
+#: posting fails or the run is marked paid, so this only matters when the process died between the claim and either of
+#: them; it is longer than any posting takes and short enough that a Partner is not locked out of paying salaries.
+_DISBURSEMENT_LEASE = timedelta(minutes=15)
+
+
+def _claim_the_run_for_disbursement(db, firm_id: str, run_id: str) -> Optional[str]:
+    """Take the lease on a finalized run. Returns the claim's own timestamp if THIS call changed a row, else None.
+
+    Two attempts, each one atomic UPDATE: first the run nobody holds, then the run whose claim has lapsed. A second
+    request that arrives while the first holds a live claim changes no row in either, which is the whole point. (One
+    `or_()` filter would do it in a single call, but the column names would then sit in a string built at run time, where
+    the columns-exist guard cannot read them.) The timestamp is returned because it is the claim's identity: the write
+    that marks the run paid and the release are conditional on it, so a request whose lease lapsed and was taken over
+    cannot finish, or release, the new holder's claim."""
+    now_utc = datetime.now(timezone.utc)
+    stamp = now_utc.isoformat()
+    lapsed = (now_utc - _DISBURSEMENT_LEASE).isoformat()
+
+    def attempt():
+        return (db.table("payroll_runs").update({"disbursement_claimed_at": stamp})
+                .eq("id", run_id).eq("firm_id", firm_id).eq("status", "finalized"))
+
+    if attempt().is_("disbursement_claimed_at", "null").execute().data:
+        return stamp
+    if attempt().lt("disbursement_claimed_at", lapsed).execute().data:
+        return stamp
+    return None
+
+
+def _release_disbursement_claim(db, firm_id: str, run_id: str, stamp: str) -> None:
+    """Give the run back after a posting that did not happen, if the claim is still THIS request's.
+    Never raises: the lease expires on its own."""
+    try:
+        (db.table("payroll_runs").update({"disbursement_claimed_at": None})
+           .eq("id", run_id).eq("firm_id", firm_id).eq("disbursement_claimed_at", stamp).execute())
+    except Exception:                                                       # noqa: BLE001
+        _logger.exception("could not release the disbursement claim on payroll run %s", run_id)
+
+
+def _a_disbursement_entry_dated_otherwise(db, run: dict, payment_date: str) -> Optional[str]:
+    """The date of a live disbursement entry already in the books for this run's month, if it is not `payment_date`.
+
+    The journal kernel dedupes on (client, reference, ENTRY DATE), so a retry after a crash or a timeout that carries a
+    different payment date than the first attempt is not seen as a repeat and would credit the bank a second time. An
+    entry on the SAME date needs no check: the kernel hands that one back and the run is marked paid with it."""
+    rows = (db.table("journal_entries").select("id, entry_date")
+            .eq("firm_id", run["firm_id"]).eq("client_id", run["client_id"])
+            .eq("reference_no", f"PAY-DISB-{run['month']}")
+            .neq("is_reversed", True).is_("deleted_at", "null").execute().data) or []
+    for row in rows:
+        existing = str(row.get("entry_date") or "")[:10]
+        if existing and existing != payment_date:
+            return existing
+    return None
+
+
+def _undo_orphaned_disbursement(db, run: dict, journal_id: str, current_user: dict, stamp: str) -> str:
+    """Deal with a disbursement entry whose run could not be marked paid. Never raises. Returns what happened:
+
+      * "kept"   the entry may be another request's payment and is left alone: the run records THIS entry as its
+                 payment already, or another request now holds the lease (this request's lapsed and was taken over) and
+                 the kernel may have handed it the same entry, so reversing it could undo the payment that request is
+                 about to record;
+      * "undone" the entry was reversed (a reversal posts, so it is dated the Indian business day);
+      * "failed" it could not be reversed, or the run could not be read to decide. The entry may still be in the books,
+                 so this is logged at ERROR with its id and the caller says so on the screen."""
+    try:
+        now = (db.table("payroll_runs").select("status, disbursement_journal_entry_id, disbursement_claimed_at")
+               .eq("id", run["id"]).eq("firm_id", run["firm_id"]).maybe_single().execute().data)
+        if now and now.get("disbursement_journal_entry_id") == journal_id:
+            return "kept"
+        if now and now.get("status") == "finalized" and now.get("disbursement_claimed_at") not in (None, stamp):
+            return "kept"
+        from services.phase2_journal_service import phase2_journal_service
+        phase2_journal_service.reverse_entry(
+            db, run["firm_id"], journal_id, ist_today().isoformat(),
+            narration=f"Reversal of payroll disbursement for {run['month']}: the run was reopened while it was posted",
+            created_by=current_user.get("id"))
+        return "undone"
+    except Exception:                                                       # noqa: BLE001
+        _logger.error("payroll run %s could not be marked paid and entry %s could NOT be reversed; reverse it by hand",
+                      run.get("id"), journal_id, exc_info=True)
+        return "failed"
+
+
 def _log_transition(db, firm_id: str, run: dict, to_status: str,
                     actor_id: Optional[str], gaps: Optional[list] = None,
                     override_reason: Optional[str] = None) -> None:
@@ -3413,9 +3500,10 @@ def finalize_run(
     # already had its accrual journal posted (that's how it reached "paid" in
     # the first place), so re-finalizing it would post a SECOND accrual
     # journal for the same month. journal_for_payroll's idempotency dedup
-    # keys on (firm, client, reference_no=PAY-{month}, entry_date=today), not
-    # the payroll period, so it does not catch a re-finalization on a later
-    # calendar day -- this guard is the actual backstop.
+    # keyed on (client, reference_no=PAY-{month}, entry_date) with the entry
+    # dated the month's last day, so a repeat is caught by the kernel today;
+    # this guard stays as the cheap first refusal and the backstop if that
+    # dating ever changes.
     if run["status"] in ("finalized", "paid"):
         raise HTTPException(status_code=409, detail=f"Run already {run['status']}")
 
@@ -3446,14 +3534,43 @@ def finalize_run(
         # immutable "finalized" run with no GL entry reported as success.
         return api_response(False, None, "Payroll journal could not be posted. The run was not finalized; please retry.")
 
-    # The recovery is real now that the run has posted: write the balances down.
-    _apply_loan_recoveries(db, firm_id, client_id, run_id, current_user.get("id"))
-
-    db.table("payroll_runs").update({
+    # THE CLAIM (POST-A-239). Everything above is a read, or a posting that cannot be doubled: the accrual journal is
+    # dated the payroll month's last day and keyed on PAY-{month}, so two requests that both reach it get the same entry
+    # back. What cannot be doubled safely is what follows, the write-down of the loans, which reads each balance and
+    # writes a new one. So the run is moved to finalized by ONE conditional UPDATE that only a run not yet released
+    # satisfies, and only the request whose UPDATE changed a row goes on to touch the loans. The status read at the top
+    # told this request what it saw, not what is true by now: a second Partner's click, a retry after a timeout and a
+    # double-submitted form all arrive here with the same `draft` in their hands. Claimed before the write-down, which
+    # is how that function already treats failure: it never raises and a missed write-down leaves the balance too high,
+    # visible on the next payslip, so a run that is finalized with the write-down missed is a state it already named.
+    claimed = (db.table("payroll_runs").update({
         "status":          "finalized",
         "finalized_at":    datetime.now(timezone.utc).isoformat(),
         "journal_entry_id": journal_id,
-    }).eq("id", run_id).execute()
+        # A lease left on a run that was reopened while a payment was in flight (reverse_run clears it too; this is the
+        # second hand on the same switch) must not block the payment of the run released here.
+        "disbursement_claimed_at": None,
+    }).eq("id", run_id).eq("firm_id", firm_id)
+      .not_.in_("status", ["finalized", "paid"]).execute())
+    if not claimed.data:
+        raise HTTPException(status_code=409, detail="Run already finalized or paid by another request")
+
+    # The recovery is real now that the run has released: write the balances down. Once, by the request that won.
+    _apply_loan_recoveries(db, firm_id, client_id, run_id, current_user.get("id"))
+
+    # The claim made the run `finalized` before this write-down, so a reversal can land in between: it passes its status
+    # check, reverses the journals and reopens the run, and finds no recovery rows to put back because none exist yet.
+    # Read the run again. If it is no longer the release this request made, the write-down just applied belongs to a
+    # run that is back in review: put it back from the rows it has now recorded, and say so instead of reporting a
+    # release (and logging a transition) that was undone before it finished.
+    still = (db.table("payroll_runs").select("status, journal_entry_id").eq("id", run_id)
+             .eq("firm_id", firm_id).maybe_single().execute().data)
+    if not still or still.get("status") != "finalized" or still.get("journal_entry_id") != journal_id:
+        _undo_loan_recoveries(db, firm_id, client_id, run_id, current_user.get("id"))
+        raise HTTPException(
+            status_code=409,
+            detail="This payroll run was reversed while it was being released, so it was not released and the loan "
+                   "balances were left as they were. Correct it and finalize it again.")
 
     _log_transition(db, firm_id, run, "finalized", current_user.get("id"),
                     gaps=gaps, override_reason=reason)
@@ -3520,23 +3637,74 @@ def disburse_run(
     # validated it against the wrong financial year. Same bug the accrual had.
     payment_date = data.payment_date or ist_today().isoformat()
 
+    # THE CLAIM (POST-A-239). The status read above said `finalized` to every request that arrived before the first one
+    # finished, and the disbursement journal is deduped on (client, PAY-DISB-{month}, ENTRY DATE): two requests with
+    # different payment dates both post, and the bank is credited twice for one payroll. So the run is claimed before
+    # anything is posted, by one conditional UPDATE that only a finalized run nobody holds satisfies, and only the
+    # request that changed a row posts. The claim is a lease (`disbursement_claimed_at`, migration 504), because the
+    # status cannot carry it: migration 498 allows `paid` only with the disbursement journal already on the row.
+    stamp = _claim_the_run_for_disbursement(db, current_user["firm_id"], run_id)
+    if stamp is None:
+        raise HTTPException(
+            status_code=409,
+            detail="This payroll run cannot be paid now: another request is paying it, it has just been paid, or it "
+                   "was reopened. A payment in progress that died holds the run for up to fifteen minutes. Reload to "
+                   "see where it stands before paying it again.")
+
     from services.phase2_journal_service import Phase2JournalService
     svc = Phase2JournalService()
-    journal_id = svc.journal_for_payroll_disbursement(
-        run, bank["coa_account_id"], run["firm_id"], run["client_id"], payment_date)
+    try:
+        # A retry after a crash or a timeout may carry a different date than the attempt that did post; the kernel
+        # would not see them as the same payment, so look for it first and say where it is.
+        earlier = _a_disbursement_entry_dated_otherwise(db, run, payment_date)
+        if earlier:
+            raise HTTPException(
+                status_code=409,
+                detail=f"An entry for this payroll's payment, dated {earlier}, is already in the books. Pay with that "
+                       "date to record it against the run, or reverse that entry first. Nothing new was posted.")
+        journal_id = svc.journal_for_payroll_disbursement(
+            run, bank["coa_account_id"], run["firm_id"], run["client_id"], payment_date)
+    except Exception:
+        _release_disbursement_claim(db, run["firm_id"], run_id, stamp)
+        raise
     if not journal_id:
         # Only reachable in mock mode (the service re-raises real posting failures);
         # defensive — do NOT mark paid without a GL entry.
+        _release_disbursement_claim(db, run["firm_id"], run_id, stamp)
         return api_response(False, None,
                             "Salary disbursement journal could not be posted. The run was not marked paid; please retry.")
 
-    db.table("payroll_runs").update({
+    paid = (db.table("payroll_runs").update({
         "status":                        "paid",
         "paid_at":                       datetime.now(timezone.utc).isoformat(),
         "disbursement_journal_entry_id": journal_id,
         "paid_from_account_id":          data.bank_account_id,
         "payment_reference":             (data.payment_reference or None),
-    }).eq("id", run_id).eq("firm_id", current_user["firm_id"]).execute()
+        "disbursement_claimed_at":       None,
+    }).eq("id", run_id).eq("firm_id", current_user["firm_id"]).eq("status", "finalized")
+      .eq("disbursement_claimed_at", stamp).execute())
+    if not paid.data:
+        # The run is not where this request left it: it was reopened while the payment was posting (the claim keeps other
+        # payers out, not a reversal), or this request's claim lapsed and another request took over. Decide what the
+        # entry just posted is, and tell the Partner the truth about it.
+        outcome = _undo_orphaned_disbursement(db, run, journal_id, current_user, stamp)
+        _release_disbursement_claim(db, run["firm_id"], run_id, stamp)
+        if outcome == "kept":
+            raise HTTPException(
+                status_code=409,
+                detail="Another request is paying or has paid this payroll run while this one was recording it, and the "
+                       "entry this one posted may be the same one, so it was left in place. Reload to see where the run "
+                       "stands. Nothing further was posted.")
+        if outcome == "undone":
+            raise HTTPException(
+                status_code=409,
+                detail="This payroll run was reversed while the payment was being recorded, so it was not marked paid "
+                       "and the entry that had just been posted was reversed. Nothing was paid out through the software.")
+        raise HTTPException(
+            status_code=409,
+            detail="This payroll run was reversed while the payment was being recorded, so it was not marked paid. The "
+                   f"entry that had just been posted (journal {journal_id}) could NOT be reversed automatically and is "
+                   "still in the books: reverse it from the Journal screen before paying this run again.")
 
     _net = int(run.get("total_net_paise") or 0)  # integer paise → ₹ display, no float
     timeline_service.log(run["client_id"], "work", "Salary Disbursed",
@@ -3686,6 +3854,8 @@ def reverse_run(
         "paid_at":                       None,
         "paid_from_account_id":          None,
         "payment_reference":             None,
+        # A payment that was in flight when the run was reversed must not leave its lease on the reopened run.
+        "disbursement_claimed_at":       None,
     }).eq("id", run_id).eq("firm_id", firm_id).execute()
 
     # ONTO THE TRANSITION LOG, like every other status move (migration 328).
