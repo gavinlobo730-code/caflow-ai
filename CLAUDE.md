@@ -276,7 +276,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A DOCUMENT'S ACTIVITY IS ASKED FOR THE DOCUMENT, AND A REGISTER LIST SAYS WHEN IT STOPPED
 - A SCORE THAT SAYS IT COUNTS LATE FILINGS COUNTS THEM
 
-### `docs/design-record/tax-gst.md` (34 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
+### `docs/design-record/tax-gst.md` (35 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 
 - A CLIENT IS ONE LEGAL PERSON AND MAY HOLD SEVERAL GSTINs, and until migration 390 the return tables forbade it
 - FOUR RETURNS A REGULAR REGISTRATION NEVER FILES NOW HAVE A BUILDER, AND THREE OF THEM CHECK WHAT A CA RECORDS RATHER THAN COMPUTIN
@@ -312,6 +312,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A 2B FILE IS ROUTED BY THE GSTIN INSIDE IT, A PROBABLE MATCH IS ONLY EVER A SUGGESTION, A DRAFT BILL IS ADDRESSED BY KEY AND RATED
 - THE GSTR-3B IS TIED OUT AGAINST THE GSTR-1 THAT WAS FILED, AND A NIL THERE SAYS WHICH KIND
 - FORM GST ITC-04 IS DERIVED FROM THE JOB-WORK CHALLANS, GOODS COME BACK IN LOTS, AND THE PERIOD IS NOT CHOSEN
+- AN IRN RECORD IS PREPARED ON THE INVOICE, AND THE FIRM-LEVEL E-INVOICE SCREEN ONLY SHOWS WHAT WAS RECORDED
 
 ### `docs/design-record/tax-income-tax.md` (13 entries): Income tax: ITR kinds and engines, capital gains, tax audit and 3CD, losses, entity reliefs, section 43B(h)
 

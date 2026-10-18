@@ -1,30 +1,36 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Loader2, AlertTriangle, Zap } from "lucide-react";
-import { TransactionListSkeleton } from "@/components/ui/skeleton";
+/**
+ * The firm-level e-invoice screen: which invoices still need an IRN, and the IRN
+ * records prepared for one client.
+ *
+ * IT DOES NOT PREPARE A RECORD OR RECORD AN IRN (POST-A-065). It used to: a form
+ * took an invoice NUMBER and a date for a client whose id the CA pasted into a
+ * box, and stored a record with no `sales_invoice_id` and no GST treatment, free
+ * of any invoice. The invoice's own compliance panel is the one place that does
+ * both, and does them properly: it reads the invoice's treatment, refuses a
+ * record that contradicts it, carries the LUT reference and says whether the
+ * invoice owes an IRN at all. Two screens writing one record is how they drift, so
+ * this one shows the records and sends the CA to the invoice.
+ *
+ * PREPARE-ONLY. The IRN is obtained on the IRP by a human and recorded afterwards;
+ * nothing here generates one or reaches a portal.
+ */
+
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { AlertTriangle, Zap } from "lucide-react";
+import { api, type EInvoiceRecord } from "@/lib/api";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { MissingIrnPanel } from "@/components/gst/MissingIrnPanel";
-import { Button } from "@/components/ui/button";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/states";
-import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-async function apiFetch(path: string, opts?: RequestInit) {
-  const { supabase } = await import("@/lib/supabase/client");
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-  const res = await fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(opts?.headers ?? {}),
-    },
-  });
-  return res.json();
-}
+import { documentTarget } from "@/lib/accounting/sourceDocument";
+import { formatDate } from "@/lib/dates/format";
+import { describeRecord } from "@/lib/einvoice/recordRow";
+import { treatmentLabel } from "@/lib/invoices/compliance";
+import { useClientPicker } from "@/lib/workspace/useClientPicker";
 
 const STATUS_COLOR: Record<string, string> = {
   draft: "bg-ps-muted text-ps-label",
@@ -32,259 +38,151 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: "bg-state-problem-surface text-state-problem",
 };
 
-interface EInvoice {
-  id: string;
-  client_id: string;
-  invoice_number: string;
-  invoice_date: string;
-  irn: string | null;
-  ack_number: string | null;
-  status: string;
-  created_at: string;
+/** A treatment code the browser can name, or null: an unknown code is not guessed at. */
+function treatmentText(code: string | null | undefined): string | null {
+  if (!code) return null;
+  return treatmentLabel(code as Parameters<typeof treatmentLabel>[0]) ?? null;
 }
 
 export default function EInvoicePage() {
-  const [clientId, setClientId] = useState("");
-  const [records, setRecords] = useState<EInvoice[]>([]);
+  const { clients, clientId, setClientId } = useClientPicker();
+  const [records, setRecords] = useState<EInvoiceRecord[]>([]);
   const [loading, setLoading] = useState(false);
   // Distinguishes "fetch failed" from "no e-invoice records yet" — a masked
   // failure previously rendered an empty list with no indication of failure.
   const [loadError, setLoadError] = useState<string | null>(null);
   // The client whose records are on screen. `null` means nothing has been
-  // loaded yet, which is a different thing from "loaded, and there are none":
-  // the first renders the prompt to load, the second says so in words rather
-  // than leaving the panel blank.
+  // loaded yet, which is a different thing from "loaded, and there are none".
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [showIRN, setShowIRN] = useState<string | null>(null);
 
-  // Create form
-  const [invNo, setInvNo] = useState("");
-  const [invDate, setInvDate] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-
-  // IRN form
-  const [irn, setIrn] = useState("");
-  const [ackNo, setAckNo] = useState("");
-  const [ackDate, setAckDate] = useState("");
-  const [savingIRN, setSavingIRN] = useState(false);
-  // One action at a time: every button that starts work waits for whichever
-  // is already running. Guarding each on its own flag alone let two fire at
-  // once, and the second could act on what the first was still changing.
-  const actionInFlight = creating || loading || savingIRN;
-  const [irnError, setIrnError] = useState<string | null>(null);
-
-  async function load(cid: string) {
+  const load = useCallback(async (cid: string, isCurrent: () => boolean) => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/api/einvoice/records?client_id=${cid}`);
+      const res = await api.einvoice.records(cid);
+      if (!isCurrent()) return;
       if (res?.success) {
-        setRecords(arrayOrEmpty<EInvoice>(res.data));
+        setRecords(arrayOrEmpty<EInvoiceRecord>(res.data));
         setLoadError(null);
       } else {
         setRecords([]);
         setLoadError(res?.error ?? "Couldn't load e-invoice records.");
       }
     } catch {
+      if (!isCurrent()) return;
       setRecords([]);
       setLoadError("Couldn't load e-invoice records. Please try again.");
     } finally {
-      setLoadedFor(cid);
-      setLoading(false);
-    }
-  }
-
-  async function handleCreate() {
-    setCreating(true);
-    setCreateError(null);
-    try {
-      const res = await apiFetch("/api/einvoice/records", {
-        method: "POST",
-        body: JSON.stringify({ client_id: clientId, invoice_number: invNo, invoice_date: invDate }),
-      });
-      if (res.success) {
-        setShowCreate(false);
-        setInvNo(""); setInvDate("");
-        await load(clientId);
-      } else {
-        setCreateError(res.error ?? "Couldn't create the e-invoice record.");
+      if (isCurrent()) {
+        setLoadedFor(cid);
+        setLoading(false);
       }
-    } catch {
-      setCreateError("Couldn't create the e-invoice record. Please try again.");
-    } finally {
-      setCreating(false);
     }
-  }
+  }, []);
 
-  async function handleRecordIRN(recordId: string) {
-    setSavingIRN(true);
-    setIrnError(null);
-    try {
-      const res = await apiFetch(`/api/einvoice/records/${recordId}/irn-generated`, {
-        method: "POST",
-        body: JSON.stringify({ irn, ack_number: ackNo, ack_date: ackDate }),
-      });
-      if (res.success) {
-        setShowIRN(null);
-        setIrn(""); setAckNo(""); setAckDate("");
-        await load(clientId);
-      } else {
-        setIrnError(res.error ?? "Couldn't record the IRN.");
-      }
-    } catch {
-      setIrnError("Couldn't record the IRN. Please try again.");
-    } finally {
-      setSavingIRN(false);
+  // Picking a client loads its records; a slower answer for a client the CA has
+  // already moved off must not replace the one now on screen.
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!clientId) {
+      setRecords([]);
+      setLoadError(null);
+      setLoadedFor(null);
+      return;
     }
-  }
+    let current = true;
+    void load(clientId, () => current);
+    return () => { current = false; };
+  }, [clientId, attempt, load]);
 
   return (
     <div className="p-6 max-w-4xl space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-ps-ink">E-Invoice Integration</h2>
-          <p className="text-xs text-ps-hint mt-0.5">CGST Act §31B, Rule 48(4) — IRN management</p>
-        </div>
-        <button onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
-          <Plus size={12} /> New E-Invoice
-        </button>
+      <div>
+        <h2 className="text-sm font-semibold text-ps-ink">E-Invoice Integration</h2>
+        <p className="text-xs text-ps-hint mt-0.5">CGST Act §31B, Rule 48(4) — IRN management</p>
       </div>
 
       <div className="flex items-center gap-2 bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-2.5">
         <AlertTriangle size={13} className="text-state-problem flex-shrink-0" />
         <p className="text-xs font-medium text-red-800">
-          CA REVIEW REQUIRED — Generate IRN on IRP portal (einvoice1.gst.gov.in) first, then record here.
+          CA REVIEW REQUIRED — Generate IRN on IRP portal (einvoice1.gst.gov.in) first, then record it on the invoice.
           DO NOT AUTO-SUBMIT.
         </p>
       </div>
 
       {/* GST-20. Across the whole book until a client's records are loaded
           below, then that client's — so the list of what still needs an IRN is
-          one click from where an IRN is recorded. */}
+          one click from the client's records. */}
       <MissingIrnPanel clientId={loadedFor} />
 
-      <div className="flex gap-3 items-center">
-        <input
-          value={clientId}
-          onChange={e => setClientId(e.target.value)}
-          placeholder="Client ID to load records"
-          className="text-xs px-3 py-1.5 border border-ps-border rounded-lg flex-1 max-w-xs"
-        />
-        <button onClick={() => clientId && load(clientId)} disabled={!clientId || loading}
-          className="text-xs px-3 py-1.5 bg-ps-muted rounded-lg disabled:opacity-50">
-          Load
-        </button>
-      </div>
-
-      {showCreate && (
-        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
-          <p className="text-xs font-semibold text-ps-body">New E-Invoice Record</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-3xs text-ps-label mb-1 block">Invoice Number</label>
-              <input value={invNo} onChange={e => setInvNo(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
-            </div>
-            <div>
-              <label className="text-3xs text-ps-label mb-1 block">Invoice Date</label>
-              <input type="date" value={invDate} onChange={e => setInvDate(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
-            </div>
-          </div>
-          {createError && <p className="text-xs text-red-600">{createError}</p>}
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
-            <Button variant="plain" size="none" spinner={false} onClick={handleCreate} disabled={actionInFlight || !invNo || !invDate || !clientId}
-              className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1">
-              {creating && <Loader2 size={10} className="animate-spin" />} Create
-            </Button>
-          </div>
+      <div className="bg-white border border-ps-border rounded-xl p-4 space-y-2">
+        <label className="block text-xs font-medium text-ps-body" htmlFor="einvoice-client">Client</label>
+        <div className="max-w-sm">
+          <ClientLookup
+            id="einvoice-client"
+            clients={clients}
+            value={clientId}
+            onChange={setClientId}
+            ariaLabel="Client"
+            placeholder="Select a client to see its e-invoice records…"
+          />
         </div>
-      )}
+        <p className="text-xs text-ps-hint">
+          An IRN record is prepared and its IRN recorded on the invoice itself — open the invoice and use its
+          compliance panel, where the record takes the invoice&apos;s own GST treatment. This list shows what has
+          been recorded.
+        </p>
+      </div>
 
       {loading ? (
         <TransactionListSkeleton rows={3} />
       ) : loadError ? (
         <div className="bg-white rounded-xl border border-state-problem-border text-center py-10 space-y-2">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>
-          <button disabled={actionInFlight} onClick={() => load(clientId)} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
+          <button onClick={() => setAttempt((n) => n + 1)}
+            className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : loadedFor === null ? (
         <div className="bg-white rounded-xl border border-ps-border text-center py-10">
-          <p className="text-xs text-ps-hint">Enter a client ID and press Load to see its e-invoice records.</p>
+          <p className="text-xs text-ps-hint">Select a client to see its e-invoice records.</p>
         </div>
       ) : records.length === 0 ? (
         <div className="bg-white rounded-xl border border-ps-border">
           <EmptyState
             className="py-10"
             title="No e-invoice records found"
-            description="No IRN has been recorded for this client yet. Prepare a record here; the IRN itself comes from the portal."
-            action={
-              <EmptyStateActions>
-                <EmptyStateAction requires={["einvoice", "write"]} icon={<Plus size={14} />} label="New E-Invoice"
-                  onClick={() => setShowCreate(true)} />
-              </EmptyStateActions>
-            }
+            description="No IRN record has been prepared for this client yet. Open one of its invoices and prepare the record from the invoice's compliance panel; the IRN itself comes from the portal."
           />
         </div>
       ) : (
-        <div className="space-y-2">
-          {records.map(r => (
-            <div key={r.id} className="bg-white border border-ps-border rounded-xl px-4 py-3 flex items-center gap-3">
-              <Zap size={16} className={r.status === "generated" ? "text-green-500" : r.status === "cancelled" ? "text-red-400" : "text-ps-hint"} />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-ps-ink">{r.invoice_number} — {r.invoice_date}</p>
-                <p className="text-3xs text-ps-hint">
-                  {r.irn ? `IRN: ${r.irn.slice(0, 20)}...` : "No IRN recorded"}
-                  {r.ack_number && ` · Ack: ${r.ack_number}`}
-                </p>
-              </div>
-              <span className={`text-3xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[r.status]}`}>
-                {r.status}
-              </span>
-              {r.status === "draft" && (
-                <button onClick={() => setShowIRN(r.id)}
-                  className="text-3xs text-blue-600 hover:underline flex-shrink-0">Record IRN</button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {showIRN && (
-        <div className="bg-white border border-ps-border rounded-xl p-5 space-y-3">
-          <p className="text-xs font-semibold text-ps-body">Record IRN from IRP Portal</p>
-          <p className="text-2xs text-state-attention bg-state-attention-surface p-2 rounded">
-            CA REVIEW REQUIRED — Generate IRN on IRP portal first, then enter details below
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <label className="text-3xs text-ps-label mb-1 block">IRN (64-char hash)</label>
-              <input value={irn} onChange={e => setIrn(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg font-mono" />
-            </div>
-            <div>
-              <label className="text-3xs text-ps-label mb-1 block">Ack Number</label>
-              <input value={ackNo} onChange={e => setAckNo(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
-            </div>
-            <div>
-              <label className="text-3xs text-ps-label mb-1 block">Ack Date</label>
-              <input type="datetime-local" value={ackDate} onChange={e => setAckDate(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
-            </div>
-          </div>
-          {irnError && <p className="text-xs text-red-600">{irnError}</p>}
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowIRN(null)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
-            <Button variant="plain" size="none" spinner={false} onClick={() => handleRecordIRN(showIRN)} disabled={actionInFlight || !irn || !ackNo}
-              className="text-xs px-3 py-1.5 bg-green-600 text-white rounded disabled:opacity-50 flex items-center gap-1">
-              {savingIRN && <Loader2 size={10} className="animate-spin" />} Record IRN
-            </Button>
-          </div>
-        </div>
+        <ul className="space-y-2">
+          {records.map((r) => {
+            const row = describeRecord(r);
+            const target = row.linked && r.sales_invoice_id
+              ? documentTarget(r.client_id, { entry_id: "", source_type: "sales_invoice", source_id: r.sales_invoice_id })
+              : null;
+            const treatment = treatmentText(r.gst_treatment);
+            return (
+              <li key={r.id} className="bg-white border border-ps-border rounded-xl px-4 py-3 flex items-center gap-3">
+                <Zap size={16} className={r.status === "generated" ? "text-green-500" : r.status === "cancelled" ? "text-red-400" : "text-ps-hint"} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-ps-ink">{r.invoice_number} — {formatDate(r.invoice_date)}</p>
+                  <p className="text-3xs text-ps-hint">
+                    {r.irn ? `IRN: ${r.irn.slice(0, 20)}...` : "No IRN recorded"}
+                    {r.ack_number && ` · Ack: ${r.ack_number}`}
+                    {treatment && ` · ${treatment}`}
+                  </p>
+                  <p className={`text-3xs mt-0.5 ${row.linked ? "text-ps-hint" : "text-state-attention"}`}>{row.line}</p>
+                </div>
+                <span className={`text-3xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[r.status] ?? STATUS_COLOR.draft}`}>
+                  {r.status}
+                </span>
+                {target && row.openLabel && (
+                  <Link href={target.href} className="text-3xs text-brand hover:underline flex-shrink-0">{row.openLabel}</Link>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

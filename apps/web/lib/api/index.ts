@@ -1566,6 +1566,23 @@ export type IrnWorklistRow = {
   window: IrnWorklistWindow;
 };
 
+/** One IRN record prepared for a client (`einvoice_records`). `sales_invoice_id` is
+ *  null for a record that names no invoice this product holds: the server allows
+ *  one (an invoice raised elsewhere), and the screen has to be able to say so. */
+export type EInvoiceRecord = {
+  id: string;
+  client_id: string;
+  invoice_number: string;
+  invoice_date: string;
+  sales_invoice_id?: string | null;
+  irn: string | null;
+  ack_number: string | null;
+  status: string;
+  gst_treatment?: string | null;
+  lut_number?: string | null;
+  created_at: string;
+};
+
 export type IrnWorklist = {
   as_of?: string;
   scope: "client" | "firm";
@@ -4796,6 +4813,11 @@ export const api = {
       return request<ApiResp<IrnWorklist>>(
         `/api/einvoice/missing-irn${qs ? `?${qs}` : ""}`);
     },
+    /** The IRN records prepared for one client, newest first. Reads only: a
+     *  record is prepared and its IRN recorded on the invoice itself. */
+    records: (clientId: string) =>
+      request<ApiResp<EInvoiceRecord[]>>(
+        `/api/einvoice/records?client_id=${encodeURIComponent(clientId)}`),
   },
   // Stock register + per-item ledger (migration 188). Read-only — all
   // movements are written as a side effect of issuing/receiving documents.

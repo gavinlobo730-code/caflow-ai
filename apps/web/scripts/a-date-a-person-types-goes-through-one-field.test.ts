@@ -273,7 +273,6 @@ const FROZEN: Record<string, { count: number; category: Category; note: string }
   "app/clients/[id]/tax/filing/page.tsx": { count: 2, category: "needs-a-gate", note: "ITR acknowledgement dates" },
   "app/clients/[id]/year-end/[engagementId]/adjustments/_page.tsx": { count: 1, category: "needs-a-gate", note: "year-end adjustment date" },
   "app/clients/documents/page.tsx": { count: 1, category: "needs-a-gate", note: "document expiry date" },
-  "app/einvoice/page.tsx": { count: 1, category: "needs-a-gate", note: "e-invoice date" },
   "app/engagements/page.tsx": { count: 2, category: "needs-a-gate", note: "engagement start and expiry" },
   "app/gst/page.tsx": { count: 3, category: "needs-a-gate", note: "GST due and filed dates, which lock a period" },
   "app/health/[client_id]/HealthDetailClient.tsx": { count: 1, category: "needs-a-gate", note: "health override expiry" },
