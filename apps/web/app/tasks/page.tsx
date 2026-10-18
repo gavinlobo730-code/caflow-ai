@@ -8,7 +8,7 @@ import {
 import type { Task, TaskStatus, TaskPriority, Client, FirmUser } from "@/lib/types";
 import { TaskFormModal } from "@/components/TaskFormModal";
 import {
-  getTasks, updateTaskStatus, deleteTask, updateTask, getTeamMembers,
+  getTasksWindow, updateTaskStatus, deleteTask, updateTask, getTeamMembers,
 } from "@/lib/data/tasks";
 import { api } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
@@ -420,7 +420,7 @@ export default function TasksPage() {
     setLoading(true);
     setError(null);
     try {
-      const [taskList, clientList, memberList] = await Promise.all([
+      const [taskWindow, clientList, memberList] = await Promise.all([
         // Raised from 200 → 1000: the DataTable paginates client-side, so the old
         // 200-row ceiling silently hid tasks. Fetch the full working set and let
         // the table handle search/sort/filter/pagination in-browser.
@@ -429,12 +429,16 @@ export default function TasksPage() {
         // "of N" is the CAP, not the truth, and nothing on screen says so —
         // which is how a task goes missing without anyone noticing. Detected
         // below and stated, the way the Relationships registry already does it.
-        getTasks({ limit: TASK_FETCH_LIMIT }),
+        getTasksWindow({ limit: TASK_FETCH_LIMIT }),
         getClients(),
         getTeamMembers().catch(() => [] as FirmUser[]),
       ]);
       // Enrich tasks with client names and assignee info
-      setTasksCapped(taskList.length >= TASK_FETCH_LIMIT);
+      // The database's answer (one row more than the window was asked for), not a
+      // guess from the window being full: a firm with exactly this many tasks is
+      // not told there may be more.
+      const taskList = taskWindow.tasks;
+      setTasksCapped(taskWindow.hasMore);
       const clientMap = new Map(clientList.map(c => [c.id, c.client_name]));
       const memberMap = new Map(memberList.map(m => [m.id, m]));
       const enriched = taskList.map(t => ({
@@ -663,9 +667,9 @@ export default function TasksPage() {
           to discover by missing a task. */}
       {tasksCapped && (
         <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2 text-xs text-amber-800">
-          Showing the first {TASK_FETCH_LIMIT.toLocaleString("en-IN")} tasks — there
-          may be more. Narrow by client, status or assignee to be sure you are
-          seeing all of them.
+          Showing the first {TASK_FETCH_LIMIT.toLocaleString("en-IN")} tasks. More
+          exist that are not shown here, and the counts above cover these only.
+          Narrow by client, status or assignee to see the rest.
         </div>
       )}
 

@@ -179,6 +179,42 @@ export async function getTasks(options: TaskQueryOptions = {}): Promise<Task[]> 
   });
 }
 
+/**
+ * The same read as `getTasks`, answering whether the rows it returned are all
+ * of them. It asks for ONE ROW MORE than the window and trims it, so `hasMore`
+ * is a fact about the table and never a guess from `tasks.length === limit`
+ * (the comparison that reads a window that happens to be exactly full as
+ * "more exist", and cannot tell the two apart for a window that is not).
+ * Same rule as apps/api/core/list_window.py.
+ */
+export async function getTasksWindow(
+  options: TaskQueryOptions = {},
+): Promise<{ tasks: Task[]; hasMore: boolean }> {
+  const limit = options.limit ?? 50;
+  const rows = await getTasks({ ...options, limit: limit + 1 });
+  return { tasks: rows.slice(0, limit), hasMore: rows.length > limit };
+}
+
+/**
+ * How many tasks of this client are still open, counted by the database. The
+ * client overview showed `getTasks({ clientId, limit: 50 })` filtered in the
+ * browser, a window over ALL statuses ordered by due date, so a client with
+ * fifty completed tasks due before its open ones read "0 open tasks".
+ */
+export async function countOpenTasksForClient(clientId: string): Promise<number> {
+  const sb = getSupabaseClient();
+  const firmId = await getFirmId();
+  const { count, error } = await sb
+    .from("tasks")
+    .select("*", { count: "exact", head: true })
+    .eq("firm_id", firmId)
+    .eq("client_id", clientId)
+    .is("deleted_at", null)
+    .neq("status", "completed");
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 // ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------

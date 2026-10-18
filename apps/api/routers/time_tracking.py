@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional
+from typing import Annotated, Optional
 from datetime import datetime, timezone
 from models.common import api_response
+from core.list_window import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, effective_client_ids, filter_by_client
 from repositories.time_tracking_repository import time_tracking_repo
@@ -103,11 +104,19 @@ def list_entries(
     task_id: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT)] = DEFAULT_LIST_LIMIT,
     current_user: dict = Depends(rbac("time_entry", "read")),
 ):
+    """The latest `limit` entries, newest first, and whether older ones exist.
+
+    A window, not the book: `has_more` says the list stopped short, and
+    `total_minutes` / `billable_minutes` are the sums over THESE entries only
+    (they were named like totals and were computed from a read the database
+    cut at ~1000 rows without a word). The export is the complete read."""
     firm_id = current_user.get("firm_id")
-    entries = time_tracking_repo.find_all(
+    entries, has_more = time_tracking_repo.find_page(
         firm_id=firm_id,
+        limit=limit,
         user_id=user_id,
         client_id=client_id,
         task_id=task_id,
@@ -125,7 +134,10 @@ def list_entries(
     billable_minutes = sum(e["duration_minutes"] for e in completed if e.get("is_billable"))
     return api_response(True, {
         "entries": entries,
-        "total": len(entries),
+        "returned": len(entries),
+        "has_more": has_more,
+        "limit": limit,
+        "max_limit": MAX_LIST_LIMIT,
         "total_minutes": total_minutes,
         "billable_minutes": billable_minutes,
     })

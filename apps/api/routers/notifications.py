@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional
+from typing import Annotated, Optional
 from models.common import api_response
+from core.list_window import MAX_LIST_LIMIT, probe, split
 from core.permissions import rbac
 from core.authz import assert_client_access, filter_by_client
 from repositories.notifications_repository import notifications_repo
@@ -81,19 +82,23 @@ def list_notifications(
     unread_only: bool = False,
     archived: bool = False,
     type: Optional[str] = None,
-    limit: int = 50,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT)] = 50,
     current_user: dict = Depends(rbac("notification", "read")),
 ):
+    """The latest `limit` notifications and whether older ones exist. `has_more`
+    comes from the read (core/list_window) and not from what is left after the
+    assignment filter below, so a scoped person is never told a window is
+    complete because the filter ate the overflow."""
     firm_id = current_user.get("firm_id")
     user_id = current_user.get("id")
-    notifications = notifications_repo.find_all(
+    notifications, has_more = split(notifications_repo.find_all(
         firm_id=firm_id,
         user_id=user_id,
         unread_only=unread_only,
         archived=archived,
         notification_type=type,
-        limit=limit,
-    )
+        limit=probe(limit),
+    ), limit)
     # M2: notifications.client_id is nullable (migration 004) — a notification
     # ABOUT a client the caller is no longer assigned to should stop being
     # readable, the same rule the underlying record obeys. filter_by_client
@@ -103,7 +108,10 @@ def list_notifications(
     unread_count = notifications_repo.count_unread(firm_id=firm_id, user_id=user_id)
     return api_response(True, {
         "notifications": notifications,
-        "total": len(notifications),
+        "returned": len(notifications),
+        "has_more": has_more,
+        "limit": limit,
+        "max_limit": MAX_LIST_LIMIT,
         "unread_count": unread_count,
     })
 

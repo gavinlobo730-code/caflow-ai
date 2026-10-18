@@ -9,7 +9,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getTasks, getTaskCounts } from "@/lib/data/tasks";
+import { getTasks, getTasksWindow, getTaskCounts } from "@/lib/data/tasks";
 import { getTeamWorkload } from "@/lib/data/analytics";
 import { getUserProfile } from "@/lib/data/getFirmId";
 import type { Task, TaskStatus, TeamWorkload } from "@/lib/types";
@@ -18,6 +18,8 @@ import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
+import { windowDescription } from "@/lib/lists/window";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-ps-muted text-ps-label",
@@ -86,9 +88,27 @@ function TaskRow({ task }: { task: Task }) {
   );
 }
 
+/** The window holds 50 open tasks, soonest due first. This says so when a
+ *  section is short of what the exact counts say exists, instead of the section
+ *  looking complete. `known` is the database's own count for the section. */
+function MoreNotShown({ known, shown, what }: { known: number; shown: number; what: string }) {
+  const n = known - shown;
+  if (n <= 0) return null;
+  return (
+    <p className="text-2xs text-ps-hint text-center py-2">
+      {n} {shown > 0 ? "more " : ""}{what} not shown here. The rest are on All Tasks.
+    </p>
+  );
+}
+
+const OPEN_TASK_WINDOW = 50;
+const THIS_WEEK_SHOWN = 8;
+const RECENT_DONE_SHOWN = 5;
+
 export default function WorkPage() {
   const [counts, setCounts] = useState<TaskCounts | null>(null);
   const [activeTasks, setActiveTasks] = useState<Task[]>([]);
+  const [activeHasMore, setActiveHasMore] = useState(false);
   const [recentDone, setRecentDone] = useState<Task[]>([]);
   const [workload, setWorkload] = useState<TeamWorkload | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
@@ -115,12 +135,13 @@ export default function WorkPage() {
       // Three server-side queries in parallel: aggregate counts + active tasks + recently done.
       const [taskCounts, active, done] = await Promise.all([
         getTaskCounts(authUserId, userId),
-        getTasks({ assignedTo: authUserId, assigneeId: userId, excludeStatus: "completed", limit: 50 }),
-        getTasks({ assignedTo: authUserId, assigneeId: userId, status: "completed", limit: 5 }),
+        getTasksWindow({ assignedTo: authUserId, assigneeId: userId, excludeStatus: "completed", limit: OPEN_TASK_WINDOW }),
+        getTasks({ assignedTo: authUserId, assigneeId: userId, status: "completed", limit: RECENT_DONE_SHOWN }),
       ]);
 
       setCounts(taskCounts);
-      setActiveTasks(active);
+      setActiveTasks(active.tasks);
+      setActiveHasMore(active.hasMore);
       setRecentDone(done);
 
       if (process.env.NODE_ENV === "development") {
@@ -181,6 +202,14 @@ export default function WorkPage() {
         </div>
       ) : (
         <>
+          <ListWindowNotice
+            hasMore={activeHasMore}
+            what={windowDescription(activeTasks.length, "open tasks", "first", "soonest due first")}
+            limit={OPEN_TASK_WINDOW}
+            maxLimit={OPEN_TASK_WINDOW}
+            elsewhere="The counts below are exact; the lists below show these only."
+          />
+
           {/* Stat cards — sourced from COUNT(*) queries, accurate even beyond the 50-row fetch window */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
@@ -237,11 +266,12 @@ export default function WorkPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-2">
-                {todayTasks.length === 0 ? (
+                {todayTasks.length === 0 && (counts?.due_today ?? 0) <= 0 ? (
                   <p className="text-sm text-ps-hint text-center py-4">Nothing due today</p>
                 ) : (
                   todayTasks.map(t => <TaskRow key={t.id} task={t} />)
                 )}
+                <MoreNotShown known={counts?.due_today ?? 0} shown={todayTasks.length} what="tasks due today are" />
               </CardContent>
             </Card>
 
@@ -256,11 +286,12 @@ export default function WorkPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-2">
-                {overdueTasks.length === 0 ? (
+                {overdueTasks.length === 0 && (counts?.overdue ?? 0) <= 0 ? (
                   <p className="text-sm text-ps-hint text-center py-4">No overdue tasks</p>
                 ) : (
                   overdueTasks.map(t => <TaskRow key={t.id} task={t} />)
                 )}
+                <MoreNotShown known={counts?.overdue ?? 0} shown={overdueTasks.length} what="overdue tasks are" />
               </CardContent>
             </Card>
 
@@ -276,10 +307,13 @@ export default function WorkPage() {
               </CardHeader>
               <CardContent className="px-2">
                 {thisWeekTasks.length === 0 ? (
-                  <p className="text-sm text-ps-hint text-center py-4">Nothing else due this week</p>
+                  <p className="text-sm text-ps-hint text-center py-4">
+                    {activeHasMore ? "None among the tasks read here" : "Nothing else due this week"}
+                  </p>
                 ) : (
-                  thisWeekTasks.slice(0, 8).map(t => <TaskRow key={t.id} task={t} />)
+                  thisWeekTasks.slice(0, THIS_WEEK_SHOWN).map(t => <TaskRow key={t.id} task={t} />)
                 )}
+                <MoreNotShown known={thisWeekTasks.length} shown={Math.min(thisWeekTasks.length, THIS_WEEK_SHOWN)} what="tasks due this week are" />
               </CardContent>
             </Card>
 
@@ -287,7 +321,7 @@ export default function WorkPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-1.5">
-                  <CheckCircle2 size={13} className="text-green-500" /> Recently Completed
+                  <CheckCircle2 size={13} className="text-green-500" /> Recently Completed (latest {RECENT_DONE_SHOWN})
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-2">

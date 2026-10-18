@@ -16,6 +16,8 @@ import type { Notification, InsightSeverity } from "@/lib/types";
 import { objectOrNull, arrayOrEmpty } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
+import { windowDescription } from "@/lib/lists/window";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -68,6 +70,10 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<FilterTab>("all");
+  // The list is a WINDOW (the latest N): the server says whether older ones
+  // exist and how far it may grow. A tab change starts the window over.
+  const [limit, setLimit] = useState(100);
+  const [windowInfo, setWindowInfo] = useState({ hasMore: false, maxLimit: 500 });
   const [markingAll, setMarkingAll] = useState(false);
   // practice_management-03: which of the practice's mail this person gets.
   const [showEmailSettings, setShowEmailSettings] = useState(false);
@@ -81,22 +87,28 @@ export default function NotificationsPage() {
       const params = new URLSearchParams();
       if (tab === "unread") params.set("unread_only", "true");
       if (tab === "archived") params.set("archived", "true");
-      params.set("limit", "100");
+      params.set("limit", String(limit));
       const resp = await apiFetch<{
         notifications: Notification[];
         unread_count: number;
-        total: number;
+        returned: number;
+        has_more: boolean;
+        limit: number;
+        max_limit: number;
       }>(`/api/notifications?${params}`);
       if (!resp.success) throw new Error(resp.error ?? "Failed to load");
-      const payload = objectOrNull<{ notifications?: unknown[]; unread_count?: number }>(resp.data);
+      const payload = objectOrNull<{
+        notifications?: unknown[]; unread_count?: number; has_more?: boolean; max_limit?: number;
+      }>(resp.data);
       setNotifications(arrayOrEmpty(payload?.notifications) as typeof notifications);
       setUnreadCount(payload?.unread_count ?? 0);
+      setWindowInfo({ hasMore: payload?.has_more === true, maxLimit: payload?.max_limit ?? limit });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load notifications");
     } finally {
       setLoading(false);
     }
-  }, [tab]);
+  }, [tab, limit]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -297,7 +309,7 @@ export default function NotificationsPage() {
         {tabs.map(t => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => { setLimit(100); setTab(t.id); }}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
                 ? "border-blue-500/20 text-blue-600"
@@ -308,6 +320,16 @@ export default function NotificationsPage() {
           </button>
         ))}
       </div>
+
+      <ListWindowNotice
+        hasMore={windowInfo.hasMore}
+        what={windowDescription(notifications.length, "notifications", "latest")}
+        limit={limit}
+        maxLimit={windowInfo.maxLimit}
+        busy={loading}
+        elsewhere="Search and the type filter work on these only."
+        onShowMore={setLimit}
+      />
 
       <DataTable
         data={notifications}

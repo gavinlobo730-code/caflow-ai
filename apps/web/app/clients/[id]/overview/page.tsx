@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Mail, Phone, MapPin, Calendar, TrendingUp, CheckSquare, Shield, AlertTriangle, AlertCircle, Info } from "lucide-react";
 import { getClient } from "@/lib/data/clients";
-import { getTasks } from "@/lib/data/tasks";
+import { countOpenTasksForClient } from "@/lib/data/tasks";
 import { getComplianceCalendar, seedComplianceCalendar } from "@/lib/data/compliance";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getOrCalculateClientHealth, deriveHealthAlerts, DIMENSION_LABELS, type ClientHealth, type HealthAlert } from "@/lib/services/health-score-compute";
@@ -11,7 +11,6 @@ import { ClientTimeline } from "@/components/ClientTimeline";
 import { ClientInstructions } from "@/components/knowledge/ClientInstructions";
 import { HealthBadge } from "@/components/HealthBadge";
 import type { Client } from "@/lib/types";
-import type { Task } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate, ENTITY_TYPE_LABELS } from "@/lib/services/formatting";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
@@ -26,7 +25,8 @@ export default function OverviewPage() {
   // the year is chosen on the feed rather than over the whole screen.
   const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
   const [client, setClient] = useState<Client | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  // null = the count could not be read (shown as a failed load), never zero.
+  const [openTaskCount, setOpenTaskCount] = useState<number | null>(null);
   const [compliance, setCompliance] = useState<ComplianceEntry[]>([]);
   const [health, setHealth] = useState<ClientHealth | null>(null);
   const [alerts, setAlerts] = useState<HealthAlert[]>([]);
@@ -59,14 +59,14 @@ export default function OverviewPage() {
         let anyFailed = false;
         const [c, t, firmId, comp0, health] = await Promise.all([
           getClient(clientId),
-          getTasks({ clientId, limit: 50 }).catch(() => { anyFailed = true; return [] as Task[]; }),
+          countOpenTasksForClient(clientId).catch(() => { anyFailed = true; return null; }),
           getFirmId().catch(() => { anyFailed = true; return null; }),
           getComplianceCalendar(clientId).catch(() => { anyFailed = true; return [] as ComplianceEntry[]; }),
           getOrCalculateClientHealth(clientId).catch(() => { anyFailed = true; return null; }),
         ]);
         if (cancelled) return;
         setClient(c);
-        setTasks(t);
+        setOpenTaskCount(t);
         if (health) {
           setHealth(health);
           setAlerts(deriveHealthAlerts(health));
@@ -103,7 +103,6 @@ export default function OverviewPage() {
   }, [clientId, reloadKey]);
 
   const today = todayLocalISO();
-  const openTasks = tasks.filter((t) => t.status !== "completed");
   const overdueFiling = compliance.filter(
     (c) => c.due_date < today && c.filing_status !== "filed"
   );
@@ -157,8 +156,8 @@ export default function OverviewPage() {
               <StatCard
                 icon={<CheckSquare size={14} className="text-blue-600" />}
                 label="Open Tasks"
-                value={openTasks.length}
-                accent={openTasks.length > 0 ? "indigo" : "neutral"}
+                value={openTaskCount}
+                accent={(openTaskCount ?? 0) > 0 ? "indigo" : "neutral"}
               />
               <StatCard
                 icon={<Shield size={14} className="text-amber-600" />}
@@ -335,11 +334,13 @@ function StatCard({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: number;
+  /** null = not read; shown as a dash, never as zero. */
+  value: number | null;
   accent: "indigo" | "amber" | "neutral";
 }) {
-  const bg = accent === "indigo" && value > 0 ? "bg-blue-50 border-blue-500/20/15"
-    : accent === "amber" && value > 0 ? "bg-state-attention-surface border-amber-500/15"
+  const known = value ?? 0;
+  const bg = accent === "indigo" && known > 0 ? "bg-blue-50 border-blue-500/20/15"
+    : accent === "amber" && known > 0 ? "bg-state-attention-surface border-amber-500/15"
     : "bg-ps-bg border-ps-border";
   return (
     <div className={`rounded-xl border p-3 space-y-1 ${bg}`}>
@@ -347,7 +348,7 @@ function StatCard({
         {icon}
         <p className="text-3xs text-ps-hint">{label}</p>
       </div>
-      <p className="text-2xl font-bold text-ps-ink tabular-nums">{value}</p>
+      <p className="text-2xl font-bold text-ps-ink tabular-nums">{value ?? "—"}</p>
     </div>
   );
 }

@@ -230,6 +230,7 @@ class _Repo:
         row.update(data)
         return row
     def find_all(self, **k): return list(self.rows)
+    def find_page(self, **k): return list(self.rows), False
 
 
 @pytest.fixture
