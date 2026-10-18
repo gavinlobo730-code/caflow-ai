@@ -84,11 +84,11 @@ test("no treatment picker is seeded from a literal", () => {
   ));
 });
 
-// A SCREEN THAT SENDS NO TREATMENT CANNOT CONTRADICT ONE, and one does not:
-// `app/einvoice/page.tsx` is the firm-level list, and its create form takes an
-// invoice NUMBER and a date with no `sales_invoice_id` and no treatment at all.
-// That is a record floating free of any invoice — a different, older gap — and
-// the rule here reaches only a screen that states the treatment.
+// A SCREEN THAT SENDS NO TREATMENT CANNOT CONTRADICT ONE, and the firm-level
+// list no longer sends anything: it used to take an invoice NUMBER and a date
+// with no `sales_invoice_id` and no treatment at all, a record floating free of
+// any invoice (POST-A-065), and now only shows records. The rule below is the
+// one that reaches a screen that states the treatment.
 test("a screen that states a treatment reads the invoice's own", () => {
   const posters = sources().filter(({ body }) =>
     /["'`]\/api\/einvoice\/records["'`]/.test(body) && /\bgst_treatment\s*:/.test(body));
@@ -102,4 +102,33 @@ test("a screen that states a treatment reads the invoice's own", () => {
       "so a screen that does not read it is offering a choice that 422s.",
     );
   }
+});
+
+// A RECORD IS PREPARED AGAINST AN INVOICE, AND ONLY AN INVOICE'S OWN PANEL
+// PREPARES ONE (POST-A-065). The firm-level screen's create form posted an invoice
+// number and a date and stored a record that named no invoice, so the worklist of
+// invoices still needing an IRN could not see it and no invoice showed it. The
+// rule is the request, not a file: any screen that creates an e-invoice record
+// names the invoice it is for. The server still accepts a record with none (an
+// invoice raised outside the product), which is why the screen side is held here.
+test("a screen that creates an e-invoice record names the invoice it is for", () => {
+  const creators = sources().filter(({ body }) =>
+    /apiCall\(\s*["'`]\/api\/einvoice\/records["'`]\s*,\s*["'`]POST["'`]/.test(body)
+    || /["'`]\/api\/einvoice\/records["'`][\s\S]{0,120}method:\s*["'`]POST["'`]/.test(body));
+  assert.ok(creators.length > 0,
+    "nothing creates an e-invoice record — this guard has gone vacuous");
+  for (const { rel, body } of creators) {
+    assert.match(body, /\bsales_invoice_id\b/,
+      `${rel} creates an e-invoice record without saying which invoice it is for. A record ` +
+      "with no invoice is invisible to every invoice and to the list of invoices that still " +
+      "need an IRN; prepare it from the invoice's own compliance panel.");
+  }
+});
+
+test("the firm-level e-invoice screen only reads records", () => {
+  const body = code(fs.readFileSync(path.join(WEB, "app", "einvoice", "page.tsx"), "utf8"));
+  assert.doesNotMatch(body, /method:\s*["'`]POST["'`]/, "the firm-level screen writes a record again");
+  assert.doesNotMatch(body, /\/api\/einvoice\/records/, "the firm-level screen goes round lib/api");
+  assert.match(body, /api\.einvoice\.records\(/);
+  assert.doesNotMatch(body, /type=["']date["']/, "a native date box is back on the firm-level screen");
 });
