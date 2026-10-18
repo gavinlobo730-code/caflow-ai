@@ -19,12 +19,13 @@ import re
 import uuid
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.firm_hsn_library import FirmHsnLibraryIn, FirmHsnLibraryUpdateIn
+from core.list_window import split
 from core.permissions import rbac
 from domain.gst.goods_or_services import kind_word
 
@@ -70,22 +71,31 @@ def _rank_library(term: str, rows: list[dict]) -> list[dict]:
     return [r for _, r in sorted(enumerate(rows), key=rank)]
 
 
+#: The most codes one read of the library may ask for. Served to the screen as `max_limit`.
+LIBRARY_LIST_MAX = 200
+
+
 @router.get("/")
 def list_library(
     q: str = Query("", description="Search by code or description"),
     hsn_type: Optional[str] = Query(None, description="Filter: 'goods' or 'services'"),
     include_archived: bool = Query(False),
-    limit: int = Query(50, ge=1, le=200),
+    archived_only: bool = Query(False, description="Only retired codes (the Archived tab)"),
+    limit: Annotated[int, Query(ge=1, le=LIBRARY_LIST_MAX)] = 50,
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
-    """List/search the firm's own HSN/SAC library. Active-only by default."""
+    """List/search the firm's own HSN/SAC library as a WINDOW: `{codes, returned, has_more, limit, max_limit}`
+    (core/list_window). Active-only by default; `include_archived` adds retired codes and `archived_only` lists only them,
+    so the Archived tab is a window over retired codes and not a filter over a window of everything (POST-A-262)."""
     try:
         term = _SAFE_Q.sub(" ", (q or "").strip()).strip()
         firm_id = current_user.get("firm_id")
 
         if _USE_MOCK:
             rows = [r for r in MOCK_LIBRARY if r.get("firm_id") == firm_id]
-            if not include_archived:
+            if archived_only:
+                rows = [r for r in rows if not r.get("is_active", True)]
+            elif not include_archived:
                 rows = [r for r in rows if r.get("is_active", True)]
             if kind_word(hsn_type):
                 rows = [r for r in rows if r.get("hsn_type") == kind_word(hsn_type)]
@@ -98,23 +108,35 @@ def list_library(
                     or t in (r.get("description") or "").lower()
                 ]
                 rows = _rank_library(term, rows)
-            return api_response(True, rows[:limit])
+            return _library_window(rows, limit)
 
         from core.supabase_client import get_supabase
         db = get_supabase()
         query = db.table("firm_hsn_library").select("*").eq("firm_id", firm_id)
-        if not include_archived:
+        if archived_only:
+            query = query.eq("is_active", False)
+        elif not include_archived:
             query = query.eq("is_active", True)
         if kind_word(hsn_type):
             query = query.eq("hsn_type", kind_word(hsn_type))
         if term:
             query = query.or_(f"hsn_code.ilike.{term}*,description.ilike.*{term}*")
-        rows = query.order("hsn_code").limit(limit * 2).execute().data or []
+        # Twice the window plus one: a search is ranked over what is read, and the extra row is what says more exist.
+        rows = query.order("hsn_code").limit(limit * 2 + 1).execute().data or []
         rows = _rank_library(term, rows) if term else rows
-        return api_response(True, rows[:limit])
+        return _library_window(rows, limit)
     except Exception as e:
         _logger.error("list_library: %s", e)
         return api_response(False, None, "Unable to load the HSN/SAC library. Please try again.")
+
+
+def _library_window(rows: list[dict], limit: int):
+    """The answer: the first `limit` rows, and whether the read found more than that (`split`)."""
+    codes, has_more = split(rows, limit)
+    return api_response(True, {
+        "codes": codes, "returned": len(codes), "has_more": has_more,
+        "limit": limit, "max_limit": LIBRARY_LIST_MAX,
+    })
 
 
 @router.post("/")

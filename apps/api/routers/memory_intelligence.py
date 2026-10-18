@@ -2,11 +2,12 @@
 Phase 13 — AI Memory & Intelligence API Router
 """
 from fastapi import APIRouter, Depends, Query
-from typing import Optional
+from typing import Annotated, Optional
 from fastapi import HTTPException
 from core.authz import (
     assert_client_access, filter_by_client, is_firmwide, firmwide_roles_label,
 )
+from core.list_window import probe, split
 from core.permissions import rbac
 from models.common import api_response
 from models.fy import FYLabel
@@ -102,17 +103,26 @@ def compute_client_profile(
     return api_response(True, data={"profile": profile})
 
 
+#: The most profiles or anomalies one read may ask for. Served to the screen as `max_limit`.
+MEMORY_LIST_MAX = 100
+
+
 @router.get("/profiles")
 def list_profiles(
-    limit: int = Query(50, ge=1, le=100),
+    limit: Annotated[int, Query(ge=1, le=MEMORY_LIST_MAX)] = 50,
     current_user: dict = Depends(rbac("copilot", "read")),
 ):
-    """List all current client profiles for the firm."""
+    """The current client profiles for the firm, lowest compliance score first, as a window: `has_more` comes from the
+    read (core/list_window) and not from what is left after the caller's book is narrowed (POST-A-262)."""
     firm_id = current_user["firm_id"]
+    read, has_more = split(_get_repo().list_profiles(firm_id, limit=probe(limit)), limit)
     # client_profiles.client_id is NOT NULL, so narrowing drops every profile
     # outside the caller's book rather than merely reordering the page.
-    profiles = filter_by_client(current_user, _get_repo().list_profiles(firm_id, limit=limit))
-    return api_response(True, data={"profiles": profiles, "count": len(profiles)})
+    profiles = filter_by_client(current_user, read)
+    return api_response(True, data={
+        "profiles": profiles, "returned": len(profiles), "has_more": has_more,
+        "limit": limit, "max_limit": MEMORY_LIST_MAX,
+    })
 
 
 # ── Firm Profile ─────────────────────────────────────────────────────────────
@@ -218,16 +228,21 @@ def detect_client_triggers(
 def list_anomalies(
     client_id: Optional[str] = Query(None),
     status: str = Query("open"),
-    limit: int = Query(50, ge=1, le=100),
+    limit: Annotated[int, Query(ge=1, le=MEMORY_LIST_MAX)] = 50,
     current_user: dict = Depends(rbac("copilot", "read")),
 ):
+    """The latest `limit` anomalies and whether older ones exist (core/list_window); see `list_profiles`."""
     if client_id:
         assert_client_access(current_user, client_id)
     firm_id = current_user["firm_id"]
-    anomalies = _get_repo().list_anomalies(firm_id, client_id=client_id, status=status, limit=limit)
+    anomalies, has_more = split(
+        _get_repo().list_anomalies(firm_id, client_id=client_id, status=status, limit=probe(limit)), limit)
     if not client_id:
         anomalies = filter_by_client(current_user, anomalies)
-    return api_response(True, data={"anomalies": anomalies, "count": len(anomalies)})
+    return api_response(True, data={
+        "anomalies": anomalies, "returned": len(anomalies), "has_more": has_more,
+        "limit": limit, "max_limit": MEMORY_LIST_MAX,
+    })
 
 
 @router.patch("/anomalies/{anomaly_id}/status")

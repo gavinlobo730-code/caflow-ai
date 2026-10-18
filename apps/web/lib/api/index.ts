@@ -6620,11 +6620,14 @@ export const api = {
     // The firm's own CA-owned, CA-curated HSN/SAC codes — the only source
     // Products/Services and invoice lines select from. Caflow ships no
     // shared master here. See routers/firm_hsn_library.py.
-    list: (opts?: { q?: string; hsn_type?: string; include_archived?: boolean; limit?: number }) => {
+    // Answers a WINDOW (`{codes, has_more, limit, max_limit}`; read it through `readWindow(data, "codes", limit)`).
+    // `archived_only` lists only the retired codes, so the Archived tab is a window over them.
+    list: (opts?: { q?: string; hsn_type?: string; include_archived?: boolean; archived_only?: boolean; limit?: number }) => {
       const p = new URLSearchParams();
       if (opts?.q) p.set("q", opts.q);
       if (opts?.hsn_type) p.set("hsn_type", opts.hsn_type);
       if (opts?.include_archived) p.set("include_archived", "true");
+      if (opts?.archived_only) p.set("archived_only", "true");
       if (opts?.limit) p.set("limit", String(opts.limit));
       const qs = p.toString();
       return request(`/api/firm-hsn-library/${qs ? `?${qs}` : ""}`);
@@ -7816,8 +7819,10 @@ export const api = {
     reactivate: (userId: string) => request(`/api/identity/users/${userId}/reactivate`, { method: "POST" }),
     forceLogout: (userId: string) => request(`/api/identity/users/${userId}/force-logout`, { method: "POST" }),
     forceLogoutAll: () => request("/api/identity/force-logout-all", { method: "POST" }),
-    loginHistory: () =>
-      request("/api/identity/login-history") as Promise<ApiResp<{ events: LoginEvent[] }>>,
+    /** The firm's latest login events as a WINDOW (`{events, has_more, limit, max_limit}`; read it through
+     *  `readWindow(data, "events", limit)`). */
+    loginHistory: (limit?: number) =>
+      request(`/api/identity/login-history${limit ? `?limit=${limit}` : ""}`) as Promise<ApiResp<{ events: LoginEvent[]; has_more?: boolean; limit?: number; max_limit?: number }>>,
     recordLoginEvent: (event: "login" | "logout") =>
       request("/api/identity/login-event", { method: "POST", body: JSON.stringify({ event }) }),
     // The caller's own display name. Deliberately takes no user id — the row is

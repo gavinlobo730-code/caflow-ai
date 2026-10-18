@@ -18,6 +18,9 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
+import { readWindow } from "@/lib/lists/readWindow";
+import { windowDescription } from "@/lib/lists/window";
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -241,13 +244,15 @@ function TriggersTab() {
 
 // ── Tab: Profiles ─────────────────────────────────────────────────────────────
 
-// Backend hard-caps this endpoint at 100 (routers/memory_intelligence.py,
-// `le=100`) — request the max allowed and detect if we still hit it.
+// Backend hard-caps this endpoint at 100 (routers/memory_intelligence.py) — request the max allowed. Whether the list was
+// cut short is the server's `has_more`, never a comparison of the row count to this number (POST-A-262).
 const PROFILES_FETCH_LIMIT = 100;
+
+type ListWin = { hasMore: boolean; limit: number; maxLimit: number };
 
 function ProfilesTab() {
   const [profiles, setProfiles] = useState<ClientProfile[]>([]);
-  const [capped, setCapped] = useState(false);
+  const [win, setWin] = useState<ListWin | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -255,13 +260,15 @@ function ProfilesTab() {
     setLoading(true);
     (async () => {
       try {
-        const res = await api.memory.listProfiles({ limit: String(PROFILES_FETCH_LIMIT) }) as { data: { profiles: ClientProfile[] } };
-        const rows = res.data?.profiles ?? [];
-        setProfiles(rows);
-        setCapped(rows.length === PROFILES_FETCH_LIMIT);
+        const res = await api.memory.listProfiles({ limit: String(PROFILES_FETCH_LIMIT) }) as { success?: boolean; data: unknown };
+        const w = res.success === false ? null : readWindow<ClientProfile>(res.data, "profiles", PROFILES_FETCH_LIMIT);
+        if (!w) throw new Error("Couldn't load client profiles.");
+        setProfiles(w.rows);
+        setWin({ hasMore: w.hasMore, limit: w.limit, maxLimit: w.maxLimit });
         setLoadError(null);
       } catch (e) {
         setProfiles([]);
+        setWin(null);
         setLoadError(e instanceof Error ? e.message : "Couldn't load client profiles.");
       } finally {
         setLoading(false);
@@ -296,9 +303,16 @@ function ProfilesTab() {
   return (
     <div>
       <p className="text-xs text-slate-400 mb-3">
-        {profiles.length}{capped ? "+" : ""} client profile{profiles.length === 1 ? "" : "s"}
-        {capped && " — showing the first 100"}
+        {profiles.length}{win?.hasMore ? "+" : ""} client profile{profiles.length === 1 ? "" : "s"}
       </p>
+      {win && (
+        <ListWindowNotice
+          hasMore={win.hasMore}
+          what={windowDescription(profiles.length, "client profiles", "first", "lowest compliance score first")}
+          limit={win.limit}
+          maxLimit={win.maxLimit}
+        />
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
       {profiles.map((p) => {
         const scoreColor =
@@ -368,13 +382,12 @@ function ProfilesTab() {
 
 // ── Tab: Anomalies ────────────────────────────────────────────────────────────
 
-// Backend hard-caps this endpoint at 100 (routers/memory_intelligence.py,
-// `le=100`) — request the max allowed and detect if we still hit it.
+// The same server ceiling as the profiles (routers/memory_intelligence.py): the window asked for, and `has_more` is the server's.
 const ANOMALIES_FETCH_LIMIT = 100;
 
 function AnomaliesTab() {
   const [anomalies, setAnomalies] = useState<PatternAnomaly[]>([]);
-  const [capped, setCapped] = useState(false);
+  const [win, setWin] = useState<ListWin | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
@@ -382,13 +395,15 @@ function AnomaliesTab() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.memory.listAnomalies({ status: "open", limit: String(ANOMALIES_FETCH_LIMIT) }) as { data: { anomalies: PatternAnomaly[] } };
-      const rows = res.data?.anomalies ?? [];
-      setAnomalies(rows);
-      setCapped(rows.length === ANOMALIES_FETCH_LIMIT);
+      const res = await api.memory.listAnomalies({ status: "open", limit: String(ANOMALIES_FETCH_LIMIT) }) as { success?: boolean; data: unknown };
+      const w = res.success === false ? null : readWindow<PatternAnomaly>(res.data, "anomalies", ANOMALIES_FETCH_LIMIT);
+      if (!w) throw new Error("Couldn't load anomalies.");
+      setAnomalies(w.rows);
+      setWin({ hasMore: w.hasMore, limit: w.limit, maxLimit: w.maxLimit });
       setLoadError(null);
     } catch (e) {
       setAnomalies([]);
+      setWin(null);
       setLoadError(e instanceof Error ? e.message : "Couldn't load anomalies.");
     } finally {
       setLoading(false);
@@ -432,9 +447,17 @@ function AnomaliesTab() {
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-400">
-        {anomalies.length}{capped ? "+" : ""} open anomal{anomalies.length === 1 ? "y" : "ies"}
-        {capped && " — showing the first 100"}
+        {anomalies.length}{win?.hasMore ? "+" : ""} open anomal{anomalies.length === 1 ? "y" : "ies"}
       </p>
+      {win && (
+        <ListWindowNotice
+          hasMore={win.hasMore}
+          what={windowDescription(anomalies.length, "open anomalies", "latest")}
+          limit={win.limit}
+          maxLimit={win.maxLimit}
+          elsewhere="Mark some of these reviewed and the next ones will appear."
+        />
+      )}
       {anomalies.map((a) => {
         const isSpike = a.actual_value > a.baseline_value;
         const DeviationIcon = isSpike ? TrendingUp : TrendingDown;

@@ -27,15 +27,16 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
+import { readWindow } from "@/lib/lists/readWindow";
+import { windowDescription } from "@/lib/lists/window";
 
 type Filter = "active" | "archived";
 type TypeFilter = "all" | "goods" | "services";
 
-// Backend caps a single list response at 200 rows (routers/firm_hsn_library.py
-// has no pagination) — when a fetch comes back exactly at the cap we can't tell
-// whether that's the true total or more rows exist beyond it, so the count
-// badge below shows "200+" and a hint to narrow the search instead of a bare
-// (possibly wrong) total.
+// The window the screen asks for. The server caps a single list response (routers/firm_hsn_library.py) and answers
+// `has_more` and its own ceiling, so the count badge shows "200+" only when the server says more exist, and the screen
+// never compares a row count to this number (POST-A-262).
 const HSN_LIBRARY_FETCH_LIMIT = 200;
 
 const EXPORT_COLUMNS: Column<FirmHsnLibraryRow>[] = [
@@ -48,10 +49,9 @@ const EXPORT_COLUMNS: Column<FirmHsnLibraryRow>[] = [
 
 export default function FirmHsnLibraryPage() {
   const [items, setItems] = useState<FirmHsnLibraryRow[]>([]);
-  // Whether the raw fetch (before the "archived" tab's client-side is_active
-  // filter) hit HSN_LIBRARY_FETCH_LIMIT — the archived tab filters down from
-  // that same capped fetch, so items.length alone would understate a cap.
-  const [capped, setCapped] = useState(false);
+  // The server's window over the list on screen. The Archived tab asks the server for retired codes only
+  // (`archived_only`), so it is a window over those and not a filter over a window of everything.
+  const [win, setWin] = useState<{ hasMore: boolean; limit: number; maxLimit: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [q, setQ] = useState("");
@@ -85,14 +85,13 @@ export default function FirmHsnLibraryPage() {
       const res = (await api.firmHsnLibrary.list({
         q: q.trim() || undefined,
         hsn_type: typeFilter === "all" ? undefined : typeFilter,
-        include_archived: filter === "archived",
+        archived_only: filter === "archived",
         limit: HSN_LIBRARY_FETCH_LIMIT,
-      })) as ApiResp<FirmHsnLibraryRow[]>;
-      if (!res.success) { setError(true); return; }
-      const rows = res.data ?? [];
-      setCapped(rows.length === HSN_LIBRARY_FETCH_LIMIT);
-      // include_archived returns both; the "archived" tab shows only archived.
-      setItems(filter === "archived" ? rows.filter((r) => r.is_active === false) : rows);
+      })) as ApiResp<unknown>;
+      const w = res.success ? readWindow<FirmHsnLibraryRow>(res.data, "codes", HSN_LIBRARY_FETCH_LIMIT) : null;
+      if (!w) { setError(true); return; }
+      setWin({ hasMore: w.hasMore, limit: w.limit, maxLimit: w.maxLimit });
+      setItems(w.rows);
     } catch {
       setError(true);
     } finally {
@@ -255,18 +254,13 @@ export default function FirmHsnLibraryPage() {
           meta={
             !loading && !error ? (
               <span className="text-xs font-normal text-ps-hint">
-                {items.length}{capped ? "+" : ""} code{items.length === 1 ? "" : "s"}
+                {items.length}{win?.hasMore ? "+" : ""} code{items.length === 1 ? "" : "s"}
               </span>
             ) : undefined
           }
           subtitle={
             <>
               The HSN/SAC codes your firm bills against. You add and curate every code here — Caflow does not ship a shared list or suggest a classification; every Product/Service and invoice line picks from this library.
-              {capped && (
-                <span className="block text-amber-600 mt-0.5">
-                  Showing the first {HSN_LIBRARY_FETCH_LIMIT} matches — refine your search to see more.
-                </span>
-              )}
             </>
           }
           actions={
@@ -344,6 +338,16 @@ export default function FirmHsnLibraryPage() {
               </button>
             </div>
           </div>
+        )}
+
+        {win && !loading && !error && (
+          <ListWindowNotice
+            hasMore={win.hasMore}
+            what={windowDescription(items.length, "codes", "first", "in code order")}
+            limit={win.limit}
+            maxLimit={win.maxLimit}
+            elsewhere="Search, or filter by type, to narrow the list."
+          />
         )}
 
         {/* List */}

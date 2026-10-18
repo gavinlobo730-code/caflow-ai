@@ -11,7 +11,7 @@ users.sessions_revoked_at so existing JWTs are rejected immediately.
 """
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from middleware.public_rate_limit import public_limit
 from models.common import api_response
 from core.auth import get_current_user, get_jwt_user
+from core.list_window import probe, split
 from core.permissions import rbac, Role, canonical_role, get_accessible_resources
 from repositories.user_repository import user_repo
 from repositories.login_events_repository import login_events_repo
@@ -209,12 +210,22 @@ def user_login_history(user_id: str, current_user: dict = Depends(rbac("team", "
     return api_response(True, {"events": login_events_repo.list_for_user(current_user["firm_id"], user_id)})
 
 
+#: The most login events one read of the firm's history may ask for. Served to the screen as `max_limit`.
+LOGIN_HISTORY_MAX = 1000
+
+
 @router.get("/login-history")
 def firm_login_history(
-    limit: int = Query(200, ge=1, le=1000),
+    limit: Annotated[int, Query(ge=1, le=LOGIN_HISTORY_MAX)] = 200,
     current_user: dict = Depends(rbac("team", "read")),
 ):
-    return api_response(True, {"events": login_events_repo.list_for_firm(current_user["firm_id"], limit=limit)})
+    """The firm's latest `limit` login events and whether older ones exist (core/list_window). The screen used to decide
+    it had been cut short by comparing the row count to the number it expected the server to default to (POST-A-262)."""
+    events, has_more = split(login_events_repo.list_for_firm(current_user["firm_id"], limit=probe(limit)), limit)
+    return api_response(True, {
+        "events": events, "returned": len(events), "has_more": has_more,
+        "limit": limit, "max_limit": LOGIN_HISTORY_MAX,
+    })
 
 
 # ─── Self-service: what may the caller do? ───────────────────────────────────

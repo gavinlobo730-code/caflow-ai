@@ -63,7 +63,7 @@ def test_purge_unused_code_removes_it(client):
     lid = _add(client).json()["data"]["id"]
     r = client.delete(f"/api/firm-hsn-library/{lid}/purge")
     assert r.json()["success"] is True
-    assert client.get("/api/firm-hsn-library/?include_archived=true").json()["data"] == []
+    assert client.get("/api/firm-hsn-library/?include_archived=true").json()["data"]["codes"] == []
 
 
 def test_purge_missing_code_404s(client):
@@ -89,7 +89,7 @@ def test_purge_blocked_when_used_on_product_service(client):
     assert r.json()["success"] is False
     assert "Product/Service catalogue" in r.json()["error"]
     # Never removed.
-    assert len(client.get("/api/firm-hsn-library/?include_archived=true").json()["data"]) == 1
+    assert len(client.get("/api/firm-hsn-library/?include_archived=true").json()["data"]["codes"]) == 1
 
 
 def test_purge_blocked_when_used_on_sales_invoice_line(client):
@@ -146,7 +146,7 @@ def test_bulk_purge_deletes_unused_and_blocks_used(client):
     assert body["blocked"][0]["id"] == used_id
     assert body["blocked"][0]["used_in"] == ["your Product/Service catalogue"]
 
-    remaining = client.get("/api/firm-hsn-library/?include_archived=true").json()["data"]
+    remaining = client.get("/api/firm-hsn-library/?include_archived=true").json()["data"]["codes"]
     assert [r["id"] for r in remaining] == [used_id]
 
 
@@ -163,7 +163,7 @@ def test_purge_respects_firm_isolation(client):
     r = other.delete(f"/api/firm-hsn-library/{lid}/purge")
     assert r.status_code == 404
     # Untouched from the owning firm's side.
-    assert len(client.get("/api/firm-hsn-library/?include_archived=true").json()["data"]) == 1
+    assert len(client.get("/api/firm-hsn-library/?include_archived=true").json()["data"]["codes"]) == 1
 
 
 def test_bulk_purge_respects_firm_isolation(client):
@@ -171,4 +171,4 @@ def test_bulk_purge_respects_firm_isolation(client):
     other = _client_as(OTHER_FIRM_USER)
     r = other.post("/api/firm-hsn-library/bulk-delete", json={"ids": [lid]})
     assert r.json()["data"] == {"deleted": [], "blocked": []}
-    assert len(client.get("/api/firm-hsn-library/?include_archived=true").json()["data"]) == 1
+    assert len(client.get("/api/firm-hsn-library/?include_archived=true").json()["data"]["codes"]) == 1

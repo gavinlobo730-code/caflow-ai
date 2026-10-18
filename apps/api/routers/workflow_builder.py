@@ -3,13 +3,14 @@ Phase 10 — Workflow Builder API.
 Endpoints for managing workflow templates, instances, approvals, schedules, analytics.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Optional
+from typing import Annotated, Optional
 from models.common import api_response
 from models.workflow import (
     WorkflowTemplateIn, WorkflowTemplateUpdate,
     WorkflowScheduleIn, ApprovalResponseIn,
 )
 from core.authz import assert_client_access, filter_by_client
+from core.list_window import probe, split
 from core.db_errors import error_code
 from core.permissions import rbac
 from repositories.workflow_repository import IN_FLIGHT_STATUSES
@@ -293,15 +294,22 @@ def cancel_instance(
 
 # ── Approvals ─────────────────────────────────────────────────────────────────
 
+#: The most approvals one read may ask for. Served to the screen as `max_limit`.
+APPROVALS_LIST_MAX = 200
+
+
 @router.get("/approvals")
 def list_approvals(
     status: Optional[str] = "pending",
-    limit: int = Query(50, le=200),
+    limit: Annotated[int, Query(ge=1, le=APPROVALS_LIST_MAX)] = 50,
     current_user: dict = Depends(rbac("task", "read")),
 ):
+    """The latest `limit` approvals and whether older ones exist (core/list_window). `has_more` comes from the READ, not
+    from what is left once the caller's clients are narrowed, so a scoped caller is never told the list is complete
+    because the narrowing ate the overflow (POST-A-262)."""
     firm_id = current_user["firm_id"]
     user_id = current_user.get("auth_user_id")
-    approvals = _repo().list_approvals(firm_id, status=status, limit=limit)
+    approvals, has_more = split(_repo().list_approvals(firm_id, status=status, limit=probe(limit)), limit)
     # Enrich with template names
     for a in approvals:
         instance = _repo().get_instance(firm_id, a["instance_id"])
@@ -312,7 +320,10 @@ def list_approvals(
     # An approval has no client_id column — the enrichment above borrowed it
     # from the parent instance, and that is what the narrowing acts on.
     approvals = _scope_by_instance(current_user, approvals)
-    return api_response(True, {"approvals": approvals, "total": len(approvals)})
+    return api_response(True, {
+        "approvals": approvals, "returned": len(approvals), "has_more": has_more,
+        "limit": limit, "max_limit": APPROVALS_LIST_MAX,
+    })
 
 
 @router.post("/approvals/{approval_id}/respond")
