@@ -315,8 +315,6 @@ export interface RelatedPartyDisclosure {
   undetermined_count: number;
   disclosure_required: boolean;
   section_185_loans: Record<string, unknown>[];
-  transfer_pricing_flags: Record<string, unknown>[];
-  transfer_pricing_count: number;
   entity_relationships: Record<string, unknown>[];
   gaps: string[];
   notes: string[];

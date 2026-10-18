@@ -26,13 +26,6 @@ def test_significant_influence_is_twenty_percent():
     assert d.SIGNIFICANT_INFLUENCE_PERCENT == 20
 
 
-def test_the_transfer_pricing_threshold_is_one_crore_in_paise():
-    assert d.TRANSFER_PRICING_THRESHOLD_PAISE == 1_00_00_000_00
-    # Read the other way round, because the literal's underscores are grouped
-    # the Indian way and are easy to miscount: one crore RUPEES, in paise.
-    assert d.TRANSFER_PRICING_THRESHOLD_PAISE == 1_00_00_000 * 100
-
-
 # ── the three the old literal set dropped ────────────────────────────────────
 
 @pytest.mark.parametrize("role", ["Karta (HUF)", "Proprietor", "Beneficiary"])
@@ -129,7 +122,6 @@ def _build(parties, **kw):
     return d.build(
         client_id="c1", parties=parties,
         section_185_loans=kw.get("loans", []),
-        transfer_pricing_flags=kw.get("tp", []),
         entity_relationships=kw.get("edges", []),
     )
 

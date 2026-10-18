@@ -116,7 +116,7 @@ export default function ClientRelatedPartiesPage() {
         noteRes?.success
           ? objectWithLists<RelatedPartyDisclosure>(
               noteRes.data,
-              "parties", "section_185_loans", "transfer_pricing_flags",
+              "parties", "section_185_loans",
               "entity_relationships", "gaps", "notes",
             )
           : null
@@ -309,18 +309,11 @@ export default function ClientRelatedPartiesPage() {
             </div>
           )}
 
-          {note && (note.section_185_loans.length > 0 || note.transfer_pricing_flags.length > 0) && (
+          {note && note.section_185_loans.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {note.section_185_loans.length > 0 && (
-                <Badge className="bg-state-problem-surface text-state-problem text-3xs">
-                  {note.section_185_loans.length} loan(s) flagged under Companies Act s.185
-                </Badge>
-              )}
-              {note.transfer_pricing_flags.length > 0 && (
-                <Badge className="bg-state-attention-surface text-state-attention text-3xs">
-                  {note.transfer_pricing_count} inter-company loan(s) above the s.92 threshold
-                </Badge>
-              )}
+              <Badge className="bg-state-problem-surface text-state-problem text-3xs">
+                {note.section_185_loans.length} loan(s) flagged under Companies Act s.185
+              </Badge>
             </div>
           )}
 

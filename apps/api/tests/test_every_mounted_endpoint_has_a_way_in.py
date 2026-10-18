@@ -116,7 +116,7 @@ BUDGET: dict[str, int] = {
     # CA the insights arrive "automatically", which nothing does.
     # 4 -> 3 on 01-10-2026 (ai-10): `GET /cross-client` was DELETED — it served
     # the same hardcoded sample (a director called Rajesh Mehta) to every firm.
-    "/api/memory": 7, "/api/relationships": 5, "/api/ai-insights": 3,
+    "/api/memory": 7, "/api/relationships": 4, "/api/ai-insights": 3,
     # /api/intelligence 6 -> 3 on 25-09-2026 (Phase 3a-5): all six had
     # `lib/api` methods and no screen caller. `/insights` reaches the
     # three client-facing reads — compliance risk, relationship health
