@@ -90,6 +90,7 @@ class _Q:
         self.op = "select"
         self.payload = None
         self.f = []
+        self.f_in = []
 
     def insert(self, p):
         self.op, self.payload = "insert", p
@@ -105,6 +106,11 @@ class _Q:
 
     def eq(self, k, v):
         self.f.append((k, v))
+        return self
+
+    def in_(self, k, vals):
+        # The run header's totals write is conditional on the run still being unreleased (POST-A-254).
+        self.f_in.append((k, set(vals)))
         return self
 
     def order(self, *a, **k):
@@ -124,7 +130,9 @@ class _Q:
 
     def _match(self):
         rows = self.s.setdefault(self.t, [])
-        return [r for r in rows if all(r.get(k) == v for k, v in self.f)]
+        return [r for r in rows
+                if all(r.get(k) == v for k, v in self.f)
+                and all(r.get(k) in vs for k, vs in self.f_in)]
 
     def execute(self):
         rows = self.s.setdefault(self.t, [])

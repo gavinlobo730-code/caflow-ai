@@ -1,15 +1,16 @@
-"""The s.2(y) wage base, and the 50% rule that can add allowances back into it.
+"""The s.2(88) wage base, and the 50% rule that can add allowances back into it.
 
 WHAT THIS IS FOR
 
     Until 21 November 2025 the PF wage base was, in the code and in the world,
     `basic + DA` — EPF Act s.2(b) and s.6. The four Labour Codes commenced that
     day, the Code on Social Security 2020 subsumed the EPF Act 1952, and it
-    adopts the Code on Wages definition of "wages" for computing provident fund.
+    adopts its own definition of "wages" for computing provident fund.
 
-    That definition is s.2(y) of the Code on Wages 2019: all remuneration, minus
-    a listed set of exclusions, with a proviso that caps the exclusions at half
-    of total remuneration and DEEMS the excess to be wages.
+    That definition is s.2(88) of the Code on Social Security 2020 (the Code on Wages
+    2019 has the same words at s.2(y)): all remuneration, minus a listed set of
+    exclusions, with a proviso that caps the exclusions at half of total
+    remuneration and DEEMS the excess to be wages.
 
         wages = (total remuneration - exclusions) + max(0, exclusions - 50%)
 
@@ -37,7 +38,7 @@ WHY THE CEILING MEANS THIS IS NARROWER THAN IT SOUNDS
 
 WHICH COMPONENTS ARE EXCLUDED, AND THE ONE RULE FOR DECIDING
 
-    s.2(y) excludes, at (a) to (k): a statutory bonus not forming part of
+    s.2(88) excludes, at (a) to (k): a statutory bonus not forming part of
     contractual remuneration; the value of house accommodation, light, water,
     medical attendance or other amenity excluded BY GOVERNMENT ORDER; the
     employer's PF/pension contribution and interest on it; conveyance allowance
@@ -103,7 +104,7 @@ from datetime import date
 
 # The four Labour Codes commenced on this day. A payroll month ENDING before it
 # is computed on the old EPF Act s.2(b) basis; a month ending on or after it
-# uses s.2(y). Verified 2026-09-04.
+# uses s.2(88). Verified 2026-09-04.
 WAGE_RULE_EFFECTIVE_FROM = date(2025, 11, 21)
 
 # The proviso's cap, in basis points of total remuneration, so the arithmetic
@@ -114,7 +115,7 @@ EXCLUSION_CAP_BPS = 5000
 
 @dataclass(frozen=True)
 class WageBase:
-    """The s.2(y) wage figure for one employee for one month, and its working.
+    """The s.2(88) wage figure for one employee for one month, and its working.
 
     Every field is kept because a CA reconciling a challan needs to see WHY the
     base differs from basic + DA, not just that it does.
@@ -167,7 +168,7 @@ def month_end(fy_label: str | None, month: int | None) -> date | None:
 
 
 def rule_in_force(fy_label: str | None, month: int | None) -> bool:
-    """Whether s.2(y) governs the PF base for this payroll month.
+    """Whether s.2(88) governs the PF base for this payroll month.
 
     Unknown period -> False. That is the pre-Code behaviour, and it is the
     right default for a caller that cannot say which month it is computing:
@@ -198,7 +199,7 @@ def compute(
     fy_label: str | None = None,
     month: int | None = None,
 ) -> WageBase:
-    """The s.2(y) wage base for one month.
+    """The s.2(88) wage base for one month.
 
     `wage_components_paise` is everything that is remuneration and NOT in the
     exclusion list — basic, DA, and by the default above anything unclassified.
@@ -206,14 +207,14 @@ def compute(
 
     `pre_code_wages_paise` is what the EPF Act s.6 charged BEFORE 21-11-2025:
     "basic wages, dearness allowance and retaining allowance". It is a separate
-    figure because the two definitions are not the same set — s.2(y) sweeps in
+    figure because the two definitions are not the same set — s.2(88) sweeps in
     everything that is not an enumerated exclusion, and s.6 named three things.
 
     THIS PARAMETER EXISTS BECAUSE THE DOCSTRING USED TO BE FALSE. It said the
     pre-commencement branch "reproduces the old basic + DA exactly", and it did
     only when there were no other allowances: the branch returned
     `wage_components_paise`, into which routers/payroll.py had (correctly, for
-    s.2(y)) folded medical, special and other. So an October 2025 month on
+    s.2(88)) folded medical, special and other. So an October 2025 month on
     Rs 10,000 basic + Rs 2,000 medical + Rs 3,000 special computed PF on
     Rs 15,000 and deducted Rs 1,800 where s.6 gives Rs 1,200 — a wrong figure
     on every historic month with an allowance, and one that recomputes on
@@ -230,7 +231,7 @@ def compute(
 
     if not rule_in_force(fy_label, month):
         # EPF Act s.6 — basic wages + DA + retaining allowance, and nothing
-        # else. Not s.2(y)'s "everything that is not an exclusion".
+        # else. Not s.2(88)'s "everything that is not an exclusion".
         pre = (wage_components_paise if pre_code_wages_paise is None
                else max(0, int(pre_code_wages_paise or 0)))
         return WageBase(

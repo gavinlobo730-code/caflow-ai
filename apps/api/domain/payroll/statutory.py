@@ -6,8 +6,8 @@ TODO(compliance): docs/compliance/04-mca-epfo-esic.md
         Rs 500 — that is agreement, not verification.
 
     (2) THE PF WAGE BASE MOVED ON 21-11-2025, AND IS NOW HANDLED. The Code on
-        Social Security subsumed the EPF Act and adopts the Code on Wages
-        s.2(y) definition: exclusions capped at half of total remuneration,
+        Social Security subsumed the EPF Act and adopts its own definition of wages
+        (s.2(88)): exclusions capped at half of total remuneration,
         excess deemed wages. domain/payroll/wage_base.py implements it,
         migration 334 stores the working on the slip, and the rates below are
         unaffected — the CEILING is unchanged and the RATES are unchanged; it

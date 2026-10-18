@@ -226,8 +226,8 @@ def test_a_newline_in_a_name_cannot_split_one_member_into_two():
 #
 # The one figure on this file that MUST tie to the contribution beside it is
 # EPF_WAGES, and this module used to re-derive it as `basic + DA` while the
-# payroll run deducted on the Code on Social Security base — the Code on Wages
-# §2(y) definition that caps the listed exclusions at half of total
+# payroll run deducted on the Code on Social Security base — its §2(88)
+# definition of wages, which caps the listed exclusions at half of total
 # remuneration and deems the excess to be wages (domain/payroll/wage_base.py,
 # stored on the slip by migration 334).
 #
@@ -253,7 +253,7 @@ def _line_for(emp: dict, *, fy: str, month: int) -> list[str]:
 
 
 def test_the_file_declares_the_base_the_contribution_was_deducted_on():
-    """₹10,000 basic + ₹18,000 HRA, December 2026: the §2(y) base is ₹14,000.
+    """₹10,000 basic + ₹18,000 HRA, December 2026: the §2(88) base is ₹14,000.
 
     Declaring ₹10,000 of EPF wages beside EPS of ₹1,166 claims a pension rate of
     11.66% where EPFO validates 8.33%. The portal either rejects the line or
@@ -298,7 +298,7 @@ def test_a_stored_base_of_zero_is_not_read_as_a_missing_one():
 
 
 def test_arrears_recorded_as_pf_wages_still_add_on_top_of_the_stored_base():
-    """`one_time_pf_wages_paise` (migration 331) is added after the §2(y)
+    """`one_time_pf_wages_paise` (migration 331) is added after the §2(88)
     figure, exactly as the run adds it — and the ceiling still bounds the
     result."""
     f = _build([_slip(basic_paise=8_000_00, pf_wages_paise=12_000_00,

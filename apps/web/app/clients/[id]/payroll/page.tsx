@@ -155,6 +155,9 @@ interface PayrollRun {
   total_esi_paise: number;
   total_tds_paise: number;
   finalized_at?: string;
+  // Set when this run was released and its loan balances were not (all) written down afterwards (migration 508). The
+  // server clears it when the write-down completes; the Runs tab offers to finish it while it is set.
+  loan_writedown_owed_at?: string | null;
 }
 
 interface Slip {
@@ -692,7 +695,7 @@ function RunsTab({ clientId, firmId, openDoc }:
     }).catch(() => null) as {
       success?: boolean; error?: string | null;
       detail?: string | { message?: string; gaps?: string[] };
-      data?: { overridden_gaps?: string[] };
+      data?: { overridden_gaps?: string[]; loan_writedown_owed?: boolean };
     } | null;
     setFinalizing(null);
 
@@ -714,6 +717,12 @@ function RunsTab({ clientId, firmId, openDoc }:
         ?? res?.error
         ?? "Could not finalize the payroll run — the request failed.");
       return;
+    }
+    // The release stands (its journal is posted) but the loan balances were not all written down. Said here, where the
+    // person who pressed Release is looking, and offered again on the Runs tab until it is done.
+    if (res.data?.loan_writedown_owed) {
+      setFinalizeError("The run was released, but the loan balances could not all be written down. Open the Runs "
+        + "tab and press Write loans down to finish it; until then the loans still show the old balances.");
     }
     setBlockedRun(null);
     setOverrideReason("");
@@ -1319,6 +1328,27 @@ function ReleaseTab({ clientId }: { clientId: string }) {
     } finally { setBusy(null); }
   }
 
+  /** Finish a loan write-down a release left owed (POST-A-253). The server decides whether one is owed and skips every
+   *  loan already on record, so a second press cannot take an instalment twice. */
+  async function writeDownLoans(run: PayrollRun) {
+    setBusy(run.id); setMsg(null);
+    try {
+      const res = await api.payroll.writeDownLoans(run.id) as {
+        success?: boolean; error?: string | null; detail?: string;
+        data?: { written_down?: number } | null;
+      };
+      if (res?.success === false) {
+        setMsg({ kind: "err", text: res.error ?? (typeof res.detail === "string" ? res.detail : null)
+          ?? "Could not write the loan balances down." });
+        return;
+      }
+      setMsg({ kind: "ok", text: `Loan balances written down for ${run.month} (${res?.data?.written_down ?? 0} loan(s) updated).` });
+      await load();
+    } catch (e) {
+      setMsg({ kind: "err", text: e instanceof Error ? e.message : "Could not write the loan balances down." });
+    } finally { setBusy(null); }
+  }
+
   if (loading) return <div className="p-5"><TransactionListSkeleton rows={3} /></div>;
 
   return (
@@ -1377,6 +1407,13 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                       {r.total_net_paise != null ? fmt(r.total_net_paise) : "—"}
                     </td>
                     <td className="px-3 py-2 text-right space-x-2 whitespace-nowrap">
+                      {(finalized || paid) && r.loan_writedown_owed_at && (
+                        <Button variant="plain" size="none" onClick={() => writeDownLoans(r)} disabled={busy === r.id}
+                          title="This run was released but its loan balances were not all written down"
+                          className="px-3 py-1 border border-state-attention-border bg-state-attention-surface text-state-attention rounded-lg disabled:opacity-50">
+                          {busy === r.id ? "Writing down…" : "Write loans down"}
+                        </Button>
+                      )}
                       {finalized && (
                         <button onClick={() => setDisburseRun(r)} disabled={busy === r.id}
                           className="px-3 py-1 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">

@@ -5510,6 +5510,13 @@ export const api = {
         // caller with nothing to say still posts exactly what it always did.
         ...(reason && reason.trim() ? { body: JSON.stringify({ reason: reason.trim() }) } : {}),
       }),
+    /** Finish the loan write-down a release did not complete (POST-A-253). PARTNER ONLY.
+     *
+     *  A release claims the run and writes each borrower's balance down afterwards. If that was interrupted the run
+     *  carries `loan_writedown_owed_at`, and this finishes it: safe to press twice, it skips every loan already on
+     *  record for the run. */
+    writeDownLoans: (runId: string) =>
+      request(`/api/payroll/runs/${runId}/loan-writedown`, { method: "POST" }),
     /** THE MONTH-END PACK, in one action.
      *
      *  downloadPayslip below is right for one employee asking for theirs. This

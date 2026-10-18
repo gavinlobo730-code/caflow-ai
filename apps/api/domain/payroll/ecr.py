@@ -322,8 +322,8 @@ def build_ecr(
         #
         # EPF Act s.6 made PF wages basic + DA, and that was right until
         # 21-11-2025. From the commencement of the four Labour Codes the Code on
-        # Social Security subsumed the EPF Act and adopts the Code on Wages
-        # s.2(y) definition, which caps the listed exclusions at half of total
+        # Social Security subsumed the EPF Act and adopts its own
+        # definition of wages (s.2(88)), which caps the listed exclusions at half of total
         # remuneration and deems the excess to be wages — so the base the
         # contribution is actually deducted on can be well above basic + DA.
         # routers/payroll.py computes it through domain/payroll/wage_base.py and

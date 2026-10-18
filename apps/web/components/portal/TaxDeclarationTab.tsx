@@ -31,7 +31,7 @@
  * All monetary values are integer paise in the database.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Loader2, Lock, Save } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
@@ -129,6 +129,9 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  // How many saved lines were READ when the declaration loaded. The save replaces them, and a delete that row security
+  // hid answers no error and no rows, so this is what lets the save tell "nothing to remove" from "could not remove".
+  const savedLineCount = useRef(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -155,10 +158,14 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
         const seedMoney: Record<string, string> = {};
         for (const f of MONEY_FIELDS) seedMoney[f] = paiseToRupees((existing as Declaration)[f] ?? 0);
         setMoney(seedMoney);
-        const { data: rows } = await sb
+        const { data: rows, error: rowsErr } = await sb
           .from("payroll_it_declaration_items")
           .select("*")
           .eq("declaration_id", existing.id);
+        // A failed read of the lines is a failed load: showing the boxes empty would invite a save that replaces lines
+        // the person never saw.
+        if (rowsErr) throw rowsErr;
+        savedLineCount.current = (rows ?? []).length;
         const seed: Record<string, string> = {};
         for (const r of ((rows ?? []) as Item[])) {
           seed[r.section] = paiseToRupees(r.amount_declared_paise);
@@ -186,6 +193,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
           proofs_verified: false,
         });
         setItems({});
+        savedLineCount.current = 0;
       }
     } catch (e) {
       console.error("load declaration:", e);
@@ -238,8 +246,16 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
 
       // Replaced wholesale, not merged: a declaration states the whole year's
       // intent, and merging would leave a withdrawn investment in place.
-      await sb.from("payroll_it_declaration_items")
-        .delete().eq("declaration_id", saved.id);
+      //
+      // The delete is READ (POST-A-255): its error stops the save, and so does an answer of no rows for a declaration
+      // whose lines were loaded, because row security hides a delete it refuses without an error and the insert below
+      // would then put the new lines beside the old ones.
+      const { data: removed, error: delErr } = await sb.from("payroll_it_declaration_items")
+        .delete().eq("declaration_id", saved.id).select("id");
+      if (delErr) throw delErr;
+      if (savedLineCount.current > 0 && (removed ?? []).length === 0) {
+        throw new Error("The lines you declared before could not be replaced.");
+      }
       const lines = parsedItems
         .filter((l) => l.paise > 0)
         .map((l) => ({

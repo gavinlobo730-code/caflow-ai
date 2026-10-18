@@ -6,7 +6,7 @@ wrong:
 
   * `/statutory-position` projected PF on `basic + DA` — the rule that stopped
     being right when the four Labour Codes commenced on 21-11-2025 — while the
-    payroll run deducted on the Code on Wages §2(y) base. The same employee had
+    payroll run deducted on the Code on Social Security §2(88) base. The same employee had
     two PF figures, and only one of them reached a challan.
 
   * §192's projection was months-employed aware for SALARY and not for the
@@ -123,7 +123,7 @@ def test_the_projection_and_the_run_produce_the_same_pf(month, fy, pf_month,
 
 def test_the_governed_month_is_the_higher_figure_on_both_paths(monkeypatch):
     """The parity above would also pass if BOTH were wrong. This pins the
-    number: 12% of the ₹14,000 §2(y) base, not of ₹10,000 of basic."""
+    number: 12% of the ₹14,000 §2(88) base, not of ₹10,000 of basic."""
     row = _position_rows(LOW_BASIC, "2026-12", monkeypatch)[0]
     assert row["pf_employee_paise"] == 1_680_00      # not ₹1,200 on basic alone
     assert row["pf_employer_paise"] == 1_680_00      # both sides were short
@@ -134,7 +134,7 @@ def test_the_governed_month_is_the_higher_figure_on_both_paths(monkeypatch):
 
 def test_a_month_before_commencement_still_projects_the_old_base(monkeypatch):
     """October 2025 is EPF Act §6. The correction must not restate a month the
-    §2(y) definition does not reach."""
+    §2(88) definition does not reach."""
     row = _position_rows(LOW_BASIC, "2025-10", monkeypatch)[0]
     assert row["pf_wages_paise"] == 10_000_00
     assert row["pf_wages_rule_applied"] is False

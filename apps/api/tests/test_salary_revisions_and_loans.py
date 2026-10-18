@@ -17,6 +17,7 @@ class _Rows:
     def select(self, *_a, **_k): return self
     def eq(self, *_a, **_k): return self
     def is_(self, *_a, **_k): return self
+    def insert(self, *_a, **_k): return self        # the loan history row (migration 367)
 
     def execute(self):
         if self._fail:
@@ -282,7 +283,9 @@ def test_a_failed_write_down_does_not_raise():
     would be the worse failure; a missed write-down is visible on the next
     payslip and on the loan list."""
     db = _DB({"payroll_slips": _Rows([], fail=True)})
-    assert pr._apply_loan_recoveries(db, "f", "c", "run1") == 0
+    # None, not 0 (POST-A-253): "the write-down did not complete" is not "no loan needed one", and the release records
+    # the difference on the run so the write-down can be finished instead of looking done.
+    assert pr._apply_loan_recoveries(db, "f", "c", "run1") is None
 
 
 def test_the_payslip_shows_every_deduction_that_reduced_net_pay():

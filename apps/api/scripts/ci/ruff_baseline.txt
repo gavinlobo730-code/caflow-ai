@@ -332,7 +332,7 @@ routers/payroll.py :: B904 :: put_statutory_identity :: 1
 routers/payroll.py :: B904 :: record_ecr_filed :: 1
 routers/payroll.py :: B904 :: record_remittance :: 1
 routers/payroll.py :: B904 :: statutory_position :: 1
-routers/payroll.py :: C901 :: _undo_loan_recoveries :: 17
+routers/payroll.py :: C901 :: _undo_loan_recoveries :: 16
 routers/payroll.py :: F401 :: <module> :: 2
 routers/payroll.py :: F811 :: <module> :: 1
 routers/portal_data.py :: B904 :: portal_document_download :: 1
