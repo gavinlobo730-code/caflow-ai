@@ -1,5 +1,6 @@
 import { getFirmId } from "./getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 import type { Task, KanbanBoard, FirmUser } from "@/lib/types";
 import { todayLocalISO, toLocalISO } from "@/lib/dateMath";
 
@@ -217,63 +218,59 @@ export async function countOpenTasksForClient(clientId: string): Promise<number>
 
 // ---------------------------------------------------------------------------
 // Mutations
+//
+// Every write to a task goes through the API (POST-A-227), never straight to the table. The server holds the rules a direct
+// write skipped: the status machine (a completed task stays completed, and review is passed through), the check that an
+// assignee belongs to the firm, the check that the client a task is moved to is one the caller may act on, the audit log, the
+// timeline and the notification to a new assignee. And it answers in words: these used to ignore the database's reply, so a
+// refused write looked saved until the next load. A refusal is thrown here with the server's own sentence.
 // ---------------------------------------------------------------------------
 
+type Envelope<T> = { success?: boolean; data?: T; error?: string | null; detail?: string };
+
+function unwrap<T>(res: unknown, fallback: string): T | undefined {
+  const r = (res ?? {}) as Envelope<T>;
+  if (r.success === false) throw new Error(r.error || r.detail || fallback);
+  return r.data;
+}
+
+/** What a task form sends, in the API's own vocabulary. Only the fields the caller names are sent. `assignee_id` is the
+ *  users.id the server calls `assigned_to`; an emptied assignee or due date is sent as null, which the server reads as
+ *  "clear it" (an absent field means "leave it"). */
+function toApiBody(input: Partial<CreateTaskInput>): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  for (const key of ["title", "description", "status", "priority", "client_id"] as const) {
+    if (key in input && input[key] !== undefined) body[key] = input[key];
+  }
+  if ("assignee_id" in input || "assigned_to" in input) {
+    body.assigned_to = input.assignee_id || input.assigned_to || null;
+  }
+  if ("due_date" in input) body.due_date = input.due_date || null;
+  return body;
+}
+
 export async function updateTaskStatus(id: string, status: string): Promise<void> {
-  const sb = getSupabaseClient();
-  await sb.from("tasks").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+  unwrap(await api.tasks.update(id, { status }), "The status was not changed.");
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  const sb = getSupabaseClient();
-  await sb.from("tasks").delete().eq("id", id);
+  unwrap(await api.tasks.delete(id), "The task was not deleted.");
 }
 
 export async function updateTask(id: string, input: Partial<CreateTaskInput>): Promise<void> {
-  const sb = getSupabaseClient();
-  // due_date is a DATE column and Postgres has no such thing as an empty
-  // date — "" raised `invalid input syntax for type date: ""` on every save
-  // of a task whose Due Date field the CA had cleared, the same 22P02 shape
-  // assignee_id/assigned_to have below for an empty UUID. Due Date is
-  // genuinely optional (the New Task form marks it with no asterisk), so an
-  // explicit "" is normalised to NULL rather than sent as typed. A `due_date`
-  // that is simply absent from `input` (the field was not part of this PATCH
-  // at all) must stay absent, not be forced to null — hence the `in` check
-  // rather than `input.due_date ?? …`.
-  const patch: Record<string, unknown> = {
-    ...input,
-    updated_at: new Date().toISOString(),
-  };
-  if ("due_date" in input && !input.due_date) {
-    patch.due_date = null;
-  }
-  await sb.from("tasks").update(patch).eq("id", id);
+  unwrap(await api.tasks.update(id, toApiBody(input)), "The task was not saved.");
 }
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  // assignee_id/assigned_to are UUID columns; an unassigned task must OMIT
-  // them, never send "" (the value the "Unassigned" default writes) —
-  // Postgres has no such thing as an empty UUID, so "" raises 22P02 before
-  // the row is ever built, on every task created with no assignee chosen.
-  // due_date is the same defect on a DATE column: the New Task form marks it
-  // optional (no asterisk, no `required`), and leaving it blank must store
-  // NULL, not the empty string the input's own default value is — sending ""
-  // there raised `invalid input syntax for type date: ""` before the row was
-  // ever built.
-  const { assignee_id, assigned_to, due_date, ...rest } = input;
-  const { data, error } = await sb.from("tasks").insert({
-    ...rest,
-    ...(assignee_id ? { assignee_id } : {}),
-    ...(assigned_to ? { assigned_to } : {}),
-    due_date: due_date || null,
-    firm_id: firmId,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }).select().single();
-  if (error || !data) throw new Error(error?.message ?? "Failed to create task");
-  return data as Task;
+  const created = unwrap<{ task?: Task }>(await api.tasks.create(toApiBody(input)), "The task was not created.");
+  if (!created?.task) throw new Error("The task was not created.");
+  return created.task;
+}
+
+/** The moves the server's status machine allows, keyed by the status a task is in. */
+export async function getStatusTransitions(): Promise<Record<string, string[]>> {
+  const data = unwrap<{ transitions?: Record<string, string[]> }>(await api.tasks.transitions(), "The status moves could not be read.");
+  return data?.transitions ?? {};
 }
 
 // ---------------------------------------------------------------------------

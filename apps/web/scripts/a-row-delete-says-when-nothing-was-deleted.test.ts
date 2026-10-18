@@ -74,13 +74,11 @@ function unreadDeletes(src: string): number {
 }
 
 /** Deletes that are not fixed here, with why. A named list that can only shrink: a new unread delete fails, and a fixed one
- *  must have its entry deleted (equality in both directions). */
-const NOT_FIXED_HERE: Record<string, number> = {
-  // POST-A-227 moves the task delete behind the API, which is the real fix and removes the call.
-  "lib/data/tasks.ts": 1,
-};
+ *  must have its entry deleted (equality in both directions). It is empty: the last one, the task delete in
+ *  `lib/data/tasks.ts`, moved behind the API (POST-A-227), where a refusal comes back in words. */
+const NOT_FIXED_HERE: Record<string, number> = {};
 
-test("no browser delete drops its result, apart from the one named", () => {
+test("no browser delete drops its result", () => {
   const found: Record<string, number> = {};
   for (const root of ["app", "components", "lib"]) {
     for (const file of walk(join(WEB, root))) {

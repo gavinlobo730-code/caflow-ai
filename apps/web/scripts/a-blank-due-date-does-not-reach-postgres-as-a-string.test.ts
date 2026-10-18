@@ -1,19 +1,13 @@
 /**
- * Tasks > New Task: leaving Due Date blank (the field carries no asterisk and
- * no `required` — it is genuinely optional, same as every other optional
- * date field in this product) failed with a raw
- * `invalid input syntax for type date: ""` from Postgres, because
- * `lib/data/tasks.ts::createTask` writes straight to Supabase — there is no
- * FastAPI request model standing in front of this table (CLAUDE.md's "The
- * frontend's second data path") — and sent the form's own default value, an
- * empty string, into a `DATE` column.
+ * Tasks > New Task: leaving Due Date blank (the field carries no asterisk and no `required`, it is genuinely optional) failed
+ * with a raw `invalid input syntax for type date: ""` from Postgres, because `lib/data/tasks.ts` wrote straight to Supabase and
+ * sent the form's own default value, an empty string, into a `DATE` column.
  *
- * The established pattern for an optional date on this exact write path is
- * `field || null` (OpeningBalancesTab.tsx, income-tax/notices/page.tsx); this
- * file's own createTask already applies the identical shape to
- * assignee_id/assigned_to for the same reason (an empty UUID is 22P02, an
- * empty date is 22P02 too) — due_date now gets the same treatment rather
- * than a UUID-specific fix that misses the date column beside it.
+ * Since POST-A-227 the task writes go through the API, and the rule is held in two places: the SERVER reads "" as "no date" and
+ * refuses a malformed one with a 422 that names the field (`routers/tasks._check_due_date`, tested in
+ * apps/api/tests/test_a_task_is_written_through_the_server.py), and this module sends a blank as an explicit null (which the
+ * PATCH reads as "clear it", where an absent field means "leave it"). What is asserted here is the half that lives in the
+ * browser: that the writes still go through the API, never straight to the table, and that a blank is sent as null.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -36,9 +30,8 @@ const raw = fs.readFileSync(FILE, "utf8");
 const code = withoutComments(raw);
 
 function fnBody(name: string): string {
-  const start = code.indexOf(`export async function ${name}(`);
+  const start = code.indexOf(`function ${name}(`);
   assert.notEqual(start, -1, `could not find ${name} in lib/data/tasks.ts`);
-  // Balance braces from the function's own opening one.
   const open = code.indexOf("{", start);
   let depth = 0, i = open;
   for (; i < code.length; i++) {
@@ -49,28 +42,26 @@ function fnBody(name: string): string {
 }
 
 test("a blank due date does not reach Postgres as a string", async (t) => {
-  await t.test("createTask normalises a blank due_date to null before insert()", () => {
-    const body = fnBody("createTask");
-    // Destructured out of `rest` — the same treatment assignee_id/assigned_to
-    // already get, so it is never sent unconditionally as whatever the form
-    // typed (including "").
-    assert.match(body, /\{\s*assignee_id,\s*assigned_to,\s*due_date,\s*\.\.\.rest\s*\}\s*=\s*input/,
-      "due_date is not pulled out of the spread the way assignee_id/assigned_to are");
-    assert.match(body, /due_date:\s*due_date\s*\|\|\s*null/,
-      "createTask's insert() does not normalise an empty due_date to null");
-    // The exact old shape — the bare field landing straight in `...rest` — is
-    // what raised 22P02; asserting the destructure above is not enough on its
-    // own if a stray `due_date` key sneaks back in some other way.
-    assert.ok(!/\.\.\.rest,\s*\n?\s*\.\.\.\(assignee_id/.test(body) || body.includes("due_date: due_date || null"),
-      "rest still carries an unguarded due_date");
+  await t.test("the form's blank due date and blank assignee are sent as an explicit null", () => {
+    const body = fnBody("toApiBody");
+    assert.match(body, /body\.due_date\s*=\s*input\.due_date\s*\|\|\s*null/,
+      "a blank due_date is not turned into null before it is sent");
+    assert.match(body, /body\.assigned_to\s*=\s*input\.assignee_id\s*\|\|\s*input\.assigned_to\s*\|\|\s*null/,
+      "a blank assignee is not turned into null before it is sent");
   });
 
-  await t.test("updateTask normalises an explicitly-cleared due_date to null", () => {
-    const body = fnBody("updateTask");
-    assert.match(body, /due_date.*in input.*&&.*!input\.due_date/s,
-      "updateTask does not detect a cleared (falsy) due_date");
-    assert.match(body, /patch\.due_date\s*=\s*null/,
-      "updateTask does not normalise a cleared due_date to null");
+  await t.test("a field the caller did not name is not sent (an absent field means leave it)", () => {
+    const body = fnBody("toApiBody");
+    assert.match(body, /"due_date"\s+in\s+input/, "due_date is sent whether or not the caller named it");
+    assert.match(body, /"assignee_id"\s+in\s+input/, "the assignee is sent whether or not the caller named it");
+  });
+
+  await t.test("task writes go through the API and never straight to the table", () => {
+    for (const fn of ["updateTaskStatus", "deleteTask", "updateTask", "createTask"]) {
+      const body = fnBody(fn);
+      assert.match(body, /api\.tasks\.(update|delete|create)\(/, `${fn} does not go through the API`);
+      assert.ok(!/\.from\(\s*["']tasks["']\s*\)[^;]*\.(insert|update|upsert|delete)\(/s.test(body), `${fn} writes the table directly`);
+    }
   });
 
   await t.test("the comment strip does not make the scan vacuous", () => {

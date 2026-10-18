@@ -163,6 +163,22 @@ class TaskRepository(BaseRepository[dict]):
         result = _get_db().table("tasks").update({**data, "updated_at": self.now_iso()}).eq("id", id).execute()
         return result.data[0] if result.data else None
 
+    def delete(self, id: str, *, firm_id: str) -> bool:
+        """Remove a task. The firm is required: the router has already shown the row is the caller's, and this is the one
+        statement that cannot be taken back."""
+        if not firm_id:
+            raise ValueError("delete needs the firm")
+        if _USE_MOCK:
+            task = TASK_INDEX.get(id)
+            if not task or task.get("firm_id") != firm_id:
+                return False
+            TASK_INDEX.pop(id, None)
+            if task in MOCK_TASKS:
+                MOCK_TASKS.remove(task)
+            return True
+        result = _get_db().table("tasks").delete().eq("id", id).eq("firm_id", firm_id).execute()
+        return bool(result.data)
+
     def group_by_status(self, firm_id: str) -> dict[str, list[dict]]:
         # The firm is required, and an empty one is refused: find_all() with no
         # firm returns EVERY firm's tasks, and a board built from that would carry

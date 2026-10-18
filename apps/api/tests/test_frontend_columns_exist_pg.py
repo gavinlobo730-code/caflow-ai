@@ -407,7 +407,15 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     #
     # 6 + 4 = 10 columns, and 204 - 10 = 194 exactly. The per-file tally against the previous commit moved on these
     # two files and nothing else, which is the evidence that the browser really did lose the writes.
-    assert len(scan_writes(WEB)) >= 194, "write scan found too little — parser likely broke"
+    #
+    # 194 -> 188 on 18-10-2026 (POST-A-227), diagnosed the same way. The tasks screen stopped writing `tasks` straight over
+    # PostgREST (a status change, a reassignment, a client link, a due date and a delete) and sends each to the API, where
+    # `tasks:write`, the assignment scope and the state machine run:
+    #
+    #   lib/data/tasks.ts: 6 -> 0   (status, updated_at, due_date, firm_id, created_at, updated_at)
+    #
+    # 194 - 6 = 188 exactly, and the per-file tally against the previous commit moved on that one file and nothing else.
+    assert len(scan_writes(WEB)) >= 188, "write scan found too little — parser likely broke"
 
 
 @_NEEDS_PG
