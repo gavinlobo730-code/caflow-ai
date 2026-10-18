@@ -117,6 +117,17 @@ def _patch_timeline(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _restore_the_journal_service(monkeypatch):
+    """These tests assign `journal_for_asset_disposal` on the shared journal service directly, and nothing put it back,
+    so every later module in the same process (the output-tax disposal tests, run after this one in a given order) got a
+    stub that posts nothing and failed for a reason that had nothing to do with it. Registering the current value with
+    monkeypatch makes teardown restore it after each test."""
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_asset_disposal",
+                        fa_router._journal_svc.journal_for_asset_disposal)
+    yield
+
+
 def _disposal(**overrides):
     payload = {"disposal_type": "Sale", "sale_proceeds_paise": 50_000_00, "notes": "disposed"}
     payload.update(overrides)

@@ -332,6 +332,11 @@ class _DispIn:
     sale_proceeds_paise = 100_00
     disposal_date = "2025-06-30"
     notes = None
+    # The GST treatment fields DisposalIn carries (FA-08b), at the model's own defaults: the router reads them before it
+    # decides whether the filed-return lock applies, so a stand-in for the model has to hold them (POST-A-089).
+    is_supply = None
+    gst_rate_bps = None
+    is_interstate = False
 
 
 def _forbid_journal(monkeypatch):

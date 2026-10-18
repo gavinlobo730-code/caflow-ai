@@ -22,6 +22,8 @@ from core.permissions import rbac
 from core.authz import assert_client_access
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
+from services import period_lock_service
+from domain.inventory import adjustment_effect
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.inventory")
@@ -414,7 +416,7 @@ def adjust_stock(
         db = get_supabase()
 
         item_resp = (
-            db.table("service_catalogue").select("id, kind")
+            db.table("service_catalogue").select("id, kind, gst_rate_bps")
             .eq("id", service_catalogue_id).eq("firm_id", firm_id).eq("client_id", data.client_id)
             .limit(1).execute()
         )
@@ -424,6 +426,17 @@ def adjust_stock(
             raise HTTPException(status_code=422, detail="Only stock-tracked products can be adjusted.")
 
         period_validation_service.validate_posting_date(firm_id or "", data.adjustment_date)
+        # A write-off that REVERSES INPUT TAX CREDIT (CGST Act s.17(5)(h)) registers the reversal that GSTR-3B Table 4(B)
+        # declares for the month, so it is a document that feeds a return and the client's filed-return lock applies to
+        # it (POST-A-089). A plain adjustment moves stock and the P&L and declares nothing, so it is NOT asked: refusing
+        # every correction dated inside a filed month would stop routine stock-keeping, which is the argument migration
+        # 361 records for leaving the posting kernel open. The question is the EFFECT (a decrease, marked, on an item with
+        # a rate), the one the count sheet asks too (`domain/inventory/adjustment_effect`), so the two doors cannot
+        # disagree about one shortage.
+        if adjustment_effect.reaches_a_return(
+                direction=data.direction, reverse_itc=data.reverse_itc,
+                gst_rate_bps=item_resp.data[0].get("gst_rate_bps")):
+            period_lock_service.assert_open(db, firm_id or "", data.client_id, data.adjustment_date)
 
         reference_no = data.reference_no or f"ADJ-{data.adjustment_date}"
         movement = apply_stock_adjustment(

@@ -911,3 +911,106 @@ def test_an_account_found_only_by_its_system_key_is_accepted():
     je = _post(db, gst_rate_bps=1800, is_interstate=True)["posted_journal_id"]
     lines = _lines(db, je)
     assert [l["account_id"] for l in lines if l["debit_paise"] == 9000] == ["acc-in"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# A line posted WITH a GST split feeds a return, so a filed return locks it (POST-A-089)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _file_gstr3b_for_june(db):
+    db.store.setdefault("filings", []).append({
+        "firm_id": FIRM, "client_id": CLIENT, "filing_type": "GSTR-3B",
+        "period_start": "2026-06-01", "period_end": "2026-06-30",
+        "filed_date": "2026-07-20", "status": "filed", "deleted_at": None})
+
+
+def test_a_charge_posted_with_a_gst_split_inside_a_filed_period_is_refused_and_writes_nothing():
+    """The rate posted is what gst_return_service reads to declare the credit (BANK-24), so this line is a document that
+    feeds GSTR-3B Table 4(A). Dated inside a month whose return was filed, it would put input credit in the books that the
+    return never carried."""
+    db = _db()
+    _seed(db, debit=59000)                      # dated 2026-06-10
+    _file_gstr3b_for_june(db)
+
+    with pytest.raises(HTTPException) as e:
+        _post(db, gst_rate_bps=1800, is_interstate=False)
+
+    assert e.value.status_code == 422
+    assert "GSTR-3B" in e.value.detail
+    assert "without the GST split" in e.value.detail, "the refusal must say what does work"
+    assert not db.store.get("journal_entries"), "a refused line must post nothing"
+    assert db.store["bank_transactions"][0]["match_status"] != "posted"
+
+
+def test_the_same_charge_without_a_split_is_still_posted_inside_a_filed_period():
+    """The control, and the point: June's bank reconciliation happens after June's returns, and a charge booked as an
+    ordinary two-line entry declares nothing. A guard that refused this would stop routine bookkeeping."""
+    db = _db()
+    _seed(db, debit=59000)
+    _file_gstr3b_for_june(db)
+
+    assert _post(db)["posted_journal_id"]
+
+
+def test_a_zero_rate_declares_nothing_and_is_not_asked_either():
+    db = _db()
+    _seed(db, debit=59000)
+    _file_gstr3b_for_june(db)
+
+    assert _post(db, gst_rate_bps=0)["posted_journal_id"]
+
+
+def test_a_split_in_an_open_period_is_still_posted():
+    db = _db()
+    _seed(db, debit=59000, transaction_date="2026-07-10")
+    _file_gstr3b_for_june(db)
+
+    assert _post(db, gst_rate_bps=1800)["posted_journal_id"]
+
+
+def _finalise_client_year_2026_27(db):
+    db.store.setdefault("client_year_locks", []).append({
+        "id": "L1", "firm_id": FIRM, "client_id": CLIENT, "financial_year": "2026-27",
+        "reason": "Year-end engagement finalised"})
+
+
+def test_a_finalised_year_does_not_offer_a_way_out_that_the_kernel_would_refuse_too():
+    """A closed year stops the plain post as well, so 'post it without the GST split' would send the CA to a second
+    refusal. The advice belongs to the filed-return refusal only."""
+    db = _db()
+    _seed(db, debit=59000)
+    _finalise_client_year_2026_27(db)
+
+    with pytest.raises(HTTPException) as e:
+        _post(db, gst_rate_bps=1800, is_interstate=False)
+
+    assert e.value.status_code == 422
+    assert "closed for this client" in e.value.detail
+    assert "without the GST split" not in e.value.detail
+    # and the plain post is indeed refused, with the same closed-year text
+    with pytest.raises(Exception) as plain:
+        _post(db)
+    assert "closed for this client" in str(getattr(plain.value, "detail", plain.value))
+
+
+def test_a_check_that_could_not_be_made_does_not_tell_the_ca_to_give_up_the_credit(monkeypatch):
+    from services import period_lock_service
+    db = _db()
+    _seed(db, debit=59000)
+    monkeypatch.setattr(period_lock_service, "lock_reason", lambda *a, **k: period_lock_service.UNVERIFIABLE)
+
+    with pytest.raises(HTTPException) as e:
+        _post(db, gst_rate_bps=1800, is_interstate=False)
+
+    assert e.value.detail == period_lock_service.UNVERIFIABLE
+
+
+def test_the_filed_return_refusal_says_what_the_way_out_costs():
+    db = _db()
+    _seed(db, debit=59000)
+    _file_gstr3b_for_june(db)
+
+    with pytest.raises(HTTPException) as e:
+        _post(db, gst_rate_bps=1800, is_interstate=False)
+
+    assert "does not claim the credit on this line" in e.value.detail

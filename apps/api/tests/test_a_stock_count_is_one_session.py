@@ -275,7 +275,7 @@ def _store(**over):
             "itc_reversal_is_interstate": False, "notes": None,
         }],
         "service_catalogue": [{"id": "i1", "firm_id": "F1", "client_id": "C1",
-                               "kind": "good", "name": "Widget", "unit": "NOS"}],
+                               "kind": "good", "name": "Widget", "unit": "NOS", "gst_rate_bps": 1800}],
     }
     base.update(over)
     return base
@@ -474,11 +474,11 @@ def test_saving_onto_a_sheet_longer_than_one_page_merges_every_line(monkeypatch)
     assert written == 1
 
 
-def test_a_count_dated_inside_a_filed_return_is_refused(monkeypatch, wired):
+def test_a_count_that_reverses_credit_inside_a_filed_return_is_refused(monkeypatch, wired):
     """The FY switch is the firm's; the filed return is the client's.
 
-    A shortage posts a CGST Act s.17(5)(h) reversal onto GSTR-3B Table 4(B)(1)
-    (INV-06), so a count sheet IS a document that feeds a return — and a March
+    A shortage the CA marks to reverse credit posts a CGST Act s.17(5)(h) reversal onto GSTR-3B Table 4(B)(1)
+    (INV-06), so such a count sheet IS a document that feeds a return — and a March
     3B filed on 20 April cannot be recalled. `validate_posting_date` takes no
     client_id and cannot see the filing at all.
     """
@@ -504,6 +504,58 @@ def test_a_count_dated_inside_a_filed_return_is_refused(monkeypatch, wired):
     # written half the lines would be worse than no check.
     assert posted == []
     assert store["stock_count_sessions"][0]["status"] == "open"
+
+
+_MARCH_3B = {"id": "f1", "client_id": "C1", "filing_type": "GSTR-3B", "filed_date": "2026-04-20",
+             "period_start": "2026-03-01", "period_end": "2026-03-31", "deleted_at": None}
+
+
+def _post_in_a_filed_march(monkeypatch, wired, store):
+    posted = []
+    import domain.inventory_service as isvc
+    monkeypatch.setattr(isvc, "apply_stock_adjustment",
+                        lambda *a, **kw: posted.append(kw) or {"id": "m1"})
+    import services.period_validation_service as pvs
+    monkeypatch.setattr(pvs.period_validation_service, "validate_posting_date", lambda *_a, **_k: None)
+    return svc.post_session(wired(store), firm_id="F1", session_id="S1", actor_id="u1"), posted
+
+
+def test_a_year_end_count_that_reverses_no_credit_is_posted_after_the_returns_are_filed(monkeypatch, wired):
+    """The main use of a count sheet: a 31 March stock-take keyed in during April or May, after March's returns have gone.
+    A sheet that declares nothing must not be refused for the month it counts."""
+    store = _store(filings=[_MARCH_3B])
+    store["stock_count_lines"][0]["reverse_itc"] = False
+    out, posted = _post_in_a_filed_march(monkeypatch, wired, store)
+    assert out["posted_count"] == 1 and len(posted) == 1
+
+
+def test_a_shortage_marked_to_reverse_credit_on_an_item_with_no_rate_declares_nothing(monkeypatch, wired):
+    """`post_stock_writeoff_journal_entry` reverses credit only at a non-zero item rate, so there is nothing for the filed
+    return to have missed."""
+    for rate in (0, None):
+        store = _store(filings=[_MARCH_3B])
+        store["service_catalogue"][0]["gst_rate_bps"] = rate
+        out, posted = _post_in_a_filed_march(monkeypatch, wired, store)
+        assert out["posted_count"] == 1, rate
+
+
+def test_the_two_doors_ask_one_question_about_a_shortage():
+    from domain.inventory import adjustment_effect as fx
+    cases = [
+        ("decrease", True, 1800, True),
+        ("decrease", True, 0, False),
+        ("decrease", True, None, False),
+        ("decrease", False, 1800, False),
+        ("decrease", None, 1800, False),
+        ("increase", True, 1800, False),
+    ]
+    for direction, reverse, rate, expected in cases:
+        assert fx.reaches_a_return(direction=direction, reverse_itc=reverse, gst_rate_bps=rate) is expected, (
+            direction, reverse, rate)
+    # and both doors really call it
+    from routers import inventory as route
+    assert "adjustment_effect.reaches_a_return" in inspect.getsource(route.adjust_stock)
+    assert "adjustment_effect.reaches_a_return" in inspect.getsource(svc.post_session)
 
 
 def test_a_filed_return_outside_the_count_month_does_not_refuse(monkeypatch, wired):
