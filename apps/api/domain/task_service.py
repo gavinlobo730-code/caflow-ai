@@ -71,7 +71,6 @@ class TaskDomainService:
             "waiting_client": len([t for t in open_tasks if t.get("status") == "waiting_client"]),
             "review_required": len([t for t in open_tasks if t.get("status") == "review_required"]),
             "total_open_tasks": len(open_tasks),
-            "documents_pending_review": 2,
             "compliance_due_week": compliance_due_week,
             "compliance_overdue": compliance_overdue,
             "high_risk_clients": high_risk_clients,

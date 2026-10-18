@@ -12,6 +12,7 @@ import {
   AlertCircle, Loader2, X,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Callout } from "@/components/ui/callout";
@@ -213,9 +214,8 @@ export default function ScheduledReportsPage() {
     try {
     if (!(await confirmDialog({ message: "Delete this schedule?", danger: true, confirmLabel: "Delete" }))) return;
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.from("scheduled_reports").delete().eq("id", id);
-      if (error) throw new Error(error.message);
+      const out = await deleteRowAndConfirm(getSupabaseClient(), "scheduled_reports", id);
+      if (!out.deleted) throw new Error(out.message);
       setSchedules(prev => prev.filter(s => s.id !== id));
       setToast({ message: "Schedule deleted", type: "success" });
     } catch (e) {

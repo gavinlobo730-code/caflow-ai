@@ -38,11 +38,15 @@ _logger = logging.getLogger("caflow.portal_data_router")
 @router.get("/invoices")
 def portal_invoices(portal: dict = Depends(get_current_portal_client)):
     """Fee invoices the firm issued to THIS client (client-safe projection)."""
-    rows = portal_data_service.list_invoices(portal["firm_id"], portal["client_id"])
+    rows = portal_data_service.fee_invoices_or_none(portal["firm_id"], portal["client_id"])
+    if rows is None:
+        # No fee ledger to read is not the same as no invoices issued: say so instead of an empty list (POST-A-245).
+        return api_response(True, {"invoices": [], "available": False,
+                                   "reason": portal_data_service.FEE_LEDGER_NOT_LINKED})
     # `can_pay_online` is added HERE and not in `safe_invoice`, whose key set is pinned and which `dues` shares:
     # it says whether this invoice is one a pay control may be offered for (issued or part-paid, with a balance),
     # whether or not a gateway is set up. The dashboard's `online_payment` block says the second half.
-    return api_response(True, {"invoices": portal_data_service.with_pay_flag(rows)})
+    return api_response(True, {"invoices": portal_data_service.with_pay_flag(rows), "available": True, "reason": None})
 
 
 @router.get("/invoices/{invoice_id}/pdf")

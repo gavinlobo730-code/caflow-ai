@@ -248,9 +248,11 @@ def test_dues_canonical_ar(db):
     assert 999999 not in [d["total_paise"] for d in out["dues"]]    # transactions ignored
 
 
-def test_dues_empty_in_mock_mode():
+def test_dues_are_unavailable_not_zero_in_mock_mode():
+    """No database means no fee ledger to read: the answer is "cannot tell" and not "owes nothing" (POST-A-245)."""
     out = pds.dues(FIRM, PORTAL_CLIENT, today=TODAY)
-    assert out == {"dues": [], "total_outstanding_paise": 0, "overdue_paise": 0, "overdue_count": 0}
+    assert out == {"dues": [], "total_outstanding_paise": None, "overdue_paise": None, "overdue_count": None,
+                   "available": False, "reason": pds.FEE_LEDGER_NOT_LINKED}
 
 
 # ── PDF ownership gate ──────────────────────────────────────────────────────────
@@ -387,10 +389,13 @@ def test_routes_use_portal_auth_and_envelope(client):
     assert r.status_code == 200
     body = r.json()
     assert body["success"] is True and body["error"] is None
-    # canonical AR shape (mock mode → zeros; legacy `transactions` never consulted)
-    assert body["data"] == {"dues": [], "total_outstanding_paise": 0, "overdue_paise": 0, "overdue_count": 0}
+    # canonical AR shape (mock mode → no fee ledger to read, so the totals are unknown and not zero; legacy
+    # `transactions` never consulted)
+    assert body["data"] == {"dues": [], "total_outstanding_paise": None, "overdue_paise": None, "overdue_count": None,
+                            "available": False, "reason": pds.FEE_LEDGER_NOT_LINKED}
 
-    assert client.get("/api/portal/self/invoices").json()["data"] == {"invoices": []}
+    assert client.get("/api/portal/self/invoices").json()["data"] == {
+        "invoices": [], "available": False, "reason": pds.FEE_LEDGER_NOT_LINKED}
     assert client.get("/api/portal/self/reminders").json()["data"] == {"reminders": []}
 
     s = client.get("/api/portal/self/statement").json()

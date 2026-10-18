@@ -12,6 +12,7 @@ import { getClients } from "@/lib/data/clients";
 import { getComplianceCalendar } from "@/lib/data/compliance";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
 import { deleteStoredDocument } from "@/lib/documents/deleteStoredDocument";
 import { api } from "@/lib/api";
 import type { ClientNotice, PortalUnreadSummary } from "@/lib/api";
@@ -132,10 +133,19 @@ interface ApiDue {
 
 interface DuesResponse {
   dues: ApiDue[];
-  total_outstanding_paise: number;
-  overdue_paise: number;
-  overdue_count: number;
+  /** None of the three totals is a number when `available` is false: the fee ledger could not be read, which is not
+   *  the same as the client owing nothing. */
+  total_outstanding_paise: number | null;
+  overdue_paise: number | null;
+  overdue_count: number | null;
+  /** False when this client has no fee ledger linked. Absent from an older server, which is read as available. */
+  available?: boolean;
+  /** The server's sentence for the unavailable case. */
+  reason?: string | null;
 }
+
+/** Shown when an older or newer server says the fee ledger is unavailable and sends no sentence of its own. */
+const DUES_UNAVAILABLE_FALLBACK = "Outstanding fees can't be shown here yet: this client has no fee ledger linked.";
 
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return "";
@@ -203,6 +213,9 @@ export default function ClientPortalPage() {
   // "No outstanding dues" — indistinguishable, to the portal viewer, from a
   // paid-up client (audit M17). Mirrors TrialBalance.loadFailed in accounting.
   const [duesFailed, setDuesFailed] = useState(false);
+  // The server's sentence when the client's fee ledger could not be read at all (no link). Not a failure to load and not
+  // "owes nothing": a third state, so it is kept apart from both (POST-A-245).
+  const [duesUnavailable, setDuesUnavailable] = useState<string | null>(null);
 
   // Load clients list on mount
   useEffect(() => {
@@ -251,6 +264,7 @@ export default function ClientPortalPage() {
       setSharedDocs([]);
       setPortalMessages([]);
       setApiDues([]);
+      setDuesUnavailable(null);
       return;
     }
     const client = clients.find((c) => c.id === selectedClientId) ?? null;
@@ -367,13 +381,16 @@ export default function ClientPortalPage() {
       if (res.success) {
         setApiDues(res.data?.dues ?? []);
         setDuesFailed(false);
+        setDuesUnavailable(res.data?.available === false ? (res.data.reason ?? DUES_UNAVAILABLE_FALLBACK) : null);
       } else {
         setApiDues([]);
         setDuesFailed(true);
+        setDuesUnavailable(null);
       }
     } catch {
       setApiDues([]);
       setDuesFailed(true);
+      setDuesUnavailable(null);
     } finally {
       setDuesLoading(false);
     }
@@ -432,8 +449,8 @@ export default function ClientPortalPage() {
 
   async function handleDeleteRequest(id: string) {
     if (!(await confirmDialog({ message: "Delete this document request?", danger: true, confirmLabel: "Delete" }))) return;
-    const sb = getSupabaseClient();
-    await sb.from("document_requests").delete().eq("id", id);
+    const out = await deleteRowAndConfirm(getSupabaseClient(), "document_requests", id);
+    if (!out.deleted) { toast({ title: out.message, variant: "destructive" }); return; }
     setDocRequests((prev) => prev.filter((r) => r.id !== id));
   }
 
@@ -906,8 +923,8 @@ export default function ClientPortalPage() {
                               <button
                                 onClick={async () => {
                                   if (!(await confirmDialog({ message: "Remove this shared report?", danger: true, confirmLabel: "Remove" }))) return;
-                                  const sb = getSupabaseClient();
-                                  await sb.from("shared_reports").delete().eq("id", r.id);
+                                  const out = await deleteRowAndConfirm(getSupabaseClient(), "shared_reports", r.id);
+                                  if (!out.deleted) { toast({ title: out.message, variant: "destructive" }); return; }
                                   setSharedReports((prev) => prev.filter((x) => x.id !== r.id));
                                 }}
                                 className="flex items-center gap-1 text-xs text-red-600 hover:text-state-problem px-2 py-1.5 rounded-lg hover:bg-state-problem-hover"
@@ -994,6 +1011,14 @@ export default function ClientPortalPage() {
                       // transaction feed used to fill this panel whenever the answer was empty, so a client who owed
                       // nothing was shown every paid sale and purchase as "outstanding".
                       if (apiDues.length === 0) {
+                        if (duesUnavailable !== null) {
+                          return (
+                            <div className="text-center py-10 space-y-2">
+                              <Receipt size={32} className="text-gray-200 mx-auto" />
+                              <p className="text-sm text-ps-label">{duesUnavailable}</p>
+                            </div>
+                          );
+                        }
                         if (duesFailed) {
                           return (
                             <div className="text-center py-10 space-y-3">
