@@ -2248,6 +2248,9 @@ type IntegrityFinding = {
   stored?: number;
   schedule_ii_prescribes?: number[];
   amount_paise?: number;
+  // The ledger-side findings (a disposal with no entry, an entry with no asset) name the entry rather than the asset.
+  reference_no?: string | null;
+  entry_date?: string | null;
   what_it_means: string;
 };
 
@@ -2257,6 +2260,8 @@ const FINDING_TITLE: Record<string, string> = {
   capitalised_from_a_bill_that_is_gone: "The bill behind this asset is gone",
   depreciation_basis_departs_from_schedule_ii: "Depreciation basis is off Schedule II",
   wdv_asset_has_no_stopping_point: "Depreciation here never stops",
+  disposed_asset_has_no_disposal_journal: "Disposed, but no disposal entry",
+  acquisition_journal_has_no_asset: "An acquisition entry with no asset behind it",
 };
 
 function RegisterIntegrity({ clientId }: { clientId: string }) {
@@ -2330,7 +2335,7 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
           </p>
           <ul className="space-y-2">
             {state.findings.map((f, i) => (
-              <li key={`${f.kind}-${f.asset_code ?? f.asset_codes?.join(",") ?? i}`}
+              <li key={`${f.kind}-${f.asset_code ?? f.asset_codes?.join(",") ?? f.reference_no ?? i}-${i}`}
                   className="rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2">
                 <div className="flex items-start gap-2">
                   <AlertCircle size={12} className="text-amber-600 mt-0.5 shrink-0" />
@@ -2339,6 +2344,7 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
                       {FINDING_TITLE[f.kind] ?? f.kind}
                       {f.asset_code ? ` — ${f.asset_code}` : ""}
                       {f.asset_codes?.length ? ` — ${f.asset_codes.filter(Boolean).join(", ")}` : ""}
+                      {f.reference_no ? ` — ${f.reference_no}` : ""}
                     </p>
                     {f.asset_name && (
                       <p className="text-2xs text-amber-800">{f.asset_name}</p>

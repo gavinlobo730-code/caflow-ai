@@ -190,7 +190,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THERE ARE TWO TRACKERS AND BOTH LOCK THE PERIOD
 - A GST RETURN IS APPROVED, REBUILT AND REOPENED THROUGH THE API, AND THE DATABASE ASKS WHO MAY APPROVE
 
-### `docs/design-record/fixed-assets-and-inventory.md` (12 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
+### `docs/design-record/fixed-assets-and-inventory.md` (13 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
 
 - AN ASSET UNDER CONSTRUCTION IS NOT IN THE REGISTER, AND THAT IS THE FIX
 - AN ASSET CATEGORY IS BOOKED TO A LEDGER BY ONE TABLE, AND THE CHART A FIRM GETS MUST HOLD EVERY LEDGER IT NAMES
@@ -204,6 +204,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ITEM IS STOCKED IN ONE UNIT, TRANSACTED IN ANOTHER, AND REORDERED AT A LEVEL SOMEBODY CHOSE
 - A PHYSICAL STOCK COUNT IS ONE SESSION, AND THE VARIANCE IS A FACT ABOUT THE COUNT DATE
 - THE CATALOGUE IS THE CLIENT'S, SO A STOCK POSTING ASKS FOR THE ITEM UNDER THE FIRM AND THE CLIENT, AND A REVERSAL READS THE LEDGER THE SAME WAY
+- THE FIXED-ASSET REGISTER IS CHECKED AGAINST THE LEDGER IN BOTH DIRECTIONS, AND THE TWO CHECKS THAT ASK THE LEDGER RUN ONLY WHEN THE CALLER HANDS THEM WHAT THE LEDGER HOLDS
 
 ### `docs/design-record/frontend.md` (4 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
