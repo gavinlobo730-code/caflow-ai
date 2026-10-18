@@ -104,6 +104,10 @@ const PROPERTY_TYPE_COLORS: Record<string, string> = {
 export default function RelationshipIntelligencePage() {
   const [activeTab, setActiveTab] = useState<Tab>("loans");
   const [loans, setLoans] = useState<Loan[]>([]);
+  // The Section 185 count is the SERVER's answer (its own report of flagged loans), not a filter run here: the browser
+  // counted `section_185_flagged` itself while the report route sat unused (POST-A-156). null = not read; "error" = tried and
+  // failed, which is said on screen and never shown as "none".
+  const [sec185, setSec185] = useState<{ count: number; total_principal_paise: number } | null | "error">(null);
   const [properties, setProperties] = useState<Property[]>([]);
   const [crossMatches, setCrossMatches] = useState<CrossClientMatch[]>([]);
   const [loading, setLoading] = useState(false);
@@ -118,6 +122,14 @@ export default function RelationshipIntelligencePage() {
       );
       if (!res.success) throw new Error(res.error ?? "Failed to load loans");
       setLoans(res.data ?? []);
+      try {
+        const report: ApiResponse<{ count: number; total_principal_paise: number }> = await apiFetch(
+          "/api/relationships/loans/section-185-report"
+        );
+        setSec185(report.success && report.data ? report.data : "error");
+      } catch {
+        setSec185("error");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load loans");
     } finally {
@@ -167,18 +179,18 @@ export default function RelationshipIntelligencePage() {
     else if (activeTab === "cross-client") loadCrossMatches();
   }, [activeTab, loadLoans, loadProperties, loadCrossMatches]);
 
-  const sec185Loans = loans.filter((l) => l.section_185_flagged);
-  const transferPricingLoans = loans.filter(
-    // Sec 92 IT Act — inter-company > ₹1 crore = 10_000_000_00 paise
-    (l) => l.loan_type === "inter_company" && l.principal_paise >= 10_000_000_00
-  );
+  const sec185Count = sec185 !== null && sec185 !== "error" ? sec185.count : null;
+  // There is deliberately no transfer-pricing flag on this screen. It used to count every "inter-company" loan of ₹1 crore or
+  // more and say IT Act s.92 requires transfer pricing documentation for it, which asserts a statutory consequence about a
+  // fact the record does not hold (whether the other party is a non-resident associated enterprise, so whether it is an
+  // international transaction at all) on a threshold nobody had confirmed from the primary text. See POST-A-262.
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
     {
       key: "loans",
       label: "Loan Intelligence",
       icon: <AlertTriangle size={14} />,
-      count: sec185Loans.length,
+      count: sec185Count ?? undefined,
     },
     {
       key: "properties",
@@ -241,34 +253,23 @@ export default function RelationshipIntelligencePage() {
       {!loading && !error && activeTab === "loans" && (
         <div className="space-y-4">
           {/* Section 185 alert banner */}
-          {sec185Loans.length > 0 && (
+          {sec185 === "error" && (
+            <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3 text-xs text-amber-800">
+              The Section 185 report could not be read, so this screen cannot say whether any loan is flagged. The loans below
+              still show the flag the server recorded on each.
+            </div>
+          )}
+          {sec185Count !== null && sec185Count > 0 && (
             <div className="flex items-start gap-3 bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
               <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
               <div>
                 <p className="text-sm font-medium text-amber-800">
-                  Section 185 Alert — {sec185Loans.length} loan
-                  {sec185Loans.length !== 1 ? "s" : ""} to director(s) detected
+                  Section 185 Alert — {sec185Count} loan
+                  {sec185Count !== 1 ? "s" : ""} to director(s) detected
                 </p>
                 <p className="text-xs text-amber-600 mt-0.5">
                   Companies Act Sec 185 prohibits loans to directors without
                   special resolution. CA review required before any action.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Transfer pricing banner */}
-          {transferPricingLoans.length > 0 && (
-            <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-              <TrendingUp size={16} className="text-blue-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-blue-800">
-                  Transfer Pricing — {transferPricingLoans.length} inter-company
-                  transaction{transferPricingLoans.length !== 1 ? "s" : ""} above ₹1 crore
-                </p>
-                <p className="text-xs text-blue-600 mt-0.5">
-                  IT Act Sec 92 — international related party transactions
-                  above ₹1 crore require transfer pricing documentation.
                 </p>
               </div>
             </div>
@@ -325,12 +326,6 @@ export default function RelationshipIntelligencePage() {
                                 Sec 186
                               </Badge>
                             )}
-                            {loan.loan_type === "inter_company" &&
-                              loan.principal_paise >= 10_000_000_00 && (
-                                <Badge className="bg-blue-100 text-blue-700 text-3xs">
-                                  TP Risk
-                                </Badge>
-                              )}
                           </div>
                         </td>
                       </tr>

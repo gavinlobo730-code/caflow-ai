@@ -187,8 +187,10 @@ REPORTED_EXPOSURES: tuple = ()
 
 #: What the reader cannot read, pinned EXACTLY. A new `.table(variable)` or a chain
 #: handed on without a visible filter is a decision somebody makes on purpose.
+#: 41 -> 40 on 18-10-2026 (POST-A-156/POST-C-204): the AS 18 note's transfer-pricing query, which named the loans table by a
+#: variable, was removed with the claim it served. The budget only ever moves on purpose.
 UNREADABLE_BUDGET = {
-    "table_named_by_a_variable": 41,
+    "table_named_by_a_variable": 40,
     "handed_on_without_a_visible_firm_filter": 8,
     "same_name_calls_not_provably_the_helper": 5,
 }

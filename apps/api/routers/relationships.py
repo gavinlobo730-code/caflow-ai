@@ -85,9 +85,6 @@ _MOCK_PROPERTIES:            list[dict] = []
 # CHECK rejects.
 LOANS_TABLE = "related_party_loans"
 
-# Transfer pricing threshold: ₹1 crore = 1,00,00,000 paise (Sec 92 IT Act)
-TRANSFER_PRICING_THRESHOLD_PAISE = 1_00_00_000_00  # ₹1,00,00,000 in paise
-
 
 _db = db_provider.request_db_or_none
 
@@ -834,7 +831,6 @@ def list_entity_to_entity_relationships(
 # ─── Loan Intelligence ────────────────────────────────────────────────────────
 # Section 185 Companies Act: loans/advances to directors — requires CA review
 # Section 186 Companies Act: loans to other companies — requires CA review
-# Section 92 IT Act: transfer pricing for international related party transactions
 
 @router.post("/loans")
 def create_loan(
@@ -1176,12 +1172,6 @@ def related_party_report(
                 l for l in _MOCK_LOANS
                 if l.get("firm_id") == firm_id and l.get("client_id") == client_id
                 and l.get("section_185_flagged")
-            ],
-            transfer_pricing_flags=[
-                l for l in _MOCK_LOANS
-                if l.get("firm_id") == firm_id and l.get("client_id") == client_id
-                and l.get("loan_type") == "inter_company"
-                and (l.get("principal_paise") or 0) >= TRANSFER_PRICING_THRESHOLD_PAISE
             ],
             entity_relationships=[
                 r for r in _MOCK_ENTITY_TO_ENTITY_RELS

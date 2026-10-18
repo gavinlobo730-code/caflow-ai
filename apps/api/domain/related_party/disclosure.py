@@ -104,12 +104,6 @@ class Standing(str, Enum):
 #: figure it applied.
 SIGNIFICANT_INFLUENCE_PERCENT = 20
 
-#: IT Act s.92 — an international transaction with an associated enterprise
-#: above this value brings the transfer-pricing provisions into play. In
-#: paise, integer, like every other money figure in this product.
-TRANSFER_PRICING_THRESHOLD_PAISE = 1_00_00_000_00
-
-
 @dataclass(frozen=True)
 class RoleRule:
     """One recorded role, and what AS 18 makes of it."""
@@ -265,8 +259,6 @@ class Disclosure:
     parties: list[Party]
     #: s.185 — a company advancing a loan to its director. Rows as stored.
     section_185_loans: list[dict]
-    #: IT Act s.92 — inter-company loans at or above the threshold.
-    transfer_pricing_flags: list[dict]
     #: Entity-to-entity edges touching any of these parties.
     entity_relationships: list[dict]
     #: Sentences a CA must read before relying on the note.
@@ -301,6 +293,9 @@ STANDING_GAPS: tuple[str, ...] = (
     "records that its counterparty is a related party. They are not below.",
     "Key management personnel remuneration is in payroll and is not linked to "
     "an entity, so it is not totalled here.",
+    "Transfer pricing is not assessed here. A loan record holds neither the "
+    "other party's residence nor whether the two are associated enterprises, "
+    "so this note says nothing about it, either way.",
 )
 
 #: Positions this module takes deliberately, printed beside the note so a
@@ -320,7 +315,6 @@ def build(
     client_id: str,
     parties: list[Party],
     section_185_loans: list[dict],
-    transfer_pricing_flags: list[dict],
     entity_relationships: list[dict],
     extra_gaps: Optional[list[str]] = None,
 ) -> Disclosure:
@@ -350,7 +344,6 @@ def build(
         client_id=client_id,
         parties=parties,
         section_185_loans=section_185_loans,
-        transfer_pricing_flags=transfer_pricing_flags,
         entity_relationships=entity_relationships,
         gaps=gaps,
         notes=list(STANDING_NOTES),

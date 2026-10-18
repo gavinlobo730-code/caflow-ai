@@ -23,7 +23,6 @@ from typing import Any, Optional
 
 from core.db_paging import fetch_all
 from domain.related_party.disclosure import (
-    TRANSFER_PRICING_THRESHOLD_PAISE,
     Dealings,
     Disclosure,
     Party,
@@ -133,7 +132,6 @@ class RelatedPartyService:
             client_id=client_id,
             parties=parties,
             section_185_loans=self._loans(firm_id, client_id, flagged=True),
-            transfer_pricing_flags=self._transfer_pricing(firm_id, client_id),
             entity_relationships=self._entity_edges(firm_id, entity_ids),
         )
 
@@ -173,24 +171,6 @@ class RelatedPartyService:
                  .eq("client_id", client_id))
             return b.eq("section_185_flagged", True) if flagged else b
         return fetch_all(q, label=RELATED_PARTY_LOANS_TABLE)
-
-    def _transfer_pricing(self, firm_id: str, client_id: str) -> list[dict]:
-        """IT Act s.92 — an inter-company loan at or above the threshold.
-
-        `gte`, not `gt`: s.92's limb is "exceeds" on some readings and "of or
-        above" on others, and the threshold is a REPORTING trigger here rather
-        than a charge, so the inclusive test is the one that cannot hide a
-        transaction from a CA.
-        """
-        return fetch_all(
-            lambda: self.db.table(RELATED_PARTY_LOANS_TABLE)
-            .select("id, entity_id, loan_type, principal_paise, sanction_date, notes")
-            .eq("firm_id", firm_id)
-            .eq("client_id", client_id)
-            .eq("loan_type", "inter_company")
-            .gte("principal_paise", TRANSFER_PRICING_THRESHOLD_PAISE),
-            label="transfer_pricing",
-        )
 
     def _dealings_by_pan(
         self, firm_id: str, client_id: str, pans: list[str]
@@ -298,8 +278,6 @@ def as_payload(d: Disclosure) -> dict:
         "undetermined_count": len(d.undetermined),
         "disclosure_required": d.disclosure_required,
         "section_185_loans": d.section_185_loans,
-        "transfer_pricing_flags": d.transfer_pricing_flags,
-        "transfer_pricing_count": len(d.transfer_pricing_flags),
         "entity_relationships": d.entity_relationships,
         "gaps": d.gaps,
         "notes": d.notes,

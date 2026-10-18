@@ -89,14 +89,6 @@ UNREACHED_COMPUTED_ANSWERS: dict[str, str] = {
         "The same stored recollection, for one client and one year. Unreached "
         "for the same reason as the list above it: the year-end pack is the "
         "document a CA works from and it is live.",
-    "/api/relationships/loans/section-185-report":
-        "Companies Act s.185 — loans to directors. The AS 18 note now renders "
-        "the same flagged loans (`section_185_loans`) through "
-        "`/related-party-report`, so the fact IS on a screen; this endpoint is "
-        "the firm-wide roll-up of it and is unreached. `/relationships/"
-        "intelligence` filters `section_185_flagged` in the BROWSER instead, "
-        "which is the 'zero business logic in the frontend' rule broken — the "
-        "next thing to fix here.",
     "/api/tasks/summary/dashboard":
         "A task roll-up. `/work` and the hub's Compliance tile are the live "
         "answers; this predates both.",

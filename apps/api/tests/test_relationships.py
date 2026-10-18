@@ -2,8 +2,7 @@
 Unit tests for Relationship Intelligence — Chapter 15.
 
 Tests cover entity creation, director relationships, cross-client PAN detection,
-Section 185 loan flags, paise arithmetic, property creation, related party report,
-and transfer pricing threshold detection.
+Section 185 loan flags, paise arithmetic, property creation and the related party report.
 
 All tests run in mock mode (no SUPABASE_URL required).
 """
@@ -423,44 +422,3 @@ class TestRelatedPartyReport:
         roles_in_report = {r["role"] for r in related_parties}
         assert "Director" in roles_in_report
         assert "Shareholder" in roles_in_report
-
-
-class TestTransferPricingThreshold:
-    """Test 12: Transfer pricing flag for inter-company > ₹1 crore."""
-
-    def test_transfer_pricing_flag_above_threshold(self):
-        """
-        Test 12: IT Act Sec 92 — inter-company loan > ₹1 crore (10_000_000_00 paise)
-        must be flagged for transfer pricing documentation.
-        """
-        import routers.relationships as rel  # type: ignore  # noqa: F811
-
-        # ₹1,00,00,000 = 1 crore = 1_00_00_000 rupees
-        # In paise: 1_00_00_000 * 100 = 10_000_000_00?
-        # Let's recalculate carefully:
-        # 1 crore rupees = 1,00,00,000 rupees = 10_000_000 rupees
-        # In paise = 10_000_000 * 100 = 1_000_000_000 paise = 1_00_00_00_000 paise
-        # Transfer pricing threshold: ₹1 crore
-        THRESHOLD_PAISE = 1_00_00_000 * 100  # ₹1 crore in paise
-
-        entity = _make_entity("Foreign Subsidiary", "Company", "FRNCO9999F")
-        rel._MOCK_ENTITIES.append(entity)
-
-        # Loan just above threshold — must trigger transfer pricing
-        above_threshold_paise = THRESHOLD_PAISE + 100  # 1 paise above
-        loan_above = _make_loan(CLIENT_A, entity["id"], "inter_company", above_threshold_paise)
-        rel._MOCK_LOANS.append(loan_above)
-
-        # Loan just below threshold — must NOT trigger
-        below_threshold_paise = THRESHOLD_PAISE - 100
-        loan_below = _make_loan(CLIENT_A, entity["id"], "inter_company", below_threshold_paise)
-        rel._MOCK_LOANS.append(loan_below)
-
-        tp_loans = [
-            l for l in rel._MOCK_LOANS
-            if l["loan_type"] == "inter_company"
-            and l["principal_paise"] >= THRESHOLD_PAISE
-        ]
-        assert len(tp_loans) == 1
-        assert tp_loans[0]["principal_paise"] == above_threshold_paise
-        assert tp_loans[0]["principal_paise"] > THRESHOLD_PAISE
