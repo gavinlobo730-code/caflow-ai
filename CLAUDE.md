@@ -170,13 +170,14 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A VENDOR PAYMENT RECORDS WHICH BILLS IT SETTLED IN TWO SHAPES, AND EVERY READER MUST KNOW BOTH
 - A BILLING SCHEDULE KEEPS THE DAY IT STARTED ON, A DUE SCHEDULE WHOSE PERIOD IS ALREADY BILLED ADVANCES, A PLACEHOLDER NUMBER IS NOT ISSUED, AND TWO EDITORS OF AN ARTICLE BOTH KEEP THEIR TEXT
 
-### `docs/design-record/engineering-and-ci.md` (5 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
+### `docs/design-record/engineering-and-ci.md` (6 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
 - THE BACKEND HAS A LINT RATCHET, A PROPERTY SUITE, ONE PAGER, ONE DOOR TO THE DATABASE CLIENT AND A COVERAGE FLOOR, AND EACH IS A R
 - THE SMOKE WALK RUNS BY ITSELF, NIGHTLY AND ON DEMAND, AND IS NOT A CHECK ANYTHING WAITS ON
 - EACH MIGRATION IS ONE TRANSACTION, AND A REMEMBERED FAILURE KEEPS THE PIPELINE RED
 - THE SCHEMA-DRIFT CHECK HEALS ITSELF AND COVERS THE TABLES AND FUNCTIONS THE CODE CALLS
 - A LOOKUP THAT MAY FIND NOTHING IS `.maybe_single()`, AND A `.single()` THAT SLIPS THROUGH ANYWAY ANSWERS 404 AND NOT 500
+- A HEALTH TEST IMPORTS THE HEALTH MODULE, AND AN ASSERTION ABOUT ARITHMETIC THE PRODUCT DOES NOT DO WAS DROPPED, NOT PORTED
 
 ### `docs/design-record/filing-and-compliance.md` (3 entries): Filing to government portals, trackers and the period lock
 
@@ -248,7 +249,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE RULE IS ABOUT THE BROWSER TOO, and that is where it was still being broken
 - AN OFFSET-PAGED READ NEEDS A UNIQUE TOTAL ORDERING, and the ordering a screen already had is usually not one
 
-### `docs/design-record/screens-and-site.md` (18 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
+### `docs/design-record/screens-and-site.md` (19 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
 - AN ABSENT VALUE IS UNKNOWN, AND A GENUINE ZERO IS A READING
 - A RETURN FOR ONE OF SEVERAL REGISTRATIONS SAYS ITS DOCUMENTS ARE NOT SPLIT
@@ -268,6 +269,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - SIX SMALL STATEMENTS NOW SAY WHAT THE CODE DOES, EACH WITH A GUARD FROM THE SIDE THAT OWNS THE VOCABULARY
 - A FEE LEDGER THE PRODUCT CANNOT READ IS NOT A CLIENT THAT OWES NOTHING, A DELETE THAT ROW SECURITY HID IS NOT A DELETE, AND A PAYLOAD SERVES NO FIGURE NOBODY COUNTED
 - A LIST THAT STOPS AT A NUMBER SAYS IT STOPPED, AND A COUNT IS TAKEN FROM THE DATABASE AND NOT FROM THE WINDOW
+- THE PAYMENT-REMINDERS LIST KEEPS THE UNKNOWN APART FROM NONE, AND THE GOODS-OR-SERVICES WORD IS ACCEPTED IN BOTH SPELLINGS AT EVERY DOOR
 
 ### `docs/design-record/tax-gst.md` (34 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 

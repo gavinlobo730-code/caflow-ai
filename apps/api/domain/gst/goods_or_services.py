@@ -64,6 +64,33 @@ SOURCE_CODE = "hsn_sac_code"
 SOURCE_UNKNOWN = "unknown"
 
 
+#: The two words each door of the product stores. The service catalogue's `kind` is `good` / `service`; the firm's HSN library and
+#: the HSN master store `goods` / `services`. They were never unified and each door refused the other's word (POST-A-107).
+_GOODS_WORDS = frozenset({"good", "goods"})
+_SERVICES_WORDS = frozenset({"service", "services"})
+
+
+def kind_word(value) -> Optional[str]:
+    """`'goods'` or `'services'` for any spelling a door of the product uses (`good`, `Goods`, ` service `, `SERVICES`), else None.
+
+    It is the one place that knows both vocabularies. A door that STORES the singular (the service catalogue's `kind`) maps the
+    answer back with `catalogue_kind`; the stored values themselves never change, so no row and no filter on one is migrated."""
+    if not isinstance(value, str):
+        return None
+    word = value.strip().lower()
+    if word in _GOODS_WORDS:
+        return "goods"
+    if word in _SERVICES_WORDS:
+        return "services"
+    return None
+
+
+def catalogue_kind(value) -> Optional[str]:
+    """The service catalogue's own word for `kind_word(value)`: `'good'`, `'service'`, or None."""
+    word = kind_word(value)
+    return {"goods": "good", "services": "service"}.get(word) if word else None
+
+
 def is_service_code(code: Optional[str]) -> Optional[bool]:
     """True for a SAC, False for an HSN of goods, None where the code cannot say.
 

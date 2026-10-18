@@ -126,6 +126,7 @@ export default function PortalDashboardPage() {
   // The server's sentence when this account has no fee ledger the practice can read: neither a failed load nor an
   // empty list of invoices, so it is kept apart from both (POST-A-245).
   const [invoicesUnavailable, setInvoicesUnavailable] = useState<string | null>(null);
+  const [remindersUnavailable, setRemindersUnavailable] = useState<string | null>(null);
   const [reminders, setReminders] = useState<PortalReminder[] | null>(null);
   const [compliance, setCompliance] = useState<PortalCompliance[] | null>(null);
   const [statement, setStatement] = useState<PortalStatement | null>(null);
@@ -231,7 +232,7 @@ export default function PortalDashboardPage() {
   useEffect(() => {
     if (!activeClient) return;
     setDash(null); setDues(null);
-    setInvoices(null); setInvoicesUnavailable(null); setReminders(null); setCompliance(null); setStatement(null);
+    setInvoices(null); setInvoicesUnavailable(null); setReminders(null); setRemindersUnavailable(null); setCompliance(null); setStatement(null);
     setDocuments(null); setRequests(null); setMessages(null);
     (async () => {
       try {
@@ -257,7 +258,8 @@ export default function PortalDashboardPage() {
         setInvoicesUnavailable(r.data?.available === false ? (r.data.reason ?? FEE_LEDGER_UNAVAILABLE_FALLBACK) : null);
         setInvoices(r.data?.invoices ?? []);
       } else if (key === "reminders" && reminders === null) {
-        const r = await api.portalSelf.reminders(client) as ApiResp<{ reminders: PortalReminder[] }>;
+        const r = await api.portalSelf.reminders(client) as ApiResp<{ reminders: PortalReminder[]; available?: boolean; reason?: string | null }>;
+        setRemindersUnavailable(r.data?.available === false ? (r.data.reason ?? FEE_LEDGER_UNAVAILABLE_FALLBACK) : null);
         setReminders(r.data?.reminders ?? []);
       } else if (key === "compliance" && compliance === null) {
         const r = await api.portalSelf.compliance(client) as ApiResp<{ compliance: PortalCompliance[] }>;
@@ -576,7 +578,7 @@ export default function PortalDashboardPage() {
           {/* ── Payment Reminders ── */}
           {active === "reminders" && (
             <Panel title="Payment Reminders">
-              {reminders === null ? (sectionFailed["reminders"] ? <ErrorRetry onRetry={() => loadSection("reminders", activeClient!)} /> : <Loading />) : reminders.length === 0 ? <Empty label="No reminders have been sent." /> : (
+              {reminders === null ? (sectionFailed["reminders"] ? <ErrorRetry onRetry={() => loadSection("reminders", activeClient!)} /> : <Loading />) : reminders.length === 0 ? <Empty label={remindersUnavailable ?? "No reminders have been sent."} /> : (
                 <Table head={["Invoice", "Status", "Sent"]}>
                   {reminders.map((r, idx) => (
                     <tr key={idx} className="border-t border-ps-border">

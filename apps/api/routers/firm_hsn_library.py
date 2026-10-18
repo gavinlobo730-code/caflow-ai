@@ -26,6 +26,7 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.firm_hsn_library import FirmHsnLibraryIn, FirmHsnLibraryUpdateIn
 from core.permissions import rbac
+from domain.gst.goods_or_services import kind_word
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.firm_hsn_library")
@@ -86,8 +87,8 @@ def list_library(
             rows = [r for r in MOCK_LIBRARY if r.get("firm_id") == firm_id]
             if not include_archived:
                 rows = [r for r in rows if r.get("is_active", True)]
-            if hsn_type in ("goods", "services"):
-                rows = [r for r in rows if r.get("hsn_type") == hsn_type]
+            if kind_word(hsn_type):
+                rows = [r for r in rows if r.get("hsn_type") == kind_word(hsn_type)]
             rows = sorted(rows, key=lambda r: r.get("hsn_code") or "")
             if term:
                 t = term.lower()
@@ -104,8 +105,8 @@ def list_library(
         query = db.table("firm_hsn_library").select("*").eq("firm_id", firm_id)
         if not include_archived:
             query = query.eq("is_active", True)
-        if hsn_type in ("goods", "services"):
-            query = query.eq("hsn_type", hsn_type)
+        if kind_word(hsn_type):
+            query = query.eq("hsn_type", kind_word(hsn_type))
         if term:
             query = query.or_(f"hsn_code.ilike.{term}*,description.ilike.*{term}*")
         rows = query.order("hsn_code").limit(limit * 2).execute().data or []

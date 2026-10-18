@@ -14,6 +14,7 @@ from typing import Optional
 from pydantic import BaseModel, field_validator
 
 from domain.gst import uqc as _uqc
+from domain.gst.goods_or_services import kind_word
 
 _CODE_RE = re.compile(r"^\d{2,8}$")
 
@@ -60,9 +61,11 @@ class FirmHsnLibraryIn(BaseModel):
     @field_validator("hsn_type")
     @classmethod
     def type_valid(cls, v: str) -> str:
-        if v not in ("goods", "services"):
+        # Either door's word is accepted and the library's own is stored (POST-A-107): `good` is `goods`, `service` is `services`.
+        word = kind_word(v)
+        if word is None:
             raise ValueError("hsn_type must be 'goods' or 'services'.")
-        return v
+        return word
 
     @field_validator("gst_rate_pct")
     @classmethod

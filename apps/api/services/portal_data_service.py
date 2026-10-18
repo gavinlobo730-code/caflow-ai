@@ -201,9 +201,17 @@ def invoice_in_scope(firm_id: str, client_id: str, invoice_id: str, db=None) -> 
     return bool(rows)
 
 
-def reminder_history(firm_id: str, client_id: str, db=None, today: Optional[date] = None) -> list[dict]:
+def reminder_history_or_none(firm_id: str, client_id: str, db=None, today: Optional[date] = None) -> Optional[list[dict]]:
+    """The payment reminders sent to this portal client, or None when the product cannot tell.
+
+    A reminder is sent about a fee invoice, so a client whose fee ledger cannot be read (no link to a customer of the practice,
+    or a firm with no internal client) has no history the product can look up: "no reminders have been sent" would be a claim
+    about a ledger nobody could read (POST-A-256, the dues and the invoice list since POST-A-245). An empty list means the
+    ledger was read and no reminder was sent."""
     db = db if db is not None else _db()
-    invoices = list_invoices(firm_id, client_id, db=db, today=today)
+    invoices = fee_invoices_or_none(firm_id, client_id, db=db, today=today)
+    if invoices is None:
+        return None
     by_id = {i["id"]: i for i in invoices}
     if not by_id:
         return []
@@ -211,6 +219,12 @@ def reminder_history(firm_id: str, client_id: str, db=None, today: Optional[date
             .eq("firm_id", firm_id).eq("kind", "reminder").in_("invoice_id", list(by_id))
             .order("created_at", desc=True).execute().data or [])
     return [safe_reminder(r, (by_id.get(r.get("invoice_id")) or {}).get("invoice_no")) for r in rows]
+
+
+def reminder_history(firm_id: str, client_id: str, db=None, today: Optional[date] = None) -> list[dict]:
+    """The same rows as a plain list, for a caller that only needs them. A screen that SAYS something about reminders asks
+    `reminder_history_or_none` and keeps the unknown."""
+    return reminder_history_or_none(firm_id, client_id, db=db, today=today) or []
 
 
 def statement(firm_id: str, client_id: str, start: str, end: str, db=None) -> dict:

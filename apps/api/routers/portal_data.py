@@ -150,8 +150,12 @@ def portal_statement_pdf(
 @router.get("/reminders")
 def portal_reminders(portal: dict = Depends(get_current_portal_client)):
     """Payment-reminder history for this client's fee invoices (client-safe)."""
-    rows = portal_data_service.reminder_history(portal["firm_id"], portal["client_id"])
-    return api_response(True, {"reminders": rows})
+    rows = portal_data_service.reminder_history_or_none(portal["firm_id"], portal["client_id"])
+    if rows is None:
+        # No fee ledger to read is not the same as no reminders sent: say so instead of an empty list (POST-A-256).
+        return api_response(True, {"reminders": [], "available": False,
+                                   "reason": portal_data_service.FEE_LEDGER_NOT_LINKED})
+    return api_response(True, {"reminders": rows, "available": True, "reason": None})
 
 
 # ── Compliance Status ─────────────────────────────────────────────────────────
