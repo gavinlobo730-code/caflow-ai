@@ -243,7 +243,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE RULE IS ABOUT THE BROWSER TOO, and that is where it was still being broken
 - AN OFFSET-PAGED READ NEEDS A UNIQUE TOTAL ORDERING, and the ordering a screen already had is usually not one
 
-### `docs/design-record/screens-and-site.md` (15 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
+### `docs/design-record/screens-and-site.md` (16 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
 - AN ABSENT VALUE IS UNKNOWN, AND A GENUINE ZERO IS A READING
 - A RETURN FOR ONE OF SEVERAL REGISTRATIONS SAYS ITS DOCUMENTS ARE NOT SPLIT
@@ -260,6 +260,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - SEVEN DEMO-FACING STATEMENTS STOPPED OVERSTATING WHAT THE CODE KNOWS OR DOES
 - A PRINTED SCREEN IS NOT CLIPPED, NOT BLANKED, AND NAMES ITS CLIENT
 - THE STAFF PREVIEW OF A CLIENT'S DUES LISTS WHAT THE SERVER SAYS IS OWED, IN THE SHAPE IT SENDS, AND NEVER FALLS BACK TO THE TRANSACTION FEED
+- SIX SMALL STATEMENTS NOW SAY WHAT THE CODE DOES, EACH WITH A GUARD FROM THE SIDE THAT OWNS THE VOCABULARY
 
 ### `docs/design-record/tax-gst.md` (34 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 

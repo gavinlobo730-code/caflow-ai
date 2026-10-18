@@ -122,3 +122,18 @@ def test_the_money_it_was_letting_through():
     assert compute_line_gst(100_000, int(18.0 * 100), False) == (9000, 9000, 0), (
         "and what it should be: Rs 90 + Rs 90 on a Rs 1,000 line at 18%"
     )
+
+
+def test_the_importers_preview_asks_the_bound_the_server_asks():
+    """POST-A-214. The bulk importers refuse a GST % over 100 in the preview, on the number the server refuses it at.
+    The browser holds the NUMBER only (`apps/web/lib/imports/gstRate.ts`); this reads it, so the day the server's bound
+    moves the preview fails here instead of waving a row through that the server then refuses."""
+    import re
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[3] / "apps" / "web" / "lib" / "imports" / "gstRate.ts").read_text(encoding="utf-8")
+    m = re.search(r"export const MAX_GST_RATE_BPS\s*=\s*(\d+)\s*;", src)
+    assert m, "MAX_GST_RATE_BPS not found in gstRate.ts — the preview bound moved and this guard is blind"
+    assert int(m.group(1)) == int(MAX_GST_RATE_PERCENT * 100), (
+        f"the preview bound is {m.group(1)} bps and the server's is {MAX_GST_RATE_PERCENT}% "
+        f"= {int(MAX_GST_RATE_PERCENT * 100)} bps"
+    )

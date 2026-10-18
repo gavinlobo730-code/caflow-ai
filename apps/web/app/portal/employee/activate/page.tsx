@@ -266,6 +266,7 @@ export default function EmployeeActivatePage() {
           We emailed you a short code. Enter it to finish setting your password.
         </p>
         <input
+          id="employee-activate-code" name="verification-code" aria-label="Verification code"
           value={reauthOtp}
           onChange={(e) => setReauthOtp(e.target.value)}
           placeholder="6-digit code"
@@ -294,6 +295,7 @@ export default function EmployeeActivatePage() {
 
       <div className="relative mb-3">
         <input
+          id="employee-activate-password" name="new-password" aria-label="New password"
           type={showPw ? "text" : "password"}
           value={pw}
           onChange={(e) => setPw(e.target.value)}
@@ -312,6 +314,7 @@ export default function EmployeeActivatePage() {
       </div>
 
       <input
+        id="employee-activate-confirm-password" name="confirm-password" aria-label="Repeat password"
         type={showPw ? "text" : "password"}
         value={pw2}
         onChange={(e) => setPw2(e.target.value)}

@@ -118,6 +118,8 @@ A row is reported and **skipped** (not imported) when:
 - `quantity` is not a positive number;
 - `rate` or `gst_rate` is not a non-negative number and the `product_service`
   supplies no default for it;
+- `gst_rate` is more than 100 (a percentage is typed as `18`, not as basis points,
+  `1800`): the server refuses it at POST, so the preview refuses the row first;
 - an `invoice_no` is reused with a different `customer`, `invoice_date`,
   `due_date`, or `supply_state_code` than the row that first established it.
 

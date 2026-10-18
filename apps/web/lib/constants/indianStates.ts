@@ -18,12 +18,13 @@
  *   offering them for a NEW document would let a CA pick a code the portal
  *   rejects.
  *
- *   96 (Other Country) and 97 (Other Territory) are also absent, and that is a
- *   real gap rather than a decision: 96 is the place of supply GSTN requires on
- *   an EXPORT, and nothing in this frontend can set it. It belongs with the
- *   export work (GST-07 / SALES-10), because whether 96 may be a CUSTOMER's
- *   state as well as an invoice's place of supply is an export-flow question,
- *   not a list-completeness one.
+ *   96 (Other Country) and 97 (Other Territory) are not STATES, so INDIAN_STATES
+ *   leaves them out; where a document's PLACE OF SUPPLY (or an export customer's
+ *   state) is chosen, `PLACE_OF_SUPPLY_STATES` below adds them (POST-A-103). 96 is
+ *   the place of supply GSTN requires on an EXPORT. The server accepts both on
+ *   exactly those fields (`domain/gst/validator.VALID_STATE_CODES`, which
+ *   `models/parties` also asks of a customer's state), and refuses them in a
+ *   GSTIN, so a GSTIN-shaped picker must not offer them.
  */
 export interface IndianState {
   code: string;
@@ -67,4 +68,16 @@ export const INDIAN_STATES: IndianState[] = [
   { code: "36", name: "Telangana" },
   { code: "37", name: "Andhra Pradesh" },
   { code: "38", name: "Ladakh" },
+];
+
+/**
+ * What a document's place of supply, a receipt or advance's place of supply and a customer's state may be: every state
+ * and union territory, plus 96 (Other Country, the place of supply on an export) and 97 (Other Territory). Derived from
+ * INDIAN_STATES so the two cannot drift; the dead codes 25 and 28 stay out of both.
+ * `apps/api/tests/test_the_state_pickers_offer_what_the_server_accepts.py` holds this list to the server's.
+ */
+export const PLACE_OF_SUPPLY_STATES: IndianState[] = [
+  ...INDIAN_STATES,
+  { code: "96", name: "Other Country (outside India — exports)" },
+  { code: "97", name: "Other Territory" },
 ];

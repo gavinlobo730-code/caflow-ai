@@ -61,8 +61,9 @@ export default function PortalLoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-1.5">
-            <label className="block text-sm font-semibold text-ps-ink">Email address</label>
+            <label htmlFor="portal-login-email" className="block text-sm font-semibold text-ps-ink">Email address</label>
             <input
+              id="portal-login-email" name="email" autoComplete="username"
               autoFocus type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="you@company.com"
               className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
@@ -70,12 +71,13 @@ export default function PortalLoginPage() {
           </div>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="block text-sm font-semibold text-ps-ink">Password</label>
+              <label htmlFor="portal-login-password" className="block text-sm font-semibold text-ps-ink">Password</label>
               <Link href="/login/forgot-password?portal=1" className="text-xs text-brand-dark hover:text-brand font-medium transition-colors">
                 Forgot password?
               </Link>
             </div>
             <input
+              id="portal-login-password" name="password" autoComplete="current-password"
               type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"

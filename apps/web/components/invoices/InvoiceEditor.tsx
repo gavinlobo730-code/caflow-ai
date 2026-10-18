@@ -1109,7 +1109,7 @@ export function InvoiceEditor({
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Supply State</label>
-              <StateLookup value={supplyStateCode ?? ""} onChange={onSupplyStateChange}
+              <StateLookup placeOfSupply value={supplyStateCode ?? ""} onChange={onSupplyStateChange}
                 placeholder="— Select —" ariaLabel="Supply state" disabled={isLocked} />
               {fieldErr(validation.errors.supplyState)}
               {/* Rule 46(n). The server refuses to ISSUE without one, so say so

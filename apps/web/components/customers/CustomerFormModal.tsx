@@ -308,7 +308,7 @@ export function CustomerFormModal({
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">State Code</label>
-          <StateLookup value={stateCode} onChange={setStateCode} placeholder="— Select —" ariaLabel="State code" />
+          <StateLookup placeOfSupply value={stateCode} onChange={setStateCode} placeholder="— Select —" ariaLabel="State code" />
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">PAN</label>

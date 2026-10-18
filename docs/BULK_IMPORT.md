@@ -113,7 +113,9 @@ When `tds_applicable` is yes, a valid section and a positive rate are required.
 `description`* · `hsn_sac` · `quantity`* · `rate`* (₹) · `gst_rate`* (%).
 `product_service` is required on every line (see below); `description`, `rate`
 and `gst_rate` are required only when the row's `product_service` has none of its
-own to inherit.
+own to inherit. A `gst_rate` over 100 is refused in the preview (type `18`, not
+`1800`), as the server refuses it at POST; the sales, credit-note and debit-note
+imports ask the same.
 Rows sharing a `bill_no` group into one multi-line bill (absent a `bill_no`,
 rows group by `vendor` + `bill_date`). A `bill_no` reused across two vendors is rejected.
 
