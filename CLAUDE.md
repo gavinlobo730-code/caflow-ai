@@ -156,7 +156,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE INCIDENT RUNBOOK SAYS IT HAS NOT BEEN TESTED AND LEAVES THE FACTS ONLY A HUMAN HOLDS AS BLANKS
 - THE TWO SITES AND THE API SEND SECURITY HEADERS, THE POLICY'S HOSTS ARE READ FROM THE BUILD AND NEVER WILDCARDED, AND EVERY ROUTE 
 
-### `docs/design-record/documents-sales-purchase.md` (10 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
+### `docs/design-record/documents-sales-purchase.md` (11 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 
 - THE DEMO SEEDER HAS BEEN RUN OVER A REAL DATABASE, AND EVERY DEFECT IT EXPOSED IS A RULE NOW
 - A TEMPLATE CHANGES THE LAYOUT AND NEVER THE PARTICULARS, AND THE PRACTICE'S TEMPLATE REACHES THE PRACTICE'S OWN DOCUMENT ONLY
@@ -168,6 +168,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE SUPPLIER MASTER IS `public.vendors`, AND `public.suppliers` IS RETIRED
 - THE PURCHASE CYCLE BEGINS BEFORE THE BILL, AND THE GOODS RECEIPT IS A STATUTORY FACT
 - A VENDOR PAYMENT RECORDS WHICH BILLS IT SETTLED IN TWO SHAPES, AND EVERY READER MUST KNOW BOTH
+- A BILLING SCHEDULE KEEPS THE DAY IT STARTED ON, A DUE SCHEDULE WHOSE PERIOD IS ALREADY BILLED ADVANCES, A PLACEHOLDER NUMBER IS NOT ISSUED, AND TWO EDITORS OF AN ARTICLE BOTH KEEP THEIR TEXT
 
 ### `docs/design-record/engineering-and-ci.md` (5 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 

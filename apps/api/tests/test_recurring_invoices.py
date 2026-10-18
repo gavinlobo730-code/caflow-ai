@@ -188,6 +188,9 @@ def test_generated_draft_can_be_issued_by_ca():
     rec.generate_due_recurring_invoices("F1", as_of=date(2026, 6, 1), actor=ACTOR)
     inv = MOCK_SALES_INVOICES[0]
     assert inv["status"] == "draft"
+    # A generated draft carries a placeholder number the CA must replace (POST-A-216): issuing one is refused, so the CA
+    # types the real number first, as the screen asks, and then issues.
+    inv["invoice_no"] = "SINV-0001"
     issued = issue_invoice(inv["id"], ACTOR)            # existing CA-confirm path
     assert issued["data"]["status"] == "issued"
 

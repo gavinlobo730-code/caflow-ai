@@ -24,6 +24,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from services.internal_client_service import is_internal_client
+from services.numbering import is_unique_violation
 from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -120,17 +121,37 @@ def create_article(current_user: dict, scope: str, title: str, content: str,
     return art
 
 
+#: How many times an edit retries when another editor took the version it was about to write.
+_VERSION_ATTEMPTS = 5
+
+
 def edit_article(current_user: dict, article_id: str, content: str) -> dict:
-    """Append a NEW version (never mutate history) and bump current_version."""
+    """Append a NEW version (never mutate history) and bump current_version.
+
+    TWO EDITORS, ONE VERSION NUMBER (POST-A-216). `knowledge_article_versions` is UNIQUE (article_id, version), so when two
+    people save at the same moment one of them writes version N+1 and the other collides on it. That collision used to reach
+    the person as a 500, with their text lost. The next version is now read from the highest version actually WRITTEN (the
+    article's `current_version` is bumped by a second statement and lags behind it for an instant), and a collision is retried
+    with the number re-read, which has moved by then. The loser's text is saved as the version AFTER the winner's, so nothing
+    either person typed is dropped; five collisions in a row is not a race and is raised.
+    """
     if _USE_MOCK:
         return {"id": article_id, "current_version": 2}
     db = _db()
     art = _load_article_or_404(db, current_user, article_id, write=True)
-    v = next_version(art.get("current_version", 1))
-    db.table("knowledge_article_versions").insert({
-        "firm_id": art["firm_id"], "article_id": article_id, "version": v,
-        "content": content or "", "changed_by": current_user.get("id"),
-    }).execute()
+    for attempt in range(_VERSION_ATTEMPTS):
+        written = (db.table("knowledge_article_versions").select("version")
+                   .eq("article_id", article_id).order("version", desc=True).limit(1).execute().data) or []
+        v = next_version(max([art.get("current_version", 1)] + [int(r["version"]) for r in written]))
+        try:
+            db.table("knowledge_article_versions").insert({
+                "firm_id": art["firm_id"], "article_id": article_id, "version": v,
+                "content": content or "", "changed_by": current_user.get("id"),
+            }).execute()
+            break
+        except Exception as exc:                                   # noqa: BLE001
+            if not is_unique_violation(exc) or attempt == _VERSION_ATTEMPTS - 1:
+                raise
     upd = db.table("knowledge_articles").update({
         "current_version": v, "updated_at": _now()}).eq("id", article_id).execute().data[0]
     _emit_article_event(current_user, upd, "kb_article_updated", f"Knowledge article updated (v{v})")
