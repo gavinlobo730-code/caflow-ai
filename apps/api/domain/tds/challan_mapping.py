@@ -68,6 +68,7 @@ Integer paise throughout.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Optional
 
 from domain.tds.section_rates import parent_of
@@ -122,6 +123,43 @@ class Mapping:
 
     def for_deduction(self, deduction_id) -> Assignment:
         return self.by_deduction_id.get(str(deduction_id), Assignment())
+
+
+def as_date(value) -> Optional[date]:
+    """A date out of whatever a row carries (a date, an ISO date or timestamp text), or None when there is none."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def dated_parts(assignment: Assignment, deducted_on: date) -> tuple[list[tuple[int, date]], bool]:
+    """([(paise, date paid)] for the parts of one deduction that count as paid over, whether a challan was refused as dated
+    before the deduction).
+
+    A part whose challan carries no date is not counted: there is nothing to say WHEN the tax went. A part whose challan is
+    dated before the deduction is not counted either: the match is by order and not by date, and tax cannot have been paid
+    over before it was deducted, so counting it would show a deduction as deposited on a day it did not exist. It is
+    reported as refused so the reader can say so. The deposit worksheet's interest and the purchase-return note both ask
+    this, so the rule is written once."""
+    parts: list[tuple[int, date]] = []
+    refused = False
+    for challan, paise in assignment.parts:
+        paid_on = as_date((challan or {}).get("payment_date"))
+        if paid_on is None:
+            continue
+        if paid_on < deducted_on:
+            refused = True
+            continue
+        parts.append((paise, paid_on))
+    return parts, refused
 
 
 def _deduction_key(d: dict) -> tuple:

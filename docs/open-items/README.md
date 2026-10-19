@@ -39,9 +39,9 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 3 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 14 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 126 | after the demo: Claude can do alone |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 125 | after the demo: Claude can do alone |
 | [post-demo-B-ours.md](post-demo-B-ours.md) | 165 | after the demo: owner decides first, then Claude builds |
-| [post-demo-C-yours.md](post-demo-C-yours.md) | 190 | after the demo: only the owner or outsiders can do |
+| [post-demo-C-yours.md](post-demo-C-yours.md) | 191 | after the demo: only the owner or outsiders can do |
 | [post-demo-parked.md](post-demo-parked.md) | 150 | after the demo: parked until someone asks or the work is sized down; NOT counted as open |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
