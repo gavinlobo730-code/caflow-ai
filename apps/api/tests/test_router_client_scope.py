@@ -531,13 +531,13 @@ AUDITED: dict[str, tuple[str, ...]] = {
     ),
     # approvals.py — Module 9.0/M4 maker-checker governance inbox.
     # approval_requests has a firm_id and NO client_id column at all
-    # (migration 083) — a request (user create/activate, role change,
-    # client-assignment change, COA change) is a FIRM governance object, not
-    # a client's. assignment_create/assignment_remove/assignment_transfer
-    # name a client_id inside their JSONB payload, but the ROW ITSELF has no
-    # client column to check assignment against — there is no narrower scope
-    # to apply than the RBAC already in place (read: Manager+, approve:
-    # Partner-only, core/permissions.py). Every route is EXEMPT below.
+    # (migration 083) — a request (today only a lost-authenticator reset; the
+    # staff, assignment and chart-of-accounts types are retired) is a FIRM
+    # governance object, not a client's. A request names no client at all, and
+    # the ROW ITSELF has no client column to check assignment against — there
+    # is no narrower scope to apply than the RBAC already in place (read:
+    # Manager+, approve: Partner-only, core/permissions.py). Every route is
+    # EXEMPT below.
     "/api/approvals": (),
     # xbrl_engine.py — MCA XBRL package generation. xbrl_packages.client_id
     # is NOT NULL (migration 156). create_package/list_packages took

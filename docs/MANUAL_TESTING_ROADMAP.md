@@ -357,9 +357,10 @@ audit log (Partner), branding & invoice/email templates (Partner), timeline.
   - **Time tracking:** start timer (auto-stops the previous), stop, manual entry, export CSV/XLSX.
   - **Workload:** capacity (40h/10 tasks defaults), utilisation %, overloaded/underutilised flags;
     Manager+ edits capacity.
-  - **Approvals (maker-checker):** Executive raises a request (e.g., user_create / role_change /
-    assignment / CoA change); Manager+ approves/rejects; **approve/reject require MFA**; requester
-    can cancel.
+  - **Approvals (maker-checker):** the one kind of request today is a lost-authenticator reset
+    (anyone may ask for their own); a Partner who is not the asker approves it;
+    **approve/reject require MFA**; the asker or a Partner can cancel. (The user, role, client-assignment
+    and chart-of-accounts request types are retired: those actions are made directly.)
 - **Edge cases:** circular task dependencies are **not** auto-detected (verify UI guards);
   self-approval is not blocked in code for approve (only for cancel) — verify policy expectation;
   reminders are a **stub** (no real email/SMS dispatch yet); scheduler is single-process only.

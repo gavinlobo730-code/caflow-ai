@@ -1,11 +1,14 @@
-"""Module 9.0 / M4 — approval API role matrix + audit + bypass attempts."""
+"""Module 9.0 / M4 — approval API role matrix + audit + bypass attempts.
+
+Driven with a test-only request type (`test_grant`, registered per test), so the role matrix and the audit trail are held
+independently of any business action. The first real type is `mfa_reset`
+(tests/test_a_lost_authenticator_is_reset_by_a_partner_other_than_the_asker.py)."""
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import services.approval_service as svc
 import repositories.approval_repository as arepo
-import repositories.assignment_repository as asg
 from routers.approvals import router as approvals_router
 from core.auth import get_current_user
 
@@ -15,18 +18,26 @@ EXEC = {"id": "e", "firm_id": "F1", "role": "Executive", "email": "e@f"}
 REVIEWER = {"id": "r", "firm_id": "F1", "role": "Reviewer", "email": "r@f"}
 CLIENT = {"id": "c", "firm_id": "F1", "role": "Client", "email": "c@f"}
 
-REQ = {"request_type": "assignment_create", "payload": {"user_id": "e", "client_id": "C1"}}
+REQ = {"request_type": "test_grant", "payload": {"user_id": "e", "client_id": "C1"}}
+
+# What the test action did, in order. Empty means the action never ran.
+DONE: list = []
 
 
 @pytest.fixture(autouse=True)
 def _reset(monkeypatch):
     arepo._MOCK_REQUESTS.clear()
-    asg._MOCK_ASSIGNMENTS.clear()
+    DONE.clear()
     audit = []
     monkeypatch.setattr(svc, "log_event", lambda *a, **k: audit.append(a[3]))
+    monkeypatch.setitem(svc._SPECS, "test_grant", {
+        "required": ["user_id", "client_id"],
+        "summary": lambda p: f"Grant {p.get('client_id')} to {p.get('user_id')}",
+        "handler": lambda firm, p: (DONE.append((firm, p)), {"granted": True})[1],
+    })
     yield audit
     arepo._MOCK_REQUESTS.clear()
-    asg._MOCK_ASSIGNMENTS.clear()
+    DONE.clear()
 
 
 def _client(user):
@@ -57,7 +68,7 @@ def test_partner_can_approve():
     rid = _make_request()
     r = _client(PARTNER).post(f"/api/approvals/{rid}/approve")
     assert r.status_code == 200
-    assert asg.assignment_repo.list_for_user("F1", "e") == ["C1"]  # executed
+    assert DONE == [("F1", REQ["payload"])]  # executed, once
 
 
 def test_manager_cannot_approve():
@@ -69,7 +80,7 @@ def test_executive_cannot_approve_own_request():
     # Bypass attempt: maker trying to self-approve.
     rid = _make_request()
     assert _client(EXEC).post(f"/api/approvals/{rid}/approve").status_code == 403
-    assert asg.assignment_repo.list_for_user("F1", "e") == []  # not executed
+    assert DONE == []  # not executed
 
 
 # ── Read (Manager+) ────────────────────────────────────────────────────────────

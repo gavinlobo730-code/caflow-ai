@@ -13,10 +13,10 @@ WHAT WAS WRONG
 
 WHY SCOPING HAD TO MOVE INTO THE QUERY FIRST
     The service role bypasses RLS, so the firm filter becomes the tenant
-    boundary. `update()` addressed a row by id alone, and
-    `services/approval_service._h_role_change` / `_h_user_activation` updated
-    `p["user_id"]` straight off a request payload with no firm check — the switch
-    alone would have let an approval in one firm change another firm's staff.
+    boundary. `update()` addressed a row by id alone, and the approval engine's
+    role-change and user-activation handlers (retired on 19-10-2026, POST-A-240)
+    updated `p["user_id"]` straight off a request payload with no firm check — the
+    switch alone would have let an approval in one firm change another firm's staff.
 
 These tests drive the REAL repository against an in-memory table, with
 `get_supabase` wired to REFUSE: a repository still reading through the
@@ -196,17 +196,15 @@ def test_an_invite_is_accepted_although_the_invitee_belongs_to_no_firm_yet(db):
     assert _row(db, "invitee")["invite_token"] is None
 
 
-def test_an_approved_role_change_cannot_reach_another_firms_user(db):
-    """The handler takes user_id off a request payload. Before the repository
-    carried the firm, this updated whichever row had that id."""
-    from services.approval_service import _h_role_change, _h_user_activation
-
-    assert _h_role_change(F1, {"user_id": "stranger", "role": "Partner"}) == {}
-    assert _h_user_activation(F1, {"user_id": "stranger", "is_active": False}) == {}
+def test_a_write_addressed_by_id_cannot_reach_another_firms_user(db):
+    """Any caller that takes a user_id off a request (the approval handlers that did were retired on 19-10-2026, POST-A-240;
+    the identity routes still do). Before the repository carried the firm, this updated whichever row had that id."""
+    assert not user_repo.update("stranger", {"role": "Partner"}, firm_id=F1)
+    assert not user_repo.update("stranger", {"is_active": False}, firm_id=F1)
     assert _row(db, "stranger")["role"] == "Executive"
     assert _row(db, "stranger")["is_active"] is True
 
-    assert _h_role_change(F1, {"user_id": "colleague", "role": "Manager"})["role"] == "Manager"
+    assert user_repo.update("colleague", {"role": "Manager"}, firm_id=F1)["role"] == "Manager"
 
 
 def test_a_task_can_be_assigned_to_a_colleague(db):

@@ -7,15 +7,22 @@ mutation via existing repositories/services (no duplicated business logic). Ever
 transition is mirrored to the immutable audit_log.
 
 Request types (handlers execute against existing server paths):
-  user_create / user_activation / role_change        -> user_repo
-  assignment_create / assignment_remove / assignment_transfer -> assignment_repo
-  mfa_reset                                          -> services.mfa_reset_service (a lost authenticator, POST-A-006)
+  mfa_reset   -> services.mfa_reset_service (a lost authenticator, POST-A-006)
 
-The chart-of-accounts types (coa_create / coa_update / coa_delete) were RETIRED on 17-10-2026 (POST-A-007's review): their
-handlers called the in-memory `domain.accounting_service`, which the REST routes had already been moved off because a change
-made there "was reported as saved and was not", so an approved request recorded success and wrote no account. Nothing
-creates one (no screen, no job). A stored request of a retired type can still be rejected or cancelled and is refused on
-approval in words (`RETIRED_TYPES`).
+Two sets of types were RETIRED, each because its handler reported a success it had not earned:
+
+  * chart of accounts (coa_create / coa_update / coa_delete), 17-10-2026 (POST-A-007's review): the handlers called the
+    in-memory `domain.accounting_service`, which the REST routes had already been moved off because a change made there
+    "was reported as saved and was not", so an approved request recorded success and wrote no account.
+  * staff and client assignments (user_create / user_activation / role_change / assignment_create / assignment_remove /
+    assignment_transfer), 19-10-2026 (POST-A-240): no screen or job ever raised one, and each handler wrote the
+    repository directly and so skipped what the direct route asks first (that the user, and for an assignment the client,
+    belong to this firm; the invitation a new user needs; the route's own audit entry). A handler whose update matched no
+    user returned an empty result and the request read `approved`, the same false success. A firm that wants a second
+    person on these acts builds it as a request that calls the SAME function the route calls, not the repository.
+
+Nothing creates a retired type. A stored request of one can still be rejected or cancelled and is refused on approval in
+words (`RETIRED_TYPES`).
 """
 import logging
 from typing import Optional
@@ -26,52 +33,7 @@ from repositories.approval_repository import approval_repo
 from services import mfa_reset_service
 from services.audit_service import log_event
 
-_CANONICAL_ROLES = {"Partner", "Manager", "Executive", "Reviewer", "Client"}
-
 logger = logging.getLogger(__name__)
-
-
-# ── Execution handlers (run on approval) ─────────────────────────────────────
-
-def _h_user_create(firm_id: str, p: dict) -> dict:
-    from repositories.user_repository import user_repo
-    if p.get("role") not in _CANONICAL_ROLES:
-        raise HTTPException(400, "Invalid role")
-    return user_repo.create({
-        "firm_id": firm_id, "full_name": p.get("full_name"), "email": p.get("email"),
-        "role": p["role"], "is_active": bool(p.get("is_active", True)),
-    }) or {}
-
-
-def _h_user_activation(firm_id: str, p: dict) -> dict:
-    from repositories.user_repository import user_repo
-    # firm_id scopes the write: p["user_id"] comes off a request payload, and a
-    # Partner approving it must not be able to (de)activate another firm's user.
-    return user_repo.update(p["user_id"], {"is_active": bool(p["is_active"])}, firm_id=firm_id) or {}
-
-
-def _h_role_change(firm_id: str, p: dict) -> dict:
-    from repositories.user_repository import user_repo
-    if p.get("role") not in _CANONICAL_ROLES:
-        raise HTTPException(400, "Invalid role")
-    return user_repo.update(p["user_id"], {"role": p["role"]}, firm_id=firm_id) or {}
-
-
-def _h_assignment_create(firm_id: str, p: dict) -> dict:
-    from repositories.assignment_repository import assignment_repo
-    return assignment_repo.create(firm_id, p["user_id"], p["client_id"])
-
-
-def _h_assignment_remove(firm_id: str, p: dict) -> dict:
-    from repositories.assignment_repository import assignment_repo
-    return {"removed": assignment_repo.remove(firm_id, p["user_id"], p["client_id"])}
-
-
-def _h_assignment_transfer(firm_id: str, p: dict) -> dict:
-    from repositories.assignment_repository import assignment_repo
-    assignment_repo.remove(firm_id, p["from_user_id"], p["client_id"])
-    created = assignment_repo.create(firm_id, p["to_user_id"], p["client_id"])
-    return {"transferred": True, "assignment": created}
 
 
 # type -> required payload keys, summary builder, handler, and optional hooks:
@@ -80,24 +42,6 @@ def _h_assignment_transfer(firm_id: str, p: dict) -> dict:
 #   audit_extra(req, result, decider) -> dict     extra metadata on the "approved" audit entry
 #   after_approval(firm_id, req, result, decider) a second record the type owes once its action has run
 _SPECS: dict[str, dict] = {
-    "user_create":        {"required": ["full_name", "email", "role"],
-                           "summary": lambda p: f"Create user {p.get('email')} as {p.get('role')}",
-                           "handler": _h_user_create},
-    "user_activation":    {"required": ["user_id", "is_active"],
-                           "summary": lambda p: f"{'Activate' if p.get('is_active') else 'Deactivate'} user {p.get('user_id')}",
-                           "handler": _h_user_activation},
-    "role_change":        {"required": ["user_id", "role"],
-                           "summary": lambda p: f"Change role of {p.get('user_id')} to {p.get('role')}",
-                           "handler": _h_role_change},
-    "assignment_create":  {"required": ["user_id", "client_id"],
-                           "summary": lambda p: f"Assign client {p.get('client_id')} to {p.get('user_id')}",
-                           "handler": _h_assignment_create},
-    "assignment_remove":  {"required": ["user_id", "client_id"],
-                           "summary": lambda p: f"Remove client {p.get('client_id')} from {p.get('user_id')}",
-                           "handler": _h_assignment_remove},
-    "assignment_transfer": {"required": ["from_user_id", "to_user_id", "client_id"],
-                           "summary": lambda p: f"Transfer client {p.get('client_id')} from {p.get('from_user_id')} to {p.get('to_user_id')}",
-                           "handler": _h_assignment_transfer},
     "mfa_reset":         {"required": [],
                            "summary": mfa_reset_service.summary,
                            "handler": mfa_reset_service.execute,
@@ -110,7 +54,12 @@ _SPECS: dict[str, dict] = {
 REQUEST_TYPES = tuple(_SPECS.keys())
 
 # Types an earlier version accepted, that a stored row may still carry. Reading one is fine; carrying one out is not.
-RETIRED_TYPES = frozenset({"coa_create", "coa_update", "coa_delete"})
+# Why each group was retired is in the module docstring.
+RETIRED_TYPES = frozenset({
+    "coa_create", "coa_update", "coa_delete",
+    "user_create", "user_activation", "role_change",
+    "assignment_create", "assignment_remove", "assignment_transfer",
+})
 
 
 def _audit(firm_id: str, req: dict, action: str, actor: dict, **extra) -> None:
@@ -127,6 +76,10 @@ def _audit(firm_id: str, req: dict, action: str, actor: dict, **extra) -> None:
 def create_request(firm_id: str, request_type: str, payload: dict, actor: dict) -> dict:
     spec = _SPECS.get(request_type)
     if not spec:
+        if request_type in RETIRED_TYPES:
+            # A sentence, not "unknown": the caller did nothing wrong in asking for a kind this product once accepted.
+            raise HTTPException(400, f"'{request_type}' requests are no longer accepted. That action is made directly, "
+                                     "with its own checks, and does not go through an approval.")
         raise HTTPException(400, f"Unknown request_type '{request_type}'")
     missing = [k for k in spec["required"] if k not in (payload or {})]
     if missing:
