@@ -430,7 +430,6 @@ routers/year_end_statements.py :: F401 :: <module> :: 1
 routers/year_end_statements.py :: F841 :: _fetch_schedule_from_db :: 1
 scripts/db/guard_drift.py :: C901 :: diff_guards :: 25
 scripts/seed_demo_firm.py :: B904 :: Api._request :: 1
-scripts/seed_demo_firm.py :: F401 :: <module> :: 1
 services/ageing_schedule_service.py :: B904 :: _parse_as_of :: 1
 services/ageing_schedule_service.py :: B904 :: classify :: 1
 services/ageing_schedule_service.py :: C901 :: classify :: 18
