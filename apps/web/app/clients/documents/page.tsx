@@ -11,6 +11,7 @@ import { Upload, Download, Trash2, AlertTriangle, X, RefreshCw } from "lucide-re
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { deleteStoredDocument } from "@/lib/documents/deleteStoredDocument";
 import { getFirmId, getUserProfile } from "@/lib/data/getFirmId";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getClients } from "@/lib/data/clients";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { CardGridSkeleton } from "@/components/ui/skeleton";
@@ -215,11 +216,14 @@ export default function ClientDocumentsPage() {
     setError(null);
     try {
       const sb = getSupabaseClient();
-      const { data, error: err } = await sb.from("client_documents")
+      // Paged: newest first, so PostgREST's silent ~1000-row cut would drop the OLDEST documents of a
+      // client who has uploaded for years. `.order("id")` is the unique tiebreaker the OFFSET paging needs.
+      const { data, error: err } = await selectAll<ClientDocument>(() => sb.from("client_documents")
         .select("*")
         .eq("firm_id", firmId)
         .eq("client_id", clientId)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .order("id"));
 
       if (err) {
         if (err.message.includes("does not exist") || err.message.includes("relation")) {

@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
 import { todayLocalISO } from "@/lib/dateMath";
@@ -247,7 +248,10 @@ export default function ClientAgeingSchedulePage() {
     setDetailError(null);
     try {
       const sb = getSupabaseClient();
-      const { data, error: err } = await sb
+      // Paged: an account past PostgREST's silent ~1000-row cut could not be marked, and marking puts
+      // its balance into a statutory disclosure. `.order("id")` is the unique tiebreaker the OFFSET
+      // paging needs, since an account code is only unique within one chart.
+      const { data, error: err } = await selectAll<MarkableAccount>(() => sb
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type, unbilled_dues_side")
         // A firm-level account (client_id IS NULL) is allowed on any of the
@@ -256,9 +260,10 @@ export default function ClientAgeingSchedulePage() {
         .or(`client_id.eq.${clientId},client_id.is.null`)
         .in("account_type", ["Asset", "Liability"])
         .eq("is_active", true)
-        .order("account_code");
+        .order("account_code")
+        .order("id"));
       if (err) throw new Error(err.message);
-      setAccounts((data ?? []) as MarkableAccount[]);
+      setAccounts(data);
     } catch (e) {
       setDetailError(e instanceof Error ? e.message : "Could not load the chart of accounts");
     }
