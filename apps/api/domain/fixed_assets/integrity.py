@@ -43,9 +43,27 @@ WHAT EACH CHECK MEANS, because none of them is self-evident from its name:
 A DISPOSED ASSET IS NOT CHECKED FOR THE LAST TWO. Its basis is settled — the
 gain or loss was computed from it — so a finding there is noise the CA cannot
 act on.
+
+TWO MORE ASK THE LEDGER ABOUT THE REGISTER, rather than the register about itself:
+
+  * `disposed_asset_has_no_disposal_journal` (FA-20, POST-A-110) — the register says
+    the asset was disposed of and the ledger holds no live disposal entry for it, so its
+    cost and its accumulated depreciation are still on the balance sheet and no gain or
+    loss reached the profit and loss account. The disposal route claims the row first and
+    posts the journal second (compensating if the post fails), so a process that dies
+    between the two leaves exactly this.
+  * `acquisition_journal_has_no_asset` (FA-20, POST-A-110) — the opposite direction: a
+    live acquisition entry (source `fixed_asset`: the cost entry `FA-ACQ-` or the reclassification `FA-CAP-`) whose
+    asset is not in the register, so the cost sits in Fixed Assets with nothing behind it.
+    A reversed entry, and a reversal itself, are not live and are not asked.
+
+  These two need what the LEDGER holds, which only the caller can fetch, so they run
+  only when the caller passes a `LedgerLinks`; without one they are not asked (and the
+  response must not read as having been). Both callers pass one.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Iterable, Optional
 
@@ -78,7 +96,22 @@ ALL_KINDS: tuple[str, ...] = (
     "no_acquisition_journal",
     "bill_capitalised_more_than_once",
     "capitalised_from_a_bill_that_is_gone",
+    "disposed_asset_has_no_disposal_journal",
+    "acquisition_journal_has_no_asset",
 )
+
+
+@dataclass(frozen=True)
+class LedgerLinks:
+    """What the ledger holds about one client's fixed assets, resolved by the caller.
+
+    `disposal_journalled_asset_ids` are the `fixed_assets.id`s (as strings) with a LIVE disposal entry: source `asset_disposal`,
+    not deleted, not reversed and not itself a reversal. `acquisition_journals` are the client's live acquisition entries
+    (source `fixed_asset`, same liveness), each a dict with `id`, `source_id`, `reference_no` and `entry_date`. An EMPTY
+    `disposal_journalled_asset_ids` is an answer ("no asset has one") and reports every disposed asset, so a caller that could
+    not read the ledger must pass no `LedgerLinks` at all."""
+    disposal_journalled_asset_ids: frozenset
+    acquisition_journals: tuple
 
 
 def schedule_ii_departure(asset: dict) -> Optional[dict]:
@@ -219,7 +252,48 @@ def wdv_with_no_stopping_point(asset: dict) -> Optional[dict]:
     }
 
 
-def register_findings(assets: Iterable[dict], live_bill_ids: set) -> list[dict]:
+def disposed_without_disposal_journal(asset: dict, links: LedgerLinks) -> Optional[dict]:
+    """A disposed asset with no live disposal entry in the ledger (FA-20)."""
+    if not asset.get("is_disposed"):
+        return None
+    if str(asset.get("id")) in links.disposal_journalled_asset_ids:
+        return None
+    cost = int(asset.get("purchase_cost_paise") or 0)
+    return {
+        "kind": "disposed_asset_has_no_disposal_journal",
+        "asset_code": asset.get("asset_code"),
+        "asset_name": asset.get("asset_name"),
+        "amount_paise": cost - int(asset.get("accumulated_depreciation_paise") or 0),
+        "what_it_means": (
+            "The register says this asset was disposed of and the ledger holds no disposal entry for it, so its cost and its "
+            "accumulated depreciation are still on the balance sheet and no gain or loss has reached the profit and loss "
+            "account. Post the disposal, or un-dispose the asset if it was not sold."),
+    }
+
+
+def acquisition_journals_without_an_asset(assets: list, links: LedgerLinks) -> list[dict]:
+    """Live acquisition entries whose asset the register does not hold (FA-20)."""
+    held = {str(a.get("id")) for a in assets}
+    out = []
+    for journal in links.acquisition_journals:
+        if str(journal.get("source_id")) in held:
+            continue
+        reference = journal.get("reference_no")
+        out.append({
+            "kind": "acquisition_journal_has_no_asset",
+            "journal_entry_id": journal.get("id"),
+            "reference_no": reference,
+            "entry_date": journal.get("entry_date"),
+            "what_it_means": (
+                f"The ledger holds {'the acquisition entry ' + reference if reference else 'an acquisition entry'} for an asset "
+                "the register does not hold, so its cost sits in Fixed Assets with nothing behind it. Reverse the entry, or "
+                "restore the asset if it was removed by mistake."),
+        })
+    return out
+
+
+def register_findings(assets: Iterable[dict], live_bill_ids: set,
+                      ledger: Optional[LedgerLinks] = None) -> list[dict]:
     """Every finding over one client's register.
 
     `assets` are `fixed_assets` rows with the soft-deleted ones already
@@ -227,8 +301,11 @@ def register_findings(assets: Iterable[dict], live_bill_ids: set) -> list[dict]:
     `purchase_bills.id` that still exist, which the caller resolves because
     only it has the database — passing an EMPTY set therefore reports every
     bill-backed asset as orphaned, so a caller that cannot resolve them must
-    not call this rather than passing nothing.
+    not call this rather than passing nothing. `ledger` is the same kind of
+    fact about the journals (see `LedgerLinks`): None means the two checks
+    that need it are not asked.
     """
+    assets = list(assets)
     findings: list[dict] = []
     by_bill: dict[str, list[dict]] = {}
 
@@ -250,6 +327,10 @@ def register_findings(assets: Iterable[dict], live_bill_ids: set) -> list[dict]:
                     "This asset is in the register and no journal entry ever put "
                     "it on the balance sheet."),
             })
+        if ledger is not None:
+            unjournalled = disposed_without_disposal_journal(a, ledger)
+            if unjournalled:
+                findings.append(unjournalled)
         # A disposed asset's basis is settled — see the module docstring.
         if not a.get("is_disposed"):
             departure = schedule_ii_departure(a)
@@ -283,5 +364,8 @@ def register_findings(assets: Iterable[dict], live_bill_ids: set) -> list[dict]:
                     "The entry only moved cost out of purchases; with the bill "
                     "deleted, nothing supports the asset."),
             })
+
+    if ledger is not None:
+        findings.extend(acquisition_journals_without_an_asset(assets, ledger))
 
     return findings

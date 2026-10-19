@@ -29,6 +29,7 @@ from models.accounting import (FixedAssetIn, FixedAssetUpdateIn, DepreciationIn,
                                DepreciationRunIn, DisposalIn)
 from core.db_paging import fetch_all
 from domain.fixed_assets import integrity as fa_integrity
+from services.fixed_asset_ledger_links import fetch_ledger_links
 from domain.fixed_assets import schedule_ii
 from domain.gst import section_18_6 as s186
 from domain.reporting import fixed_asset_movement as fa_movement
@@ -2155,7 +2156,7 @@ def register_integrity(
     """Where the fixed-asset register disagrees with the ledger, or with
     Schedule II (FA-07, FA-02).
 
-    THE FIVE WAYS IT COMES APART, and each is silent today:
+    THE SEVEN WAYS IT COMES APART, and each is silent today (the last two ask the ledger about the register, POST-A-110):
 
       * AN ASSET WITH NO ACQUISITION JOURNAL. The register says the client owns
         a machine and no entry ever put it on the balance sheet. It arises when
@@ -2176,6 +2177,11 @@ def register_integrity(
         floor and never reaches it, so a row with no useful life and no salvage
         has no terminal at all and is still being charged years after it is
         worn out. See _wdv_with_no_stopping_point.
+      * A DISPOSED ASSET WITH NO DISPOSAL ENTRY. The register says it was
+        disposed of and the ledger holds no live disposal entry, so its cost and
+        accumulated depreciation are still on the balance sheet.
+      * AN ACQUISITION ENTRY WITH NO ASSET. The ledger holds a live acquisition
+        entry for an asset the register does not hold.
 
     This REPORTS. It repairs nothing and posts nothing: every remedy is a
     judgement — repost, delete a duplicate, re-link a bill — and which one is
@@ -2189,7 +2195,8 @@ def register_integrity(
 
     rows = _register_rows(db, firm_id, client_id)
     findings = fa_integrity.register_findings(
-        rows, live_bill_ids=_live_bill_ids(db, firm_id, rows))
+        rows, live_bill_ids=_live_bill_ids(db, firm_id, rows),
+        ledger=fetch_ledger_links(db, firm_id, client_id, rows))
 
     return api_response(True, {
         "checked": len(rows),

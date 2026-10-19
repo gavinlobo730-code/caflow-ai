@@ -593,6 +593,7 @@ def check_fixed_asset_register(db, firm_id: str, client_id: str, entries) -> lis
     # The DOMAIN, never the router: a service importing a router to reach a
     # statutory rule is the wrong direction and one refactor from a cycle.
     from domain.fixed_assets import integrity as fa_integrity
+    from services.fixed_asset_ledger_links import fetch_ledger_links
 
     rows = fetch_all(lambda: (
         db.table("fixed_assets").select(fa_integrity.COLUMNS)
@@ -616,9 +617,14 @@ def check_fixed_asset_register(db, firm_id: str, client_id: str, entries) -> lis
         "capitalised_from_a_bill_that_is_gone": "critical",
         "depreciation_basis_departs_from_schedule_ii": "warning",
         "wdv_asset_has_no_stopping_point": "warning",
+        # Money on the balance sheet that the register disowns, and a disposal the ledger never saw: both break the tie between
+        # the register and the ledger, so both are critical (POST-A-110).
+        "disposed_asset_has_no_disposal_journal": "critical",
+        "acquisition_journal_has_no_asset": "critical",
     }
     out: list[dict] = []
-    for f in fa_integrity.register_findings(rows, live_bill_ids=live):
+    ledger = fetch_ledger_links(db, firm_id, client_id, rows)
+    for f in fa_integrity.register_findings(rows, live_bill_ids=live, ledger=ledger):
         kind = f["kind"]
         subject = f.get("asset_code") or f.get("purchase_bill_id") or "an asset"
         out.append(_finding(
@@ -781,6 +787,14 @@ CHECK_CATALOGUE: dict[str, dict[str, str]] = {
     "fixed_asset_register.wdv_asset_has_no_stopping_point": {
         "label": "Reducing Balance With No Floor",
         "looks_for": "No written-down-value asset can be depreciated for ever.",
+    },
+    "fixed_asset_register.disposed_asset_has_no_disposal_journal": {
+        "label": "Disposed Asset, No Disposal Entry",
+        "looks_for": "Every asset the register shows as disposed of has a disposal entry in the ledger.",
+    },
+    "fixed_asset_register.acquisition_journal_has_no_asset": {
+        "label": "Acquisition Entry, No Asset",
+        "looks_for": "Every asset acquisition entry in the ledger has its asset in the register.",
     },
     ledger_anomalies.CONTRA_BALANCE: {
         "label": "Balance on the Unusual Side",
