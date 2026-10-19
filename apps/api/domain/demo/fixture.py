@@ -320,6 +320,73 @@ class DemoCwipProject:
         return max(thousand, round(cost_paise * self.approved_cost_bps / 10_000 / thousand) * thousand)
 
 
+@dataclass(frozen=True)
+class DemoCapitalGain:
+    """A sale the books do not hold: the individual's shares, kept in a demat account and not in any ledger here.
+
+    Only the FACTS -- what was bought and sold, when, for how much and whether it was listed. The gain, its
+    holding period, the rate and the tax are the capital-gains engine's, asked through the same door the register's
+    "Add" button posts to; a figure computed here would be a second engine."""
+    description: str
+    #: The capital-gains REGISTER's word for the asset ('equity_shares'), which is not the calculator's ('equity'): the
+    #: register's table accepts a coarser set.
+    asset_type: str
+    purchase_date: str
+    sale_date: str
+    purchase_cost_paise: int
+    sale_value_paise: int
+    is_listed_security: bool = True
+    assessee_type: str = "resident_individual_huf"
+
+
+@dataclass(frozen=True)
+class DemoLoss:
+    """A loss brought forward from a year before these books begin -- the client's previous accountant's return.
+
+    The loss TYPE and the year it arose are facts; how long it lives is derived by `loss_carry_forward.expiry_for`
+    and is deliberately not stated here (the finding that made that field optional)."""
+    loss_type: str
+    assessment_year: str
+    amount_paise: int
+    note: str
+
+
+@dataclass(frozen=True)
+class DemoIncomeTax:
+    """The income-tax facts a CA keys for a client that the BOOKS cannot hold, and how far the return is taken.
+
+    WHAT IS HERE AND WHAT IS NOT. Salary, the tax already deducted from it, interest on a savings account, a sale of
+    shares and a deduction the client has proof of are things somebody tells the CA; the business income is NOT here,
+    because the books hold it (the seeder asks the book-to-tax bridge). No rate, slab, limit or rule appears: every
+    figure that is tax is the engine's answer to these facts. A client with a business that owns assets cannot have a
+    computed return from the books until the section 32 block rates are entered by a human (POST-C-205), so such a
+    client carries only what needs no computation (`losses`) and no `itr_form`, UNLESS it is on the section 44AD
+    presumptive scheme, which allows depreciation as part of the deemed income and needs no section 32 figure. A client
+    with losses carries no `itr_form` either: a computation prepared here sets no loss off.
+
+    `itr_form` None means no return is prepared. `take_it_to` is how far the filing walks: "partner_review" stops
+    where a return waits for a Partner, "filed" records the acknowledgement. `filed_on` is the day the CA says they
+    filed on the portal, and the acknowledgement number the seeder stores is labelled as a seed's, not a portal's."""
+    itr_form: Optional[str] = None
+    salary_paise: int = 0
+    salary_tds_paise: int = 0
+    other_income_paise: int = 0
+    capital_gain: Optional[DemoCapitalGain] = None
+    #: Elect the section 44AD presumptive scheme on the books' turnover. How that turnover was RECEIVED (a bank or a
+    #: note) decides the scheme's rate and ceiling and is not in the books, so no fact about it is stated: the door's own
+    #: defaults stand and its working says which applied.
+    presumptive_44ad: bool = False
+    #: Whether the assessee was resident in India this year (IT Act s.6). The CA's answer; `clients` has no column for it.
+    is_resident: bool = True
+    #: The part of `other_income_paise` that is interest on a savings account, for the s.80TTA deduction (old regime).
+    savings_interest_paise: int = 0
+    #: (section, sub head, amount) the client has proof of. Offered to the old regime only: a comparison snapshot.
+    deductions: tuple[tuple[str, str, int], ...] = ()
+    losses: tuple[DemoLoss, ...] = ()
+    take_it_to: str = "partner_review"
+    filed_on: Optional[str] = None
+
+
 def document_taxable_paise(doc: "DemoDocument") -> int:
     """What the fixture says a document's taxable value is: quantity times
     rate over its lines, to the paisa. The engine's own figure (which the
@@ -580,6 +647,8 @@ class DemoClient:
     #: Assets under construction, funded out of this client's own bills. See
     #: DemoCwipProject.
     cwip_projects: tuple[DemoCwipProject, ...] = ()
+    #: What the CA keys for income tax that the books cannot hold. None for a client nobody has prepared a return for.
+    income_tax: Optional[DemoIncomeTax] = None
 
     @property
     def deducts_tax(self) -> bool:
@@ -1102,6 +1171,11 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
     """
     rng = random.Random(SEED)
     months = _fy_months(financial_year)
+    # The calendar years the income-tax facts are dated in: the year the financial year starts, the one it ends in, and
+    # the assessment year of the financial year BEFORE it (a loss brought forward from a year these books do not hold).
+    # Derived from the label, never from a clock.
+    fy_year = int(financial_year[:4])
+    earlier_ay = f"{fy_year}-{(fy_year + 1) % 100:02d}"
 
     firm_pan = pan("AACFS", "4821", "K")
 
@@ -1111,7 +1185,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                sales_per_month=(2, 5), purchases_per_month=(1, 4),
                away_every=7, rcm_every=0, employees=0, sales_tds_bps=0,
                frequency="monthly", banks=(), operating_lines=(),
-               assets=(), cwip_projects=()) -> DemoClient:
+               assets=(), cwip_projects=(), income_tax=None) -> DemoClient:
         return _finished(DemoClient(
             name=name, legal_name=legal, entity_type=entity, pan=pan_value,
             gstin=gstin_for(state, pan_value) if registered else None,
@@ -1138,6 +1212,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
             bank_lines=_bank_lines(months, operating_lines) if banks else (),
             assets=assets,
             cwip_projects=cwip_projects,
+            income_tax=income_tax,
             # A month of payroll needs somebody to pay. The states the months
             # are left in are the engine's own (see _payroll_months); nothing
             # here chooses per client, because a demo in which one client's
@@ -1206,6 +1281,12 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                demonstrates="the ordinary monthly GST client — the volume "
                             "every return screen, ageing schedule and "
                             "reconciliation is judged on",
+               # A business loss from the year before these books begin, as the previous accountant's return left it. No
+               # return is prepared: the client owns assets, so its section 32 allowance, and with it the book-to-tax
+               # bridge, waits on the block rates a human enters (POST-C-205).
+               income_tax=DemoIncomeTax(losses=(
+                   DemoLoss("business", earlier_ay, 12_00_000_00,
+                            "Brought forward from the previous accountant's return"),)),
                customers=6, vendors=5, sales_per_month=(4, 8),
                banks=(
                    DemoBankAccount("HDFC Bank", "50200041178822", "HDFC0001234",
@@ -1272,6 +1353,9 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                demonstrates="a proprietor — the §44AD presumptive path and an "
                             "ITR-4, where the entity type is the whole "
                             "difference",
+               # The turnover is the books'; the deemed income is the engine's. Taken as far as a Partner's review and no
+               # further, so the demo has a return waiting for somebody.
+               income_tax=DemoIncomeTax(itr_form="ITR-4", presumptive_44ad=True, take_it_to="partner_review"),
                customers=4, vendors=3, sales_per_month=(2, 4),
                banks=(DemoBankAccount("Bank of Maharashtra", "60123456789",
                                       "MAHB0000456",
@@ -1345,6 +1429,19 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                demonstrates="an individual below the registration threshold — "
                             "salary, capital gains and the §115BAC election, "
                             "with no GSTIN at all",
+               # Salary from an employer (the Form 16 figures), interest (a fixed deposit and the savings account below),
+               # listed shares sold after more than a year, and the small business whose books these are. Her section 80C
+               # and 80D proofs matter only if the old regime is chosen, which the second computation shows. Filed before
+               # the due date, on the books as posted (March is left in draft: `draft_month`).
+               income_tax=DemoIncomeTax(
+                   itr_form="ITR-3",
+                   salary_paise=18_00_000_00, salary_tds_paise=2_00_000_00,
+                   other_income_paise=85_000_00, savings_interest_paise=12_000_00,
+                   capital_gain=DemoCapitalGain(
+                       "Listed equity shares (demat)", "equity_shares",
+                       f"{fy_year - 2}-06-15", f"{fy_year}-11-20", 3_00_000_00, 5_20_000_00),
+                   deductions=(("80C", "PPF", 1_50_000_00), ("80D", "Health insurance - self and family", 25_000_00)),
+                   take_it_to="filed", filed_on=f"{fy_year + 1}-07-24"),
                registered=False, customers=2, vendors=2,
                sales_per_month=(0, 1), purchases_per_month=(0, 1),
                away_every=0,
@@ -1360,6 +1457,9 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                demonstrates="construction — capital work in progress, its "
                             "Schedule III line and its ageing schedule, which "
                             "nothing else here produces",
+               income_tax=DemoIncomeTax(losses=(
+                   DemoLoss("business", earlier_ay, 8_50_000_00,
+                            "Brought forward from the previous accountant's return"),)),
                sales_catalogue=_SERVICES, purchase_catalogue=_SERVICES,
                customers=3, vendors=5, employees=4,
                banks=(DemoBankAccount("Yes Bank", "004163900001122", "YESB0000041",

@@ -118,6 +118,11 @@ class _Recorder:
             return {"success": True, "error": None,
                     "data": [{"id": f"ledger-{i}", "account_name": n}
                              for i, n in enumerate(names)]}
+        if path.startswith("/api/income-tax/assessee-kind"):
+            return {"success": True, "error": None, "data": {"kind": "individual", "refusal": None}}
+        if path.startswith("/api/accounting/profit-loss"):
+            # The turnover a section 44AD return is computed on.
+            return {"success": True, "error": None, "data": {"revenue": {"total_paise": 99_278_400}}}
         return {"success": True, "data": [], "error": None}
 
     def post(self, path: str, body: dict) -> dict:
@@ -152,6 +157,9 @@ class _Recorder:
         self._n += 1
         if path in ("/api/gst/gstr1/from-books", "/api/gst/gstr3b/from-books"):
             return {"success": True, "error": None, "data": _computed_return(body)}
+        answered = _income_tax_answer(path, body)
+        if answered is not None:
+            return {"success": True, "error": None, "data": answered}
         return {"success": True, "error": None, "data": {
             "id": f"seeded-{self._n:05d}",
             # Every figure the seeder reads back off a response. Plausible
@@ -161,6 +169,30 @@ class _Recorder:
             "months_posted": 1, "remaining_months": 0,
             "imported": 1, "drafted": 1, "remaining": 0,
         }}
+
+
+def _income_tax_answer(path: str, body: dict):
+    """What the income-tax engine answers, with every key the seeder's income-tax stage reads back, so the writes that
+    follow are built and their bodies are checked. The figures are not a tax claim; None means this path is not one."""
+    if path.startswith("/api/income-tax/book-to-tax-bridge"):
+        return {"is_complete": True, "taxable_income_paise": 62_971_766, "missing": [], "reasons": []}
+    if path.startswith("/api/income-tax/presumptive/44ad"):
+        return {"eligible": True, "presumptive_income_paise": 7_942_272, "reasons": []}
+    if path.startswith("/api/income-tax/capital-gains"):
+        return {"section_ref": "Section 112A", "gain_type": "LTCG", "gain_paise": 22_000_000}
+    if path.startswith("/api/income-tax/advance-tax/compute"):
+        est = body["estimated_tax_paise"]
+        return {"installments": [
+            {"installment_number": n, "due_date": due, "required_cumulative_paise": est * pct // 100}
+            for n, due, pct in ((1, "2025-06-15", 15), (2, "2025-09-15", 45), (3, "2025-12-15", 75),
+                                (4, "2026-03-15", 100))]}
+    if path.startswith("/api/income-tax/compute"):
+        return {"regime": "new" if body["use_new_regime"] else "old", "rates_verified": True, "validation_errors": [],
+                "income": {"taxable_income_paise": 26_59_717_00}, "tax": {"total_tax_paise": 5_00_000_00},
+                "payable": {"net_payable_paise": 0}}
+    if path.endswith("/acknowledge"):
+        return {"status": "filed", "compliance_obligation": {"state": "closed", "closed": True}}
+    return None
 
 
 def _computed_return(body: dict) -> dict:
@@ -223,6 +255,28 @@ _DOORS_THIS_SEEDER_MUST_WALK = [
     ("POST", "/api/gst-workspace/gstr1"),
     ("POST", "/api/gst-workspace/gstr3b"),
 ]
+
+
+#: The income-tax stage's doors, by path prefix (the scan carries a query string). Named for the same reason as the list
+#: above: with the engine's answers missing, the stage used to stop at "the bridge is incomplete" and check four doors.
+_INCOME_TAX_DOORS = [
+    "/api/itr/disallowances/auto-detect-40a3", "/api/itr/bf-losses", "/api/income-tax/book-to-tax-bridge",
+    "/api/income-tax/presumptive/44ad", "/api/income-tax/capital-gains", "/api/itr/deductions",
+    "/api/income-tax/compute", "/api/income-tax/advance-tax/compute", "/api/income-tax/advance-tax",
+    "/api/itr/snapshots", "/api/itr/filings",
+]
+
+
+@pytest.mark.parametrize("prefix", _INCOME_TAX_DOORS)
+def test_the_income_tax_stage_reaches_the_door(_run, prefix):
+    assert any(m == "POST" and p.startswith(prefix) for m, p in _run.calls), f"POST {prefix} was never called"
+
+
+def test_the_individuals_return_is_filed_through_the_acknowledgement_and_the_proprietors_waits_for_a_partner(_run):
+    posted = [p for m, p in _run.calls if m == "POST"]
+    assert sum(1 for p in posted if p.endswith("/acknowledge")) == 1
+    assert sum(1 for p in posted if p.endswith("/transition")) == 5, "Priya: review, partner review, ready; Meher: review, partner review"
+    assert sum(1 for p in posted if p.endswith("/review") and "/snapshots/" in p) == 2, "one reviewed computation per return"
 
 
 @pytest.mark.parametrize("method,path", _DOORS_THIS_SEEDER_MUST_WALK)

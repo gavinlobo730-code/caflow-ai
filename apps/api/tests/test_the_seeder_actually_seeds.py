@@ -152,6 +152,12 @@ def test_the_whole_practice_writes_through_the_doors(api):
     assert written["cwip_tranches"] == sum(
         len(p.bills) for c in firm.clients for p in c.cwip_projects) > 0
     assert written["cwip_tranches_skipped"] == 0
+    # The income-tax stage. The losses and the proprietor's presumptive return go through their doors. The individual's
+    # return needs the book-to-tax bridge, which has no database to read in this mode and says it is incomplete, so it
+    # is a NAMED finding and not a figure (the real-stack run, which has the database, files it).
+    assert written["bf_losses"] == 2 and written["itr_waiting"] == 1
+    assert [m for m in written["returns_refused"]] and all(
+        "Priya Sharma" in m and "bridge is incomplete" in m for m in written["returns_refused"]), written["returns_refused"]
 
 
 def test_the_catalogue_is_written_before_any_document_needs_it(api):

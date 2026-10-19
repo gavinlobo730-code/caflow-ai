@@ -31,6 +31,7 @@ The practice itself is `domain/demo/fixture.py` — pure data, no handle, tested
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 import time
@@ -726,6 +727,274 @@ def _return_not_filed(written: dict, c, label: str, key: str, said: str) -> None
     print(f"    ! {msg}")
 
 
+@contextlib.contextmanager
+def _a_finding_is_reported(written: dict, c, label: str, key: str):
+    """Run one write that may be refused as a FINDING about the product, and report it instead of stopping the run.
+
+    The same line `_gst_returns` draws: a 400, 409 or 422 (or the workspace's own 200 with success false, or the
+    engine's validation errors) is a finding and the next client's books are still worth seeding; an expired login, a
+    missing permission, a rate limit or a server error means every later call fails too and stops the run; a call with
+    no answer is reported as such, because the server may have saved it."""
+    try:
+        yield
+    except ApiRefusal as refusal:
+        if _stops_the_run(refusal.status):
+            raise
+        _return_not_filed(written, c, label, key, " — ".join(str(refusal).strip().splitlines()[:2]))
+    except _NotFiled as why:
+        _return_not_filed(written, c, label, key, str(why))
+    except (urllib.error.URLError, TimeoutError) as silence:
+        _return_not_filed(written, c, label, key,
+                          f"no answer ({silence}); the server may have saved it, so check before re-running")
+
+
+#: Where each deduction the client has proof of goes in the engine's request. Only the two the demo holds; a proof with
+#: no box here stops that client's return with a finding and is never dropped from the comparison silently.
+_OLD_REGIME_BOXES = {
+    ("80C", "PPF"): ("s80c", "ppf_paise"),
+    ("80D", "Health insurance - self and family"): ("s80d", "self_family_premium_paise"),
+}
+
+
+def _income_tax(api: Api, c, client_id: str, financial_year: str, written: dict) -> None:
+    """What the practice records for income tax: the section 40A(3) scan every client's books get, the losses brought
+    forward, and, for a client whose facts allow it, a prepared return.
+
+    EVERY FIGURE THAT IS TAX IS THE ENGINE'S. The fixture holds facts (salary, the tax deducted from it, a sale of
+    shares, proofs of deductions); the business income is the BOOKS' (the book-to-tax bridge, or the section 44AD
+    deemed income on the books' turnover); the tax, the advance-tax schedule, the capital gain and the deemed income
+    come from the doors a CA's screen posts to. Nothing here has a rate, a slab or a limit in it.
+
+    A client that owns assets has no computed return, deliberately: its book-to-tax bridge needs the section 32 block
+    rates, which a human enters (POST-C-205), and the bridge says it is incomplete rather than assuming them. The
+    fixture gives such a client no `itr_form`, so the demo shows the refusal and not a made-up number.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: nothing here reaches the income-tax portal, and the acknowledgement
+    number stored on a seeded return is labelled as a seed's.
+    """
+    it = c.income_tax
+    with _a_finding_is_reported(written, c, "section 40A(3) scan", f"FY {financial_year}"):
+        found = api.post(f"/api/itr/disallowances/auto-detect-40a3?client_id={client_id}"
+                         f"&financial_year={financial_year}", {})
+        written["disallowances_detected"] += int(((found.get("data") or {}).get("detected")) or 0)
+    if it is None:
+        return
+    for loss in it.losses:
+        with _a_finding_is_reported(written, c, "brought-forward loss", loss.assessment_year):
+            api.post("/api/itr/bf-losses", {
+                "client_id": client_id, "assessment_year": loss.assessment_year, "loss_type": loss.loss_type,
+                "original_amount_paise": loss.amount_paise, "notes": loss.note})
+            written["bf_losses"] += 1
+    if it.itr_form:
+        with _a_finding_is_reported(written, c, f"{it.itr_form} return", f"FY {financial_year}"):
+            _prepare_return(api, c, client_id, financial_year, it, written)
+
+
+def _prepare_return(api: Api, c, client_id: str, financial_year: str, it, written: dict) -> None:
+    """The return, in the order the computation and filing screens offer it."""
+    from core.ist_clock import assessment_year_for
+    ay = assessment_year_for(financial_year)
+    if it.losses:
+        # A loss brought forward is set off by the computation only if it is SENT to it, and this stage sends none: a
+        # return computed here would overstate the tax without a word. Losses are recorded for the clients that have no
+        # return, and a fixture that gives one client both is a finding.
+        raise _NotFiled("a brought-forward loss is recorded but is not set off in a computation prepared here; give the "
+                        "losses to a client without a return")
+    business, presumptive = _the_business_income(api, c, client_id, financial_year, it)
+    gain = _a_sale_of_shares(api, client_id, it, written)
+    for section, sub_head, amount in it.deductions:
+        api.post("/api/itr/deductions", {
+            "client_id": client_id, "financial_year": financial_year, "section": section, "sub_head": sub_head,
+            "claimed_amount_paise": amount,
+            "notes": "Claimed on the client's word; no document is attached yet. Counts only if the old regime is chosen; "
+                     "the comparison snapshot shows what it is worth."})
+        written["deduction_claims"] += 1
+    facts = {"business": business, "presumptive": presumptive, "gain": gain}
+
+    # The advance tax is a payment against the tax this return computes, so it is asked of the engine first.
+    first = _compute(api, c, financial_year, it, facts, advance=0, new_regime=True)
+    estimated = max(0, int(first["tax"]["total_tax_paise"]) - it.salary_tds_paise)
+    paid = _advance_tax(api, client_id, financial_year, estimated, it.presumptive_44ad, written)
+
+    if it.deductions:
+        # The old regime, for the comparison the client's regime choice rests on. It is not reviewed and not pinned.
+        old = _compute(api, c, financial_year, it, facts, advance=paid, new_regime=False, boxes=_old_regime_boxes(it))
+        _save_snapshot(api, client_id, financial_year, ay, it, old, facts, paid)
+    final = _compute(api, c, financial_year, it, facts, advance=paid, new_regime=True)
+    snapshot_id = _save_snapshot(api, client_id, financial_year, ay, it, final, facts, paid)
+    api.post(f"/api/itr/snapshots/{snapshot_id}/review", {})
+    _walk_the_filing(api, c, client_id, financial_year, ay, it, snapshot_id, written)
+
+
+def _the_business_income(api: Api, c, client_id: str, financial_year: str, it) -> tuple[int, Optional[int]]:
+    """(business income, presumptive income): the books' taxable income from the bridge, or the section 44AD deemed
+    income on the books' turnover. A bridge that says it is incomplete is a finding, never a figure."""
+    from core.ist_clock import fy_bounds
+    start, end = fy_bounds(financial_year)
+    if it.presumptive_44ad:
+        books = api.get(f"/api/accounting/profit-loss?client_id={client_id}&start_date={start}&end_date={end}")
+        turnover = int((((books.get("data") or {}).get("revenue")) or {}).get("total_paise") or 0)
+        # The assessee the entity type makes this client is the SERVER's rule (this script imports nothing that needs the
+        # API's dependencies, so it can run from any machine with a bare python3).
+        from urllib.parse import quote
+        said = api.get(f"/api/income-tax/assessee-kind?entity_type={quote(c.entity_type)}").get("data") or {}
+        kind = said.get("kind")
+        if kind is None:
+            raise _NotFiled(said.get("refusal") or f"no tax basis is recorded for the entity type {c.entity_type!r}")
+        # How the turnover was RECEIVED (a bank or a note) is not recorded in the books, so it is not stated here: the
+        # scheme's rate and ceiling turn on it, the door's own defaults stand, and the answer's working says which applied.
+        got = api.post("/api/income-tax/presumptive/44ad", {
+            "fy": financial_year, "assessee_kind": kind, "is_resident": it.is_resident,
+            "turnover_paise": turnover}).get("data") or {}
+        if not got.get("eligible"):
+            raise _NotFiled(f"section 44AD does not apply: {'; '.join(got.get('reasons') or [])[:200]}")
+        return 0, int(got["presumptive_income_paise"])
+    body: dict[str, Any] = {"client_id": client_id, "fy": financial_year}
+    if not c.assets:
+        # A client with no fixed assets has charged no depreciation, which is a reading of zero (POST-A-268: the bridge
+        # cannot tell that from an account it could not read).
+        body["depreciation_per_books_paise"] = 0
+    bridge = api.post("/api/income-tax/book-to-tax-bridge", body).get("data") or {}
+    if not bridge.get("is_complete"):
+        why = "; ".join((bridge.get("missing") or []) + [r[:90] for r in (bridge.get("reasons") or [])[:1]])
+        raise _NotFiled(f"the book-to-tax bridge is incomplete ({why[:220]}), so there is no business income to compute on")
+    return int(bridge["taxable_income_paise"]), None
+
+
+def _a_sale_of_shares(api: Api, client_id: str, it, written: dict) -> int:
+    """Record the sale in the capital-gains register and return the gain the register computed (0 where there is none).
+    Only the listed-equity box the seeder knows is supported; anything else is a finding, not a guess at a box."""
+    sale = it.capital_gain
+    if sale is None:
+        return 0
+    from core.ist_clock import ist_today
+    if sale.sale_date > ist_today().isoformat():
+        raise _NotFiled(f"the share sale is dated {sale.sale_date}, which is still to come, so it is not recorded")
+    row = api.post("/api/income-tax/capital-gains", {
+        "client_id": client_id, "asset_description": sale.description, "asset_type": sale.asset_type,
+        "purchase_date": sale.purchase_date, "sale_date": sale.sale_date,
+        "purchase_cost_paise": sale.purchase_cost_paise, "sale_value_paise": sale.sale_value_paise,
+        "is_listed_security": sale.is_listed_security, "assessee_type": sale.assessee_type}).get("data") or {}
+    written["capital_gains"] += 1
+    if "112A" not in str(row.get("section_ref") or "") or row.get("gain_type") != "LTCG":
+        raise _NotFiled(f"the register computed {row.get('gain_type')} under {row.get('section_ref')}; the seeder only "
+                        "knows the long-term listed-equity box")
+    return int(row["gain_paise"])
+
+
+def _old_regime_boxes(it) -> dict:
+    boxes: dict[str, dict] = {}
+    for section, sub_head, amount in it.deductions:
+        box = _OLD_REGIME_BOXES.get((section, sub_head))
+        if box is None:
+            raise _NotFiled(f"no box in the computation for {section} ({sub_head})")
+        boxes.setdefault(box[0], {})[box[1]] = amount
+    return boxes
+
+
+def _compute(api: Api, c, financial_year: str, it, facts: dict, *, advance: int, new_regime: bool,
+             boxes: Optional[dict] = None) -> dict:
+    """One computation, asked of the engine the way the screen asks (the client's entity type included). The engine's
+    refusals are findings: an answer carrying validation errors, or one resting on rates the engine has not verified for
+    this year, is never saved, reviewed or filed."""
+    body: dict[str, Any] = {
+        "fy": financial_year, "use_new_regime": new_regime, "entity_type": c.entity_type,
+        "is_resident": it.is_resident, "savings_interest_80tta_paise": it.savings_interest_paise,
+        "gross_salary_paise": it.salary_paise, "other_income_paise": it.other_income_paise,
+        "business_income_paise": facts["business"], "capital_gains_ltcg_paise": facts["gain"],
+        "tds_deducted_paise": it.salary_tds_paise, "advance_tax_paid_paise": advance, **(boxes or {})}
+    if facts["presumptive"] is not None:
+        body["presumptive_income_paise"] = facts["presumptive"]
+    comp = api.post("/api/income-tax/compute", body).get("data") or {}
+    if not comp.get("regime"):
+        raise _NotFiled("the engine returned no computation")
+    if comp.get("validation_errors"):
+        raise _NotFiled(f"the engine refused the computation: {str(comp['validation_errors'])[:200]}")
+    if comp.get("rates_verified") is False:
+        raise _NotFiled(f"the engine has not verified its rates for FY {financial_year}, so a return is not computed on them")
+    return comp
+
+
+def _advance_tax(api: Api, client_id: str, financial_year: str, estimated: int, presumptive: bool,
+                 written: dict) -> int:
+    """Pay the advance tax the engine's own schedule asks for, on each due date that has passed, and return what was
+    paid. Each instalment brings the cumulative payment up to the schedule's required figure; the last therefore brings
+    it to the whole estimate."""
+    if estimated <= 0:
+        return 0
+    from core.ist_clock import ist_today
+    today = ist_today().isoformat()
+    schedule = (api.post("/api/income-tax/advance-tax/compute", {
+        "fy": financial_year, "estimated_tax_paise": estimated, "installments": [],
+        "is_presumptive_44ad_44ada": presumptive}).get("data") or {}).get("installments") or []
+    paid, instalments = 0, []
+    for row in schedule:
+        if row["due_date"] > today:
+            written["advance_tax_not_yet_due"] += 1
+            continue
+        owed = int(row["required_cumulative_paise"]) - paid
+        if owed > 0:
+            instalments.append({"installment_number": row["installment_number"], "paid_amount_paise": owed,
+                                "paid_date": row["due_date"]})
+            paid += owed
+    if instalments:
+        # The payment's challan number is a bank's, not ours to invent, so it is left unrecorded.
+        api.post("/api/income-tax/advance-tax", {
+            "fy": financial_year, "client_id": client_id, "estimated_tax_paise": estimated,
+            "installments": instalments, "is_presumptive_44ad_44ada": presumptive})
+        written["advance_tax_instalments"] += len(instalments)
+    return paid
+
+
+def _save_snapshot(api: Api, client_id: str, financial_year: str, ay: str, it, comp: dict, facts: dict,
+                   advance: int) -> str:
+    """Save a computation the way the computation screen does: the regime the SERVER applied, the inputs, and the
+    server's whole answer."""
+    net = int(((comp.get("payable")) or {}).get("net_payable_paise") or 0)
+    out = api.post("/api/itr/snapshots", {
+        "client_id": client_id, "financial_year": financial_year, "assessment_year": ay, "regime": comp["regime"],
+        "income": {
+            "gross_salary_paise": it.salary_paise, "business_income_paise": facts["business"],
+            # Nothing is accepted into the return: the section 40A(3) scan only proposes (and found none here).
+            "other_income_paise": it.other_income_paise, "total_disallowances_paise": 0,
+            "advance_tax_paid_paise": advance, "tds_deducted_paise": it.salary_tds_paise,
+            "taxable_income_paise": int(((comp.get("income")) or {}).get("taxable_income_paise") or 0),
+            "tax_liability_paise": int(((comp.get("tax")) or {}).get("total_tax_paise") or 0),
+            "net_payable_paise": net, "is_refund": net < 0},
+        "computation_result": comp})
+    return _id(out)
+
+
+def _walk_the_filing(api: Api, c, client_id: str, financial_year: str, ay: str, it, snapshot_id: str,
+                     written: dict) -> None:
+    """Create the filing pinned to the reviewed computation and take it as far as the fixture says. Becoming filed is
+    the acknowledgement's job and nothing else's (the transition door refuses it)."""
+    from core.ist_clock import ist_today
+    filing_id = _id(api.post("/api/itr/filings", {
+        "client_id": client_id, "financial_year": financial_year, "assessment_year": ay,
+        "itr_form": it.itr_form, "computation_snapshot_id": snapshot_id}))
+    written["itr_filings"] += 1
+    filed = it.take_it_to == "filed"
+    for status in ("review", "partner_review") + (("ready_for_filing",) if filed else ()):
+        api.post(f"/api/itr/filings/{filing_id}/transition", {"new_status": status})
+    if not filed:
+        written["itr_waiting"] += 1
+        return
+    if (it.filed_on or "") > ist_today().isoformat():
+        written["itr_not_yet_filable"] += 1
+        return
+    acknowledged = api.post(f"/api/itr/filings/{filing_id}/acknowledge", {
+        # Stored where the portal's acknowledgement number goes, and says it is a seed's: nothing validates the field.
+        "acknowledgement_number": f"SEED-ITR-{c.pan}-AY{ay}", "filing_date": it.filed_on})
+    written["itr_filed"] += 1
+    closure = ((acknowledged or {}).get("data") or {}).get("compliance_obligation") or {}
+    if closure.get("closed"):
+        written["obligations_closed"] += 1
+    elif closure.get("state") != "already_filed":
+        written["obligations_left_open"].append(
+            f"{c.name} {it.itr_form} FY {financial_year}: "
+            f"{closure.get('message') or 'the answer did not say what happened to the obligation'}")
+
+
 def _bank_rules(api: Api, c, client_id: str, written: dict) -> None:
     """The matching rules a CA writes for the recurring lines of a statement.
 
@@ -994,6 +1263,9 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "cwip_projects": 0, "cwip_tranches": 0, "cwip_tranches_skipped": 0,
                "gstr1_filed": 0, "gstr3b_filed": 0, "returns_not_yet_due": 0,
                "obligations_closed": 0, "obligations_left_open": [],
+               "bf_losses": 0, "disallowances_detected": 0, "deduction_claims": 0,
+               "capital_gains": 0, "advance_tax_instalments": 0, "advance_tax_not_yet_due": 0,
+               "itr_filings": 0, "itr_waiting": 0, "itr_filed": 0, "itr_not_yet_filable": 0,
                "returns_refused": []}
 
     # ── THE FIRM'S HSN LIBRARY COMES FIRST, AND IT IS A GATE ─────────────────
@@ -1195,6 +1467,8 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         # reason`), and every document above has been written by now.
         if c.gstin:
             _gst_returns(api, c, client_id, firm.financial_year, last_month, written)
+        # Income tax reads the books too (the bridge, the turnover), and is the only stage that does not need a GSTIN.
+        _income_tax(api, c, client_id, firm.financial_year, written)
 
     return written
 
@@ -1244,7 +1518,7 @@ def main() -> int:
         print(f"  {k.replace('_', ' '):24} {v}")
     if written["returns_refused"] or written["obligations_left_open"]:
         # Everything else was written; the exit code says the filing history, or the calendar beside it, is NOT whole.
-        print(f"\n{len(written['returns_refused'])} return(s) were not filed and "
+        print(f"\n{len(written['returns_refused'])} return(s) or record(s) were not filed or recorded and "
               f"{len(written['obligations_left_open'])} filed return(s) left their obligation open; they are listed above.")
         for line in written["obligations_left_open"]:
             print(f"    ! {line}")
