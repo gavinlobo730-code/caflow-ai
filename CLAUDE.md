@@ -358,7 +358,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ITR RETURN BECOMES FILED BY RECORDING ITS ACKNOWLEDGEMENT, AND RECORDING IT CLOSES THE CALENDAR'S OBLIGATION
 - THE DEMO'S INCOME-TAX FACTS ARE FACTS, AND EVERY FIGURE THAT IS TAX COMES BACK FROM THE ENGINE
 
-### `docs/design-record/tax-tds.md` (13 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
+### `docs/design-record/tax-tds.md` (14 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 
 - From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it
 - A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD
@@ -373,6 +373,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - NOT EVERY PART OF FORM 26AS IS A CREDIT, and the client-as-DEDUCTEE reconciliation used to sum all of them
 - A TDS STATEMENT IS FILED ON A DATE THE CA STATES, FROM CA APPROVED, STAYS FILED, AND CLOSES ITS QUARTERLY OBLIGATION
 - THE TDS DEPOSIT WORKSHEET ASKS THE CHALLAN REGISTER WHAT HAS BEEN DEPOSITED, AND A DEPOSITED DEDUCTION'S INTEREST STOPS AT ITS CHALLAN'S DATE
+- THE DEMO'S TDS DEPOSITS ARE THE WORKSHEET'S AND ITS STATEMENTS ARE THE BOOKS', AND THE NUMBERS A BANK OR THE PORTAL WOULD ISSUE SAY THEY ARE A SEED'S
 
 ### `docs/design-record/tenancy-and-security.md` (43 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 

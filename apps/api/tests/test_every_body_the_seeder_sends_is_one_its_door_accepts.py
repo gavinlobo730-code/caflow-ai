@@ -120,6 +120,13 @@ class _Recorder:
                              for i, n in enumerate(names)]}
         if path.startswith("/api/income-tax/assessee-kind"):
             return {"success": True, "error": None, "data": {"kind": "individual", "refusal": None}}
+        if path.startswith("/api/tds-workspace/deposit-due"):
+            # One section owed in every month, so a challan body is built for each posted month.
+            return {"success": True, "error": None, "data": {
+                "due_date": "2025-08-07", "sections": [{"section": "194C", "outstanding_paise": 6_027_66}]}}
+        if path.startswith("/api/payroll/runs"):
+            return {"success": True, "error": None, "data": [
+                {"month": "2025-05", "status": "paid", "total_tds_paise": 15_010_66}]}
         if path.startswith("/api/accounting/profit-loss"):
             # The turnover a section 44AD return is computed on.
             return {"success": True, "error": None, "data": {"revenue": {"total_paise": 99_278_400}}}
@@ -160,6 +167,15 @@ class _Recorder:
         answered = _income_tax_answer(path, body)
         if answered is not None:
             return {"success": True, "error": None, "data": answered}
+        if path.startswith("/api/tds/") and path.endswith("/from-books"):
+            # A statement with a deductee in it, tied out, so it is saved and walked to filed and every body is checked.
+            return {"success": True, "error": None, "data": {
+                "deductee_count": 2, "deductees": [{"deductee_pan": "ABCDE1234F"}] * 2,
+                "total_tds_deducted_paise": 1000_00, "total_tds_deposited_paise": 1000_00, "validation_errors": [],
+                "challan_gaps": [], "reconciliation": {"matched": True}}}
+        if path.startswith("/api/tds-workspace/returns/") and path.endswith("/status") and body.get("status") == "filed":
+            return {"success": True, "error": None, "data": {
+                "status": "filed", "compliance_obligation": {"state": "closed", "closed": True}}}
         return {"success": True, "error": None, "data": {
             "id": f"seeded-{self._n:05d}",
             # Every figure the seeder reads back off a response. Plausible
@@ -270,6 +286,27 @@ _INCOME_TAX_DOORS = [
 @pytest.mark.parametrize("prefix", _INCOME_TAX_DOORS)
 def test_the_income_tax_stage_reaches_the_door(_run, prefix):
     assert any(m == "POST" and p.startswith(prefix) for m, p in _run.calls), f"POST {prefix} was never called"
+
+
+#: The TDS stage's doors. The challan and the statement's four writes are checked against the models their doors declare,
+#: with the worksheet, the payroll runs and the built statements answered, because without them the stage writes nothing.
+_TDS_DOORS = [
+    ("GET", "/api/tds-workspace/deposit-due"), ("GET", "/api/payroll/runs"),
+    ("POST", "/api/tds/26q/from-books"), ("POST", "/api/tds/24q/from-books"),
+    ("POST", "/api/tds-workspace/challans"), ("POST", "/api/tds-workspace/returns"),
+]
+
+
+@pytest.mark.parametrize("method,prefix", _TDS_DOORS)
+def test_the_tds_stage_reaches_the_door(_run, method, prefix):
+    assert any(m == method and p.startswith(prefix) for m, p in _run.calls), f"{method} {prefix} was never called"
+
+
+def test_the_tds_stage_walks_a_statement_through_prepared_approval_and_filing(_run):
+    steps = [b["status"] for m, p, b in _run.requests
+             if m == "PATCH" and p.startswith("/api/tds-workspace/returns/") and p.endswith("/status")]
+    assert steps and steps.count("filed") == steps.count("ca_approved") and steps.count("prepared") >= steps.count("filed")
+    assert [s for s in steps[:3]] == ["prepared", "ca_approved", "filed"]
 
 
 def test_the_individuals_return_is_filed_through_the_acknowledgement_and_the_proprietors_waits_for_a_partner(_run):

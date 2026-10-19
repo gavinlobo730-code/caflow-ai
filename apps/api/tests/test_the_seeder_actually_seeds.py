@@ -82,6 +82,10 @@ def api(monkeypatch):
     """
     import scripts.seed_demo_firm as seeder
     monkeypatch.setattr(seeder, "_gst_returns", lambda *args, **kwargs: None)
+    # THE TDS STAGE FOR THE SAME REASON: `POST /api/tds/26q/from-books` reads the posted bills through the real database
+    # client, so mock mode answers 500. Its bodies and its order are checked in the recorder test, and it ran over a real
+    # Postgres and PostgREST behind the real app when it was written.
+    monkeypatch.setattr(seeder, "_tds", lambda *args, **kwargs: None)
     from fastapi.testclient import TestClient
     from main import app
     return _TestClientApi(TestClient(app))
