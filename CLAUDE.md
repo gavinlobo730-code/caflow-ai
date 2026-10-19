@@ -339,7 +339,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A LIST OF RETURNS IS IN TIME ORDER, A FILED RETURN SHOWS THE DATE THE CA STATED, AND THE SEEDED FIRM HAS FILED A YEAR
 - A RETURN RECORDED AS FILED IN THE WORKSPACE CLOSES ITS COMPLIANCE OBLIGATION THROUGH THE ONE DOOR THAT CLOSES ONE, ONLY WHEN IT CAN TELL WHICH OBLIGATION AND WHETHER THEY ARE ALL FILED, AND NEVER FAILS THE FILING
 
-### `docs/design-record/tax-income-tax.md` (13 entries): Income tax: ITR kinds and engines, capital gains, tax audit and 3CD, losses, entity reliefs, section 43B(h)
+### `docs/design-record/tax-income-tax.md` (14 entries): Income tax: ITR kinds and engines, capital gains, tax audit and 3CD, losses, entity reliefs, section 43B(h)
 
 - §115BAC DISAPPLIES CHAPTER XII-BA, and the AMT surcharge ladder is the ASSESSEE's own
 - THE FOUR REINVESTMENT SECTIONS ARE NOT ONE RULE WITH FOUR NAMES
@@ -354,6 +354,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A HUF, AN AOP AND A BOI ARE ASSESSEES, NOT INDIVIDUALS, AND THE ENGINE ASKS A TABLE WHO EACH RELIEF REACHES
 - THE SECTION 234C PROVISO IS APPLIED, ON THE INCOME'S OWN TAX
 - HOUSE PROPERTY AND SALARY ARE WORKINGS, KEPT AS INPUTS AND RECOMPUTED, AND THEY FEED A BOX ON THE CA'S CLICK
+- AN ITR RETURN BECOMES FILED BY RECORDING ITS ACKNOWLEDGEMENT, AND RECORDING IT CLOSES THE CALENDAR'S OBLIGATION
 
 ### `docs/design-record/tax-tds.md` (11 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 

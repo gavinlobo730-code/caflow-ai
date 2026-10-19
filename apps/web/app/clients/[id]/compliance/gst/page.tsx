@@ -21,7 +21,7 @@ import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
 import { Gstr3bCreditLedger } from "@/components/gst/Gstr3bCreditLedger";
 import { RegistrationPicker, useRegistrationChoice } from "@/components/gst/RegistrationPicker";
 import { withRegistration } from "@/lib/gst/registrationChoice";
-import { obligationNote } from "@/lib/gst/obligationNote";
+import { obligationNote } from "@/lib/compliance/obligationNote";
 import { Callout } from "@/components/ui/callout";
 import type { GLReconciliation, GSTR1AmendmentsBlock, Gstr1TieOutBlock, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
 import type { ValidationError, PayloadGap } from "@/lib/data/gst";

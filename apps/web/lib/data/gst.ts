@@ -24,7 +24,7 @@
  */
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
-import { obligationNote } from "@/lib/gst/obligationNote";
+import { obligationNote } from "@/lib/compliance/obligationNote";
 import type { CreditLedgerBlock } from "@/lib/api";
 import { getFirmId } from "./getFirmId";
 

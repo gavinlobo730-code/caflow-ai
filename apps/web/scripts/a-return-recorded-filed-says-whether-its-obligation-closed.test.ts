@@ -25,7 +25,7 @@ function code(rel: string): string {
 
 test("each of the two client tabs reads the answer of its status call through the one helper and keeps every note", () => {
   const src = code(PAGE);
-  assert.match(src, /import \{ obligationNote \} from "@\/lib\/gst\/obligationNote"/);
+  assert.match(src, /import \{ obligationNote \} from "@\/lib\/compliance\/obligationNote"/);
   const calls = src.match(/if \(status === "submitted"\) \{ const note = obligationNote\(r\.data\); if \(note\) setClosureNotes\(\(n\) => \[\.\.\.n, note\]\); \}/g) ?? [];
   assert.equal(calls.length, 2, "GSTR-1 and GSTR-3B must each report whether the obligation closed, without losing an earlier note");
 });
@@ -55,6 +55,6 @@ test("the two firm-level screens show the note too: the mark-filed helpers retur
 
 test("the browser decides nothing about the obligation: it never reads the state", () => {
   for (const rel of [PAGE, path.join("app", "gst", "gstr1", "page.tsx"), path.join("app", "gst", "gstr3b", "page.tsx")]) {
-    assert.doesNotMatch(code(rel), /compliance_obligation/, `${rel} reads the block directly instead of through lib/gst/obligationNote`);
+    assert.doesNotMatch(code(rel), /compliance_obligation/, `${rel} reads the block directly instead of through lib/compliance/obligationNote`);
   }
 });

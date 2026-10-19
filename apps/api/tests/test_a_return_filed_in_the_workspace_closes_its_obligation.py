@@ -35,6 +35,7 @@ from domain.gst import gstin as gstin_rules
 from mock_data import MOCK_COMPLIANCE_RECORDS
 from repositories.compliance_records_repository import compliance_records_repo
 from services import gst_return_closes_obligation as closes
+from services import obligation_closure
 from tests.e2e_harness import FakeDB, wire_e2e
 
 FIRM, CLIENT = "firm-1", "client-1"
@@ -360,7 +361,7 @@ def test_a_failure_part_way_says_where_the_obligation_really_is(world, monkeypat
     import core.observability as obs
     reported = []
     monkeypatch.setattr(obs, "capture_soft_failure", lambda exc, **kw: reported.append(kw["operation"]))
-    monkeypatch.setattr(closes, "capture_soft_failure", lambda exc, **kw: reported.append(kw["operation"]))
+    monkeypatch.setattr(obligation_closure, "capture_soft_failure", lambda exc, **kw: reported.append(kw["operation"]))
     monkeypatch.setattr(crs, "_close_the_period",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("filings write failed")))
     obligation = _obligation("GSTR3B")
@@ -414,13 +415,13 @@ def test_the_status_re_read_after_a_failure_is_scoped_to_the_firm_and_the_client
     """The id came from a scoped listing, and the re-read goes through the same one: another firm's or another client's
     calendar can never be what a status is read from (the firm-scope guard also holds the by-id spelling out)."""
     rec = _obligation("GSTR3B", status="In Progress")
-    assert closes._status_now(FIRM, CLIENT, rec["id"]) == "In Progress"
-    assert closes._status_now("firm-2", CLIENT, rec["id"]) is None
-    assert closes._status_now(FIRM, "client-2", rec["id"]) is None
+    assert obligation_closure.status_now(FIRM, CLIENT, "GST", rec["id"]) == "In Progress"
+    assert obligation_closure.status_now("firm-2", CLIENT, "GST", rec["id"]) is None
+    assert obligation_closure.status_now(FIRM, "client-2", "GST", rec["id"]) is None
 
 
 def test_a_status_that_cannot_be_read_is_none_and_does_not_raise(world, monkeypatch):
     rec = _obligation("GSTR3B")
     monkeypatch.setattr(compliance_records_repo, "find_all",
                         lambda **k: (_ for _ in ()).throw(RuntimeError("PostgREST is unreachable")))
-    assert closes._status_now(FIRM, CLIENT, rec["id"]) is None
+    assert obligation_closure.status_now(FIRM, CLIENT, "GST", rec["id"]) is None
