@@ -15,7 +15,6 @@
 #
 # Format: one advisory id per line, then `# package version [severity] - title (fix: ...)`.
 
-GHSA-2V37-7H3G-55P8      # nanoid 3.3.16 [high] — nanoid: custom generators can loop indefinitely when size is zero (fix: >=3.3.18)
 GHSA-2XP9-VWFH-VXW4      # next 14.2.35 [critical] — Next.js: Unauthenticated Remote Code Execution in Image Optimization API when AVIF files a (fix: >=15.5.24)
 GHSA-36QX-FR4F-26G5      # next 14.2.35 [high] — Next.js has a Middleware / Proxy bypass in Pages Router applications using i18n (fix: >=15.5.16)
 GHSA-89XV-2M56-2M9X      # next 14.2.35 [high] — Next.js: Server-Side Request Forgery in Server Actions on custom servers (fix: >=15.5.21)
