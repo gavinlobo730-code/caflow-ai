@@ -995,6 +995,204 @@ def _walk_the_filing(api: Api, c, client_id: str, financial_year: str, ay: str, 
             f"{closure.get('message') or 'the answer did not say what happened to the obligation'}")
 
 
+#: The bank branch code and the challan serial are numbers off a bank's counterfoil, which only the person who paid the tax
+#: knows. The seed states neither as a real one: the branch code is the all-zero code no bank holds, and the serial says
+#: SEED. The only check on the branch code is its format (seven digits, migration 112), which all zeros passes; nothing
+#: checks that the branch exists, and a demo firm must not carry a number that could pass for a bank's.
+_SEED_BSR = "0000000"
+
+
+def _data_of(out: dict, what: str):
+    """The `data` of a READ, refusing a refusal. `Api.get` does not check the envelope (`_write` does), and the TDS
+    workspace answers a failure as HTTP 200 with `success: false` and no data, which a stage that reads
+    `.get("data") or {}` takes for "nothing is owed"."""
+    if isinstance(out, dict) and out.get("success") is False:
+        raise _NotFiled(f"{what} was refused: {out.get('error')}")
+    return out.get("data") if isinstance(out, dict) else None
+
+
+def _kind_of(section: str) -> str:
+    """The statement a challan belongs to: section 192 is salary (Form 24Q); every other section the worksheet lists is a
+    resident payment on Form 26Q. A payment to a non-resident is Form 27Q, which this stage does not build."""
+    return "24Q" if section == "192" else "26Q"
+
+
+def _tds(api: Api, c, client_id: str, financial_year: str, last_month: str, written: dict) -> None:
+    """What the practice records for TDS: the challans it has paid in and the quarterly statements it has filed.
+
+    WHY THIS EXISTS. The deductions are written by the purchase bills, but nothing recorded their deposit, so the
+    deposit worksheet charged §201(1A) interest on every month from its due date to today, the quarter's statement
+    carried a "deducted but not deposited" gap, and the challan, return and filing screens were empty on a firm whose
+    point is a year of TDS work.
+
+    THE CHALLANS ARE THE WORKSHEET'S OWN FIGURES. For each posted month the practice deposits what the deposit-due
+    worksheet says is outstanding under each section, on the worksheet's due date (Rule 30(2); the server computes it),
+    and the §192 tax of a payroll run on the same month's due date. The stage states no rate, threshold or date: what it
+    does state is the minor head of the challan (200, tax paid by the deductor), the section number 192 for the payroll
+    leg, the statement forms 26Q and 24Q, and the seed's own branch code, serial and receipt number.
+
+    THE STATEMENTS ARE THE BOOKS'. Form 26Q (and 24Q for a client whose payroll runs withheld tax) is built by the server
+    from the posted bills and finalized runs, saved the way the screen saves it, and taken through prepared and CA
+    approved to filed on the quarter's due date, for a quarter that has ended and whose due date has passed. A quarter with
+    no deduction in it has nothing to report and gets no statement. The last quarter contains the month still in draft,
+    so its statement is prepared and left there, as the GST return of the last month is. A quarter with a deposit still
+    to come (a year in progress) is not built at all and is counted: its statement could only be refused for the
+    deposit the seeder had decided not to make.
+
+    A REFUSAL IS A FINDING, reported the way `_gst_returns` reports one: a read the server refuses (the worksheet, the
+    payroll runs), a challan it refuses, and a statement that carries validation errors, a deducted-but-not-deposited gap,
+    a ledger difference, a payment to a non-resident it leaves out, or no deductee at all in a quarter whose challans were
+    just recorded, is never saved or filed.
+
+    WHAT IT DOES NOT DO. The challans post nothing to the ledger (the bank line that paid the tax is what does, through the
+    bank queue, and the seeded statement carries none), no Form 16A is recorded (those come from TRACES), and there is no
+    26AS. The PRN is `SEED-PRN-...`. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this records filings that did not happen,
+    in a fictional firm.
+    """
+    from core.ist_clock import ist_today
+    if not c.deducts_tax:
+        return
+    today = ist_today().isoformat()
+    salary_by_month = None
+    with _a_finding_is_reported(written, c, "TDS payroll runs", financial_year):
+        salary_by_month = {
+            str(r["month"]): int(r.get("total_tds_paise") or 0)
+            for r in _data_of(api.get(f"/api/payroll/runs?client_id={client_id}"), "the payroll runs list") or []
+            if r.get("status") in ("finalized", "paid")}
+    if salary_by_month is None:
+        return
+    deposits = _tds_challans(api, c, client_id, financial_year, last_month, today, salary_by_month, written)
+    _tds_statements(api, c, client_id, financial_year, last_month, today, salary_by_month, deposits, written)
+
+
+def _quarter_of_month(financial_year: str, month: str) -> str:
+    from domain.tds.section_rates import quarter_dates
+    return next(q for q in ("Q1", "Q2", "Q3", "Q4")
+                if quarter_dates(financial_year, q)[0][:7] <= month <= quarter_dates(financial_year, q)[1][:7])
+
+
+def _tds_challans(api: Api, c, client_id: str, financial_year: str, last_month: str, today: str,
+                  salary_by_month: dict, written: dict) -> dict:
+    """The challans of every posted month, and what they leave to decide about each quarter's statement.
+
+    Returns, keyed by (quarter, statement form): `to_come` (a deposit whose due date is still to come), `not_recorded` (the
+    reason a deposit could not be recorded) and `recorded` (how many challans were recorded). The statements read them: a
+    quarter with a deposit to come is not built and a quarter with an unrecorded one says so, instead of being refused
+    for a gap the seeder itself left."""
+    fy_start_year = int(financial_year[:4])
+    months = [f"{fy_start_year if m >= 4 else fy_start_year + 1:04d}-{m:02d}" for m in (4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3)]
+    deposits: dict = {"to_come": set(), "not_recorded": {}, "recorded": {}}
+    for month in (m for m in months if m < last_month):
+        quarter = _quarter_of_month(financial_year, month)
+        sheet = None
+        with _a_finding_is_reported(written, c, "TDS deposit worksheet", month):
+            sheet = _data_of(api.get(f"/api/tds-workspace/deposit-due?client_id={client_id}&month={month}"),
+                             "the deposit worksheet") or {}
+        if sheet is None:
+            for kind in ("24Q", "26Q"):
+                deposits["not_recorded"].setdefault((quarter, kind), f"the {month} deposit worksheet could not be read")
+            continue
+        due_on = sheet.get("due_date") or ""
+        # §192 is not on this worksheet (payroll owns it and it is deposited from the run below); a row for it would be
+        # deposited twice.
+        owed = [(str(s["section"]), int(s["outstanding_paise"])) for s in sheet.get("sections") or []
+                if int(s.get("outstanding_paise") or 0) > 0 and str(s["section"]) != "192"]
+        if salary_by_month.get(month, 0) > 0:
+            owed.append(("192", salary_by_month[month]))
+        for section, tax_paise in owed:
+            key = (quarter, _kind_of(section))
+            if due_on and due_on > today:
+                written["tds_deposits_not_yet_due"] += 1
+                deposits["to_come"].add(key)
+                continue
+            deposited = False
+            with _a_finding_is_reported(written, c, "TDS challan", f"{month} {section}"):
+                if not due_on:
+                    raise _NotFiled("the deposit worksheet gave no due date for it")
+                api.post("/api/tds-workspace/challans", {
+                    "client_id": client_id, "bsr_code": _SEED_BSR, "challan_date": due_on, "amount_paise": tax_paise,
+                    "challan_no": f"SEED-{month.replace('-', '')}-{section}", "section": section,
+                    "financial_year": financial_year, "quarter": quarter, "minor_head": "200"})
+                written["tds_challans"] += 1
+                deposits["recorded"][key] = deposits["recorded"].get(key, 0) + 1
+                deposited = True
+            if not deposited:
+                deposits["not_recorded"].setdefault(key, f"the {month} {section} challan was not recorded")
+    return deposits
+
+
+def _tds_statements(api: Api, c, client_id: str, financial_year: str, last_month: str, today: str,
+                    salary_by_month: dict, deposits: dict, written: dict) -> None:
+    """Form 26Q (and 24Q where payroll withheld tax) for each quarter that has started before the month left in draft."""
+    from domain.tds.section_rates import quarter_dates
+    kinds = [("26Q", "/api/tds/26q/from-books")]
+    if any(v > 0 for v in salary_by_month.values()):
+        kinds.append(("24Q", "/api/tds/24q/from-books"))
+    for quarter in ("Q1", "Q2", "Q3", "Q4"):
+        start, end, due_on = quarter_dates(financial_year, quarter)
+        if start[:7] >= last_month:
+            continue
+        for kind, compute in kinds:
+            key = (quarter, kind)
+            if key in deposits["to_come"] and key not in deposits["not_recorded"]:
+                written["tds_statements_not_yet_due"] += 1
+                continue
+            with _a_finding_is_reported(written, c, f"TDS {kind}", quarter):
+                if key in deposits["not_recorded"]:
+                    raise _NotFiled(f"not built, because {deposits['not_recorded'][key]} (reported above)")
+                _tds_statement(api, c, client_id, financial_year, quarter, kind, compute,
+                               filed_on=due_on if end[:7] < last_month and due_on <= today else None, written=written,
+                               challans_recorded=deposits["recorded"].get(key, 0))
+
+
+def _tds_statement(api: Api, c, client_id: str, financial_year: str, quarter: str, kind: str, compute: str, *,
+                   filed_on: Optional[str], written: dict, challans_recorded: int) -> None:
+    """One quarter's statement: built from the books, saved the way the screen saves it, and taken as far as the books
+    allow. `filed_on` is the day it is filed (the quarter's due date) or None for the quarter still being entered.
+    `challans_recorded` is how many challans this run just recorded for this quarter and form: a statement with no
+    deductee beside challans the worksheet said were owed is two readings of one quarter that disagree, and is a finding,
+    not a quarter with nothing to report."""
+    data = api.post(compute, {"client_id": client_id, "financial_year": financial_year, "quarter": quarter}).get("data") or {}
+    if not int(data.get("deductee_count") or 0):
+        if challans_recorded:
+            raise _NotFiled(f"{challans_recorded} challan(s) were recorded for this quarter but the statement the server "
+                            "builds has no deductee: the bills the statement reads and the register the deposits were "
+                            "worked out from disagree")
+        written["tds_quarters_without_deductions"] += 1
+        return
+    if data.get("validation_errors"):
+        raise _NotFiled(f"the engine reports validation errors: {str(data['validation_errors'])[:200]}")
+    if data.get("challan_gaps"):
+        raise _NotFiled(f"the challans do not cover the deductions: {str(data['challan_gaps'])[:200]}")
+    if not (data.get("reconciliation") or {}).get("matched"):
+        raise _NotFiled(f"the statement does not tie to the ledger: {str(data.get('reconciliation'))[:200]}")
+    left_out = int((data.get("excluded_non_resident") or {}).get("bill_count") or 0)
+    if left_out:
+        raise _NotFiled(f"the statement leaves out {left_out} payment(s) to a non-resident, which belong on Form 27Q "
+                        "(not built here), so it is not the quarter's whole TDS")
+    saved = api.post("/api/tds-workspace/returns", {
+        "client_id": client_id, "return_type": kind, "quarter": quarter, "financial_year": financial_year,
+        "deductee_details": data["deductees"], "total_deductions_paise": data["total_tds_deducted_paise"],
+        "total_deposits_paise": data["total_tds_deposited_paise"], "deductee_count": data["deductee_count"],
+        "validation_errors": data["validation_errors"]})
+    return_id = _id(saved)
+    api.patch(f"/api/tds-workspace/returns/{return_id}/status", {"status": "prepared"})
+    if filed_on is None:
+        written["tds_statements_prepared"] += 1
+        return
+    api.patch(f"/api/tds-workspace/returns/{return_id}/status", {"status": "ca_approved", "ca_approved": True})
+    filed = api.patch(f"/api/tds-workspace/returns/{return_id}/status", {
+        "status": "filed", "ca_approved": True, "prn": f"SEED-PRN-{kind}-{quarter}-{financial_year}", "filing_date": filed_on})
+    written["tds_statements_filed"] += 1
+    closure = ((filed or {}).get("data") or {}).get("compliance_obligation") or {}
+    if closure.get("closed"):
+        written["obligations_closed"] += 1
+    elif closure.get("state") != "already_filed":
+        written["obligations_left_open"].append(
+            f"{c.name} {kind} {quarter} FY {financial_year}: "
+            f"{closure.get('message') or 'the answer did not say what happened to the obligation'}")
+
+
 def _bank_rules(api: Api, c, client_id: str, written: dict) -> None:
     """The matching rules a CA writes for the recurring lines of a statement.
 
@@ -1266,6 +1464,8 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "bf_losses": 0, "disallowances_detected": 0, "deduction_claims": 0,
                "capital_gains": 0, "advance_tax_instalments": 0, "advance_tax_not_yet_due": 0,
                "itr_filings": 0, "itr_waiting": 0, "itr_filed": 0, "itr_not_yet_filable": 0,
+               "tds_challans": 0, "tds_deposits_not_yet_due": 0, "tds_statements_not_yet_due": 0,
+               "tds_statements_filed": 0, "tds_statements_prepared": 0, "tds_quarters_without_deductions": 0,
                "returns_refused": []}
 
     # ── THE FIRM'S HSN LIBRARY COMES FIRST, AND IT IS A GATE ─────────────────
@@ -1469,6 +1669,8 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
             _gst_returns(api, c, client_id, firm.financial_year, last_month, written)
         # Income tax reads the books too (the bridge, the turnover), and is the only stage that does not need a GSTIN.
         _income_tax(api, c, client_id, firm.financial_year, written)
+        # TDS reads the posted bills and the finalized payroll runs, and records their deposit and their statements.
+        _tds(api, c, client_id, firm.financial_year, last_month, written)
 
     return written
 
