@@ -160,9 +160,63 @@ def _clause_32(db, firm_id: str, client_id: str) -> tuple[Optional[object], str]
                     "named regardless of whether any row exists.")
 
 
+GAP_CHALLAN_RECORDED_MORE_THAN_ONCE = "challan_recorded_more_than_once"
+
+
+def _deposits_by_deduction(rows: list, challans: list, fy_label: str) -> tuple[dict[str, int], list[dict]]:
+    """(each deduction's covered tax in paise by deduction id, the register's own warnings), from the CHALLAN REGISTER.
+
+    A challan pays the deductions of its own financial year and quarter under its own section, first in first out
+    (`domain/tds/challan_mapping`, through `deposit_due.mapping_from_register`): the worksheet's match. Nothing else says a
+    deduction was deposited. The two columns this clause used to read for it, a deduction's `status` and its `challan_no`,
+    are never written for a deduction a purchase bill wrote (`POST /challans` records the challan and never touches the
+    deductions it paid), so for nearly every deduction the clause said the whole tax was deducted and not deposited. A
+    challan number typed on a hand-keyed deduction is a note and is not read.
+
+    The warnings are what the register itself says about the year, so that a figure is not read without them: a challan
+    that paid more than its quarter and section deducted (which is also what a challan filed under the wrong quarter looks
+    like), and a challan recorded more than once under the same branch code, serial and date, which would otherwise be
+    counted as two deposits."""
+    from domain.tds import challan_mapping, deposit_due
+    from services.compliance_engine import tds_quarter_of_month
+
+    quarters: dict[str, list] = {}
+    for row in rows:
+        # A row with no usable date cannot be placed in a quarter: it stays uncovered, which is what the clause then says of it.
+        on = challan_mapping.as_date(row.get("transaction_date"))
+        if on is not None:
+            quarters.setdefault(tds_quarter_of_month(on.month), []).append(row)
+    covered: dict[str, int] = {}
+    warnings: list[dict] = []
+    # A quarter with challans and no deductions is read too: that is where a challan filed under the wrong quarter shows.
+    for quarter in sorted(set(quarters) | {c.get("quarter") for c in challans}):
+        theirs = [c for c in challans if c.get("quarter") == quarter]
+        mapping = deposit_due.mapping_from_register(quarters.get(quarter, []), theirs, fy=fy_label)
+        for row in quarters.get(quarter, []):
+            covered[str(row.get("id"))] = mapping.for_deduction(row.get("id")).deposited_paise
+        warnings.extend({**g, "quarter": quarter} for g in mapping.gaps
+                        if g.get("code") == challan_mapping.GAP_CHALLAN_EXCEEDS_DEDUCTIONS)
+    seen: dict[tuple, int] = {}
+    for c in challans:
+        key = (str(c.get("bsr_code") or ""), str(c.get("challan_no") or ""), str(c.get("payment_date") or "")[:10])
+        seen[key] = seen.get(key, 0) + 1
+    warnings.extend({"code": GAP_CHALLAN_RECORDED_MORE_THAN_ONCE, "bsr_code": k[0], "challan_no": k[1],
+                     "payment_date": k[2], "times": n,
+                     "message": f"Challan {k[1]} of {k[2]} is recorded {n} times, and each is counted as a deposit."}
+                    for k, n in sorted(seen.items()) if n > 1)
+    return covered, warnings
+
+
 def _clause_34(db, firm_id: str, client_id: str,
               financial_year: str) -> tuple[Optional[object], str]:
+    """Form 3CD clause 34 (Rule 6G; IT Act §44AB): tax deducted or collected, by section, and how much of it has not been
+    deposited to the credit of the Central Government (§200, Rule 30). THE DEPOSIT IS READ FROM THE CHALLAN REGISTER, and a
+    quarter in which no challan at all is recorded is NOT "nothing was deposited": the books cannot say, so its tax is
+    reported apart (`deposit_not_recorded_paise`), never as a deposit default."""
+    from domain.tds import deposit_due
+
     start, end = _fy_window(financial_year)
+    fy_label = f"{start[:4]}-{(int(start[:4]) + 1) % 100:02d}"
     ident_rows = (db.table("client_statutory_identity").select("tan")
                   .eq("firm_id", firm_id).eq("client_id", client_id)
                   .limit(1).execute().data or [])
@@ -170,11 +224,27 @@ def _clause_34(db, firm_id: str, client_id: str,
 
     rows = fetch_all(
         lambda: (db.table("tds_deductions")
-                 .select("id, section, payment_amount_paise, tds_paise, "
-                         "status, challan_no")
+                 .select("id, section, payment_amount_paise, tds_paise, surcharge_paise, cess_paise, transaction_date")
                  .eq("firm_id", firm_id).eq("client_id", client_id)
                  .gte("transaction_date", start).lte("transaction_date", end)),
         label="form_3cd.tds_deductions")
+    challans = fetch_all(
+        lambda: (db.table("tds_challans")
+                 .select("id, challan_no, bsr_code, section, financial_year, quarter, tds_paise, surcharge_paise, payment_date")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .eq("financial_year", fy_label)),
+        label="form_3cd.tds_challans")
+
+    # Salary (section 192) is deposited from payroll and its challans are matched in the 24Q, not in this register's
+    # deductions: a row under it is left out and counted, not shown as undeposited.
+    salary_rows = [r for r in rows if deposit_due.is_salary(str(r.get("section") or ""))]
+    rows = [r for r in rows if not deposit_due.is_salary(str(r.get("section") or ""))]
+    challans = [c for c in challans if not deposit_due.is_salary(str(c.get("section") or ""))]
+    covered, warnings = _deposits_by_deduction(rows, challans, fy_label)
+    quarters_with_a_challan = {c.get("quarter") for c in challans}
+
+    from domain.tds import challan_mapping
+    from services.compliance_engine import tds_quarter_of_month
 
     by_section: dict[str, dict] = {}
     for r in rows:
@@ -182,29 +252,53 @@ def _clause_34(db, firm_id: str, client_id: str,
         bucket = by_section.setdefault(section, {
             "section": section, "count": 0,
             "total_amount_paise": 0, "total_tds_deducted_paise": 0,
-            "total_tds_deposited_paise": 0,
+            "total_tds_deposited_paise": 0, "tax_deducted_not_deposited_paise": 0,
+            "deposit_not_recorded_paise": 0, "surcharge_or_cess_makes_the_split_approximate": False,
         })
         bucket["count"] += 1
         bucket["total_amount_paise"] += int(r.get("payment_amount_paise") or 0)
         deducted = int(r.get("tds_paise") or 0)
         bucket["total_tds_deducted_paise"] += deducted
-        if r.get("status") in ("deposited", "filed") or r.get("challan_no"):
-            bucket["total_tds_deposited_paise"] += deducted
-    for bucket in by_section.values():
-        bucket["tax_deducted_not_deposited_paise"] = (
-            bucket["total_tds_deducted_paise"]
-            - bucket["total_tds_deposited_paise"])
+        # Measured against the tax column this clause has always summed (tds_paise); the register's cover is of tax, surcharge
+        # and cess together, so it is capped at the row's own tax.
+        paid = min(deducted, covered.get(str(r.get("id")), 0))
+        bucket["total_tds_deposited_paise"] += paid
+        on = challan_mapping.as_date(r.get("transaction_date"))
+        quarter = tds_quarter_of_month(on.month) if on is not None else None
+        # Not deposited where the register has spoken about the quarter; not RECORDED where it holds no challan for it.
+        key = ("tax_deducted_not_deposited_paise" if quarter in quarters_with_a_challan
+               else "deposit_not_recorded_paise")
+        bucket[key] += deducted - paid
+        if int(r.get("surcharge_paise") or 0) or int(r.get("cess_paise") or 0):
+            bucket["surcharge_or_cess_makes_the_split_approximate"] = True
 
-    value = {"tan": tan, "by_section": list(by_section.values())}
+    value = {"tan": tan, "by_section": list(by_section.values()),
+             "challans_read": len(challans), "salary_rows_left_out": len(salary_rows),
+             "register_warnings": warnings}
     return value, (
         "tds_deductions, grouped by section for the financial year — a "
         "SIMPLIFIED summary (total payment, total tax deducted, total "
-        "deposited, the shortfall). The form's own finer columns — amount on "
+        "deposited, the shortfall). DEPOSITED is what the CHALLAN REGISTER covers: "
+        + (f"the {len(challans)} challan(s) recorded for FY {fy_label}, each paying the deductions of its own quarter and "
+           "section first in first out, the worksheet's match"
+           if challans else f"no challan is recorded for FY {fy_label}, so no deduction is covered")
+        + ". NOT DEPOSITED is the tax the register does not cover in a quarter for which at least one challan is recorded; "
+        "the tax of a quarter for which NO challan is recorded is shown apart as NOT RECORDED, because the books cannot say "
+        "whether it was deposited (a deposit made outside this product, or recorded under another quarter, would change "
+        "it): record the challan to have it counted. A challan number typed on a deduction is not read. Whether a deposit "
+        "was made on time is not judged here, and a challan paid on any date counts, including one dated before the "
+        "deduction (the worksheet judges the date and §201(1A)/§206C(7) interest is in domain/tds/interest.py); whether "
+        "this clause counts only deposits made by a stated date is a reading nobody has confirmed from the form's own "
+        "text (ledger POST-C-207). Where a row carries surcharge or cess (section 195) the register covers tax, surcharge "
+        "and cess together and the tax column is the tax alone, so the split for that section is approximate. Salary tax "
+        "(section 192) is deposited from payroll and matched in the 24Q, and is not in this summary. "
+        "`register_warnings` lists a challan that paid more than its quarter and section deducted (which is also what a "
+        "challan recorded under the wrong quarter looks like) and a challan recorded more than once. The form's own finer "
+        "columns — amount on "
         "which tax was required to be deducted against what was actually "
         "deducted, and at the specified rate against a lesser one — need a "
         "per-line comparison against domain/tds/section_rates.py this "
-        "summary does not attempt; §201(1A)/§206C(7) interest is in "
-        "domain/tds/interest.py and is not carried into this row either. "
+        "summary does not attempt; "
         "TAN is read from client_statutory_identity.")
 
 
