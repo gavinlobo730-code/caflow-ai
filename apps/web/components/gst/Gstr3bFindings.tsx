@@ -287,8 +287,11 @@ export function Gstr3bGstr1TieOut({ tieOut }: { tieOut?: Gstr1TieOutBlock | null
   const rows = arrayOrEmpty<Gstr1TieOutRow>(tieOut.rows);
   const causes = arrayOrEmpty<Gstr1TieOutCause>(tieOut.causes);
   const route = arrayOrEmpty<string>(tieOut.route);
+  // The date the CA STATED the return was filed; the instant it was recorded here is a different fact and is
+  // labelled as one, because a return keyed in the next morning (or a year later) was not filed then.
   const filedRef = [tieOut.arn ? `ARN ${tieOut.arn}` : null,
-                    tieOut.filed_at ? String(tieOut.filed_at).slice(0, 10) : null]
+                    tieOut.filed_on ? `filed ${formatDate(tieOut.filed_on)}`
+                      : tieOut.filed_at ? `recorded ${formatDate(tieOut.filed_at)}` : null]
     .filter(Boolean).join(" · ");
   if (tieOut.tied) {
     return (

@@ -506,6 +506,62 @@ def gst_dashboard(
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
 
+def _latest_first(rows):
+    """Latest period first, the order a CA reads a filing history in. The id breaks a tie so a window never repeats or
+    skips a row between two requests."""
+    return sorted(rows, key=lambda r: (return_period.chronological_key(r.get("period")), str(r.get("id") or "")),
+                  reverse=True)
+
+
+def _ranked(rows):
+    """Each row with `period_order`, the integer a screen merging GSTR-1 and GSTR-3B sorts by (copies; a mock store's
+    own dicts are not touched)."""
+    return [{**r, "period_order": return_period.chronological_rank(r.get("period"))} for r in rows]
+
+
+# The four reads behind a window, each a LITERAL table with its firm filter in the same chain: a table named by a
+# variable is invisible to the firm-scope reader and to the column check, which is why this is four small functions
+# and not one that takes a table name.
+def _gstr1_keys(sb, firm_id: str, client_id: str, *, return_type=None, status=None):
+    q = sb.table("gstr1_returns").select("id, period").eq("firm_id", firm_id).eq("client_id", client_id)
+    if return_type:
+        q = q.eq("return_type", return_type)
+    return q.eq("status", status) if status else q
+
+
+def _gstr1_rows(sb, firm_id: str, client_id: str, ids: list):
+    return (sb.table("gstr1_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
+            .in_("id", ids).execute().data)
+
+
+def _gstr3b_keys(sb, firm_id: str, client_id: str, *, status=None):
+    q = sb.table("gstr3b_returns").select("id, period").eq("firm_id", firm_id).eq("client_id", client_id)
+    return q.eq("status", status) if status else q
+
+
+def _gstr3b_rows(sb, firm_id: str, client_id: str, ids: list):
+    return (sb.table("gstr3b_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
+            .in_("id", ids).execute().data)
+
+
+def _window_of_returns(keys, rows_of, offset: int, limit: int, label: str):
+    """(the rows of one window of a client's returns, latest period first; how many the client has).
+
+    Two reads, because the answer is a window and not the table: every row's `id` and `period` (a few dozen a year,
+    and no payload), put in order here, then the full rows of just the window by id. The first version read every
+    full row, payloads included, and discarded all but the window; a return's payload grows with the client's volume.
+    `keys()` builds the first read (with whatever filters the caller wants) and `rows_of(ids)` fetches the window.
+    """
+    from core.db_paging import fetch_all
+
+    ordered = _latest_first(fetch_all(keys, "id", label=label))
+    ids = [r["id"] for r in ordered[offset:offset + limit]]
+    if not ids:
+        return [], len(ordered)
+    by_id = {r["id"]: r for r in (rows_of(ids) or [])}
+    return [by_id[i] for i in ids if i in by_id], len(ordered)
+
+
 @router.get("/returns")
 def list_returns(
     client_id: str = Query(...),
@@ -540,18 +596,27 @@ def list_returns(
                 g1 = [r for r in g1
                       if (r.get("return_type") or "gstr1") == return_type]
             g3b = [r for r in _MOCK_GSTR3B.values() if r["client_id"] == client_id]
-            g1 = g1[offset:offset + limit]
-            g3b = g3b[offset:offset + limit]
+            g1, g3b = _latest_first(g1), _latest_first(g3b)
+            n1, n3b = len(g1), len(g3b)
+            g1, g3b = g1[offset:offset + limit], g3b[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
             sb = get_supabase()
-            q1 = sb.table("gstr1_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
-            if return_type:
-                q1 = q1.eq("return_type", return_type)
-            g1 = q1.range(offset, offset + limit - 1).execute().data or []
-            g3b = sb.table("gstr3b_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
+            # Ordered and windowed here and not by the database's `.range()`, which on an unordered query returned the
+            # rows in physical order: each status change rewrites the row and moves it to the end, so a return list
+            # showed April after November the moment either was approved. The page size is applied to the ANSWER.
+            g1, n1 = _window_of_returns(
+                lambda: _gstr1_keys(sb, firm_id, client_id, return_type=return_type),
+                lambda ids: _gstr1_rows(sb, firm_id, client_id, ids),
+                offset, limit, "gst_workspace.returns.gstr1")
+            g3b, n3b = _window_of_returns(
+                lambda: _gstr3b_keys(sb, firm_id, client_id),
+                lambda ids: _gstr3b_rows(sb, firm_id, client_id, ids),
+                offset, limit, "gst_workspace.returns.gstr3b")
 
-        return api_response(True, {"gstr1": g1, "gstr3b": g3b})
+        # The totals are the client's, not the page's: a screen that shows `limit` rows must be able to say "of N".
+        return api_response(True, {"gstr1": _ranked(g1), "gstr3b": _ranked(g3b),
+                                   "gstr1_total": n1, "gstr3b_total": n3b})
     except Exception as e:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
@@ -1059,19 +1124,29 @@ def filing_history(
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
-            g1 = [r for r in _MOCK_GSTR1.values()
-                  if r["client_id"] == client_id and r.get("status") == "submitted"]
-            g3b = [r for r in _MOCK_GSTR3B.values()
-                   if r["client_id"] == client_id and r.get("status") == "submitted"]
+            g1 = _latest_first([r for r in _MOCK_GSTR1.values()
+                                if r["client_id"] == client_id and r.get("status") == "submitted"])
+            g3b = _latest_first([r for r in _MOCK_GSTR3B.values()
+                                 if r["client_id"] == client_id and r.get("status") == "submitted"])
+            n1, n3b = len(g1), len(g3b)
             g1 = g1[offset:offset + limit]
             g3b = g3b[offset:offset + limit]
         else:
             from core.supabase_client import get_supabase
             sb = get_supabase()
-            g1 = sb.table("gstr1_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "submitted").range(offset, offset + limit - 1).execute().data or []
-            g3b = sb.table("gstr3b_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "submitted").range(offset, offset + limit - 1).execute().data or []
+            # The same ordered window as the return list: an unordered `.range()` gave a client with more filed returns
+            # than the window an arbitrary slice of them, in the order the rows happened to be stored.
+            g1, n1 = _window_of_returns(
+                lambda: _gstr1_keys(sb, firm_id, client_id, status="submitted"),
+                lambda ids: _gstr1_rows(sb, firm_id, client_id, ids),
+                offset, limit, "gst_workspace.filing_history.gstr1")
+            g3b, n3b = _window_of_returns(
+                lambda: _gstr3b_keys(sb, firm_id, client_id, status="submitted"),
+                lambda ids: _gstr3b_rows(sb, firm_id, client_id, ids),
+                offset, limit, "gst_workspace.filing_history.gstr3b")
 
-        return api_response(True, {"gstr1_filed": g1, "gstr3b_filed": g3b})
+        return api_response(True, {"gstr1_filed": _ranked(g1), "gstr3b_filed": _ranked(g3b),
+                                   "gstr1_filed_total": n1, "gstr3b_filed_total": n3b})
     except Exception as e:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 

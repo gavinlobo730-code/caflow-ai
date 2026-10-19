@@ -143,6 +143,38 @@ def parse_month(period: str) -> tuple[int, int]:
     return mm, yyyy
 
 
+def chronological_key(period: str) -> tuple[int, int, int]:
+    """Where a SAVED return's stored period falls in time: (year, month, annual?).
+
+    A list of a client's returns has to read in the order a CA thinks in, and the
+    stored `period` is not sortable as text: 'MMYYYY' puts December 2025 ('122025')
+    before April 2025 ('042025') only by accident of the leading digits and puts
+    January 2026 ('012026') first of all. The store also holds the annual return
+    (GSTR-9) under 'FY2025-26', which belongs after March of that year. Anything
+    else sorts before every real period rather than raising, because a list must
+    still render when one row carries a period nobody expected.
+    """
+    value = str(period or "")
+    try:
+        mm, yyyy = parse_month(value)
+    except ValueError:
+        # Not a month: either the annual row below, or nothing recognisable.
+        mm = yyyy = 0
+    else:
+        return yyyy, mm, 0
+    if value.upper().startswith("FY") and value[2:6].isdigit():
+        return int(value[2:6]) + 1, 3, 1
+    return 0, 0, 0
+
+
+def chronological_rank(period: str) -> int:
+    """`chronological_key` as ONE integer, for a screen that has to merge two lists (a filing history of GSTR-1 and
+    GSTR-3B) and must not carry the period arithmetic into the browser: year, then month, then the annual row last.
+    Larger is later. 0 is a period nobody recognised."""
+    year, month, annual = chronological_key(period)
+    return year * 1000 + month * 10 + annual
+
+
 def month_bounds(period: str) -> tuple[str, str]:
     """'MMYYYY' → (first_iso, last_iso) for that calendar month."""
     mm, yyyy = parse_month(period)

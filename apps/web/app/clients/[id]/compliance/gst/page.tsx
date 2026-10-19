@@ -2123,11 +2123,14 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
     </div>
   );
 
+  // Latest period first, as the server ranks it (`period_order`); the two lists are merged, not re-ranked here. It was
+  // sorted by when each row was CREATED, which is the order the filings were keyed in and not the order of the periods.
   const all = ([
     ...(data.gstr1_filed ?? []).map((r) => ({ ...r, type: "GSTR-1" })),
     ...(data.gstr3b_filed ?? []).map((r) => ({ ...r, type: "GSTR-3B" })),
   ] as Record<string, unknown>[]).sort((a, b) =>
-    String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""))
+    Number(b.period_order ?? 0) - Number(a.period_order ?? 0)
+    || String(a.type).localeCompare(String(b.type))
   );
 
   return (

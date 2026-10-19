@@ -104,3 +104,16 @@ test("the panel is written once", () => {
   for (const d of ["app", "components"]) walk(path.join(WEB, d));
   assert.deepEqual(owners, [COMPONENT]);
 });
+
+test("the filing date beside the ARN is the date the CA stated, and the recording time says it is that", () => {
+  // `filed_at` is the instant the return was RECORDED here and `filed_on` the date the CA typed when recording the
+  // filing. Printing the first ten characters of the first as if it were a filing date showed a November 2025 return as
+  // filed on the day it was keyed in, and the UTC slice is the wrong day for five and a half hours of every Indian night.
+  const src = code(COMPONENT);
+  assert.match(src, /tieOut\.filed_on\s*\?\s*`filed \$\{formatDate\(tieOut\.filed_on\)\}`/,
+    "the stated date is the one printed as the filing date");
+  assert.match(src, /`recorded \$\{formatDate\(tieOut\.filed_at\)\}`/,
+    "when only the recording time exists it is labelled as that");
+  assert.doesNotMatch(src, /filed_at[^;\n]*\.slice\(0,\s*10\)/,
+    "a timestamp is not cut to ten characters and called a date");
+});
