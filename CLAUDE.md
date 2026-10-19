@@ -137,7 +137,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - Depreciation — but read this, it changed
 - THE MCA XBRL TAXONOMY IS A REGISTRY WITH A VERIFIED MARKER, AND A PACKAGE'S VERSION SELECTS ITS TAGS
 
-### `docs/design-record/banking-and-multicurrency.md` (6 entries): Bank entries, credit card accounts, matching rules, multi-currency and the AS 11 revaluation
+### `docs/design-record/banking-and-multicurrency.md` (7 entries): Bank entries, credit card accounts, matching rules, multi-currency and the AS 11 revaluation
 
 - Bank entries (09) in one paragraph, because it is easy to rebuild the old thing by accident:
 - MULTI-CURRENCY HAS THREE GATES AND TWO OF THEM ARE NOW WRITABLE
@@ -145,6 +145,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A COMPANY CREDIT CARD IS A BANK ACCOUNT, AND THE DOUBLE ENTRY NEEDED NO CHANGE
 - A MATCHING RULE SAYS WHICH FIELD IT READS AND WHICH RULE WINS
 - A FOREIGN AMOUNT IS SHOWN WITH ITS CURRENCY'S OWN DECIMALS, TAKEN FROM THE MASTER AND NEVER GUESSED
+- A STORED FIGURE THE PRODUCT COMPUTED SAYS SO ON THE ROW, AND THE DOCUMENT OF RECORD OUTRANKS IT
 
 ### `docs/design-record/banking.md` (1 entries): Bank data: Account Aggregator position, bank entries, credit cards, matching rules
 
