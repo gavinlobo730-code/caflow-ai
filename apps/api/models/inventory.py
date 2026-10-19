@@ -81,14 +81,29 @@ class NrvWritedownIn(BaseModel):
     """Write inventory down to net realisable value (routers/inventory.py:
     POST /items/{id}/writedown). AS-2 / Ind AS 2 / ICDS-II require
     inventory to be carried at the LOWER of cost or net realisable value —
-    a value-only correction, quantity never changes. A no-op if the
-    supplied NRV is already >= the current moving-average cost (inventory
-    stays at cost, the normal case)."""
+    a value-only correction, quantity never changes. A no-op if NRV x the
+    quantity on hand (rounded half up) is not below the carrying value on
+    the stock ledger (inventory stays at cost, the normal case). The test
+    is on the carrying value, not on the rounded average cost."""
     client_id: str
     writedown_date: str  # YYYY-MM-DD
     nrv_per_unit_paise: int
     reference_no: Optional[str] = None
     notes: Optional[str] = None
+
+    @field_validator("nrv_per_unit_paise")
+    @classmethod
+    def non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("nrv_per_unit_paise must be non-negative.")
+        return v
+
+
+class NrvWritedownPreviewIn(BaseModel):
+    """Ask what a write-down to this NRV would do, without doing it (routers/inventory.py:
+    POST /items/{id}/writedown-preview). The same two inputs the write takes that the answer depends on."""
+    client_id: str
+    nrv_per_unit_paise: int
 
     @field_validator("nrv_per_unit_paise")
     @classmethod

@@ -15,7 +15,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from models.common import api_response
-from models.inventory import (StockAdjustmentIn, NrvWritedownIn,
+from models.inventory import (StockAdjustmentIn, NrvWritedownIn, NrvWritedownPreviewIn,
                               StockCountOpenIn, StockCountSaveIn,
                               CostingPolicyIn)
 from core.permissions import rbac
@@ -474,8 +474,10 @@ def writedown_stock_to_nrv(
     """Write inventory down to net realisable value when NRV has fallen
     below the current moving-average cost (AS-2 / Ind AS 2 / ICDS-II:
     inventory must be carried at the LOWER of cost or NRV). No quantity
-    change — value only. A no-op (200, data=null) if NRV is already >= the
-    current average cost, or the item has no stock yet."""
+    change — value only. A no-op (200, data=null) if NRV x the quantity on
+    hand is not below the carrying value on the stock ledger, or the item has
+    no stock yet. `POST .../writedown-preview` answers the same question
+    without posting."""
     assert_client_access(current_user, data.client_id)
     try:
         if _USE_MOCK:
@@ -516,6 +518,47 @@ def writedown_stock_to_nrv(
     except Exception as e:
         _logger.error("writedown_stock_to_nrv: %s", e)
         return api_response(False, None, "Unable to record the write-down. Please try again.")
+
+
+@router.post("/items/{service_catalogue_id}/writedown-preview")
+def preview_writedown_stock_to_nrv(
+    service_catalogue_id: str,
+    data: NrvWritedownPreviewIn,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """What the write-down above would do for this NRV right now, asked without doing it (POST-A-134).
+
+    The write-down modal showed a figure it worked out itself in the browser, from the rounded average cost, which is
+    not the number that posts. The answer here is `domain.inventory_service.preview_nrv_writedown`, which runs the very
+    function the posting runs, on the same ledger row: the carrying value, the value after, and the amount written
+    down (0 when NRV x quantity is not below the carrying value). Reads only: no movement, no journal, no audit entry.
+    """
+    assert_client_access(current_user, data.client_id)
+    try:
+        if _USE_MOCK:
+            return api_response(True, None)
+
+        firm_id = current_user.get("firm_id")
+        from core.supabase_client import get_supabase
+        from domain.inventory_service import preview_nrv_writedown
+        db = get_supabase()
+
+        item_resp = (
+            db.table("service_catalogue").select("id, kind")
+            .eq("id", service_catalogue_id).eq("firm_id", firm_id).eq("client_id", data.client_id)
+            .limit(1).execute()
+        )
+        if not item_resp.data:
+            raise HTTPException(status_code=404, detail="Stock item not found.")
+        if item_resp.data[0].get("kind") != "good":
+            raise HTTPException(status_code=422, detail="Only stock-tracked products can be written down.")
+
+        return api_response(True, preview_nrv_writedown(db, service_catalogue_id, data.nrv_per_unit_paise))
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("preview_writedown_stock_to_nrv: %s", e)
+        return api_response(False, None, "Unable to work out the write-down. Please try again.")
 
 
 # ── The physical count (INV-08) ──────────────────────────────────────────────

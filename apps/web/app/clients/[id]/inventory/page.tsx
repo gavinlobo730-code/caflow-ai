@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { RefreshCw, AlertTriangle, ClipboardEdit, Loader2, TrendingDown } from "lucide-react";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
-import { api } from "@/lib/api";
+import { api, type NrvWritedownPreview } from "@/lib/api";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column } from "@/lib/table/types";
 import { formatServicePrice } from "@/lib/catalogue/service";
@@ -899,7 +899,6 @@ function NrvWritedownModal({
   onSaved: () => void;
 }) {
   const today = todayLocalISO();
-  const avgCostPaise = item.avg_cost_paise ?? 0;
   const [nrvPerUnit, setNrvPerUnit] = useState("");
   const [writedownDate, setWritedownDate] = useState(today);
   const [referenceNo, setReferenceNo] = useState("");
@@ -915,10 +914,35 @@ function NrvWritedownModal({
   // notice and the posted figure all agreed on the wrong number.
   const nrvPaise = nrvPerUnit.trim() === "" ? null : paiseFromRupeeInput(nrvPerUnit.replace(/[,\s₹]/g, ""));
   const qty = item.stock_qty_units ?? 0;
-  const previewWritedownPaise =
-    nrvPaise !== null && nrvPaise >= 0 && nrvPaise < avgCostPaise
-      ? Math.round((avgCostPaise - nrvPaise) * qty)
-      : 0;
+
+  // The amount this will write down is the SERVER'S, from the function that posts it (POST-A-134). This used to be
+  // `Math.round((average cost - NRV) x quantity)` in binary floating point, from the rounded average cost, while the
+  // server compares the exact carrying value with round-half-up(quantity x NRV): the notice could say nothing would
+  // post where something did, or name an amount away from the posted one. Nothing here is computed. While the answer
+  // is awaited, or if it fails, no figure is shown, and a failure does not stop the save (the server works the amount
+  // out again when it posts).
+  const [preview, setPreview] = useState<{
+    status: "idle" | "loading" | "ready" | "failed";
+    data: NrvWritedownPreview | null;
+  }>({ status: "idle", data: null });
+  useEffect(() => {
+    if (nrvPaise === null || nrvPaise < 0) {
+      setPreview({ status: "idle", data: null });
+      return;
+    }
+    let current = true;
+    setPreview({ status: "loading", data: null });
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.inventory.writedownPreview(item.id, { client_id: clientId, nrv_per_unit_paise: nrvPaise });
+        if (!current) return;
+        setPreview(res.success && res.data ? { status: "ready", data: res.data } : { status: "failed", data: null });
+      } catch {
+        if (current) setPreview({ status: "failed", data: null });
+      }
+    }, 300);
+    return () => { current = false; clearTimeout(timer); };
+  }, [nrvPaise, item.id, clientId]);
 
   async function submit() {
     if (dates.first) { setError(dates.first); return; }
@@ -969,18 +993,34 @@ function NrvWritedownModal({
             </div>
           </div>
 
-          {previewWritedownPaise > 0 ? (
-            <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg p-2.5">
-              This writes down inventory value by {formatServicePrice(previewWritedownPaise)}.
-            </p>
-          ) : nrvPerUnit.trim() !== "" && nrvPaise === null ? (
+          {nrvPerUnit.trim() !== "" && nrvPaise === null ? (
             <p className="text-xs text-state-problem bg-state-problem-surface border border-state-problem-border rounded-lg p-2.5">
               That isn&apos;t an amount — enter rupees per unit, like 120 or 120.50.
             </p>
-          ) : nrvPaise !== null && nrvPaise >= avgCostPaise ? (
+          ) : preview.status === "loading" ? (
             <p className="text-xs text-ps-label bg-ps-bg border border-ps-border rounded-lg p-2.5">
-              NRV is at or above the current average cost — no write-down needed; nothing will be posted.
+              Working out the write-down…
             </p>
+          ) : preview.status === "failed" ? (
+            <p className="text-xs text-ps-label bg-ps-bg border border-ps-border rounded-lg p-2.5">
+              The write-down could not be previewed just now. You can still save: the amount is worked out when it posts.
+            </p>
+          ) : preview.status === "ready" && preview.data ? (
+            preview.data.needed ? (
+              <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg p-2.5">
+                This writes down inventory value by {formatServicePrice(preview.data.write_down_paise)}, from{" "}
+                {formatServicePrice(preview.data.carrying_value_paise)} to {formatServicePrice(preview.data.new_value_paise) || "₹0"}.
+              </p>
+            ) : !preview.data.has_stock ? (
+              <p className="text-xs text-ps-label bg-ps-bg border border-ps-border rounded-lg p-2.5">
+                This item has no stock on hand — nothing to write down; nothing will be posted.
+              </p>
+            ) : (
+              <p className="text-xs text-ps-label bg-ps-bg border border-ps-border rounded-lg p-2.5">
+                NRV × the quantity on hand is not below the carrying value ({formatServicePrice(preview.data.carrying_value_paise)})
+                — no write-down needed; nothing will be posted.
+              </p>
+            )
           ) : null}
 
           <div>

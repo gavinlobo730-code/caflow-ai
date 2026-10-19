@@ -2272,6 +2272,32 @@ def _compute_nrv_writedown(prev_qty: Decimal, prev_value_paise: int, nrv_per_uni
     }
 
 
+def preview_nrv_writedown(db, service_catalogue_id: str, nrv_per_unit_paise: int) -> dict:
+    """What `record_nrv_writedown` would do for this NRV right now, WITHOUT doing it (POST-A-134).
+
+    The write-down modal used to work this out in the browser as (average cost - NRV) x quantity in binary floating
+    point. That is a different formula from the one that posts: this module compares the CARRYING VALUE on the
+    ledger's latest row (the exact total cost, which is not average cost x quantity because the average is rounded to
+    a paisa) with the exact quantity x NRV rounded half up. So the preview could say "no write-down needed" where the
+    server would post one, or name an amount a few paise or rupees away from the one that posted. It now asks here,
+    and the arithmetic is `_compute_nrv_writedown`, the function the posting uses, read from the same row.
+
+    Reads only. Nothing is inserted, no version is bumped, no journal is posted."""
+    prev = _last_ledger_row(db, service_catalogue_id)
+    if prev is None:
+        return {"has_stock": False, "needed": False, "quantity_units": "0",
+                "carrying_value_paise": 0, "new_value_paise": 0, "write_down_paise": 0}
+    prev_qty = Decimal(str(prev["running_qty_units"]))
+    prev_value = int(prev["running_value_paise"])
+    calc = _compute_nrv_writedown(prev_qty, prev_value, nrv_per_unit_paise)
+    if calc is None:
+        return {"has_stock": prev_qty > 0, "needed": False, "quantity_units": str(prev_qty),
+                "carrying_value_paise": prev_value, "new_value_paise": prev_value, "write_down_paise": 0}
+    return {"has_stock": True, "needed": True, "quantity_units": str(prev_qty),
+            "carrying_value_paise": prev_value, "new_value_paise": calc["running_value_paise"],
+            "write_down_paise": -calc["value_delta_paise"]}
+
+
 def record_nrv_writedown(
     db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
     nrv_per_unit_paise: int, reference_no: Optional[str] = None, created_by: Optional[str] = None,

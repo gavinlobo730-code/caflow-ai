@@ -1,6 +1,8 @@
 "use client";
 
 import { PAYMENT_MODES } from "@/lib/payments/modes";
+import { taxablePaise } from "@/lib/money/gstLine";
+import { templateBasePaise } from "@/lib/recurring/templateBase";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { pruneSelection } from "@/lib/table/pruneSelection";
 import { createPortal } from "react-dom";
@@ -463,8 +465,8 @@ const FREQ_LABEL: Record<string, string> = {
 const REC_STATUS_BADGE: Record<string, string> = {
   active: "bg-state-ready-surface text-state-ready", paused: "bg-state-attention-surface text-state-attention", archived: "bg-ps-muted text-ps-label",
 };
-const recBase = (lines: RecurringLine[]) =>
-  lines.reduce((s, l) => s + Math.round((l.rate_paise || 0) * (l.quantity || 0)), 0);
+// What the template's lines come to before tax, valued the way the invoice raised from it will value them.
+const recBase = (lines: RecurringLine[]) => templateBasePaise(lines);
 
 function RecurringInvoices({ clientId }: { clientId: string }) {
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
@@ -797,9 +799,12 @@ function RecurringEditor({
     rate: paiseFromRupeeInput(l.rate || "0"),
     quantity: parseQuantity(l.quantity || ""),
   }));
+  // Each line is valued by exact decimal multiplication and truncation, as the invoice raised from this template will
+  // value it (`taxablePaise`). `Math.round(rate * quantity)` was binary floating point and rounded, so 0.335 units at
+  // Rs 1 showed 34 paise where the invoice carries 33.
   const baseTotal = parsedLines.reduce(
     (s, l) => s + (l.rate !== null && l.quantity !== null
-      ? Math.round(l.rate * l.quantity) : 0),
+      ? taxablePaise(l.quantity, l.rate) : 0),
     0,
   );
 

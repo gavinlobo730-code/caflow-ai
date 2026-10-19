@@ -15,7 +15,7 @@ import pytest
 from fastapi import HTTPException
 
 import routers.inventory as inv
-from models.inventory import StockAdjustmentIn, NrvWritedownIn
+from models.inventory import StockAdjustmentIn, NrvWritedownIn, NrvWritedownPreviewIn
 
 FIRM = "firm-1"
 MINE, THEIRS = "client-mine", "client-theirs"
@@ -99,5 +99,21 @@ def test_writing_down_another_clients_stock_is_refused(deny):
 def test_writing_down_your_own_clients_stock_still_works(deny):
     data = NrvWritedownIn(client_id=MINE, writedown_date="2026-04-15", nrv_per_unit_paise=500)
     out = inv.writedown_stock_to_nrv("PROD-1", data, current_user=USER)
+    assert out["success"] is True
+    assert deny == [MINE]
+
+
+def test_previewing_a_write_down_of_another_clients_stock_is_refused(deny):
+    """The preview reads the carrying value of the stock, so it is held to the same assignment rule as the write."""
+    data = NrvWritedownPreviewIn(client_id=THEIRS, nrv_per_unit_paise=500)
+    with pytest.raises(HTTPException) as e:
+        inv.preview_writedown_stock_to_nrv("PROD-1", data, current_user=USER)
+    assert e.value.status_code == 404
+    assert deny == [THEIRS]
+
+
+def test_previewing_a_write_down_of_your_own_clients_stock_still_works(deny):
+    data = NrvWritedownPreviewIn(client_id=MINE, nrv_per_unit_paise=500)
+    out = inv.preview_writedown_stock_to_nrv("PROD-1", data, current_user=USER)
     assert out["success"] is True
     assert deny == [MINE]
