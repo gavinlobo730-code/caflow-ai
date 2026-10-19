@@ -20,7 +20,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from models.common import api_response
 from core.permissions import rbac
@@ -82,6 +82,19 @@ class ExtractNoticeRequest(BaseModel):
 
 class UpdateNoticeStatusRequest(BaseModel):
     status: str  # open, in_progress, responded, closed
+
+
+class CorrectNoticeReadingRequest(BaseModel):
+    """The fields a CA changed in a staged notice reading. Only what was sent is changed; an empty string clears a reference or a
+    date (the notice states none), and `extra="forbid"` refuses a field this door does not correct (the status has its own)."""
+    model_config = ConfigDict(extra="forbid")
+
+    authority: Optional[str] = Field(None, max_length=200)
+    notice_type: Optional[str] = Field(None, max_length=80)
+    reference_no: Optional[str] = Field(None, max_length=100)
+    issue_date: Optional[str] = Field(None, max_length=40)
+    response_due_date: Optional[str] = Field(None, max_length=40)
+    description: Optional[str] = Field(None, max_length=1000)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -401,6 +414,66 @@ def update_notice_status(
         return api_response(True, rec)
     except Exception as e:
         return api_response(False, None, "Unable to complete document processing. Please try again.")
+
+
+@router.patch("/notices/{notice_id}/reading")
+def correct_notice_reading(
+    notice_id: str,
+    body: CorrectNoticeReadingRequest,
+    current_user: dict = Depends(rbac("compliance", "write")),
+):
+    """A CA corrects what the model read from a notice, BEFORE approving it.
+
+    Approval creates the response task, with the due date on the reading, and tells the partners; until now a wrong reading
+    could only be rejected and extracted again. The model's own reading is never overwritten: `extracted_data` keeps it and
+    each correction is appended to `extracted_data["corrections"]` (when, by whom, from what to what), and the audit log records
+    the change. Every changed value passes the rule that checks the model's reading (the notice-type vocabulary, ISO dates, the
+    length limits, `validate_notice_dates` on the merged pair); a typo is refused with a sentence, never quietly demoted.
+
+    Refused once the notice is approved: the task and the alert were made from the reading as it stood, and rewriting it under
+    them would leave the two disagreeing. The write is conditional on `ca_approved = false`, so a correction that races an
+    approval loses cleanly instead of editing an approved row.
+    """
+    rec = _assert_notice_scope(current_user, notice_id)
+    if rec is None:
+        return JSONResponse(status_code=404, content=api_response(False, None, "Notice not found"))
+    if rec.get("ca_approved"):
+        return JSONResponse(status_code=409, content=api_response(
+            False, None, "This notice has been approved, so its response task was made from the reading as it stood. "
+                         "Correct the task instead."))
+
+    patch = body.model_dump(exclude_unset=True)
+    try:
+        fields, changes = extraction_schemas.correct_notice(rec, patch, today=ist_clock.ist_today())
+    except extraction_schemas.ExtractionRefused as refusal:
+        return JSONResponse(status_code=refusal.http_status, content=api_response(False, None, refusal.sentence))
+
+    firm_id = current_user["firm_id"]
+    stamp = _now()
+    extracted = dict(rec.get("extracted_data") or {})
+    extracted["corrections"] = [*(extracted.get("corrections") or []),
+                                {"at": stamp, "by": current_user.get("id"), "changes": changes}]
+    updates = {**fields, "extracted_data": extracted, "updated_at": stamp}
+
+    if _USE_MOCK:
+        stored = _MOCK_NOTICES.get(notice_id)
+        if stored is None or stored.get("ca_approved"):
+            return JSONResponse(status_code=409, content=api_response(
+                False, None, "This notice was approved while you were correcting it. Nothing was changed."))
+        stored.update(updates)
+        updated = stored
+    else:
+        from core.supabase_client import get_supabase
+        rows = (get_supabase().table("government_notices").update(updates)
+                .eq("id", notice_id).eq("firm_id", firm_id).eq("ca_approved", False).execute().data)
+        if not rows:
+            return JSONResponse(status_code=409, content=api_response(
+                False, None, "This notice was approved while you were correcting it. Nothing was changed."))
+        updated = rows[0]
+
+    log_event(firm_id, "government_notice", notice_id, "reading_corrected",
+              actor_id=current_user.get("auth_user_id"), new_data={"changes": changes})
+    return api_response(True, {**updated, "ca_review_required": True, "review_state": "pending_review"})
 
 
 @router.post("/notices/{notice_id}/approve")

@@ -17,6 +17,8 @@ import { writeTimelineEvent } from "@/lib/services/timeline";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
+import { EditNoticeReadingModal } from "@/components/compliance/EditNoticeReadingModal";
+import type { NoticeReadingForm } from "@/lib/compliance/noticeReading";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
 import { useToast } from "@/components/ui/use-toast";
 import { formatRangeLabel } from "@/lib/dates/periods";
@@ -154,6 +156,33 @@ function NoticesSection({ clientId }: { clientId: string }) {
     loadNotices();
   }
 
+  // A CA corrects what the model read BEFORE approving it (the server refuses once approved). Only success closes the modal, and
+  // the server's sentence is shown when it refuses a value, so a typo is told to the person and not lost.
+  const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  async function saveCorrection(patch: Partial<NoticeReadingForm>) {
+    if (!editing || editBusy) return;
+    setEditBusy(true);
+    setEditError(null);
+    try {
+      const res = await apiFetch(`/api/document-intelligence-v2/notices/${editing.id as string}/reading`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+      if (!res?.success) {
+        setEditError(res?.error ?? "The correction could not be saved. Nothing was changed.");
+        return;
+      }
+      setEditing(null);
+      await loadNotices();
+    } catch (e) {
+      setEditError(e instanceof Error && e.message ? e.message : "The correction could not be saved. Nothing was changed.");
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
   const STATUS_COLORS: Record<string, string> = {
     open: "bg-state-problem-surface text-state-problem",
     in_progress: "bg-state-working-surface text-state-working",
@@ -233,6 +262,10 @@ function NoticesSection({ clientId }: { clientId: string }) {
                     ) : (
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-state-attention">Pending review</span>
+                        <button onClick={() => { setEditError(null); setEditing(n); }}
+                          className="text-xs px-2 py-0.5 border rounded hover:bg-ps-bg text-ps-body">
+                          Correct
+                        </button>
                         <button onClick={() => approveNotice(n.id as string)}
                           className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">
                           CA Approve
@@ -247,6 +280,16 @@ function NoticesSection({ clientId }: { clientId: string }) {
           </>
         )}
       </CardContent>
+      {editing && (
+        <EditNoticeReadingModal
+          key={editing.id as string}
+          notice={editing}
+          busy={editBusy}
+          error={editError}
+          onSave={saveCorrection}
+          onClose={() => { setEditing(null); setEditError(null); }}
+        />
+      )}
     </Card>
   );
 }
