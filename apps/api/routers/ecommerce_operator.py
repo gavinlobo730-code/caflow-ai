@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -19,6 +19,7 @@ from core.authz import assert_client_access
 from core.permissions import rbac
 from core.validators import validate_gstin
 from models.common import api_response
+from models.gst_period import PeriodMMYYYY
 
 router = APIRouter(prefix="/api/ecommerce-operator", tags=["ecommerce_operator"])
 
@@ -35,7 +36,7 @@ class SupplyIn(BaseModel):
     """
     client_id: str
     gstin: Optional[str] = None
-    period: str
+    period: PeriodMMYYYY
     supplier_gstin: str
     place_of_supply: Optional[str] = None
     gross_registered_paise: int = 0
@@ -52,7 +53,7 @@ class UnregisteredSupplyIn(BaseModel):
     """One Enrolment-ID seller's figures for a period — GSTR-8 Table 3.1."""
     client_id: str
     gstin: Optional[str] = None
-    period: str
+    period: PeriodMMYYYY
     enrolment_id: str
     gross_value_paise: int = 0
     returns_paise: int = 0
@@ -62,7 +63,8 @@ class UnregisteredSupplyIn(BaseModel):
 @router.get("/supplies")
 def list_supplies(
     client_id: str = Query(...),
-    period: str = Query(..., pattern=r"^\d{6}$"),
+    *,
+    period: Annotated[PeriodMMYYYY, Query()],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "read")),
 ):
