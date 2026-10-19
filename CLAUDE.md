@@ -214,12 +214,13 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE CATALOGUE IS THE CLIENT'S, SO A STOCK POSTING ASKS FOR THE ITEM UNDER THE FIRM AND THE CLIENT, AND A REVERSAL READS THE LEDGER THE SAME WAY
 - THE FIXED-ASSET REGISTER IS CHECKED AGAINST THE LEDGER IN BOTH DIRECTIONS, AND THE TWO CHECKS THAT ASK THE LEDGER RUN ONLY WHEN THE CALLER HANDS THEM WHAT THE LEDGER HOLDS
 
-### `docs/design-record/frontend.md` (4 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
+### `docs/design-record/frontend.md` (5 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
 - A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES IT
 - A THIRD path existed and it was not a database at all: `localStorage`
 - A RECURRING ANYTHING SHARES ONE CADENCE ENGINE
 - A LOADING REGION SAYS WHEN THE SERVER IS SLOW, A SIGNED-IN TAB KEEPS IT AWAKE, AND THE WALK SCANS WHAT IT RENDERS FOR ACCESSIBILIT
+- A PREVIEW OF AN AMOUNT IS THE SERVER'S RULE OR THE SERVER'S ANSWER, AND A QUANTITY IS NEVER MULTIPLIED BY A PRICE ON A SCREEN
 
 ### `docs/design-record/identifiers.md` (3 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 

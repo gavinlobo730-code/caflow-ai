@@ -68,6 +68,18 @@ export type FirmProfile = {
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+/** What a write-down to a net realisable value would do right now
+ *  (`POST /api/inventory/items/{id}/writedown-preview`). Every figure is the server's, from the arithmetic that posts it:
+ *  `write_down_paise` is 0 and `needed` false when NRV x quantity is not below the carrying value. */
+export interface NrvWritedownPreview {
+  has_stock: boolean;
+  needed: boolean;
+  quantity_units: string;
+  carrying_value_paise: number;
+  new_value_paise: number;
+  write_down_paise: number;
+}
+
 /** One kind of practice mail a person can switch on or off
  *  (`GET /api/notifications/email-preferences`). The vocabulary and the
  *  defaults are the server's (`domain/practice_notices`) and this screen
@@ -4944,6 +4956,12 @@ export const api = {
       request(`/api/inventory/items/${serviceCatalogueId}/adjust`, { method: "POST", body: JSON.stringify(body) }),
     writedown: (serviceCatalogueId: string, body: unknown) =>
       request(`/api/inventory/items/${serviceCatalogueId}/writedown`, { method: "POST", body: JSON.stringify(body) }),
+    // What the write-down above would do for this NRV right now, asked without doing it. The amount comes from the
+    // server's own arithmetic (the function the posting uses), so the modal shows no figure it worked out itself.
+    writedownPreview: (serviceCatalogueId: string, body: { client_id: string; nrv_per_unit_paise: number }) =>
+      request<ApiResp<NrvWritedownPreview | null>>(
+        `/api/inventory/items/${serviceCatalogueId}/writedown-preview`,
+        { method: "POST", body: JSON.stringify(body) }),
     // INV-08 — the physical count. One sheet, not a hundred adjustments. The
     // VARIANCE is derived on the server against the position as at the count
     // date and is never sent up; so is which line may post and why.

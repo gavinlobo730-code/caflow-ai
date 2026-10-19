@@ -185,6 +185,13 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         # nothing: the rule it applies (domain/purchases/near_duplicate) takes
         # rows and returns findings, and never sees a database handle.
         "/api/purchase-bills/near-duplicates",
+        # The NRV write-down preview (POST-A-134): what a write-down to this NRV would do right now, for the modal to
+        # show before anyone presses Save. POST because the NRV is a value in a body, as for the write itself. It reads
+        # the item and the stock ledger's latest row and hands them to `_compute_nrv_writedown`, the pure function the
+        # posting runs, and writes nothing: test_the_nrv_writedown_preview_is_the_servers_arithmetic.py counts the
+        # ledger, journal and audit rows either side of three previews, so this claim is enforced, not asserted. It sits
+        # at accounting:read deliberately, like the FX revaluation preview: whoever may see the stock may see the working.
+        "/api/inventory/items/{service_catalogue_id}/writedown-preview",
         "/api/gst/validate/gstr1",
         "/api/gst/validate/gstr3b",
         # Stateless Groq passthrough over a static prompt; loads nothing, writes

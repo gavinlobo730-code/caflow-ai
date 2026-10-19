@@ -24,6 +24,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { purchaseServiceToLine } from "@/lib/catalogue/service";
+import { templateBasePaise } from "@/lib/recurring/templateBase";
 import { formatPaise } from "@/lib/services/formatting";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
@@ -102,8 +103,8 @@ interface CatalogueItem {
 
 /** Taxable value of a template, before tax — what the bill engine will charge on. */
 function templateBase(lines: RecurringBillLine[]): number {
-  return lines.reduce(
-    (s, l) => s + Math.round((l.rate_paise || 0) * (l.quantity || 0)), 0);
+  // Each line valued the way the bill will be (`taxablePaise`: exact decimal multiplication, then truncation).
+  return templateBasePaise(lines);
 }
 
 function fmt(paise: number): string {
