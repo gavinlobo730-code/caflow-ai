@@ -176,7 +176,10 @@ def test_it_carries_a_read_permission_on_the_income_tax_resource():
     tree = ast.parse(src)
     fn = next(n for n in ast.walk(tree)
               if isinstance(n, ast.FunctionDef) and n.name == "regime_election")
-    defaults = ast.dump(ast.Tuple(elts=list(fn.args.defaults), ctx=ast.Load()))
+    # The year parameter is keyword-only now (no `= ...`, see tests/test_a_required_parameter_is_required.py), so the
+    # rbac() default can sit among the keyword-only defaults as well as the positional ones.
+    declared = list(fn.args.defaults) + [d for d in fn.args.kw_defaults if d is not None]
+    defaults = ast.dump(ast.Tuple(elts=declared, ctx=ast.Load()))
     assert "'income_tax'" in defaults and "'read'" in defaults
 
 

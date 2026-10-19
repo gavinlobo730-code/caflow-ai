@@ -110,11 +110,15 @@ def test_the_financial_year_is_validated_and_not_merely_annotated():
     assert hints["financial_year"] is FYLabel or typing.get_args(hints["financial_year"]), (
         "financial_year is no longer an Annotated FYLabel"
     )
-    assert param.default is Ellipsis, (
-        "financial_year carries a Form()/Query() DEFAULT — FastAPI then builds "
-        "the field from it and throws the validator away. Write it as "
-        "Annotated[FYLabel, Form()] = ... instead."
+    # No default at all: a Form()/Query() DEFAULT makes FastAPI build the field from it and throw the validator away,
+    # and `= ...` makes the field OPTIONAL under the FastAPI this product is locked to (the handler would get the
+    # literal Ellipsis; tests/test_a_required_parameter_is_required.py). Keyword-only, so it may follow parameters
+    # that have defaults.
+    assert param.default is inspect.Parameter.empty, (
+        "financial_year carries a default — a Form()/Query() DEFAULT discards the validator and `= ...` makes the "
+        "field optional. Write it keyword-only with no default: `*, financial_year: Annotated[FYLabel, Form()]`."
     )
+    assert param.kind is inspect.Parameter.KEYWORD_ONLY
 
 
 def test_the_two_payload_literals_do_not_drift():

@@ -93,7 +93,8 @@ def _resolve(db, firm_id, client_id, gstin):
 @router.get("/b2b-supplies")
 def list_b2b_supplies(
     client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(...)],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "read")),
 ):
@@ -164,7 +165,8 @@ def delete_b2b_supply(
 @router.get("/b2b-rc-supplies")
 def list_b2b_rc_supplies(
     client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(...)],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "read")),
 ):
@@ -235,7 +237,8 @@ def delete_b2b_rc_supply(
 @router.get("/urp-supplies")
 def list_urp_supplies(
     client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(...)],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "read")),
 ):
@@ -318,7 +321,8 @@ def delete_urp_supply(
 @router.get("/import-of-services")
 def list_import_of_services(
     client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(...)],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "read")),
 ):

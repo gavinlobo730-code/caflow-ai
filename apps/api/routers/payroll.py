@@ -6572,7 +6572,8 @@ def esic_mapped_ip_check(
 @router.get("/24q-source")
 def form_24q_from_payroll(
     client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')],
     quarter: str = Query(..., description="Q1 | Q2 | Q3 | Q4"),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
@@ -6619,7 +6620,8 @@ def form_24q_from_payroll(
 @router.get("/24q-source.csv")
 def form_24q_csv(
     client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')],
     quarter: str = Query(..., description="Q1 | Q2 | Q3 | Q4"),
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
@@ -6801,7 +6803,8 @@ def _assemble_annexure_ii(current_user: dict, client_id: str,
 @router.get("/24q-annexure-ii")
 def form_24q_annexure_ii(
     client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')],
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
     """The annual salary detail that TRACES turns into Form 16 Part B.
@@ -6835,7 +6838,8 @@ def form_24q_annexure_ii(
 @router.get("/24q-annexure-ii.csv")
 def form_24q_annexure_ii_csv(
     client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')],
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
     """The same annexure, as the file the CA keys into the FVU utility.
@@ -7158,7 +7162,8 @@ def upsert_declaration(
 @router.get("/declarations")
 def list_declarations(
     client_id: str = Query(...),
-    fy: Annotated[FYLabel, Query()] = ...,
+    *,
+    fy: Annotated[FYLabel, Query()],
     current_user: dict = Depends(rbac("payroll", "read"))
 ):
     """Every declaration for a client and financial year, with what is wrong
@@ -7322,7 +7327,8 @@ def verify_declaration(
 def tds_projection(
     client_id: str = Query(...),
     employee_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')],
     current_user: dict = Depends(rbac("payroll", "read")),
 ):
     """The STAFF door onto one employee's §192 projection.
@@ -8759,7 +8765,8 @@ class BonusDisqualificationIn(BaseModel):
 @router.get("/bonus-register")
 def bonus_register_for_year(
     client_id: str = Query(...),
-    accounting_year: Annotated[FYLabel, Query(description='e.g. "2025-26"')] = ...,
+    *,
+    accounting_year: Annotated[FYLabel, Query(description='e.g. "2025-26"')],
     current_user: dict = Depends(rbac("payroll", "read")),
 ):
     """Who is owed statutory bonus for this accounting year, and why.
@@ -8875,7 +8882,8 @@ def put_bonus_disqualification(
 def delete_bonus_disqualification(
     client_id: str = Query(...),
     employee_id: str = Query(...),
-    accounting_year: Annotated[FYLabel, Query()] = ...,
+    *,
+    accounting_year: Annotated[FYLabel, Query()],
     current_user: dict = Depends(rbac("payroll", "write")),
 ):
     """Undo a §9 forfeiture. It takes a statutory debt away from a person, so

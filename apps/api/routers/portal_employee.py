@@ -62,7 +62,7 @@ router = APIRouter(prefix="/api/portal/employee", tags=["portal_employee"])
 
 @router.get("/tds-projection")
 def employee_tds_projection(
-    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')],
     employee: dict = Depends(get_current_portal_employee),
 ):
     """The caller's OWN §192 withholding for a year, month by month.

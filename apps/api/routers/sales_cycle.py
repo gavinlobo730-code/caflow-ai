@@ -273,8 +273,9 @@ def create_challan(
 @router.get("/itc-04")
 def itc_04_statement(
     client_id: str = Query(...),
+    *,
     financial_year: Annotated[FYLabel, Query(
-        description="The financial year to derive the statement for, e.g. 2025-26")] = ...,
+        description="The financial year to derive the statement for, e.g. 2025-26")],
     window: Optional[str] = Query(
         None, description="One window key from `readings` — omit to list them all"),
     current_user: dict = Depends(rbac("gst", "read")),

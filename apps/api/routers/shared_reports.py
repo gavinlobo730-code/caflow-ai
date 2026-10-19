@@ -49,10 +49,13 @@ def share_report_to_portal(
     # DEFAULT position FastAPI builds the field from it and DISCARDS the
     # Annotated metadata, so the validator never runs and the endpoint merely
     # reads as guarded. `2025-27` would then be stored and mean 2025-26.
-    # `= ...` is Ellipsis, not a `Form()` instance: it only satisfies Python's
-    # "non-default argument follows default argument", and FastAPI still reads
-    # the Annotated metadata, so the label is validated.
-    financial_year: Annotated[FYLabel, Form()] = ...,
+    # NOT `Annotated[FYLabel, Form()] = ...`: under the FastAPI this product is
+    # locked to that makes the field OPTIONAL and calls the handler with the
+    # literal Ellipsis as the year, after the workbook is already in storage.
+    # The `*,` is what lets a required field follow the parameters that have
+    # defaults. tests/test_a_required_parameter_is_required.py holds it.
+    *,
+    financial_year: Annotated[FYLabel, Form()],
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """Publish one statement to a client's portal.

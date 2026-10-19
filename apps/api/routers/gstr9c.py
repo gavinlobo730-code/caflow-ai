@@ -106,7 +106,8 @@ class ExpenseLineIn(BaseModel):
 @router.get("/reconciliation")
 def get_reconciliation(
     client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(...)],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "read")),
 ):

@@ -1494,7 +1494,8 @@ def compute_gstr4_annual(
     client_id: str = Query(...),
     # `Annotated[...]`, NOT `FYLabel = Query(...)` — see compute_gstr9's own
     # comment; FastAPI discards the validator silently in the other form.
-    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(...)],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "compute")),
 ):
@@ -1542,7 +1543,8 @@ def compute_gstr9(
     # from `Query()` in the default position and DISCARDS the Annotated
     # metadata carrying the validator, silently (CLAUDE.md). `2026-28` would
     # then reach `gstr9_fy_periods` and mean 2026-27.
-    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(...)],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "compute")),
 ):
@@ -1579,7 +1581,8 @@ def compute_gstr9(
 @router.get("/gstr9c/compute")
 def compute_gstr9c(
     client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(...)],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "compute")),
 ):
@@ -1744,7 +1747,8 @@ def save_gstr9(
 @router.get("/gstr9")
 def get_gstr9(
     client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(description="FY string e.g. '2025-26'")] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query(description="FY string e.g. '2025-26'")],
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """
@@ -2207,8 +2211,9 @@ def rule37_itc_reversal(
 @router.get("/itc/rule37a")
 def rule37a_supplier_not_filed(
     client_id: str = Query(..., description="Client whose credit to check"),
+    *,
     financial_year: Annotated[FYLabel, Query(
-        description="The FY the credit was AVAILED in, e.g. 2025-26")] = ...,
+        description="The FY the credit was AVAILED in, e.g. 2025-26")],
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """The credit that rests on a supplier having filed their GSTR-3B.

@@ -736,7 +736,8 @@ def tax_audit_applicability(
 def regime_election(
     wants_old_regime: bool = Query(..., description="What the client wants for this year"),
     has_business_income: bool = Query(..., description="THE FACT THE WHOLE RULE TURNS ON — §115BAC(6) has two clauses, not one rule with variations"),
-    financial_year: Annotated[FYLabel, Query()] = ...,
+    *,
+    financial_year: Annotated[FYLabel, Query()],
     form_10iea_filed_on: Optional[str] = Query(None, description="The date it was ACTUALLY filed (YYYY-MM-DD); omit if it has not been"),
     is_audit: bool = Query(False),
     has_transfer_pricing_report: bool = Query(False),
@@ -1485,7 +1486,8 @@ def compute_advance_tax_interest(
 @router.get("/advance-tax/unforeseen-income")
 def advance_tax_unforeseen_income(
     client_id: str = Query(...),
-    fy: Annotated[FYLabel, Query()] = ...,
+    *,
+    fy: Annotated[FYLabel, Query()],
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
     """The capital gains register's transfers in this financial year, offered as
@@ -1927,7 +1929,8 @@ def itr_field_placements_endpoint(
 @router.get("/advance-tax")
 def list_advance_tax(
     client_id: str = Query(...),
-    fy: Annotated[FYLabel, Query()] = ...,
+    *,
+    fy: Annotated[FYLabel, Query()],
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
     # Same gap as list_capital_gains above — client_id was filtered into the
@@ -2109,7 +2112,8 @@ class SelfAssessmentChallanIn(BaseModel):
 @router.get("/self-assessment")
 def list_self_assessment_challans(
     client_id: str = Query(...),
-    fy: Annotated[FYLabel, Query()] = ...,
+    *,
+    fy: Annotated[FYLabel, Query()],
     #: The dues, if the caller has them. All three OPTIONAL and their absence
     #: is NAMED rather than defaulted: a CA records a challan before the
     #: computation is finished, and appropriating against a liability nobody

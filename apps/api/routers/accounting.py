@@ -1691,7 +1691,7 @@ def get_cash_flow(
 
 @router.get("/statement-analysis")
 async def get_statement_analysis(
-    financial_year: Annotated[FYLabel, Query()] = ...,
+    financial_year: Annotated[FYLabel, Query()],
     client_id: Optional[str] = Query(None),
     basis: str = Query("accrual", pattern="^(accrual|cash)$"),
     current_user: dict = Depends(rbac("accounting", "read")),
