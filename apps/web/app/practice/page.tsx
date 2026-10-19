@@ -17,6 +17,8 @@ interface PracticeIdentity {
   gstin: string | null;
   state: string | null;
   state_code: string | null;
+  /** The firm's own legal form. Absent from an API not yet redeployed, which is not the same as "none". */
+  entity_type?: string | null;
 }
 
 /**
@@ -37,14 +39,23 @@ interface PracticeIdentity {
  * Fields left blank are left ALONE — the endpoint treats `None` as unchanged,
  * which is what lets a Partner correct one identifier without re-typing the
  * others.
+ *
+ * THE LEGAL FORM IS HERE TOO (POST-A-210). Provisioning records the practice as
+ * a Partnership because sign-up does not ask, and the practice client is left
+ * out of every client list, so no client screen could ever correct it: a firm
+ * that is a proprietorship, an LLP or a company had its own books typed wrongly
+ * with nowhere to say so. The choices are the SERVER's list (`entity_types` on
+ * `GET /api/practice`), not a sixth copy in this file, and the control is left
+ * out when an API that does not send it is still deployed.
  */
-function TaxIdentity({ identity, onSaved }: {
-  identity: PracticeIdentity | null; onSaved: () => void;
+function TaxIdentity({ identity, entityTypes, onSaved }: {
+  identity: PracticeIdentity | null; entityTypes: string[]; onSaved: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [pan, setPan] = useState("");
   const [gstin, setGstin] = useState("");
   const [state, setState] = useState("");
+  const [entityType, setEntityType] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +63,7 @@ function TaxIdentity({ identity, onSaved }: {
     setPan(identity?.pan ?? "");
     setGstin(identity?.gstin ?? "");
     setState(identity?.state ?? "");
+    setEntityType(identity?.entity_type ?? "");
     setError(null);
     setOpen(true);
   }
@@ -67,6 +79,7 @@ function TaxIdentity({ identity, onSaved }: {
       if (pan.trim() && pan.trim() !== (identity?.pan ?? "")) body.pan = pan.trim();
       if (gstin.trim() && gstin.trim() !== (identity?.gstin ?? "")) body.gstin = gstin.trim();
       if (state.trim() && state.trim() !== (identity?.state ?? "")) body.state = state.trim();
+      if (entityType && entityType !== (identity?.entity_type ?? "")) body.entity_type = entityType;
       if (Object.keys(body).length === 0) { setOpen(false); return; }
       const r = await api.practice.updateIdentity(body) as ApiResp<unknown>;
       // This router answers a refusal as HTTP 200 with {success: false} — an
@@ -101,7 +114,7 @@ function TaxIdentity({ identity, onSaved }: {
       </div>
 
       {!open ? (
-        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 text-2xs">
+        <dl className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3 text-2xs">
           <div><dt className="text-gray-400">PAN</dt>
             <dd className="text-brand font-mono">{identity?.pan || "Not recorded"}</dd></div>
           <div><dt className="text-gray-400">GSTIN</dt>
@@ -110,6 +123,10 @@ function TaxIdentity({ identity, onSaved }: {
             <dd className="text-brand">{identity?.state || "Not recorded"}</dd></div>
           <div><dt className="text-gray-400">State code</dt>
             <dd className="text-brand font-mono">{identity?.state_code || "—"}</dd></div>
+          {identity?.entity_type !== undefined && (
+            <div><dt className="text-gray-400">Legal form</dt>
+              <dd className="text-brand">{identity.entity_type || "Not recorded"}</dd></div>
+          )}
         </dl>
       ) : (
         <div className="mt-3 space-y-2">
@@ -133,6 +150,20 @@ function TaxIdentity({ identity, onSaved }: {
                 className="w-full text-2xs px-2 py-1 rounded-md border border-gray-200" />
             </label>
           </div>
+          {entityTypes.length > 0 && (
+            <label className="block sm:max-w-[16rem]">
+              <span className="text-2xs text-gray-400">Legal form of your firm</span>
+              <select value={entityType} onChange={(e) => setEntityType(e.target.value)}
+                className="w-full text-2xs px-2 py-1 rounded-md border border-gray-200 bg-white">
+                {!entityTypes.includes(entityType) && <option value="">Not recorded</option>}
+                {entityTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <span className="block text-2xs text-gray-400 mt-0.5">
+                A practice is first recorded as a Partnership, because sign-up does not ask.
+                Choose what your firm really is: your own books and tax workings treat it that way.
+              </span>
+            </label>
+          )}
           <p className="text-2xs text-gray-400">
             The state code is derived from the GSTIN or the state; leave a field
             blank to leave it as it is.
@@ -165,6 +196,7 @@ interface DashboardData {
 function PracticeOverview() {
   const [provisioned, setProvisioned] = useState<boolean | null>(null);
   const [identity, setIdentity] = useState<PracticeIdentity | null>(null);
+  const [entityTypes, setEntityTypes] = useState<string[]>([]);
   const [dash, setDash] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,10 +222,13 @@ function PracticeOverview() {
       if (!p?.success) { setError(p?.error ?? "Failed to load Practice"); return; }
       const status = objectOrNull<{
         provisioned?: boolean; can_provision?: boolean; identity?: PracticeIdentity | null;
+        entity_types?: unknown;
       }>(p.data);
       setProvisioned(status?.provisioned ?? false);
       setCanProvision(typeof status?.can_provision === "boolean" ? status.can_provision : null);
       setIdentity(status?.identity ?? null);
+      setEntityTypes(Array.isArray(status?.entity_types)
+        ? status.entity_types.filter((t): t is string => typeof t === "string") : []);
       if (status?.provisioned) {
         const d = await api.billing.dashboard() as ApiResp<DashboardData>;
         setDash(d.data);
@@ -310,7 +345,7 @@ function PracticeOverview() {
           Revenue dashboard →
         </Link>
       </div>
-      <TaxIdentity identity={identity} onSaved={load} />
+      <TaxIdentity identity={identity} entityTypes={entityTypes} onSaved={load} />
       <p className="text-2xs text-gray-400 mt-4">
         All figures computed server-side from the internal client&apos;s books. Partner-only.
       </p>
