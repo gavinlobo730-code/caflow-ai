@@ -26,7 +26,7 @@ belongs in the NEXT window's opening.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -36,6 +36,7 @@ from core.permissions import rbac
 from domain.gst import credit_ledger as ledger
 from domain.gst import return_period
 from models.common import api_response
+from models.gst_period import PeriodMMYYYY
 from services import client_gst_registration_service as regs
 from services import gst_credit_ledger_service as service
 from services.audit_service import log_event
@@ -74,7 +75,7 @@ class OpeningIn(BaseModel):
     client_id: str
     #: Any month of the return window, MMYYYY. The window is resolved from the
     #: registration's own filing frequency.
-    period: str
+    period: PeriodMMYYYY
     gstin: Optional[str] = None
     # Strict ints: a balance that moves cash payable is not coerced from a string
     # or a float, and a negative one is refused here as well as by the table.
@@ -89,7 +90,8 @@ class OpeningIn(BaseModel):
 @router.get("/opening")
 def get_opening(
     client_id: str = Query(...),
-    period: str = Query(..., description="MMYYYY — any month of the window"),
+    *,
+    period: Annotated[PeriodMMYYYY, Query(description='MMYYYY — any month of the window')],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "read")),
 ):
@@ -150,7 +152,8 @@ def put_opening(
 @router.delete("/opening")
 def delete_opening(
     client_id: str = Query(...),
-    period: str = Query(...),
+    *,
+    period: Annotated[PeriodMMYYYY, Query()],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "compute")),
 ):

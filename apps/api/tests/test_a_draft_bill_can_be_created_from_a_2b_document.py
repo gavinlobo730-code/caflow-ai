@@ -515,9 +515,13 @@ def test_the_request_names_the_document_and_never_an_amount():
         "supplier_gstin", "document_number"}
 
 
-def test_a_period_that_is_not_a_month_is_refused(live):
+def test_a_period_that_is_not_a_month_is_refused_at_the_door(live):
+    """The request model refuses it (a 422 naming `period` on the real route), so the handler never sees one."""
+    from pydantic import ValidationError
     _setup(live)
-    _refused(422, "MMYYYY", period="2025-04")
+    with pytest.raises(ValidationError) as refused:
+        _draft(period="2025-04")
+    assert "MMYYYY" in str(refused.value) and "period" in str(refused.value)
 
 
 def test_the_route_needs_the_accounting_write_permission_and_the_client_scope():

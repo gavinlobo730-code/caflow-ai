@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from models.common import api_response
+from models.gst_period import PeriodMMYYYY, OptionalPeriodMMYYYY
 from core.authz import assert_client_access, can_access_client, effective_client_ids
 from core.permissions import can_user, rbac
 from core.ist_clock import ist_today
@@ -104,7 +105,7 @@ def _gst_regime(client_id: str, firm_id: str) -> dict:
 
 class SaveGSTR1Request(BaseModel):
     client_id: str
-    period: str = Field(..., description="MMYYYY e.g. 042025")
+    period: PeriodMMYYYY = Field(..., description="MMYYYY e.g. 042025")
     gstin: str
     payload_json: dict = Field(default_factory=dict)
     summary_json: dict = Field(default_factory=dict)
@@ -133,7 +134,7 @@ def _cash_payable(cash_paise, net_tax_paise) -> int:
 
 class SaveGSTR3BRequest(BaseModel):
     client_id: str
-    period: str = Field(..., description="MMYYYY e.g. 042025")
+    period: PeriodMMYYYY = Field(..., description="MMYYYY e.g. 042025")
     gstin: str
     payload_json: dict = Field(default_factory=dict)
     summary_json: dict = Field(default_factory=dict)
@@ -205,7 +206,7 @@ class GSTR2BUploadRequest(BaseModel):
     # with the file refuses the upload (`domain/gst/gstr2b_intake`). It is still
     # accepted because an API caller predating the file chooser sends one, and
     # because a file that names no period falls back to it.
-    period: Optional[str] = None
+    period: OptionalPeriodMMYYYY = None
     file_url: Optional[str] = None
     raw_data: dict = Field(default_factory=dict, description="GSTR-2B JSON from portal")
 
@@ -1429,7 +1430,8 @@ def bulk_gstr2b(
 @router.get("/gstr2b/reconciliation")
 def read_gstr2b_reconciliation(
     client_id: str = Query(...),
-    period: str = Query(..., description="MMYYYY e.g. 042025"),
+    *,
+    period: Annotated[PeriodMMYYYY, Query(description='MMYYYY e.g. 042025')],
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """What the last reconciliation for this period found.
@@ -1465,8 +1467,8 @@ class GSTR9In(BaseModel):
 @router.get("/iff/compute")
 def compute_iff(
     client_id: str = Query(...),
-    period: str = Query(..., pattern=r"^\d{6}$",
-                        description="MMYYYY of the CALENDAR MONTH to furnish for"),
+    *,
+    period: Annotated[PeriodMMYYYY, Query(description='MMYYYY of the CALENDAR MONTH to furnish for')],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "compute")),
 ):
@@ -1510,8 +1512,8 @@ def compute_iff(
 @router.get("/cmp08/compute")
 def compute_cmp08(
     client_id: str = Query(...),
-    period: str = Query(..., pattern=r"^\d{6}$",
-                        description="MMYYYY of any month in the quarter"),
+    *,
+    period: Annotated[PeriodMMYYYY, Query(description='MMYYYY of any month in the quarter')],
     gstin: Optional[str] = Query(None),
     interest_paise: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("gst", "compute")),
@@ -1564,7 +1566,8 @@ def compute_cmp08(
 @router.get("/gstr8/compute")
 def compute_gstr8(
     client_id: str = Query(...),
-    period: str = Query(..., pattern=r"^\d{6}$", description="MMYYYY"),
+    *,
+    period: Annotated[PeriodMMYYYY, Query(description='MMYYYY')],
     gstin: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("gst", "compute")),
 ):
@@ -1929,7 +1932,8 @@ def get_gstr2b(upload_id: str, current_user: dict = Depends(rbac("gst", "read"))
 @router.get("/gstr1/amendments")
 def gstr1_outstanding_amendments(
     client_id: str = Query(..., description="Client whose filed periods to check"),
-    period: str = Query(..., description="MMYYYY of the return being prepared"),
+    *,
+    period: Annotated[PeriodMMYYYY, Query(description='MMYYYY of the return being prepared')],
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """What this period's GSTR-1 must carry from earlier periods already filed.
@@ -1972,7 +1976,8 @@ def gstr1_outstanding_amendments(
 @router.get("/gstr1/exceptions")
 def gstr1_exception_report(
     client_id: str = Query(..., description="Client whose filed period to check"),
-    period: str = Query(..., description="MMYYYY, e.g. 062025"),
+    *,
+    period: Annotated[PeriodMMYYYY, Query(description='MMYYYY, e.g. 062025')],
     gstin: Optional[str] = Query(
         None, description="Which registration — omit for the primary (GST-04)"),
     current_user: dict = Depends(rbac("gst", "read")),
@@ -2008,7 +2013,7 @@ def gstr1_exception_report(
 class ITCReversalIn(BaseModel):
     client_id: str
     journal_entry_id: str
-    period: str = Field(..., description="MMYYYY of the GSTR-3B this is declared in")
+    period: PeriodMMYYYY = Field(..., description="MMYYYY of the GSTR-3B this is declared in")
     reason_code: str = Field(..., description="rule_37 | rule_37a | section_16_2b | section_16_2c | other")
     igst_paise: int = Field(default=0, ge=0)
     cgst_paise: int = Field(default=0, ge=0)
@@ -2021,7 +2026,7 @@ class ITCReversalIn(BaseModel):
 class ITCReclaimIn(BaseModel):
     client_id: str
     journal_entry_id: str
-    period: str
+    period: PeriodMMYYYY
     reverses_id: str
     igst_paise: int = Field(default=0, ge=0)
     cgst_paise: int = Field(default=0, ge=0)
@@ -2073,7 +2078,8 @@ def itc_time_bar(
 @router.get("/itc/register")
 def itc_register_for_period(
     client_id: str = Query(...),
-    period: str = Query(..., description="MMYYYY"),
+    *,
+    period: Annotated[PeriodMMYYYY, Query(description='MMYYYY')],
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """What this period's GSTR-3B declares in Table 4(B)(2) and Table 4(D)(1)."""
@@ -2147,7 +2153,8 @@ def itc_register_reclaim(
 @router.get("/gstr1/advances")
 def gstr1_advances(
     client_id: str = Query(..., description="Client whose receipts to check"),
-    period: str = Query(..., description="MMYYYY of the return being prepared"),
+    *,
+    period: Annotated[PeriodMMYYYY, Query(description='MMYYYY of the return being prepared')],
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """Advances received against no invoice — GSTR-1 Table 11.
@@ -2213,7 +2220,8 @@ def get_gstr1(return_id: str, current_user: dict = Depends(rbac("gst", "read")))
 @router.get("/itc/rule-43")
 def rule43_capital_goods(
     client_id: str = Query(..., description="Client whose capital-goods register to apportion"),
-    period: str = Query(..., description="MMYYYY of the tax period"),
+    *,
+    period: Annotated[PeriodMMYYYY, Query(description='MMYYYY of the tax period')],
     exempt_turnover_paise: Optional[int] = Query(
         None, description="E, where the proviso to Rule 43(1)(g) applies — the "
                           "LAST period for which turnover is available. Send "

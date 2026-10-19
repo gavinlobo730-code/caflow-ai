@@ -19,6 +19,7 @@ from domain.gst import compensation_cess, draft_bill_from_2b, gstr2b_intake
 from domain.gst.gstr2b import parse_gstr2b
 from domain.extraction_lines import LABELS, UNIT, read_line
 from models.common import api_response
+from models.gst_period import PeriodMMYYYY
 from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocumentIn
 from core.authz import assert_client_access
 from core.observability import capture_soft_failure
@@ -2282,7 +2283,7 @@ class BillFrom2BIn(BaseModel):
     """
     client_id: str
     #: MMYYYY — the reconciliation the row sits in, as the result returned it.
-    period: str
+    period: PeriodMMYYYY
     section: str
     document_type: str
     supplier_gstin: str
@@ -2361,10 +2362,8 @@ def create_bill_from_2b(
         from services import gst_2b_reconciliation_service as recon
         db = get_supabase()
 
-        period = (data.period or "").strip()
-        if not gstr2b_intake._valid(period):
-            raise HTTPException(status_code=422, detail=(
-                f"The period given, '{period}', is not MMYYYY (for example 042025)."))
+        # Already a real MMYYYY: `BillFrom2BIn.period` is a `PeriodMMYYYY`, so a malformed one never reaches here.
+        period = data.period
         section = (data.section or "").strip()
         dtype = (data.document_type or "").strip()
         gstin = (data.supplier_gstin or "").strip().upper()

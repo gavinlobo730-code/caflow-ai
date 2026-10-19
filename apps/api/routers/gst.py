@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from models.common import api_response
+from models.gst_period import PeriodMMYYYY
 from core.permissions import rbac
 from core.authz import assert_client_access
 from domain.gst.classifier import (
@@ -70,7 +71,7 @@ class ClassifyResponse(BaseModel):
 
 class GSTR3BRequest(BaseModel):
     gstin: str
-    period: str  # MMYYYY
+    period: PeriodMMYYYY  # MMYYYY
     sales: list[dict] = Field(description="Posted sales invoices for the period")
     purchases: list[dict] = Field(description="Posted purchase invoices for the period")
     gstr2a_records: list[dict] = Field(default=[], description="GSTR-2A records for the period")
@@ -78,7 +79,7 @@ class GSTR3BRequest(BaseModel):
 
 class GSTR1Request(BaseModel):
     gstin: str
-    period: str  # MMYYYY
+    period: PeriodMMYYYY  # MMYYYY
     invoices: list[dict] = Field(
         description="Classified posted transactions for the period"
     )
@@ -103,13 +104,13 @@ class GSTR1Request(BaseModel):
 
 class ValidateGSTR1Request(BaseModel):
     gstin: str
-    period: str
+    period: PeriodMMYYYY
     invoices: list[dict]
 
 
 class ValidateGSTR3BRequest(BaseModel):
     gstin: str
-    period: str
+    period: PeriodMMYYYY
     output_igst: int
     output_cgst: int
     output_sgst: int
@@ -373,7 +374,7 @@ def compute_gstr3b_endpoint(req: GSTR3BRequest, current_user: dict = Depends(rba
 
 class FromBooksRequest(BaseModel):
     client_id: str
-    period: str  # MMYYYY
+    period: PeriodMMYYYY  # MMYYYY
     #: See BuildGSTR1Request above — None means unrecorded, not zero.
     aggregate_turnover_paise: Optional[int] = None
     # The date the return is (or will be) filed — GST-21. OPTIONAL, and that is
@@ -539,7 +540,8 @@ def gstr3b_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depen
 @router.get("/gstr3b/detail")
 def gstr3b_detail_endpoint(
     client_id: str = Query(...),
-    period: str = Query(..., description="MMYYYY e.g. 042026"),
+    *,
+    period: Annotated[PeriodMMYYYY, Query(description='MMYYYY e.g. 042026')],
     line: str = Query(..., description="One of 3.1a, 3.1d, 4A, 4B1, 4B2"),
     gstin: Optional[str] = Query(
         None, description="Which registration — omit for the primary (GST-20)"),
