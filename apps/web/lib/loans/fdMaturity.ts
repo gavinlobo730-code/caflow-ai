@@ -6,7 +6,7 @@
  * figure here as annual compounding and store it as though it were the bank's; it now stores either the amount a CA typed from
  * the receipt (`isEstimate` false) or this estimate, flagged (`isEstimate` true), and every screen that shows the figure says
  * which. The estimate stays a browser calculation, labelled as one, in the way `lib/services/currencyPreview` is; moving it to
- * the server is the remaining part of POST-A-253 (which replaced POST-A-134 after its triage).
+ * the server is the remaining part of POST-A-266 (which replaced POST-A-134 after its triage).
  */
 import { paiseFromRupeeInput } from "../money/rupeeInput.ts";
 import { daysBetweenLocalISO } from "../dateMath.ts";
