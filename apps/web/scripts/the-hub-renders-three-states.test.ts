@@ -54,6 +54,17 @@ test("a null signal is never coerced to a number", () => {
     "the reason a tile has no figure is never rendered");
 });
 
+test("a tile that carries a caveat is not drawn as finished, and the caveat is the server's sentence", () => {
+  // The TDS tile reads 0 when every recorded quarter is covered, and carries a caveat when tax was deducted in a quarter with no
+  // challan recorded. A nil with that behind it is not "nothing to do": drawing it in the calm finished colour would say the
+  // books are clean about a deposit they cannot see.
+  assert.match(SRC, /nothingToDo\s*=\s*tile\.answerable\s*&&\s*tile\.signal\s*===\s*0\s*&&\s*!tile\.caveat/,
+    "a tile with a caveat can still be drawn as the finished state");
+  assert.ok(/tile\.answerable\s*&&\s*tile\.caveat[\s\S]{0,120}\{tile\.caveat\}/.test(SRC), "the tile's caveat is never rendered");
+  // The browser words nothing of its own about it.
+  assert.ok(!/not recorded|no challan/i.test(SRC), "Hub.tsx words the unrecorded-tax sentence itself instead of rendering the server's");
+});
+
 test("a tile with no destination does not render as a link", () => {
   assert.match(
     SRC,

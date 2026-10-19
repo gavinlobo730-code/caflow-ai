@@ -115,9 +115,9 @@ def test_the_money_tiles_sum_a_column_the_schema_generates():
     assert '"client_sales_invoices", "outstanding_paise"' in src
     assert '"purchase_bills", "outstanding_paise"' in src
     assert "total_paise" not in src, "the hub is re-deriving what 278 generates"
-    # And TDS asks what is NOT deposited, not every deduction ever made, and asks the CHALLAN REGISTER (migration 522's function):
+    # And TDS asks what is NOT deposited, not every deduction ever made, and asks the CHALLAN REGISTER (migration 523's function):
     # `tds_deductions.challan_no` is a column nothing writes, so a tile reading it counted every deduction as undeposited.
-    assert '.rpc("tds_undeposited_paise"' in src and "_tds_undeposited(firm_id, scope)" in src
+    assert '.rpc("tds_deposit_position"' in src and "_tds_position(firm_id, scope)" in src
     spelled = {n.value for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
     assert "challan_no" not in spelled, "the hub reads a column of tds_deductions that nothing writes"
     # And the two document tiles ask about LIVE documents: the generated

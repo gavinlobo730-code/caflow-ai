@@ -140,8 +140,12 @@ def build_client_brief(entity_type: Optional[str],
                 f"- {label} ({question}): could not be read just now — do not "
                 f"treat this as nil.")
             continue
-        lines.append(
-            f"- {label} ({question}): {_figure(str(t.get('unit') or ''), int(signal))}")
+        line = f"- {label} ({question}): {_figure(str(t.get('unit') or ''), int(signal))}"
+        # A tile's own caveat is part of its answer: a nil beside "tax deducted in a quarter with no challan recorded" is not a
+        # clean module, and the model must not be handed the nil alone.
+        if t.get("caveat"):
+            line += f" — {t['caveat']}"
+        lines.append(line)
 
     if not lines:
         return None
