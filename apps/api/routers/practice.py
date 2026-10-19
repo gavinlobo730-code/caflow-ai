@@ -4,7 +4,8 @@ Practice (firm-as-internal-client) router — Amendment v1.1 + Phase 3.3A.
 Partner/Owner-only entry point for the firm's own internal client:
   • GET  /api/practice          — provisioning status (+ whether the firm has a PAN)
   • POST /api/practice/provision — idempotent activation (legacy firms included)
-  • PATCH /api/practice/identity — Partner-only maintenance of PAN/GSTIN/state
+  • PATCH /api/practice/identity — Partner-only maintenance of PAN/GSTIN/state and the
+                                   firm's own legal form (entity type)
 
 Guardrail G1: every endpoint here is Partner-only (see the "practice" RBAC
 resource). The internal client is excluded from all client-population surfaces
@@ -16,7 +17,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from domain.firm import identity as firm_identity
 from models.common import api_response
-from models.client import PracticeIdentityUpdate
+from models.client import EntityType, PracticeIdentityUpdate
 from core.permissions import rbac
 from core.validators import derive_state_code, validate_state_code
 from services.internal_client_service import provision, get_internal_client_id
@@ -53,7 +54,7 @@ def get_practice(current_user: dict = Depends(rbac("practice", "read"))):
         firm_has_pan = bool(firm and firm.get("pan"))
         if internal_client_id:
             identity = (_db().table("clients")
-                        .select("pan, gstin, state, state_code")
+                        .select("pan, gstin, state, state_code, entity_type")
                         .eq("id", internal_client_id).eq("firm_id", firm_id)
                         .eq("is_internal", True).maybe_single().execute().data)
     return api_response(True, {
@@ -62,6 +63,11 @@ def get_practice(current_user: dict = Depends(rbac("practice", "read"))):
         "firm_has_pan": firm_has_pan,
         "can_provision": firm_has_pan and not internal_client_id,
         "identity": identity,
+        # The legal forms the practice may be recorded as, in the model's order, so
+        # the screen offers what `PATCH /identity` accepts and holds no list of its
+        # own (the browser already has five copies of this list, each pinned from
+        # Python; a sixth is the thing to avoid).
+        "entity_types": [e.value for e in EntityType],
     })
 
 
@@ -104,9 +110,15 @@ def update_practice_identity(
     current_user: dict = Depends(rbac("practice", "write")),
 ):
     """Partner-only maintenance of the internal practice client's tax identity
-    (PAN / GSTIN / state / state_code) — the controlled path missing from the
-    generic client update (Part B). Validation is enforced by the model; state_code
-    is derived when omitted; the change is audit-logged."""
+    (PAN / GSTIN / state / state_code) and its legal form (entity_type) — the
+    controlled path missing from the generic client update (Part B). Validation is
+    enforced by the model; state_code is derived when omitted; the change is
+    audit-logged.
+
+    The legal form is here and not on the client screens because the practice client
+    is left out of every client list (guardrail G2), so none of them can reach it.
+    Provisioning records a Partnership, the commonest form for a CA firm, because
+    sign-up does not ask; a firm that is something else says so here (POST-A-210)."""
     firm_id = current_user.get("firm_id")
     internal_client_id = get_internal_client_id(firm_id)
     if not internal_client_id:
@@ -123,6 +135,8 @@ def update_practice_identity(
         update["gstin"] = body.gstin
     if body.state is not None:
         update["state"] = body.state
+    if body.entity_type is not None:
+        update["entity_type"] = body.entity_type.value
     # state_code: explicit (validated) → else derive from explicit/state/gstin.
     if body.state_code is not None:
         err = validate_state_code(body.state_code)
@@ -137,7 +151,7 @@ def update_practice_identity(
         return api_response(False, None, "No identity fields supplied.")
 
     db = _db()
-    before = (db.table("clients").select("pan, gstin, state, state_code")
+    before = (db.table("clients").select("pan, gstin, state, state_code, entity_type")
               .eq("id", internal_client_id).eq("firm_id", firm_id)
               .eq("is_internal", True).maybe_single().execute().data)
     if not before:

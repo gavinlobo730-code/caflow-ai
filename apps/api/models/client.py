@@ -147,11 +147,18 @@ class ClientCreate(BaseModel):
 class PracticeIdentityUpdate(BaseModel):
     """Partner-only maintenance of the firm's internal practice client identity
     (Phase 3.3A, Part B). Tax identifiers are immutable on the generic ClientUpdate;
-    this model is the controlled path to set/correct them for the practice client."""
+    this model is the controlled path to set/correct them for the practice client.
+
+    `entity_type` is the firm's own legal form (POST-A-210). Provisioning creates the
+    practice client as a Partnership because nothing at sign-up asks, and the practice
+    client is left out of every client list, so no client screen could ever correct
+    it. It is the same `EntityType` every other client uses, so the database's CHECK
+    and the income-tax assessee table read it unchanged."""
     pan: Optional[str] = None
     gstin: Optional[str] = None
     state: Optional[str] = None
     state_code: Optional[str] = None
+    entity_type: Optional[EntityType] = None
 
     @field_validator("pan")
     @classmethod

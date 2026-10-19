@@ -6411,8 +6411,8 @@ export const api = {
   practice: {
     get: () => request("/api/practice"),
     provision: () => request("/api/practice/provision", { method: "POST" }),
-    /** Partner-only maintenance of the practice client's tax identity (PAN/GSTIN/state). */
-    updateIdentity: (body: { pan?: string; gstin?: string; state?: string; state_code?: string }) =>
+    /** Partner-only maintenance of the practice client's tax identity (PAN/GSTIN/state) and legal form. */
+    updateIdentity: (body: { pan?: string; gstin?: string; state?: string; state_code?: string; entity_type?: string }) =>
       request("/api/practice/identity", { method: "PATCH", body: JSON.stringify(body) }),
   },
   // Platform Admin (Super Admin) — cross-firm; gated server-side by the

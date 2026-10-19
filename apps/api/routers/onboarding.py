@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from middleware.public_rate_limit import public_limit
+from models.client import EntityType
 from models.common import api_response
 from core.supabase_client import get_service_supabase
 from core.auth import get_jwt_user
@@ -40,7 +41,9 @@ class FirmCreate(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     partner_name: str
-    entity_type: Optional[str] = None
+    # The firm's own legal form. The same EntityType every client uses, so a form the database's CHECK would refuse is
+    # refused HERE (422) and not swallowed below: a bad value used to make the practice client silently not exist.
+    entity_type: Optional[EntityType] = None
 
 
 @router.post("/firm", dependencies=[Depends(public_limit("signup"))])
@@ -123,7 +126,7 @@ def create_firm(
         from services.internal_client_service import provision as _provision_internal
         _provision_internal(
             firm_id, body.firm_name, pan,
-            entity_type=(body.entity_type or "Partnership"), gstin=gstin,
+            entity_type=(body.entity_type.value if body.entity_type else "Partnership"), gstin=gstin,
             state=body.state, actor_id=auth_user_id,
         )
     except Exception as e:  # pragma: no cover - defensive

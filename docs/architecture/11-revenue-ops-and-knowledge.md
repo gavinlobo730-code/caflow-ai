@@ -72,7 +72,10 @@ feature gets one. It is idempotent, and when two calls race the loser reads the 
 off the unique index and returns it. It **needs a valid PAN on the firm** (`clients.pan`
 is `NOT NULL` and regex-checked): without one it returns nothing, logs, and
 `GET /api/practice` says `can_provision` is false so the screen can say why. The entity
-type is `Partnership` unless told otherwise and nothing edits it afterwards (POST-A-210).
+type is recorded as `Partnership` because sign-up does not ask. The practice client is out of every
+client list, so no client screen reaches it, and the Partner sets the firm's real legal form on the Practice
+screen through `PATCH /api/practice/identity` (which `GET /api/practice` serves the stored value and the
+accepted list for). Sign-up still does not ask.
 There is also a SQL function `provision_internal_client()` (migration 073) that the
 application does not call; migration 086 revoked it from every role but the service
 role. It duplicates the Python path and the two must be kept in step.
