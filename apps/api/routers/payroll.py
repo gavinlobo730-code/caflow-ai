@@ -1429,6 +1429,34 @@ def _percent_of(base_paise: int, percent) -> int:
         _Decimal("1"), rounding=_ROUND_HALF_UP))
 
 
+def _full_month_gross_paise(emp: dict) -> int:
+    """What an employee's recorded rates add up to for a FULL month, in paise: basic, HRA and DA at their
+    percentages of basic (`_percent_of`, the slip's own half-up Decimal rounding), and the four fixed amounts.
+
+    It is the recurring part of `_compute_slip`'s gross at full attendance and with no one-time earnings, and the
+    test pinning the two to each other is `tests/test_the_people_screen_shows_the_servers_monthly_gross.py`. It is
+    NOT the cost to company (that adds the employer's PF, ESI, EDLI and admin charge, which the CTC report reads
+    off the slips) and NOT what a month pays (attendance and one-time earnings move that)."""
+    basic = int(emp.get("basic_paise") or 0)
+    return (basic
+            + _percent_of(basic, emp.get("hra_percent"))
+            + _percent_of(basic, emp.get("da_percent"))
+            + int(emp.get("lta_paise") or 0)
+            + int(emp.get("medical_paise") or 0)
+            + int(emp.get("special_allowance_paise") or 0)
+            + int(emp.get("other_allowances_paise") or 0))
+
+
+def _with_full_month_gross(emp: dict) -> dict:
+    """The roster row plus `full_month_gross_paise`, or None for it when a component cannot be read. One unreadable
+    row must not take the whole roster down, and an unknown is never shown as a zero."""
+    try:
+        gross = _full_month_gross_paise(emp)
+    except (ArithmeticError, ValueError, TypeError):
+        gross = None
+    return {**emp, "full_month_gross_paise": gross}
+
+
 def _pf_wage_base(*, basic_paise: int, da_paise: int, hra_paise: int,
                   lta_paise: int, medical_paise: int,
                   special_allowance_paise: int, other_allowances_paise: int,
@@ -1956,7 +1984,7 @@ def list_employees(
     rows = res.data or []
     if not client_id:
         rows = filter_by_client(current_user, rows)
-    return api_response(True, rows)
+    return api_response(True, [_with_full_month_gross(r) for r in rows])
 
 
 @router.post("/employees")

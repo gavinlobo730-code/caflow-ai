@@ -36,7 +36,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { api, type ApiResp } from "@/lib/api";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import {
-  apiErr, employeeGrossPaise,
+  apiErr,
   type Client, type Employee,
 } from "@/components/payroll/shared";
 import { EMPLOYEE_IMPORT_COLUMNS as SERVER_COLUMNS } from "@/lib/imports/mappers";
@@ -228,8 +228,10 @@ export default function PayrollPeoplePage() {
     { key: "designation", header: "Designation", accessor: (e) => e.designation ?? "", searchable: true, sortable: true,
       render: (e) => <span className="text-ps-label">{e.designation || "—"}</span> },
     // Money column — accessor returns integer paise, right-aligned, rendered via formatPaise.
-    { key: "gross", header: "Monthly CTC", accessor: (e) => employeeGrossPaise(e), sortable: true, align: "right",
-      render: (e) => <span className="font-mono">{formatPaise(employeeGrossPaise(e))}</span> },
+    // The server's figure for a full month. CTC would be the wrong word: that adds the employer's PF, ESI, EDLI and
+    // admin charge, which only the CTC report (read off the slips) carries. A row without the figure shows a dash.
+    { key: "gross", header: "Monthly gross", accessor: (e) => e.full_month_gross_paise ?? null, sortable: true, align: "right",
+      render: (e) => <span className="font-mono">{e.full_month_gross_paise == null ? "—" : formatPaise(e.full_month_gross_paise)}</span> },
     { key: "pf_applicable", header: "PF", accessor: (e) => e.pf_applicable, sortable: true, align: "center",
       render: (e) => (
         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${e.pf_applicable ? "bg-green-100 text-green-700" : "bg-ps-muted text-ps-label"}`}>
