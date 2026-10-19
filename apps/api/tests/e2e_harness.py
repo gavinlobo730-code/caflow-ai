@@ -548,13 +548,19 @@ class _Rpc:
             raise Exception(f"FakeDB: unsupported rpc {self.fn!r}")
         return _Result(handler())
 
-    def _fn_tds_undeposited_paise(self):
-        """DELEGATES to domain.tds.undeposited, the Python twin of migration 522's SQL function (the challan register's answer)."""
-        from domain.tds.undeposited import undeposited_paise
+    def _fn_tds_deposit_position(self):
+        """DELEGATES to domain.tds.undeposited, the Python twin of migration 523's SQL function (the challan register's answer):
+        one row of the two figures, as PostgREST returns a function that RETURNS TABLE."""
+        from domain.tds.undeposited import position
         firm, ids = self.params.get("p_firm_id"), self.params.get("p_client_ids")
-        return undeposited_paise(
+        got = position(
             [r for r in self.db.rows("tds_deductions") if r.get("firm_id") == firm],
             [r for r in self.db.rows("tds_challans") if r.get("firm_id") == firm], client_ids=ids)
+        return [{"undeposited_paise": got.undeposited_paise, "not_recorded_paise": got.not_recorded_paise}]
+
+    def _fn_tds_undeposited_paise(self):
+        """The first figure of `tds_deposit_position`, the wrapper migration 523 keeps for the API that was live when it applied."""
+        return self._fn_tds_deposit_position()[0]["undeposited_paise"]
 
     def _fn_period_lock_reason(self):
         """DELEGATES to services.period_lock_service.reason_from_tables.

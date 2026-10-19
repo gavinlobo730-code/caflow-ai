@@ -1,5 +1,10 @@
 """
-Migration 522 — the SQL "TDS deducted and not yet deposited" must equal the Python twin, exactly.
+Migrations 522 and 523 — the SQL "TDS deducted and not yet deposited" and "not recorded" must equal the Python twin, exactly.
+
+MIGRATION 523 SPLIT THE ANSWER IN TWO. 522 counted every quarter, so a client with NO challan recorded (a firm that keeps its deposits
+in Tally) showed all of its tax as undeposited. `public.tds_deposit_position` returns the shortfall in quarters for which at least one
+non-salary challan is recorded, and, apart, the tax deducted in quarters for which none is (NOT RECORDED: the books cannot say).
+Every figure below is therefore a PAIR, and `tds_undeposited_paise` is held equal to the pair's first.
 
 WHY THIS FILE IS THE POINT OF THE CHANGE
     The hub's TDS tile read `tds_deductions.challan_no IS NULL`, a column nothing writes, so it counted every deduction as
@@ -22,6 +27,7 @@ WHAT ONLY POSTGRES CAN PROVE
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -39,7 +45,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 from domain.tds import section_rates  # noqa: E402
-from domain.tds.undeposited import undeposited_paise  # noqa: E402
+from domain.tds.undeposited import position  # noqa: E402
 
 FIRM = "f5220000-0000-0000-0000-000000000001"
 OTHER_FIRM = "f5220000-0000-0000-0000-0000000000ff"
@@ -109,18 +115,39 @@ def db(pg_template):
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
 
 
-def _sql(dsn: str, client_ids=None, firm: str = FIRM) -> int:
-    arg = "NULL::uuid[]" if client_ids is None else "ARRAY[" + ",".join(f"'{c}'" for c in client_ids) + "]::uuid[]"
-    if client_ids is not None and not client_ids:
-        arg = "ARRAY[]::uuid[]"
-    r = _psql(dsn, f"SELECT public.tds_undeposited_paise('{firm}'::uuid, {arg});", tuples=True)
+def _scope_arg(client_ids) -> str:
+    if client_ids is None:
+        return "NULL::uuid[]"
+    if not client_ids:
+        return "ARRAY[]::uuid[]"
+    return "ARRAY[" + ",".join(f"'{c}'" for c in client_ids) + "]::uuid[]"
+
+
+def _sql(dsn: str, client_ids=None, firm: str = FIRM) -> tuple[int, int]:
+    r = _psql(dsn, f"SELECT undeposited_paise, not_recorded_paise FROM public.tds_deposit_position('{firm}'::uuid, "
+                   f"{_scope_arg(client_ids)});", tuples=True)
+    assert r.returncode == 0, f"tds_deposit_position failed: {r.stderr}"
+    a, b = r.stdout.strip().split("|")
+    return int(a), int(b)
+
+
+def _wrapper(dsn: str, client_ids=None, firm: str = FIRM) -> int:
+    r = _psql(dsn, f"SELECT public.tds_undeposited_paise('{firm}'::uuid, {_scope_arg(client_ids)});", tuples=True)
     assert r.returncode == 0, f"tds_undeposited_paise failed: {r.stderr}"
     return int(r.stdout.strip())
 
 
-def _python(deductions: list, challans: list, client_ids=None, firm: str = FIRM) -> int:
-    return undeposited_paise([d for d in deductions if d["firm_id"] == firm], [c for c in challans if c["firm_id"] == firm],
-                             client_ids=client_ids)
+#: The clients each firm has in the seeded `clients` table. `p_client_ids` NULL means THESE in the SQL (`clients WHERE firm_id = ...`),
+#: not "every client named by a row": the foreign keys name the client id only, so a row stamped with this firm that names another
+#: firm's client is possible, and the SQL leaves it out. The twin is handed the same set so that case is held too.
+FIRMS_CLIENTS = {FIRM: [A, B], OTHER_FIRM: [OTHER_FIRMS_CLIENT]}
+
+
+def _python(deductions: list, challans: list, client_ids=None, firm: str = FIRM) -> tuple[int, int]:
+    if client_ids is None:
+        client_ids = FIRMS_CLIENTS.get(firm, [])
+    return tuple(position([d for d in deductions if d["firm_id"] == firm], [c for c in challans if c["firm_id"] == firm],
+                          client_ids=client_ids))
 
 
 def _both(dsn, deductions, challans, **kw):
@@ -183,6 +210,15 @@ SCENARIOS = {
         [ded(), ded(client=OTHER_FIRMS_CLIENT, firm=OTHER_FIRM, tds=99_000_00)], [chl(client=OTHER_FIRMS_CLIENT, firm=OTHER_FIRM, tds=1_00)]),
     "an old and a new year together": (
         [ded(on="2025-05-10", tds=3_00), ded(on="2026-05-10", tds=5_00)], [chl(fy="2025-26", tds=1_00), chl(fy="2026-27", tds=1_00)]),
+    "a challan of another section records the quarter": ([ded(section="194C")], [chl(section="194J", tds=1_00)]),
+    "a salary challan does not record the quarter": ([ded()], [chl(section="192")]),
+    "a nil challan records the quarter": ([ded()], [chl(tds=0)]),
+    "a deduction stamped with this firm that names another firm's client is outside the firm's clients": (
+        [ded(client=OTHER_FIRMS_CLIENT, tds=70_00), ded(tds=1_00)], [chl(client=OTHER_FIRMS_CLIENT, tds=70_00)]),
+    "each quarter and client is judged by its own challans": (
+        [ded(client=A, on="2026-05-10", tds=10_00), ded(client=A, on="2026-08-10", tds=20_00),
+         ded(client=A, on="2027-05-10", tds=40_00), ded(client=B, on="2026-05-10", tds=80_00)],
+        [chl(client=A, tds=3_00)]),
 }
 
 
@@ -194,40 +230,66 @@ def test_every_scenario_gives_the_same_answer_on_both_halves(db, name):
 
 
 @pytest.mark.parametrize("scope,want", [
-    (None, 20_00), ([A], 0), ([B], 20_00), ([A, B], 20_00), ([], 0), ([OTHER_FIRMS_CLIENT], 0)])
+    (None, (0, 20_00)), ([A], (0, 0)), ([B], (0, 20_00)), ([A, B], (0, 20_00)), ([], (0, 0)), ([OTHER_FIRMS_CLIENT], (0, 0))])
 def test_the_clients_asked_for_decide_the_answer_the_same_way_on_both_halves(db, scope, want):
-    """None is every client of the firm, a list is those clients, an EMPTY list is nobody. A's tax is paid by its challan; B's is not."""
+    """None is every client of the firm, a list is those clients, an EMPTY list is nobody. A's tax is paid by its challan; B has no
+    challan recorded for its quarter, so its tax is NOT RECORDED."""
     deductions, challans = SCENARIOS["two clients and a challan of one"]
     sql, py = _both(db, deductions, challans, client_ids=scope)
     assert (sql, py) == (want, want)
+    assert _wrapper(db, client_ids=scope) == want[0]
 
 
-# Two halves that agree on a wrong answer pass a parity test, so these are the figures the RULE gives.
+@pytest.mark.parametrize("name", sorted(SCENARIOS))
+def test_the_wrapper_the_previous_api_calls_is_the_first_figure_for_every_scenario(db, name):
+    """The migration applies before the API that calls the new function is deployed; the previous API calls the old name."""
+    deductions, challans = SCENARIOS[name]
+    sql, _ = _both(db, deductions, challans)
+    assert _wrapper(db) == sql[0], name
+
+
+# Two halves that agree on a wrong answer pass a parity test, so these are the figures the RULE gives: (undeposited, not recorded).
 @pytest.mark.parametrize("name,want", [
-    ("nothing at all", 0),
-    ("no challan", 10_000_00), ("paid in full", 0), ("short challan", 4_000_00), ("surplus challan", 0),
-    ("surplus does not carry to another section or quarter", 7_500_00 + 3_000_00),
-    ("other quarter and other year", 10_000_00),
-    ("parent section typed on the challan", 200_00),
-    ("surcharge and cess", 440_00),
-    ("salary is in neither side", 1_00),
-    ("a negative row neither pays nor owes", 4_00),
-    ("a salary challan pays no deduction, even one typed 192(1)", 7_00),
-    ("blank section on both sides", 10_000_00 + 1_00),
-    ("a challan typed with surrounding whitespace and a lower-case limb still pays", 0),
-    ("an unknown section is grouped by its bracket-stripped text", 0),
-    ("empty brackets, nested brackets and a space before the bracket", 6_00),
-    ("a non-breaking space is part of the text, a tab and a newline are not", 10_000_00),
-    ("case and surrounding spaces", 600_00),
-    ("another firm's deduction carrying this client's id owes nothing here", 1_00),
-    ("another firm's challan carrying this client's id pays nothing", 10_000_00),
-    ("another firm is not in the answer", 10_000_00),
-    ("an old and a new year together", 2_00 + 4_00),
+    ("nothing at all", (0, 0)),
+    ("no challan", (0, 10_000_00)), ("paid in full", (0, 0)), ("short challan", (4_000_00, 0)), ("surplus challan", (0, 0)),
+    ("surplus does not carry to another section or quarter", (7_500_00, 3_000_00)),
+    ("other quarter and other year", (0, 10_000_00)),
+    ("boundaries: 31 March, 1 April, 30 June, 1 July", (3_00 + 16_00 + 64_00 + 128_00, 0)),
+    ("parent section typed on the challan", (200_00, 0)),
+    ("surcharge and cess", (440_00, 0)),
+    ("salary is in neither side", (0, 1_00)),
+    ("a negative row neither pays nor owes", (4_00, 0)),
+    ("a salary challan pays no deduction, even one typed 192(1)", (0, 7_00)),
+    ("blank section on both sides", (10_000_00 + 1_00, 0)),
+    ("a challan typed with surrounding whitespace and a lower-case limb still pays", (0, 0)),
+    ("an unknown section is grouped by its bracket-stripped text", (0, 0)),
+    ("empty brackets, nested brackets and a space before the bracket", (6_00, 0)),
+    ("a non-breaking space is part of the text, a tab and a newline are not", (10_000_00, 0)),
+    ("case and surrounding spaces", (600_00, 0)),
+    ("two clients and a challan of one", (0, 20_00)),
+    ("another firm's deduction carrying this client's id owes nothing here", (0, 1_00)),
+    ("another firm's challan carrying this client's id pays nothing", (0, 10_000_00)),
+    ("another firm is not in the answer", (0, 10_000_00)),
+    ("an old and a new year together", (2_00 + 4_00, 0)),
+    ("a challan of another section records the quarter", (10_000_00, 0)),
+    ("a salary challan does not record the quarter", (0, 10_000_00)),
+    ("a nil challan records the quarter", (10_000_00, 0)),
+    ("a deduction stamped with this firm that names another firm's client is outside the firm's clients", (0, 1_00)),
+    ("each quarter and client is judged by its own challans", (7_00, 20_00 + 40_00 + 80_00)),
 ])
-def test_the_figure_is_what_the_rule_says_and_not_merely_what_the_two_halves_share(db, name, want):
+def test_the_figures_are_what_the_rule_says_and_not_merely_what_the_two_halves_share(db, name, want):
     deductions, challans = SCENARIOS[name]
     sql, py = _both(db, deductions, challans)
     assert (sql, py) == (want, want), name
+
+
+def test_every_scenario_has_a_figure_the_rule_gives():
+    """The table above is not allowed to fall behind the scenarios: a scenario added without its expected pair would pass on parity
+    alone, and two halves that agree on a wrong answer are the failure this file exists for."""
+    import re
+    src = Path(__file__).read_text(encoding="utf-8")
+    named = set(re.findall(r'\("([^"]+)", \(\d', src))
+    assert set(SCENARIOS) <= named, sorted(set(SCENARIOS) - named)
 
 
 # A boundary moved by a day only shifts tax BETWEEN quarter groups, and in a total that cancels unless a challan sits on one side of
@@ -247,10 +309,11 @@ def test_a_deduction_on_a_boundary_date_is_paid_by_a_challan_of_its_own_quarter_
         db, on, fy, quarter, other_fy, other_quarter):
     deductions = [ded(on=on, tds=5_00)]
     own, py_own = _both(db, deductions, [chl(fy=fy, quarter=quarter, tds=5_00)])
-    assert (own, py_own) == (0, 0), (on, fy, quarter)
+    assert (own, py_own) == ((0, 0), (0, 0)), (on, fy, quarter)
     _psql(db, "DELETE FROM tds_challans; DELETE FROM tds_deductions; DELETE FROM clients; DELETE FROM firms;")
+    # A challan of the neighbouring quarter or year neither pays the deduction nor records its quarter: NOT RECORDED.
     neighbour, py_neighbour = _both(db, deductions, [chl(fy=other_fy, quarter=other_quarter, tds=5_00)])
-    assert (neighbour, py_neighbour) == (5_00, 5_00), (on, other_fy, other_quarter)
+    assert (neighbour, py_neighbour) == ((0, 5_00), (0, 5_00)), (on, other_fy, other_quarter)
 
 
 # ── The registry, key by key ───────────────────────────────────────────────────
@@ -270,12 +333,12 @@ def test_every_section_the_registry_holds_is_grouped_the_same_way_by_both_halves
     assert len(deductions) >= 40, "the registry shrank or this loop went blind"
     sql, py = _both(db, deductions, challans)
     assert sql == py
-    assert sql > 0
+    assert sql[0] > 0 and sql[1] == 0, "every year here has a challan, so no quarter is unrecorded"
 
 
-def test_a_challan_typed_with_another_section_pays_nothing_on_both_halves(db):
+def test_a_challan_typed_with_another_section_pays_nothing_and_records_the_quarter_on_both_halves(db):
     sql, py = _both(db, [ded(section="194J(B)")], [chl(section="194C")])
-    assert (sql, py) == (10_000_00, 10_000_00)
+    assert (sql, py) == ((10_000_00, 0), (10_000_00, 0))
 
 
 # ── Who may ask ────────────────────────────────────────────────────────────────
@@ -293,15 +356,16 @@ def _as(dsn: str, auth: str, firm: str) -> subprocess.CompletedProcess:
         BEGIN;
         SET LOCAL ROLE authenticated;
         SET LOCAL request.jwt.claims = '{{"sub":"{auth}"}}';
-        SELECT public.tds_undeposited_paise('{firm}'::uuid, NULL::uuid[]);
+        SELECT undeposited_paise, not_recorded_paise FROM public.tds_deposit_position('{firm}'::uuid, NULL::uuid[]);
         COMMIT;""", tuples=True)
 
 
-def _figure(proc: subprocess.CompletedProcess) -> int:
+def _figure(proc: subprocess.CompletedProcess) -> tuple[int, int]:
     assert proc.returncode == 0, proc.stderr
-    lines = [l.strip() for l in proc.stdout.split("\n") if l.strip().lstrip("-").isdigit()]
+    lines = [l.strip() for l in proc.stdout.split("\n") if re.fullmatch(r"-?\d+\|-?\d+", l.strip())]
     assert len(lines) == 1, proc.stdout
-    return int(lines[0])
+    a, b = lines[0].split("|")
+    return int(a), int(b)
 
 
 def test_it_runs_as_the_caller_so_row_security_still_applies(db):
@@ -311,48 +375,59 @@ def test_it_runs_as_the_caller_so_row_security_still_applies(db):
     assert _psql(db, _seed_sql(deductions, challans)).returncode == 0
     _seed_caller(db, AUTH, USER, FIRM)
     _seed_caller(db, AUTH_OTHER, USER_OTHER, OTHER_FIRM)
-    assert _sql(db) == 4_000_00
-    assert _figure(_as(db, AUTH, FIRM)) == 4_000_00
-    assert _figure(_as(db, AUTH_OTHER, FIRM)) == 0
+    assert _sql(db) == (4_000_00, 0)
+    assert _figure(_as(db, AUTH, FIRM)) == (4_000_00, 0)
+    assert _figure(_as(db, AUTH_OTHER, FIRM)) == (0, 0)
 
 
-def test_it_is_security_invoker_and_read_only(db):
-    r = _psql(db, """
+FUNCTIONS = ("tds_deposit_position", "tds_undeposited_paise")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_it_is_security_invoker_and_read_only(db, name):
+    r = _psql(db, f"""
         SELECT p.prosecdef, p.provolatile FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname='public' AND p.proname='tds_undeposited_paise';""", tuples=True)
+        WHERE n.nspname='public' AND p.proname='{name}';""", tuples=True)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == "f|s"
 
 
-def test_anon_and_public_cannot_execute_it_and_the_service_and_signed_in_roles_can(db):
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_anon_and_public_cannot_execute_it_and_the_service_and_signed_in_roles_can(db, name):
     for role, want in (("anon", "f"), ("authenticated", "t"), ("service_role", "t")):
-        r = _psql(db, f"SELECT has_function_privilege('{role}', 'public.tds_undeposited_paise(uuid,uuid[])', 'EXECUTE');",
-                  tuples=True)
+        r = _psql(db, f"SELECT has_function_privilege('{role}', 'public.{name}(uuid,uuid[])', 'EXECUTE');", tuples=True)
         assert r.returncode == 0, r.stderr
-        assert r.stdout.strip() == want, role
-    r = _psql(db, """
+        assert r.stdout.strip() == want, (name, role)
+    r = _psql(db, f"""
         SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace,
              LATERAL aclexplode(p.proacl) a
-        WHERE n.nspname='public' AND p.proname='tds_undeposited_paise' AND a.grantee = 0;""", tuples=True)
+        WHERE n.nspname='public' AND p.proname='{name}' AND a.grantee = 0;""", tuples=True)
     assert r.returncode == 0, r.stderr
-    assert r.stdout.strip() == "0", "PUBLIC holds EXECUTE"
+    assert r.stdout.strip() == "0", f"PUBLIC holds EXECUTE on {name}"
 
 
-def test_anon_cannot_execute_it_even_where_the_platform_grants_new_functions_to_anon(db):
+def test_anon_cannot_execute_either_function_even_where_the_platform_grants_new_functions_to_anon(db):
     """Supabase's default privileges give `anon` EXECUTE on every function created in `public`; the template database does not,
     so the plain check above cannot tell whether the migration's own REVOKE FROM anon is doing anything. Here the platform's
-    default is switched on, the function is dropped and the migration applied again."""
-    path = API_ROOT / "migrations" / "522_tds_deducted_and_not_yet_deposited_from_the_challan_register.sql"
-    assert _psql(db, "DROP FUNCTION public.tds_undeposited_paise(uuid, uuid[]);"
+    default is switched on, both functions are dropped and the migration applied again."""
+    path = API_ROOT / "migrations" / "523_tds_not_yet_deposited_ignores_a_quarter_with_no_challan_recorded.sql"
+    assert _psql(db, "DROP FUNCTION public.tds_undeposited_paise(uuid, uuid[]); DROP FUNCTION public.tds_deposit_position(uuid, uuid[]);"
                      " ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon;").returncode == 0
     assert _psql(db, path.read_text(encoding="utf-8")).returncode == 0
-    r = _psql(db, "SELECT has_function_privilege('anon', 'public.tds_undeposited_paise(uuid,uuid[])', 'EXECUTE');", tuples=True)
-    assert r.returncode == 0, r.stderr
-    assert r.stdout.strip() == "f"
+    for name in FUNCTIONS:
+        r = _psql(db, f"SELECT has_function_privilege('anon', 'public.{name}(uuid,uuid[])', 'EXECUTE');", tuples=True)
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "f", name
 
 
-def test_the_rollback_drops_the_function(db):
-    path = API_ROOT / "migrations" / "522_tds_deducted_and_not_yet_deposited_from_the_challan_register_rollback.sql"
+def test_the_rollback_restores_migration_522s_every_quarter_reading_and_drops_the_new_function(db):
+    """For fidelity with the previous schema, not for use: the wrapper counts every quarter again, recorded or not."""
+    assert _psql(db, _seed_sql(*SCENARIOS["no challan"])).returncode == 0
+    assert _wrapper(db) == 0, "migration 523 counts a quarter with no challan recorded as not recorded"
+    path = API_ROOT / "migrations" / "523_tds_not_yet_deposited_ignores_a_quarter_with_no_challan_recorded_rollback.sql"
     assert _psql(db, path.read_text(encoding="utf-8")).returncode == 0
-    r = _psql(db, "SELECT count(*) FROM pg_proc WHERE proname='tds_undeposited_paise';", tuples=True)
-    assert r.stdout.strip() == "0"
+    assert _psql(db, "SELECT count(*) FROM pg_proc WHERE proname='tds_deposit_position';", tuples=True).stdout.strip() == "0"
+    assert _wrapper(db) == 10_000_00, "the rollback brings back 522's reading: every quarter is counted"
+    for role, want in (("anon", "f"), ("authenticated", "t"), ("service_role", "t")):
+        r = _psql(db, f"SELECT has_function_privilege('{role}', 'public.tds_undeposited_paise(uuid,uuid[])', 'EXECUTE');", tuples=True)
+        assert r.stdout.strip() == want, role

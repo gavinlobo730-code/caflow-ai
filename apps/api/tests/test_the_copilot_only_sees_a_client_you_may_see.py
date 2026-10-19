@@ -129,6 +129,18 @@ def test_a_nil_an_unreadable_and_a_destination_read_differently():
     assert "a destination, not a queue" in brief
 
 
+def test_a_tile_caveat_travels_with_its_figure_so_a_nil_is_not_handed_over_alone():
+    """The TDS tile's nil can have unrecorded tax behind it (migration 523). The model gets the caveat beside the figure."""
+    brief = build_client_brief(None, {"tiles": [
+        {"id": "tds", "label": "TDS", "question": "Deducted and not yet deposited", "unit": "paise", "answerable": True,
+         "signal": 0, "caveat": "₹3,000.00 was deducted in quarters for which no challan is recorded in PracticeSync, so this "
+                                 "figure cannot say whether it was deposited. Record the challan to have it counted."},
+        {"id": "gst", "label": "GST", "question": "q", "unit": "count", "answerable": True, "signal": 0, "caveat": None},
+    ]})
+    assert "TDS (Deducted and not yet deposited): Rs 0 — ₹3,000.00 was deducted in quarters for which no challan is recorded" in brief
+    assert "GST (q): 0\n" in brief + "\n" and "GST (q): 0 —" not in brief
+
+
 def test_money_is_grouped_by_the_one_authority():
     from domain.money_text import whole_rupees
     brief = build_client_brief(None, {"tiles": [

@@ -96,8 +96,8 @@ NO_READER_YET: dict[str, str] = {
         ".py` is what holds it honest instead, and it asserts the fixture "
         "holds no database handle and reaches no network at all.",
     "domain/tds/undeposited.py":
-        "NOT A DEFECT, a SQL aggregate's twin whose reader is a test double. It is the Python port of migration 522's "
-        "`public.tds_undeposited_paise` (TDS deducted and not yet deposited, the hub's TDS tile), kept so the in-memory "
+        "NOT A DEFECT, a SQL aggregate's twin whose reader is a test double. It is the Python port of migration 523's "
+        "`public.tds_deposit_position` (TDS deducted and not yet deposited, and not recorded, the hub's TDS tile), kept so the in-memory "
         "database double the suites use (`tests/e2e_harness.py`, whose rpc handler delegates to it) has the same rule as "
         "the SQL, and held identical to the SQL over a real Postgres by "
         "`tests/test_the_undeposited_tds_asks_the_challan_register_pg.py`: the house pattern for a SQL aggregate "

@@ -28,6 +28,14 @@ import { NO_FIGURE, formatPaise } from "@/lib/money/format";
  *   signal null, NOT answerable   → the reason, in place of a figure
  *   signal null, answerable       → this one tile could not be read
  *
+ * A TILE MAY CARRY A `caveat`, and a tile that does is never drawn as finished.
+ * The server sets one when the figure alone would mislead: the TDS tile counts
+ * tax deducted and not yet deposited only in quarters for which a challan is
+ * recorded, and says beside the figure how much was deducted in quarters with
+ * none, because a nil there is not "nothing to do", it is "this product holds
+ * no challan to say". The browser renders the sentence the server wrote and
+ * adds none.
+ *
  * The third exists because one slow table must not empty the hub; the second
  * because a nil meaning "there is nothing to do" and a nil meaning "nobody can
  * tell" are different facts, and a tile showing 0 for the second is the stub
@@ -125,7 +133,8 @@ function figure(tile: HubTile): string {
 const LONG_FIGURE_CHARS = 13;
 
 function HubCard({ tile }: { tile: HubTile }) {
-  const nothingToDo = tile.answerable && tile.signal === 0;
+  // A caveat means the figure is not the whole story, so the tile is not the calm finished state whatever it reads.
+  const nothingToDo = tile.answerable && tile.signal === 0 && !tile.caveat;
   const unreadable = tile.answerable && tile.signal === null;
   const displayValue = tile.answerable ? figure(tile) : "—";
   const isLongFigure = displayValue.length >= LONG_FIGURE_CHARS;
@@ -151,6 +160,9 @@ function HubCard({ tile }: { tile: HubTile }) {
       <p className="mt-1 text-2xs leading-snug text-ps-label">{tile.question}</p>
       {!tile.answerable && tile.no_signal_because && (
         <p className="mt-1.5 text-3xs leading-snug text-ps-hint">{tile.no_signal_because}</p>
+      )}
+      {tile.answerable && tile.caveat && (
+        <p className="mt-1.5 text-3xs leading-snug text-state-attention">{tile.caveat}</p>
       )}
       {unreadable && (
         <p className="mt-1.5 text-3xs leading-snug text-state-attention">

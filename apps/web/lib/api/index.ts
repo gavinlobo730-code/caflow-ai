@@ -380,6 +380,8 @@ export interface HubTile {
   answerable: boolean;
   no_signal_because: string | null;
   signal: number | null;
+  /** A sentence the server puts beside a figure that alone would mislead (the TDS tile's unrecorded tax); null for every other tile. */
+  caveat?: string | null;
 }
 
 export interface HubPayload {

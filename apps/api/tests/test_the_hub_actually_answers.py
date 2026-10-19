@@ -113,7 +113,8 @@ def _seed(db: FakeDB) -> None:
         transaction_date="2026-05-12")
     row("tds_challans", CLIENT_A, section="194J", tds_paise=7_500_00, surcharge_paise=0,
         financial_year="2026-27", quarter="Q1", payment_date="2026-06-07")
-    # Another client's undeposited tax, so a figure that ignores the clients asked for is a different number.
+    # Another client's tax, deducted in a quarter for which NO challan is recorded for it: the books cannot say whether it was
+    # deposited, so it is not part of the tile's figure and rides beside it as the tile's caveat (migration 523).
     row("tds_deductions", CLIENT_B, section="194C", tds_paise=3_000_00, surcharge_paise=0, cess_paise=0,
         transaction_date="2026-05-14")
 
@@ -176,10 +177,31 @@ def test_no_answerable_tile_comes_back_with_a_null_signal_at_client_scope(db):
     # 2,000 is in scope at firm level.
     ("sales", 118_000_00 + 2_000_00),
     ("purchases", 45_000_00),
-    ("tds", 10_000_00 + 3_000_00),
+    ("tds", 10_000_00),
 ])
 def test_a_money_tile_sums_what_is_open(db, tile_id, expected):
     assert _by_id(hub_service.hub(PARTNER))[tile_id]["signal"] == expected
+
+
+def test_the_tds_tile_carries_the_tax_it_cannot_judge_beside_its_figure_and_no_other_tile_carries_a_caveat(db):
+    """Client B's Rs 3,000 was deducted in a quarter with no challan recorded. It is not undeposited (the books cannot say) and
+    the tile is not a clean nil either: the sentence rides with the figure, in rupees, at firm scope and at B's own hub."""
+    tiles = _by_id(hub_service.hub(PARTNER))
+    assert "3,000.00" in tiles["tds"]["caveat"] and "no challan is recorded" in tiles["tds"]["caveat"]
+    assert "Record the challan" in tiles["tds"]["caveat"], "the caveat must say what to do next"
+    assert {i: t["caveat"] for i, t in tiles.items() if i != "tds"} == {i: None for i in tiles if i != "tds"}
+    b = _by_id(hub_service.hub(PARTNER, client_id=CLIENT_B))["tds"]
+    assert b["signal"] == 0 and "3,000.00" in b["caveat"], "a nil with unrecorded tax behind it must not read as a finished tile"
+    a = _by_id(hub_service.hub(PARTNER, client_id=CLIENT_A))["tds"]
+    assert a["signal"] == 10_000_00 and a["caveat"] is None
+
+
+def test_a_tds_position_that_could_not_be_read_is_no_figure_and_no_caveat_and_never_a_nil(db, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("the function is not there")
+    monkeypatch.setattr(hub_service, "_tds_position", boom)
+    tds = _by_id(hub_service.hub(PARTNER))["tds"]
+    assert tds["answerable"] is True and tds["signal"] is None and tds["caveat"] is None
 
 
 def test_a_cancelled_draft_or_deleted_document_is_owed_by_nobody(db):
@@ -243,10 +265,11 @@ def test_a_client_hub_asks_the_same_questions_of_one_client(db):
     assert client_a["sales"]["signal"] == 118_000_00
     assert firm["compliance"]["signal"] == 2
     assert client_a["compliance"]["signal"] == 1
-    # TDS: A's Rs 10,000 and B's Rs 3,000 are undeposited; a client hub asks the database about one client.
-    assert firm["tds"]["signal"] == 13_000_00
+    # TDS: A's Rs 10,000 is undeposited (its quarter has a challan recorded); B's Rs 3,000 is in a quarter with none, so it is
+    # NOT RECORDED and not a figure. A client hub asks the database about one client.
+    assert firm["tds"]["signal"] == 10_000_00
     assert client_a["tds"]["signal"] == 10_000_00
-    assert _by_id(hub_service.hub(PARTNER, client_id=CLIENT_B))["tds"]["signal"] == 3_000_00
+    assert _by_id(hub_service.hub(PARTNER, client_id=CLIENT_B))["tds"]["signal"] == 0
 
 
 def test_an_assignment_scoped_user_sees_only_their_own_clients(db, monkeypatch):
@@ -255,11 +278,13 @@ def test_an_assignment_scoped_user_sees_only_their_own_clients(db, monkeypatch):
     collapsing the second is how a scoping bug becomes a cross-client read."""
     monkeypatch.setattr(hub_service, "effective_client_ids", lambda u: {CLIENT_B})
     assert _by_id(hub_service.hub(PARTNER))["sales"]["signal"] == 2_000_00
-    assert _by_id(hub_service.hub(PARTNER))["tds"]["signal"] == 3_000_00
+    only_b = _by_id(hub_service.hub(PARTNER))["tds"]
+    assert only_b["signal"] == 0 and "3,000.00" in only_b["caveat"], "B's tax is not recorded, and A's is not B's to see"
 
     monkeypatch.setattr(hub_service, "effective_client_ids", lambda u: set())
     assert _by_id(hub_service.hub(PARTNER))["sales"]["signal"] == 0
-    assert _by_id(hub_service.hub(PARTNER))["tds"]["signal"] == 0
+    nobody = _by_id(hub_service.hub(PARTNER))["tds"]
+    assert nobody["signal"] == 0 and nobody["caveat"] is None
 
 
 def test_a_caller_with_no_firm_is_refused(db):

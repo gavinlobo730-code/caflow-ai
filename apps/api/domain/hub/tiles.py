@@ -53,6 +53,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+from domain.money_text import rupees_paise
+
 
 class Unit(str, Enum):
     """What a tile's number IS. Never inferred from the value."""
@@ -348,8 +350,24 @@ def tiles_for_scope(client_id: Optional[str]) -> tuple[Tile, ...]:
     return tuple(t for t in TILES if t.client_scoped)
 
 
-def describe(tile: Tile, signal: Optional[int], client_id: Optional[str] = None) -> dict:
+def not_recorded_caveat(not_recorded_paise: Optional[int]) -> Optional[str]:
+    """What the TDS tile says about tax it cannot judge: deducted in a quarter for which no challan is recorded (migration 523).
+
+    The tile's figure is the shortfall in quarters whose deposits are recorded here. Tax deducted in a quarter with none is not a
+    shortfall this product can show, nor a clean nil: it holds no challan to say whether the tax was deposited (a firm that keeps its
+    deposits in another system records none here). So the tile says so beside its figure, and a tile with a caveat is never drawn as
+    finished. Nothing to say for nil or an absent figure (the tile's own fetch failing is the service's third state)."""
+    if not not_recorded_paise or not_recorded_paise <= 0:
+        return None
+    return (f"₹{rupees_paise(not_recorded_paise)} was deducted in quarters for which no challan is recorded in PracticeSync, so this "
+            "figure cannot say whether it was deposited. Record the challan to have it counted.")
+
+
+def describe(tile: Tile, signal: Optional[int], client_id: Optional[str] = None, caveat: Optional[str] = None) -> dict:
     """One tile, ready to render — the shape the endpoint serves.
+
+    `caveat` is a sentence a tile may carry beside its figure when the figure alone would mislead; `None` for every tile that has
+    nothing to add. A tile with a caveat is not a finished tile whatever its figure, and the screen draws it so.
 
     `signal` is None for BOTH of the two reasons a tile can have no number,
     and the payload tells them apart with `answerable`: False means nobody can
@@ -368,4 +386,5 @@ def describe(tile: Tile, signal: Optional[int], client_id: Optional[str] = None)
         "answerable": ok,
         "no_signal_because": tile.why_no_signal(client_id),
         "signal": signal if ok else None,
+        "caveat": caveat if ok else None,
     }

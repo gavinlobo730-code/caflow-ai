@@ -40,11 +40,11 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from core.authz import effective_client_ids
 from domain.banking import entry as bank_entry
-from domain.hub.tiles import describe, tiles_for_scope
+from domain.hub.tiles import describe, not_recorded_caveat, tiles_for_scope
 from core import db_provider
 
 logger = logging.getLogger("caflow.hub")
@@ -58,6 +58,17 @@ logger = logging.getLogger("caflow.hub")
 # module computes today, so every one of them gets its own worker rather than
 # queueing behind another tile.
 _MAX_PARALLEL_TILE_FETCHES = 16
+
+#: The key under which `_signals` carries the TDS tax it cannot judge. It is not a tile; `hub` turns it into the TDS tile's caveat.
+_TDS_NOT_RECORDED = "tds_not_recorded"
+
+
+def _caveat_for(tile_id: str, signals: dict) -> Optional[str]:
+    """The caveat a tile carries beside its figure, if its figure alone would mislead (only the TDS tile has one)."""
+    if tile_id == "tds":
+        return not_recorded_caveat(signals.get(_TDS_NOT_RECORDED))
+    return None
+
 
 # ── The vocabularies, read from the CHECK rather than remembered ────────────
 #
@@ -125,7 +136,7 @@ def _outstanding(table_key: str, done: tuple[str, ...]) -> list[str]:
 _db = db_provider.service_db
 
 
-def _safely(name: str, fn: Callable[[], Optional[int]]) -> Optional[int]:
+def _safely(name: str, fn: Callable[[], Any]) -> Any:
     """One tile's figure, or None if it could not be read.
 
     See the module docstring: a tile that fails loses its own number and
@@ -201,19 +212,21 @@ def _sum_paise(table: str, column: str, firm_id: str,
     return sum(int(r.get(column) or 0) for r in rows)
 
 
-def _tds_undeposited(firm_id: str, client_ids: Optional[list[str]]) -> int:
-    """TDS deducted and not yet deposited, in paise, which the DATABASE computes (CLAUDE.md's reporting rule: what crosses the
-    wire is proportional to the answer, not to the ledger). `client_ids` None is every client of the firm, a list is those
-    clients, an empty list is none. The function's name is written out at the call on purpose: `core/schema_guard` and the
-    rpc-existence tests read the literal first argument of an rpc call and cannot see a name held in a variable."""
-    data = _db().rpc("tds_undeposited_paise", {"p_firm_id": firm_id, "p_client_ids": client_ids}).execute().data
+def _tds_position(firm_id: str, client_ids: Optional[list[str]]) -> tuple[int, int]:
+    """(TDS deducted and not yet deposited, TDS deducted in quarters with no challan recorded), in paise, which the DATABASE
+    computes (CLAUDE.md's reporting rule: what crosses the wire is proportional to the answer, not to the ledger). The first is the
+    shortfall in quarters whose deposits are recorded here; the second is tax the books cannot say was deposited or not, and it is
+    not part of the first (migration 523). `client_ids` None is every client of the firm, a list is those clients, an empty list is
+    none. The function's name is written out at the call on purpose: `core/schema_guard` and the rpc-existence tests read the
+    literal first argument of an rpc call and cannot see a name held in a variable."""
+    data = _db().rpc("tds_deposit_position", {"p_firm_id": firm_id, "p_client_ids": client_ids}).execute().data
     if isinstance(data, list):
         data = data[0] if data else None
-    if data is None:
+    if not isinstance(data, dict) or data.get("undeposited_paise") is None or data.get("not_recorded_paise") is None:
         # The function sums with a coalesce, so a genuine nothing is 0. An ANSWER that is absent is a read that did not happen,
         # and `_safely` turns this into a tile with no figure: an unknown is never shown as a value.
-        raise RuntimeError("tds_undeposited_paise answered nothing")
-    return int(data)
+        raise RuntimeError("tds_deposit_position answered nothing")
+    return int(data["undeposited_paise"]), int(data["not_recorded_paise"])
 
 
 def hub(current_user: dict, client_id: Optional[str] = None) -> dict:
@@ -242,7 +255,7 @@ def hub(current_user: dict, client_id: Optional[str] = None) -> dict:
         "scope": "client" if client_id else "firm",
         "client_id": client_id,
         "tiles": [
-            describe(t, signals.get(t.id), client_id)
+            describe(t, signals.get(t.id), client_id, caveat=_caveat_for(t.id, signals))
             for t in tiles_for_scope(client_id)
         ],
     }
@@ -251,7 +264,8 @@ def hub(current_user: dict, client_id: Optional[str] = None) -> dict:
 def _signals(firm_id: str, scope: Optional[list[str]],
              client_id: Optional[str] = None) -> dict[str, Optional[int]]:
     """One figure per tile that has one at this scope. Each is independently
-    recoverable — see `_safely`.
+    recoverable — see `_safely`. One key is not a tile: `_TDS_NOT_RECORDED` is the TDS tile's caveat, from the same read as its
+    figure.
 
     `client_id` is taken rather than re-derived from `scope`, because the two
     answer different questions: `scope` is the client filter (a Partner's is
@@ -271,7 +285,14 @@ def _signals(firm_id: str, scope: Optional[list[str]],
     of every tile" to "roughly the slowest single tile"."""
     # Each value is a CALLABLE (never called yet) so building this dict does
     # no I/O — only submitting it to the executor below does.
-    tasks: dict[str, Callable[[], Optional[int]]] = {
+    beside: dict[str, Optional[int]] = {_TDS_NOT_RECORDED: None}
+
+    def _tds_figure() -> int:
+        undeposited, not_recorded = _tds_position(firm_id, scope)
+        beside[_TDS_NOT_RECORDED] = not_recorded
+        return undeposited
+
+    tasks: dict[str, Callable[[], Any]] = {
         "compliance": lambda: _count(
             "compliance_records", firm_id, scope,
             in_=("status", _outstanding("compliance_records", _COMPLIANCE_DONE))),
@@ -301,13 +322,16 @@ def _signals(firm_id: str, scope: Optional[list[str]],
         "purchases": lambda: _sum_paise(
             "purchase_bills", "outstanding_paise", firm_id, scope,
             live_documents_only=True),
-        # Deducted and NOT YET DEPOSITED, from the CHALLAN REGISTER (migration 522's `tds_undeposited_paise`, twin
+        # Deducted and NOT YET DEPOSITED, from the CHALLAN REGISTER (migration 523's `tds_deposit_position`, twin
         # `domain/tds/undeposited`). This read `tds_deductions.challan_no IS NULL`: a deduction a purchase bill writes never
         # carries it (`POST /challans` records the challan and never touches the deductions it paid), so every such deduction
         # counted as undeposited whatever had been paid in and the seeded demo firm's dashboard said ₹1,94,614.98 with every
         # deduction deposited. A challan number typed on a hand-keyed deduction is a note: the statement and the deposit
-        # worksheet ignore it and so does this tile (see the design record).
-        "tds": lambda: _tds_undeposited(firm_id, scope),
+        # worksheet ignore it and so does this tile (see the design record). The figure counts only quarters for which a
+        # challan is recorded; the tax deducted in a quarter with none is NOT RECORDED and rides beside the figure as the
+        # tile's caveat (a firm that keeps its deposits elsewhere has no challan here, and calling its tax undeposited was an
+        # unknown shown as a value). One read gives both: the figure is returned and the caveat's amount is left in `beside`.
+        "tds": _tds_figure,
         "payroll": lambda: _count(
             "payroll_runs", firm_id, scope,
             in_=("status", _outstanding("payroll_runs", _PAYROLL_DONE))),
@@ -368,7 +392,10 @@ def _signals(firm_id: str, scope: Optional[list[str]],
 
     with ThreadPoolExecutor(max_workers=_MAX_PARALLEL_TILE_FETCHES) as ex:
         futures = {name: ex.submit(_safely, name, fn) for name, fn in tasks.items()}
-        return {name: f.result() for name, f in futures.items()}
+        results = {name: f.result() for name, f in futures.items()}
+    # The TDS read answers two things; one that could not be read left `beside` as it was, so it is no figure and no caveat, never a nil.
+    results.update(beside)
+    return results
 
 
 def _reorder_count(firm_id: str, client_id: str) -> int:
