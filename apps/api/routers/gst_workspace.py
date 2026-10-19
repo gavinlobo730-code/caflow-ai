@@ -350,6 +350,46 @@ def _write_gstr3b_status(firm_id: str, return_id: str, patch: dict) -> Optional[
     return rows[0] if rows else None
 
 
+def _close_the_obligation(current_user: dict, obligation_type: str, rec: dict,
+                          filed_date: Optional[str], arn: Optional[str],
+                          frequency: Optional[str] = None) -> dict:
+    """Close the compliance obligation a return recorded as filed stands for, and say what happened (POST-A-254).
+
+    NEVER FAILS THE FILING: the return is filed and the CA has said so. Whatever stops the obligation closing comes
+    back in the answer for the screen to show, and goes to the error reporter, so a failure is seen twice and lost
+    never. Mock mode has no calendar to close.
+    """
+    if _USE_MOCK:
+        return {"state": "not_closed", "closed": False, "obligation_id": None,
+                "message": "There is no compliance calendar in this mode."}
+    from core.observability import capture_soft_failure
+    from core.supabase_client import get_supabase
+    from services import gst_return_closes_obligation as closes
+    firm_id = current_user["firm_id"]
+    try:
+        return closes.close_for_filed_return(
+            get_supabase(), firm_id=firm_id, client_id=rec.get("client_id") or "",
+            obligation_type=obligation_type, period=rec.get("period") or "", frequency=frequency,
+            filed_date=filed_date, arn=arn, actor=current_user,
+            may_write_compliance=can_user(current_user, "compliance", "write"))
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="gst_workspace.close_the_obligation",
+                             firm_id=firm_id, client_id=rec.get("client_id"))
+        return {"state": "not_closed", "closed": False, "obligation_id": None,
+                "message": "The return is recorded as filed, but the compliance calendar could not be updated just now. "
+                           "Mark the obligation filed from Compliance."}
+
+
+def _answered_with_the_obligation(current_user: dict, obligation_type: str, rec: dict, status: str,
+                                  filed_date: Optional[str], arn: Optional[str], reg) -> dict:
+    """`rec`, plus what became of the compliance obligation when the status is the move to submitted (POST-A-264).
+    Any other status is answered as it always was."""
+    if status != "submitted":
+        return rec
+    return {**rec, "compliance_obligation": _close_the_obligation(
+        current_user, obligation_type, rec, filed_date, arn, reg.filing_frequency if reg else None)}
+
+
 def _filed_date_or_refusal(status: str, firm_id: str, filing_type: str,
                            filed_date: Optional[str], rec: dict):
     """(date, refusal, registration) for a return about to be marked submitted.
@@ -812,7 +852,8 @@ def update_gstr1_status(
                 financial_year="", category="gst", event_type="gstr1_filed",
                 title=f"GSTR-1 filed for {rec.get('period', '')}",
             )
-        return api_response(True, rec)
+        return api_response(True, _answered_with_the_obligation(
+            current_user, "GSTR1", rec, body.status, filed_date, body.arn, _reg))
     except Exception as e:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 
@@ -1106,8 +1147,9 @@ def update_gstr3b_status(
             )
         # Reported, not hidden: what was filed differs from what the books now
         # say, and the CA should see that on the screen they filed from.
-        return api_response(True, {**rec, "stale_at_submission":
-                                   stale_state["differences"] if submitted_stale else None})
+        out = {**rec, "stale_at_submission": stale_state["differences"] if submitted_stale else None}
+        return api_response(True, _answered_with_the_obligation(
+            current_user, "GSTR3B", out, body.status, filed_date, body.arn, _reg))
     except Exception as e:
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
 

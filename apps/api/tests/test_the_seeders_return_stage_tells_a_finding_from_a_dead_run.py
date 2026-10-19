@@ -74,7 +74,16 @@ class FakeApi:
             hook(body)
         if path.endswith("/from-books"):
             return {"success": True, "data": self.computed(body)}
+        if method == "PATCH":
+            return {"success": True, "data": {"status": body["status"], **self.closure(path, body)}}
         return {"success": True, "data": {"id": f"ret-{len(self.calls)}"}}
+
+    @staticmethod
+    def closure(path, body):
+        """What the server answers on the submitted step: the obligation was closed."""
+        if body["status"] != "submitted":
+            return {}
+        return {"compliance_obligation": {"state": "closed", "closed": True, "obligation_id": "o", "message": "closed"}}
 
     def post(self, path, body):
         return self._do("POST", path, body)
@@ -84,7 +93,8 @@ class FakeApi:
 
 
 def _written():
-    return {"gstr1_filed": 0, "gstr3b_filed": 0, "returns_not_yet_due": 0, "returns_refused": []}
+    return {"gstr1_filed": 0, "gstr3b_filed": 0, "returns_not_yet_due": 0, "obligations_closed": 0,
+            "obligations_left_open": [], "returns_refused": []}
 
 
 def _run(api, client=MONTHLY_CLIENT, written=None):
@@ -226,3 +236,51 @@ def test_a_monthly_gstr3b_is_built_with_its_filing_date_and_a_quarterly_one_with
         "Table 5.1's interest takes the monthly due date for any period key, so a quarter built with a filing date "
         "would be saved claiming interest")
     assert not any("filed_on" in b for m, p, b in monthly.calls if p == "/api/gst/gstr1/from-books")
+
+
+# ── the compliance calendar beside the filings ──────────────────────────────
+
+def test_every_return_filed_is_counted_as_closing_its_obligation():
+    w = _run(FakeApi())
+    assert w["obligations_closed"] == 22 and w["obligations_left_open"] == []
+
+
+def test_an_obligation_the_server_left_open_is_reported_with_its_reason():
+    class LeavesOneOpen(FakeApi):
+        @staticmethod
+        def closure(path, body):
+            if body["status"] == "submitted" and "/gstr3b/" in path:
+                return {"compliance_obligation": {"state": "not_on_the_calendar", "closed": False,
+                                                  "message": "No GSTR-3B obligation for this period is on the calendar."}}
+            return FakeApi.closure(path, body)
+    w = _run(LeavesOneOpen())
+    assert w["obligations_closed"] == 11 and len(w["obligations_left_open"]) == 11
+    assert "No GSTR-3B obligation" in w["obligations_left_open"][0] and "GSTR-3B" in w["obligations_left_open"][0]
+
+
+def test_an_answer_that_says_nothing_about_the_obligation_is_not_taken_for_closed():
+    class Silent(FakeApi):
+        @staticmethod
+        def closure(path, body):
+            return {}
+    w = _run(Silent())
+    assert w["obligations_closed"] == 0 and len(w["obligations_left_open"]) == 22
+    assert "did not say" in w["obligations_left_open"][0]
+
+
+def test_main_exits_non_zero_when_a_filed_return_left_its_obligation_open(monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["seed_demo_firm.py", "--api-url", "http://localhost:1", "--token", "t", "--confirm"])
+    monkeypatch.setattr(seeder, "seed", lambda *a, **k: {**_written(), "obligations_left_open": ["Anand GSTR-1 042025: x"]})
+    assert seeder.main() == 2
+    assert "left their obligation open" in capsys.readouterr().out
+
+
+def test_an_obligation_that_was_already_filed_is_not_reported_as_left_open():
+    class AlreadyFiled(FakeApi):
+        @staticmethod
+        def closure(path, body):
+            if body["status"] != "submitted":
+                return {}
+            return {"compliance_obligation": {"state": "already_filed", "closed": False, "message": "already filed"}}
+    w = _run(AlreadyFiled())
+    assert w["obligations_left_open"] == [] and w["obligations_closed"] == 0

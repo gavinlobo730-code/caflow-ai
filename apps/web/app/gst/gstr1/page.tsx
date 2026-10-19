@@ -122,6 +122,8 @@ export default function GSTR1Page() {
   // refuses a submit without it in its own words, shown in the modal.
   const [filedDate, setFiledDate] = useState("");
   const [filedError, setFiledError] = useState<string | null>(null);
+  // The server's sentence when recording this filing did NOT also close the compliance obligation (POST-A-264).
+  const [filingNote, setFilingNote] = useState<string | null>(null);
   // Text that is not a date must not read as "no date" and leave the answer to
   // the server (frontend_ux-19).
   const dates = useDateProblems();
@@ -176,7 +178,7 @@ export default function GSTR1Page() {
     if (!clientId || !yearMonth || !arn.trim() || dates.first) return;
     setFiledError(null);
     try {
-      await markGSTR1Filed(clientId, toPeriod(yearMonth), arn.trim(), filedDate, result?.gstin);
+      setFilingNote(await markGSTR1Filed(clientId, toPeriod(yearMonth), arn.trim(), filedDate, result?.gstin));
       setFilingStatus("submitted");
       closeFiledModal();
     } catch (e) {
@@ -305,6 +307,12 @@ export default function GSTR1Page() {
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
+      {filingNote && (
+        <Callout tone="note" title="Recorded as filed. The compliance calendar was not marked filed.">
+          <span>{filingNote}</span>{" "}
+          <button onClick={() => setFilingNote(null)} className="underline">Dismiss</button>
+        </Callout>
+      )}
 
       {result && (
         <>
