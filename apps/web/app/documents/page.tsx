@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
@@ -384,15 +385,19 @@ export default function DocumentsPage() {
       setClients(clientList);
 
       const sb = getSupabaseClient();
-      const { data, error } = await sb
+      // Paged: this is every document the firm holds, newest first, so PostgREST's silent ~1000-row
+      // cut would drop the OLDEST ones from the only list they can be found in. `.order("id")` is the
+      // unique tiebreaker the OFFSET paging needs, since created_at is not unique.
+      const { data, error } = await selectAll<Document>(() => sb
         .from("documents")
         .select("*")
         .eq("firm_id", firmId)
         .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .order("id"));
 
       if (error) throw new Error(error.message);
-      setDocuments((data ?? []) as Document[]);
+      setDocuments(data);
     } catch (err) {
       setPageError(err instanceof Error ? err.message : "Failed to load documents");
     } finally {

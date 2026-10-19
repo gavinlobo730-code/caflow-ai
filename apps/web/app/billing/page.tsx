@@ -17,6 +17,7 @@ import { usePermissions } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { formatDate } from "@/lib/dates/format";
 import type { Client } from "@/lib/types";
@@ -404,10 +405,21 @@ export default function BillingPage() {
       // firm-scoped with no role test, so every role could read every fee.
       // Invoices and receipts are still direct reads; moving them is the same
       // shape and is not this change.
+      //
+      // Both are PAGED, because the headline figures below (revenue, outstanding,
+      // overdue, issued, draft) are added up in the browser from these rows.
+      // PostgREST cuts a response at ~1000 rows and says nothing, and a firm's
+      // fee invoices pass 1000 in under two years on a 50-client book
+      // (accounting/receivables says the same of its ageing). Newest-first, the
+      // cut took the OLDEST invoices: revenue short, and an old unpaid invoice
+      // missing from "outstanding" entirely. `.order("id")` is the unique
+      // tiebreaker the OFFSET paging needs, since neither date is unique.
       const [engResp, invRes, recRes] = await Promise.all([
         api.engagements.list(),
-        sb.from("fee_invoices").select("*").eq("firm_id", firmId).order("invoice_date", { ascending: false }),
-        sb.from("fee_receipts").select("*").eq("firm_id", firmId).order("receipt_date", { ascending: false }),
+        selectAll<Invoice>(() => sb.from("fee_invoices").select("*").eq("firm_id", firmId)
+          .order("invoice_date", { ascending: false }).order("id")),
+        selectAll<Receipt>(() => sb.from("fee_receipts").select("*").eq("firm_id", firmId)
+          .order("receipt_date", { ascending: false }).order("id")),
       ]);
       // A non-null PostgREST error is a real failure (RLS denial, network, timeout),
       // not "zero rows" — .data would still be null/[] either way, so skipping this

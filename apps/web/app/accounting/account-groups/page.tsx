@@ -4,6 +4,7 @@ import { useState, useEffect, useId } from "react";
 import { Layers, Plus } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { Callout } from "@/components/ui/callout";
@@ -198,15 +199,18 @@ export default function AccountGroupsPage() {
       try {
         const fid = await getFirmId();
         const sb = getSupabaseClient();
-        const { data, error: err } = await sb
+        // Paged: an account past PostgREST's silent ~1000-row cut would not be listed, so it could
+        // not be regrouped. `.order("id")` is the unique tiebreaker the OFFSET paging needs.
+        const { data, error: err } = await selectAll<CoaRow>(() => sb
           .from("chart_of_accounts")
           .select("id, account_code, account_name, account_type, account_subtype, parent_group, sub_group, is_active")
           .eq("firm_id", fid)
           .is("client_id", null)
           .eq("is_active", true)
-          .order("account_code");
+          .order("account_code")
+          .order("id"));
         if (err) throw new Error(err.message);
-        setAccounts((data ?? []) as CoaRow[]);
+        setAccounts(data);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load");
       } finally {

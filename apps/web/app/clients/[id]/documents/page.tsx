@@ -8,6 +8,7 @@ import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNav
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { deleteStoredDocument } from "@/lib/documents/deleteStoredDocument";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -87,13 +88,17 @@ export default function DocumentsPage() {
     setLoading(true);
     try {
       const supabase = getSupabaseClient();
-      const { data, error } = await supabase
+      // Paged: newest first, so PostgREST's silent ~1000-row cut would drop the OLDEST documents (and
+      // the earlier versions of one) from the only list they can be found in. `.order("id")` is the
+      // unique tiebreaker the OFFSET paging needs.
+      const { data, error } = await selectAll<ClientDocument>(() => supabase
         .from("client_documents")
         .select("id, file_name, description, file_path, file_size, mime_type, created_at, version, parent_document_id")
         .eq("client_id", clientId)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .order("id"));
       if (error) throw error;
-      setDocuments(data ?? []);
+      setDocuments(data);
       setLoadError(null);
     } catch (e) {
       setDocuments([]);

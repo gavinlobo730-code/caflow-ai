@@ -11,6 +11,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getClients } from "@/lib/data/clients";
 import { getComplianceCalendar } from "@/lib/data/compliance";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
 import { deleteStoredDocument } from "@/lib/documents/deleteStoredDocument";
@@ -312,11 +313,16 @@ export default function ClientPortalPage() {
       // be wiped by the failure (the old code's catch cleared sharedDocs
       // unconditionally, discarding a good fetch whenever shared_reports
       // alone failed).
+      //
+      // The documents are PAGED: newest first, so PostgREST's silent ~1000-row cut would drop the
+      // OLDEST ones from the list of what is shared. `.order("id")` is the unique tiebreaker the
+      // OFFSET paging needs.
       const [docsRes, reportsRes] = await Promise.all([
-        sb.from("client_documents")
+        selectAll<SharedDocument>(() => sb.from("client_documents")
           .select("id, file_name, description, file_path, file_size, created_at")
           .eq("client_id", clientId)
-          .order("created_at", { ascending: false }),
+          .order("created_at", { ascending: false })
+          .order("id")),
         sb.from("shared_reports")
           .select("id, report_label, report_type, financial_year, storage_path, file_name, file_size_bytes, created_at")
           .eq("client_id", clientId)

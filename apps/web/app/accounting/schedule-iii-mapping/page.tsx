@@ -30,6 +30,7 @@ import Link from "next/link";
 import { GitBranch } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { Callout } from "@/components/ui/callout";
@@ -73,12 +74,16 @@ export default function ScheduleIIIMappingPage() {
       try {
         const fid = await getFirmId();
         const sb = getSupabaseClient();
+        // Paged: this list is the only place an account's statement line can be set, so an account
+        // past PostgREST's silent ~1000-row cut could never be mapped and would be classified from
+        // its subtype for ever. `.order("id")` is the unique tiebreaker the OFFSET paging needs.
         const [coa, caps] = await Promise.all([
-          sb.from("chart_of_accounts")
+          selectAll<CoaRow>(() => sb.from("chart_of_accounts")
             .select("id, account_code, account_name, account_type, tax_category, schedule_iii_mapping, is_active")
             .eq("firm_id", fid)
             .is("client_id", null)
-            .order("account_code"),
+            .order("account_code")
+            .order("id")),
           api.accounting.scheduleIiiCaptions() as Promise<CaptionsResponse>,
         ]);
         if (coa.error) throw new Error(coa.error.message);

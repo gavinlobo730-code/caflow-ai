@@ -56,7 +56,26 @@
  *
  *   `PAGED_READS_THAT_FEED_A_FIGURE` names each (screen, table) and the test below asks the SOURCE:
  *   every read of that table on that screen goes through a pager and carries `.order("id")`. The
- *   remaining ~76 reads are recorded in POST-A-135 as bounded by their scope or as plain lists.
+ *   remaining reads are recorded in POST-A-135 as bounded by their scope or as plain lists.
+ *
+ * THE SECOND SLICE OF THE TRIAGE, 19-10-2026 (POST-A-135)
+ *
+ *   A rescan found 70 unbounded reads left (the first slice and the pager's own spelling had moved the count).
+ *   Most are still bounded by what they are scoped to. The ones that GROW WITH A FIRM'S VOLUME are not, and they
+ *   fall into two kinds that this file keeps apart so neither claim is softened to cover both:
+ *
+ *     a figure             app/billing  fee_invoices, fee_receipts   revenue, outstanding, overdue, issued and
+ *                                        draft are summed in the browser from the firm's fee invoices, newest
+ *                                        first, and they pass 1000 in under two years on a 50-client book: the
+ *                                        cut took the OLDEST, so revenue came out short and an old unpaid
+ *                                        invoice was missing from "outstanding" altogether
+ *     the only way to      the chart-of-accounts import (its duplicate check also ignored a failed read, which
+ *     find or check a      left no existing codes and inserted the whole file again), the two firm-level chart
+ *     record               screens, the ageing page's accounts, and the four document lists
+ *
+ *   What was read and left alone, so nobody reopens it: the purchase-bill and sales-invoice lookups by number
+ *   (chunks of 200 numbers, so bounded), the vendor statements pick-list (already paged; a generic type argument
+ *   hid the pager from a scan), and the reads scoped to one client, one period or one document.
  *
  * ONE SCREEN IS LISTED FOR A DIFFERENT REASON, AND SAYING WHICH IS THE POINT
  *
@@ -273,6 +292,26 @@ const PAGED_READS_THAT_FEED_A_FIGURE: Record<string, string[]> = {
   "app/income-tax/page.tsx": ["compliance_calendar"],
   "app/payroll/attendance/page.tsx": ["attendance", "leave_balances"],
   "app/tds/page.tsx": ["tds_deductions"],
+  // The firm's own fee invoices and receipts: revenue, outstanding, overdue, issued and draft are added up in the
+  // browser from them, newest first, so the cut at 1000 took the oldest (second slice, 19-10-2026).
+  "app/billing/page.tsx": ["fee_invoices", "fee_receipts"],
+};
+
+/** The (screen, table) pairs whose reads are not a figure but are the ONLY place a record can be found, or the check that
+ *  decides whether to write one. Kept apart from the list above so neither claim has to be softened to cover both. */
+const PAGED_READS_THAT_ARE_THE_ONLY_WAY_TO_FIND_OR_CHECK_A_RECORD: Record<string, string[]> = {
+  // The duplicate check of the chart-of-accounts import: a code past the cut would be inserted a second time.
+  "app/accounting/coa-import/page.tsx": ["chart_of_accounts"],
+  // The firm-level chart, where a statement line or a group is set: an account past the cut could not be reached.
+  "app/accounting/schedule-iii-mapping/page.tsx": ["chart_of_accounts"],
+  "app/accounting/account-groups/page.tsx": ["chart_of_accounts"],
+  // The accounts a client's dues can be marked on: marking puts the balance into a statutory disclosure.
+  "app/clients/[id]/reports/ageing/page.tsx": ["chart_of_accounts"],
+  // Document lists, newest first, so the cut takes the OLDEST documents from the only list they can be opened from.
+  "app/documents/page.tsx": ["documents"],
+  "app/clients/documents/page.tsx": ["client_documents"],
+  "app/clients/[id]/documents/page.tsx": ["client_documents"],
+  "app/client-portal/page.tsx": ["client_documents"],
 };
 
 interface Read { paged: boolean; ordered: boolean }
@@ -306,22 +345,45 @@ function readsOf(src: string, table: string): Read[] {
   return out;
 }
 
-test("every read that feeds a figure goes through a pager and has a unique ordering", () => {
+/** Holds every listed (screen, table) to the pager and the unique ordering, and returns how many reads it examined. `why` and
+ *  `listName` go into the failure messages so the person reading one knows which claim broke. */
+function assertPaged(list: Record<string, string[]>, listName: string, why: string): number {
   let reads = 0;
-  for (const [rel, tables] of Object.entries(PAGED_READS_THAT_FEED_A_FIGURE)) {
+  for (const [rel, tables] of Object.entries(list)) {
     const src = code(readFileSync(join(WEB, rel), "utf8"));
     assert.ok(/from\s+["']@\/lib\/supabase\/selectAll["']/.test(src), `${rel} does not import the pager`);
     for (const t of tables) {
       const found = readsOf(src, t);
-      assert.ok(found.length > 0, `${rel} no longer reads ${t}: update PAGED_READS_THAT_FEED_A_FIGURE and say why`);
+      assert.ok(found.length > 0, `${rel} no longer reads ${t}: update ${listName} and say why`);
       reads += found.length;
       for (const r of found) {
-        assert.ok(r.paged, `${rel}: a read of ${t} feeds a figure and is not wrapped in selectAll/selectAllKeyset, so it is cut at ~1000 rows without a word`);
+        assert.ok(r.paged, `${rel}: a read of ${t} ${why} and is not wrapped in selectAll/selectAllKeyset, so it is cut at ~1000 rows without a word`);
         assert.ok(r.ordered, `${rel}: a paged read of ${t} has no .order("id") tiebreaker, so a row can be returned twice or never at a page boundary`);
       }
     }
   }
-  assert.ok(reads >= 7, `only ${reads} reads were examined: the scan has stopped seeing them`);
+  return reads;
+}
+
+test("every read that feeds a figure goes through a pager and has a unique ordering", () => {
+  const reads = assertPaged(PAGED_READS_THAT_FEED_A_FIGURE, "PAGED_READS_THAT_FEED_A_FIGURE", "feeds a figure");
+  assert.ok(reads >= 9, `only ${reads} reads were examined: the scan has stopped seeing them`);
+});
+
+test("every read that is the only way to find or check a record goes through a pager and has a unique ordering", () => {
+  const reads = assertPaged(
+    PAGED_READS_THAT_ARE_THE_ONLY_WAY_TO_FIND_OR_CHECK_A_RECORD,
+    "PAGED_READS_THAT_ARE_THE_ONLY_WAY_TO_FIND_OR_CHECK_A_RECORD",
+    "is the only way to find, or the check before writing, a record",
+  );
+  assert.ok(reads >= 8, `only ${reads} reads were examined: the scan has stopped seeing them`);
+});
+
+test("the two lists name different screens, so a screen is never held to one claim by accident", () => {
+  const figure = new Set(Object.entries(PAGED_READS_THAT_FEED_A_FIGURE).flatMap(([f, ts]) => ts.map((t) => `${f}::${t}`)));
+  for (const [f, ts] of Object.entries(PAGED_READS_THAT_ARE_THE_ONLY_WAY_TO_FIND_OR_CHECK_A_RECORD)) {
+    for (const t of ts) assert.ok(!figure.has(`${f}::${t}`), `${f} ${t} is on both lists: say which claim it is`);
+  }
 });
 
 test("the scan tells a paged read from an unpaged one and ignores a write (negative controls)", () => {

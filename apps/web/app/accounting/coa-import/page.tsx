@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Upload, CheckCircle, AlertCircle, X, FileText } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
 import { acceptedMappings, mappingProblem, type CaptionsPayload } from "@/lib/accounting/coaImportMapping";
@@ -159,13 +160,22 @@ export default function CoaImportPage() {
       const fid = await getFirmId();
       const sb = getSupabaseClient();
 
-      // Fetch existing codes
-      const { data: existing } = await sb
+      // Fetch existing codes. This read IS the duplicate check, so it has to see EVERY firm-level
+      // code: PostgREST cuts a response at ~1000 rows without a word, and a code past the cut
+      // would read as "not there yet" and be inserted a second time. A failed read must stop the
+      // import too. It used to be ignored, which left no existing codes at all and inserted the
+      // whole file over a chart that was already there. `.order("id")` is the unique tiebreaker
+      // the OFFSET paging needs; it is not in the projection.
+      const { data: existing, error: existingErr } = await selectAll<{ account_code: string }>(() => sb
         .from("chart_of_accounts")
         .select("account_code")
         .eq("firm_id", fid)
-        .is("client_id", null);
-      const existingCodes = new Set((existing ?? []).map(a => a.account_code.toUpperCase()));
+        .is("client_id", null)
+        .order("id"));
+      if (existingErr) {
+        throw new Error(`The existing chart of accounts could not be read, so nothing was imported: ${existingErr.message}`);
+      }
+      const existingCodes = new Set(existing.map(a => a.account_code.toUpperCase()));
 
       const toInsert = preview.filter(r => !existingCodes.has(r.account_code.toUpperCase()));
       const skipped = preview.length - toInsert.length;
