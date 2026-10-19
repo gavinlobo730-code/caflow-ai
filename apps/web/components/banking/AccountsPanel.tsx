@@ -34,6 +34,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
+import { SavedColumnMappings } from "@/components/banking/SavedColumnMappings";
 import { formatDate } from "@/lib/dates/format";
 
 export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
@@ -366,6 +367,10 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
           )}
           {!txnsLoading && stmtTxns.length === 0 && <div className="text-center py-8 text-ps-hint text-sm">No transactions found.</div>}
         </div>
+      )}
+
+      {clientId && clientId !== "_placeholder" && (
+        <SavedColumnMappings clientId={clientId} accounts={accounts} refreshKey={statements.length} />
       )}
 
       {showImport && (

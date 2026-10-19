@@ -57,10 +57,6 @@ ANSWER_WORDS = (
 #: Statements tab), and `/banking/reconciliations/{id}/items` was DELETED as a
 #: byte-identical duplicate of `/report`, which the screen already calls.
 UNREACHED_COMPUTED_ANSWERS: dict[str, str] = {
-    "/api/banking/statements/column-mappings":
-        "Its own docstring says it exists 'so a CA can see and correct what a "
-        "bank taught us' — and no screen shows them. A real gap, and a small "
-        "one: it belongs beside the statement import, not on a page of its own.",
     "/api/compliance-records/firm/summary":
         "The firm-level compliance roll-up. `/deadlines` and the hub's Compliance "
         "tile answer the same question from `compliance_calendar`; this reads "

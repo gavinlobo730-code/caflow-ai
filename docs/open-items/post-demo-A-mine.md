@@ -108,7 +108,6 @@ IDs `POST-A-NNN` are stable: never renumber; add new items at the next free numb
 
 ## Banking
 
-- **POST-A-117** · `banking` · low · days — **Show what each bank taught us beside the statement import.** GET /api/banking/statements/column-mappings (and its DELETE by id, with lib/api methods at apps/web/lib/api/index.ts ~lines 4981-4983) exists 'so a CA can see and correct what a bank taught us' and no screen shows it; it is held in UNREACHED_COMPUTED_ANSWERS in apps/api/tests/test_a_computed_answer_nobody_can_open_is_named.py. It belongs beside the statement import, not on a page of its own. Build the panel and remove its entry from the frozen list in the same commit (the list is an equality both ways). THE-PLAN Track 1 A, 1A-2. — _Sources:_ docs/plan/THE-PLAN.md - Track 1 A, 1A-2 (frozen list entry) — _Refs:_ 1A-2
 
 ## Filing, integrations and registrations
 

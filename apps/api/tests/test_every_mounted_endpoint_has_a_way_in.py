@@ -86,7 +86,9 @@ MARKETING = _REPO / "apps" / "marketing"
 #: settings PUT, both halves of the bonus disqualification and the employee
 #: import template. Under the concatenation all five looked wired up.
 BUDGET: dict[str, int] = {
-    "/api/workflows": 10, "/api/year-end": 10, "/api/banking": 8,
+    # /api/banking 8 -> 6 on 18-10-2026 (POST-A-117): the saved statement layouts are listed beside the statement import, with
+    # the Forget that deletes one, so both halves of `/statements/column-mappings` have a screen.
+    "/api/workflows": 10, "/api/year-end": 10, "/api/banking": 6,
     # /api/copilot 8 -> 6 on 01-10-2026 (ai-10): `POST /actions` and `GET
     # /summaries` were DELETED, not wired — the first marked a row `executed`
     # having executed nothing, the second filtered an in-memory fixture list.
