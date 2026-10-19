@@ -195,7 +195,8 @@ def _wire(monkeypatch, name):
     elif name == "upload_form26as":
         monkeypatch.setattr(tw, "_register_rows_for_fy", _boom)
     elif name == "deposit_due":
-        monkeypatch.setattr(tw.deposit_due_rules, "build", _boom)
+        import services.tds_deposit_worksheet_service as worksheet_service
+        monkeypatch.setattr(worksheet_service.deposit_due_rules, "build", _boom)
     else:
         monkeypatch.setattr(tw, "_USE_MOCK", False)
         monkeypatch.setattr(supabase_client, "get_supabase", _boom)

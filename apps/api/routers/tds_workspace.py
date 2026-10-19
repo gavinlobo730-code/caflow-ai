@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import uuid
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -25,10 +25,8 @@ from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
 from models.fy import FYLabel
-from core.db_paging import fetch_all
 from core.ist_clock import fy_bounds, ist_today
 from domain.tds import deductor_26as as D26
-from domain.tds import deposit_due as deposit_due_rules
 
 router = APIRouter(prefix="/api/tds-workspace", tags=["tds_workspace"])
 _logger = logging.getLogger("caflow.tds_workspace")
@@ -853,62 +851,30 @@ def deposit_due(
         firm_id = current_user["firm_id"]
         try:
             year, mon = (int(part) for part in month.split("-", 1))
-            month_start = date(year, mon, 1)
+            date(year, mon, 1)                  # a month that does not exist is a ValueError
         except (ValueError, TypeError):
             raise HTTPException(
                 status_code=422,
                 detail=(f"{month!r} is not a month. Expected YYYY-MM — the "
                         "month the tax was DEDUCTED in, which is what Rule "
                         "30(2)'s seventh-of-the-following-month runs from."))
-        month_end = date(year + (mon == 12), (mon % 12) + 1, 1) - timedelta(days=1)
 
-        from domain.tds.section_rates import quarter_dates
-        from services.compliance_engine import tds_deposit_due_date, tds_quarter_of_month
-        from core.ist_clock import ist_fy_label
-        due = tds_deposit_due_date(year, mon)
-
-        # WHAT WAS DEPOSITED IS THE CHALLAN REGISTER'S ANSWER, for the QUARTER the month is in: the deductions from its first
-        # day to the end of this month and the challans recorded for it, matched first-in first-out by
-        # `challan_mapping` exactly as the quarterly statement matches them. A short April moves its shortfall to the
-        # later deductions, so April's rows have to be in the match when June is asked about.
-        fy = ist_fy_label(month_start)
-        quarter_start = quarter_dates(fy, tds_quarter_of_month(mon))[0]
+        # What was deposited is the challan register's answer for the quarter the month is in; the reads and the match are
+        # `services/tds_deposit_worksheet_service`, which the obligation closer asks as well.
+        from services import tds_deposit_worksheet_service as worksheet
+        window = worksheet.month_window(year, mon)
         if _USE_MOCK:
+            fy, quarter = window["fy"], window["quarter"]
             quarter_rows = [d for d in _MOCK_DEDUCTIONS.values()
                             if d.get("client_id") == client_id
-                            and quarter_start <= str(d.get("transaction_date") or "")[:10] <= month_end.isoformat()]
+                            and window["quarter_start"] <= str(d.get("transaction_date") or "")[:10]
+                            <= window["month_end"].isoformat()]
             challans = [c for c in _MOCK_CHALLANS.values() if c.get("client_id") == client_id
-                        and c.get("financial_year") == fy and c.get("quarter") == tds_quarter_of_month(mon)]
+                        and c.get("financial_year") == fy and c.get("quarter") == quarter]
         else:
             from core.supabase_client import get_supabase
-            sb = get_supabase()
-            quarter_rows = fetch_all(
-                lambda: (sb.table("tds_deductions")
-                         .select("id, section, transaction_date, challan_date, "
-                                 "status, deductee_name, payment_amount_paise, "
-                                 "tds_paise, surcharge_paise, cess_paise")
-                         .eq("firm_id", firm_id).eq("client_id", client_id)
-                         .gte("transaction_date", quarter_start)
-                         .lte("transaction_date", month_end.isoformat())),
-                label="tds.deposit_due")
-            challans = fetch_all(
-                lambda: (sb.table("tds_challans").select("*")
-                         .eq("firm_id", firm_id).eq("client_id", client_id)
-                         .eq("financial_year", fy).eq("quarter", tds_quarter_of_month(mon))),
-                label="tds.deposit_due.challans")
-        rows = [r for r in quarter_rows
-                if month_start.isoformat() <= str(r.get("transaction_date") or "")[:10] <= month_end.isoformat()]
-        # No `.order()` on either read: `fetch_all` pages by keyset on `id` and adds its own ordering, and a second one
-        # makes the cursor skip and repeat rows past the first thousand. The match sorts what it is given.
-        counted = [c for c in challans if str(c.get("section") or "").strip() != "192"]
-        label = f"{tds_quarter_of_month(mon)} FY {fy}"
-        sheet = deposit_due_rules.build(
-            rows, month=f"{year:04d}-{mon:02d}", due_date=due, as_at=ist_today(),
-            deposits=deposit_due_rules.mapping_from_register(quarter_rows, challans, fy=fy),
-            deposits_read=(f"{len(counted)} non-salary challan{'' if len(counted) == 1 else 's'} recorded for {label}, "
-                           "matched to the quarter's deductions first in first out, section by section."
-                           if counted else
-                           f"No non-salary challan is recorded for {label}, so no tax is counted as deposited."))
+            quarter_rows, challans = worksheet.read_register(get_supabase(), firm_id, client_id, window)
+        sheet, _mapping, _rows = worksheet.build_sheet(year, mon, window, quarter_rows, challans)
         return api_response(True, {"client_id": client_id, **sheet.as_dict()})
     except HTTPException:
         raise
@@ -950,6 +916,30 @@ def list_challans(
         return api_response(True, rows)
     except Exception as e:
         return _could_not(e, "list the TDS challans")
+
+
+def _close_the_deposit_obligations(current_user: dict, challan: dict) -> list[dict]:
+    """Close the monthly deposit obligations the challan just recorded paid in full, and say what became of each month it paid
+    in. NEVER FAILS THE RECORDING: the challan is stored. Whatever stops an obligation closing comes back in the answer for the
+    screen to show and goes to the error reporter. In-memory mock mode has no calendar and answers nothing."""
+    if _USE_MOCK:
+        return []
+    from core.observability import capture_soft_failure
+    from core.supabase_client import get_supabase
+    from services import tds_deposit_closes_obligation as closes
+    firm_id = current_user["firm_id"]
+    try:
+        return closes.close_for_recorded_challan(
+            db=get_supabase(), firm_id=firm_id, client_id=challan.get("client_id") or "",
+            financial_year=challan.get("financial_year"), quarter=challan.get("quarter"), challan_id=challan.get("id") or "",
+            section=challan.get("section"), actor=current_user,
+            may_write_compliance=can_user(current_user, "compliance", "write"))
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="tds_workspace.close_the_deposit_obligations", firm_id=firm_id,
+                             client_id=challan.get("client_id"))
+        return [{"state": "not_closed", "closed": False, "obligation_id": None, "month": None,
+                 "message": "The challan is recorded, but the compliance calendar could not be updated just now. "
+                            "Mark the monthly deposit obligations filed from Compliance."}]
 
 
 @router.post("/challans")
@@ -1020,7 +1010,7 @@ def create_challan(
             event_type="tds_challan_deposited",
             title=f"TDS Challan deposited: ₹{body.amount_paise // 100} under {body.section}",
         )
-        return api_response(True, record)
+        return api_response(True, {**record, "compliance_obligations": _close_the_deposit_obligations(current_user, record)})
     except HTTPException:
         raise
     except Exception as e:
