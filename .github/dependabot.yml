@@ -37,13 +37,13 @@
 #                           and turns a missing required query parameter from a 422 into a 500;
 #                           supabase removes the client class core/supabase_client._force_http1 patches,
 #                           which silently reopens the HTTP/2 multi-thread bug. Patch releases still arrive.
-#       gunicorn            major ignored (21 to 26 proposed). It carries two request-smuggling advisories
-#                           (fixed from 22.0.0, ledger item POST-A-173), so it is a planned bump and not a
-#                           forgotten one: it is the production web server, and the one check that matters,
-#                           the container starting under Render's health check, cannot be run from CI. On
-#                           8 October 2026 the production start command ran on 26.2.0 outside a container and
-#                           answered /health; that is the evidence for the later bump, not a reason to take it
-#                           three weeks before a demo.
+#       gunicorn            majors beyond 22 ignored (26 proposed). 22.0.0 is adopted (POST-A-173,
+#                           18 October 2026): it is the first release that closes the two Transfer-Encoding
+#                           request-smuggling advisories, and the production command (the uvicorn worker
+#                           class, one worker, the flags in apps/api/Dockerfile) was started on it and
+#                           answered /health. The later majors stay held for the reason this one was held:
+#                           it is the production web server, and the one check that matters, the container
+#                           starting under Render's health check, cannot be run from CI.
 #       next, eslint-config-next, tailwindcss, typescript, @sentry/nextjs
 #                           major ignored in apps/web and apps/marketing (the two sites are on the same
 #                           versions). Next 16 and Tailwind 4 fail the Cloudflare Pages build as they stand;
