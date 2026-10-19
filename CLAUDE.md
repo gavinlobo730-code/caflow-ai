@@ -358,7 +358,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ITR RETURN BECOMES FILED BY RECORDING ITS ACKNOWLEDGEMENT, AND RECORDING IT CLOSES THE CALENDAR'S OBLIGATION
 - THE DEMO'S INCOME-TAX FACTS ARE FACTS, AND EVERY FIGURE THAT IS TAX COMES BACK FROM THE ENGINE
 
-### `docs/design-record/tax-tds.md` (17 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
+### `docs/design-record/tax-tds.md` (18 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 
 - From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it
 - A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD
@@ -377,6 +377,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A NOTE ON A PURCHASE RETURN SAYS WHETHER THE TAX HAS GONE BY ASKING THE CHALLAN REGISTER, AND THE REGISTER'S OWN COPY OF THE SENTENCE WAS BUILT AND THROWN AWAY
 - THE HUB'S "TDS DEDUCTED AND NOT YET DEPOSITED" IS THE CHALLAN REGISTER'S ANSWER, COMPUTED WHERE THE ROWS ARE, AND IT READ A COLUMN A BILL-DERIVED DEDUCTION NEVER CARRIES
 - FORM 3CD CLAUSE 34 READS THE CHALLAN REGISTER, AND A QUARTER WITH NO CHALLAN RECORDED IS NOT A DEPOSIT DEFAULT
+- A RECORDED CHALLAN CLOSES THE MONTHLY DEPOSIT OBLIGATIONS THAT ARE NOW PAID IN FULL AND ON TIME, AND A LATE ONE CLOSES NOTHING BY ITSELF
 
 ### `docs/design-record/tenancy-and-security.md` (43 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 

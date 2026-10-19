@@ -202,6 +202,19 @@ def _deposits_of(row: dict, tax: int, deducted_on: date, deposits) -> tuple[list
     return ([(tax, own)] if own is not None else []), refused
 
 
+def paid_on_dates(row: dict, deposits: "Optional[challan_mapping.Mapping]") -> list[date]:
+    """The dates this deduction's tax was paid over on, by the same reading the worksheet's interest uses: each challan the
+    register says it drew on (a part with no date, or dated before the deduction, is not counted), or, for a row the register
+    does not cover, the row's own `challan_date`. Empty when none of its tax is counted as paid."""
+    deducted_on = _as_date(row.get("transaction_date"))
+    if deducted_on is None or _tax_of(row) <= 0:
+        return []
+    parts, _refused = _deposits_of(row, _tax_of(row), deducted_on, deposits)
+    # A date before the deduction is not a date the tax was paid on: the register's own parts already refuse one, and the
+    # row's hand-set `challan_date` (the fallback for a row the register does not cover) is held to the same rule here.
+    return [paid_on for _paise, paid_on in parts if paid_on >= deducted_on]
+
+
 def _tax_of(row: dict) -> int:
     return (int(row.get("tds_paise") or 0) + int(row.get("surcharge_paise") or 0) + int(row.get("cess_paise") or 0))
 

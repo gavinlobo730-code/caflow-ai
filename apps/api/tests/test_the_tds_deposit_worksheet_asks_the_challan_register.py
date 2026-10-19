@@ -286,12 +286,13 @@ class _Recorder:
 def test_the_live_worksheet_reads_the_quarters_deductions_and_the_quarters_challans_for_this_client_only(monkeypatch):
     import core.supabase_client as sc
     import routers.tds_workspace as tw
+    import services.tds_deposit_worksheet_service as reads
     calls: list = []
     monkeypatch.setattr(tw, "_USE_MOCK", False)
     monkeypatch.setattr(sc, "get_supabase", lambda: type("Db", (), {"table": lambda self, t: _Recorder(calls, t)})())
     answers = {"tds.deposit_due": [_row("d1", "194J", "2025-07-23", 10000_00)],
                "tds.deposit_due.challans": [_challan("C1", "194J", "2025-08-07", 10000_00)]}
-    monkeypatch.setattr(tw, "fetch_all", lambda make_query, key="id", *, label="", stats=None:
+    monkeypatch.setattr(reads, "fetch_all", lambda make_query, key="id", *, label="", stats=None:
                         (make_query(), answers[label])[1])
     out = tw.deposit_due(client_id=CLIENT, month="2025-07", current_user={"firm_id": FIRM, "id": "u1", "role": "Partner"})
     assert out["success"] is True
@@ -312,10 +313,11 @@ def test_the_live_worksheet_reads_the_quarters_deductions_and_the_quarters_chall
 def test_the_live_worksheet_for_a_later_month_reads_from_the_start_of_its_quarter(monkeypatch):
     import core.supabase_client as sc
     import routers.tds_workspace as tw
+    import services.tds_deposit_worksheet_service as reads
     calls: list = []
     monkeypatch.setattr(tw, "_USE_MOCK", False)
     monkeypatch.setattr(sc, "get_supabase", lambda: type("Db", (), {"table": lambda self, t: _Recorder(calls, t)})())
-    monkeypatch.setattr(tw, "fetch_all", lambda make_query, key="id", *, label="", stats=None: (make_query(), [])[1])
+    monkeypatch.setattr(reads, "fetch_all", lambda make_query, key="id", *, label="", stats=None: (make_query(), [])[1])
     tw.deposit_due(client_id=CLIENT, month="2025-09", current_user={"firm_id": FIRM, "id": "u1", "role": "Partner"})
     gte = [a for t, m, a in calls if t == "tds_deductions" and m == "gte"]
     assert gte == [("transaction_date", "2025-07-01")], "September's match has to include July and August"
