@@ -33,6 +33,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from domain.banking import attachments as att
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.bank_batch")
 
@@ -163,8 +164,8 @@ class BankBatchService:
             log_event(firm_id, "bank_transaction", txn_id, "update", actor_id=actor_id,
                       new_data={"attachment_count": len(items)},
                       metadata={"source": "bank_attachment"})
-        except Exception:  # pragma: no cover - audit must never block
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_attachment.audit_log", firm_id=firm_id, txn_id=txn_id)
         return {"transaction_id": txn_id, "attachments": items, "invalid": None}
 
     # ── shared ──────────────────────────────────────────────────────────────
@@ -199,8 +200,8 @@ class BankBatchService:
                       new_data={"batch_action": action, "transaction_ids": applied,
                                 "count": len(applied)},
                       metadata={"source": "bank_batch"})
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_batch.audit_log", firm_id=firm_id)
 
 
 bank_batch_service = BankBatchService()

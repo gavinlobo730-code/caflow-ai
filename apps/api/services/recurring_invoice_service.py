@@ -90,6 +90,7 @@ from domain.recurrence import (                                    # noqa: E402
     preview_occurrences,
 )
 from core.ist_clock import ist_today
+from core.observability import capture_soft_failure
 
 # ── Due date (Decision 4) ────────────────────────────────────────────────────
 
@@ -461,8 +462,8 @@ def _generate_one(firm_id: str, template: dict, actor: dict, occurrence_iso: str
                   actor_id=actor.get("auth_user_id"),
                   new_data={"template_id": template["id"], "occurrence": occurrence_iso, "status": "draft"},
                   metadata={"source": "recurring"})
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="recurring_invoice.audit_log", firm_id=firm_id, invoice_id=invoice.get('id'))
     try:
         from services.timeline_service import timeline_service
         timeline_service.log(template.get("client_id", ""), "ai", "Recurring Draft Invoice Created",
@@ -470,8 +471,8 @@ def _generate_one(firm_id: str, template: dict, actor: dict, occurrence_iso: str
                              f"'{template.get('title', '')}' for {occurrence_iso} (awaiting CA review)", "info",
                              firm_id=firm_id, entity_type="sales_invoice", entity_id=invoice.get("id"),
                              amount_paise=int(invoice.get("total_paise", 0) or 0))
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="recurring_invoice.timeline", firm_id=firm_id, invoice_id=invoice.get('id'))
     return {"invoice": invoice, "occurrence": occurrence_iso, "created": True, "idempotent": False}
 
 

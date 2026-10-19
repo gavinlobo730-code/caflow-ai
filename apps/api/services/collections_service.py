@@ -25,6 +25,7 @@ from core.ist_clock import ist_today
 from domain.money_text import whole_rupees
 from core.db_paging import fetch_all, fetch_all_in
 from core import db_provider
+from core.observability import capture_soft_failure
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.collections")
@@ -446,8 +447,8 @@ def flag_overdue_for_internal_followup(firm_id: str, today: Optional[date] = Non
                 entity_type="sales_invoice", entity_id=inv.get("id"),
                 amount_paise=m["outstanding_paise"],
             )
-        except Exception:  # pragma: no cover - timeline is best-effort
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="collections.followup_timeline", firm_id=firm_id, invoice_id=inv.get('id'))
         flagged += 1
     return {"invoices_flagged_for_followup": flagged}
 
@@ -486,8 +487,8 @@ def reminder_settings(firm_id: str, db=None) -> dict:
         rows = db.table("reminder_settings").select("*").eq("firm_id", firm_id).limit(1).execute().data or []
         if rows:
             return {"attach_pdf": bool(rows[0].get("attach_pdf", True))}
-    except Exception:  # pragma: no cover - settings are best-effort
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="collections.reminder_settings", firm_id=firm_id)
     return dict(REMINDER_DEFAULTS)
 
 
@@ -575,8 +576,8 @@ def _dispatch_invoice_reminder(db, firm_id: str, inv: dict, customer: dict,
             "kind": "reminder", "sent_to": to_email, "sent_by_id": actor_id, "status": "sending",
         }).execute().data or [{}])[0]
         delivery_id = d.get("id")
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="collections.delivery_log_insert", firm_id=firm_id, invoice_id=invoice_id)
 
     # WHOSE INVOICE IS OVERDUE — the CLIENT's, not the practice's (no finding;
     # found building SALES-13). A reminder demands payment, and naming the CA
@@ -612,31 +613,31 @@ def _dispatch_invoice_reminder(db, firm_id: str, inv: dict, customer: dict,
             upd["error_message"] = GENERIC_SEND_FAILURE_MESSAGE
         try:
             db.table("invoice_deliveries").update(upd).eq("id", delivery_id).execute()
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="collections.delivery_log_update", firm_id=firm_id, invoice_id=invoice_id, delivery_id=delivery_id)
 
     if success:
         try:
             db.table("client_sales_invoices").update({
                 "last_reminded_at": now_iso, "reminder_count": reminder_number,
             }).eq("id", invoice_id).eq("firm_id", firm_id).execute()
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="collections.reminder_counter", firm_id=firm_id, invoice_id=invoice_id)
         try:
             timeline_service.log(inv.get("client_id", ""), "ai", "Payment Reminder Emailed",
                                  f"Reminder #{reminder_number}{' (manual)' if manual else ''} for "
                                  f"invoice {inv.get('invoice_no', '')} emailed to {to_email}", "warning",
                                  firm_id=firm_id, entity_type="sales_invoice", entity_id=invoice_id,
                                  amount_paise=m["outstanding_paise"])
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="collections.reminder_timeline", firm_id=firm_id, invoice_id=invoice_id)
         try:
             from services.audit_service import log_event
             log_event(firm_id, "sales_invoice", invoice_id, "reminder_sent", actor_id=actor_id,
                       new_data={"reminder_number": reminder_number, "sent_to": to_email, "manual": manual},
                       metadata={"source": "payment_reminder"})
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="collections.reminder_audit", firm_id=firm_id, invoice_id=invoice_id)
     return success
 
 

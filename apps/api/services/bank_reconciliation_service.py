@@ -24,6 +24,7 @@ from domain.banking import reconciliation as recon
 from domain.banking import brs as brs_domain
 from domain.banking import entry as E
 from services.timeline_service import timeline_service
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.bank_reconciliation")
 
@@ -431,8 +432,8 @@ class BankReconciliationService:
                                  f"{ba.get('bank_name', 'Bank')} {statement_start_date} → {statement_end_date}",
                                  "info", firm_id=firm_id, entity_type="bank_reconciliation",
                                  entity_id=row.get("id"), actor_id=actor_id)
-        except Exception:  # pragma: no cover - timeline must never block
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_reconciliation.opened_timeline", firm_id=firm_id, recon_id=row.get('id'))
         view = self._session_view(row)
         # Carried on the create response so the CA is told at the moment they
         # open a period — not after they have ticked fifty lines against a
@@ -916,8 +917,8 @@ class BankReconciliationService:
             log_event(firm_id, "bank_reconciliation", recon_id, "status_change", actor_id=actor_id,
                       new_data={"status": "completed", **summary},
                       metadata={"source": "bank_reconciliation"})
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_reconciliation.completed_audit", firm_id=firm_id, recon_id=recon_id)
         return self.get_session(db, firm_id, recon_id)
 
     # ── live tie-out preview (Tier 2.4) ─────────────────────────────────────────
@@ -1091,8 +1092,8 @@ class BankReconciliationService:
                       new_data={"status": "in_progress", "reason": clean,
                                 "reopen_count": len(history)},
                       metadata={"source": "bank_reconciliation_reopen"})
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_reconciliation.reopened_audit", firm_id=firm_id, recon_id=recon_id)
         return self.get_session(db, firm_id, recon_id)
 
     # ── B.4.4 report + CSV ──────────────────────────────────────────────────────
@@ -1175,8 +1176,8 @@ class BankReconciliationService:
             timeline_service.log(session.get("client_id"), "accounting", title, desc, severity,
                                  firm_id=session.get("firm_id"), entity_type="bank_reconciliation",
                                  entity_id=session["id"], actor_id=actor_id)
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_reconciliation.timeline", firm_id=session.get('firm_id'), recon_id=session.get('id'))
 
 
 bank_reconciliation_service = BankReconciliationService()

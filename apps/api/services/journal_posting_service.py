@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from services import period_lock_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.journal_posting")
 
@@ -134,8 +135,8 @@ class JournalPostingService:
                                  f"Draft {je.get('reference_no') or journal_id[:8]} approved and posted to the ledger",
                                  "success", firm_id=firm_id, entity_type="journal_entry",
                                  entity_id=journal_id, actor_id=actor_id)
-        except Exception:  # pragma: no cover - timeline must never block posting
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="journal_posting.timeline", firm_id=firm_id, journal_id=journal_id)
 
         # Deferred downstream action — runs only now that the journal is on the books.
         settlement = self._dispatch_deferred(db, firm_id, je, journal_id, actor_id)
@@ -154,8 +155,8 @@ class JournalPostingService:
             from services.audit_service import log_event
             log_event(firm_id, "journal_entry", journal_id, action, actor_id=actor_id,
                       new_data=new_data, metadata={"source": "journal_workflow"})
-        except Exception:  # pragma: no cover - audit must never block
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="journal_posting.audit_log", firm_id=firm_id, journal_id=journal_id)
 
 
 journal_posting_service = JournalPostingService()

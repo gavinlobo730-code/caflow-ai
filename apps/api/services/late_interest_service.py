@@ -76,6 +76,7 @@ from fastapi import HTTPException
 from core.db_paging import fetch_all, fetch_all_in
 from core.ist_clock import ist_today
 from domain.sales import late_interest as L
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.late_interest")
 
@@ -145,8 +146,8 @@ def set_terms(db, firm_id: str, client_id: str, customer_id: str, *,
                   actor_id=(actor or {}).get("auth_user_id"),
                   new_data={"rate_bps": rate_bps, "grace_days": grace_days, "basis": basis},
                   metadata={"source": "late_interest"})
-    except Exception:                                    # pragma: no cover - audit never blocks
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="late_interest.terms_audit", firm_id=firm_id, customer_id=customer_id)
     return _terms_row({**row, "name": row.get("name")})
 
 
@@ -489,8 +490,8 @@ def prepare_drafts(db, firm_id: str, client_id: str, customer_id: str, as_of: Op
                                 "overdue_invoices": [d.invoice_id for d in group.documents],
                                 "replaced_claims": released},
                       metadata={"source": "late_interest", "status": "draft"})
-        except Exception:                                  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="late_interest.draft_audit", firm_id=firm_id, customer_id=customer_id)
 
     if not created:
         reasons = "; ".join(f["reason"] for f in failed) or "No draft could be made."

@@ -25,6 +25,7 @@ from services.timeline_service import timeline_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
 from domain.money_text import rupees_paise, whole_rupees
+from core.observability import capture_posting_failure
 
 
 class CreditNoteIn(BaseModel):
@@ -752,8 +753,8 @@ def issue_credit_note(
                     db.table("client_sales_invoices").update({
                         "credited_paise": prior_inv["credited_paise"], "status": prior_inv["status"],
                     }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
-                except Exception:
-                    pass
+                except Exception as swallowed:
+                    capture_posting_failure(swallowed, operation="credit_note.allocation_rollback", firm_id=firm_id, credit_note_id=cn_id, invoice_id=inv_id)
             # A deliberate business-rule rejection (e.g. period_validation_service's
             # locked-FY check inside the journal kernel) carries a real, actionable
             # status+message the CA needs (e.g. "FY 2025-26 is locked for posting") —

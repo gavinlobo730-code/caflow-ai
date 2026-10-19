@@ -25,6 +25,7 @@ from domain.banking import (
 from domain.banking import posting_map as pmap
 from services.bank_payee_service import bank_payee_service
 from services.timeline_service import timeline_service
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.bank_matching")
 
@@ -861,15 +862,15 @@ class BankMatchingService:
                       new_data={"matched_entity_type": entity_type, "matched_entity_id": entity_id,
                                 "category": update.get("category")},
                       metadata={"source": "bank_match"})
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_match.audit_log", firm_id=firm_id, txn_id=txn_id)
         try:
             timeline_service.log(txn["client_id"], "accounting", "Bank Transaction Matched",
                                  f"Matched to {entity_type} (CA reviewed)", "info",
                                  firm_id=firm_id, entity_type="bank_transaction",
                                  entity_id=txn_id, actor_id=actor_id)
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_match.timeline", firm_id=firm_id, txn_id=txn_id)
         return {"id": txn_id, "match_status": "matched", "matched_entity_type": entity_type,
                 "matched_entity_id": entity_id, "category": update.get("category")}
 

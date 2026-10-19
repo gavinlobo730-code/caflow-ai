@@ -33,6 +33,7 @@ from services import tds_register_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
 from domain.money_text import rupees_paise, whole_rupees
+from core.observability import capture_posting_failure
 
 # Same private Storage bucket routers/documents.py and document_intelligence_v1.py
 # use — plain attachment (a scanned goods-return note, vendor acknowledgment),
@@ -552,8 +553,8 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
                     db.table("purchase_bills").update(
                         {"debited_paise": prior_bill["debited_paise"], "status": prior_bill["status"]}) \
                         .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
-                except Exception:
-                    pass
+                except Exception as swallowed:
+                    capture_posting_failure(swallowed, operation="debit_note.allocation_rollback", firm_id=firm_id, debit_note_id=dn_id, bill_id=bill_id)
             # A deliberate business-rule rejection (e.g. a locked-FY check inside the
             # journal kernel) carries a real, actionable status+message the CA needs —
             # collapsing it into "Please try again" is actively misleading, since

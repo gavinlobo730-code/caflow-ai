@@ -47,6 +47,7 @@ from services.timeline_service import timeline_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
 from domain.money_text import whole_rupees
+from core.observability import capture_posting_failure
 
 
 class SalesDebitNoteIn(BaseModel):
@@ -478,8 +479,8 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
                     db.table("client_sales_invoices").update({
                         "debit_note_paise": prior_inv["debit_note_paise"], "status": prior_inv["status"],
                     }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
-                except Exception:
-                    pass
+                except Exception as swallowed:
+                    capture_posting_failure(swallowed, operation="sales_debit_note.allocation_rollback", firm_id=firm_id, debit_note_id=sdn_id, invoice_id=inv_id)
             # A deliberate business-rule rejection (e.g. a locked-FY check inside the
             # journal kernel) carries a real, actionable status+message the CA needs —
             # collapsing it into "Please try again" is actively misleading, since

@@ -24,6 +24,7 @@ from core.db_paging import fetch_all
 from domain.banking.transfers import (
     DEFAULT_WINDOW_DAYS, TransferPair, describe, detect, scan_window,
 )
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.bank_transfers")
 
@@ -152,8 +153,8 @@ class BankTransferService:
             from services.audit_service import log_event
             log_event(firm_id, "bank_transaction", txn_id, "update", actor_id=actor_id,
                       new_data=new_data, metadata={"source": "bank_transfer_pair"})
-        except Exception:  # pragma: no cover - audit must never block
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="bank_transfer.audit_log", firm_id=firm_id, txn_id=txn_id)
 
     def get(self, db, firm_id: str, txn_id: str) -> dict:
         txn = self._get_txn(db, firm_id, txn_id)
