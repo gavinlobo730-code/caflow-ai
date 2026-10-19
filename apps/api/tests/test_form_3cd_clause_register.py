@@ -282,6 +282,9 @@ def test_clause_44_splits_by_vendor_gst_registration_status():
 
 
 def test_clause_34_groups_tds_deductions_by_section():
+    """Deposited is what the CHALLAN REGISTER covers (the deductions below carry no `status` and no `challan_no`, as a deduction
+    a purchase bill wrote never does): a challan of Rs 2,000 for 194C in the quarter pays the first 194C deduction in full and
+    leaves the second."""
     from services.form_3cd_service import _clause_34
     db = FakeDB()
     db.seed("client_statutory_identity", {"firm_id": FIRM, "client_id": CLIENT,
@@ -289,18 +292,24 @@ def test_clause_34_groups_tds_deductions_by_section():
     db.seed("tds_deductions", {
         "firm_id": FIRM, "client_id": CLIENT, "section": "194C",
         "payment_amount_paise": 1_00_000_00, "tds_paise": 2_000_00,
-        "status": "deposited", "transaction_date": "2025-05-10",
+        "transaction_date": "2025-05-10",
     })
     db.seed("tds_deductions", {
         "firm_id": FIRM, "client_id": CLIENT, "section": "194C",
         "payment_amount_paise": 50_000_00, "tds_paise": 1_000_00,
-        "status": "deducted", "transaction_date": "2025-06-10",
+        "transaction_date": "2025-06-10",
     })
     db.seed("tds_deductions", {
         "firm_id": FIRM, "client_id": CLIENT, "section": "194J",
         "payment_amount_paise": 20_000_00, "tds_paise": 2_000_00,
-        "status": "deposited", "transaction_date": "2025-07-10",
+        "transaction_date": "2025-07-10",
     })
+    db.seed("tds_challans", {"firm_id": FIRM, "client_id": CLIENT, "section": "194C", "challan_no": "C1",
+                             "financial_year": "2025-26", "quarter": "Q1", "tds_paise": 2_000_00,
+                             "surcharge_paise": 0, "payment_date": "2025-06-07"})
+    db.seed("tds_challans", {"firm_id": FIRM, "client_id": CLIENT, "section": "194J", "challan_no": "C2",
+                             "financial_year": "2025-26", "quarter": "Q2", "tds_paise": 2_000_00,
+                             "surcharge_paise": 0, "payment_date": "2025-08-07"})
     value, note = _clause_34(db, FIRM, CLIENT, "2025-26")
     assert value["tan"] == "MUMB12345A"
     by_section = {r["section"]: r for r in value["by_section"]}
@@ -309,7 +318,9 @@ def test_clause_34_groups_tds_deductions_by_section():
     assert by_section["194C"]["total_tds_deposited_paise"] == 2_000_00
     assert by_section["194C"]["tax_deducted_not_deposited_paise"] == 1_000_00
     assert by_section["194J"]["total_tds_deposited_paise"] == 2_000_00
-    assert "SIMPLIFIED" in note
+    assert by_section["194J"]["tax_deducted_not_deposited_paise"] == 0
+    assert value["challans_read"] == 2
+    assert "SIMPLIFIED" in note and "CHALLAN REGISTER" in note
 
 
 # ── The build() entry point and the manual-clause store ─────────────────────

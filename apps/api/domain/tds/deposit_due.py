@@ -206,7 +206,7 @@ def _tax_of(row: dict) -> int:
     return (int(row.get("tds_paise") or 0) + int(row.get("surcharge_paise") or 0) + int(row.get("cess_paise") or 0))
 
 
-def _is_salary(section: str) -> bool:
+def is_salary(section: str) -> bool:
     return section.upper().replace(" ", "") in ("192", "SEC192", "S192")
 
 
@@ -226,9 +226,9 @@ def mapping_from_register(rows, challans, *, fy: str) -> "challan_mapping.Mappin
     events = [{"id": r.get("id"), "section": str(r.get("section") or "").strip() or "(no section)",
                "on_date": str(r.get("transaction_date") or "")[:10], "doc_no": str(r.get("id") or ""),
                "tds_paise": _tax_of(r)}
-              for r in rows if not _is_salary(str(r.get("section") or ""))]
+              for r in rows if not is_salary(str(r.get("section") or ""))]
     paid = [{**c, "tds_paise": int(c.get("tds_paise") or 0) + int(c.get("surcharge_paise") or 0)}
-            for c in challans if not _is_salary(str(c.get("section") or ""))]
+            for c in challans if not is_salary(str(c.get("section") or ""))]
     return challan_mapping.assign(events, paid, fy=fy)
 
 
@@ -267,7 +267,7 @@ def build(rows, *, month: str, due_date: date, as_at: date,
         if covered == 0 and status in ("deposited", "filed"):
             gaps.setdefault(GAP_DEPOSITED_WITH_NO_CHALLAN_DATE, []).append(
                 str(row.get("deductee_name") or row.get("id") or ""))
-        if _is_salary(section):
+        if is_salary(section):
             gaps.setdefault(GAP_SALARY_ROW_IN_THIS_REGISTER, []).append(
                 str(row.get("deductee_name") or row.get("id") or ""))
 
