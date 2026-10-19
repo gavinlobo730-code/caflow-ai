@@ -76,6 +76,8 @@ interface XBRLPackage {
   id: string;
   financial_year: string;
   taxonomy_version: string;
+  // The server's sentence on whether this version's tags have been checked against MCA's taxonomy; null once they have.
+  taxonomy_notice?: string | null;
   status: string;
   version: number;
   validation_errors: string[];
@@ -203,7 +205,7 @@ export default function XBRLPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-ps-ink">XBRL Engine</h2>
-          <p className="text-xs text-ps-hint mt-0.5">Companies Act 2013, Schedule III — MCA_2023 taxonomy</p>
+          <p className="text-xs text-ps-hint mt-0.5">Companies Act 2013, Schedule III — MCA_2023 taxonomy (not yet checked against the published MCA taxonomy)</p>
         </div>
         <button onClick={() => setShowCreate(true)}
           className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
@@ -268,6 +270,7 @@ export default function XBRLPage() {
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-ps-ink">FY {pkg.financial_year} — {pkg.taxonomy_version}</p>
                 <p className="text-3xs text-ps-hint">v{pkg.version} · {formatDate(pkg.created_at)}</p>
+                {pkg.taxonomy_notice && <p className="text-3xs text-ps-hint">{pkg.taxonomy_notice}</p>}
               </div>
               <span className={`text-3xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[pkg.status]}`}>
                 {STATUS_LABEL[pkg.status] ?? pkg.status.replace(/_/g, " ")}

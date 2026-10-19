@@ -13,21 +13,25 @@ Companies Act 2013, Schedule III. MCA XBRL taxonomy MCA_2023.
 #   So this rail is right, and the leverage is here.
 #
 #   The taxonomy/schema URL MOVES with the validation tool version, and MCA's
-#   own vendor note exists because of it. Version it the way the rate
-#   registries are versioned — a LATEST_VERIFIED marker plus a hand-download
-#   step — which is the ITR JSON schema pattern in CLAUDE.md and for the same
-#   reason: it cannot be inferred, somebody downloads it.
+#   own vendor note exists because of it. It is versioned the way the rate
+#   registries are (domain/income_tax/xbrl_taxonomy: a registry and a
+#   LATEST_VERIFIED marker), and the hand-download step that would promote a
+#   version to verified is still open: it cannot be inferred, somebody
+#   downloads it.
 """
 from __future__ import annotations
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
 from models.fy import FYLabel
+from domain.income_tax.xbrl_taxonomy import (
+    DEFAULT_TAXONOMY, UnknownTaxonomy, taxonomy_for, taxonomy_notice,
+)
 
 router = APIRouter(prefix="/api/xbrl", tags=["xbrl_engine"])
 _logger = logging.getLogger("caflow.xbrl.router")
@@ -36,8 +40,14 @@ _logger = logging.getLogger("caflow.xbrl.router")
 class CreatePackageRequest(BaseModel):
     client_id: str
     financial_year: FYLabel
-    taxonomy_version: str = "MCA_2023"
+    taxonomy_version: str = DEFAULT_TAXONOMY
     year_end_engagement_id: Optional[str] = None
+
+    @field_validator("taxonomy_version")
+    @classmethod
+    def _a_taxonomy_this_product_holds(cls, value: str) -> str:
+        """Refused at the door (a 422 naming the versions held) and stored under its canonical name."""
+        return taxonomy_for(value).version
 
 
 class UpdatePackageDataRequest(BaseModel):
@@ -69,6 +79,8 @@ def create_package(
             taxonomy_version=req.taxonomy_version,
         )
         return api_response(True, pkg)
+    except UnknownTaxonomy as e:
+        raise HTTPException(422, detail=str(e)) from None
     except Exception as e:
         raise HTTPException(500, detail=str(e))
 
@@ -95,7 +107,7 @@ def _assert_package_scope(current_user: dict, package_id: str) -> dict:
     if _USE_MOCK:
         pkg = _MOCK_PACKAGES.get(package_id)
     else:
-        res = (_supabase().table("xbrl_packages").select("id, client_id")
+        res = (_supabase().table("xbrl_packages").select("id, client_id, taxonomy_version")
                .eq("id", package_id).eq("firm_id", current_user["firm_id"])
                .limit(1).execute())
         pkg = (res.data or [None])[0]
@@ -157,6 +169,8 @@ def validate_package(
                 entity_id=package_id,
             )
         return api_response(True, result)
+    except UnknownTaxonomy as e:
+        raise HTTPException(422, detail=str(e)) from None
     except Exception as e:
         raise HTTPException(500, detail=str(e))
 
@@ -171,7 +185,7 @@ def generate_xml(
     Generate XBRL XML from validated package.
     # CA REVIEW REQUIRED — DO NOT AUTO-FILE to MCA portal
     """
-    _assert_package_scope(current_user, package_id)
+    pkg = _assert_package_scope(current_user, package_id)
     from domain.income_tax.xbrl_service import generate_xbrl_xml
     try:
         xml = generate_xbrl_xml(
@@ -184,7 +198,10 @@ def generate_xml(
             "xbrl_xml": xml,
             "ca_review_required": True,
             "warning": "CA REVIEW REQUIRED — DO NOT AUTO-FILE to MCA portal",
+            "taxonomy_notice": taxonomy_notice(pkg.get("taxonomy_version")),
         })
+    except UnknownTaxonomy as e:
+        raise HTTPException(422, detail=str(e)) from None
     except ValueError as e:
         raise HTTPException(400, detail=str(e))
     except Exception as e:
@@ -235,12 +252,18 @@ def review_package(
 
 @router.get("/tag-mappings")
 def get_tag_mappings(
-    taxonomy_version: str = "MCA_2023",
+    taxonomy_version: str = DEFAULT_TAXONOMY,
     current_user: dict = Depends(rbac("year_end", "read")),
 ):
-    """Get default Schedule III → XBRL tag mappings for the given taxonomy."""
+    """Get default Schedule III → XBRL tag mappings for the given taxonomy. A version this product does not hold is a 422."""
     from domain.income_tax.xbrl_service import get_default_tag_mappings
+    try:
+        taxonomy = taxonomy_for(taxonomy_version)
+    except UnknownTaxonomy as e:
+        raise HTTPException(422, detail=str(e)) from None
     return api_response(True, {
-        "taxonomy_version": taxonomy_version,
-        "mappings": get_default_tag_mappings(taxonomy_version),
+        "taxonomy_version": taxonomy.version,
+        "verified": taxonomy.verified,
+        "taxonomy_notice": taxonomy_notice(taxonomy.version),
+        "mappings": get_default_tag_mappings(taxonomy.version),
     })
