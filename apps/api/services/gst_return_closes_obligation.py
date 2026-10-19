@@ -41,27 +41,20 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from core.exceptions import NotFoundError, ValidationError
-from core.observability import capture_soft_failure
 from domain.gst import return_period
 from repositories.compliance_records_repository import compliance_records_repo
 from services import client_gst_registration_service as registrations
+from services.obligation_closure import (
+    ALREADY_FILED, FROM_COMPLIANCE as _FROM_COMPLIANCE, NOT_ALLOWED, NOT_CLOSED, NOT_ON_THE_CALENDAR,
+    answer as _answer, mark_filed_and_answer,
+)
 
-#: The answer's `state`, one word a screen can branch on. Only CLOSED means this call moved the obligation.
-CLOSED = "closed"
-ALREADY_FILED = "already_filed"
+#: The answer's `state`, one word a screen can branch on. Only CLOSED means this call moved the obligation. The five
+#: shared words are `services.obligation_closure`'s; these two are the GST ones.
 WAITING_FOR_OTHER_REGISTRATIONS = "waiting_for_other_registrations"
 REGISTRATIONS_ON_DIFFERENT_CYCLES = "registrations_on_different_cycles"
-NOT_ON_THE_CALENDAR = "not_on_the_calendar"
-NOT_ALLOWED = "not_allowed"
-NOT_CLOSED = "not_closed"
 
 _LABEL = {"GSTR1": "GSTR-1", "GSTR3B": "GSTR-3B"}
-_FROM_COMPLIANCE = "It can be marked filed from Compliance."
-
-
-def _answer(state: str, message: str, obligation_id: Optional[str] = None) -> dict:
-    return {"state": state, "closed": state == CLOSED, "obligation_id": obligation_id, "message": message}
 
 
 def _submitted_gstins(db, firm_id: str, client_id: str, obligation_type: str, period: str) -> set[str]:
@@ -80,16 +73,6 @@ def _live_in(registration, start: str, end: str) -> bool:
     effective_from = str(registration.effective_from or "")[:10]
     effective_to = str(registration.effective_to or "")[:10]
     return (not effective_from or effective_from <= end) and (not effective_to or effective_to >= start)
-
-
-def _status_now(firm_id: str, client_id: str, record_id: str) -> Optional[str]:
-    """The obligation's status as the database holds it now, or None if it cannot be read. Read through the same
-    firm-and-client-scoped listing that found it, not by id alone."""
-    try:
-        rows = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id, compliance_type="GST")
-    except Exception:                                           # noqa: BLE001
-        return None
-    return next((r.get("status") for r in rows if r.get("id") == record_id), None)
 
 
 def close_for_filed_return(
@@ -146,29 +129,6 @@ def close_for_filed_return(
                 f"{', '.join(waiting)} {'is' if len(waiting) == 1 else 'are'} also recorded as filed for it. "
                 f"{_FROM_COMPLIANCE}", record.get("id"))
 
-    # Imported here: the domain module imports repositories and services lazily in places, and this module is imported by
-    # the router at load.
-    from domain.compliance_record_service import compliance_record_service
-    try:
-        compliance_record_service.mark_filed(
-            record["id"], firm_id=firm_id, actor=actor, acknowledgement_no=arn or None, filed_date=filed_date)
-    except ValidationError as refusal:
-        # A refusal can arrive because the obligation was filed a moment ago by someone else; say what is true now.
-        if _status_now(firm_id, client_id, record["id"]) in ("Filed", "Completed"):
-            return _answer(ALREADY_FILED, f"The {what} was recorded as filed just now by someone else, so it was left "
-                                          "as it is.", record.get("id"))
-        return _answer(NOT_CLOSED, f"The {what} was left open: {str(refusal).partition(': ')[2] or refusal}",
-                       record.get("id"))
-    except NotFoundError:
-        return _answer(NOT_ON_THE_CALENDAR, f"The {what} could not be found to update, so none was closed.",
-                       record.get("id"))
-    except Exception as exc:                                    # noqa: BLE001
-        # The walk through the lifecycle is several writes. A failure part way leaves the obligation where the last
-        # successful step put it, and the answer says where, not "nothing changed".
-        capture_soft_failure(exc, operation="gst_return_closes_obligation.mark_filed", firm_id=firm_id, client_id=client_id)
-        now = _status_now(firm_id, client_id, record["id"])
-        if now in ("Filed", "Completed"):
-            return _answer(CLOSED, f"The {what} is now marked filed on the compliance calendar.", record.get("id"))
-        return _answer(NOT_CLOSED, f"The {what} could not be completed"
-                                   f"{f' (it now reads {now})' if now else ''}. {_FROM_COMPLIANCE}", record.get("id"))
-    return _answer(CLOSED, f"The {what} is now marked filed on the compliance calendar.", record.get("id"))
+    return mark_filed_and_answer(
+        record, what=what, operation="gst_return_closes_obligation.mark_filed", firm_id=firm_id, client_id=client_id,
+        compliance_type="GST", filed_date=filed_date, arn=arn, actor=actor)

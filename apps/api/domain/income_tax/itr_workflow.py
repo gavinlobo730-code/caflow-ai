@@ -302,6 +302,32 @@ def _snapshot_status(firm_id: str, snapshot_id: str) -> Optional[str]:
     return str(rows[0].get("status")) if rows else None
 
 
+def _the_updated_row(res, what: str) -> dict:
+    """The row an update returned, or a refusal when it matched none.
+
+    An update that matched no row is not a success with nothing to show: the filing was removed in the meantime, or the
+    caller's row security refused to let them change it, and PostgREST answers both with an empty list. Answering `{}` as a
+    success told the screen the return had moved, and let the acknowledgement path go on to close the calendar's
+    obligation for a return that was never marked filed."""
+    rows = getattr(res, "data", None) or []
+    if not rows:
+        raise ITRWorkflowError(
+            f"Could not {what} this filing: it may have been removed, or your access does not let you change it. "
+            "Nothing was changed.")
+    return rows[0]
+
+
+def _not_filed_by_a_transition(new_status: str) -> None:
+    """Refuse the one step the state machine permits but a transition may not take: becoming `filed`.
+
+    Asked AFTER the table has judged the step, so a skip (draft straight to filed) is still refused as the skip it is
+    and only the legitimate move from ready-for-filing reaches this sentence."""
+    if new_status == "filed":
+        raise ITRWorkflowError(
+            "A return is marked filed by recording its acknowledgement: enter the acknowledgement number and the date "
+            "it was filed on the income-tax portal.")
+
+
 def transition_itr_status(
     firm_id: str,
     filing_id: str,
@@ -311,6 +337,14 @@ def transition_itr_status(
 ) -> dict:
     """
     Move ITR filing through workflow. Validates transition is allowed.
+
+    THE LAST STEP IS NOT A TRANSITION. A return becomes `filed` when its acknowledgement is recorded
+    (`record_filing_acknowledgement`), because "filed" is a fact about what the portal did and the number and the date
+    are the proof. This used to take `new_status="filed"` like any other step, and the filing screen offered it ("Move
+    to Filed" beside the acknowledgement form): the return went terminal with no acknowledgement and no date, and
+    the acknowledgement could never be recorded afterwards, since a filed return is refused a second one. The table
+    below still lists `filed` as what `ready_for_filing` leads to, because the acknowledgement path derives which states
+    may become filed from it.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     if _USE_MOCK:
@@ -320,6 +354,7 @@ def transition_itr_status(
         allowed = _TRANSITIONS.get(filing["status"], [])
         if new_status not in allowed:
             raise ValueError(f"Cannot transition from '{filing['status']}' to '{new_status}'")
+        _not_filed_by_a_transition(new_status)
         if filing["status"] == "draft":
             unreviewed = _pinned_snapshot_is_unreviewed(firm_id, filing)
             if unreviewed:
@@ -345,6 +380,7 @@ def transition_itr_status(
     allowed = _TRANSITIONS.get(current, [])
     if new_status not in allowed:
         raise ValueError(f"Cannot transition from '{current}' to '{new_status}'")
+    _not_filed_by_a_transition(new_status)
 
     # ONLY ON THE WAY OUT OF DRAFT. Once a filing is in review the snapshot
     # question has been answered, and re-asking it would block the
@@ -370,7 +406,7 @@ def transition_itr_status(
     res = sb.table("itr_filings").update(update).eq("id", filing_id).eq(
         "firm_id", firm_id
     ).execute()
-    return res.data[0] if res.data else {}
+    return _the_updated_row(res, "move the return on")
 
 
 def save_itr_version(
@@ -492,4 +528,4 @@ def record_filing_acknowledgement(
         "status": "filed",
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", filing_id).eq("firm_id", firm_id).execute()
-    return res.data[0] if res.data else {}
+    return _the_updated_row(res, "record the acknowledgement on")

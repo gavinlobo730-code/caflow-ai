@@ -14,6 +14,8 @@ import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
+import { Callout } from "@/components/ui/callout";
+import { obligationNote } from "@/lib/compliance/obligationNote";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -236,6 +238,9 @@ export default function ITRFilingPage() {
   const [ackNumber, setAckNumber] = useState("");
   const [ackDate, setAckDate] = useState("");
   const [savingAck, setSavingAck] = useState(false);
+  // The server's sentence when recording the acknowledgement did NOT also close the compliance calendar's ITR
+  // obligation. Kept on the page and not on the panel, because the panel closes when the return is recorded.
+  const [calendarNote, setCalendarNote] = useState<string | null>(null);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
@@ -394,12 +399,14 @@ export default function ITRFilingPage() {
 
   async function handleRecordAck(filing: Filing) {
     setSavingAck(true);
+    setCalendarNote(null);
     try {
       const res = await apiFetch(`/api/itr/filings/${filing.id}/acknowledge`, {
         method: "POST",
         body: JSON.stringify({ acknowledgement_number: ackNumber, filing_date: ackDate }),
       });
       if (!res.success) throw new Error(res.error ?? "Failed");
+      setCalendarNote(obligationNote(res.data));
       setShowAck(false);
       setSelectedFiling(null);
       await load();
@@ -430,9 +437,12 @@ export default function ITRFilingPage() {
     }
   }
 
+  // The step after Ready for Filing is Filed, and that is reached by recording the acknowledgement (the server refuses a
+  // transition to it), so no "Move to" button is offered for it.
   const nextStatus = (current: string) => {
     const idx = STATUS_ORDER.indexOf(current);
-    return idx >= 0 && idx < STATUS_ORDER.length - 1 ? STATUS_ORDER[idx + 1] : null;
+    const next = idx >= 0 && idx < STATUS_ORDER.length - 1 ? STATUS_ORDER[idx + 1] : null;
+    return next === "filed" ? null : next;
   };
 
   return (
@@ -457,6 +467,13 @@ export default function ITRFilingPage() {
           <Plus size={12} /> New Filing
         </button>
       </div>
+
+      {calendarNote && (
+        <Callout tone="note" title="Recorded as filed. The compliance calendar was not marked filed.">
+          <span>{calendarNote}</span>{" "}
+          <button onClick={() => setCalendarNote(null)} className="underline">Dismiss</button>
+        </Callout>
+      )}
 
       {/* CA Review Banner */}
       <div className="flex items-center gap-2 bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-2.5">

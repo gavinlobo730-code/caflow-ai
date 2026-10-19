@@ -2,7 +2,7 @@
 // screen only reports the cases where it did not.
 //
 // Run with:
-//   node --experimental-strip-types --test lib/gst/obligationNote.test.ts
+//   node --experimental-strip-types --test lib/compliance/obligationNote.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { obligationNote } from "./obligationNote.ts";

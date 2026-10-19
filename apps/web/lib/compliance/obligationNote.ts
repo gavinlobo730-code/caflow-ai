@@ -1,11 +1,12 @@
 /**
- * What the GST workspace says when it records a return as filed and the compliance obligation it stands for was NOT
- * closed by the same click (POST-A-254).
+ * What a workspace says when it records a return as filed and the compliance obligation it stands for was NOT closed by
+ * the same click: the GST workspace (POST-A-264) and the ITR workspace.
  *
  * The server closes the obligation itself and answers `compliance_obligation: { state, closed, message }`; this reads
  * that answer and decides nothing. A note appears only when the calendar was left open for a reason the CA should know
- * (no obligation on the calendar, another registration still to file, no Compliance access, a failure), never when it
- * closed and never for an obligation that was already filed, which is the state the CA wanted.
+ * (no obligation on the calendar, another registration still to file, no Compliance access, a correction rather than
+ * the original, a failure), never when it closed and never for an obligation that was already filed, which is the state
+ * the CA wanted.
  */
 export function obligationNote(data: unknown): string | null {
   if (typeof data !== "object" || data === null) return null;

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from core.exceptions import _sqlstate, unhandled_failure
 from core.ist_clock import assessment_year_for
-from core.permissions import rbac
+from core.permissions import can_user, rbac
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
@@ -160,7 +160,8 @@ class CreateFilingRequest(BaseModel):
 
 
 class TransitionFilingRequest(BaseModel):
-    new_status: str = Field(..., description="draft|review|partner_review|ready_for_filing|filed")
+    #: `filed` is not a step a transition can take: a return becomes filed when its acknowledgement is recorded.
+    new_status: str = Field(..., description="draft|review|partner_review|ready_for_filing")
     notes: Optional[str] = None
 
 
@@ -169,8 +170,27 @@ class SaveVersionRequest(BaseModel):
 
 
 class AcknowledgementRequest(BaseModel):
-    acknowledgement_number: str
-    filing_date: str  # YYYY-MM-DD
+    acknowledgement_number: str = Field(..., min_length=1)
+    #: The day the CA filed on the portal: YYYY-MM-DD, a real date, not in the future (IST). Free text reached a DATE
+    #: column and came back as a 500 from Postgres; `clean_filed_date` is the rule the GST status door applies too.
+    filing_date: str
+
+    @field_validator("acknowledgement_number")
+    @classmethod
+    def _number_is_present(cls, v: str) -> str:
+        text = str(v or "").strip()
+        if not text:
+            raise ValueError("Enter the acknowledgement number from the income-tax portal.")
+        return text
+
+    @field_validator("filing_date")
+    @classmethod
+    def _date_is_a_filing_date(cls, v: str) -> str:
+        from domain.compliance_record_service import clean_filed_date
+        try:
+            return clean_filed_date(v)
+        except ValueError as refusal:
+            raise ValueError(str(refusal).replace("filed_date", "filing_date")) from None
 
 
 class SnapshotRequest(BaseModel):
@@ -636,9 +656,9 @@ def transition_filing(
             actor_id=current_user["id"],
             notes=req.notes,
         )
+        # No "filed" entry: a transition cannot reach it, and the acknowledgement door logs "ITR filed" itself.
         event_map = {
             "ready_for_filing": ("ITR ready for filing", "warning"),
-            "filed": ("ITR filed", "success"),
         }
         if req.new_status in event_map:
             title, sev = event_map[req.new_status]
@@ -681,6 +701,43 @@ def save_version(
         raise HTTPException(500, detail=str(e))
 
 
+def _filed_after_the_year_it_declares(financial_year: Optional[str], filing_date: str) -> None:
+    """A return cannot have been filed before the year it declares has ended: the same rule `mark_filed` applies to the
+    date it is given (`compliance_record_service._filed_date_for` refuses a date earlier than the obligation's period end),
+    applied to the date the CA typed BEFORE it is stored, so the acknowledgement and the calendar cannot disagree about it.
+    A label that is not a year is not judged here."""
+    from core.ist_clock import fy_bounds
+    try:
+        year_end = fy_bounds(str(financial_year or ""))[1]
+    except ValueError:
+        return
+    if filing_date < year_end:
+        raise HTTPException(400, detail=(
+            f"A return for FY {financial_year} cannot have been filed before the year ended on {year_end}. "
+            "Check the date on the acknowledgement."))
+
+
+def _close_the_obligation(current_user: dict, filing: dict, req: AcknowledgementRequest) -> dict:
+    """Close the calendar's ITR obligation for the return whose acknowledgement was just recorded, and say what became
+    of it. NEVER FAILS THE RECORDING: the acknowledgement is stored and the CA has said the return is filed. Whatever
+    stops the obligation closing comes back in the answer for the screen to show and goes to the error reporter."""
+    from core.observability import capture_soft_failure
+    from services import itr_return_closes_obligation as closes
+    firm_id = current_user["firm_id"]
+    try:
+        return closes.close_for_filed_return(
+            firm_id=firm_id, client_id=filing.get("client_id") or "",
+            financial_year=str(filing.get("financial_year") or ""), return_type=filing.get("return_type"),
+            filed_date=req.filing_date, acknowledgement_number=req.acknowledgement_number, actor=current_user,
+            may_write_compliance=can_user(current_user, "compliance", "write"))
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="itr_workspace.close_the_obligation",
+                             firm_id=firm_id, client_id=filing.get("client_id"))
+        return {"state": "not_closed", "closed": False, "obligation_id": None,
+                "message": "The acknowledgement is recorded, but the compliance calendar could not be updated just now. "
+                           "Mark the obligation filed from Compliance."}
+
+
 @router.post("/filings/{filing_id}/acknowledge")
 def record_acknowledgement(
     filing_id: str,
@@ -692,7 +749,8 @@ def record_acknowledgement(
     # CA REVIEW REQUIRED — CA must manually file on portal before calling this
     """
     # M2 audit finding: row-addressed by filing_id, no client check at all.
-    _assert_filing_scope(current_user, filing_id)
+    filing = _assert_filing_scope(current_user, filing_id)
+    _filed_after_the_year_it_declares(filing.get("financial_year"), req.filing_date)
     from domain.income_tax.itr_workflow import record_filing_acknowledgement
     try:
         result = record_filing_acknowledgement(
@@ -711,7 +769,11 @@ def record_acknowledgement(
             firm_id=current_user["firm_id"],
             entity_type="itr_filing", entity_id=filing_id,
         )
-        return api_response(True, result)
+        # The year, the client and the kind of return come from the filing the scope check loaded, not from `result`: an
+        # update that returns no row (the database's own answer is an empty list when it matched none) must not turn
+        # into "the return names no client".
+        return api_response(True, {
+            **result, "compliance_obligation": _close_the_obligation(current_user, filing, req)})
     except ValueError as e:
         # The state-machine refusal (IT-23): a draft cannot be marked filed,
         # and an already-filed return cannot be silently re-acknowledged. Both
