@@ -112,10 +112,19 @@ OBJECT_DRIFT_FAILS_HEALTH = False
 CODE_DIRS = ("routers", "services", "repositories", "domain", "jobs", "core", "middleware", "models")
 
 # Matches one ALTER TABLE ... ; statement (possibly multi-line, possibly with
-# several comma-separated ADD COLUMN clauses) and captures the table name plus
-# everything up to the terminating semicolon.
+# several comma-separated ADD COLUMN clauses) and captures the schema (when one is
+# written), the table name and everything up to the terminating semicolon.
+#
+# PostgreSQL's grammar is `ALTER TABLE [ IF EXISTS ] [ ONLY ] name`, and every
+# word before the name has to be consumed here or the NEXT word is taken for it:
+# migration 521 wrote `ALTER TABLE IF EXISTS public.fixed_deposits ADD COLUMN ...`
+# and this pattern, which knew `public.` and `ONLY` but not `IF EXISTS`, read the
+# table as "if". The guard then expected a column on a table that has never
+# existed, no database could ever satisfy it, and /health answered 503
+# "schema_drift" for good, which is the state the exclusion list below was
+# written to keep out of production (Render's healthCheckPath gates the cut-over).
 _ALTER_TABLE_BLOCK = re.compile(
-    r"ALTER TABLE\s+(?:public\.)?(?:ONLY\s+)?(\w+)\b(.*?);",
+    r"ALTER TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:(\w+)\.)?(\w+)\b(.*?);",
     re.IGNORECASE | re.DOTALL,
 )
 _ADD_COLUMN = re.compile(r"ADD COLUMN\s+IF NOT EXISTS\s+(\w+)", re.IGNORECASE)
@@ -189,8 +198,18 @@ def expected_columns_from_migrations(migrations_dir: Path = MIGRATIONS_DIR) -> d
     pattern this codebase's migrations use for additive schema changes (see
     migrations 233-241, all nine of which used it). A false negative here (a
     column added some other way, e.g. inside a CREATE TABLE) only means this
-    guard doesn't check that column -- it can never cause a false "missing"
-    report, since the check only ever looks for columns this parser found.
+    guard doesn't check that column.
+
+    A FALSE "MISSING" REPORT IS POSSIBLE, AND HAS HAPPENED: it needs this parser
+    to name a table the database does not have. It did, once, for
+    `ALTER TABLE IF EXISTS ...` (see _ALTER_TABLE_BLOCK). Every table returned
+    is therefore a table some migration creates or SUPERSEDED_TABLES excuses,
+    which tests/test_the_schema_guard_names_real_tables.py asserts over the real
+    migration history, not over a list of spellings.
+
+    A table written with a schema other than `public` is left out: the live read
+    is of the public schema alone, so such a table could only ever read as
+    missing.
     """
     expected: dict[str, set[str]] = {}
     if not migrations_dir.exists():
@@ -199,7 +218,9 @@ def expected_columns_from_migrations(migrations_dir: Path = MIGRATIONS_DIR) -> d
         if path.name.startswith("_"):
             continue
         text = path.read_text(errors="ignore")
-        for table, body in _ALTER_TABLE_BLOCK.findall(text):
+        for schema, table, body in _ALTER_TABLE_BLOCK.findall(text):
+            if schema and schema.lower() != "public":
+                continue
             cols = _ADD_COLUMN.findall(body)
             if cols:
                 expected.setdefault(table.lower(), set()).update(c.lower() for c in cols)

@@ -180,7 +180,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A LINE ON A DOCUMENT NAMES AN ITEM OF THE DOCUMENT'S OWN CLIENT, AND THE API ASKS ONCE BEFORE IT WRITES
 - A CUSTOMER STATEMENT EMAIL LEAVES A ROW A CA CAN READ, AND "SENT" IS WHAT THE MAIL SERVICE SAID
 
-### `docs/design-record/engineering-and-ci.md` (9 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
+### `docs/design-record/engineering-and-ci.md` (10 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
 - THE BACKEND HAS A LINT RATCHET, A PROPERTY SUITE, ONE PAGER, ONE DOOR TO THE DATABASE CLIENT AND A COVERAGE FLOOR, AND EACH IS A R
 - THE SMOKE WALK RUNS BY ITSELF, NIGHTLY AND ON DEMAND, AND IS NOT A CHECK ANYTHING WAITS ON
@@ -191,6 +191,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - FOUR ROLL-UPS NO SCREEN ASKED FOR ARE DELETED WITH THEIR CALLERS, TESTS AND PINS, AND THE SNAPSHOT OF WHAT SCREENS REACH WAS REFRESHED ONCE, NAMING WHAT IT TOOK AND LOST
 - TWO SHAPES THE API ALREADY INSISTED ON ARE NOW INSISTED ON BY THE DATABASE, AND THE SQL COPY OF THE CAPTION VOCABULARY IS PINNED IN THREE PLACES
 - THE WEB SERVER IS GUNICORN 22.0.0, THE TWO REQUEST-SMUGGLING ADVISORIES ARE OFF THE BASELINE, AND WHAT WAS NOT TRIED IS NAMED
+- THE SCHEMA GUARD EXPECTS COLUMNS ON TABLES A MIGRATION CREATES, AND A WORD OF THE SQL AROUND A TABLE NAME IS NOT ONE
 
 ### `docs/design-record/filing-and-compliance.md` (3 entries): Filing to government portals, trackers and the period lock
 
