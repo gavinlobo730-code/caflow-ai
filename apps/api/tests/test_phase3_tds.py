@@ -81,6 +81,18 @@ def test_tds_return_status_transitions(client):
                       json={"status": "filed", "ca_approved": False}, headers=_HEADERS)
     assert r3.json()["success"] is False
 
+    # filed from PREPARED — refused: a statement is filed from CA approved, so the approval is on record.
+    r3b = client.patch(f"/api/tds-workspace/returns/{return_id}/status",
+                       json={"status": "filed", "ca_approved": True, "prn": "PRN2526Q1000001",
+                             "filing_date": "2025-07-20", "acknowledge_incomplete": True},
+                       headers=_HEADERS)
+    assert r3b.json()["success"] is False and "CA approved" in r3b.json()["error"]
+
+    r3c = client.patch(f"/api/tds-workspace/returns/{return_id}/status",
+                       json={"status": "ca_approved", "ca_approved": True, "acknowledge_incomplete": True},
+                       headers=_HEADERS)
+    assert r3c.json()["success"] is True
+
     # filed with flag — still needs a PRN (TRACES proof-of-filing captured
     # server-side, migration 037). With the flag AND a PRN it should succeed.
     # acknowledge_incomplete: this fixture return has no deductees, which the
@@ -89,7 +101,7 @@ def test_tds_return_status_transitions(client):
     r4 = client.patch(f"/api/tds-workspace/returns/{return_id}/status",
                       json={"status": "filed", "ca_approved": True,
                             "prn": "PRN2526Q1000001", "ack_number": "ACK123456789",
-                            "acknowledge_incomplete": True},
+                            "filing_date": "2025-07-20", "acknowledge_incomplete": True},
                       headers=_HEADERS)
     assert r4.json()["success"] is True
     assert r4.json()["data"]["status"] == "filed"

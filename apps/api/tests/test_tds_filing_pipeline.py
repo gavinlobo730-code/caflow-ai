@@ -44,11 +44,20 @@ def _create():
     return result["data"]["id"]
 
 
+def _approve(return_id):
+    """A statement is marked filed from CA approved (the screen offers it nowhere else, and the door now agrees)."""
+    out = update_return_status(
+        return_id, UpdateReturnStatusRequest(status="ca_approved", ca_approved=True, acknowledge_incomplete=True), USER)
+    assert out["success"] is True, out
+
+
 def test_successful_filing_persists_prn_ack_and_filed_at():
     return_id = _create()
+    _approve(return_id)
     result = update_return_status(
         return_id,
-        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="123456789012345", ack_number="ACK-001", acknowledge_incomplete=True),
+        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="123456789012345", ack_number="ACK-001",
+                                  filing_date="2025-07-20", acknowledge_incomplete=True),
         USER,
     )
     assert result["success"] is True
@@ -56,7 +65,7 @@ def test_successful_filing_persists_prn_ack_and_filed_at():
     assert rec["status"] == "filed"
     assert rec["prn"] == "123456789012345"
     assert rec["ack_number"] == "ACK-001"
-    assert rec["filed_at"] is not None
+    assert str(rec["filed_at"])[:10] == "2025-07-20"
 
 
 def test_failed_filing_without_prn_is_rejected():
@@ -83,6 +92,7 @@ def test_failed_filing_without_ca_approved_is_rejected():
 
 def test_retry_after_failure_succeeds_cleanly():
     return_id = _create()
+    _approve(return_id)
     failed = update_return_status(
         return_id, UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="", acknowledge_incomplete=True), USER,
     )
@@ -90,7 +100,8 @@ def test_retry_after_failure_succeeds_cleanly():
 
     succeeded = update_return_status(
         return_id,
-        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="123456789012345", ack_number="ACK-002", acknowledge_incomplete=True),
+        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="123456789012345", ack_number="ACK-002",
+                                  filing_date="2025-07-20", acknowledge_incomplete=True),
         USER,
     )
     assert succeeded["success"] is True
@@ -100,19 +111,23 @@ def test_retry_after_failure_succeeds_cleanly():
 
 def test_duplicate_filing_prevention_never_overwrites_original_prn():
     return_id = _create()
+    _approve(return_id)
     first = update_return_status(
         return_id,
-        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="FIRST-PRN", ack_number="ACK-FIRST", acknowledge_incomplete=True),
+        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="FIRST-PRN", ack_number="ACK-FIRST",
+                                  filing_date="2025-07-20", acknowledge_incomplete=True),
         USER,
     )
     assert first["success"] is True
 
     second = update_return_status(
         return_id,
-        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="SECOND-PRN", ack_number="ACK-SECOND", acknowledge_incomplete=True),
+        UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="SECOND-PRN", ack_number="ACK-SECOND",
+                                  filing_date="2025-07-21", acknowledge_incomplete=True),
         USER,
     )
     assert second["success"] is False
+    assert "already been filed" in second["error"], "refused for the duplicate, not for a missing date or approval"
     # The original filing's PRN must survive a duplicate/repeated attempt untouched.
     assert tds_ws._MOCK_RETURNS[return_id]["prn"] == "FIRST-PRN"
     assert tds_ws._MOCK_RETURNS[return_id]["ack_number"] == "ACK-FIRST"

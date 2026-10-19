@@ -403,7 +403,7 @@ routers/tds.py :: F401 :: <module> :: 2
 routers/tds_workspace.py :: B904 :: _resolve_manual_deduction :: 2
 routers/tds_workspace.py :: B904 :: create_return :: 1
 routers/tds_workspace.py :: B904 :: deposit_due :: 1
-routers/tds_workspace.py :: C901 :: update_return_status :: 18
+routers/tds_workspace.py :: C901 :: update_return_status :: 16
 routers/vendors.py :: B007 :: create_vendors_bulk :: 1
 routers/vendors.py :: B905 :: create_vendors_bulk :: 1
 routers/vendors.py :: C901 :: create_vendor :: 17

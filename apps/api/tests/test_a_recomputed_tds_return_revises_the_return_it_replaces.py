@@ -104,8 +104,9 @@ def test_the_deductee_lines_are_replaced_an_empty_list_included():
 
 def test_a_filed_return_is_refused_and_left_as_it_was():
     rid = create_return(_computed(), PARTNER)["data"]["id"]
+    _approve(rid)
     filed = update_return_status(rid, UpdateReturnStatusRequest(
-        status="filed", ca_approved=True, prn="123456789012345"), PARTNER)
+        status="filed", ca_approved=True, prn="123456789012345", filing_date="2025-10-30"), PARTNER)
     assert filed["success"] is True
     before = copy.deepcopy(tw._MOCK_RETURNS[rid])
 
