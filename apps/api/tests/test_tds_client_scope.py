@@ -155,9 +155,9 @@ def rows(monkeypatch):
     monkeypatch.setitem(tw._MOCK_FORM26AS, "F-THEIRS",
                         {"id": "F-THEIRS", "client_id": THEIRS})
     monkeypatch.setitem(tw._MOCK_RETURNS, "R-MINE",
-                        {"id": "R-MINE", "client_id": MINE, "status": "prepared"})
+                        {"id": "R-MINE", "client_id": MINE, "status": "ca_approved"})
     monkeypatch.setitem(tw._MOCK_RETURNS, "R-THEIRS",
-                        {"id": "R-THEIRS", "client_id": THEIRS, "status": "prepared"})
+                        {"id": "R-THEIRS", "client_id": THEIRS, "status": "ca_approved"})
 
 
 @pytest.mark.parametrize("fn,rid", [
@@ -201,7 +201,7 @@ def _file_it(return_id):
     # deductee content, so the override is named explicitly.
     return tw.UpdateReturnStatusRequest(
         status="filed", ca_approved=True, prn="PRN-999", ack_number="ACK-1",
-        acknowledge_incomplete=True)
+        filing_date="2025-10-28", acknowledge_incomplete=True)
 
 
 def test_another_clients_return_cannot_be_marked_filed(rows, deny, monkeypatch):
@@ -212,7 +212,7 @@ def test_another_clients_return_cannot_be_marked_filed(rows, deny, monkeypatch):
     assert out["success"] is False
     assert out["error"] == "Not found"
     assert tw._MOCK_RETURNS["R-THEIRS"].get("prn") is None, "the PRN was written anyway"
-    assert tw._MOCK_RETURNS["R-THEIRS"]["status"] == "prepared"
+    assert tw._MOCK_RETURNS["R-THEIRS"]["status"] == "ca_approved"
 
 
 def test_your_own_return_can_still_be_marked_filed(rows, deny, monkeypatch):
@@ -282,8 +282,8 @@ class _FakeDb:
 @pytest.fixture
 def live_db(monkeypatch):
     db = _FakeDb([
-        {"id": "R-MINE", "firm_id": FIRM, "client_id": MINE, "status": "prepared"},
-        {"id": "R-THEIRS", "firm_id": FIRM, "client_id": THEIRS, "status": "prepared"},
+        {"id": "R-MINE", "firm_id": FIRM, "client_id": MINE, "status": "ca_approved"},
+        {"id": "R-THEIRS", "firm_id": FIRM, "client_id": THEIRS, "status": "ca_approved"},
     ])
     monkeypatch.setattr(tw, "_USE_MOCK", False)
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: db)

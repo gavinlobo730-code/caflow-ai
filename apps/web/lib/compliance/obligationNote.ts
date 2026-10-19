@@ -1,6 +1,6 @@
 /**
  * What a workspace says when it records a return as filed and the compliance obligation it stands for was NOT closed by
- * the same click: the GST workspace (POST-A-264) and the ITR workspace.
+ * the same click: the GST workspace (POST-A-264), the ITR workspace and the TDS workspace.
  *
  * The server closes the obligation itself and answers `compliance_obligation: { state, closed, message }`; this reads
  * that answer and decides nothing. A note appears only when the calendar was left open for a reason the CA should know

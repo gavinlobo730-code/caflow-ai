@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from models.common import api_response
-from core.permissions import rbac
+from core.permissions import can_user, rbac
 from core.authz import assert_client_access, can_access_client
 from domain.tds.tds_validator import TDSValidator
 from services.audit_service import log_event
@@ -321,6 +321,11 @@ class UpdateReturnStatusRequest(BaseModel):
     # with no PRN/acknowledgement captured anywhere server-side.
     prn: Optional[str] = None
     ack_number: Optional[str] = None
+    #: The day the CA filed the statement on the portal: YYYY-MM-DD, a real date, not in the future (IST). REQUIRED to mark
+    #: a return filed and never defaulted: a date nobody stated would be the day it was recorded here. It used to be free
+    #: text that reached `filed_at` unread, so "2999-01-01" was stored as the day of filing. The DOOR judges it
+    #: (`_the_filing_date`) and answers in the door's own way, `success: false` with a sentence the screen shows; a
+    #: validation error here would reach the screen as a bare "Failed to mark as filed".
     filing_date: Optional[str] = None
     # Approving/filing a return with no deductees, or before its own quarter
     # has ended, is refused by default (see update_return_status). This is the
@@ -328,6 +333,18 @@ class UpdateReturnStatusRequest(BaseModel):
     # `acknowledge_stale` — never defaulted true and never settable by
     # omission, because the whole point is that the refusal is seen first.
     acknowledge_incomplete: bool = False
+
+    @field_validator("prn", "ack_number")
+    @classmethod
+    def _trimmed(cls, v: Optional[str]) -> Optional[str]:
+        text = (v or "").strip()
+        return text or None
+
+    @field_validator("filing_date")
+    @classmethod
+    def _blank_is_not_said(cls, v: Optional[str]) -> Optional[str]:
+        text = (v or "").strip()
+        return text or None
 
 
 #: What the CHECK on tds_certificates.certificate_type accepts (migration 037),
@@ -1319,6 +1336,98 @@ def create_return(
             f"again, and report it if it keeps failing."))
 
 
+def _the_filing_date(body: UpdateReturnStatusRequest) -> tuple[Optional[str], Optional[str]]:
+    """(the date to store, the sentence refusing it). Only a request to mark the statement filed has one to judge.
+
+    Required and never defaulted; a real date not in the future (IST), by `clean_filed_date`, the rule the GST and ITR doors
+    apply."""
+    if body.status != "filed":
+        return None, None
+    if not body.filing_date:
+        return None, ("Enter the date the statement was filed on the portal (the date on its receipt). It is never "
+                      "defaulted: the day it is recorded here is not the day it was filed.")
+    from domain.compliance_record_service import clean_filed_date
+    try:
+        return clean_filed_date(body.filing_date), None
+    except ValueError as refusal:
+        return None, f"{str(refusal).replace('filed_date', 'filing_date')}. Enter the date on the portal's receipt."
+
+
+def _why_this_status_cannot_be_recorded(body: UpdateReturnStatusRequest, current: dict,
+                                        filed_on: Optional[str]) -> Optional[str]:
+    """The sentence for why this request cannot be recorded against the statement as it stands, or None.
+
+    It reads the request, the stored row, the date already judged by `_the_filing_date` and the clock (the quarter has to
+    have ended), and decides nothing else, so every refusal is testable without a store.
+    """
+    current_status = current.get("status")
+    # A return can only be filed once — a repeated/duplicate "mark filed"
+    # request (double-click, retry) must not silently overwrite the
+    # original PRN/acknowledgement with a second one.
+    if body.status == "filed" and current_status == "filed":
+        return "This return has already been filed."
+    # AND A FILED STATEMENT DOES NOT GO BACK. `_revise_tds_return` already says so for a recompute ("a correction is
+    # a correction statement on TRACES, not a recompute here"); this door let the same row be moved to pending or
+    # prepared, which left a PRN and a filing date on a statement the screen then called unfiled.
+    if current_status in _TDS_RETURN_FURNISHED:
+        prn = current.get("prn")
+        return (f"This return was filed{f' (PRN {prn})' if prn else ''} and its status cannot be changed here. A "
+                "correction is a correction statement on TRACES, not a status change.")
+    # AND A STATEMENT IS FILED FROM CA APPROVED. The screen offers "Mark as Filed" only there, but the door took a
+    # pending or prepared statement straight to filed on the strength of the request's own `ca_approved` flag, so a
+    # filed statement could carry no approver and no approval time at all.
+    if body.status == "filed" and current_status != "ca_approved":
+        return (f"This return is {str(current_status or 'pending').replace('_', ' ')}. A statement is marked filed "
+                "from CA approved, so that the approval is on record: approve it first.")
+
+    # A statement with no deductees, or whose own quarter has not yet
+    # ended, is approved or filed on facts that cannot be right — a Q2
+    # return cannot be settled before Q2 is over, and an empty statement
+    # is not one an employer or deductor "prepared". Same shape as
+    # save_gstr3b's staleness check in gst_workspace.py: refused unless
+    # the CA explicitly names the override, rather than silently allowed
+    # or unconditionally blocked.
+    if body.status in ("ca_approved", "filed") and not body.acknowledge_incomplete:
+        problems = []
+        if (current.get("deductee_count") or 0) == 0:
+            problems.append("it has no deductees recorded")
+        quarter_end = str(current.get("quarter_end") or "")[:10]
+        if quarter_end and quarter_end > ist_today().isoformat():
+            problems.append(f"its quarter has not ended yet (ends {quarter_end})")
+        if problems:
+            return (f"This return cannot be {body.status.replace('_', ' ')} because " + " and ".join(problems)
+                    + ". Resubmit with acknowledge_incomplete=true to record it anyway.")
+        # A statement cannot have been filed before the quarter it reports on had ended: the rule the calendar applies
+        # to the obligation (`mark_filed` refuses a date earlier than the period's end), applied to the date the CA
+        # typed BEFORE it is stored, so the two cannot disagree about it. Skipped under the override, which exists to
+        # record a statement the product would otherwise hold back.
+        if body.status == "filed" and quarter_end and filed_on < quarter_end:
+            return (f"A statement for {current.get('quarter')} FY {current.get('financial_year')} cannot have been "
+                    f"filed before the quarter ended on {quarter_end}. Check the date on the receipt.")
+    return None
+
+
+def _close_the_obligation(current_user: dict, row: dict, body: UpdateReturnStatusRequest) -> dict:
+    """Close the calendar's obligation for the statement just recorded as filed, and say what became of it. NEVER FAILS THE
+    RECORDING: the PRN is stored and the CA has said the statement is filed. Whatever stops the obligation closing comes
+    back in the answer for the screen to show and goes to the error reporter."""
+    from core.observability import capture_soft_failure
+    from services import tds_return_closes_obligation as closes
+    firm_id = current_user["firm_id"]
+    try:
+        return closes.close_for_filed_return(
+            firm_id=firm_id, client_id=row.get("client_id") or "", return_type=row.get("return_type"),
+            quarter=row.get("quarter"), financial_year=row.get("financial_year"), filed_date=body.filing_date,
+            prn=body.prn, actor=current_user,
+            may_write_compliance=can_user(current_user, "compliance", "write"))
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="tds_workspace.close_the_obligation", firm_id=firm_id,
+                             client_id=row.get("client_id"))
+        return {"state": "not_closed", "closed": False, "obligation_id": None,
+                "message": "The PRN is recorded, but the compliance calendar could not be updated just now. "
+                           "Mark the obligation filed from Compliance."}
+
+
 @router.patch("/returns/{return_id}/status")
 def update_return_status(
     return_id: str,
@@ -1352,6 +1461,9 @@ def update_return_status(
         if body.status == "filed" and not (body.prn or "").strip():
             return api_response(False, None,
                 "PRN (Provisional Receipt Number) is required to mark a return as filed.")
+        filed_on, why_not_this_date = _the_filing_date(body)
+        if why_not_this_date:
+            return api_response(False, None, why_not_this_date)
 
         if _USE_MOCK:
             current = _MOCK_RETURNS.get(return_id)
@@ -1362,7 +1474,8 @@ def update_return_status(
                 # ca_approved/filed guard just below — client_id is selected
                 # purely so the scope check has something to check.
                 get_supabase().table("tds_returns")
-                .select("status, client_id, deductee_count, quarter_end")
+                .select("status, client_id, deductee_count, quarter_end, return_type, quarter, "
+                        "financial_year, prn")
                 .eq("id", return_id).eq("firm_id", firm_id).limit(1).execute().data
             )
             current = existing[0] if existing else None
@@ -1371,33 +1484,9 @@ def update_return_status(
         current = _visible_or_none(current_user, current)
         if current is None:
             return api_response(False, None, "Not found")
-        current_status = current.get("status")
-
-        # A return can only be filed once — a repeated/duplicate "mark filed"
-        # request (double-click, retry) must not silently overwrite the
-        # original PRN/acknowledgement with a second one.
-        if body.status == "filed" and current_status == "filed":
-            return api_response(False, None, "This return has already been filed.")
-
-        # A statement with no deductees, or whose own quarter has not yet
-        # ended, is approved or filed on facts that cannot be right — a Q2
-        # return cannot be settled before Q2 is over, and an empty statement
-        # is not one an employer or deductor "prepared". Same shape as
-        # save_gstr3b's staleness check in gst_workspace.py: refused unless
-        # the CA explicitly names the override, rather than silently allowed
-        # or unconditionally blocked.
-        if body.status in ("ca_approved", "filed") and not body.acknowledge_incomplete:
-            problems = []
-            if (current.get("deductee_count") or 0) == 0:
-                problems.append("it has no deductees recorded")
-            quarter_end = str(current.get("quarter_end") or "")
-            if quarter_end and quarter_end[:10] > ist_today().isoformat():
-                problems.append(f"its quarter has not ended yet (ends {quarter_end[:10]})")
-            if problems:
-                return api_response(False, None,
-                    f"This return cannot be {body.status.replace('_', ' ')} because "
-                    + " and ".join(problems) + ". Resubmit with "
-                    "acknowledge_incomplete=true to record it anyway.")
+        refusal = _why_this_status_cannot_be_recorded(body, current, filed_on)
+        if refusal:
+            return api_response(False, None, refusal)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         update_payload: dict = {"status": body.status}
@@ -1407,15 +1496,28 @@ def update_return_status(
         if body.status == "filed":
             update_payload["prn"] = body.prn
             update_payload["ack_number"] = body.ack_number
-            update_payload["filed_at"] = body.filing_date or now_iso
+            # `filed_at` is a timestamptz and the CA stated a DAY. Written as midnight UTC, spelled out, so the stored
+            # instant is 05:30 IST on the same calendar day and its UTC date and its Indian date agree, whatever time zone
+            # a session happens to run in.
+            update_payload["filed_at"] = f"{filed_on}T00:00:00+00:00"
 
         if _USE_MOCK:
             _MOCK_RETURNS[return_id].update(update_payload)
             rec = _MOCK_RETURNS[return_id]
         else:
             from core.supabase_client import get_supabase
-            rows = get_supabase().table("tds_returns").update(update_payload).eq("id", return_id).eq("firm_id", firm_id).execute().data
-            rec = rows[0] if rows else {}
+            # Conditional on the status that was READ: two requests to mark the same statement filed (a double click) both
+            # read ca_approved and both pass the checks above, and without this the second would overwrite the first's PRN.
+            rows = (get_supabase().table("tds_returns").update(update_payload)
+                    .eq("id", return_id).eq("firm_id", firm_id).eq("status", current.get("status")).execute().data)
+            if not rows:
+                # The row was removed or changed between the read and the write, or the caller's row security refused the
+                # change: PostgREST answers all three with an empty list. It used to be answered `{}` as a success, with
+                # the audit row and the timeline entry written for a change that never happened.
+                return api_response(False, None,
+                    "Could not update this TDS return: it may have been removed or changed by someone else in the "
+                    "meantime, or your access does not let you change it. Nothing was changed.")
+            rec = rows[0]
 
         log_event(firm_id, "tds_return", return_id, "status_change",
                   actor_id=current_user.get("auth_user_id"), new_data={"status": body.status})
@@ -1427,6 +1529,7 @@ def update_return_status(
                 title=f"TDS Return {rec.get('return_type', '')} filed for {rec.get('quarter', '')} {rec.get('financial_year', '')}",
                 description=f"PRN: {body.prn}" + (f" | Ack: {body.ack_number}" if body.ack_number else ""),
             )
+            return api_response(True, {**rec, "compliance_obligation": _close_the_obligation(current_user, rec, body)})
         return api_response(True, rec)
     except Exception as e:
         return _could_not(e, "update the TDS return status")

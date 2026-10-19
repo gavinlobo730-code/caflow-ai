@@ -27,6 +27,9 @@ import {
   type TDSDeductee,
 } from "@/lib/data/tds";
 import { Callout, GapList } from "@/components/ui/callout";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/dates/format";
 
@@ -100,6 +103,14 @@ export default function TDSReturnsPage() {
   const [showFiledModal, setShowFiledModal] = useState(false);
   const [prn, setPrn] = useState("");
   const [ackNumber, setAckNumber] = useState("");
+  // The day the statement was filed on the portal. Blank until the CA states it and never filled in for them: the server
+  // refuses a filing without one, because the day it is recorded here is not the day it was filed.
+  const [filingDate, setFilingDate] = useState("");
+  const dates = useDateProblems();
+  // What the server did to the compliance calendar when the statement was recorded as filed, when it left the obligation open.
+  const [calendarNote, setCalendarNote] = useState<string | null>(null);
+  // A refusal of THIS dialog is shown in the dialog: the page's own error callout sits under the backdrop while it is open.
+  const [filedError, setFiledError] = useState<string | null>(null);
 
   const [tab, setTab] = useState<"summary" | "deductees" | "challans" | "keying" | "json">("summary");
 
@@ -127,6 +138,8 @@ export default function TDSReturnsPage() {
     setFilingStatus("pending");
     setShowDemo(false);
     setShowFiledModal(false);
+    setPrn(""); setAckNumber(""); setFilingDate(""); setFiledError(null);
+    setCalendarNote(null);
     setError(null);
   }, [clientId]);
 
@@ -154,9 +167,22 @@ export default function TDSReturnsPage() {
   // All three are the server's job now. The deductor identity is read from
   // `client_statutory_identity` (migration 325) and REFUSED by name when it
   // is not recorded — the refusal text is what this screen shows.
+  // The dialog belongs to ONE statement: a PRN, an acknowledgement number or a date left from the last one would be
+  // offered for the next, and the date is the field the server refuses to have defaulted.
+  function clearTheFiledDialog() {
+    setPrn(""); setAckNumber(""); setFilingDate(""); setFiledError(null);
+  }
+
+  function openFiledModal() {
+    clearTheFiledDialog();
+    setShowFiledModal(true);
+  }
+
   async function handleCompute() {
     if (!clientId) { setError("Select a client"); return; }
     setLoading(true); setError(null); setResult(null);
+    clearTheFiledDialog();
+    setCalendarNote(null);
     try {
       const payload = await computeReturnFromBooks(returnType, {
         client_id: clientId,
@@ -188,13 +214,18 @@ export default function TDSReturnsPage() {
   }
 
   async function handleMarkFiled() {
-    if (!returnId || !prn) return;
+    if (!returnId || !prn || !filingDate) return;
+    if (dates.first) { setFiledError(dates.first); return; }
+    setFiledError(null);
     try {
-      await markTDSFiled(returnId, prn, ackNumber);
+      const { calendarNote: note } = await markTDSFiled(returnId, prn, ackNumber, filingDate);
+      setCalendarNote(note);
       setFilingStatus("filed");
+      setError(null);
       setShowFiledModal(false);
+      clearTheFiledDialog();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to mark as filed");
+      setFiledError(e instanceof Error ? e.message : "Failed to mark as filed");
     }
   }
 
@@ -282,6 +313,13 @@ export default function TDSReturnsPage() {
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
+
+      {calendarNote && (
+        <Callout tone="note" title="Recorded as filed. The compliance calendar was not marked filed.">
+          <span>{calendarNote}</span>{" "}
+          <button onClick={() => setCalendarNote(null)} className="underline">Dismiss</button>
+        </Callout>
+      )}
 
       {/* Results */}
       {result && (
@@ -641,7 +679,7 @@ export default function TDSReturnsPage() {
               </button>
             )}
             {filingStatus === "ca_approved" && (
-              <button onClick={() => setShowFiledModal(true)}
+              <button onClick={openFiledModal}
                 className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
                 <FileText size={15} />
                 Mark as Filed
@@ -670,12 +708,19 @@ export default function TDSReturnsPage() {
                 placeholder="Optional acknowledgement number"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-brand" />
             </div>
+            <div>
+              <label htmlFor="tds-filing-date" className="block text-xs font-medium text-ps-body mb-1">Date filed on the portal *</label>
+              <DateInput id="tds-filing-date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
+                value={filingDate} onChange={setFilingDate} max={todayIstISO()} onStateChange={dates.watch("filingDate", "Date filed")} />
+              <p className="mt-1 text-3xs text-ps-label">The date on the portal&apos;s receipt, not today&apos;s date unless that is the day you filed.</p>
+            </div>
+            {filedError && <Callout tone="problem">{filedError}</Callout>}
             <div className="flex gap-3 pt-1">
               <button onClick={() => setShowFiledModal(false)}
                 className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg">
                 Cancel
               </button>
-              <button onClick={handleMarkFiled} disabled={!prn}
+              <button onClick={handleMarkFiled} disabled={!prn || !filingDate}
                 className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
                 Confirm Filed
               </button>

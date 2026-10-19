@@ -13,6 +13,7 @@
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "./getFirmId";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
+import { obligationNote } from "@/lib/compliance/obligationNote";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -633,12 +634,20 @@ export async function approveTDSReturn(returnId: string): Promise<void> {
   if (!resp.success) throw new Error(resp.error ?? "Approval failed");
 }
 
-export async function markTDSFiled(returnId: string, prn: string, ackNumber: string): Promise<void> {
+/** Record the statement as filed, on the day the CA states (YYYY-MM-DD, the date on the portal's receipt). The server
+ *  requires it and never defaults it, closes the calendar's obligation for the quarter itself, and answers with what
+ *  became of it; the caller shows `obligationNote` of the returned data and decides nothing. */
+export async function markTDSFiled(
+  returnId: string, prn: string, ackNumber: string, filingDate: string,
+): Promise<{ calendarNote: string | null }> {
   const resp = await authedFetch(`/api/tds-workspace/returns/${returnId}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ status: "filed", ca_approved: true, prn, ack_number: ackNumber }),
+    body: JSON.stringify({
+      status: "filed", ca_approved: true, prn, ack_number: ackNumber || null, filing_date: filingDate,
+    }),
   });
   if (!resp.success) throw new Error(resp.error ?? "Failed to mark as filed");
+  return { calendarNote: obligationNote(resp.data) };
 }
 
 /** Save a computed statement — through the API, under the ROUTING KEY.
