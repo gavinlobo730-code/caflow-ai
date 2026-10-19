@@ -175,7 +175,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A BILLING SCHEDULE KEEPS THE DAY IT STARTED ON, A DUE SCHEDULE WHOSE PERIOD IS ALREADY BILLED ADVANCES, A PLACEHOLDER NUMBER IS NOT ISSUED, AND TWO EDITORS OF AN ARTICLE BOTH KEEP THEIR TEXT
 - A LINE ON A DOCUMENT NAMES AN ITEM OF THE DOCUMENT'S OWN CLIENT, AND THE API ASKS ONCE BEFORE IT WRITES
 
-### `docs/design-record/engineering-and-ci.md` (7 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
+### `docs/design-record/engineering-and-ci.md` (8 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
 - THE BACKEND HAS A LINT RATCHET, A PROPERTY SUITE, ONE PAGER, ONE DOOR TO THE DATABASE CLIENT AND A COVERAGE FLOOR, AND EACH IS A R
 - THE SMOKE WALK RUNS BY ITSELF, NIGHTLY AND ON DEMAND, AND IS NOT A CHECK ANYTHING WAITS ON
@@ -184,6 +184,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A LOOKUP THAT MAY FIND NOTHING IS `.maybe_single()`, AND A `.single()` THAT SLIPS THROUGH ANYWAY ANSWERS 404 AND NOT 500
 - A HEALTH TEST IMPORTS THE HEALTH MODULE, AND AN ASSERTION ABOUT ARITHMETIC THE PRODUCT DOES NOT DO WAS DROPPED, NOT PORTED
 - FOUR ROLL-UPS NO SCREEN ASKED FOR ARE DELETED WITH THEIR CALLERS, TESTS AND PINS, AND THE SNAPSHOT OF WHAT SCREENS REACH WAS REFRESHED ONCE, NAMING WHAT IT TOOK AND LOST
+- TWO SHAPES THE API ALREADY INSISTED ON ARE NOW INSISTED ON BY THE DATABASE, AND THE SQL COPY OF THE CAPTION VOCABULARY IS PINNED IN THREE PLACES
 
 ### `docs/design-record/filing-and-compliance.md` (3 entries): Filing to government portals, trackers and the period lock
 

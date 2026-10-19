@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Upload, CheckCircle, AlertCircle, X, FileText } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { PageHeader } from "@/components/ui/page-header";
+import { api } from "@/lib/api";
+import { acceptedMappings, mappingProblem, type CaptionsPayload } from "@/lib/accounting/coaImportMapping";
 
 type AccountType = "Asset" | "Liability" | "Equity" | "Revenue" | "Expense";
 const VALID_TYPES = new Set<AccountType>(["Asset", "Liability", "Equity", "Revenue", "Expense"]);
@@ -74,6 +76,21 @@ export default function CoaImportPage() {
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [step, setStep] = useState<"upload" | "preview" | "done">("upload");
+  // The Schedule III vocabulary the SERVER reads (the menu plus the older spellings), null until it arrives or if it cannot.
+  const [accepted, setAccepted] = useState<ReadonlySet<string> | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const res = (await api.accounting.scheduleIiiCaptions()) as { success: boolean; data?: CaptionsPayload };
+        if (live && res.success) setAccepted(acceptedMappings(res.data));
+      } catch {
+        // Left null: a row that names a mapping then says it could not be checked, which is the honest answer.
+      }
+    })();
+    return () => { live = false; };
+  }, []);
 
   function handleFile(file: File) {
     setFileName(file.name);
@@ -100,6 +117,10 @@ export default function CoaImportPage() {
 
         const type = normaliseType(obj.account_type ?? "");
         if (!type) { errors.push({ row: i + 1, message: `Row ${i + 1}: Invalid account type "${obj.account_type}"` }); continue; }
+
+        // The database refuses a mapping the engine cannot read (migration 520), so name the row here instead of failing a batch.
+        const problem = mappingProblem(i + 1, obj.schedule_iii_mapping?.trim() ?? "", accepted);
+        if (problem) { errors.push({ row: i + 1, message: problem }); continue; }
 
         parsed.push({
           account_code: obj.account_code.trim(),

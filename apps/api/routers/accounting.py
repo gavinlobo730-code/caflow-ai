@@ -220,7 +220,8 @@ def schedule_iii_captions(current_user: dict = Depends(rbac("accounting", "read"
     from the menu costs nothing today.
     """
     from domain.reporting.schedule_iii import (
-        BALANCE_SHEET_CAPTIONS, PROFIT_LOSS_CAPTIONS, RESIDUAL_CAPTIONS)
+        BALANCE_SHEET_CAPTIONS, PROFIT_LOSS_CAPTIONS, RESIDUAL_CAPTIONS,
+        accepted_stored_spellings)
     return api_response(True, {
         "sections": [
             {"heading": "Balance Sheet", "items": list(BALANCE_SHEET_CAPTIONS)},
@@ -229,6 +230,11 @@ def schedule_iii_captions(current_user: dict = Depends(rbac("accounting", "read"
         # So the screen can mark them: a balance on one of these is there
         # because nobody decided, not because somebody chose it.
         "residual": sorted(RESIDUAL_CAPTIONS),
+        # Spellings a STORED mapping may still carry and the engine still reads (the older spellings, and the Fixed Assets
+        # heading that resolves from the account's own subtype). The picker never offers them; a CSV import may carry them (an
+        # export of an older chart does) and the database accepts them (migration 520), so the import screen checks against
+        # the menu AND this list (POST-A-164).
+        "also_accepted": sorted(set(accepted_stored_spellings()) - set(BALANCE_SHEET_CAPTIONS) - set(PROFIT_LOSS_CAPTIONS)),
     })
 
 

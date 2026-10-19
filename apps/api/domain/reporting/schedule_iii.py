@@ -131,6 +131,13 @@ CAPTION_ALIASES = {
 _FIXED_ASSETS_HEADING = "Fixed Assets"
 
 
+def accepted_stored_spellings() -> frozenset:
+    """Every string a stored `schedule_iii_mapping` may hold and `canonical_caption` can read: the captions the engine presents,
+    the older spellings it still honours and the 'Fixed Assets' heading. Migration 520's CHECK lists exactly this set, pinned by
+    tests/test_the_chart_mapping_check_lists_what_the_classifier_reads.py and by the real-Postgres test beside the migration."""
+    return frozenset(CAPTIONS) | frozenset(CAPTION_ALIASES) | {_FIXED_ASSETS_HEADING}
+
+
 def canonical_caption(mapping: str | None, account_subtype: str | None = None) -> str | None:
     """The caption a stored mapping means, or None if this module cannot say.
 
