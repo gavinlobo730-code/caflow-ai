@@ -14,6 +14,8 @@ which no signed-in session can read, and `firms.lock_pin` stays NULL. The tests 
 table the code actually uses; tests/test_the_year_lock_pin_is_hashed_limited_and_unreadable.py is the
 fuller statement of the storage, the limiter and the audit trail.
 """
+from types import SimpleNamespace
+
 import pytest
 from fastapi import HTTPException
 
@@ -60,6 +62,17 @@ def test_lock_is_idempotent(monkeypatch):
 
 # ── service: PIN handling ────────────────────────────────────────────────────
 
+def _holds_a_salted_hash_not_the_pin(stored: str, pin: str) -> bool:
+    """Is `stored` the module's `pbkdf2_sha256$<iterations>$<salt>$<digest>` with none of those fields being the PIN?
+
+    The question is asked of the FIELDS and never of the text as a whole. The salt and the digest are random hex, so a short
+    numeric PIN such as 1234 turns up somewhere in the text of about one perfectly good hash in 700, and a substring test
+    ("1234" not in stored) failed CI for exactly that reason on 19-10-2026 (a salt that began 691234...). A PIN stored in the
+    clear is the whole value or one whole field, which a field-wise comparison still catches."""
+    parts = stored.split("$")
+    return len(parts) == 4 and parts[0] == lock_pin.PBKDF2_SCHEME and pin not in parts
+
+
 def test_first_lock_sets_pin(monkeypatch):
     db = _setup(monkeypatch, pin=None)
     s = yls.set_lock(db, FIRM, "2024-25", lock=True, pin="1234")
@@ -68,8 +81,33 @@ def test_first_lock_sets_pin(monkeypatch):
     row = next(r for r in db.rows("firms") if r["id"] == FIRM)
     assert row["lock_pin"] is None
     stored = [r for r in db.rows("firm_lock_pins") if r["firm_id"] == FIRM]
-    assert len(stored) == 1 and "1234" not in stored[0]["pin_hash"]
+    assert len(stored) == 1 and _holds_a_salted_hash_not_the_pin(stored[0]["pin_hash"], "1234")
     assert lock_pin.verify("1234", stored[0]["pin_hash"]).ok
+
+
+def test_first_lock_sets_pin_when_the_random_salt_happens_to_contain_the_pins_digits(monkeypatch):
+    """The unlucky draw, forced: the salt that failed CI on 19-10-2026 contains 1234, and the PIN is still stored as a hash."""
+    unlucky_salt = "6912340aa95d9dc0c4bde1217394694e"
+    # Only the name inside lock_pin is replaced; the stdlib module, which other code in the process uses, is left alone.
+    monkeypatch.setattr(lock_pin, "secrets", SimpleNamespace(token_hex=lambda _n: unlucky_salt))
+    db = _setup(monkeypatch, pin=None)
+    yls.set_lock(db, FIRM, "2024-25", lock=True, pin="1234")
+    (stored,) = [r["pin_hash"] for r in db.rows("firm_lock_pins") if r["firm_id"] == FIRM]
+    assert "1234" in stored, "the premise: the stored text does contain the PIN's digits"
+    assert stored.split("$")[2] == unlucky_salt
+    assert _holds_a_salted_hash_not_the_pin(stored, "1234")
+    assert lock_pin.verify("1234", stored).ok
+
+
+@pytest.mark.parametrize("stored, why", [
+    ("1234", "the PIN itself, in the clear"),
+    ("pbkdf2_sha256$1000$1234$" + "ab" * 32, "the PIN in the salt field"),
+    ("pbkdf2_sha256$1000$" + "ab" * 16 + "$1234", "the PIN in the digest field"),
+    ("pbkdf2_sha256$1234$" + "ab" * 16 + "$" + "cd" * 32, "the PIN in the iterations field"),
+    ("sha256$" + "ab" * 16, "not the module's stored form at all"),
+])
+def test_a_pin_stored_in_the_clear_or_in_the_wrong_form_is_still_caught(stored, why):
+    assert not _holds_a_salted_hash_not_the_pin(stored, "1234"), why
 
 
 def test_wrong_pin_blocked(monkeypatch):
