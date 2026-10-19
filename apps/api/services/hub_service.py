@@ -166,7 +166,6 @@ def _count(table: str, firm_id: str, client_ids: Optional[list[str]],
 
 def _sum_paise(table: str, column: str, firm_id: str,
                client_ids: Optional[list[str]], *, gt_zero: bool = True,
-               extra_is_null: Optional[str] = None,
                live_documents_only: bool = False) -> int:
     """A total in paise.
 
@@ -192,8 +191,6 @@ def _sum_paise(table: str, column: str, firm_id: str,
         q = _db().table(table).select(f"id,{column}").eq("firm_id", firm_id)
         if client_ids is not None:
             q = q.in_("client_id", client_ids)
-        if extra_is_null:
-            q = q.is_(extra_is_null, "null")
         if live_documents_only:
             # `.not_` is a PROPERTY on the builder, never a call — see
             # tests/test_not_is_a_property_of_a_query_and_is_never_called.py.
@@ -202,6 +199,21 @@ def _sum_paise(table: str, column: str, firm_id: str,
 
     rows = fetch_all(one_page, label=f"hub:{table}.{column}")
     return sum(int(r.get(column) or 0) for r in rows)
+
+
+def _tds_undeposited(firm_id: str, client_ids: Optional[list[str]]) -> int:
+    """TDS deducted and not yet deposited, in paise, which the DATABASE computes (CLAUDE.md's reporting rule: what crosses the
+    wire is proportional to the answer, not to the ledger). `client_ids` None is every client of the firm, a list is those
+    clients, an empty list is none. The function's name is written out at the call on purpose: `core/schema_guard` and the
+    rpc-existence tests read the literal first argument of an rpc call and cannot see a name held in a variable."""
+    data = _db().rpc("tds_undeposited_paise", {"p_firm_id": firm_id, "p_client_ids": client_ids}).execute().data
+    if isinstance(data, list):
+        data = data[0] if data else None
+    if data is None:
+        # The function sums with a coalesce, so a genuine nothing is 0. An ANSWER that is absent is a read that did not happen,
+        # and `_safely` turns this into a tile with no figure: an unknown is never shown as a value.
+        raise RuntimeError("tds_undeposited_paise answered nothing")
+    return int(data)
 
 
 def hub(current_user: dict, client_id: Optional[str] = None) -> dict:
@@ -289,12 +301,13 @@ def _signals(firm_id: str, scope: Optional[list[str]],
         "purchases": lambda: _sum_paise(
             "purchase_bills", "outstanding_paise", firm_id, scope,
             live_documents_only=True),
-        # Deducted and NOT YET DEPOSITED. `challan_no` is what a deposit
-        # records, so its absence is the outstanding half — summing every
-        # deduction would report a deductor who has paid everything over as
-        # owing the whole year.
-        "tds": lambda: _sum_paise(
-            "tds_deductions", "tds_paise", firm_id, scope, extra_is_null="challan_no"),
+        # Deducted and NOT YET DEPOSITED, from the CHALLAN REGISTER (migration 522's `tds_undeposited_paise`, twin
+        # `domain/tds/undeposited`). This read `tds_deductions.challan_no IS NULL`: a deduction a purchase bill writes never
+        # carries it (`POST /challans` records the challan and never touches the deductions it paid), so every such deduction
+        # counted as undeposited whatever had been paid in and the seeded demo firm's dashboard said ₹1,94,614.98 with every
+        # deduction deposited. A challan number typed on a hand-keyed deduction is a note: the statement and the deposit
+        # worksheet ignore it and so does this tile (see the design record).
+        "tds": lambda: _tds_undeposited(firm_id, scope),
         "payroll": lambda: _count(
             "payroll_runs", firm_id, scope,
             in_=("status", _outstanding("payroll_runs", _PAYROLL_DONE))),
