@@ -692,8 +692,19 @@ def _gst_returns(api: Api, c, client_id: str, financial_year: str,
                     step = {"status": status, "ca_approved": True}
                     if status == "submitted":
                         step.update({"arn": f"SEED-{kind.upper()}-{key}", "filed_date": filed_on})
-                    api.patch(f"/api/gst-workspace/{kind}/{return_id}/status", step)
+                    filed = api.patch(f"/api/gst-workspace/{kind}/{return_id}/status", step)
                 written[f"{kind}_filed"] += 1
+                # RECORDING A RETURN AS FILED CLOSES ITS COMPLIANCE OBLIGATION (POST-A-254): the answer says whether it
+                # did. A seeded firm whose calendar calls a filed return overdue is the contradiction that was found
+                # here, so one that is not closed is reported, not assumed.
+                closure = ((filed or {}).get("data") or {}).get("compliance_obligation") or {}
+                if closure.get("closed"):
+                    written["obligations_closed"] += 1
+                elif closure.get("state") == "already_filed":
+                    pass            # the calendar already says filed, which is what was wanted
+                else:
+                    written["obligations_left_open"].append(
+                        f"{c.name} {label} {key}: {closure.get('message') or 'the answer did not say what happened to the obligation'}")
             except ApiRefusal as refusal:
                 if _stops_the_run(refusal.status):
                     raise
@@ -982,6 +993,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "bank_rules": 0, "bank_rules_skipped": 0,
                "cwip_projects": 0, "cwip_tranches": 0, "cwip_tranches_skipped": 0,
                "gstr1_filed": 0, "gstr3b_filed": 0, "returns_not_yet_due": 0,
+               "obligations_closed": 0, "obligations_left_open": [],
                "returns_refused": []}
 
     # ── THE FIRM'S HSN LIBRARY COMES FIRST, AND IT IS A GATE ─────────────────
@@ -1230,9 +1242,12 @@ def main() -> int:
     print(f"\ndone — {api.calls} API calls")
     for k, v in written.items():
         print(f"  {k.replace('_', ' '):24} {v}")
-    if written["returns_refused"]:
-        # Everything else was written; the exit code says the filing history is NOT whole.
-        print(f"\n{len(written['returns_refused'])} return(s) were not filed; they are listed above.")
+    if written["returns_refused"] or written["obligations_left_open"]:
+        # Everything else was written; the exit code says the filing history, or the calendar beside it, is NOT whole.
+        print(f"\n{len(written['returns_refused'])} return(s) were not filed and "
+              f"{len(written['obligations_left_open'])} filed return(s) left their obligation open; they are listed above.")
+        for line in written["obligations_left_open"]:
+            print(f"    ! {line}")
         return 2
     return 0
 

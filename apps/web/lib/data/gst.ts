@@ -24,6 +24,7 @@
  */
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import { obligationNote } from "@/lib/gst/obligationNote";
 import type { CreditLedgerBlock } from "@/lib/api";
 import { getFirmId } from "./getFirmId";
 
@@ -1454,7 +1455,8 @@ export async function markGSTR3BFiled(
   filedDate: string,
   /** Which registration's return (GST-17). */
   gstin?: string,
-): Promise<void> {
+  // The server's sentence when the compliance calendar was NOT closed by the same filing (POST-A-264), else null.
+): Promise<string | null> {
   const existing = await getGSTR3BReturn(clientId, period, gstin);
   const returnId = (existing as { id?: string } | null)?.id;
   if (!returnId) {
@@ -1472,6 +1474,7 @@ export async function markGSTR3BFiled(
   // This router answers a refusal as HTTP 200 with { success: false, error },
   // so an unchecked call reports "filed" for a request the server declined.
   if (!res.success) throw new Error(res.error ?? "Failed to mark GSTR-3B as filed");
+  return obligationNote((res as { data?: unknown }).data);
 }
 
 /** See markGSTR3BFiled, including why `filedDate` is required (PRE-A-007). */
@@ -1483,7 +1486,7 @@ export async function markGSTR1Filed(
   filedDate: string,
   /** Which registration's return (GST-17). */
   gstin?: string,
-): Promise<void> {
+): Promise<string | null> {
   const existing = await getGSTR1Return(clientId, period, gstin);
   const returnId = (existing as { id?: string } | null)?.id;
   if (!returnId) {
@@ -1498,6 +1501,7 @@ export async function markGSTR1Filed(
     filed_date: filedDate,
   });
   if (!res.success) throw new Error(res.error ?? "Failed to mark GSTR-1 as filed");
+  return obligationNote((res as { data?: unknown }).data);
 }
 
 // ── Update transactions.ts types (additive) ─────────────────────────────────

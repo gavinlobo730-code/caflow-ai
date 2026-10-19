@@ -21,6 +21,8 @@ import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
 import { Gstr3bCreditLedger } from "@/components/gst/Gstr3bCreditLedger";
 import { RegistrationPicker, useRegistrationChoice } from "@/components/gst/RegistrationPicker";
 import { withRegistration } from "@/lib/gst/registrationChoice";
+import { obligationNote } from "@/lib/gst/obligationNote";
+import { Callout } from "@/components/ui/callout";
 import type { GLReconciliation, GSTR1AmendmentsBlock, Gstr1TieOutBlock, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
 import type { ValidationError, PayloadGap } from "@/lib/data/gst";
 import { formatPaise } from "@/lib/money/format";
@@ -554,6 +556,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   const [filingRow, setFilingRow] = useState<{ id: string; period: string } | null>(null);
   const [markingFiled, setMarkingFiled] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
+  // What the server said about the compliance obligation when a return was recorded as filed and it was NOT closed:
+  // one sentence per return (each names its period), kept until dismissed so a run of back-recorded months does not
+  // lose an earlier unresolved one to a later success.
+  const [closureNotes, setClosureNotes] = useState<string[]>([]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -621,6 +627,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       body: JSON.stringify({ status, ca_approved: true, ...(extra ?? {}) }),
     });
     if (!r.success) { setRowError(r.error ?? "Couldn't update the return."); return false; }
+    if (status === "submitted") { const note = obligationNote(r.data); if (note) setClosureNotes((n) => [...n, note]); }
     load();
     return true;
   }
@@ -849,6 +856,12 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
           {rowError}
         </p>
       )}
+      {closureNotes.length > 0 && !filingRow && (
+        <Callout tone="note" title="Recorded as filed. The compliance calendar was not marked filed." className="mb-3">
+          {closureNotes.map((n, i) => <p key={i}>{n}</p>)}
+          <button onClick={() => setClosureNotes([])} className="underline">Dismiss</button>
+        </Callout>
+      )}
 
       {loading && returns.length === 0 ? <TableSkeleton cols={5} bare /> : (
         <table className="w-full text-sm border-collapse">
@@ -958,6 +971,10 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   // Recording a filing performed on the portal (GST-23).
   const [filingRow, setFilingRow] = useState<{ id: string; period: string } | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+  // What the server said about the compliance obligation when a return was recorded as filed and it was NOT closed:
+  // one sentence per return (each names its period), kept until dismissed so a run of back-recorded months does not
+  // lose an earlier unresolved one to a later success.
+  const [closureNotes, setClosureNotes] = useState<string[]>([]);
   // Distinguishes "fetch failed" from "no GSTR-3B returns yet".
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -1044,6 +1061,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       // support. Surfacing that error is the whole point of the refusal — a
       // silent failure would leave the CA thinking they had approved it.
       if (!r.success) { setRowError(r.error ?? "Couldn't update the return."); return false; }
+      if (status === "submitted") { const note = obligationNote(r.data); if (note) setClosureNotes((n) => [...n, note]); }
       load();
       return true;
     } finally { setBusyRow(null); }
@@ -1196,6 +1214,12 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
           <button onClick={() => setRowError(null)}
             className="text-xs underline shrink-0">Dismiss</button>
         </div>
+      )}
+      {closureNotes.length > 0 && !filingRow && (
+        <Callout tone="note" title="Recorded as filed. The compliance calendar was not marked filed.">
+          {closureNotes.map((n, i) => <p key={i}>{n}</p>)}
+          <button onClick={() => setClosureNotes([])} className="underline">Dismiss</button>
+        </Callout>
       )}
       {filingRow && (
         <MarkFiledDialog
