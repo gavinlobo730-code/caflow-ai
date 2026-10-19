@@ -9,14 +9,21 @@ so nothing revisits `tds_deductions`, and the 26Q deductee row keeps saying
 income they did not earn, and the register will not tie to the purchase ledger
 at year end.
 
-WHICH OF THE TWO LAWFUL ANSWERS APPLIES IS NOW DECIDED, AND THE FACT THAT
-DECIDES IT WAS ALREADY IN THE SCHEMA. This module used to end every sentence
-with "which the books do not record", and that was wrong:
-`tds_deductions.challan_date` and its `status` CHECK of
-`deducted | deposited | filed` have existed since **migration 014**, and the
-recorded plan to close this finding called for a migration to add them. No
-migration was needed — the columns were there and nothing read them. Check the
-premise before building to it.
+WHICH OF THE TWO LAWFUL ANSWERS APPLIES IS DECIDED BY WHETHER THE TAX HAS BEEN
+PAID OVER, AND THE CHALLAN REGISTER IS WHAT SAYS SO. This module used to end
+every sentence with "which the books do not record". They do: a recorded
+challan is the record. It first read `tds_deductions.challan_date` and its
+`status` CHECK of `deducted | deposited | filed`, which have existed since
+**migration 014** and which NOTHING WRITES (`POST /challans` records the challan
+and never touches the deductions it paid), so a note on a bill whose tax had
+gone was told it had not. The quarterly statement now hands each bill's
+`DepositPosition` from the challan match it has already made (POST-A-271), and
+that is the ONLY source: the two columns are no longer read here at all, and
+`position` is a required argument with no default, because an absent fact used
+to resolve to "not yet deposited" and a caller that forgot to pass one got the
+recompute answer on money already with the department. Check the premise before
+building to it: the first version of this finding assumed the columns were
+written.
 
 There are two lawful answers and the statute does not pick between them:
 
@@ -40,8 +47,10 @@ is what an OLTAS/TRACES carry-forward is for.
 
 Whether the note PREDATES the challan is a hindsight observation about what the
 deductor could have avoided, not a different legal answer: the money has gone
-either way. So the state is binary, plus the honest third where the row says
-deposited and no date was recorded.
+either way. So the state is binary, plus two honest others: only PART of the tax
+has gone (the match is first in first out, so a short deposit leaves the last
+deduction part-paid), and nothing here can tell (a challan was matched but is
+dated before the tax was deducted, or the bill carries no date to compare).
 
 THIS MODULE STILL ADJUSTS NOTHING, and that has not changed. Deciding the
 BRANCH is the automation — it was impossible before and is what the finding
@@ -69,8 +78,10 @@ direction, and the expensive one.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from datetime import date
+from typing import Iterable, Optional
 
+from domain.money_text import rupees_paise
 from domain.reporting.amount_words import indian_rupees
 # One gap vocabulary. The code and its generic sentence live with the rest of
 # the register's in domain/tds/residency, where a test holds every code to
@@ -80,68 +91,91 @@ from domain.tds.residency import GAP_CREDIT_MOVED_AFTER_DEDUCTION
 
 
 def _rupees(paise: int) -> str:
-    """₹ and Indian grouping — one formatter, `amount_words.indian_rupees`.
+    """₹ and Indian grouping — one grouping implementation, `domain/money_text`; paise are SHOWN when there are any.
 
     Python's own `f"{n:,}"` groups in threes and gives "5,00,000" as
     "500,000", which no Indian document uses; the browser formats the same
     figure with `Intl.NumberFormat("en-IN")` and gets it right, so a
     hand-rolled copy here would make the screen and the sentence disagree.
+
+    WHOLE RUPEES ONLY WHEN THE FIGURE IS WHOLE. This used `amount_words.indian_rupees`, which truncates, so ₹72.80 of tax
+    withheld read "₹72" in a sentence that compares it with what a challan paid; a part-paid deduction's two amounts then
+    did not add up to its tax. Tax is stated to the paisa wherever it has one.
     """
-    return f"₹{indian_rupees(paise)}"
+    p = int(paise or 0)
+    return f"₹{rupees_paise(p)}" if p % 100 else f"₹{indian_rupees(p)}"
 
 
-#: The tax has not gone. The deductor can still deposit the smaller figure the
-#: smaller aggregate calls for — s.194J(1) and its neighbours charge on "the
-#: aggregate of the amounts of such sums credited or paid".
+#: The tax has not gone, as far as the challan register shows. The deductor can
+#: still deposit the smaller figure the smaller aggregate calls for — s.194J(1)
+#: and its neighbours charge on "the aggregate of the amounts of such sums
+#: credited or paid".
 DEPOSIT_NOT_MADE = "not_deposited"
 #: The tax has gone. s.200 discharged the duty and s.199 vested the credit in
 #: the deductee, so the deduction stands and the deductor carries an excess
 #: deposit to set against a later liability.
 DEPOSIT_MADE = "deposited"
-#: The row says deposited and no date was recorded, so nothing here can tell
-#: which. NOT the same as `DEPOSIT_NOT_MADE`, and reading it that way would
-#: tell a CA to reduce a deduction whose money may already be with the
-#: department.
+#: Nothing here can tell: a challan was matched to the deduction but is dated
+#: before the tax was deducted (so it is not counted, and the deduction is not
+#: shown as unpaid either), or the bill has no date to compare a challan's with.
+#: NOT the same as `DEPOSIT_NOT_MADE`, and reading it that way would tell a CA
+#: to reduce a deduction whose money may already be with the department.
 DEPOSIT_UNRECORDED = "unrecorded"
+#: Part of the tax has gone and part has not. Only the challan register can say
+#: so, and it is a real situation: three monthly deposits are matched to a
+#: quarter's deductions first in first out, so a short deposit leaves the LAST
+#: deduction part-paid. Neither lawful answer is the whole story for it.
+DEPOSIT_PARTLY = "partly_deposited"
 
-#: `tds_deductions.status` values that mean the challan has gone. `filed` is
-#: stronger than `deposited` — the quarterly statement has also been delivered
-#: — and both land in the same branch, because what decides is the payment.
-_STATUS_MEANS_PAID = frozenset({"deposited", "filed"})
+
+@dataclass(frozen=True)
+class DepositPosition:
+    """What the CHALLAN REGISTER says about the tax withheld on ONE deduction.
+
+    This is the real source of "has it gone". `tds_deductions.challan_date` and `.status` have been in the schema since
+    migration 014 and NOTHING WRITES EITHER (`POST /challans` records the challan and never touches the deductions it
+    paid), so a note on a bill whose tax HAD been deposited was told it had not and given the recompute answer on money
+    already with the department. The register is asked instead, the way the quarterly statement and the deposit worksheet
+    ask it (`domain/tds/challan_mapping`).
+
+    `deposited_paise` is the part of `tax_paise` matched to challans that carry a date on or after the deduction;
+    `last_paid_on` is the latest of those dates. `refused_before_deduction` says a challan WAS matched to it but is dated
+    before the tax was deducted, which `challan_mapping.dated_parts` does not count (the match is by order, and tax cannot
+    have been paid over before it existed). The statement's own deductee row counts such a challan as deposit; this does
+    not, and says so."""
+    tax_paise: int
+    deposited_paise: int = 0
+    last_paid_on: Optional[date] = None
+    refused_before_deduction: bool = False
 
 
-def deposit_state(*, challan_date=None, status: Optional[str] = None,
-                  facts_known: bool = True) -> str:
-    """Has the tax on this deduction been paid over?
+def deposit_position(tax_paise: int, parts: Iterable[tuple[int, date]], refused: bool = False) -> DepositPosition:
+    """The position of one deduction from `challan_mapping.dated_parts`: [(paise, date paid)] and whether a challan was
+    refused as dated before the deduction."""
+    parts = list(parts)
+    tax = max(0, int(tax_paise or 0))
+    return DepositPosition(
+        tax_paise=tax, deposited_paise=min(tax, sum(max(0, int(p)) for p, _ in parts)),
+        last_paid_on=max((d for _, d in parts), default=None), refused_before_deduction=bool(refused))
 
-    Reads `tds_deductions.challan_date` and `status`, which have both existed
-    since **migration 014** and which nothing read until this finding was
-    closed — the recorded plan called for a migration to add them.
 
-    A DATE IS PROOF AND A STATUS ALONE IS NOT. A recorded `challan_date` settles
-    it whatever the status says, because somebody wrote down the day the money
-    went. A status of `deposited` with no date is the third answer: it is
-    somebody's assertion with nothing behind it, and treating it as paid would
-    tell a CA their remedy is an excess deposit when the challan may still be
-    theirs to reduce, while treating it as unpaid would tell them to reduce a
-    deduction already with the department. Both are wrong, so it says so.
+def deposit_state(position: Optional[DepositPosition]) -> str:
+    """Has the tax on this deduction been paid over, by what the challan register shows?
 
-    `deducted` with no date is the clean unpaid case and is the DEFAULT the
-    column carries, so a register nobody has reconciled answers "not yet
-    deposited" — which is true of it.
-
-    `facts_known=False` says the CALLER could not read the row at all, which is
-    a fourth situation and resolves to UNRECORDED. It is NOT the same as an
-    absent row: a bill being synced for the first time genuinely has no
-    deduction and therefore no challan, and "not yet deposited" is true of it,
-    while a read that broke tells us nothing and must not be read as an answer.
+    `None` is "nothing here can tell" (no position could be made), never "not yet deposited": an unknown is not a value.
+    All of the tax matched to dated challans is DEPOSIT_MADE, whatever else was refused. Otherwise a challan matched but
+    dated before the deduction makes it UNRECORDED, whether or not some other part was paid, because the part the refused
+    challan stood for is unknown and not "unpaid". Otherwise some of the tax matched is DEPOSIT_PARTLY, and none is
+    DEPOSIT_NOT_MADE.
     """
-    if not facts_known:
+    if position is None or position.tax_paise <= 0:
         return DEPOSIT_UNRECORDED
-    if challan_date:
+    if position.deposited_paise >= position.tax_paise:
         return DEPOSIT_MADE
-    if (status or "").strip().lower() in _STATUS_MEANS_PAID:
+    if position.refused_before_deduction:
         return DEPOSIT_UNRECORDED
+    if position.deposited_paise > 0:
+        return DEPOSIT_PARTLY
     return DEPOSIT_NOT_MADE
 
 
@@ -156,13 +190,27 @@ class CreditMovement:
     net_credited_paise: int        # what actually stands credited now
     tds_paise: int
     sentence: str
-    #: DEPOSIT_NOT_MADE | DEPOSIT_MADE | DEPOSIT_UNRECORDED — which of the two
-    #: lawful answers applies, or that nothing here can tell.
+    #: DEPOSIT_NOT_MADE | DEPOSIT_MADE | DEPOSIT_PARTLY | DEPOSIT_UNRECORDED —
+    #: which of the two lawful answers applies, that it is part of each, or that
+    #: nothing here can tell.
     deposit_state: str = DEPOSIT_UNRECORDED
 
     @property
     def code(self) -> str:
         return GAP_CREDIT_MOVED_AFTER_DEDUCTION
+
+
+def credit_has_moved(*, tds_paise: int, returned_taxable_paise: int = 0, increased_taxable_paise: int = 0) -> bool:
+    """Whether a note has moved a credit the tax was withheld on: tax was withheld, and a purchase return or a supplier's
+    undercharge note stands against the bill.
+
+    THIS IS THE ONLY QUESTION THE REGISTER ASKS. `tds_register_service.sync_for_bill` records that a note moved the credit
+    (the generic gap code) and nothing else: the sentence that says WHICH of the two lawful answers applies, which turns
+    on whether the tax has gone, is written by the quarterly statement (`credit_moved_after_deduction`, with the challan
+    register's answer). The register used to build that sentence too, from two columns nothing writes, and throw it away
+    (POST-A-271); a bill that deducted nil has no deductee row to be wrong, so it is not this problem either."""
+    withheld = int(tds_paise or 0)
+    return withheld > 0 and (max(0, int(returned_taxable_paise or 0)) > 0 or max(0, int(increased_taxable_paise or 0)) > 0)
 
 
 def credit_moved_after_deduction(
@@ -173,20 +221,20 @@ def credit_moved_after_deduction(
     tds_paise: int,
     returned_taxable_paise: int = 0,
     increased_taxable_paise: int = 0,
-    challan_date=None,
-    deduction_status: Optional[str] = None,
-    deposit_facts_known: bool = True,
+    position: Optional[DepositPosition],
 ) -> Optional[CreditMovement]:
     """One sentence where a note has moved a credit the tax was withheld on,
-    naming which of the two lawful answers applies.
+    naming which answer applies.
 
-    `challan_date` and `deduction_status` are the register row's own — see
-    `deposit_state`. Both default to None, which resolves to "not yet
-    deposited": that is what the column's own default says and it is the
-    honest reading of a register nobody has reconciled, but a CALLER that
-    simply forgets to pass them gets the recompute branch on a bill whose tax
-    may have gone. The caller is `tds_register_service.sync_for_bill`, which
-    reads the existing row, and a test pins that it passes both.
+    `position` is what the CHALLAN REGISTER says about this deduction (`DepositPosition`, built from
+    `challan_mapping.dated_parts`) and is REQUIRED, with no default: the 26Q and 27Q builders pass it for each bill of the
+    quarter from the statement's own challan match, and `None` means "no position could be made" (a bill with no date to
+    compare a challan's with), which is its own answer and not "not yet deposited". A caller that cannot forget the
+    argument cannot get the recompute answer on money already with the department by omission.
+
+    WHICH WAY THE CREDIT MOVED DECIDES FIRST. A purchase return lowers what stands credited, and then the two lawful
+    answers turn on whether the tax has gone. A supplier's undercharge note RAISES it, and then the deduction may be SHORT
+    (the direction that carries section 201(1A) interest), whether or not the tax already withheld has been paid over.
 
     `None` where nothing moved, or where nothing was withheld — a bill that
     deducted nil has no deductee row to be wrong, so a note against it is an
@@ -195,7 +243,7 @@ def credit_moved_after_deduction(
     returned = max(0, int(returned_taxable_paise or 0))
     increased = max(0, int(increased_taxable_paise or 0))
     withheld = int(tds_paise or 0)
-    if withheld <= 0 or (returned == 0 and increased == 0):
+    if not credit_has_moved(tds_paise=withheld, returned_taxable_paise=returned, increased_taxable_paise=increased):
         return None
 
     credited = int(credited_paise or 0)
@@ -211,18 +259,26 @@ def credit_moved_after_deduction(
         moved.append(f"{_rupees(increased)} has since been added by a supplier credit note "
                      f"(CGST Act §34(3))")
 
-    state = deposit_state(challan_date=challan_date, status=deduction_status,
-                          facts_known=deposit_facts_known)
+    state = deposit_state(position)
 
-    # The three endings. They are NOT interchangeable and each tells the CA to
-    # do something different, which is the whole point of deciding the branch:
-    # one says go and reduce the challan, one says do not try and carry the
-    # excess instead, and one says go and record when the money went.
-    if state == DEPOSIT_NOT_MADE:
+    # The endings. They are NOT interchangeable and each tells the CA to do
+    # something different, which is the whole point of deciding the branch: one
+    # says go and reduce the challan, one says do not try and carry the excess
+    # instead, one says the deduction may now be short, one says it is part of
+    # each, and one says go and record the challan.
+    if net > credited:
         outcome = (
-            f"The tax has not been paid over — no challan date is recorded against "
-            f"this deduction — so the deduction may still be RECOMPUTED on "
-            f"{_rupees(net)} before the challan goes, which is what the section "
+            f"More now stands credited than the deductee row reports, so the deduction may be SHORT rather than in "
+            f"excess: the section charges on {_rupees(net)}, and a short deduction is the direction that carries "
+            f"interest under section 201(1A). Whether the tax already withheld has been paid over does not change "
+            f"that. Re-check the year's aggregate and the rate before deducting the difference. "
+            f"Nothing here adjusts the register."
+        )
+    elif state == DEPOSIT_NOT_MADE:
+        outcome = (
+            f"The books record no challan against this deduction, so — as far as they show — the tax has not been "
+            f"paid over (if it went outside this product, record the challan and this changes), and the deduction may "
+            f"still be RECOMPUTED on {_rupees(net)} before the challan goes, which is what the section "
             f"charges on. Re-check the year's aggregate rather than applying the "
             f"rate to that figure: a return can take the year back below the "
             f"section's threshold, and the deduction then falls away rather than "
@@ -230,23 +286,32 @@ def credit_moved_after_deduction(
         )
     elif state == DEPOSIT_MADE:
         outcome = (
-            f"The tax was paid over on {challan_date}, so section 200 discharged "
+            f"The tax was paid over on {position.last_paid_on}, so section 200 discharged "
             f"the duty and section 199 gives the deductee credit for it. The "
             f"deduction STANDS and is not reduced; the deductor carries an excess "
-            f"deposit of the tax on {_rupees(credited - net) if credited > net else _rupees(0)} "
+            f"deposit of the tax on {_rupees(credited - net)} "
             f"to set against a later liability. Nothing here adjusts the register."
         )
-    else:
-        why = (
-            f"this deduction is marked '{(deduction_status or '').strip()}' and no "
-            f"challan date is recorded"
-            if deposit_facts_known else
-            "the deduction's own challan details could not be read"
+    elif state == DEPOSIT_PARTLY:
+        gone = position.deposited_paise
+        outcome = (
+            f"The tax is only partly paid over: {_rupees(gone)} of the {_rupees(withheld)} withheld went "
+            f"by {position.last_paid_on} and {_rupees(withheld - gone)} has not. Neither answer fits the deduction as "
+            f"a whole: for tax already paid over the deduction stands and the difference is an excess deposit, for tax "
+            f"not yet paid over it may be recomputed on {_rupees(net)} before the challan goes, and this deduction is "
+            f"part of each. How the two combine is a CA's decision and is not settled by the books. "
+            f"Nothing here adjusts the register."
         )
+    else:
+        if position is None:
+            why = "no challan could be compared with the date of this deduction"
+        else:
+            why = ("a challan recorded for this quarter was matched to it but is dated before the tax was deducted, "
+                   "so it is not counted as having paid it")
         outcome = (
             f"Which answer applies cannot be told from the books — {why}. Record "
-            f"the challan date on the deduction: before it the deduction may be "
-            f"recomputed on {_rupees(net)}, after it the deduction stands and the "
+            f"the challan that paid it, with its date, in the challan register: before the tax was paid over "
+            f"the deduction may be recomputed on {_rupees(net)}, after it the deduction stands and the "
             f"difference is an excess deposit. Nothing here adjusts the register."
         )
 

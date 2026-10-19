@@ -182,15 +182,7 @@ class Worksheet:
 
 
 def _as_date(value) -> Optional[date]:
-    if isinstance(value, date):
-        return value
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        return date.fromisoformat(text[:10])
-    except ValueError:
-        return None
+    return challan_mapping.as_date(value)
 
 
 def _deposits_of(row: dict, tax: int, deducted_on: date, deposits) -> tuple[list[tuple[int, date]], bool]:
@@ -203,15 +195,7 @@ def _deposits_of(row: dict, tax: int, deducted_on: date, deposits) -> tuple[list
     `challan_date`, the column a hand-marked row carries, and then the whole of its tax counts."""
     refused = False
     if deposits is not None:
-        parts: list[tuple[int, date]] = []
-        for challan, paise in deposits.for_deduction(row.get("id")).parts:
-            paid_on = _as_date((challan or {}).get("payment_date"))
-            if paid_on is None:
-                continue
-            if paid_on < deducted_on:
-                refused = True
-                continue
-            parts.append((paise, paid_on))
+        parts, refused = challan_mapping.dated_parts(deposits.for_deduction(row.get("id")), deducted_on)
         if parts:
             return parts, refused
     own = _as_date(row.get("challan_date"))

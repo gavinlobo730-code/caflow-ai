@@ -73,7 +73,7 @@ from domain.tds.tds_computer import (
 )
 from domain.tds.section_rates import quarter_dates
 from domain.tds.residency import is_non_resident
-from domain.tds.purchase_return import credit_moved_after_deduction
+from domain.tds.purchase_return import credit_moved_after_deduction, deposit_position
 from core.db_paging import fetch_all
 
 _logger = logging.getLogger("caflow.tds_return")
@@ -353,7 +353,7 @@ def _accumulate_note_totals(rows, bucket: dict) -> None:
         bucket[k] = bucket.get(k, 0) + int(r.get("taxable_amount_paise") or 0)
 
 
-def _credit_moved_gaps(db, firm_id: str, events: list[dict]) -> list[str]:
+def _credit_moved_gaps(db, firm_id: str, events: list[dict], mapping: challan_mapping.Mapping) -> list[str]:
     """A purchase return, or a §34(3) undercharge note, against a bill in this
     quarter that already withheld (PUR-23 ≡ TDS-32).
 
@@ -361,8 +361,9 @@ def _credit_moved_gaps(db, firm_id: str, events: list[dict]) -> list[str]:
     tds_paise in this codebase ... so a purchase return after TDS was already
     deducted and deposited is not modelled here either". That is still true of
     the FIGURES and deliberately so — domain/tds/purchase_return sets out why
-    the statute leaves two lawful answers and the books hold neither of the
-    facts that pick between them. What was not acceptable is that it was also
+    the statute leaves two lawful answers, and which applies turns on whether
+    the tax has been paid over, which this return's own challan match says
+    (POST-A-271). What was not acceptable is that it was also
     SILENT: the deductee row reported a credit that had been partly reversed,
     the vendor's 26AS showed income they did not earn, and the CA assembling
     the quarter had no way to know.
@@ -417,12 +418,21 @@ def _credit_moved_gaps(db, firm_id: str, events: list[dict]) -> list[str]:
 
     out: list[str] = []
     for bill_id, e in bills.items():
+        # WHETHER THE TAX HAS GONE IS THE STATEMENT'S OWN CHALLAN MATCH, which this return has already made: the note
+        # used to be handed no deposit fact at all and so always read "not yet deposited" (POST-A-271), the recompute
+        # answer on a bill whose tax the quarter's challans had paid.
+        deducted_on = challan_mapping.as_date(e.get("on_date"))
+        position = None
+        if deducted_on is not None:
+            parts, refused = challan_mapping.dated_parts(mapping.for_deduction(bill_id), deducted_on)
+            position = deposit_position(int(e.get("tds_paise") or 0), parts, refused)
         moved = credit_moved_after_deduction(
             bill_no=e.get("doc_no"), section=e.get("section"),
             credited_paise=int(e.get("base_paise") or 0),
             tds_paise=int(e.get("tds_paise") or 0),
             returned_taxable_paise=returned.get(bill_id, 0),
-            increased_taxable_paise=increased.get(bill_id, 0))
+            increased_taxable_paise=increased.get(bill_id, 0),
+            position=position)
         if moved:
             out.append(moved.sentence)
     return sorted(out)
@@ -552,7 +562,7 @@ def tds_26q_from_books(
         "act": _vocabulary.vocabulary_for(fy).act_name,
         "statutory_gaps": ([g.note for g in _vocabulary.vocabulary_for(fy).gaps()]
                            + _pay_notes + _sec_gaps
-                           + _credit_moved_gaps(db, firm_id, events)),
+                           + _credit_moved_gaps(db, firm_id, events, mapping)),
         "source": "posted_purchase_bills_and_advances",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
@@ -790,7 +800,7 @@ def tds_27q_from_books(
         "act": _vocabulary.vocabulary_for(fy).act_name,
         "statutory_gaps": ([g.note for g in _vocabulary.vocabulary_for(fy).gaps()]
                            + _pay_notes + _sec_gaps
-                           + _credit_moved_gaps(db, firm_id, events)),
+                           + _credit_moved_gaps(db, firm_id, events, mapping)),
         "source": "posted_purchase_bills_and_advances",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,

@@ -545,7 +545,7 @@ services/stock_count_service.py :: F401 :: <module> :: 1
 services/stock_position_service.py :: B904 :: _as_of :: 1
 services/stock_position_service.py :: B904 :: opening_for_item :: 1
 services/task_service.py :: F401 :: <module> :: 2
-services/tds_register_service.py :: C901 :: sync_for_bill :: 17
+services/tds_register_service.py :: C901 :: sync_for_bill :: 16
 services/tds_return_service.py :: B905 :: _payment_codes :: 1
 services/tds_return_service.py :: B905 :: tds_24q_from_books :: 1
 services/tds_return_service.py :: B905 :: tds_26q_from_books :: 1
