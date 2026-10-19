@@ -298,7 +298,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - FIVE MORE LISTS ANSWER A WINDOW, AND THE LAST SCREEN THAT GUESSED A LIST WAS CUT SHORT FROM A ROW COUNT IS GONE
 - A DATE A TABLE PRINTS GOES THROUGH THE ONE MODULE, AND THE RULE READS WHAT A JSX CHILD RENDERS
 
-### `docs/design-record/tax-gst.md` (36 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
+### `docs/design-record/tax-gst.md` (37 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 
 - A CLIENT IS ONE LEGAL PERSON AND MAY HOLD SEVERAL GSTINs, and until migration 390 the return tables forbade it
 - FOUR RETURNS A REGULAR REGISTRATION NEVER FILES NOW HAVE A BUILDER, AND THREE OF THEM CHECK WHAT A CA RECORDS RATHER THAN COMPUTIN
@@ -336,6 +336,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - FORM GST ITC-04 IS DERIVED FROM THE JOB-WORK CHALLANS, GOODS COME BACK IN LOTS, AND THE PERIOD IS NOT CHOSEN
 - AN IRN RECORD IS PREPARED ON THE INVOICE, AND THE FIRM-LEVEL E-INVOICE SCREEN ONLY SHOWS WHAT WAS RECORDED
 - AN INVOICE HAS ONE LIVE IRN RECORD, ITS RECORDS ARE FOUND BY THE INVOICE, AND THE TWO RECORD LISTS ARE WINDOWS
+- A LIST OF RETURNS IS IN TIME ORDER, A FILED RETURN SHOWS THE DATE THE CA STATED, AND THE SEEDED FIRM HAS FILED A YEAR
 
 ### `docs/design-record/tax-income-tax.md` (13 entries): Income tax: ITR kinds and engines, capital gains, tax audit and 3CD, losses, entity reliefs, section 43B(h)
 

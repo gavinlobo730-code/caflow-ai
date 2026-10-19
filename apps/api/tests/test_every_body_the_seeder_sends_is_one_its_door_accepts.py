@@ -126,6 +126,9 @@ class _Recorder:
     def put(self, path: str, body: dict) -> dict:
         return self._write("PUT", path, body)
 
+    def patch(self, path: str, body: dict) -> dict:
+        return self._write("PATCH", path, body)
+
     def _write(self, method: str, path: str, body: dict) -> dict:
         self.calls.append((method, path))
         self.requests.append((method, path, body))
@@ -147,6 +150,8 @@ class _Recorder:
                     f"{sorted(unknown)}; Pydantic would DROP them and the "
                     f"request would still succeed.")
         self._n += 1
+        if path in ("/api/gst/gstr1/from-books", "/api/gst/gstr3b/from-books"):
+            return {"success": True, "error": None, "data": _computed_return(body)}
         return {"success": True, "error": None, "data": {
             "id": f"seeded-{self._n:05d}",
             # Every figure the seeder reads back off a response. Plausible
@@ -156,6 +161,19 @@ class _Recorder:
             "months_posted": 1, "remaining_months": 0,
             "imported": 1, "drafted": 1, "remaining": 0,
         }}
+
+
+def _computed_return(body: dict) -> dict:
+    """What the engine answers for a GSTR-1 or GSTR-3B built from the books: every key the seeder reads back off it, so
+    the save that follows is built and its body is checked. The figures are not an accounting claim."""
+    return {
+        "period": body["period"], "gstin": "27AAAAA0000A1Z5", "payload": {"gstin": "27AAAAA0000A1Z5"},
+        "summary": {}, "working": {}, "validation_errors": [],
+        "taxable_total_paise": 100_000_00, "total_igst_paise": 0, "total_cgst_paise": 9_000_00,
+        "total_sgst_paise": 9_000_00, "total_cess_paise": 0,
+        "tax_liability_paise": 18_000_00, "itc_claimed_paise": 5_000_00, "net_tax_paise": 13_000_00,
+        "rcm_cash_paise": 0, "cash_payable_paise": 13_000_00, "credit_ledger": {},
+    }
 
 
 @pytest.fixture(scope="module")
@@ -199,6 +217,11 @@ _DOORS_THIS_SEEDER_MUST_WALK = [
     # through the ageing screen's own door, which answers 503 with no
     # database — so this is the only place it can be checked at all.
     ("POST", "/api/accounting/schedule-iii/ageing/classify"),
+    # The returns a CA has filed: built from the books, saved, then taken through the three steps the screen offers.
+    ("POST", "/api/gst/gstr1/from-books"),
+    ("POST", "/api/gst/gstr3b/from-books"),
+    ("POST", "/api/gst-workspace/gstr1"),
+    ("POST", "/api/gst-workspace/gstr3b"),
 ]
 
 
@@ -241,6 +264,50 @@ def test_the_bank_statement_carries_no_line_for_money_already_recorded():
         "a generated statement line is a CREDIT — every receipt in this "
         "fixture is already posted, so a credit here would be the same money "
         "twice")
+
+
+_STATUS_PATH = re.compile(r"^/api/gst-workspace/(gstr1|gstr3b)/([^/]+)/status$")
+
+
+def test_a_filed_return_walks_the_three_steps_in_order_and_states_the_date_it_was_filed(_run):
+    """The seeded filing history is the same three presses a CA makes, and the date is the CA's statement and not a
+    default: PRE-A-007 refuses a filing with no date, so a seeder that left it out would file nothing."""
+    steps: dict[str, list[dict]] = {}
+    for method, path, body in _run.requests:
+        m = _STATUS_PATH.match(path) if method == "PATCH" else None
+        if m:
+            steps.setdefault(f"{m.group(1)}:{m.group(2)}", []).append(body)
+    assert steps, "no return was taken through the status door at all"
+    for key, bodies in steps.items():
+        assert [b["status"] for b in bodies] == ["validated", "ca_approved", "submitted"], key
+        assert all(b.get("ca_approved") is True for b in bodies), key
+        last = bodies[-1]
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", last.get("filed_date", "")), (key, last)
+        assert last.get("arn", "").startswith("SEED-"), "a demo firm must not carry a number that looks like a portal's"
+    kinds = [k.split(":")[0] for k in steps]
+    assert kinds.count("gstr1") == kinds.count("gstr3b") > 0, "a month was filed for one return and not the other"
+
+
+def test_every_gst_client_files_the_returns_its_calendar_says_and_nothing_after_the_year_ends(_run):
+    """The stage is wired for EVERY client with a GSTIN: the number of builds is the sum of each client's own windows
+    (eleven months, or three quarters for a QRMP client), so a client the stage skipped, or a quarter filed that
+    contains the draft month, changes the count. Which keys and dates those windows hold is checked against the
+    engine in test_the_seeders_return_stage_tells_a_finding_from_a_dead_run.py."""
+    firm = fixture.build()
+    seeder = _seeder()
+    draft = fixture.draft_month(firm.financial_year)
+    expected = sum(len(seeder._return_windows(firm.financial_year, c.gst_filing_frequency == "quarterly", draft,
+                                              c.gstin[:2]))
+                   for c in firm.clients if c.gstin)
+    assert expected > 20, "the fixture has too few GST returns for this count to mean anything"
+    for door in ("/api/gst/gstr1/from-books", "/api/gst/gstr3b/from-books",
+                 "/api/gst-workspace/gstr1", "/api/gst-workspace/gstr3b"):
+        n = len([1 for m, p, b in _run.requests if m == "POST" and p == door])
+        assert n == expected, (door, n, expected)
+    year_end = f"{2000 + int(firm.financial_year[-2:])}-03-31"
+    dates = [b["filed_date"] for m, p, b in _run.requests
+             if m == "PATCH" and _STATUS_PATH.match(p) and b["status"] == "submitted"]
+    assert len(dates) == 2 * expected and max(dates) <= year_end, (len(dates), max(dates), year_end)
 
 
 def test_only_the_bank_charge_declares_gst():

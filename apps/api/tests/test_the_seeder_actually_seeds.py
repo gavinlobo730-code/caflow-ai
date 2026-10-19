@@ -70,7 +70,18 @@ class _TestClientApi:
 
 
 @pytest.fixture
-def api():
+def api(monkeypatch):
+    """A client over the real routers, with the GST-returns stage switched off, and the reason is the same as payroll's.
+
+    ⚠️ MOCK MODE CANNOT BUILD A RETURN. `POST /api/gst/gstr1/from-books` reads the ledger through the real database
+    client (`SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set`, a 500), and there is no mock answer to give: a
+    return is a computation over a book, not a stored row. The stage is the LAST thing `seed()` does for a client, so
+    switching it off removes nothing this harness checks. Its bodies and its order are checked in
+    `test_every_body_the_seeder_sends_is_one_its_door_accepts.py` (the recorder answers the two builds), and the stage
+    itself ran over a real Postgres and PostgREST behind the real app when it was written.
+    """
+    import scripts.seed_demo_firm as seeder
+    monkeypatch.setattr(seeder, "_gst_returns", lambda *args, **kwargs: None)
     from fastapi.testclient import TestClient
     from main import app
     return _TestClientApi(TestClient(app))

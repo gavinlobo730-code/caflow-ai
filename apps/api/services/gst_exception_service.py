@@ -28,8 +28,10 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from domain.gst import return_period
 from domain.gst.exception_report import compare_payloads
 from services import client_gst_registration_service as registrations
+from services import gst_filing_record_service as filing_record
 
 _logger = logging.getLogger("caflow.gst_exceptions")
 
@@ -70,6 +72,31 @@ def filed_gstr1(db, firm_id: str, client_id: str, period: str,
     the same key, that the exception report does (GST-07); the caller decides
     what a draft or a payload-less row means."""
     return _filed_return(db, firm_id, client_id, period, gstin)
+
+
+def filed_on(db, firm_id: str, client_id: str, period: str,
+             arn: Optional[str] = None) -> Optional[str]:
+    """The date the CA stated this period's GSTR-1 was filed (ISO), or None.
+
+    `submitted_at` on the return row is when it was RECORDED here and is kept
+    beside this under its own name (`filed_at`); a screen that prints a filing
+    date prints this one, and says "recorded" when there is none. The period is
+    the return's stored key, so a QRMP quarter is asked for by its first month and
+    the quarter's one filing answers. `arn` is the RETURN's own, which is how a
+    client with several registrations keeps another registration's date off this
+    one (`gst_filing_record_service.stated_filed_date` says why).
+
+    Asked by the GSTR-3B tie-out, the one screen that prints it, and not by
+    `gstr1_exceptions`, which the amendment build calls once per earlier period
+    and which would pay a read per call for a value nothing there shows.
+    """
+    try:
+        first_day = return_period.month_bounds(period)[0]
+    except ValueError:
+        return None
+    return filing_record.stated_filed_date(
+        db, firm_id, client_id, filing_record.FILING_TYPE_GSTR1, first_day, arn=arn,
+        client_holds_several=lambda: len(registrations.held(db, firm_id, client_id)) > 1)
 
 
 def drift_since_filing(db, firm_id: str, client_id: str, period: str,

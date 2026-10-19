@@ -40,10 +40,12 @@ IMMUTABILITY
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from datetime import date
+from typing import Callable, Optional
 
 from core.exceptions import ValidationError
 from core.ist_clock import ist_today
+from core.observability import capture_soft_failure
 from domain.gst import return_period
 
 _logger = logging.getLogger("caflow.gst_filing")
@@ -333,6 +335,67 @@ def record_filing(
     else:
         db.table("filings").insert(row).execute()
     return row
+
+
+def stated_filed_date(
+    db, firm_id: str, client_id: str, filing_type: str, period_first_day: str, *,
+    arn: Optional[str] = None,
+    client_holds_several: Optional[Callable[[], bool]] = None,
+) -> Optional[str]:
+    """The date the CA STATED a return reached the portal (`filings.filed_date`), or None.
+
+    A return row's `submitted_at` is the instant somebody pressed the button here,
+    which for a return recorded after the fact (every migrated client's first
+    months, and any return recorded the next morning) is not the day it was filed.
+    The two were shown as one: a screen said "Tied to the filed GSTR-1 (ARN …
+    2026-10-19)" about a November 2025 return that was filed on 11 December, and
+    the slice of a UTC timestamp is the wrong calendar day for five and a half
+    hours of every Indian night besides.
+
+    Read the way the period lock reads it (`period_start <= day <= period_end`, not
+    deleted, a date present), so a quarter's single filing answers for each of its
+    months, and the EARLIEST date wins as it does there.
+
+    WHICH REGISTRATION'S DATE IT IS. `filings` has no GSTIN: `record_filing` finds
+    its row by (client, type, period window) and UPDATES it, so a client with two
+    registrations has ONE row per period holding whichever was recorded last, with
+    that return's ARN. A date is therefore stated only when it can be tied to THIS
+    return: a row carrying the return's own ARN, or else a client that holds one
+    registration (`client_holds_several` is asked only then, and only when needed;
+    a failure to ask is "several"). Anything else is None, and the caller says
+    "recorded" rather than print another registration's date next to this one's ARN.
+    None also means no filing row states a date.
+    """
+    try:
+        day = date.fromisoformat(str(period_first_day or "")[:10]).isoformat()
+    except ValueError:
+        return None
+    try:
+        rows = (db.table("filings").select("filed_date, acknowledgement_number")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("filing_type", filing_type)
+                .is_("deleted_at", "null").not_.is_("filed_date", "null")
+                .lte("period_start", day).gte("period_end", day)
+                .order("filed_date").limit(10).execute().data) or []
+    except Exception as exc:                                    # noqa: BLE001
+        # A screen that cannot read the stated date still has the recording
+        # time to show, labelled as that; it must not lose the whole answer.
+        capture_soft_failure(exc, operation="gst_filing.stated_filed_date",
+                             firm_id=firm_id, client_id=client_id)
+        return None
+    rows = [r for r in rows if r.get("filed_date")]
+    if not rows:
+        return None
+    own = [r for r in rows if arn and r.get("acknowledgement_number") == arn]
+    if own:
+        return str(own[0]["filed_date"])[:10]
+    try:
+        several = True if client_holds_several is None else bool(client_holds_several())
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="gst_filing.stated_filed_date.registrations",
+                             firm_id=firm_id, client_id=client_id)
+        several = True
+    return None if several else str(rows[0]["filed_date"])[:10]
 
 
 def return_status_patch(

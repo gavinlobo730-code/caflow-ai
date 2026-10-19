@@ -549,6 +549,8 @@ export interface Gstr1TieOutBlock {
   draft_exists?: boolean;
   tied?: boolean;
   filed_at?: string | null;
+  /** The date the CA stated the return was filed (ISO), null when no filing row states one. */
+  filed_on?: string | null;
   arn?: string | null;
   portal_locks_outward_tables?: boolean;
   gstr3b_filed?: boolean | null;

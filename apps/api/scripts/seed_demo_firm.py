@@ -43,6 +43,17 @@ sys.path.insert(0, __file__.rsplit("/scripts/", 1)[0])
 from domain.demo import fixture  # noqa: E402
 
 
+class ApiRefusal(SystemExit):
+    """The server answered a write with an HTTP error. It IS a SystemExit, so every stage that lets it through stops the
+    run exactly as before; `status` is what lets the one stage that carries on (the GST returns) tell a refusal that is
+    a finding about the product (a 422) from one that means every later call will fail the same way (an expired token,
+    a missing permission, a rate limit, a server that is down)."""
+
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
+
+
 class Api:
     """The smallest HTTP client that will do. No retries: a seeder that retries
     a POST can create the document twice, and this product's own invoice-series
@@ -71,10 +82,11 @@ class Api:
                 return json.loads(resp.read() or b"{}")
         except urllib.error.HTTPError as e:
             detail = (e.read() or b"").decode()[:400]
-            raise SystemExit(
+            raise ApiRefusal(
                 f"\n{method} {path} → HTTP {e.code}\n{detail}\n"
                 "Nothing further was written. Fix the cause and re-run; this "
-                "script only ever ADDS, so the rows already created stay."
+                "script only ever ADDS, so the rows already created stay.",
+                e.code,
             )
 
     def get(self, path: str) -> dict:
@@ -90,6 +102,13 @@ class Api:
         because the refusal shape is the same."""
         return self._write("PUT", path, body)
 
+    def patch(self, path: str, body: dict) -> dict:
+        """The GST workspace moves a saved return through its statuses with a
+        PATCH. Same envelope check as every other write: that router answers a
+        refusal (a Manager-or-above check, a books-moved check) as HTTP 200
+        with `{"success": false}`."""
+        return self._write("PATCH", path, body)
+
     def _write(self, method: str, path: str, body: dict) -> dict:
         out = self._request(method, path, body)
         # THE ENVELOPE IS CHECKED, ALWAYS. Several routers in this product
@@ -97,10 +116,11 @@ class Api:
         # workspace notably — so a seeder trusting the status code would
         # report a practice it had not written.
         if isinstance(out, dict) and out.get("success") is False:
-            raise SystemExit(
+            raise ApiRefusal(
                 f"\n{method} {path} was refused: {out.get('error')}\n"
                 "The HTTP status was 200; this product answers some refusals "
-                "that way, which is why the envelope is checked."
+                "that way, which is why the envelope is checked.",
+                200,
             )
         return out
 
@@ -523,6 +543,178 @@ def _engagements(api: Api, c, client_id: str, fy: str, fy_start: str,
         written["obligations"] += int(out.get("generated") or 0)
 
 
+#: The sequence the GST workspace walks a saved return through. `ca_approved`
+#: and `submitted` need the explicit confirmation flag and a Manager-or-above
+#: caller (CGST Act s.37 / s.39: a return is approved by a person), which a
+#: Partner is. `submitted` is the CA RECORDING that the return was filed on the
+#: portal, with the date it was filed; nothing here is transmitted anywhere.
+_RETURN_STEPS = ("validated", "ca_approved", "submitted")
+
+
+def _return_windows(financial_year: str, quarterly: bool, last_month: str,
+                    state_code: Optional[str] = None) -> list[tuple[str, str, str, str]]:
+    """(period key MMYYYY, last day of the window, GSTR-1 filed on, GSTR-3B
+    filed on) for every return the CA has already filed.
+
+    A practice partway through the month after the year end has filed
+    everything up to the month BEFORE the one left in draft (`last_month`): the
+    twelfth month is still being entered, so a return for it would be built
+    from a month that is not finished. A quarter is filed only when all three
+    of its months are before that, which leaves the last quarter open on a
+    QRMP client.
+
+    The dates are the DUE dates, and they are asked of `compliance_engine`
+    (the single source for every statutory date) and not restated here: a
+    quarterly GSTR-3B is due on the 22nd or the 24th by the registration's
+    STATE (Rule 61A), which a restated "24th" got wrong for a Maharashtra
+    client and filed all three of its quarters two days late. So no seeded
+    return is late, and the late-fee branch is the thing a CA sees only when
+    they make it so.
+    """
+    import calendar
+    from services.compliance_engine import MONTHLY, QUARTERLY, gstr1_due_date, gstr3b_due_date
+    frequency = QUARTERLY if quarterly else MONTHLY
+    start_year = int(financial_year[:4])
+    months = [(start_year if m >= 4 else start_year + 1, m)
+              for m in (4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3)]
+    posted = [(y, m) for (y, m) in months if f"{y:04d}-{m:02d}" < last_month]
+
+    def due(y: int, m: int) -> tuple[str, str]:
+        return (gstr1_due_date(y, m, frequency).isoformat(),
+                gstr3b_due_date(y, m, frequency, state_code).isoformat())
+
+    out = []
+    if not quarterly:
+        for y, m in posted:
+            out.append((f"{m:02d}{y:04d}", f"{y:04d}-{m:02d}-{calendar.monthrange(y, m)[1]:02d}", *due(y, m)))
+        return out
+    for i in range(0, len(months), 3):
+        quarter = months[i:i + 3]
+        if all(q in posted for q in quarter):
+            y, m = quarter[0]
+            ly, lm = quarter[-1]
+            out.append((f"{m:02d}{y:04d}", f"{ly:04d}-{lm:02d}-{calendar.monthrange(ly, lm)[1]:02d}", *due(y, m)))
+    return out
+
+
+class _NotFiled(Exception):
+    """A return the engine would not build or the server would not take: a finding about the product, reported."""
+
+
+#: HTTP answers that mean every later call will fail the same way, so the run stops instead of listing them one by one:
+#: no or expired login, no permission, a rate limit, a server error.
+def _stops_the_run(status: int) -> bool:
+    return status in (401, 403, 429) or status >= 500
+
+
+def _gst_returns(api: Api, c, client_id: str, financial_year: str,
+                 last_month: str, written: dict) -> None:
+    """GSTR-1 and GSTR-3B for every month (or quarter) the practice has filed:
+    computed from the books, saved, validated, approved and recorded as filed.
+
+    WHY THIS EXISTS. The seeded returns were never saved or filed, so the
+    return list, the filing history, the credit-ledger chain, the GSTR-1 to
+    GSTR-3B tie-out and the annual return all rendered empty on a firm whose
+    point is a year of GST work. These are the same doors a CA presses, in the
+    order the screen offers them.
+
+    A REFUSAL IS REPORTED, NOT FATAL, BUT ONLY THE KIND THAT IS A FINDING.
+    Every other stage stops the run on a non-2xx, because a seeder that walks
+    past a 422 writes a hundred rows pointing at nothing. A return is
+    different: one month the engine will not build (a 400, 409 or 422, or the
+    workspace's own 200 with success false) is a finding about the product, and
+    the other clients' books are still worth seeding. It is printed, counted,
+    named in the summary, and the run exits non-zero. A login that has expired,
+    a missing permission, a rate limit or a server error is NOT that: every
+    later call would fail the same way, so it stops the run. A call that gets no
+    answer in time is reported as such, because the server may have saved the
+    return anyway.
+
+    A WINDOW WHOSE FILING DATE IS STILL TO COME IS SKIPPED. The filing date is
+    the due date and the product refuses a date in the future, so a year in
+    progress would otherwise leave a return saved, validated and approved but
+    never filed; it is counted as not yet due.
+
+    THE ARN IS NOT A REAL ONE, AND SAYS SO. `SEED-GSTR1-102025` is stored where
+    the portal's acknowledgement number goes; nothing in this product validates
+    that field, and a demo firm must not carry a number that looks like a
+    portal's. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this records a filing
+    that did not happen, in a fictional firm.
+    """
+    from core.ist_clock import ist_today
+    today = ist_today().isoformat()
+    quarterly = c.gst_filing_frequency == "quarterly"
+    for key, _window_end, gstr1_on, gstr3b_on in _return_windows(
+            financial_year, quarterly, last_month, (c.gstin or "")[:2] or None):
+        if max(gstr1_on, gstr3b_on) > today:
+            written["returns_not_yet_due"] += 1
+            continue
+        for kind, compute, save, filed_on, label in (
+                ("gstr1", "/api/gst/gstr1/from-books", "/api/gst-workspace/gstr1",
+                 gstr1_on, "GSTR-1"),
+                ("gstr3b", "/api/gst/gstr3b/from-books", "/api/gst-workspace/gstr3b",
+                 gstr3b_on, "GSTR-3B")):
+            try:
+                body = {"client_id": client_id, "period": key}
+                if kind == "gstr3b" and not quarterly:
+                    # The build fills Table 5.1's interest from the date it is given, and it takes the MONTHLY due date
+                    # for any period key (`gstr3b_computer._interest_5_1` says it cannot tell a quarter apart). A
+                    # monthly return filed on its due date comes out as zeros; a QRMP quarter filed on ITS due date
+                    # would be saved claiming months of interest, so a quarter is built without the date.
+                    body["filed_on"] = filed_on
+                comp = api.post(compute, body).get("data") or {}
+                if comp.get("validation_errors"):
+                    raise _NotFiled(f"the engine reports validation errors: "
+                                    f"{str(comp['validation_errors'])[:200]}")
+                if kind == "gstr1":
+                    saved = api.post(save, {
+                        "client_id": client_id, "period": comp["period"], "gstin": comp["gstin"],
+                        "payload_json": comp["payload"], "summary_json": comp["summary"],
+                        "total_taxable_paise": comp["taxable_total_paise"],
+                        "total_igst_paise": comp["total_igst_paise"],
+                        "total_cgst_paise": comp["total_cgst_paise"],
+                        "total_sgst_paise": comp["total_sgst_paise"],
+                        "total_cess_paise": comp["total_cess_paise"],
+                    })
+                else:
+                    saved = api.post(save, {
+                        "client_id": client_id, "period": comp["period"], "gstin": comp["gstin"],
+                        "payload_json": comp["payload"], "summary_json": comp["working"],
+                        "tax_liability_paise": comp["tax_liability_paise"],
+                        "itc_claimed_paise": comp["itc_claimed_paise"],
+                        "net_tax_paise": comp["net_tax_paise"],
+                        "rcm_cash_paise": comp["rcm_cash_paise"],
+                        "cash_payable_paise": comp["cash_payable_paise"],
+                        "credit_ledger": comp["credit_ledger"],
+                    })
+                return_id = _id(saved)
+                for status in _RETURN_STEPS:
+                    step = {"status": status, "ca_approved": True}
+                    if status == "submitted":
+                        step.update({"arn": f"SEED-{kind.upper()}-{key}", "filed_date": filed_on})
+                    api.patch(f"/api/gst-workspace/{kind}/{return_id}/status", step)
+                written[f"{kind}_filed"] += 1
+            except ApiRefusal as refusal:
+                if _stops_the_run(refusal.status):
+                    raise
+                # The Api client's refusal is "<METHOD path → HTTP code>\n<detail>\nNothing further was written…":
+                # the first two lines are the finding, the last is boilerplate.
+                said = " — ".join(str(refusal).strip().splitlines()[:2])
+                _return_not_filed(written, c, label, key, said)
+            except _NotFiled as why:
+                _return_not_filed(written, c, label, key, str(why))
+            except (urllib.error.URLError, TimeoutError) as silence:
+                _return_not_filed(
+                    written, c, label, key,
+                    f"no answer ({silence}); the server may have saved it, so check the return list before re-running")
+
+
+def _return_not_filed(written: dict, c, label: str, key: str, said: str) -> None:
+    msg = f"{c.name} {label} {key}: {said[:260]}"
+    written["returns_refused"].append(msg)
+    print(f"    ! {msg}")
+
+
 def _bank_rules(api: Api, c, client_id: str, written: dict) -> None:
     """The matching rules a CA writes for the recurring lines of a statement.
 
@@ -788,7 +980,9 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "bank_lines": 0, "bank_drafts": 0, "tans": 0,
                "engagements": 0, "obligations": 0,
                "bank_rules": 0, "bank_rules_skipped": 0,
-               "cwip_projects": 0, "cwip_tranches": 0, "cwip_tranches_skipped": 0}
+               "cwip_projects": 0, "cwip_tranches": 0, "cwip_tranches_skipped": 0,
+               "gstr1_filed": 0, "gstr3b_filed": 0, "returns_not_yet_due": 0,
+               "returns_refused": []}
 
     # ── THE FIRM'S HSN LIBRARY COMES FIRST, AND IT IS A GATE ─────────────────
     #
@@ -984,6 +1178,11 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         if bank_id and c.banks[0].import_statement:
             _bank_rules(api, c, client_id, written)
             _statement(api, c, client_id, bank_id, open_credits, written)
+        # LAST OF ALL, because a filed return locks the months it covers
+        # against any later sales invoice, bill or note (`journal_period_lock_
+        # reason`), and every document above has been written by now.
+        if c.gstin:
+            _gst_returns(api, c, client_id, firm.financial_year, last_month, written)
 
     return written
 
@@ -1031,6 +1230,10 @@ def main() -> int:
     print(f"\ndone — {api.calls} API calls")
     for k, v in written.items():
         print(f"  {k.replace('_', ' '):24} {v}")
+    if written["returns_refused"]:
+        # Everything else was written; the exit code says the filing history is NOT whole.
+        print(f"\n{len(written['returns_refused'])} return(s) were not filed; they are listed above.")
+        return 2
     return 0
 
 

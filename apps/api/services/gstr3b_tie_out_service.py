@@ -113,6 +113,8 @@ def _build(db, firm_id: str, client_id: str, gstin: str, *, window: Any,
 
     common = {**base,
               "filed_at": filed_row.get("submitted_at"),
+              "filed_on": exceptions.filed_on(db, firm_id, client_id, window.key,
+                                              arn=filed_row.get("arn")),
               "arn": filed_row.get("arn")}
     filed_payload = filed_row.get("payload_json")
     if not filed_payload:
