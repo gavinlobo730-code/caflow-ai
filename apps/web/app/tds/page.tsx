@@ -69,6 +69,7 @@ const TDS_IMPORT_COLUMNS = [
 // PAN decides §206AA's 20% floor, so refusing a good one here sends the CA
 // back to the spreadsheet rather than letting them import the quarter.
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
@@ -842,12 +843,15 @@ export default function TDSPage() {
         // sent as `client_id=eq.` and rejected.
         if (!selectedClientId) { setDeductions([]); setLoading(false); return; }
         const sb = getSupabaseClient();
-        const { data, error } = await sb
+        // A client paying a hundred vendors a month passes 1,000 deductions in ten months; an unpaged read stopped there
+        // without a word and every total on this tab was short by what fell past it.
+        const { data, error } = await selectAll(() => sb
           .from("tds_deductions")
           .select("*")
           .eq("firm_id", fid)
           .eq("client_id", selectedClientId)
-          .order("transaction_date", { ascending: false });
+          .order("transaction_date", { ascending: false })
+          .order("id"));
         if (error) {
           setTableError(true);
           setLoadErrorMessage(prev => prev ?? error.message);
@@ -1316,7 +1320,7 @@ export default function TDSPage() {
             }
             if (imported > 0) {
               const sb2 = getSupabaseClient();
-              const { data } = await sb2.from("tds_deductions").select("*").eq("firm_id", firmId).eq("client_id", selectedClientId).order("transaction_date", { ascending: false });
+              const { data } = await selectAll(() => sb2.from("tds_deductions").select("*").eq("firm_id", firmId).eq("client_id", selectedClientId).order("transaction_date", { ascending: false }).order("id"));
               if (data) setDeductions(data as TDSDeduction[]);
             }
             return { imported, errors };

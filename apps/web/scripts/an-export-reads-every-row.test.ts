@@ -35,6 +35,29 @@
  *   which is the shape that gets raised until it means nothing. The other 68
  *   files are recorded as a finding, not silently blessed.
  *
+ * A SECOND RULE, FROM THE TRIAGE OF 18-10-2026 (POST-A-135)
+ *
+ *   A scan of every `.from(...).select(...)` in app, components and lib with no `.limit`,
+ *   `.range`, `.single`, `.maybeSingle`, `count`, `id` lookup or pager found 82 reads in 54 files.
+ *   Most are what the paragraph above says: one client, one party, one document. Six were not, and
+ *   each FEEDS A FIGURE on a screen that has other reads, which is why they cannot go on the list of
+ *   screens that must page everything they read:
+ *
+ *     app/gst            compliance_calendar  GSTR-1/3B/9 rows of every client and every year, ordered
+ *                                              OLDEST FIRST: a cut at 1000 dropped the newest filings,
+ *                                              which the counts above the table are about
+ *     app/income-tax     compliance_calendar  the ITR rows, same shape
+ *     app/payroll/attendance
+ *                        attendance           one row per employee per month for a YEAR, summed into
+ *                                              "leaves used": ninety employees pass 1000, and the
+ *                                              balance left came out too high
+ *                        leave_balances       one per employee per year
+ *     app/tds            tds_deductions       a client's whole register, summed into every tab total
+ *
+ *   `PAGED_READS_THAT_FEED_A_FIGURE` names each (screen, table) and the test below asks the SOURCE:
+ *   every read of that table on that screen goes through a pager and carries `.order("id")`. The
+ *   remaining ~76 reads are recorded in POST-A-135 as bounded by their scope or as plain lists.
+ *
  * ONE SCREEN IS LISTED FOR A DIFFERENT REASON, AND SAYING WHICH IS THE POINT
  *
  *   `app/accounting/recurring` also has an Export button, but it builds its
@@ -239,4 +262,81 @@ test("BOTH pagers stop on a short page, never on a count", () => {
       `short, read as end-of-data, and truncate silently — this bug wearing ` +
       `its own fix as a disguise.`,
   );
+});
+
+// ── Reads that feed a figure on a screen that makes other reads (POST-A-135) ────────────────────────
+
+/** The (screen, table) pairs whose reads feed a count, a total or a balance. A screen here may make any number of OTHER
+ *  reads (singles, writes, lookups); only the named table's reads are held to the pager. */
+const PAGED_READS_THAT_FEED_A_FIGURE: Record<string, string[]> = {
+  "app/gst/page.tsx": ["compliance_calendar"],
+  "app/income-tax/page.tsx": ["compliance_calendar"],
+  "app/payroll/attendance/page.tsx": ["attendance", "leave_balances"],
+  "app/tds/page.tsx": ["tds_deductions"],
+};
+
+interface Read { paged: boolean; ordered: boolean }
+
+/** Every READ of `table` in `src` (a chain that selects and neither inserts, updates, deletes nor upserts), and whether it is
+ *  wrapped in a pager and carries a unique `.order("id")`. The chain is the statement from `.from(` to the `;` at depth 0. */
+function readsOf(src: string, table: string): Read[] {
+  const out: Read[] = [];
+  const header = new RegExp(`\\.from\\(\\s*["']${table}["']\\s*\\)`, "g");
+  for (const m of src.matchAll(header)) {
+    const start = m.index!;
+    let depth = 0;
+    let end = start;
+    while (end < src.length && end - start < 1600) {
+      const c = src[end];
+      if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") {
+        depth--;
+        if (depth < 0) break;
+      } else if (c === ";" && depth <= 0) break;
+      end++;
+    }
+    const chain = src.slice(start, end);
+    if (/\.(insert|update|delete|upsert)\(/.test(chain) || !/\.select\(/.test(chain)) continue;
+    const back = src.slice(Math.max(0, start - 300), start);
+    out.push({
+      paged: /selectAll(?:Keyset)?\s*(?:<[^>]*>)?\s*\(\s*\(\)\s*=>\s*[\w$.]*\s*$/.test(back),
+      ordered: /\.order\(\s*["']id["']\s*\)/.test(chain),
+    });
+  }
+  return out;
+}
+
+test("every read that feeds a figure goes through a pager and has a unique ordering", () => {
+  let reads = 0;
+  for (const [rel, tables] of Object.entries(PAGED_READS_THAT_FEED_A_FIGURE)) {
+    const src = code(readFileSync(join(WEB, rel), "utf8"));
+    assert.ok(/from\s+["']@\/lib\/supabase\/selectAll["']/.test(src), `${rel} does not import the pager`);
+    for (const t of tables) {
+      const found = readsOf(src, t);
+      assert.ok(found.length > 0, `${rel} no longer reads ${t}: update PAGED_READS_THAT_FEED_A_FIGURE and say why`);
+      reads += found.length;
+      for (const r of found) {
+        assert.ok(r.paged, `${rel}: a read of ${t} feeds a figure and is not wrapped in selectAll/selectAllKeyset, so it is cut at ~1000 rows without a word`);
+        assert.ok(r.ordered, `${rel}: a paged read of ${t} has no .order("id") tiebreaker, so a row can be returned twice or never at a page boundary`);
+      }
+    }
+  }
+  assert.ok(reads >= 7, `only ${reads} reads were examined: the scan has stopped seeing them`);
+});
+
+test("the scan tells a paged read from an unpaged one and ignores a write (negative controls)", () => {
+  // The controls are BUILT, not written out: `test_direct_write_tables_are_role_guarded.py` scans every .ts file under apps/web for
+  // a from-call chain that reaches an insert, and a literal write against a payroll table in this file would be read as the
+  // browser writing that table (it was, on the first run). For the same reason no literal from-call with a name in quotes
+  // appears in this file's comments: `test_frontend_tables_exist.py` and the RLS matrix's table list read those too.
+  const from = (t: string) => `.from(${JSON.stringify(t)})`;
+  const paged = `const { data } = await selectAll(() => sb\n  ${from("attendance")}\n  .select("*")\n  .eq("year", y)\n  .order("id"));`;
+  const unpaged = `const { data } = await sb\n  ${from("attendance")}\n  .select("*")\n  .eq("year", y);`;
+  const noTiebreak = `const { data } = await selectAll(() => sb${from("attendance")}.select("*").order("month"));`;
+  const write = `await sb${from("attendance")}.insert({ year: 1 });`;
+  assert.deepEqual(readsOf(paged, "attendance"), [{ paged: true, ordered: true }]);
+  assert.deepEqual(readsOf(unpaged, "attendance"), [{ paged: false, ordered: false }]);
+  assert.deepEqual(readsOf(noTiebreak, "attendance"), [{ paged: true, ordered: false }]);
+  assert.deepEqual(readsOf(write, "attendance"), []);
+  assert.deepEqual(readsOf(paged, "tds_deductions"), []);
 });

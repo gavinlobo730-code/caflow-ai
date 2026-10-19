@@ -291,10 +291,11 @@ export default function AttendancePage() {
           [c.id, c.client_name])));
 
       // Load attendance for selected month/year
-      const attRes = await sb.from("attendance").select("*")
+      const attRes = await selectAll(() => sb.from("attendance").select("*")
         .eq("firm_id", fid)
         .eq("month", attMonth)
-        .eq("year", attYear);
+        .eq("year", attYear)
+        .order("id"));
       if (attRes.error) throw attRes.error;
 
       const attMap: Record<string, AttendanceRow> = {};
@@ -339,11 +340,15 @@ export default function AttendancePage() {
     setLeaveLoadFailed(false);
     const sb = getSupabaseClient();
 
+    // One attendance row per employee per month, so the year's leaves-used total below is a sum over employees x 12 rows:
+    // ninety employees pass 1,000. An unpaged read stopped there without a word and the total came out SHORT, which
+    // overstates the balance left to every employee whose rows fell past the cut.
     const [lbRes, attRes] = await Promise.all([
-      sb.from("leave_balances").select("*").eq("firm_id", firmId).eq("year", leaveYear),
-      sb.from("attendance").select("employee_id, casual_leaves, sick_leaves, earned_leaves")
+      selectAll(() => sb.from("leave_balances").select("*").eq("firm_id", firmId).eq("year", leaveYear).order("id")),
+      selectAll(() => sb.from("attendance").select("employee_id, casual_leaves, sick_leaves, earned_leaves")
         .eq("firm_id", firmId)
-        .eq("year", leaveYear),
+        .eq("year", leaveYear)
+        .order("id")),
     ]);
 
     // A failed query must NOT fall through to the employees.map below, which

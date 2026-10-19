@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { api, request, type ApiResp } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
@@ -463,12 +464,14 @@ export default function IncomeTaxPage() {
       setClients(clientList);
 
       const sb = getSupabaseClient();
-      const { data, error: dbErr } = await sb
+      // Every ITR row of every year for every client; paged so a long-running book is not cut at ~1000 rows.
+      const { data, error: dbErr } = await selectAll(() => sb
         .from("compliance_calendar")
         .select("*, clients(client_name, pan, entity_type)")
         .eq("firm_id", firmId)
         .eq("compliance_type", "ITR")
-        .order("due_date");
+        .order("due_date")
+        .order("id"));
 
       if (dbErr) throw new Error(dbErr.message);
       setEntries((data ?? []) as ITREntry[]);
