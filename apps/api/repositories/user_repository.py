@@ -31,9 +31,9 @@ WHY EVERY QUERY NOW CARRIES firm_id
     The service role bypasses RLS, so the `.eq("firm_id", …)` filter IS the
     tenant boundary (CLAUDE.md "Tenancy and access"). Before this, `find_by_id`
     and `update` addressed a row by id alone and trusted each caller to have
-    checked the firm first — true of the identity router, false of
-    `services/approval_service._h_user_activation` / `_h_role_change`, which
-    updated `p["user_id"]` straight off a request payload. So `firm_id` is a
+    checked the firm first — true of the identity router, false of the approval
+    engine's user-activation and role-change handlers (retired on 19-10-2026,
+    POST-A-240), which updated `p["user_id"]` straight off a request payload. So `firm_id` is a
     REQUIRED keyword on every method addressed by an id or an email: a caller
     that forgets it fails with a TypeError at its first call rather than
     reading or writing another firm's staff.
