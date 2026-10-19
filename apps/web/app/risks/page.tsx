@@ -80,6 +80,7 @@ interface RegisterPayload {
 // edited this array. That is the `table_4a_gaps` discipline — a nil meaning
 // "we did not look" is not a nil meaning "there was none".
 const CATEGORY_ORDER = [
+  "Notice Awaiting Review",
   "Overdue Filing",
   "TDS Default",
   "Advance Tax Default",
@@ -100,6 +101,10 @@ const CATEGORY_ORDER = [
 // second one, so the two cannot drift about which returns are which.
 function riskActionHref(r: RiskRow): string | null {
   if (!r.client_id) return null;
+  // A staged government notice waits on the client's compliance tab, where it carries its "Pending review" mark and the approve
+  // button. Decided BEFORE the substring tests below: its particulars hold the issuing authority and a reference ("MCA21",
+  // "DIR-3") that would send it to a sub-tab it is not on.
+  if (r.risk_type === "Notice Awaiting Review") return `/clients/${r.client_id}/compliance`;
   const text = [r.risk_type, ...Object.values(r.particulars ?? {})].join(" ");
   if (/GSTR/i.test(text)) return `/clients/${r.client_id}/compliance/gst`;
   if (/TDS|24Q|26Q/i.test(text)) return `/clients/${r.client_id}/compliance/tds`;

@@ -146,6 +146,20 @@ def build_register(db, firm_id: str, client_ids: Optional[set[str]] = None) -> d
         label="risk_register.fixed_deposits",
     )
 
+    # Staged government notices nobody has approved (POST-A-052): the approval is what creates a task or an alert, so until
+    # then this register is the only place a firm sees them. Assignment-scoped like every other read here.
+    notices = fetch_all(
+        lambda: _scoped(
+            db.table("government_notices")
+            .select("id, client_id, notice_type, authority, reference_no, issue_date, response_due_date, status, ca_approved")
+            .eq("firm_id", firm_id)
+            .eq("ca_approved", False)
+            .in_("status", list(rule.NOTICE_STILL_OPEN)),
+            client_ids,
+        ),
+        label="risk_register.government_notices",
+    )
+
     reg = rule.build(
         calendar=calendar,
         clients=clients,
@@ -156,6 +170,7 @@ def build_register(db, firm_id: str, client_ids: Optional[set[str]] = None) -> d
         dsc_rows=dsc_rows,
         loans=loans,
         deposits=deposits,
+        notices=notices,
         as_at=as_at,
     )
     return _to_payload(reg, as_at)

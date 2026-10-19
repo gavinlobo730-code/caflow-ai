@@ -99,6 +99,19 @@ DSC_URGENT_DAYS = 15
 # renewal or withdrawal.
 FD_NOTICE_DAYS = 30
 
+# A government notice a model read from an upload and no CA has checked (POST-A-052). The response date on it is the MODEL'S
+# reading, so it is graded from that date with the ladder below, and a notice whose date could not be read is graded as
+# urgent as one due this week: nobody can rule urgency out, and checking it costs a minute. How urgent a response is
+# is set by the notice itself, not by a section, so this ladder is a practice convention and the register says so.
+NOTICE_URGENT_DAYS = 7
+NOTICE_SOON_DAYS = 30
+NOTICE_STILL_OPEN = ("open", "in_progress")
+NOTICE_LADDER_NOTE = (
+    "A notice waiting for a CA's check is graded from the response date a model read from it: critical when that date has "
+    f"passed or is within {NOTICE_URGENT_DAYS} days, high within {NOTICE_SOON_DAYS} days, medium after that, and high when no "
+    "date could be read. That is a practice convention, and the date itself may be wrong, which is what the check is for."
+)
+
 SEVERITIES = ("critical", "high", "medium", "low")
 
 
@@ -290,6 +303,66 @@ def invalid_gstins(clients: Iterable[dict]) -> list[RiskRow]:
             particulars={"GSTIN": gstin, "Issue": problem},
         ))
     return rows
+
+
+def notices_awaiting_review(
+    notices: Iterable[dict],
+    client_map: dict[str, str],
+    *,
+    as_at: date,
+) -> list[RiskRow]:
+    """A government notice staged from an upload that no CA has approved yet.
+
+    Staging creates ONE `government_notices` row with `ca_approved = false` and, on purpose, no task, timeline event or
+    alert (ai-16: a model's reading may not put work in front of other people). Until a CA approves it, nothing else in the
+    product mentions it, and a notice has a response date. This row is what makes a staged notice visible firm-wide. It
+    asks nothing of the model: it reports that a reading is waiting, grades it from the date on that reading, and says
+    the date is a reading. A notice a CA has since closed or answered, or has approved, is not a risk.
+
+    An absent date is NOT a distant one: it is graded `high` and its particulars say "not read"."""
+    rows: list[RiskRow] = []
+    for n in notices:
+        if n.get("ca_approved") is True:
+            continue
+        if (n.get("status") or "open") not in NOTICE_STILL_OPEN:
+            continue
+        due = _as_date(n.get("response_due_date"))
+        issued = _as_date(n.get("issue_date"))
+        reference = (n.get("reference_no") or "").strip()
+        authority = (n.get("authority") or "").strip() or "an unnamed authority"
+        kind = (n.get("notice_type") or "notice").replace("_", " ").strip() or "notice"
+        days_left = (due - as_at).days if due else None
+        if days_left is None:
+            severity, timing = "high", "No response date could be read from it."
+        elif days_left < 0:
+            severity = "critical"
+            timing = f"The response date read from it, {due.isoformat()}, passed {-days_left} day(s) ago."
+        elif days_left <= NOTICE_URGENT_DAYS:
+            severity, timing = "critical", f"The response date read from it is {due.isoformat()} ({days_left} day(s) away)."
+        elif days_left <= NOTICE_SOON_DAYS:
+            severity, timing = "high", f"The response date read from it is {due.isoformat()} ({days_left} days away)."
+        else:
+            severity, timing = "medium", f"The response date read from it is {due.isoformat()} ({days_left} days away)."
+        cid = n.get("client_id") or ""
+        rows.append(RiskRow(
+            client_id=cid,
+            client_name=_name(client_map, cid),
+            risk_type="Notice Awaiting Review",
+            description=(f"A {kind} notice from {authority}{' (ref ' + reference + ')' if reference else ''} was read from "
+                         f"an upload and no CA has checked it. {timing}"),
+            severity=severity,
+            action=("Check the details against the notice itself, then approve it: approving creates the response task and "
+                    "tells the partners. The dates were read by a model and may be wrong."),
+            days_overdue=(-days_left if days_left is not None and days_left < 0 else None),
+            on_date=due.isoformat() if due else None,
+            particulars={
+                "Authority": authority,
+                "Reference": reference or "not read",
+                "Issued": issued.isoformat() if issued else "not read",
+                "Response Due": due.isoformat() if due else "not read",
+            },
+        ))
+    return sorted(rows, key=lambda r: (r.on_date is None, r.on_date or ""))
 
 
 def missing_pans(clients: Iterable[dict]) -> list[RiskRow]:
@@ -516,6 +589,7 @@ def build(
     dsc_rows: Iterable[dict],
     loans: Iterable[dict],
     deposits: Iterable[dict],
+    notices: Iterable[dict] = (),
     as_at: Optional[date] = None,
 ) -> RiskRegister:
     """Assemble the register from rows somebody else read."""
@@ -541,8 +615,12 @@ def build(
     reg.rows.extend(overdue_loans(loans, client_map))
     reg.rows.extend(maturing_deposits(deposits, client_map, as_at=as_at))
     reg.rows.extend(missing_pans(clients))
+    notice_rows = notices_awaiting_review(notices, client_map, as_at=as_at)
+    reg.rows.extend(notice_rows)
 
     reg.notes.append(OVERDUE_LADDER_NOTE)
+    if notice_rows:
+        reg.notes.append(NOTICE_LADDER_NOTE)
     reg.notes.append(
         "A DSC is held by a person and registered to the firm, so those rows "
         "carry no client."
