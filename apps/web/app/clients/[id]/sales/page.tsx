@@ -53,6 +53,7 @@ import { SalesCreditNoteViewDrawer } from "@/components/sales/SalesCreditNoteVie
 import type { SalesCreditNoteDetail } from "@/components/sales/SalesCreditNoteEditor";
 import { writeSalesCreditNoteDuplicateSeed } from "@/lib/sales/salesCreditNoteDuplicateSeed";
 import { CustomerFormModal } from "@/components/customers/CustomerFormModal";
+import { StatementDeliveryLog } from "@/components/sales/StatementDeliveryLog";
 import { ProductServiceFormModal } from "@/components/catalogue/ProductServiceFormModal";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
@@ -1137,6 +1138,8 @@ function Statements({ clientId }: { clientId: string }) {
   const [emailModal, setEmailModal] = useState(false);
   const [emailTo, setEmailTo] = useState("");
   const [emailing, setEmailing] = useState(false);
+  // Bumped after a send (successful or not) so the delivery log below re-reads what the send path just wrote.
+  const [deliveryRefresh, setDeliveryRefresh] = useState(0);
   const [emailMsg, setEmailMsg] = useState<string | null>(null);
 
   // task #102 — party credit (e.g. from a bank overpayment) sitting against this customer.
@@ -1259,8 +1262,8 @@ function Statements({ clientId }: { clientId: string }) {
       const token = await getAuthToken();
       const res = await apiCall("/api/customer-statements/email", "POST",
         { client_id: clientId, customer_id: customerId, start_date: start, end_date: end, to_email: emailTo || undefined }, token);
-      if (res.success) { setEmailModal(false); setEmailMsg(null); }
-      else setEmailMsg(res.error ?? "Email failed.");
+      if (res.success) { setEmailModal(false); setEmailMsg(null); setDeliveryRefresh((k) => k + 1); }
+      else { setEmailMsg(res.error ?? "Email failed."); setDeliveryRefresh((k) => k + 1); }
     } catch (e) { setEmailMsg(e instanceof Error ? e.message : "Email failed."); }
     finally { setEmailing(false); }
   }
@@ -1367,6 +1370,8 @@ function Statements({ clientId }: { clientId: string }) {
           )}
         </div>
       )}
+
+      {customerId && <StatementDeliveryLog clientId={clientId} customerId={customerId} refreshKey={deliveryRefresh} />}
 
       {emailModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setEmailModal(false)}>

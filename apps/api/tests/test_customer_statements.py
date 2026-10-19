@@ -191,5 +191,5 @@ def test_delivery_tracking_records_send():
     assert row["status"] == "sending" and row["sent_to"] == "ap@acme.test"
     SVC.finish_delivery(d, did, True, provider_id="msg-1")
     assert row["status"] == "sent" and row["sent_at"] and row["provider_message_id"] == "msg-1"
-    rows = SVC.deliveries(d, FIRM, CLIENT, CUST)
+    rows = SVC.deliveries(d, FIRM, CLIENT, CUST, limit=50)
     assert len(rows) == 1 and rows[0]["status"] == "sent"

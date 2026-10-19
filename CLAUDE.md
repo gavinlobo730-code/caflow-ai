@@ -161,7 +161,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A BACKEND EVENT NAMES THE BUILD IT CAME FROM, AN UNLABELLED AI ROW NAMES NO RETIRED MODEL, AND A ROUTE NOTHING CALLED IS GONE
 - A BROAD HANDLER ON A MONEY OR LEDGER PATH REPORTS WHAT IT SWALLOWS, AND A ROLLBACK THAT DID NOT RUN IS A POSTING FAILURE
 
-### `docs/design-record/documents-sales-purchase.md` (12 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
+### `docs/design-record/documents-sales-purchase.md` (13 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 
 - THE DEMO SEEDER HAS BEEN RUN OVER A REAL DATABASE, AND EVERY DEFECT IT EXPOSED IS A RULE NOW
 - A TEMPLATE CHANGES THE LAYOUT AND NEVER THE PARTICULARS, AND THE PRACTICE'S TEMPLATE REACHES THE PRACTICE'S OWN DOCUMENT ONLY
@@ -175,6 +175,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A VENDOR PAYMENT RECORDS WHICH BILLS IT SETTLED IN TWO SHAPES, AND EVERY READER MUST KNOW BOTH
 - A BILLING SCHEDULE KEEPS THE DAY IT STARTED ON, A DUE SCHEDULE WHOSE PERIOD IS ALREADY BILLED ADVANCES, A PLACEHOLDER NUMBER IS NOT ISSUED, AND TWO EDITORS OF AN ARTICLE BOTH KEEP THEIR TEXT
 - A LINE ON A DOCUMENT NAMES AN ITEM OF THE DOCUMENT'S OWN CLIENT, AND THE API ASKS ONCE BEFORE IT WRITES
+- A CUSTOMER STATEMENT EMAIL LEAVES A ROW A CA CAN READ, AND "SENT" IS WHAT THE MAIL SERVICE SAID
 
 ### `docs/design-record/engineering-and-ci.md` (9 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
