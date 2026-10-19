@@ -104,9 +104,18 @@ def _seed(db: FakeDB) -> None:
     row("client_sales_invoices", CLIENT_A, total_paise=78_054_64, paid_paise=0,
         status="draft", deleted_at="2026-09-01T00:00:00+00:00")
 
-    # TDS: deposited means a challan number, so the row carrying one is out.
-    row("tds_deductions", CLIENT_A, tds_paise=10_000_00, challan_no=None)
-    row("tds_deductions", CLIENT_A, tds_paise=7_500_00, challan_no="0001234")
+    # TDS: deducted and not yet deposited is read from the CHALLAN REGISTER, not from a column on the deduction (nothing writes
+    # `tds_deductions.challan_no`). Two deductions of the same quarter under different sections: a recorded challan pays the
+    # second in full, so the first (Rs 10,000) is what is left.
+    row("tds_deductions", CLIENT_A, section="194C", tds_paise=10_000_00, surcharge_paise=0, cess_paise=0,
+        transaction_date="2026-05-10")
+    row("tds_deductions", CLIENT_A, section="194J", tds_paise=7_500_00, surcharge_paise=0, cess_paise=0,
+        transaction_date="2026-05-12")
+    row("tds_challans", CLIENT_A, section="194J", tds_paise=7_500_00, surcharge_paise=0,
+        financial_year="2026-27", quarter="Q1", payment_date="2026-06-07")
+    # Another client's undeposited tax, so a figure that ignores the clients asked for is a different number.
+    row("tds_deductions", CLIENT_B, section="194C", tds_paise=3_000_00, surcharge_paise=0, cess_paise=0,
+        transaction_date="2026-05-14")
 
     row("payroll_runs", CLIENT_A, status="review")
     row("payroll_runs", CLIENT_A, status="paid")
@@ -167,7 +176,7 @@ def test_no_answerable_tile_comes_back_with_a_null_signal_at_client_scope(db):
     # 2,000 is in scope at firm level.
     ("sales", 118_000_00 + 2_000_00),
     ("purchases", 45_000_00),
-    ("tds", 10_000_00),
+    ("tds", 10_000_00 + 3_000_00),
 ])
 def test_a_money_tile_sums_what_is_open(db, tile_id, expected):
     assert _by_id(hub_service.hub(PARTNER))[tile_id]["signal"] == expected
@@ -234,6 +243,10 @@ def test_a_client_hub_asks_the_same_questions_of_one_client(db):
     assert client_a["sales"]["signal"] == 118_000_00
     assert firm["compliance"]["signal"] == 2
     assert client_a["compliance"]["signal"] == 1
+    # TDS: A's Rs 10,000 and B's Rs 3,000 are undeposited; a client hub asks the database about one client.
+    assert firm["tds"]["signal"] == 13_000_00
+    assert client_a["tds"]["signal"] == 10_000_00
+    assert _by_id(hub_service.hub(PARTNER, client_id=CLIENT_B))["tds"]["signal"] == 3_000_00
 
 
 def test_an_assignment_scoped_user_sees_only_their_own_clients(db, monkeypatch):
@@ -242,9 +255,11 @@ def test_an_assignment_scoped_user_sees_only_their_own_clients(db, monkeypatch):
     collapsing the second is how a scoping bug becomes a cross-client read."""
     monkeypatch.setattr(hub_service, "effective_client_ids", lambda u: {CLIENT_B})
     assert _by_id(hub_service.hub(PARTNER))["sales"]["signal"] == 2_000_00
+    assert _by_id(hub_service.hub(PARTNER))["tds"]["signal"] == 3_000_00
 
     monkeypatch.setattr(hub_service, "effective_client_ids", lambda u: set())
     assert _by_id(hub_service.hub(PARTNER))["sales"]["signal"] == 0
+    assert _by_id(hub_service.hub(PARTNER))["tds"]["signal"] == 0
 
 
 def test_a_caller_with_no_firm_is_refused(db):
@@ -320,7 +335,7 @@ def test_the_hub_reads_no_rows_it_does_not_need(db, monkeypatch):
     hub_service.hub(PARTNER)
 
     for table, cols in seen:
-        assert cols in ("id#count", "id,outstanding_paise", "id,tds_paise"), (
+        assert cols in ("id#count", "id,outstanding_paise"), (
             f"{table} was read as {cols!r} — a hub tile reads a count or the "
             "one column it sums, never a row set."
         )
@@ -361,7 +376,7 @@ def test_the_client_hub_delegates_exactly_one_read_and_it_is_named(db, monkeypat
     # a guard that names a spelling, which is this repo's most-repeated
     # lesson.
     wide = [(t, c) for t, c in seen
-            if c not in ("id#count", "id,outstanding_paise", "id,tds_paise")]
+            if c not in ("id#count", "id,outstanding_paise")]
     assert [t for t, _ in wide] == ["service_catalogue"], (
         f"the client hub made {len(wide)} read(s) that are neither a count nor "
         f"a summed column: {wide}. Exactly one is expected — the reorder "

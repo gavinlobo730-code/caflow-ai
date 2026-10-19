@@ -358,7 +358,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ITR RETURN BECOMES FILED BY RECORDING ITS ACKNOWLEDGEMENT, AND RECORDING IT CLOSES THE CALENDAR'S OBLIGATION
 - THE DEMO'S INCOME-TAX FACTS ARE FACTS, AND EVERY FIGURE THAT IS TAX COMES BACK FROM THE ENGINE
 
-### `docs/design-record/tax-tds.md` (15 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
+### `docs/design-record/tax-tds.md` (16 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 
 - From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it
 - A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD
@@ -375,6 +375,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS DEPOSIT WORKSHEET ASKS THE CHALLAN REGISTER WHAT HAS BEEN DEPOSITED, AND A DEPOSITED DEDUCTION'S INTEREST STOPS AT ITS CHALLAN'S DATE
 - THE DEMO'S TDS DEPOSITS ARE THE WORKSHEET'S AND ITS STATEMENTS ARE THE BOOKS', AND THE NUMBERS A BANK OR THE PORTAL WOULD ISSUE SAY THEY ARE A SEED'S
 - A NOTE ON A PURCHASE RETURN SAYS WHETHER THE TAX HAS GONE BY ASKING THE CHALLAN REGISTER, AND THE REGISTER'S OWN COPY OF THE SENTENCE WAS BUILT AND THROWN AWAY
+- THE HUB'S "TDS DEDUCTED AND NOT YET DEPOSITED" IS THE CHALLAN REGISTER'S ANSWER, COMPUTED WHERE THE ROWS ARE, AND IT READ A COLUMN A BILL-DERIVED DEDUCTION NEVER CARRIES
 
 ### `docs/design-record/tenancy-and-security.md` (43 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 

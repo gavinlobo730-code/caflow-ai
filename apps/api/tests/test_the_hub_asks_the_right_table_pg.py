@@ -103,11 +103,11 @@ def test_every_column_the_hub_filters_on_exists(dsn):
         ("compliance_records", "status"), ("gstr1_returns", "status"),
         ("gstr3b_returns", "status"), ("bank_transactions", "entry_state"),
         ("journal_entries", "status"), ("client_sales_invoices", "outstanding_paise"),
-        ("purchase_bills", "outstanding_paise"), ("tds_deductions", "tds_paise"),
+        ("purchase_bills", "outstanding_paise"),
         # The live-document filter on both money tiles (migration 432).
         ("client_sales_invoices", "status"), ("client_sales_invoices", "deleted_at"),
         ("purchase_bills", "status"), ("purchase_bills", "deleted_at"),
-        ("tds_deductions", "challan_no"), ("payroll_runs", "status"),
+        ("payroll_runs", "status"),
         ("itr_filings", "status"), ("fixed_assets", "depreciation_posted_through"),
         ("year_end_engagements", "status"), ("documents", "review_status"),
     ]

@@ -548,6 +548,14 @@ class _Rpc:
             raise Exception(f"FakeDB: unsupported rpc {self.fn!r}")
         return _Result(handler())
 
+    def _fn_tds_undeposited_paise(self):
+        """DELEGATES to domain.tds.undeposited, the Python twin of migration 522's SQL function (the challan register's answer)."""
+        from domain.tds.undeposited import undeposited_paise
+        firm, ids = self.params.get("p_firm_id"), self.params.get("p_client_ids")
+        return undeposited_paise(
+            [r for r in self.db.rows("tds_deductions") if r.get("firm_id") == firm],
+            [r for r in self.db.rows("tds_challans") if r.get("firm_id") == firm], client_ids=ids)
+
     def _fn_period_lock_reason(self):
         """DELEGATES to services.period_lock_service.reason_from_tables.
 
