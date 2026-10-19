@@ -109,6 +109,10 @@ class Assignment:
     """
     challan: Optional[dict] = None
     deposited_paise: int = 0
+    #: EVERY challan the deduction drew on and how much it took from each, in the order it drew, as (challan, paise). The
+    #: statement names one challan per deductee row and reads `challan`; a reader that needs WHEN each part was paid (the
+    #: deposit worksheet's interest) reads this. Empty when nothing was drawn.
+    parts: tuple = ()
 
 
 @dataclass
@@ -159,6 +163,7 @@ def assign(deductions: list[dict], challans: list[dict], *,
             need = max(0, int(d.get("tds_paise") or 0))
             covered = 0
             first_challan = None
+            drawn: list = []
             while need > 0 and idx < len(pool):
                 if remaining[idx] <= 0:
                     idx += 1
@@ -166,12 +171,13 @@ def assign(deductions: list[dict], challans: list[dict], *,
                 take = min(need, remaining[idx])
                 if first_challan is None:
                     first_challan = pool[idx]
+                drawn.append((pool[idx], take))
                 remaining[idx] -= take
                 covered += take
                 need -= take
             undeposited += need
             out.by_deduction_id[str(d.get("id"))] = Assignment(
-                challan=first_challan, deposited_paise=covered)
+                challan=first_challan, deposited_paise=covered, parts=tuple(drawn))
         if undeposited > 0:
             out.gaps.append({
                 "code": GAP_DEDUCTIONS_NOT_DEPOSITED,

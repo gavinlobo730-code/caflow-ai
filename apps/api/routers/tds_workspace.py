@@ -862,29 +862,53 @@ def deposit_due(
                         "30(2)'s seventh-of-the-following-month runs from."))
         month_end = date(year + (mon == 12), (mon % 12) + 1, 1) - timedelta(days=1)
 
-        from services.compliance_engine import tds_deposit_due_date
+        from domain.tds.section_rates import quarter_dates
+        from services.compliance_engine import tds_deposit_due_date, tds_quarter_of_month
+        from core.ist_clock import ist_fy_label
         due = tds_deposit_due_date(year, mon)
 
+        # WHAT WAS DEPOSITED IS THE CHALLAN REGISTER'S ANSWER, for the QUARTER the month is in: the deductions from its first
+        # day to the end of this month and the challans recorded for it, matched first-in first-out by
+        # `challan_mapping` exactly as the quarterly statement matches them. A short April moves its shortfall to the
+        # later deductions, so April's rows have to be in the match when June is asked about.
+        fy = ist_fy_label(month_start)
+        quarter_start = quarter_dates(fy, tds_quarter_of_month(mon))[0]
         if _USE_MOCK:
-            rows = [d for d in _MOCK_DEDUCTIONS.values()
-                    if d.get("client_id") == client_id
-                    and month_start.isoformat() <= str(d.get("transaction_date") or "")[:10]
-                    <= month_end.isoformat()]
+            quarter_rows = [d for d in _MOCK_DEDUCTIONS.values()
+                            if d.get("client_id") == client_id
+                            and quarter_start <= str(d.get("transaction_date") or "")[:10] <= month_end.isoformat()]
+            challans = [c for c in _MOCK_CHALLANS.values() if c.get("client_id") == client_id
+                        and c.get("financial_year") == fy and c.get("quarter") == tds_quarter_of_month(mon)]
         else:
             from core.supabase_client import get_supabase
             sb = get_supabase()
-            rows = fetch_all(
+            quarter_rows = fetch_all(
                 lambda: (sb.table("tds_deductions")
                          .select("id, section, transaction_date, challan_date, "
                                  "status, deductee_name, payment_amount_paise, "
                                  "tds_paise, surcharge_paise, cess_paise")
                          .eq("firm_id", firm_id).eq("client_id", client_id)
-                         .gte("transaction_date", month_start.isoformat())
+                         .gte("transaction_date", quarter_start)
                          .lte("transaction_date", month_end.isoformat())),
                 label="tds.deposit_due")
-
+            challans = fetch_all(
+                lambda: (sb.table("tds_challans").select("*")
+                         .eq("firm_id", firm_id).eq("client_id", client_id)
+                         .eq("financial_year", fy).eq("quarter", tds_quarter_of_month(mon))),
+                label="tds.deposit_due.challans")
+        rows = [r for r in quarter_rows
+                if month_start.isoformat() <= str(r.get("transaction_date") or "")[:10] <= month_end.isoformat()]
+        # No `.order()` on either read: `fetch_all` pages by keyset on `id` and adds its own ordering, and a second one
+        # makes the cursor skip and repeat rows past the first thousand. The match sorts what it is given.
+        counted = [c for c in challans if str(c.get("section") or "").strip() != "192"]
+        label = f"{tds_quarter_of_month(mon)} FY {fy}"
         sheet = deposit_due_rules.build(
-            rows, month=f"{year:04d}-{mon:02d}", due_date=due, as_at=ist_today())
+            rows, month=f"{year:04d}-{mon:02d}", due_date=due, as_at=ist_today(),
+            deposits=deposit_due_rules.mapping_from_register(quarter_rows, challans, fy=fy),
+            deposits_read=(f"{len(counted)} non-salary challan{'' if len(counted) == 1 else 's'} recorded for {label}, "
+                           "matched to the quarter's deductions first in first out, section by section."
+                           if counted else
+                           f"No non-salary challan is recorded for {label}, so no tax is counted as deposited."))
         return api_response(True, {"client_id": client_id, **sheet.as_dict()})
     except HTTPException:
         raise

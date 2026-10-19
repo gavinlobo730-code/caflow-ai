@@ -46,6 +46,22 @@ WHAT IT DOES NOT COVER, AND WHY THAT IS SAID OUT LOUD
     derives it — the seventh of the following month, except March, which is
     30 April — and the caller passes the answer in.
 
+WHERE "DEPOSITED" COMES FROM (found while seeding the demo firm's TDS data, 19-10-2026)
+
+    From the CHALLAN REGISTER, by `domain/tds/challan_mapping`, the same function the quarterly statement asks which
+    challan paid which deduction. This module used to read it off each deduction row (`challan_date`, `status`), two
+    columns that exist since migration 014 and that nothing in the product writes: recording a challan never touched
+    them, so a deposit made on the due date left the worksheet saying the whole month was outstanding and charging
+    §201(1A)(ii) interest from the deduction to TODAY, growing every day, on tax that had reached the government on time.
+    The columns are kept as the fallback for a row somebody marked by hand (a direct database write is the only way),
+    and a row the register covers is judged by the register.
+
+    A deduction that draws on two challans has EACH PART judged by its own challan's date, so the part paid late bears
+    interest to the day it was paid (the statement names one challan per deductee row and reports the first; the interest
+    cannot). A deduction only partly covered has its covered parts judged by their challans' dates and the rest as unpaid.
+    A challan dated before the deduction it was matched to is not counted (the match is by order, not by date) and is
+    named as a gap.
+
 Integer paise throughout.
 """
 from __future__ import annotations
@@ -54,17 +70,25 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
 
+from domain.tds import challan_mapping
 from domain.tds import interest as tds_interest
 
 #: A row says it has been deposited but carries no challan date, so there is no
 #: date to run §201(1A)(ii) to and no CIN for the statement's challan sheet.
 GAP_DEPOSITED_WITH_NO_CHALLAN_DATE = "deposited_with_no_challan_date"
+#: A challan the register matched to a deduction is dated BEFORE the deduction. Tax cannot have been paid over before it was
+#: deducted, so that challan is not counted as having paid it and the tax stays outstanding until the date is looked at.
+GAP_CHALLAN_BEFORE_DEDUCTION = "challan_before_deduction"
 #: A §192 row is in the non-salary register. Salary TDS is computed in payroll
 #: and deposited from there, so this one is either a duplicate of a payroll
 #: liability or a deduction payroll does not know about.
 GAP_SALARY_ROW_IN_THIS_REGISTER = "salary_row_in_this_register"
 
 GAP_MESSAGES: dict[str, str] = {
+    GAP_CHALLAN_BEFORE_DEDUCTION:
+        "A challan was matched to a deduction made AFTER the challan's date. Tax cannot have been paid over before it was "
+        "deducted, so that challan is not counted as paying it and the tax is shown as still outstanding. Check the "
+        "challan's date, or the deduction's.",
     GAP_DEPOSITED_WITH_NO_CHALLAN_DATE:
         "These deductions are marked deposited but carry no challan date. "
         "Without one there is no date to compute §201(1A)(ii) interest to and "
@@ -126,6 +150,8 @@ class Worksheet:
     as_at: date
     sections: tuple[SectionLine, ...]
     statutory_gaps: tuple[dict, ...] = field(default_factory=tuple)
+    #: What was read to decide what is deposited. Empty when the caller read nothing beyond the rows.
+    deposits_read: str = ""
 
     @property
     def totals(self) -> dict:
@@ -150,6 +176,7 @@ class Worksheet:
             "sections": [s.as_dict() for s in self.sections],
             "totals": self.totals,
             "covers": SCOPE_NOTE,
+            "deposits_read_from": self.deposits_read or None,
             "statutory_gaps": list(self.statutory_gaps),
         }
 
@@ -166,7 +193,63 @@ def _as_date(value) -> Optional[date]:
         return None
 
 
-def build(rows, *, month: str, due_date: date, as_at: date) -> Worksheet:
+def _deposits_of(row: dict, tax: int, deducted_on: date, deposits) -> tuple[list[tuple[int, date]], bool]:
+    """([(paise, date paid)] for the part of this row's tax that has been deposited, whether a challan was refused as
+    dated before the deduction).
+
+    The register first: each challan `challan_mapping` says the row drew from, with what it drew and the date that challan
+    was paid on. A part whose challan has no date is not counted (there is nothing to run the interest to), and neither is
+    one whose challan is dated before the deduction. A row the register does not cover at all falls back to its own
+    `challan_date`, the column a hand-marked row carries, and then the whole of its tax counts."""
+    refused = False
+    if deposits is not None:
+        parts: list[tuple[int, date]] = []
+        for challan, paise in deposits.for_deduction(row.get("id")).parts:
+            paid_on = _as_date((challan or {}).get("payment_date"))
+            if paid_on is None:
+                continue
+            if paid_on < deducted_on:
+                refused = True
+                continue
+            parts.append((paise, paid_on))
+        if parts:
+            return parts, refused
+    own = _as_date(row.get("challan_date"))
+    return ([(tax, own)] if own is not None else []), refused
+
+
+def _tax_of(row: dict) -> int:
+    return (int(row.get("tds_paise") or 0) + int(row.get("surcharge_paise") or 0) + int(row.get("cess_paise") or 0))
+
+
+def _is_salary(section: str) -> bool:
+    return section.upper().replace(" ", "") in ("192", "SEC192", "S192")
+
+
+def mapping_from_register(rows, challans, *, fy: str) -> "challan_mapping.Mapping":
+    """Which challan of the register paid which of these deductions, for the quarter the rows and challans belong to.
+
+    `rows` are the quarter's `tds_deductions` up to the end of the month asked about (FIFO needs the earlier months,
+    because a short April moves the shortfall to the later deductions); `challans` are the quarter's `tds_challans`.
+    The tax a challan paid is its `tds_paise` plus its `surcharge_paise`, which is the amount that left the bank less the
+    interest and the penalty (`create_challan` stores `tds_paise` as the remainder, so a cess paid on the challan sits
+    inside it: the form has no cess field); the tax a deduction owes is its tax, surcharge and cess. The quarterly
+    statement matches the challan's `tds_paise` alone against the deduction's `tds_paise` alone, which agrees for every
+    resident section (no surcharge, no cess) and differs for a section 195 payment by exactly the surcharge and cess.
+    Interest and penalty are the deductor's own liability and settle no deduction. Salary is not here: it is deposited
+    from payroll and neither side of this register carries it.
+    """
+    events = [{"id": r.get("id"), "section": str(r.get("section") or "").strip() or "(no section)",
+               "on_date": str(r.get("transaction_date") or "")[:10], "doc_no": str(r.get("id") or ""),
+               "tds_paise": _tax_of(r)}
+              for r in rows if not _is_salary(str(r.get("section") or ""))]
+    paid = [{**c, "tds_paise": int(c.get("tds_paise") or 0) + int(c.get("surcharge_paise") or 0)}
+            for c in challans if not _is_salary(str(c.get("section") or ""))]
+    return challan_mapping.assign(events, paid, fy=fy)
+
+
+def build(rows, *, month: str, due_date: date, as_at: date,
+          deposits: "Optional[challan_mapping.Mapping]" = None, deposits_read: str = "") -> Worksheet:
     """One month of `tds_deductions` rows → the challan-281 worksheet.
 
     `rows` are already filtered to the month and the client; this function
@@ -174,6 +257,11 @@ def build(rows, *, month: str, due_date: date, as_at: date) -> Worksheet:
     A row with no usable `transaction_date` is skipped rather than dated from
     the month — the deduction date is what §201(1A)(ii)'s clock starts on, and
     inventing one would invent an interest figure.
+
+    `deposits` is the challan register's answer (`mapping_from_register`). Without it a row is judged by its own
+    `challan_date` alone, which is what this function did before the register was asked. `deposits_read` is the sentence
+    that says WHAT was read to decide it (which challans, for which quarter); it is carried on the answer so that a CA who
+    sees tax outstanding can see where "deposited" comes from.
     """
     by_section: dict[str, dict] = {}
     gaps: dict[str, list[str]] = {}
@@ -186,12 +274,16 @@ def build(rows, *, month: str, due_date: date, as_at: date) -> Worksheet:
         tax = (int(row.get("tds_paise") or 0)
                + int(row.get("surcharge_paise") or 0)
                + int(row.get("cess_paise") or 0))
-        deposited_on = _as_date(row.get("challan_date"))
+        parts, refused = _deposits_of(row, tax, deducted_on, deposits)
+        covered = min(tax, sum(paise for paise, _ in parts))
+        if refused:
+            gaps.setdefault(GAP_CHALLAN_BEFORE_DEDUCTION, []).append(
+                str(row.get("deductee_name") or row.get("id") or ""))
         status = str(row.get("status") or "").strip().lower()
-        if deposited_on is None and status in ("deposited", "filed"):
+        if covered == 0 and status in ("deposited", "filed"):
             gaps.setdefault(GAP_DEPOSITED_WITH_NO_CHALLAN_DATE, []).append(
                 str(row.get("deductee_name") or row.get("id") or ""))
-        if section.upper().replace(" ", "") in ("192", "SEC192", "S192"):
+        if _is_salary(section):
             gaps.setdefault(GAP_SALARY_ROW_IN_THIS_REGISTER, []).append(
                 str(row.get("deductee_name") or row.get("id") or ""))
 
@@ -203,10 +295,8 @@ def build(rows, *, month: str, due_date: date, as_at: date) -> Worksheet:
         line["deductee_count"] += 1
         line["taxable_paise"] += int(row.get("payment_amount_paise") or 0)
         line["tax_paise"] += tax
-        if deposited_on is not None:
-            line["deposited_paise"] += tax
-        else:
-            line["outstanding_paise"] += tax
+        line["deposited_paise"] += covered
+        line["outstanding_paise"] += tax - covered
         if line["earliest"] is None or deducted_on < line["earliest"]:
             line["earliest"] = deducted_on
         if line["latest"] is None or deducted_on > line["latest"]:
@@ -216,11 +306,17 @@ def build(rows, *, month: str, due_date: date, as_at: date) -> Worksheet:
         # it is measured to `as_at`; a deposited one to its challan date. The
         # limb only bites where the money reached the government after the
         # Rule 30(2) date, which is what `due_date` decides.
-        charge = tds_interest.interest_on_late_deposit(
-            tax_paise=tax, deducted_on=deducted_on, due_date=due_date,
-            deposited_on=deposited_on, as_at=as_at)
-        if charge.applies:
-            line["interest_paise"] += charge.interest_paise
+        late = False
+        for part, paid_on in [*parts, (tax - covered, None)]:
+            if part <= 0:
+                continue
+            charge = tds_interest.interest_on_late_deposit(
+                tax_paise=part, deducted_on=deducted_on, due_date=due_date,
+                deposited_on=paid_on, as_at=as_at)
+            if charge.applies:
+                line["interest_paise"] += charge.interest_paise
+                late = True
+        if late:
             line["late_row_count"] += 1
 
     sections = tuple(
@@ -244,4 +340,4 @@ def build(rows, *, month: str, due_date: date, as_at: date) -> Worksheet:
         for kind, names in sorted(gaps.items())
     )
     return Worksheet(month=month, due_date=due_date, as_at=as_at,
-                     sections=sections, statutory_gaps=statutory_gaps)
+                     sections=sections, statutory_gaps=statutory_gaps, deposits_read=deposits_read)
