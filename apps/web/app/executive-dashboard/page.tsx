@@ -10,6 +10,7 @@ import {
 import { api } from "@/lib/api";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { gradeForScore } from "@/lib/health/vocabulary";
+import { scoreBasisLine, type ScoreBasis } from "@/lib/health/scoreBasis";
 import { formatDateTime, formatTime } from "@/lib/dates/format";
 import { ATTENTION, BRAND, GOLD, MUTED, PROBLEM, READY } from "@/lib/design/tokens";
 import { PageHeader } from "@/components/ui/page-header";
@@ -55,6 +56,8 @@ interface ExecutiveDashboard {
   growth_opportunities: Array<{ type: string; description: string; count?: number; basis?: string }>;
   firm_health_summary: {
     overall_score: number | null;
+    /** Which stored scores the figure is the mean of and how old the oldest is; absent on a backend one deploy behind. */
+    overall_score_basis?: ScoreBasis;
     compliance_coverage: number | null;
     compliance_coverage_basis?: { due: number; filed: number; basis: string };
     active_automations: number;
@@ -355,6 +358,9 @@ export default function ExecutiveDashboardPage() {
                 <RiskBar label="Active Automations" value={health ? health.active_automations : null} max={10} color={BRAND} />
               </div>
             </div>
+            {scoreBasisLine(health?.overall_score_basis) && (
+              <p className="text-3xs text-ps-hint mb-3">{scoreBasisLine(health?.overall_score_basis)}</p>
+            )}
             {health?.compliance_coverage_basis && coverage !== null && (
               <p className="text-3xs text-ps-hint mb-3">
                 {health.compliance_coverage_basis.filed} of {health.compliance_coverage_basis.due} {health.compliance_coverage_basis.basis}

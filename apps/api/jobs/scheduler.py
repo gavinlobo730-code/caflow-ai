@@ -12,6 +12,8 @@ Runs (per firm, once per day):
   6. Compliance obligation generation (idempotent; rolls forward near FY end)
   7. Compliance escalations (internal due-soon/overdue notifications, and one
      mail per recipient for the sweep — to STAFF only, never to a client)
+  8. Client health scores (jobs/health_scores_job.py), before the memory pipeline
+     that profiles the portfolio's health from them
 
 Idempotency:
   - recurring generation is idempotent per-day inside the service
@@ -70,6 +72,7 @@ KNOWN_JOBS = [
     "reconciliation_audit",
     "client_period_metrics",
     "bank_trusted_rules",
+    "health_scores",
     "memory_pipeline",
 ]
 
@@ -527,20 +530,19 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #     as the rules have left them. Bounded per client; the run log
         #     records what was carried over.
         if _begin("bank_trusted_rules", fid, force):
-            t0 = _now_iso()
-            try:
-                from jobs.bank_trusted_rules_job import run_trusted_rules_for_firm
-                outcome = run_trusted_rules_for_firm(fid)
-                firm_result["bank_trusted_rules"] = outcome
-                _log_run("bank_trusted_rules", fid,
-                         "success",
-                         outcome, started_at=t0)
-            except Exception as e:
-                logger.error(f"Bank trusted-rule sweep failed for firm {fid}: {e}", exc_info=True)
-                firm_result["bank_trusted_rules"] = {"error": str(e)}
-                _log_run("bank_trusted_rules", fid, "failed", {"error": str(e)}, started_at=t0)
+            _sweep_bank_trusted_rules(fid, firm_result)
         else:
             firm_result["bank_trusted_rules"] = {"skipped": _skip_reason("bank_trusted_rules", fid)}
+
+        # 10c. Client health scores (POST-A-282) — every client's score, by the function the Health screen's
+        #     Recalculate uses. Nothing else calculates one, and the dashboard, the assistant, the memory profile and the Health
+        #     pages read what was last stored, so without this a firm sees "not yet scored" until somebody presses the button and
+        #     then sees that day's scores for as long as nobody presses it again. Before the memory pipeline, which profiles the
+        #     portfolio's health from them. Calls no model and sends nothing; marks the cached dashboard and reports stale.
+        if _begin("health_scores", fid, force):
+            _sweep_health_scores(fid, firm_result)
+        else:
+            firm_result["health_scores"] = {"skipped": _skip_reason("health_scores", fid)}
 
         # 10. Memory pipeline (Phase 13, task #158) — refresh every client's
         #     profile, detect pattern anomalies, raise memory triggers. This used
@@ -552,16 +554,7 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         #     visibility and catch-up as the rest of the sweep. Last in the order
         #     deliberately: it profiles the state the ten jobs above have settled.
         if _begin("memory_pipeline", fid, force):
-            t0 = _now_iso()
-            try:
-                from jobs.memory_job import run_memory_pipeline_for_firm
-                outcome = run_memory_pipeline_for_firm(fid)
-                firm_result["memory_pipeline"] = outcome
-                _log_run("memory_pipeline", fid, "success", outcome, started_at=t0)
-            except Exception as e:
-                logger.error(f"Memory pipeline job failed for firm {fid}: {e}", exc_info=True)
-                firm_result["memory_pipeline"] = {"error": str(e)}
-                _log_run("memory_pipeline", fid, "failed", {"error": str(e)}, started_at=t0)
+            _sweep_memory_pipeline(fid, firm_result)
         else:
             firm_result["memory_pipeline"] = {"skipped": _skip_reason("memory_pipeline", fid)}
 
@@ -569,6 +562,50 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
 
     _close_sweep(firm_ids)
     return results
+
+
+def _sweep_bank_trusted_rules(fid: str, firm_result: dict) -> None:
+    """Step 10b of the sweep, run once `_begin` has claimed it: log the run and keep the answer. A function of its own, like the two
+    steps after it, because `run_daily_jobs` is over the size the lint ratchet measured and may not grow."""
+    t0 = _now_iso()
+    try:
+        from jobs.bank_trusted_rules_job import run_trusted_rules_for_firm
+        outcome = run_trusted_rules_for_firm(fid)
+        firm_result["bank_trusted_rules"] = outcome
+        _log_run("bank_trusted_rules", fid, "success", outcome, started_at=t0)
+    except Exception as e:
+        logger.error(f"Bank trusted-rule sweep failed for firm {fid}: {e}", exc_info=True)
+        firm_result["bank_trusted_rules"] = {"error": str(e)}
+        _log_run("bank_trusted_rules", fid, "failed", {"error": str(e)}, started_at=t0)
+
+
+def _sweep_memory_pipeline(fid: str, firm_result: dict) -> None:
+    """Step 10 of the sweep (last in the order, on purpose: it profiles the state the jobs before it have settled), run once `_begin`
+    has claimed it."""
+    t0 = _now_iso()
+    try:
+        from jobs.memory_job import run_memory_pipeline_for_firm
+        outcome = run_memory_pipeline_for_firm(fid)
+        firm_result["memory_pipeline"] = outcome
+        _log_run("memory_pipeline", fid, "success", outcome, started_at=t0)
+    except Exception as e:
+        logger.error(f"Memory pipeline job failed for firm {fid}: {e}", exc_info=True)
+        firm_result["memory_pipeline"] = {"error": str(e)}
+        _log_run("memory_pipeline", fid, "failed", {"error": str(e)}, started_at=t0)
+
+
+def _sweep_health_scores(fid: str, firm_result: dict) -> None:
+    """Step 10c of the sweep, run once `_begin` has claimed it: log the run and keep the answer."""
+    t0 = _now_iso()
+    try:
+        from jobs.health_scores_job import run_health_scores_for_firm
+        outcome = run_health_scores_for_firm(fid)
+        firm_result["health_scores"] = outcome
+        _log_run("health_scores", fid, "success", outcome, started_at=t0)
+    except Exception as e:
+        logger.error(f"Health scores job failed for firm {fid}: {e}", exc_info=True)
+        firm_result["health_scores"] = {"error": str(e)}
+        _log_run("health_scores", fid, "failed", {"error": str(e)}, started_at=t0)
 
 
 def start_scheduler() -> None:

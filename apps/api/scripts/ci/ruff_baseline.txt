@@ -116,9 +116,9 @@ domain/tds/vocabulary.py :: B904 :: certificate_form :: 1
 domain/tds/vocabulary.py :: B904 :: statement_form :: 1
 domain/workflow_engine_v2.py :: F401 :: <module> :: 2
 domain/workflow_engine_v2.py :: F401 :: WorkflowEngineV2._eval_rule :: 1
-jobs/scheduler.py :: C901 :: run_daily_jobs :: 31
+jobs/scheduler.py :: C901 :: run_daily_jobs :: 30
 jobs/scheduler.py :: F401 :: <module> :: 1
-jobs/scheduler.py :: PLR0915 :: run_daily_jobs :: 198
+jobs/scheduler.py :: PLR0915 :: run_daily_jobs :: 184
 main.py :: F401 :: <module> :: 1
 mock_data.py :: F401 :: <module> :: 2
 models/accounting.py :: B904 :: _posting_date :: 1

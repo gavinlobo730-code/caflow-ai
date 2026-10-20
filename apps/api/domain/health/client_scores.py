@@ -18,7 +18,7 @@ Pure: no database handle. `attach` is the one place the two meet.
 """
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Optional
 
 from domain.health.scoring import is_at_risk, is_critical
 
@@ -29,20 +29,24 @@ def _verdict(stored: object, derived: bool) -> bool:
 
 def attach(clients: Iterable[dict], score_rows: Iterable[dict]) -> list[dict]:
     """Copies of `clients`, each with `health_score` set to the engine's stored overall score for it, or None when it has none, and
-    `health_critical` / `health_at_risk` set to the engine's stored verdict (None for a client without a score).
+    `health_critical` / `health_at_risk` set to the engine's stored verdict and `health_calculated_at` to the instant it was calculated
+    (all None for a client without a score).
 
     The client row's own `health_score` is overwritten either way: it is the column nothing writes, and a copy that kept it for an
     unscored client would put the default back. A row whose score is not a number is not a score."""
-    by_client: dict[str, tuple[int, bool, bool]] = {}
+    by_client: dict[str, tuple[int, bool, bool, Optional[str]]] = {}
     for row in score_rows:
         score = row.get("overall_score")
         if isinstance(score, bool) or not isinstance(score, (int, float)):
             continue
         score = int(score)
+        stamp = row.get("last_calculated_at")
         by_client[str(row.get("client_id"))] = (
-            score, _verdict(row.get("is_critical"), is_critical(score)), _verdict(row.get("is_at_risk"), is_at_risk(score)))
+            score, _verdict(row.get("is_critical"), is_critical(score)), _verdict(row.get("is_at_risk"), is_at_risk(score)),
+            stamp if isinstance(stamp, str) and stamp else None)
     out = []
     for client in clients:
-        score, critical, at_risk = by_client.get(str(client.get("id")), (None, None, None))
-        out.append({**client, "health_score": score, "health_critical": critical, "health_at_risk": at_risk})
+        score, critical, at_risk, calculated = by_client.get(str(client.get("id")), (None, None, None, None))
+        out.append({**client, "health_score": score, "health_critical": critical, "health_at_risk": at_risk,
+                    "health_calculated_at": calculated})
     return out

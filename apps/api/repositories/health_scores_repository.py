@@ -1,5 +1,6 @@
-"""The health engine's stored scores: one row per client, written by `POST /api/health/scores/{client_id}/calculate` and
-`POST /api/health/recalculate-all` (routers/health.py) and by nothing else.
+"""The health engine's stored scores: one row per client, written by `POST /api/health/scores/{client_id}/calculate`, by
+`POST /api/health/recalculate-all` and by the nightly sweep (`routers/health.recalculate_clients`, `jobs/health_scores_job`), and by
+nothing else.
 
 This is what a client's health IS, everywhere a figure is shown: the client's own Health screen reads this table, and so does every
 roll-up built on it (`domain/health/client_scores.attach`). `clients.health_score` is not a second copy of it: it is an INTEGER

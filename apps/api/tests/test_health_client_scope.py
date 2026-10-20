@@ -222,6 +222,8 @@ class _FakeQuery:
         self.rows = rows
     def select(self, *_a, **_k): return self
     def eq(self, *_a, **_k): return self
+    def is_(self, *_a, **_k): return self
+    def neq(self, *_a, **_k): return self
     def limit(self, *_a, **_k): return self
     def upsert(self, *_a, **_k): return self
     def insert(self, *_a, **_k): return self

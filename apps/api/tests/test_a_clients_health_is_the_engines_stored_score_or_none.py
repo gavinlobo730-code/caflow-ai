@@ -28,7 +28,7 @@ import domain.ai_copilot_service as mod
 import domain.memory_pipeline as memory
 from domain.health.client_scores import attach
 from tests.e2e_harness import FakeDB
-from tests.health_double import StoredScoresFrom
+from tests.health_double import CappedAtMaxRows, StoredScoresFrom
 
 FIRM = "f1"
 
@@ -56,7 +56,7 @@ def test_a_score_is_a_whole_number_and_zero_is_a_score_not_an_absence():
 
 def test_a_row_for_a_client_that_is_not_in_the_list_is_ignored_and_ids_compare_as_text():
     got = attach([{"id": 7}], [{"client_id": "7", "overall_score": 50}, {"client_id": "elsewhere", "overall_score": 5}])
-    assert got == [{"id": 7, "health_score": 50, "health_critical": False, "health_at_risk": False}]
+    assert got == [{"id": 7, "health_score": 50, "health_critical": False, "health_at_risk": False, "health_calculated_at": None}]
 
 
 # ── the repository ───────────────────────────────────────────────────────────
@@ -102,33 +102,6 @@ def test_a_read_that_names_no_firm_is_refused_in_either_mode(monkeypatch, mock, 
         repo_module.health_scores_repo.find_all(firm_id=no_firm)
 
 
-class _Capped:
-    """A database whose every response is cut at PostgREST's `db-max-rows`, the way the real one answers a read it was not told to page."""
-    def __init__(self, db, cap=1000):
-        self.db, self.cap = db, cap
-
-    def table(self, name):
-        return _CappedQuery(self.db.table(name), self.cap)
-
-
-class _CappedQuery:
-    def __init__(self, query, cap):
-        self.query, self.cap = query, cap
-
-    def __getattr__(self, name):
-        attribute = getattr(self.query, name)
-        if not callable(attribute):
-            return attribute
-
-        def call(*args, **kwargs):
-            out = attribute(*args, **kwargs)
-            if name == "execute":
-                out.data = (out.data or [])[:self.cap]
-                return out
-            return self if out is self.query else out
-        return call
-
-
 def test_a_firm_of_more_clients_than_one_response_holds_is_read_whole(monkeypatch):
     """A firm with over a thousand clients would otherwise have its first thousand scored and the rest 'not yet scored', silently."""
     import repositories.health_scores_repository as repo_module
@@ -137,7 +110,7 @@ def test_a_firm_of_more_clients_than_one_response_holds_is_read_whole(monkeypatc
         db.seed("health_scores", {"id": f"{i:05d}", "firm_id": FIRM, "client_id": f"c{i}", "overall_score": 50})
     db.seed("health_scores", {"id": "99999", "firm_id": "other-firm", "client_id": "x", "overall_score": 5})
     monkeypatch.setattr(repo_module, "_USE_MOCK", False)
-    monkeypatch.setattr(repo_module, "_get_db", lambda: _Capped(db))
+    monkeypatch.setattr(repo_module, "_get_db", lambda: CappedAtMaxRows(db))
     assert len(repo_module.health_scores_repo.find_all(firm_id=FIRM)) == 2350
 
 
@@ -319,8 +292,9 @@ def _written():
 
 
 def test_the_seeder_calculates_the_one_client_it_just_wrote(monkeypatch):
-    """Nothing calculates a score until somebody asks (POST-A-282), and a client with none is shown as not yet scored, so a firm seeded
-    to be looked at asks for each client's last, when the engine can read the returns, obligations and books the seeder has written.
+    """The nightly sweep calculates a score, but a firm seeded to be looked at is looked at before the first night, and a client with
+    none is shown as not yet scored, so the seeder asks for each client's last, when the engine can read the returns, obligations and
+    books it has written.
     One client's Calculate, not the firm's Recalculate: with `--add-to-existing` that would re-score clients this run did not write."""
     import scripts.seed_demo_firm as seeder
     recorder, written = _Recorder(), _written()
@@ -386,6 +360,12 @@ class _Q:
         return self
 
     def eq(self, *_a, **_k):
+        return self
+
+    def is_(self, *_a, **_k):
+        return self
+
+    def neq(self, *_a, **_k):
         return self
 
     def limit(self, *_a, **_k):
