@@ -53,7 +53,7 @@ def test_list_returns_carries_the_statement_form():
     create_return(_computed(financial_year="2025-26"), PARTNER)
     result = list_returns(client_id=CLIENT, limit=50, offset=0, current_user=PARTNER)
     assert result["success"] is True
-    row = result["data"][0]
+    row = result["data"]["returns"][0]
     assert row["statement_form"] == _statement_label("26Q", "2025-26")
     assert row["statement_form"] == "Form 26Q", \
         "a pre-fork FY26Q shows the FORM number as it was always called"
@@ -62,7 +62,7 @@ def test_list_returns_carries_the_statement_form():
 def test_list_returns_translates_the_2026_fork():
     create_return(_computed(financial_year="2026-27"), PARTNER)
     result = list_returns(client_id=CLIENT, limit=50, offset=0, current_user=PARTNER)
-    row = result["data"][0]
+    row = result["data"]["returns"][0]
     assert row["statement_form"] == "Form 140 (26Q)", \
         "an FY2026-27+ 26Q is Form 140 under the Income-tax Act 2025 fork"
     # And the RAW routing key must still be there — challan matching and every
@@ -76,7 +76,7 @@ def test_the_raw_routing_key_alone_is_no_longer_all_the_screen_gets():
     proving the field the fix adds is genuinely new, not already there under
     another name."""
     create_return(_computed(financial_year="2026-27"), PARTNER)
-    row = list_returns(client_id=CLIENT, limit=50, offset=0, current_user=PARTNER)["data"][0]
+    row = list_returns(client_id=CLIENT, limit=50, offset=0, current_user=PARTNER)["data"]["returns"][0]
     assert row["return_type"] != row["statement_form"], \
         "a 2026-27 26Q's raw key and its statement form must differ"
 

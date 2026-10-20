@@ -362,12 +362,6 @@ _SECTION_LITERAL = re.compile(r'"(19[0-9][A-Z]{0,4}(?:\([a-z]{1,2}\))?)"')
 # Places a section literal may legitimately appear that is NOT an offer to
 # record a deduction. Each needs its reason, and the list may only shrink.
 _NOT_A_DEDUCTION_PICKER: dict[str, str] = {
-    "app/tds/page.tsx":
-        "SECTION_LABELS is a NAME lookup, and the challan modal legitimately "
-        "offers s.192 — a salary TDS deposit is a real ITNS 281 payment that a "
-        "CA records here. The DEDUCTION picker is seeded from "
-        "DEDUCTIBLE_SECTIONS, which excludes it; that exclusion is asserted "
-        "below rather than exempted.",
     "app/accounting/suppliers/page.tsx":
         "SECTION_LABELS is a NAME lookup only — the offered list is fetched "
         "from GET /api/tds/sections and rendered from the response, which is "
@@ -426,16 +420,24 @@ def test_no_screen_offers_a_section_the_engine_does_not_hold():
           "domain/tds/section_rates.py if the engine really can answer for it.")
 
 
-def test_the_tds_deduction_picker_excludes_section_192_by_construction():
-    """The one exemption above, asserted rather than trusted. s.192 may appear
-    in that file — it is a valid CHALLAN section — but never in the list the
-    deduction form offers."""
+def test_the_tds_deduction_picker_is_the_servers_list_which_excludes_section_192():
+    """s.192 may be offered to a CHALLAN form (a salary TDS deposit is a real ITNS 281 payment) but never to the deduction form. The TDS
+    screen holds no section of its own any more: the deduction form is offered the sections the server does not mark unavailable
+    (`lib/tds/sectionChoices`), and the server marks s.192 and s.206C so, by the one function the save refuses them with."""
+    from domain.tds.residency import deduction_section_refusal
+    from routers import tds as tds_router
     page = (_WEB / "app" / "tds" / "page.tsx").read_text(encoding="utf-8")
-    assert 'const DEDUCTIBLE_SECTIONS = Object.keys(SECTION_LABELS).filter(s => s !== "192")' in page, (
-        "the deduction picker's fallback list must exclude s.192 by "
-        "construction, not by someone remembering to leave it out")
-    assert "useState<string[]>(DEDUCTIBLE_SECTIONS)" in page, (
-        "and the deduction form must seed from it")
+    choices = (_WEB / "lib" / "tds" / "sectionChoices.ts").read_text(encoding="utf-8")
+    assert "const deductible = answer.sections.filter((s) => s.vendor_eligible !== false).map((s) => s.section);" in choices, (
+        "the deduction picker's list must be the server's, not a list the browser keeps")
+    assert "choices.deductible.map(" in page, "and the deduction form must be offered it"
+    assert "SECTION_LABELS" not in page and "DEDUCTIBLE_SECTIONS" not in page, "the TDS screen keeps a list of sections of its own again"
+    assert deduction_section_refusal(SECTION_192_SALARY) is not None
+    served = tds_router.list_tds_sections(fy="2026-27", user={"firm_id": "f", "role": "Partner"})["data"]["sections"]
+    assert [s["vendor_eligible"] for s in served if s["section"] == SECTION_192_SALARY] == [False], (
+        "the server no longer marks s.192 as unavailable to a deduction")
+    assert [s["vendor_eligible"] for s in served if s["section"] == "206C"] == [False], (
+        "the server no longer marks s.206C as unavailable to a deduction")
 
 
 def test_the_vendor_importer_holds_no_section_list_of_its_own():

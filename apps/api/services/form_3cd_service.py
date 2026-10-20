@@ -218,7 +218,8 @@ def _clause_34(db, firm_id: str, client_id: str,
 
     rows = fetch_all(
         lambda: (db.table("tds_deductions")
-                 .select("id, section, payment_amount_paise, tds_paise, surcharge_paise, cess_paise, transaction_date")
+                 .select("id, section, payment_amount_paise, tds_paise, surcharge_paise, cess_paise, transaction_date, "
+                         "purchase_bill_id, purchase_payment_id")
                  .eq("firm_id", firm_id).eq("client_id", client_id)
                  .gte("transaction_date", start).lte("transaction_date", end)),
         label="form_3cd.tds_deductions")

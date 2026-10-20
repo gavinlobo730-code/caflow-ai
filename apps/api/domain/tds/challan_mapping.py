@@ -162,8 +162,25 @@ def dated_parts(assignment: Assignment, deducted_on: date) -> tuple[list[tuple[i
     return parts, refused
 
 
+def source_id_of(d: dict) -> str:
+    """The id of the document a deduction came from: the bill or the advance payment, which is what the quarterly statement's
+    events carry as their own `id`, or, for a register row, `source_id` (`deposit_due.mapping_from_register` sets it to the row's
+    `purchase_bill_id` or `purchase_payment_id`, and to the row's own id for a hand-entered one). A deduction is therefore named
+    by the same string on both sides, which is what lets them put two deductions of one day in one order."""
+    return str(d.get("source_id") or d.get("id") or "")
+
+
 def _deduction_key(d: dict) -> tuple:
-    return (str(d.get("on_date") or ""), str(d.get("doc_no") or ""), str(d.get("id") or ""))
+    """FIFO's order: by the day of the deduction, and WITHIN a day by the source document's id.
+
+    The tie-break used to be the document NUMBER, and the two readers of this module did not agree on what that was: the
+    quarterly statement sorted by the bill number (or the payment number) and then the id, while the register's readers (the
+    deposit worksheet, Form 3CD clause 34 and the TDS screen) sorted by the register row's own id, which is a different
+    string for the same deduction. With two deductions on one day and a challan that covered one, the row the screen called
+    Not deposited could be a different deductee from the one the statement left without a challan (POST-A-277). The number
+    was no better a key than the id in any case (two vendors can send a bill numbered 1), and FIFO needs only an order that
+    is the same everywhere, not a meaningful one."""
+    return (str(d.get("on_date") or ""), source_id_of(d))
 
 
 def _challan_key(c: dict) -> tuple:
@@ -175,8 +192,9 @@ def assign(deductions: list[dict], challans: list[dict], *,
            fy: Optional[str] = None) -> Mapping:
     """Match each deduction to the challan that deposited it.
 
-    `deductions` are `{id, section, on_date, doc_no, tds_paise}` — a purchase
-    bill, an advance payment or a payslip, whichever the return is built from.
+    `deductions` are `{id, section, on_date, tds_paise}`, with `source_id` where the row is not itself the document (a register
+    row names its bill or payment) — a purchase bill, an advance payment or a payslip, whichever the return is built from.
+    Two of one day are ordered by `source_id_of`, so every caller puts them in the same order.
     `challans` are `tds_challans` rows; a challan's capacity is its `tds_paise`
     and NOT its `total_paise`, because interest and penalty are the deductor's
     own liability and never appear against a deductee.

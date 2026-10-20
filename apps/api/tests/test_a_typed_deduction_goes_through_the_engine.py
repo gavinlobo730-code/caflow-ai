@@ -131,6 +131,47 @@ def test_a_section_the_engine_does_not_hold_is_refused(app_db):
     assert db.rows("tds_deductions") == []
 
 
+@pytest.mark.parametrize("section, word", [("192", "salary"), ("206C", "collected"), ("194N", "bank")])
+def test_a_section_the_engine_answers_wrongly_for_is_refused_before_it_is_asked(app_db, section, word):
+    """Section 192 resolves to a nil, section 206C to 0.1% of every rupee and section 194N to its ordinary rate: none of the three
+    RAISES, so the refusal that used to be made only when the engine raised never reached them, and a row was recorded at a figure
+    nobody would defend. The deduction form does not offer them; the save refuses them too."""
+    app, db = app_db
+    r = _post(app, section=section, payment_amount_paise=50_00_000_00)
+    assert r.status_code == 422, r.text
+    assert word in r.json()["detail"].lower(), r.json()["detail"]
+    assert db.rows("tds_deductions") == []
+
+
+def test_every_section_the_server_marks_unavailable_for_a_deduction_is_refused_by_the_save(app_db):
+    """The rule, not three spellings of it: `vendor_eligible` on GET /api/tds/sections and this save are one function's answer, so
+    a section added to the registry that the function refuses is refused here as well."""
+    from domain.tds.residency import deduction_section_refusal
+    from domain.tds.section_rates import tds_rates_for
+    app, db = app_db
+    refused = [s for s in tds_rates_for("2026-27").sections if deduction_section_refusal(s, "2026-27")]
+    assert {"192", "206C"} <= set(refused), refused
+    for section in refused:
+        r = _post(app, section=section, payment_amount_paise=50_00_000_00)
+        assert r.status_code == 422, (section, r.status_code, r.text)
+    assert db.rows("tds_deductions") == []
+
+
+def test_correcting_a_row_recorded_under_a_refused_section_is_refused_and_deleting_it_is_not(app_db):
+    """Rows recorded before the save refused these exist (the old screen offered section 192). They can be removed; they cannot be
+    re-saved as if the engine had answered for them."""
+    app, db = app_db
+    db.seed("tds_deductions", {
+        "id": "D7", "firm_id": FIRM, "client_id": CLIENT, "section": "192", "deductee_name": "Old row",
+        "deductee_pan": PAN_INDIVIDUAL, "payment_amount_paise": 50_00_000_00, "tds_paise": 0, "tds_rate_pct": 0,
+        "transaction_date": "2026-06-15"})
+    r = _client(app, MANAGER).patch("/api/tds-workspace/deductions/D7", json={"deductee_name": "Renamed"})
+    assert r.status_code == 422, r.text
+    assert db.rows("tds_deductions")[0]["deductee_name"] == "Old row"
+    assert _client(app, MANAGER).delete("/api/tds-workspace/deductions/D7").status_code == 200
+    assert db.rows("tds_deductions") == []
+
+
 def test_below_the_threshold_nothing_is_deducted(app_db):
     """The browser applied a rate from the first rupee. s.194J's threshold is
     Rs.50,000, so a Rs.20,000 fee carries nothing."""

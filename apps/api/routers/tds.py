@@ -370,11 +370,15 @@ def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds
     (defaults to the current FY)."""
     from domain.tds.lower_deduction import SECTIONS_197
     from domain.tds.residency import deduction_section_refusal
+    from domain.tds.section_labels import challan_sections, label_of
     from domain.tds.section_rates import parent_of, threshold_classes_for
     rates = tds_rates_for(fy)
     sections = [
         {
             "section": sec,
+            # The plain-English name of the section (or of the section a clause key belongs to), kept in one place so no screen
+            # carries a copy of its own (POST-A-278). None for a section with no name there.
+            "label": label_of(sec, rates.fy),
             "threshold_paise": rule.single_threshold_paise,
             "aggregate_threshold_paise": rule.aggregate_threshold_paise,
             "rate_individual_pct": rule.individual_rate_bps / 100,
@@ -428,6 +432,9 @@ def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds
         "success": True,
         "data": {
             "fy": rates.fy, "rates_verified": rates.verified, "sections": sections,
+            # The sections a CHALLAN may be recorded under (`domain/tds/section_labels`): the parents above, and §195, which the
+            # resident registry does not hold. A challan names the section a CA would type, not the limb of a bill.
+            "challan_sections": challan_sections(rates.fy),
             # WHAT §197 REACHES AND THIS ENGINE CANNOT PRICE, named rather than
             # silently absent from the list above. §195 is here for a second
             # reason as well as the first: even where a certificate is recorded

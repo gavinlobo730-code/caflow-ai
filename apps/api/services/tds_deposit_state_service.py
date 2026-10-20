@@ -51,7 +51,8 @@ def read(db, firm_id: str, client_id: str, *, position: Optional[tuple[int, int]
     """The deposit state of one client. `position` is given by a caller that already has the database's figure (a test)."""
     deductions = fetch_all(
         lambda: (db.table("tds_deductions")
-                 .select("id, section, transaction_date, tds_paise, surcharge_paise, cess_paise")
+                 .select("id, section, transaction_date, tds_paise, surcharge_paise, cess_paise, "
+                         "purchase_bill_id, purchase_payment_id")
                  .eq("firm_id", firm_id).eq("client_id", client_id)),
         label="tds.deposit_state.deductions")
     challans = fetch_all(

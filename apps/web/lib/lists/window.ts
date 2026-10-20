@@ -37,6 +37,13 @@ export const ENTITY_REGISTER_WINDOW_MAX = 2000;
  */
 export const LEAD_REGISTER_WINDOW_MAX = 2000;
 
+/**
+ * The most rows one read of a client's TDS register may ask for (deductions, challans, returns or certificates). The TDS screen
+ * lists a client's register whole and searches and sorts it in the browser, so it asks for the ceiling. It is the one
+ * browser-side copy of `TDS_LIST_MAX` in apps/api/services/tds_register_lists_service.py and a test holds the two equal.
+ */
+export const TDS_REGISTER_WINDOW_MAX = 2000;
+
 /** The limit to ask for next, or null when the ceiling has been reached. */
 export function nextWindowLimit(limit: number, maxLimit: number): number | null {
   if (!Number.isFinite(limit) || !Number.isFinite(maxLimit)) return null;

@@ -68,21 +68,22 @@ const TDS_IMPORT_COLUMNS = [
 // PAN — IT Act §139A, through `lib/identifiers/pan.panProblem`. A DEDUCTEE
 // PAN decides §206AA's 20% floor, so refusing a good one here sends the CA
 // back to the spreadsheet rather than letting them import the quarter.
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { selectAll } from "@/lib/supabase/selectAll";
-import { getFirmId } from "@/lib/data/getFirmId";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { formatPaise } from "@/lib/services/formatting";
-import { formatDate, todayIstISO } from "@/lib/dates/format";
+import { formatDate } from "@/lib/dates/format";
 import { useToast } from "@/components/ui/use-toast";
 // The engine, reached through the API. Rates, thresholds, the
 // individual-vs-company split, §206AA and the year's aggregate are all
 // resolved server-side — CLAUDE.md: zero business logic in the frontend.
 import {
-  listTdsSections, previewTdsDeduction, createTdsDeduction, createTdsChallan,
-  fetchDepositDue, fetchTdsDepositState, currentFinancialYear, type DepositDueWorksheet, type TdsDepositState, type CalendarAnswer,
+  listTdsSections, listTdsDeductions, listTdsChallans, listTdsReturns, listTdsCertificates, previewTdsDeduction, createTdsDeduction,
+  createTdsChallan, fetchDepositDue, fetchTdsDepositState, currentFinancialYear, type DepositDueWorksheet, type TdsDepositState,
+  type CalendarAnswer, type TdsDeductionTotals, type TdsReturnCounts, type TdsCertificateCounts,
 } from "@/lib/data/tds";
+import { NO_SECTIONS, sectionChoices, sectionOptionText, type SectionChoices } from "@/lib/tds/sectionChoices";
+import { MINOR_HEAD_LABEL, minorHeadLabel } from "@/lib/tds/minorHead";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { panProblem } from "@/lib/identifiers/pan";
@@ -92,36 +93,24 @@ import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
-// ─── TDS section labels ──────────────────────────────────────────────────────
+// ─── TDS section names ───────────────────────────────────────────────────────
 //
-// COSMETIC NAMES ONLY. No rates, no thresholds — those come from
-// GET /api/tds/sections, which reads domain/tds/section_rates.py.
-//
-// What used to be here was a table of rates, and it was wrong in eight ways:
-// s.194C flat at the company rate (an individual/HUF is 1%), s.194D at 5% when
-// the statute says 2% individual and 10% company, s.194H at a rate the Finance
-// (No. 2) Act 2024 cut, s.194Q charged on the whole sum where s.194Q(1) charges
-// on the excess over Rs.50 lakh, s.194IA offered at all when the engine does
-// not hold it, s.192 leaving the previous rate in the box, no threshold on
-// anything, and no FY aggregate. The same shape as
-// app/accounting/suppliers/page.tsx, which already does this correctly.
-const SECTION_LABELS: Record<string, string> = {
-  "192":   "Salary",
-  "193":   "Interest on securities",
-  "194":   "Dividends",
-  "194A":  "Interest other than securities",
-  "194B":  "Lottery / winnings",
-  "194C":  "Contractor payments",
-  "194D":  "Insurance commission",
-  "194G":  "Commission on lottery tickets",
-  "194H":  "Commission / brokerage",
-  "194I":  "Rent",
-  "194J":  "Professional / technical fees",
-  "194K":  "Income from units",
-  "194LA": "Compensation on immovable property",
-  "194Q":  "Purchase of goods",
-  "206C":  "TCS on sale of goods",
-};
+// The sections this screen offers, and their plain-English names, are the server's (`GET /api/tds/sections`, read once by the page
+// into `lib/tds/sectionChoices`). What used to be here was a copy of fifteen of them, first of rates that were wrong in eight ways
+// (s.194C flat at the company rate, s.194D at 5%, a s.194H rate the Finance (No. 2) Act 2024 cut, s.194Q charged on the whole sum,
+// s.194IA offered although the engine does not hold it, s.192 leaving the previous rate in the box, no threshold on anything and no
+// FY aggregate) and then of names, and the copy held neither s.194T nor s.195, so a challan under either could not be recorded here
+// (POST-A-278). No rate, threshold or name is held in this file.
+
+// What a list shows in the place of its rows while it is being read, or when the read was refused: an empty list is "none recorded"
+// only when the read succeeded, and a CA must not be told "No challans added yet" about a list nobody has read.
+function ListNotRead({ loading, error, what }: { loading: boolean; error: string | null; what: string }) {
+  return (
+    <div role="status" className="px-4 py-10 text-center text-sm text-ps-hint">
+      {loading ? `Reading this client's ${what}…` : `This client's ${what} could not be read: ${error}`}
+    </div>
+  );
+}
 
 // The VALUE stored is the bare quarter — tds_challans.quarter and
 // tds_returns.quarter both CHECK ('Q1','Q2','Q3','Q4'), and migration 347 puts
@@ -157,10 +146,6 @@ const STATUS_STYLE: Record<string, string> = {
   matched:   "bg-state-ready-surface text-state-ready",
   unmatched: "bg-state-problem-surface text-state-problem",
 };
-
-// A return is FILED once it has been furnished — "revised" is a return that
-// was filed and then corrected under s.200(3)'s proviso, not an unfiled one.
-const FILED = new Set(["filed", "revised"]);
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pending", generated: "Generated", issued: "Issued",
@@ -209,22 +194,11 @@ interface TDSChallan {
   financial_year: string;      // not fy
   quarter: string;             // 'Q1'..'Q4' — not "Q1 (Apr-Jun)"
   section: string | null;
+  /** Challan 281's minor head ("200" or "400"); the column defaults to "200". */
+  minor_head?: string | null;
   status: "deposited" | "matched" | "unmatched";
   /** Only on the answer to recording one: what became of the monthly deposit obligations on the compliance calendar. */
   compliance_obligations?: CalendarAnswer[];
-}
-
-interface TDSReturn {
-  id: string;
-  return_type: string;         // not form_type
-  quarter: string;
-  financial_year: string;      // not fy
-  due_date: string;
-  filed_at: string | null;     // not filed_date
-  prn: string | null;
-  // The CHECK's own values. "Pending"/"Filed"/"Overdue" cannot be stored, so
-  // counting them gave three zeroes on a screen that had returns in it.
-  status: "pending" | "prepared" | "ca_approved" | "filed" | "revised";
 }
 
 interface TDSCertificate {
@@ -240,12 +214,6 @@ interface TDSCertificate {
   status: "pending" | "generated" | "issued" | "downloaded";
 }
 
-// Sections a DEDUCTION may be recorded under here — every label above except
-// s.192, for the reason given where this is used. The authoritative list comes
-// from GET /api/tds/sections, which reads domain/tds/section_rates.py; this is
-// the fallback shown until it answers.
-const DEDUCTIBLE_SECTIONS = Object.keys(SECTION_LABELS).filter(s => s !== "192");
-
 const TABS = ["Deductions", "Challans", "Returns", "Certificates"];
 
 // TDS returns (IT Act §200(3)) and certificates (Form 16/16A) are loaded from the
@@ -253,7 +221,7 @@ const TABS = ["Deductions", "Challans", "Returns", "Certificates"];
 
 // ─── Add Deduction Modal ─────────────────────────────────────────────────────
 
-function AddDeductionModal({ clientId, onClose, onAdded }: {
+function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
   // No firmId. The server takes the firm from the caller's own token, which is
   // the point of routing this through the API — a firm_id the browser supplies
   // is a firm_id the browser could get wrong.
@@ -261,8 +229,10 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
   // tds_deductions.client_id is NOT NULL. This page used to insert null, so
   // every deduction ever entered on this form was rejected by the database.
   clientId: string;
+  /** The sections and their names, from the server (`lib/tds/sectionChoices`); empty until it has answered. */
+  choices: SectionChoices;
   onClose: () => void;
-  onAdded: (d: TDSDeduction) => void;
+  onAdded: () => void;
 }) {
   const { toast } = useToast();
   const [partyName, setPartyName] = useState("");
@@ -273,14 +243,11 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
   const [challanNo, setChallanNo] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  // The section list, with its rates and thresholds, from the engine. The seed
-  // is only what shows before that fetch lands (or if it fails), and it EXCLUDES
-  // s.192: section_rates.py holds s.192 as a sentinel because salary is
-  // slab-based, so resolve_tds answers nil for it — a deduction recorded under
-  // s.192 here would save with zero tax and say nothing about it. Payroll
-  // computes s.192. A CHALLAN under s.192 is a different matter and is still
-  // offered below: a salary TDS deposit is a real ITNS 281 payment.
-  const [sections, setSections] = useState<string[]>(DEDUCTIBLE_SECTIONS);
+  // The sections a deduction may be recorded under are the server's (`choices.deductible`): it leaves out s.192, which
+  // section_rates.py holds as a sentinel because salary is slab-based, so resolve_tds answers nil for it and a deduction recorded
+  // under s.192 here would save with zero tax and say nothing about it (payroll computes s.192), and s.206C, which is collected and
+  // not deducted. A CHALLAN under either is a different matter and is still offered in the Add Challan form: a salary TDS deposit
+  // is a real ITNS 281 payment.
   // What the SERVER says this deduction comes to. There is no local answer to
   // fall back on — that was the bug.
   const [quote, setQuote] = useState<Awaited<ReturnType<typeof previewTdsDeduction>> | null>(null);
@@ -294,14 +261,6 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
   // There is no FY or Quarter control any more: letting a CA pick a quarter
   // that contradicts the payment date is how this column ended up with three
   // vocabularies, none of which the return preparer matched.
-  useEffect(() => {
-    let alive = true;
-    listTdsSections()
-      .then((r) => { if (alive && r.sections.length) setSections(r.sections.map((x) => x.section)); })
-      .catch(() => { /* keep the label keys as the fallback list */ });
-    return () => { alive = false; };
-  }, []);
-
   // Read as integer paise rather than multiplied into them. null means the box
   // does not hold an amount.
   const grossPaise = grossRupees ? paiseFromRupeeInput(grossRupees) : null;
@@ -353,7 +312,7 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
       // s.200 credit. This used to be an insert straight into tds_deductions
       // over PostgREST, carrying a figure computed here from a stale table,
       // where rbac() never ran.
-      const saved = await createTdsDeduction({
+      await createTdsDeduction({
         client_id: clientId,
         deductee_name: partyName.trim(),
         deductee_pan: partyPan.trim().toUpperCase() || null,
@@ -362,7 +321,7 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
         transaction_date: paymentDate,
         challan_no: challanNo.trim() || null,
       });
-      onAdded(saved as unknown as TDSDeduction);
+      onAdded();
       toast({ title: "TDS deduction recorded" });
       onClose();
     } catch (e) {
@@ -393,8 +352,9 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">TDS Section</label>
             <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={section} onChange={e => setSection(e.target.value)}>
-              {sections.map(k => (
-                <option key={k} value={k}>{k}{SECTION_LABELS[k] ? ` — ${SECTION_LABELS[k]}` : ""}</option>
+              {choices.deductible.length === 0 && <option value={section}>{section}</option>}
+              {choices.deductible.map(k => (
+                <option key={k} value={k}>{sectionOptionText(k, choices.labels)}</option>
               ))}
             </select>
           </div>
@@ -621,9 +581,11 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
 
 // ─── Add Challan Modal ───────────────────────────────────────────────────────
 
-function AddChallanModal({ clientId, onClose, onAdded }: {
+function AddChallanModal({ clientId, choices, onClose, onAdded }: {
   // A challan is a client's deposit — tds_challans.client_id is NOT NULL.
   clientId: string;
+  /** The sections a challan may be recorded under, and their names, from the server; empty until it has answered. */
+  choices: SectionChoices;
   onClose: () => void;
   onAdded: (c: TDSChallan) => void;
 }) {
@@ -765,8 +727,7 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
                 non-company — that is the challan's major head (0020/0021) and
                 migration 037's inline comment had it the other way round. */}
             <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={minorHead} onChange={e => setMinorHead(e.target.value === "400" ? "400" : "200")}>
-              <option value="200">200 — TDS payable by the deductor</option>
-              <option value="400">400 — TDS regular assessment (against a demand)</option>
+              {(["200", "400"] as const).map(h => <option key={h} value={h}>{MINOR_HEAD_LABEL[h]}</option>)}
             </select>
           </div>
           {/* Without this the refusal above would be silent, which is worse
@@ -796,7 +757,8 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
                 computes it, and the CA records the challan. The deduction form
                 above deliberately excludes it. */}
             <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={section} onChange={e => setSection(e.target.value)}>
-              {Object.entries(SECTION_LABELS).map(([k, v]) => <option key={k} value={k}>{k} — {v}</option>)}
+              {choices.challan.length === 0 && <option value={section}>{section}</option>}
+              {choices.challan.map(c => <option key={c.section} value={c.section}>{sectionOptionText(c.section, choices.labels)}</option>)}
             </select>
           </div>
         </div>
@@ -819,11 +781,19 @@ export default function TDSPage() {
   // NULL, and the backend's tds_repository scopes every read by firm + client.
   const { clients, clientId: selectedClientId, setClientId: setSelectedClientId } = useClientPicker();
   const [activeTab, setActiveTab] = useState(0);
-  const [firmId, setFirmId] = useState("");
   const [deductions, setDeductions] = useState<TDSDeduction[]>([]);
   const [challans, setChallans] = useState<TDSChallan[]>([]);
-  const [returns, setReturns] = useState<TDSReturn[]>([]);
+  // What the server counts over ALL of the client's rows, not over the windows above: the footer under the deductions table, the
+  // Returns tab's Not filed / Filed / Overdue and the Certificates Pending card. null until read (a dash, never a zero).
+  const [deductionTotals, setDeductionTotals] = useState<TdsDeductionTotals | null>(null);
+  const [returnCounts, setReturnCounts] = useState<TdsReturnCounts | null>(null);
+  const [certificateCounts, setCertificateCounts] = useState<TdsCertificateCounts | null>(null);
+  // Whether the server stopped a list at its ceiling ("Showing the latest 2000 …"), by list.
+  const [cut, setCut] = useState<{ deductions: boolean; challans: boolean; certificates: boolean }>({ deductions: false, challans: false, certificates: false });
   const [certificates, setCertificates] = useState<TDSCertificate[]>([]);
+  // The sections and their names, from the server, once for the page.
+  const [choices, setChoices] = useState<SectionChoices>(NO_SECTIONS);
+  const [choicesError, setChoicesError] = useState<string | null>(null);
   // What the challan register says became of this client's deductions (GET /deposit-state): the "not yet deposited" card and each
   // row's Deposit column. The server computes all of it; null means it has not been read, and `depositStateError` says why not.
   const [depositState, setDepositState] = useState<TdsDepositState | null>(null);
@@ -841,6 +811,10 @@ export default function TDSPage() {
   const [showAddChallan, setShowAddChallan] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [tableError, setTableError] = useState(false);
+  // Why each list could not be read, if it could not: an empty list is "none recorded" only when its read succeeded, so an empty tab
+  // says which of the two it is (the banner above names the first failure; this says it where the list would have been).
+  const [listErrors, setListErrors] = useState<{ deductions: string | null; challans: string | null; certificates: string | null }>(
+    { deductions: null, challans: null, certificates: null });
   // The real Postgres error message, distinct from tableError's narrower
   // "the tds_deductions table itself is missing" case — without this, a
   // failed firm-id lookup or tds_returns/tds_certificates query silently
@@ -865,116 +839,98 @@ export default function TDSPage() {
     }
   }
 
+  // The four lists, through the API (`rbac("tds", "read")` and the caller's client assignment run there; they never ran on the
+  // direct reads this replaced), each a window the server orders, cuts and counts. The footer, the two cards and the Returns tab's
+  // split are the server's counts over ALL of the client's rows. Called on a client switch and again after anything that writes, so
+  // that a figure is never the browser's sum of a list it prepended to.
+  const listSeq = useRef(0);
+  async function loadLists(clientId: string, fresh: boolean) {
+    // A modal's or an import's answer that lands after the CA switched client asks for a client that is no longer open: it must not
+    // take a number, because that would throw away the read of the client that is.
+    if (clientId !== openClient.current) return;
+    const seq = ++listSeq.current;
+    if (fresh) {
+      setDeductions([]); setChallans([]); setCertificates([]);
+      setDeductionTotals(null); setReturnCounts(null); setCertificateCounts(null);
+      setCut({ deductions: false, challans: false, certificates: false });
+      setListErrors({ deductions: null, challans: null, certificates: null });
+      setTableError(false); setLoadErrorMessage(null);
+    }
+    setLoading(true);
+    try {
+      const [ded, chal, ret, cert] = await Promise.allSettled([
+        listTdsDeductions(clientId), listTdsChallans(clientId), listTdsReturns(clientId), listTdsCertificates(clientId),
+      ]);
+      if (seq !== listSeq.current) return;
+      const failures: string[] = [];
+      const why = (r: PromiseRejectedResult) => (r.reason instanceof Error ? r.reason.message : "Could not be read.");
+      if (ded.status === "fulfilled") {
+        setDeductions(ded.value.rows as unknown as TDSDeduction[]); setDeductionTotals(ded.value.figures);
+      } else { failures.push(why(ded)); setDeductionTotals(null); }
+      if (chal.status === "fulfilled") setChallans(chal.value.rows as unknown as TDSChallan[]); else failures.push(why(chal));
+      if (ret.status === "fulfilled") setReturnCounts(ret.value.figures); else { failures.push(why(ret)); setReturnCounts(null); }
+      if (cert.status === "fulfilled") {
+        setCertificates(cert.value.rows as unknown as TDSCertificate[]); setCertificateCounts(cert.value.figures);
+      } else { failures.push(why(cert)); setCertificateCounts(null); }
+      setCut({
+        deductions: ded.status === "fulfilled" && ded.value.hasMore,
+        challans: chal.status === "fulfilled" && chal.value.hasMore,
+        certificates: cert.status === "fulfilled" && cert.value.hasMore,
+      });
+      setListErrors({
+        deductions: ded.status === "rejected" ? why(ded) : null,
+        challans: chal.status === "rejected" ? why(chal) : null,
+        certificates: cert.status === "rejected" ? why(cert) : null,
+      });
+      setTableError(failures.length > 0);
+      setLoadErrorMessage(failures.length > 0 ? failures[0] : null);
+    } finally {
+      // Only the read that is still the latest lowers the flag: an older one that finishes late must not clear a newer one's.
+      if (seq === listSeq.current) setLoading(false);
+    }
+  }
+
   useEffect(() => {
     // A client switch starts from nothing, so no card or row can show the previous client's figures while this one is read, and a
     // failure for the previous client does not blank this one's cards.
-    let live = true;
     openClient.current = selectedClientId;
     depositSeq.current += 1;
-    setDeductions([]); setChallans([]); setReturns([]); setCertificates([]);
     setDepositState(null); setDepositStateError(null); setCalendarAnswers(null);
-    setTableError(false); setLoadErrorMessage(null);
-    // client_id is required by the queries below; an empty string would be sent as `client_id=eq.` and rejected.
-    if (!selectedClientId) { setLoading(false); return () => { live = false; }; }
-    setLoading(true);
-    void refreshDepositState(selectedClientId);
-    async function load() {
-      try {
-        let fid = "";
-        try {
-          fid = await getFirmId();
-        } catch (e) {
-          if (live) setLoadErrorMessage(e instanceof Error ? e.message : "Couldn't resolve your firm.");
-        }
-        if (!live) return;
-        setFirmId(fid);
-        if (!fid) { setTableError(true); return; }
-        const sb = getSupabaseClient();
-        // A client paying a hundred vendors a month passes 1,000 deductions in ten months; an unpaged read stopped there
-        // without a word and every total on this tab was short by what fell past it.
-        const { data, error } = await selectAll(() => sb
-          .from("tds_deductions")
-          .select("*")
-          .eq("firm_id", fid)
-          .eq("client_id", selectedClientId)
-          .order("transaction_date", { ascending: false })
-          .order("id"));
-        if (!live) return;
-        if (error) {
-          setTableError(true);
-          setLoadErrorMessage(prev => prev ?? error.message);
-        } else {
-          setDeductions((data ?? []) as TDSDeduction[]);
-        }
-        // Challans, returns and certificates for THIS CLIENT. All three tables
-        // have client_id NOT NULL (migration 037) and the deductions above are
-        // already client-scoped; reading these firm-wide meant switching the
-        // client picker changed one table on the screen and not the other
-        // three, so the totals described no single client.
-        //
-        // Challans were not loaded AT ALL — `challans` was initialised empty
-        // and only ever appended to by the add modal, which is half of why the
-        // tab lost everything on reload (TDS-15).
-        const [chalRes, retRes, certRes] = await Promise.all([
-          sb.from("tds_challans").select("*").eq("firm_id", fid)
-            .eq("client_id", selectedClientId).order("payment_date", { ascending: false }),
-          sb.from("tds_returns").select("*").eq("firm_id", fid)
-            .eq("client_id", selectedClientId).order("due_date", { ascending: false }),
-          sb.from("tds_certificates").select("*").eq("firm_id", fid)
-            .eq("client_id", selectedClientId).order("created_at", { ascending: false }),
-        ]);
-        if (!live) return;
-        if (chalRes.error) {
-          setTableError(true);
-          setLoadErrorMessage(prev => prev ?? chalRes.error!.message);
-        } else {
-          setChallans((chalRes.data ?? []) as unknown as TDSChallan[]);
-        }
-        if (retRes.error) {
-          setTableError(true);
-          setLoadErrorMessage(prev => prev ?? retRes.error!.message);
-        } else {
-          setReturns((retRes.data ?? []) as unknown as TDSReturn[]);
-        }
-        if (certRes.error) {
-          setTableError(true);
-          setLoadErrorMessage(prev => prev ?? certRes.error!.message);
-        } else {
-          setCertificates((certRes.data ?? []) as unknown as TDSCertificate[]);
-        }
-      } finally {
-        if (live) setLoading(false);
-      }
+    // client_id is required by the reads below; an empty string would be refused.
+    if (!selectedClientId) {
+      listSeq.current += 1;
+      setDeductions([]); setChallans([]); setCertificates([]);
+      setDeductionTotals(null); setReturnCounts(null); setCertificateCounts(null);
+      setListErrors({ deductions: null, challans: null, certificates: null });
+      setTableError(false); setLoadErrorMessage(null); setLoading(false);
+      return;
     }
-    load();
-    return () => { live = false; };
+    void refreshDepositState(selectedClientId);
+    void loadLists(selectedClientId, true);
+    return () => { listSeq.current += 1; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId]);
 
-  // Summary stats — all integer paise arithmetic
-  const totalTDSPaise = deductions.reduce((s, d) => s + d.tds_paise, 0);
+  // The section names and the sections a deduction or a challan may be recorded under, from the server, once.
+  useEffect(() => {
+    let alive = true;
+    listTdsSections()
+      .then((r) => { if (alive) { setChoices(sectionChoices(r)); setChoicesError(null); } })
+      .catch((e) => { if (alive) setChoicesError(e instanceof Error ? e.message : "Could not read the TDS sections."); });
+    return () => { alive = false; };
+  }, []);
+
   // The answer counts only for the client that is open: it is cleared on a switch, and this holds the cards and the column to it
   // if an answer for another one were ever still in state.
   const depositForClient = depositState && depositState.client_id === selectedClientId ? depositState : null;
-  // Against the values the CHECK constraints actually store. Every one of
-  // these compared to a capitalised string no row can hold, so all three read
-  // zero however much work was outstanding (TDS-15).
-  const pendingReturns = returns.filter(r => !FILED.has(r.status)).length;
-  const pendingCerts = certificates.filter(c => c.status === "pending" || c.status === "generated").length;
-
-  // Not filed / Filed / Overdue. Overdue is DERIVED — tds_returns has no such
-  // status, and a return is overdue when it is unfiled and its Rule 31A due
-  // date has passed. IST, because a due date is a date in India: comparing
-  // against the browser's local midnight would call a return overdue several
-  // hours early for a CA travelling, and several hours late for one at home.
-  const returnCounts = useMemo(() => {
-    const today = todayIstISO();
-    const unfiled = returns.filter(r => !FILED.has(r.status));
-    return [
-      { label: "Not filed", n: unfiled.length },
-      { label: "Filed", n: returns.length - unfiled.length },
-      { label: "Overdue", n: unfiled.filter(r => r.due_date && r.due_date < today).length },
-    ];
-  }, [returns]);
+  // Every count and total on this screen is the server's (`domain/tds/screen_counts`), taken over all of the client's rows and not
+  // over the window a list shows. Overdue is derived there: `tds_returns` stores no such status, and a return is overdue when it is
+  // not filed and its Rule 31A due date has passed, on the Indian day.
+  const returnTabCounts = returnCounts ? [
+    { label: "Not filed", n: returnCounts.not_filed },
+    { label: "Filed", n: returnCounts.filed },
+    { label: "Overdue", n: returnCounts.overdue },
+  ] : null;
 
   // ── Deductions DataTable columns — money in integer paise, aligned right ────
   const deductionColumns: Column<TDSDeduction>[] = useMemo(() => [
@@ -992,7 +948,7 @@ export default function TDSPage() {
       render: (d) => (
         <>
           <span className="text-xs font-mono font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{d.section}</span>
-          <p className="text-3xs text-ps-hint mt-0.5">{SECTION_LABELS[d.section]}</p>
+          <p className="text-3xs text-ps-hint mt-0.5">{choices.labels[d.section]}</p>
         </>
       ),
     },
@@ -1065,18 +1021,18 @@ export default function TDSPage() {
         );
       },
     },
-  ], [depositForClient, depositStateError]);
+  ], [depositForClient, depositStateError, choices.labels]);
 
   const deductionFilters: FilterDef<TDSDeduction>[] = useMemo(() => [
     {
       key: "section", label: "Section", type: "select", accessor: (d) => d.section,
-      options: Object.entries(SECTION_LABELS).map(([k, v]) => ({ value: k, label: `${k} — ${v}` })),
+      options: choices.filterable.map((k) => ({ value: k, label: sectionOptionText(k, choices.labels) })),
     },
     {
       key: "quarter", label: "Quarter", type: "select", accessor: (d) => d.quarter,
       options: QUARTERS.map((q) => ({ value: q, label: QUARTER_LABEL[q] })),
     },
-  ], []);
+  ], [choices]);
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
@@ -1110,6 +1066,12 @@ export default function TDSPage() {
             )}
           </p>
         </div>
+      )}
+
+      {choicesError && (
+        <Callout tone="attention" title="The TDS sections could not be read">
+          {choicesError} The section lists in the forms below stay empty until they can be.
+        </Callout>
       )}
 
       {/* What recording a challan did to the compliance calendar, in the server's words. The live region is always on the page, so
@@ -1156,13 +1118,13 @@ export default function TDSPage() {
           },
           {
             icon: <Calendar className="w-4 h-4 text-red-600" />, bg: "bg-state-problem-surface", label: "Returns Due",
-            value: !selectedClientId || loading || tableError ? "—" : String(pendingReturns),
-            sub: !selectedClientId ? "Choose a client" : tableError ? "Could not be read" : loading ? "Reading" : "24Q/26Q/27Q", note: null as string | null,
+            value: !selectedClientId || !returnCounts ? "—" : String(returnCounts.not_filed),
+            sub: !selectedClientId ? "Choose a client" : !returnCounts ? (loading ? "Reading" : "Could not be read") : "24Q/26Q/27Q", note: null as string | null,
           },
           {
             icon: <Award className="w-4 h-4 text-purple-600" />, bg: "bg-purple-50", label: "Certificates Pending",
-            value: !selectedClientId || loading || tableError ? "—" : String(pendingCerts),
-            sub: !selectedClientId ? "Choose a client" : tableError ? "Could not be read" : loading ? "Reading" : "Form 16/16A", note: null as string | null,
+            value: !selectedClientId || !certificateCounts ? "—" : String(certificateCounts.pending),
+            sub: !selectedClientId ? "Choose a client" : !certificateCounts ? (loading ? "Reading" : "Could not be read") : "Form 16/16A", note: null as string | null,
           },
         ].map(c => (
           <div key={c.label} className="bg-white rounded-xl border border-ps-border p-4">
@@ -1243,6 +1205,7 @@ export default function TDSPage() {
             filters={deductionFilters}
             getRowId={(d) => d.id}
             loading={loading}
+            error={listErrors.deductions}
             searchPlaceholder="Search by party name or PAN…"
             initialSort={{ key: "transaction_date", dir: "desc" }}
             exportFilename="tds-deductions"
@@ -1257,10 +1220,12 @@ export default function TDSPage() {
             }
           />
 
-          {deductions.length > 0 && (
+          <ListWindowNotice hasMore={cut.deductions} what={`the latest ${deductions.length} deductions`} limit={deductions.length}
+            maxLimit={deductions.length} elsewhere="The totals below are over all of this client's deductions." />
+          {deductionTotals && deductionTotals.count > 0 && (
             <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 px-1 text-xs text-ps-label">
-              <span>Total Gross: <span className="font-semibold text-ps-ink">{formatPaise(deductions.reduce((s, d) => s + d.payment_amount_paise, 0))}</span></span>
-              <span>Total of the TDS Amount column: <span className="font-semibold text-ps-ink">{formatPaise(totalTDSPaise)}</span></span>
+              <span>Total Gross: <span className="font-semibold text-ps-ink">{formatPaise(deductionTotals.payment_amount_paise)}</span></span>
+              <span>Total of the TDS Amount column: <span className="font-semibold text-ps-ink">{formatPaise(deductionTotals.tds_paise)}</span></span>
             </div>
           )}
         </div>
@@ -1281,7 +1246,11 @@ export default function TDSPage() {
               <Plus className="w-3.5 h-3.5" /> Add Challan
             </button>
           </div>
-          {challans.length === 0 ? (
+          <ListWindowNotice hasMore={cut.challans} what={`the latest ${challans.length} challans`} limit={challans.length}
+            maxLimit={challans.length} />
+          {challans.length === 0 && (loading || listErrors.challans) ? (
+            <ListNotRead loading={loading} error={listErrors.challans} what="challans" />
+          ) : challans.length === 0 ? (
             <EmptyState
               className="py-10"
               title="No challans added yet"
@@ -1298,7 +1267,7 @@ export default function TDSPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-ps-border">
-                    {["BSR Code", "Payment Date", "Challan No.", "Amount", "Period", "FY", "Section", "Status"].map(h => (
+                    {["BSR Code", "Payment Date", "Challan No.", "Amount", "Period", "FY", "Section", "Minor head"].map(h => (
                       <th key={h} className="text-left text-xs font-medium text-ps-hint px-4 py-3">{h}</th>
                     ))}
                   </tr>
@@ -1316,11 +1285,7 @@ export default function TDSPage() {
                       <td className="px-4 py-3 text-xs text-ps-label">{QUARTER_LABEL[c.quarter] ?? c.quarter}</td>
                       <td className="px-4 py-3 text-xs text-ps-label">{c.financial_year}</td>
                       <td className="px-4 py-3 text-xs font-mono text-blue-700">{c.section ?? "—"}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLE[c.status] ?? ""}`}>
-                          {STATUS_LABEL[c.status] ?? c.status}
-                        </span>
-                      </td>
+                      <td className="px-4 py-3 text-xs text-ps-label">{minorHeadLabel(c.minor_head)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1357,9 +1322,9 @@ export default function TDSPage() {
                 overdue when it is not filed and its Rule 31A due date has
                 passed. Counting r.status === "Overdue" could only ever be 0. */}
             <div className="px-5 py-4 grid grid-cols-3 gap-4 text-center">
-              {returnCounts.map(({ label, n }) => (
+              {(returnTabCounts ?? ["Not filed", "Filed", "Overdue"].map((label) => ({ label, n: null as number | null }))).map(({ label, n }) => (
                 <div key={label}>
-                  <p className="text-2xl font-semibold text-ps-ink">{n}</p>
+                  <p className="text-2xl font-semibold text-ps-ink">{n === null ? "—" : n}</p>
                   <p className="text-xs text-ps-label mt-0.5">{label}</p>
                 </div>
               ))}
@@ -1379,6 +1344,8 @@ export default function TDSPage() {
             <h2 className="text-sm font-semibold text-ps-ink">Form 16A Certificates</h2>
             <p className="text-xs text-ps-hint mt-0.5">TDS certificates issued to deductees — IT Act Section 203</p>
           </div>
+          <ListWindowNotice hasMore={cut.certificates} what={`the latest ${certificates.length} certificates`} limit={certificates.length}
+            maxLimit={certificates.length} />
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -1413,7 +1380,10 @@ export default function TDSPage() {
                     </td>
                   </tr>
                 ))}
-                {certificates.length === 0 && (
+                {certificates.length === 0 && (loading || listErrors.certificates) && (
+                  <tr><td colSpan={7}><ListNotRead loading={loading} error={listErrors.certificates} what="certificates" /></td></tr>
+                )}
+                {certificates.length === 0 && !loading && !listErrors.certificates && (
                   <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-ps-hint">
                     No certificates for this client yet. Generate a draft from the client&apos;s Compliance → TDS tab.
                   </td></tr>
@@ -1424,19 +1394,20 @@ export default function TDSPage() {
         </div>
       )}
 
-      {showAddDeduction && firmId && (
-        <AddDeductionModal clientId={selectedClientId} onClose={() => setShowAddDeduction(false)} onAdded={d => { setDeductions(prev => [d, ...prev]); void refreshDepositState(selectedClientId, true); }} />
+      {showAddDeduction && selectedClientId && (
+        <AddDeductionModal clientId={selectedClientId} choices={choices} onClose={() => setShowAddDeduction(false)}
+          onAdded={() => { void loadLists(selectedClientId, false); void refreshDepositState(selectedClientId, true); }} />
       )}
       {showAddChallan && selectedClientId && (
-        <AddChallanModal clientId={selectedClientId} onClose={() => setShowAddChallan(false)}
+        <AddChallanModal clientId={selectedClientId} choices={choices} onClose={() => setShowAddChallan(false)}
           onAdded={c => {
-            setChallans(prev => [c, ...prev]);
+            void loadLists(selectedClientId, false);
             setCalendarAnswers(c.compliance_obligations ?? null);
             void refreshDepositState(selectedClientId, true);
           }} />
       )}
 
-      {showImport && firmId && (
+      {showImport && selectedClientId && (
         <CsvImportModal
           title="Import TDS Deductions from CSV"
           columns={TDS_IMPORT_COLUMNS}
@@ -1484,9 +1455,7 @@ export default function TDSPage() {
               }
             }
             if (imported > 0) {
-              const sb2 = getSupabaseClient();
-              const { data } = await selectAll(() => sb2.from("tds_deductions").select("*").eq("firm_id", firmId).eq("client_id", selectedClientId).order("transaction_date", { ascending: false }).order("id"));
-              if (data) setDeductions(data as TDSDeduction[]);
+              void loadLists(selectedClientId, false);
               void refreshDepositState(selectedClientId, true);
             }
             return { imported, errors };

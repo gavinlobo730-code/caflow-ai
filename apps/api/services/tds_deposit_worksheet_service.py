@@ -43,7 +43,10 @@ def read_register(db, firm_id: str, client_id: str, window: dict) -> tuple[list,
         lambda: (db.table("tds_deductions")
                  .select("id, section, transaction_date, challan_date, "
                          "status, deductee_name, payment_amount_paise, "
-                         "tds_paise, surcharge_paise, cess_paise")
+                         "tds_paise, surcharge_paise, cess_paise, "
+                         # The document each row came from: the order of two same-day deductions is by it, as the statement's
+                         # (`challan_mapping.source_id_of`), so a read that leaves it out orders them by the row's own id.
+                         "purchase_bill_id, purchase_payment_id")
                  .eq("firm_id", firm_id).eq("client_id", client_id)
                  .gte("transaction_date", window["quarter_start"])
                  .lte("transaction_date", window["month_end"].isoformat())),

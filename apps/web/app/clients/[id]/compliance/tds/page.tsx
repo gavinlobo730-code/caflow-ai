@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { arrayOrEmpty } from "@/lib/api/shape";
+import { readWindow } from "@/lib/lists/readWindow";
+import { TDS_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
+import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 // The year picker comes from the clock, never a literal list (CLAUDE.md).
@@ -17,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { minorHeadLabel } from "@/lib/tds/minorHead";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -36,6 +39,27 @@ async function apiFetch(path: string, opts?: RequestInit) {
     },
   });
   return res.json();
+}
+
+/**
+ * One of a client's TDS lists as the API serves it: a window `{ <rows>, has_more, limit, max_limit }`, latest first, asked for at the
+ * server's ceiling. A refusal or a payload this screen cannot read throws with a sentence, so that the tab says it could not read
+ * the list and never shows an empty one (`arrayOrEmpty` over a window would have read every list as "no rows").
+ */
+const TDS_LIST_PATH = {
+  deductions: "/api/tds-workspace/deductions",
+  challans: "/api/tds-workspace/challans",
+  returns: "/api/tds-workspace/returns",
+  certificates: "/api/tds-workspace/certificates",
+} as const;
+
+async function loadTdsWindow(clientId: string, which: keyof typeof TDS_LIST_PATH):
+    Promise<{ rows: Record<string, unknown>[]; hasMore: boolean }> {
+  const r = await apiFetch(`${TDS_LIST_PATH[which]}?client_id=${encodeURIComponent(clientId)}&limit=${TDS_REGISTER_WINDOW_MAX}`);
+  if (!r.success) throw new Error(r.error ?? `Couldn't load TDS ${which}.`);
+  const win = readWindow<Record<string, unknown>>(r.data, which, TDS_REGISTER_WINDOW_MAX);
+  if (!win) throw new Error(`The TDS ${which} came back in a form this screen cannot read.`);
+  return { rows: win.rows, hasMore: win.hasMore };
 }
 
 function rupees(paise: number) {
@@ -77,7 +101,6 @@ interface ChallanGap {
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-ps-muted text-ps-body",
-  deposited: "bg-state-ready-surface text-state-ready",
   prepared: "bg-state-attention-surface text-state-attention",
   ca_approved: "bg-state-ready-surface text-state-ready",
   filed: "bg-state-ready-surface text-state-ready",
@@ -90,7 +113,6 @@ const STATUS_COLORS: Record<string, string> = {
 // been taught yet.
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pending",
-  deposited: "Deposited",
   prepared: "Prepared",
   ca_approved: "CA Approved",
   filed: "Filed",
@@ -189,15 +211,14 @@ function DeductionsTab({ clientId }: { clientId: string }) {
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no deductions recorded".
   const [loadError, setLoadError] = useState<string | null>(null);
+  // The server stopped the list at its ceiling and said so.
+  const [more, setMore] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
-    apiFetch(`/api/tds-workspace/deductions?client_id=${clientId}`)
-      .then((r) => {
-        if (r.success) { setRows(arrayOrEmpty(r.data)); setLoadError(null); }
-        else { setRows([]); setLoadError(r.error ?? "Couldn't load TDS deductions."); }
-      })
-      .catch(() => { setRows([]); setLoadError("Couldn't load TDS deductions. Please try again."); })
+    loadTdsWindow(clientId, "deductions")
+      .then(({ rows, hasMore }) => { setRows(rows); setMore(hasMore); setLoadError(null); })
+      .catch((e) => { setRows([]); setMore(false); setLoadError(e instanceof Error ? e.message : "Couldn't load TDS deductions. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -206,6 +227,7 @@ function DeductionsTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4">
       <h3 className="font-medium">TDS Deductions Register</h3>
+      <ListWindowNotice hasMore={more} what={`the latest ${rows.length} deductions`} limit={rows.length} maxLimit={rows.length} />
       {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
@@ -258,6 +280,8 @@ function ChallansTab({ clientId }: { clientId: string }) {
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no challans yet".
   const [loadError, setLoadError] = useState<string | null>(null);
+  // The server stopped the list at its ceiling and said so.
+  const [more, setMore] = useState(false);
   const [showNew, setShowNew] = useState(false);
   // amount in RUPEES, converted at the boundary — a CA depositing ₹1,24,500 of
   // TDS should type 124500, not 12450000.
@@ -265,12 +289,9 @@ function ChallansTab({ clientId }: { clientId: string }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    apiFetch(`/api/tds-workspace/challans?client_id=${clientId}`)
-      .then((r) => {
-        if (r.success) { setRows(arrayOrEmpty(r.data)); setLoadError(null); }
-        else { setRows([]); setLoadError(r.error ?? "Couldn't load TDS challans."); }
-      })
-      .catch(() => { setRows([]); setLoadError("Couldn't load TDS challans. Please try again."); })
+    loadTdsWindow(clientId, "challans")
+      .then(({ rows, hasMore }) => { setRows(rows); setMore(hasMore); setLoadError(null); })
+      .catch((e) => { setRows([]); setMore(false); setLoadError(e instanceof Error ? e.message : "Couldn't load TDS challans. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -332,6 +353,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
+      <ListWindowNotice hasMore={more} what={`the latest ${rows.length} challans`} limit={rows.length} maxLimit={rows.length} />
       {loading ? <TableSkeleton cols={7} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
@@ -342,7 +364,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
               <th className="px-3 py-2 border-b">Section</th>
               <th className="px-3 py-2 border-b">Amount</th>
               <th className="px-3 py-2 border-b">Quarter</th>
-              <th className="px-3 py-2 border-b">Status</th>
+              <th className="px-3 py-2 border-b">Minor head</th>
             </tr>
           </thead>
           <tbody>
@@ -354,11 +376,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2">§{r.section as string}</td>
                 <td className="px-3 py-2">{rupees((r.total_paise as number) ?? 0)}</td>
                 <td className="px-3 py-2">{r.quarter as string}</td>
-                <td className="px-3 py-2">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status as string] ?? ""}`}>
-                    {STATUS_LABEL[r.status as string] ?? (r.status as string)}
-                  </span>
-                </td>
+                <td className="px-3 py-2 text-xs text-ps-label">{minorHeadLabel(r.minor_head)}</td>
               </tr>
             ))}
             {loadError ? (
@@ -395,6 +413,8 @@ function ReturnsTab({ clientId }: { clientId: string }) {
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no TDS returns yet".
   const [loadError, setLoadError] = useState<string | null>(null);
+  // The server stopped the list at its ceiling and said so.
+  const [more, setMore] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ return_type: "26Q", quarter: "Q1", financial_year: "" });
 
@@ -460,12 +480,9 @@ function ReturnsTab({ clientId }: { clientId: string }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    apiFetch(`/api/tds-workspace/returns?client_id=${clientId}`)
-      .then((r) => {
-        if (r.success) { setRows(arrayOrEmpty(r.data)); setLoadError(null); }
-        else { setRows([]); setLoadError(r.error ?? "Couldn't load TDS returns."); }
-      })
-      .catch(() => { setRows([]); setLoadError("Couldn't load TDS returns. Please try again."); })
+    loadTdsWindow(clientId, "returns")
+      .then(({ rows, hasMore }) => { setRows(rows); setMore(hasMore); setLoadError(null); })
+      .catch((e) => { setRows([]); setMore(false); setLoadError(e instanceof Error ? e.message : "Couldn't load TDS returns. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -741,6 +758,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
+      <ListWindowNotice hasMore={more} what={`the latest ${rows.length} returns`} limit={rows.length} maxLimit={rows.length} />
       {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
@@ -943,6 +961,8 @@ function CertificatesTab({ clientId }: { clientId: string }) {
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no certificates generated".
   const [loadError, setLoadError] = useState<string | null>(null);
+  // The server stopped the list at its ceiling and said so.
+  const [more, setMore] = useState(false);
   const [showNew, setShowNew] = useState(false);
   // "16A", not "Form 16A". migration 037's CHECK on tds_certificates accepts
   // '16','16A','16B','16C' and nothing else, so every draft this screen ever
@@ -955,12 +975,9 @@ function CertificatesTab({ clientId }: { clientId: string }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    apiFetch(`/api/tds-workspace/certificates?client_id=${clientId}`)
-      .then((r) => {
-        if (r.success) { setRows(arrayOrEmpty(r.data)); setLoadError(null); }
-        else { setRows([]); setLoadError(r.error ?? "Couldn't load TDS certificates."); }
-      })
-      .catch(() => { setRows([]); setLoadError("Couldn't load TDS certificates. Please try again."); })
+    loadTdsWindow(clientId, "certificates")
+      .then(({ rows, hasMore }) => { setRows(rows); setMore(hasMore); setLoadError(null); })
+      .catch((e) => { setRows([]); setMore(false); setLoadError(e instanceof Error ? e.message : "Couldn't load TDS certificates. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -1047,6 +1064,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
+      <ListWindowNotice hasMore={more} what={`the latest ${rows.length} certificates`} limit={rows.length} maxLimit={rows.length} />
       {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
