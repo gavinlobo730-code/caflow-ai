@@ -141,8 +141,14 @@ way.
 
 Production carries `( SELECT auth.uid() AS uid)` in some policy expressions
 where the migrations carry `auth.uid()` — the Supabase linter's initplan
-rewrite, same predicate. `GUARD_SQL` folds it back before hashing, on both
+rewrite, same predicate — and, since migration 525, every policy that asked who
+is calling (`get_my_firm_id()`, `get_my_role()`, `get_my_user_id()`,
+`my_internal_client_id()`, `my_permission(...)`, `my_role_at_least(...)`) carries
+the same wrapper. `GUARD_SQL` folds all of them back before hashing, on both
 sides, so a refresh taken with an older `GUARD_SQL` would NOT compare cleanly.
+The 2026-09-03 snapshot predates the wider fold: `client_health_scores` and
+`client_health_overrides` (`firm_isolation`, written wrapped by migration 046)
+show as informational `policies_differ` lines until it is captured again.
 Always capture with the query the script exports today.
 
 ## Refreshing
