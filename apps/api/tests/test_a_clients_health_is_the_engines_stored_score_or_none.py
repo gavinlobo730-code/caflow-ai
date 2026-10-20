@@ -56,7 +56,7 @@ def test_a_score_is_a_whole_number_and_zero_is_a_score_not_an_absence():
 
 def test_a_row_for_a_client_that_is_not_in_the_list_is_ignored_and_ids_compare_as_text():
     got = attach([{"id": 7}], [{"client_id": "7", "overall_score": 50}, {"client_id": "elsewhere", "overall_score": 5}])
-    assert got == [{"id": 7, "health_score": 50}]
+    assert got == [{"id": 7, "health_score": 50, "health_critical": False, "health_at_risk": False}]
 
 
 # ── the repository ───────────────────────────────────────────────────────────
@@ -171,18 +171,19 @@ CLIENTS = [{"id": "c1", "status": "active", "health_score": 100}, {"id": "c2", "
 
 
 def test_the_assistants_at_risk_and_critical_counts_come_from_the_stored_scores(monkeypatch):
-    svc = _assistant(monkeypatch, CLIENTS, [{"id": "c1", "health_score": 34}, {"id": "c2", "health_score": 55}])
+    svc = _assistant(monkeypatch, CLIENTS, [{"id": "c1", "health_score": 34}, {"id": "c2", "health_score": 45}])
     context = svc._build_context(FIRM, "global", None, None)
     assert "CRITICAL CLIENTS: 1" in context and "AT-RISK CLIENTS: 2" in context, context
     # c3 carries the column's 100 and was never scored: it is neither at risk nor critical, and it is not called healthy either.
 
 
-def test_the_boundaries_are_strict_under_forty_is_critical_and_under_sixty_is_at_risk(monkeypatch):
-    svc = _assistant(monkeypatch, CLIENTS, [{"id": "c1", "health_score": 40}, {"id": "c2", "health_score": 60},
-                                            {"id": "c3", "health_score": 39}])
+def test_the_boundaries_are_the_engines_34_is_critical_35_to_49_is_at_risk_and_50_is_neither(monkeypatch):
+    clients = [{"id": f"c{i}", "status": "active"} for i in range(4)]
+    svc = _assistant(monkeypatch, clients, [{"id": "c0", "health_score": 34}, {"id": "c1", "health_score": 35},
+                                            {"id": "c2", "health_score": 49}, {"id": "c3", "health_score": 50}])
     context = svc._build_context(FIRM, "global", None, None)
-    assert "CRITICAL CLIENTS: 1" in context, "39 is critical; 40 is not"
-    assert "AT-RISK CLIENTS: 2" in context, "39 and 40 are under 60; 60 is not"
+    assert "CRITICAL CLIENTS: 1" in context, "34 is critical; 35 is not"
+    assert "AT-RISK CLIENTS: 3" in context, "34, 35 and 49 are flagged (the critical one is counted in at-risk, as it always was); 50 is not"
 
 
 def test_a_clients_own_status_still_counts_it_at_risk_or_critical_with_no_score(monkeypatch):

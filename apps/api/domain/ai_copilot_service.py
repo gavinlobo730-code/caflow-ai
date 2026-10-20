@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from core.ist_clock import ist_now, ist_today
 from domain.ai import gateway, groq_text, untrusted
+from domain.health import scoring
 from domain.practice import compliance_overdue
 
 _logger = logging.getLogger("caflow.ai_copilot")
@@ -74,10 +75,10 @@ def _health_words(score):
     return "not yet scored" if score is None else f"{score}/100"
 
 
-def _score_below(client, limit):
-    """Whether the client has a stored health score and it is under `limit`. A client not yet scored is neither."""
-    score = client.get("health_score")
-    return score is not None and score < limit
+def _flagged(client, *verdicts):
+    """Whether the health engine called the client any of `verdicts` (`"health_critical"`, `"health_at_risk"`). A client not yet scored
+    has no verdict and is neither: the absence of a score is not a finding."""
+    return any(client.get(v) is True for v in verdicts)
 
 
 def _get_compliance_records_repo():
@@ -310,14 +311,16 @@ class AICopilotService:
                 scored = {str(c.get("id")): c.get("health_score") for c in clients}
                 total = len(clients)
                 active = len([c for c in clients if c.get("status") == "active"])
+                # The engine's verdict, the clients the Health pages list as critical and at risk (this counted under 60 and under 40
+                # of its own). AT-RISK includes the critical ones, as it always did.
                 at_risk = len([
                     c for c in clients
-                    if _score_below(c, 60)
+                    if _flagged(c, "health_critical", "health_at_risk")
                     or c.get("status") in ("at_risk", "critical")
                 ])
                 critical = len([
                     c for c in clients
-                    if _score_below(c, 40)
+                    if _flagged(c, "health_critical")
                     or c.get("status") == "critical"
                 ])
                 lines += [
@@ -484,7 +487,7 @@ class AICopilotService:
         q = question.lower()
         if "risk" in q:
             return (
-                "Based on current data, clients with health scores below 60 or overdue GSTR-3B/TDS "
+                "Based on current data, clients the health engine marks at risk or critical, or with overdue GSTR-3B/TDS "
                 "filings are at elevated risk. Review the compliance calendar and generate individual "
                 "client risk summaries. Interest accrues at 18% p.a. under Section 50 CGST Act."
             )
@@ -504,7 +507,7 @@ class AICopilotService:
             return (
                 "Client health is scored across 7 dimensions: compliance, accounting, documents, "
                 "responsiveness, relationship risk, financial risk, and engagement. "
-                "Scores below 60 are at-risk; below 40 are critical."
+                f"A client scoring {scoring.CRITICAL_BELOW} to {scoring.AT_RISK_BELOW - 1} is At Risk and under {scoring.CRITICAL_BELOW} is Critical."
             )
         if "onboarding" in q:
             return (

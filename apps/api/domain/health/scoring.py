@@ -78,6 +78,33 @@ def grade(score: int) -> str:
     return GRADE_BANDS[-1][1]
 
 
+def _floor_of(band: str) -> int:
+    return next(floor for floor, name in GRADE_BANDS if name == band)
+
+
+#: The two verdicts the product draws a line under, derived from the bands so they cannot drift from them: a client is CRITICAL
+#: below the floor of "At Risk" (or when a hard override says so), and AT RISK from there to the floor of "Needs Attention".
+#: "Critical clients" and "At-risk clients" on the Health pages, the executive dashboard's counts, the assistant's counts, the
+#: memory profile and the churn signals all mean exactly this and ask `is_critical` / `is_at_risk`, or the flags stored from them.
+#: (Other graded numbers in the product are other measures with their own words and lines: the relationship health in
+#: `services/intelligence_service` and the compliance risk level in `domain/compliance_record_service`.)
+CRITICAL_BELOW: int = _floor_of("At Risk")
+AT_RISK_BELOW: int = _floor_of("Needs Attention")
+
+
+def is_critical(score: int, hard_override: object = None) -> bool:
+    """Critical: the score is under the floor of "At Risk", or a hard override (a registration cancelled, say) says so. The engine
+    also clamps the score of an overridden client to 34, so today the two agree; the argument is kept so that the verdict does not
+    depend on that clamp staying."""
+    return score < CRITICAL_BELOW or hard_override is not None
+
+
+def is_at_risk(score: int) -> bool:
+    """At risk: from the floor of "At Risk" up to, not including, the floor of "Needs Attention". A critical client is not also at risk
+    on a screen that lists both (the Health pages subtract), so this answers only the score's own band."""
+    return CRITICAL_BELOW <= score < AT_RISK_BELOW
+
+
 def weighted_score(dimension_scores: dict[str, int]) -> int:
     """The composite from the seven dimensions.
 

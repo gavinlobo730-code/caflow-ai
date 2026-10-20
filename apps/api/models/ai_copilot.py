@@ -185,7 +185,7 @@ GLOBAL_SUGGESTED_QUESTIONS = [
     "Which clients have overdue tasks?",
     "Show onboarding bottlenecks.",
     "Which workflows have failed recently?",
-    "Show clients with health score below 60.",
+    "Show clients the health engine marks at risk or critical.",
     "What TDS returns are due this quarter?",
     "Summarize firm compliance status.",
 ]

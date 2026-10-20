@@ -49,16 +49,9 @@ from typing import Iterable, Optional
 #: older version is treated as absent. 3: `compliance_failures` counts the obligations that are late by their date (it asked for a
 #: stored word nothing writes, so every cached 0 from before is a number the screen must not serve). 4: a client's health is the health engine's
 #: stored score (`domain/health/client_scores`) or none; it was `clients.health_score`, which defaults to 100 and which nothing writes, so a
-#: cached row from before says every client is healthy and the firm's ring says 100.
-DASHBOARD_VERSION = 4
-
-#: The bands the page has always drawn. NOT `domain.health.scoring.GRADE_BANDS`:
-#: that is a five-band ladder for a client's own badge and this is a three-way
-#: split of the book, so the two answer different questions — recorded because
-#: `test_one_health_vocabulary` pins the ring's LABELS to the engine and these
-#: counts to nothing.
-CRITICAL_BELOW = 40
-AT_RISK_BELOW = 70
+#: cached row from before says every client is healthy and the firm's ring says 100. 5: critical and at risk are the health engine's own verdict
+#: (`domain/health/scoring`), the same clients the Health pages list, and no longer a split of the book at 40 and 70 of this module's own.
+DASHBOARD_VERSION = 5
 
 #: Compliance statuses that mean the obligation is done.
 FILED = ("Filed", "Completed")
@@ -80,21 +73,25 @@ def score_of(client: dict) -> Optional[int]:
 def client_risk(clients: Iterable[dict]) -> dict:
     """Critical / at-risk / healthy, and the ones nobody has scored.
 
-    Each client lands in ONE bucket. A recorded status of `critical` or `at_risk`
-    wins over the score (a CA marked it), then the score decides. A client with
+    CRITICAL AND AT RISK ARE THE ENGINE'S VERDICT, not a threshold of this module's: the clients the Health pages list under those two
+    words (`health_critical` / `health_at_risk`, `domain/health/client_scores`). This split the book at 40 and 70 while the engine said
+    35 and 50, so a client scoring 38 was "At Risk" on its own Health page and counted critical here. "Healthy" is what is left of the
+    scored clients: the engine flagged neither (its bands Healthy, Good and Needs Attention).
+
+    Each client lands in ONE bucket, and the more severe of the recorded status (`critical` or `at_risk`, which a CA marked) and the
+    engine's verdict decides it. A client with
     neither a score nor a risk status is `unscored` — not healthy. The old code
     counted them healthy by subtraction (`len(clients) - critical - at_risk`),
     which made "no information" read as "no problem".
     """
     critical = at_risk = healthy = unscored = 0
     for c in clients:
-        s = score_of(c)
         status = c.get("status")
-        if status == "critical" or (s is not None and s < CRITICAL_BELOW):
+        if status == "critical" or c.get("health_critical") is True:
             critical += 1
-        elif status == "at_risk" or (s is not None and s < AT_RISK_BELOW):
+        elif status == "at_risk" or c.get("health_at_risk") is True:
             at_risk += 1
-        elif s is None:
+        elif score_of(c) is None:
             unscored += 1
         else:
             healthy += 1
@@ -111,18 +108,31 @@ def average_health(clients: Iterable[dict]) -> Optional[int]:
 
 
 def churn_signals(clients: Iterable[dict], limit: int = 5) -> list[dict]:
-    """The clients scoring under 50, worst first. Names are the caller's own
-    clients — the caller has already narrowed to them."""
+    """The clients the engine calls critical or at risk, worst first. Names are the caller's own
+    clients — the caller has already narrowed to them.
+
+    The signal says which verdict and what score. It names the engine's verdict and does not claim a threshold of its own ("below
+    threshold (50)" was a line this module drew while the engine drew another)."""
     out = []
     for c in clients:
         s = score_of(c)
-        if s is not None and s < 50:
-            out.append({
-                "client_name": c.get("client_name", "Unknown"),
-                "signal": f"Health score {s} — below threshold (50)",
-                "risk": "high" if s < 30 else "medium",
-            })
-    out.sort(key=lambda x: 0 if x["risk"] == "high" else 1)
+        if s is None:
+            continue
+        if c.get("health_critical") is True:
+            verdict, risk = "Critical", "high"
+        elif c.get("health_at_risk") is True:
+            verdict, risk = "At Risk", "medium"
+        else:
+            continue
+        out.append({
+            "client_name": c.get("client_name", "Unknown"),
+            "signal": f"Health score {s} — {verdict}",
+            "risk": risk,
+            "_score": s,
+        })
+    out.sort(key=lambda x: (0 if x["risk"] == "high" else 1, x["_score"]))
+    for x in out:
+        del x["_score"]
     return out[:limit]
 
 

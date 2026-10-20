@@ -269,17 +269,19 @@ def test_the_column_nothing_writes_is_not_a_health_score(monkeypatch):
 
 
 def test_the_engines_stored_score_is_what_the_dashboard_counts(monkeypatch):
-    """The same score the client's own Health screen reads (`health_scores`), whatever the unwritten column on the client row says."""
-    svc, _ = _world(monkeypatch, clients=[{"id": "c1", "client_name": "A", "health_score": 100, "status": "active"},
-                                          {"id": "c2", "client_name": "B", "health_score": 100, "status": "active"},
-                                          {"id": "c3", "client_name": "C", "health_score": 100, "status": "active"},
-                                          {"id": "c4", "client_name": "D", "health_score": 100, "status": "active"}])
+    """The same score and the same verdict the client's own Health screen reads (`health_scores`), whatever the unwritten column on the
+    client row says: critical under 35, at risk from 35 to 49, and the rest of the scored clients healthy."""
+    svc, _ = _world(monkeypatch, clients=[{"id": f"c{i}", "client_name": n, "health_score": 100, "status": "active"}
+                                          for i, n in enumerate("ABCDE")])
     monkeypatch.setattr(mod, "_get_health_repo", lambda: StoredScoresFrom([
-        {"id": "c1", "health_score": 34}, {"id": "c2", "health_score": 55}, {"id": "c3", "health_score": 90}]))
+        {"id": "c0", "health_score": 34}, {"id": "c1", "health_score": 45}, {"id": "c2", "health_score": 55},
+        {"id": "c3", "health_score": 90}]))
     out = _dash(svc)
     risk = out["client_risk_insights"]
-    assert (risk["critical_clients"], risk["at_risk_clients"], risk["healthy_clients"], risk["unscored_clients"]) == (1, 1, 1, 1)
-    assert out["firm_health_summary"]["overall_score"] == (34 + 55 + 90) // 3, "the mean of the scores that EXIST"
+    assert (risk["critical_clients"], risk["at_risk_clients"], risk["healthy_clients"], risk["unscored_clients"]) == (1, 1, 2, 1)
+    assert out["firm_health_summary"]["overall_score"] == (34 + 45 + 55 + 90) // 4, "the mean of the scores that EXIST"
+    assert [(x["client_name"], x["signal"]) for x in out["churn_signals"]] == [
+        ("A", "Health score 34 — Critical"), ("B", "Health score 45 — At Risk")]
 
 
 def test_a_stored_score_that_cannot_be_read_leaves_every_client_unscored(monkeypatch):
