@@ -53,9 +53,12 @@ THREE THINGS THE ORIGINAL GOT WRONG, KEPT HERE BECAUSE THEY ARE EASY TO REDO
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 from domain.money_text import rupees_paise
+
+_logger = logging.getLogger("caflow.fixed_asset_movement")
 
 #: The ten figures of one class's movement, in the order Schedule III presents
 #: them. A dict rather than a dataclass because every caller sums, renders and
@@ -191,6 +194,16 @@ def movement_from_rows(rows: Iterable[dict], fy_end: Optional[str]) -> Movement:
                     financial_year=fy_label, windowed=bool(fy_start))
 
 
+def _depreciation_balances(db, firm_id: str, client_id: str, account_id: str, fy_start: str, fy_end: str) -> list[dict]:
+    """The pre-aggregated monthly rows of the depreciation account for the year (`account_period_balances`)."""
+    return (db.table("account_period_balances")
+            .select("debit_paise,credit_paise,period_month")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("account_id", account_id)
+            .gte("period_month", fy_start).lte("period_month", fy_end)
+            .execute().data or [])
+
+
 def posted_depreciation_paise(db, firm_id: str, client_id: str,
                               fy_start: str, fy_end: str) -> Optional[int]:
     """What was actually POSTED as depreciation in the year, or None.
@@ -218,17 +231,44 @@ def posted_depreciation_paise(db, firm_id: str, client_id: str,
         return None
     if not account_id:
         return None
-    rows = (db.table("account_period_balances")
-            .select("debit_paise,credit_paise,period_month")
-            .eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("account_id", account_id)
-            .gte("period_month", fy_start).lte("period_month", fy_end)
-            .execute().data or [])
+    rows = _depreciation_balances(db, firm_id, client_id, account_id, fy_start, fy_end)
     if not rows:
         return None
     # An expense account: debits are the charge, credits are reversals of it.
     return sum(int(r.get("debit_paise") or 0) - int(r.get("credit_paise") or 0)
                for r in rows)
+
+
+def has_nothing_to_depreciate(db, firm_id: str, client_id: str, fy_start: str, fy_end: str) -> bool:
+    """True only when the client has no fixed asset on the register AND the ledger, which was read, has no depreciation for the year.
+
+    `posted_depreciation_paise` answers None both for a Depreciation Expense account that cannot be resolved and for an account with
+    nothing posted in the year, and every client's standard chart carries the account, so the second is the commonest "nothing" there
+    is: an individual with a small business and no assets reads None. With no register row there is nothing to depreciate and the
+    ledger holds no depreciation: the charge is nil, which is a reading and not a failure to read (POST-A-268). The register is the
+    owner of "what is there to depreciate", and it is asked here, in the module that owns depreciation.
+
+    Anything else answers False and stays "could not be read": a register row (a charge is expected and has not been posted), a
+    posting in the year, and above all a look that FAILS, because not being able to look is never the same as there being nothing to
+    find. A deleted register row is not one."""
+    try:
+        rows = (db.table("fixed_assets").select("id").eq("firm_id", firm_id).eq("client_id", client_id)
+                .is_("deleted_at", None).limit(1).execute().data) or []
+        if rows:
+            return False
+        # The chart is asked directly and not through `_find_account`, which raises "not found" for a lookup that FAILED as well as for
+        # an account that is not there. An INACTIVE account is looked at too (`_find_account` skips it): postings on one are depreciation
+        # in the ledger, and not finding them would call the year nil.
+        accounts = (db.table("chart_of_accounts").select("id").eq("firm_id", firm_id)
+                    .or_(f"client_id.eq.{client_id},client_id.is.null")
+                    .ilike("account_name", "%Depreciation Expense%").execute().data) or []
+        for account in accounts:
+            if _depreciation_balances(db, firm_id, client_id, account["id"], fy_start, fy_end):
+                return False
+        return True
+    except Exception as e:                                        # noqa: BLE001
+        _logger.warning("nothing-to-depreciate check for %s: %s", client_id, e)
+        return False
 
 
 def rupees(paise: int) -> str:

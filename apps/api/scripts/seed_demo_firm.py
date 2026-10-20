@@ -848,11 +848,9 @@ def _the_business_income(api: Api, c, client_id: str, financial_year: str, it) -
         if not got.get("eligible"):
             raise _NotFiled(f"section 44AD does not apply: {'; '.join(got.get('reasons') or [])[:200]}")
         return 0, int(got["presumptive_income_paise"])
+    # Nothing is stated: the bridge reads the books for every figure, and a client with no fixed assets and no depreciation in the
+    # ledger reads as a nil charge (POST-A-268), so the seeder no longer states one to get past a bridge that called it unreadable.
     body: dict[str, Any] = {"client_id": client_id, "fy": financial_year}
-    if not c.assets:
-        # A client with no fixed assets has charged no depreciation, which is a reading of zero (POST-A-268: the bridge
-        # cannot tell that from an account it could not read).
-        body["depreciation_per_books_paise"] = 0
     bridge = api.post("/api/income-tax/book-to-tax-bridge", body).get("data") or {}
     if not bridge.get("is_complete"):
         why = "; ".join((bridge.get("missing") or []) + [r[:90] for r in (bridge.get("reasons") or [])[:1]])

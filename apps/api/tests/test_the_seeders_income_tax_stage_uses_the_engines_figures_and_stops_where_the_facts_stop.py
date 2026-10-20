@@ -205,12 +205,13 @@ def test_no_door_is_asked_to_move_a_return_to_filed(monkeypatch):
 
 # ── the business income is the books', and the facts stop where the engine stops ──
 
-def test_a_client_with_no_assets_states_depreciation_of_zero_and_one_with_assets_does_not(monkeypatch):
+def test_the_seeder_states_no_depreciation_for_any_client_the_bridge_reads_the_books(monkeypatch):
+    """It used to state a zero for a client with no assets, to get past a bridge that called a nil charge unreadable (POST-A-268). The
+    bridge reads that as nil itself now, so the seeder says nothing and the books answer, with or without assets."""
     assert not PRIYA.assets
     api = FakeApi()
     _run(api, PRIYA, monkeypatch=monkeypatch)
-    assert api.bodies("/api/income-tax/book-to-tax-bridge")[0] == {
-        "client_id": "cid", "fy": FY, "depreciation_per_books_paise": 0}
+    assert api.bodies("/api/income-tax/book-to-tax-bridge")[0] == {"client_id": "cid", "fy": FY}
     with_assets = SimpleNamespace(**{**vars(PRIYA), "assets": ("an asset",), "name": "Owns Things"})
     api = FakeApi()
     _run(api, with_assets, monkeypatch=monkeypatch)

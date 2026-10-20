@@ -99,12 +99,12 @@ def test_an_executive_still_progresses_an_unfiled_filing(world):
 
 def test_the_grid_decides_per_person_in_both_directions(world):
     granted = _user("Executive", "exec2", permission_overrides={"mca:approve": True})
-    assert _status(granted, "filed", srn="SRN9", filing_date="2026-10-21")["success"] is True
+    assert _status(granted, "filed", srn="SRN9", filing_date="2026-06-21")["success"] is True
     assert _row(world)["status"] == "filed"
 
     denied = _user("Manager", "mgr2", permission_overrides={"mca:approve": False})
     with pytest.raises(HTTPException) as e:
-        _status(denied, "filed", srn="SRN10", filing_date="2026-10-22")
+        _status(denied, "filed", srn="SRN10", filing_date="2026-06-22")
     assert e.value.status_code == 403
     out = _status(denied, "in_progress")          # a filed filing is the approver's to reopen
     assert out["success"] is False and _row(world)["status"] == "filed"
