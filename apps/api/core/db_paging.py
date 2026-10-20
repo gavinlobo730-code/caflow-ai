@@ -149,6 +149,7 @@ def fetch_window(
     count: int,
     start: int = 0,
     desc: bool = True,
+    id_desc: bool = False,
 ) -> list[dict]:
     """Up to `count` rows from position `start` of the query, in a stated total order, read in requests the server will honour.
 
@@ -159,15 +160,17 @@ def fetch_window(
     with 1,500 rows, and a caller that decides "more rows exist" from the answer being longer than the window read `False`
     (the TDS register lists, found by review). Each request here asks for a size the server will honour.
 
-    The order is `order_field` (descending when `desc`) and then `id`, which is unique, so consecutive requests neither repeat a row
-    nor skip one. `make_query` returns a FRESH builder carrying the table, the projection and the filters, as for `fetch_all`. The
+    The order is `order_field` (descending when `desc`) and then `id` (ascending, or descending when `id_desc`, for a list that has always
+    broken a tie newest-id-first), which is unique, so consecutive requests neither repeat a row nor skip one. `make_query` returns a FRESH builder carrying the table, the projection and the filters, as for `fetch_all`. The
     stop condition is a short page and nothing else, for the reason `fetch_all` gives.
     """
     out: list[dict] = []
     position = start
     while len(out) < count:
         size = min(PAGE, count - len(out))
-        page = (make_query().order(order_field, desc=desc).order("id").range(position, position + size - 1).execute().data) or []
+        ordered = make_query().order(order_field, desc=desc)
+        ordered = ordered.order("id", desc=True) if id_desc else ordered.order("id")
+        page = (ordered.range(position, position + size - 1).execute().data) or []
         out.extend(page)
         position += len(page)
         if len(page) < size:

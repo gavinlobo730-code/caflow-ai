@@ -316,6 +316,14 @@ def _sayable_message(exc: Exception) -> str:
     return message
 
 
+def _malformed_value_sentence(exc: Exception) -> str:
+    """The sentence for text Postgres could not read as its column's type (SQLSTATE 22P02), without quoting that text."""
+    message = postgres_message(exc)
+    if "type uuid" in message:
+        return "That is not a valid id."
+    return "A value sent is not in the form that field takes."
+
+
 def unhandled_failure(exc: Exception) -> "tuple[int, str] | None":
     """A status and a sentence for a database failure NO ROUTER CAUGHT.
 
@@ -357,6 +365,15 @@ def unhandled_failure(exc: Exception) -> "tuple[int, str] | None":
         # Still a 500 — the server really is misconfigured — but say which
         # kind, and do not invite a retry that cannot succeed.
         return 500, _NOT_TRANSIENT[state]
+
+    if state == "22P02":
+        # invalid_text_representation: Postgres was handed text its column's type cannot read, which on this API is a value
+        # the CALLER sent in a path or a query (`GET /api/clients/not-a-uuid`, `?client_id=not-a-uuid`) and nothing on the
+        # server's side. It answered 500 "Internal server error (reference ...)" for a mistyped link or a stale bookmark
+        # (POST-A-296), on every route that filters on an id it was given as text. It is said here, once, and not per
+        # route: a parameter type applied route by route leaves the next route that goes in bare answering 500.
+        # The sentence does NOT repeat the value: it is the caller's text, and the database's message quotes it.
+        return 422, _malformed_value_sentence(exc)
 
     if state not in _CALLER_FAULT:
         return None

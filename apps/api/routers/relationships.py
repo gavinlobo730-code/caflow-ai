@@ -24,6 +24,7 @@ from core.permissions import rbac
 from services.timeline_service import timeline_service
 from domain.money_text import whole_rupees
 from core import db_provider
+from core.db_paging import fetch_window
 from core.list_window import probe, split
 
 router = APIRouter(prefix="/api/relationships", tags=["relationships"])
@@ -302,14 +303,20 @@ def list_entities(
         result = sorted(result, key=lambda e: ((e.get("full_name") or ""), str(e.get("id"))))
         return _entity_window(result[offset: offset + probe(limit)], limit)
 
-    q = db.table("entities").select("*").eq("firm_id", current_user["firm_id"])
-    if entity_type:
-        q = q.eq("entity_type", entity_type)
-    if search:
-        q = q.or_(f"full_name.ilike.%{search}%,pan.ilike.%{search}%,email.ilike.%{search}%")
-    # `id` breaks a tie between two entities with one name, so the same row is never on two windows.
-    res = q.order("full_name").order("id").range(offset, offset + probe(limit) - 1).execute()
-    return _entity_window(res.data or [], limit)
+    def register():
+        q = db.table("entities").select("*").eq("firm_id", current_user["firm_id"])
+        if entity_type:
+            q = q.eq("entity_type", entity_type)
+        if search:
+            q = q.or_(f"full_name.ilike.%{search}%,pan.ilike.%{search}%,email.ilike.%{search}%")
+        return q
+
+    # Read in requests the server will honour: PostgREST answers at most 1,000 rows to one request and says nothing when it cuts
+    # one short, so a window of up to ENTITY_LIST_MAX asked for in one range came back 1,000 long over a firm with 1,500 entities
+    # and `has_more` read False because the answer was shorter than the window (POST-A-295). `id` breaks a tie between two
+    # entities with one name, so the same row is never on two windows.
+    rows = fetch_window(register, "full_name", count=probe(limit), start=offset, desc=False)
+    return _entity_window(rows, limit)
 
 
 @router.post("/entities")

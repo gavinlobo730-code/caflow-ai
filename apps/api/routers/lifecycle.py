@@ -22,6 +22,7 @@ from services.timeline_service import timeline_service
 from services.audit_service import log_event
 from models.fy import FYLabel, OptionalFYLabel
 from core import db_provider
+from core.db_paging import fetch_window
 from core.list_window import probe, split
 
 _logger = logging.getLogger("caflow.lifecycle")
@@ -668,20 +669,25 @@ def list_leads(
     # Exclude soft-deleted and converted leads at the query level so the pipeline
     # only ever receives active leads. is_converted is nullable, so treat NULL as
     # "not converted" (is.null OR is.false) to avoid hiding legitimate leads.
-    q = (
-        db.table("leads")
-        .select("*")
-        .eq("firm_id", current_user["firm_id"])
-        .neq("stage", "_deleted")
-        .or_("is_converted.is.null,is_converted.is.false")
-    )
-    if stage:
-        q = q.eq("stage", stage)
-    if assigned_to:
-        q = q.eq("assigned_to", assigned_to)
-    # `id` breaks a tie between two leads created at the same instant, so the same row is never on two windows.
-    res = q.order("created_at", desc=True).order("id", desc=True).range(offset, offset + probe(limit) - 1).execute()
-    return _lead_window(res.data or [], limit)
+    def pipeline():
+        q = (
+            db.table("leads")
+            .select("*")
+            .eq("firm_id", current_user["firm_id"])
+            .neq("stage", "_deleted")
+            .or_("is_converted.is.null,is_converted.is.false")
+        )
+        if stage:
+            q = q.eq("stage", stage)
+        if assigned_to:
+            q = q.eq("assigned_to", assigned_to)
+        return q
+
+    # Read in requests the server will honour (a window of up to LEAD_LIST_MAX asked for in one range came back 1,000 long over a
+    # firm with 1,500 leads and `has_more` read False; POST-A-295). `id` breaks a tie between two leads created at the same
+    # instant, newest id first as before, so the same row is never on two windows.
+    rows = fetch_window(pipeline, "created_at", count=probe(limit), start=offset, desc=True, id_desc=True)
+    return _lead_window(rows, limit)
 
 
 @router.post("/leads")
