@@ -1,25 +1,10 @@
 {
-  "_what": "Every public table with a client_id column that the authenticated role can reach and that carries no RESTRICTIVE policy asking the assignment scope (my_assigned_client_ids / can_access_client), with the reason. Held SHRINK-ONLY by tests/test_every_client_table_is_assignment_scoped_or_says_why_pg.py: a table that gains the scope must leave this file, and a new client table cannot join it as 'pending'. Kinds: parent = a policy of the table asks the named parent table, whose own policies carry the scope (verified); own = the named policy is the table's own rule (verified to exist); source = the assignment source itself; pending = firm policy only, with the ledger item that closes it.",
+  "_what": "Every public table with a client_id column that the authenticated role can reach and that carries no RESTRICTIVE policy asking the assignment scope (my_assigned_client_ids / can_access_client), with the reason. Held SHRINK-ONLY by tests/test_every_client_table_is_assignment_scoped_or_says_why_pg.py: a table that gains the scope must leave this file, and a new client table cannot join it as 'pending'. Kinds: parent = a policy of the table asks the named parent table, whose own policies carry the scope (verified); own = the named policy is the table's own rule (verified to exist); source = the assignment source itself; pending = firm policy only, with the ledger item that closes it. `children` is the second list, under the same rule: the tables with NO client_id of their own that hang from a client table and admit every member of the firm to every client's rows (a bare firm policy, no restrictive policy that reads the parent or asks the scope); an entry names the foreign-key parents and the ledger item that closes it, and leaves the file when the table follows its parent.",
   "tables": {
     "account_period_balances": {
       "kind": "parent",
       "via": "clients",
       "why": "its only policy asks client_id IN (SELECT id FROM clients), and clients carries the assignment scope, so a balance is as visible as its client"
-    },
-    "ais_reconciliations": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy and a role tier on writes; pending the assignment scope"
-    },
-    "ais_records": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy and a role tier on writes; pending the assignment scope"
-    },
-    "ais_uploads": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy and a role tier on writes; pending the assignment scope"
     },
     "bank_statement_column_mappings": {
       "kind": "own",
@@ -76,11 +61,6 @@
       "ledger": "POST-A-299",
       "why": "firm policy only; pending the assignment scope"
     },
-    "income_tax_asset_blocks": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy and a role tier on writes; pending the assignment scope"
-    },
     "inventory_stock_ledger": {
       "kind": "pending",
       "ledger": "POST-A-299",
@@ -95,11 +75,6 @@
       "kind": "own",
       "policy": "notifications_recipient_scope",
       "why": "a notification is its recipient's (user_id) and a Partner reads all; it is about a person, not about the client it names"
-    },
-    "onboarding_checklists": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy only; pending the assignment scope"
     },
     "party_credit_balances": {
       "kind": "pending",
@@ -146,11 +121,6 @@
       "via": "payroll_employees",
       "why": "its rows follow their employee: the RESTRICTIVE payroll_settlements_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
     },
-    "properties": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy only; pending the assignment scope"
-    },
     "reconciliation_findings": {
       "kind": "own",
       "policy": "reconciliation_findings_partner_read",
@@ -161,34 +131,162 @@
       "policy": "reconciliation_runs_partner_read",
       "why": "read by a Partner only and written by the server"
     },
-    "recurring_invoice_templates": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy only; pending the assignment scope"
-    },
-    "schedule_iii_ratio_explanations": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy and a role tier on writes; pending the assignment scope"
-    },
-    "schedule_iii_ratio_inputs": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy and a role tier on writes; pending the assignment scope"
-    },
-    "schedule_iii_unbilled_reviews": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy and a role tier on writes; pending the assignment scope"
-    },
-    "tally_migration_jobs": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy only; pending the assignment scope"
-    },
     "user_client_assignments": {
       "kind": "source",
       "why": "it IS the assignment source: my_assigned_client_ids() and can_access_client read it as their owner, and migration 084 left it out of the scope on purpose; who may change it is migration 478's rule"
+    }
+  },
+  "children": {
+    "credit_note_allocations": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "client_sales_invoices",
+        "credit_notes"
+      ],
+      "why": "a bare firm policy on a row that hangs from client_sales_invoices / credit_notes; pending a <table>_parent_visible policy"
+    },
+    "customer_payment_events": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "customer_payments"
+      ],
+      "why": "a bare firm policy on a row that hangs from customer_payments; pending a <table>_parent_visible policy"
+    },
+    "debit_note_allocations": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "debit_notes",
+        "purchase_bills"
+      ],
+      "why": "a bare firm policy on a row that hangs from debit_notes / purchase_bills; pending a <table>_parent_visible policy"
+    },
+    "document_extractions": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "documents"
+      ],
+      "why": "a bare firm policy on a row that hangs from documents; pending a <table>_parent_visible policy"
+    },
+    "engagement_events": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "engagements"
+      ],
+      "why": "a bare firm policy on a row that hangs from engagements; pending a <table>_parent_visible policy"
+    },
+    "itr_filing_versions": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "itr_filings"
+      ],
+      "why": "a bare firm policy on a row that hangs from itr_filings; pending a <table>_parent_visible policy"
+    },
+    "notes_to_accounts": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "financial_statement_versions",
+        "year_end_engagements"
+      ],
+      "why": "a bare firm policy on a row that hangs from financial_statement_versions / year_end_engagements; pending a <table>_parent_visible policy"
+    },
+    "onboarding_tasks": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "onboarding_workflows"
+      ],
+      "why": "a bare firm policy on a row that hangs from onboarding_workflows; pending a <table>_parent_visible policy"
+    },
+    "purchase_credit_note_allocations": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "purchase_bills",
+        "purchase_credit_notes"
+      ],
+      "why": "a bare firm policy on a row that hangs from purchase_bills / purchase_credit_notes; pending a <table>_parent_visible policy"
+    },
+    "recurring_journal_runs": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "journal_entries",
+        "recurring_journal_templates"
+      ],
+      "why": "a bare firm policy on a row that hangs from journal_entries / recurring_journal_templates; pending a <table>_parent_visible policy"
+    },
+    "recurring_purchase_bill_runs": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "purchase_bills",
+        "recurring_purchase_bill_templates"
+      ],
+      "why": "a bare firm policy on a row that hangs from purchase_bills / recurring_purchase_bill_templates; pending a <table>_parent_visible policy"
+    },
+    "sales_debit_note_allocations": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "client_sales_invoices",
+        "sales_debit_notes"
+      ],
+      "why": "a bare firm policy on a row that hangs from client_sales_invoices / sales_debit_notes; pending a <table>_parent_visible policy"
+    },
+    "workflow_approvals": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "workflow_instances"
+      ],
+      "why": "a bare firm policy on a row that hangs from workflow_instances; pending a <table>_parent_visible policy"
+    },
+    "workflow_executions": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "workflow_instances"
+      ],
+      "why": "a bare firm policy on a row that hangs from workflow_instances; pending a <table>_parent_visible policy"
+    },
+    "workflow_failures": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "workflow_instances"
+      ],
+      "why": "a bare firm policy on a row that hangs from workflow_instances; pending a <table>_parent_visible policy"
+    },
+    "year_end_checklist_items": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "year_end_engagements"
+      ],
+      "why": "a bare firm policy on a row that hangs from year_end_engagements; pending a <table>_parent_visible policy"
+    },
+    "year_end_checklists": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "year_end_engagements"
+      ],
+      "why": "a bare firm policy on a row that hangs from year_end_engagements; pending a <table>_parent_visible policy"
+    },
+    "year_end_reviews": {
+      "kind": "pending",
+      "ledger": "POST-A-302",
+      "parents": [
+        "year_end_engagements"
+      ],
+      "why": "a bare firm policy on a row that hangs from year_end_engagements; pending a <table>_parent_visible policy"
     }
   }
 }
