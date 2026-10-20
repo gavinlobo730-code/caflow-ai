@@ -100,6 +100,28 @@ _MOCK_ALERTS:    list[dict]      = []
 
 
 _db = db_provider.request_db_or_none
+_service_db = db_provider.service_db_or_none
+
+
+def _bank_db(db):
+    """The database a client's UNRECONCILED BANK LINES are asked of.
+
+    The health score is the server's finding about a client, the same figure for
+    whoever opens it, and its bank-reconciliation age is one of its inputs. The
+    bank tables answer a signed-in person only if their Banking access reaches
+    them (migration 524), and a read the person's tier hides comes back as
+    ZERO ROWS, not as an error: a Manager whose Banking a Partner has blocked
+    would have the six-month hard override missed and `accounting_quality`
+    scored 100 for a client whose bank has not been reconciled in a year, which
+    is the false-clean answer a failed read is refused for. The client the score
+    is for was checked by the route (`assert_client_access`) or is one of the
+    firm's own in the nightly run, so the read goes through the service client
+    and asks nothing more of the caller. Only a COUNT-LIKE fact comes out of it
+    (is there a line older than N days), never a narration or a name.
+    """
+    return _service_db() or db
+
+
 
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
@@ -255,7 +277,7 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
     # 5. Bank reconciliation not done > 6 months
     try:
         six_months_ago = (today - timedelta(days=183)).isoformat()
-        unreconciled = db.table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", six_months_ago).limit(1).execute().data or []
+        unreconciled = _bank_db(db).table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", six_months_ago).limit(1).execute().data or []
         if unreconciled:
             return "bank_recon_6months"
     except Exception as exc:
@@ -332,11 +354,11 @@ def _dim_accounting_quality_db(db, client_id: str, firm_id: str) -> int:
     try:
         cutoff_30 = (today - timedelta(days=30)).isoformat()
         cutoff_90 = (today - timedelta(days=90)).isoformat()
-        old_90 = db.table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", cutoff_90).limit(1).execute().data or []
+        old_90 = _bank_db(db).table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", cutoff_90).limit(1).execute().data or []
         if old_90:
             score -= 50
         else:
-            old_30 = db.table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", cutoff_30).limit(1).execute().data or []
+            old_30 = _bank_db(db).table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", cutoff_30).limit(1).execute().data or []
             if old_30:
                 score -= 30
     except Exception as exc:
@@ -710,7 +732,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
     elif dimension == "accounting_quality":
         try:
             cutoff_30 = (today - timedelta(days=30)).isoformat()
-            old = db.table("bank_transactions").select("id, transaction_date").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", cutoff_30).limit(1).execute().data or []
+            old = _bank_db(db).table("bank_transactions").select("id, transaction_date").eq("firm_id", firm_id).eq("client_id", client_id).eq("reconciled", False).lt("transaction_date", cutoff_30).limit(1).execute().data or []
             if old:
                 factors.append({
                     "label": "Unreconciled bank transactions > 30 days old",

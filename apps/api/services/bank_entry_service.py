@@ -204,6 +204,13 @@ class BankEntryService:
             lambda count=False: self._tds_pending(base(count)))
         return out
 
+    def unmatched_count(self, db, firm_id: str, client_id: str) -> int:
+        """Lines with no match yet, over every account of the client: the stored
+        `match_status`, which is what the accounting dashboard's tile has always
+        counted. A COUNT from the header, never a scan."""
+        return self._count(lambda count=False: self._base(
+            db, firm_id, client_id, None, count=count).eq("match_status", "unmatched"))
+
     @staticmethod
     def _tds_pending(q):
         """Lines still waiting on a human to decide the withholding (D19).

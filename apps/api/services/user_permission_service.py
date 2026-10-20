@@ -59,8 +59,9 @@ class PermissionWriteRefused(ValueError):
 # WHAT A BLOCK ON THE TEAM SCREEN REACHES, in the words the screen shows beside
 # the grid (POST-A-005). The grid is read by `rbac()`, which every staff route
 # goes through, by the write policies of a few tables (migrations 415, 470,
-# 478) and, since migrations 485 and 490, by the READ policies of the payroll
-# tables (employees, runs, payslips and salary structures, remittances and ECR
+# 478), by the READ policies of the fee tables (495) and of the six tables that
+# hold a client's bank lines (524) and, since migrations 485 and 490, by the READ
+# policies of the payroll tables (employees, runs, payslips and salary structures, remittances and ECR
 # filings name the grid; attendance, leave, tax declarations, salary history,
 # loans, perquisites, settlements, one-off earnings, bonus records and the run
 # history are scoped through the employee, settlement or run, so they follow).
@@ -79,10 +80,11 @@ class PermissionWriteRefused(ValueError):
 # registrations, so those too are written by the server alone; the notice does
 # not list them (they are not payroll records in the sentence's sense) and does not
 # speak for the firm's slabs, which keep their own grants.
-# It is NOT read by any other table's SELECT policy, so a screen that reads a
-# table straight from the browser over PostgREST — the documents pages, the
-# bank-account pickers — is governed there by the person's firm, their client
-# assignments and, on a few tables, their role. A Partner who unticked Documents
+# Outside the payroll tables (485, 490), the fee tables (495) and the six tables
+# that hold a client's bank lines (524), no table's SELECT policy reads it, so a
+# screen that reads any other table straight from the browser over PostgREST — the
+# documents pages, the bank-account pickers — is governed there by the person's
+# firm, their client assignments and, on a few tables, their role. A Partner who unticked Documents
 # for a Manager and believed the data was out of that Manager's reach would be
 # the localStorage grid's mistake again, so the sentence is served from here,
 # beside the guard that keeps it true, and the drawer renders what it is given
@@ -90,8 +92,8 @@ class PermissionWriteRefused(ValueError):
 #
 # KEPT TRUE BY `tests/test_the_per_person_grid_reaches_the_database_pg.py`,
 # which reads `pg_policies` on a migrated database and fails the day a public
-# table's SELECT or ALL policy outside the payroll tables asks the grid — or
-# the day no write policy does. Whoever makes either happen rewrites this
+# table's SELECT or ALL policy outside the payroll, fee and bank-line tables
+# asks the grid — or the day no write policy does. Whoever makes either happen rewrites this
 # sentence in the same commit.
 # Deliberately says nothing about counts (tables, screens) because those go
 # stale, and nothing about Storage, which is files and not a table.
@@ -112,7 +114,11 @@ DENIAL_REACH_NOTICE = (
     "to a person blocked from writing payroll. Billing works the same way for reading: a "
     "person blocked from reading "
     "billing cannot read the practice's fee engagements, fee invoices or "
-    "fee receipts from the browser either. Nothing else is checked against "
+    "fee receipts from the browser either. Banking works the same way for "
+    "reading a client's bank lines: a person blocked from reading banking "
+    "cannot read bank transactions, statements, splits, reconciliations or "
+    "matching rules from the browser either, but the list of bank accounts is "
+    "not covered. Nothing else is checked against "
     "this grid "
     "when a table is read, and several screens read tables directly from the "
     "browser (documents and bank accounts among them): there only the person's "

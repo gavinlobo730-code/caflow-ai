@@ -266,8 +266,11 @@ def test_the_endpoint_carries_that_gate_and_the_patch_does_not():
         route = next(r for r in banking.router.routes
                      if getattr(r, "path", None) == path
                      and method in getattr(r, "methods", set()))
-        assert len(route.dependant.dependencies) == 1, path
-        return route.dependant.dependencies[0].call
+        # Two guards since the banking router asks `banking:read` of every route as a ROUTER-LEVEL dependency (it comes first,
+        # test_a_banking_route_also_asks_for_banking_read.py); the second is the route's OWN guard, which is what this test is about.
+        assert [d.call.__name__ for d in route.dependant.dependencies][:1] == ["rbac_banking_read"], path
+        assert len(route.dependant.dependencies) == 2, path
+        return route.dependant.dependencies[1].call
 
     adjustment = _guard("/api/banking/reconciliations/{recon_id}/adjustment", "PUT")
     patch = _guard("/api/banking/reconciliations/{recon_id}", "PATCH")

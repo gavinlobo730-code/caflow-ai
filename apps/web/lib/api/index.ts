@@ -5149,6 +5149,11 @@ export const api = {
     /** Undo an ignore — the transaction returns to the work queue. */
     unignoreTransaction: (txnId: string) => request(`/api/banking/transactions/${txnId}/unignore`, { method: "POST" }),
     postTransaction: (txnId: string, data: unknown) => request(`/api/banking/transactions/${txnId}/post`, { method: "POST", body: JSON.stringify(data) }),
+    /** How many of the client's bank lines have no match yet, over every account: the accounting
+     *  dashboard's "Unmatched Bank Txns" tile. Answered behind banking:read, so a person who may not
+     *  read Banking gets a refusal (an error here), never a zero. */
+    unmatchedCount: (params: { client_id: string }) =>
+      request(`/api/banking/unmatched-count?${new URLSearchParams(params)}`),
     // Bank ENTRIES (migration 322, docs/architecture/09-bank-entries.md): the
     // draft is on the row, the state is a stored column, and the verb is Pass.
     entries: {

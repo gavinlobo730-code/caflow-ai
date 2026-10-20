@@ -27,8 +27,8 @@ WHAT EACH CASE IS FOR
                                   unrepairable.
 
 THE OTHER HALF, WHICH THIS MODULE ALSO HOLDS (POST-A-005). Everything above is a
-WRITE. Apart from the three payroll tables (migration 485), no table's READ
-policy asks the grid, so a screen that reads a table straight from the browser
+WRITE. Apart from the payroll tables (migrations 485 and 490), the fee tables (495) and the
+tables that hold a client's bank lines (524), no table's READ policy asks the grid, so a screen that reads a table straight from the browser
 is not stopped by a per-person block, and the Team screen says so in a sentence
 the API serves (`services.user_permission_service.DENIAL_REACH_NOTICE`). The
 last section is the guard that keeps that sentence true: it reads `pg_policies`
@@ -307,6 +307,16 @@ def _scalar_as(dsn: str, auth_user_id: str, sql: str) -> str:
     return r.stdout.strip().splitlines()[-1].strip()
 
 
+def _scalar_lines_as(dsn: str, auth_user_id: str, sql: str) -> list[str]:
+    """Every line a statement prints, as that person, without the two status lines `_as` adds."""
+    r = subprocess.run(
+        ["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-tA", "-c", _as(auth_user_id) + sql],
+        capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return [line.strip() for line in r.stdout.splitlines()
+            if line.strip() and line.strip() not in ("SET",)]
+
+
 def _functions_that_ask_the_grid(dsn: str) -> set[str]:
     """`my_permission` and every function whose body calls one of them."""
     found = {"my_permission"}
@@ -348,17 +358,22 @@ READ_THROUGH_THE_GRID = {"payroll_employees", "payroll_runs", "payroll_slips",
                          # 490: the three payroll tables keyed on the client and not on an employee or a run
                          "salary_structures", "statutory_remittances", "epfo_ecr_filings", "bonus_declarations",
                          # 495: the practice's fee tables ask billing:read, a Partner's by default
-                         "fee_engagements", "fee_invoices", "fee_receipts"}
+                         "fee_engagements", "fee_invoices", "fee_receipts",
+                         # 524: a client's bank lines ask banking:read, an Executive's by default. NOT bank_accounts
+                         # (the master the payment pickers read) and not the column mappings
+                         "bank_transactions", "bank_statements", "bank_transaction_splits",
+                         "bank_reconciliations", "bank_reconciliation_matches", "bank_matching_rules"}
 
 
-def test_only_the_payroll_and_fee_tables_are_read_through_the_grid(dsn):
+def test_only_the_payroll_fee_and_bank_line_tables_are_read_through_the_grid(dsn):
     """THE GUARD BEHIND "THE DATABASE DOES NOT LOOK AT THIS GRID WHEN A TABLE
     IS READ", NOW WITH ONE NAMED EXCEPTION.
 
     A Partner who unticks Documents or Bank for a Manager leaves that Manager
     able to select the data straight from the browser, because no read policy
     on those tables asks `user_permissions`. That is what the Team screen says.
-    Payroll is the exception since migration 485 and the notice says so. The
+    Payroll is the exception since migration 485, the fee tables since 495 and
+    a client's bank lines since 524, and the notice says so. The
     day a SELECT or ALL policy on any OTHER public table asks the grid, that
     sentence is wrong in the SAFE direction and still wrong, and this is where
     it is found; the day payroll stops asking, it is wrong in the other.
@@ -371,6 +386,12 @@ def test_only_the_payroll_and_fee_tables_are_read_through_the_grid(dsn):
         f"{sorted(READ_THROUGH_THE_GRID)}. If that is deliberate, rewrite {_NOTICE} in the same commit "
         "and turn test_a_block_on_reading_does_not_hide_a_table_read_directly into its opposite "
         "for the table.")
+    # and the sentence names each family the policies enforce (the mock-mode sibling holds the wording)
+    from services.user_permission_service import DENIAL_REACH_NOTICE
+    text = DENIAL_REACH_NOTICE.lower()
+    for family, table in (("payroll", "payroll_employees"), ("billing", "fee_engagements"),
+                          ("banking", "bank_transactions")):
+        assert table in reads and family in text, (family, table)
 
 
 def test_some_but_not_all_tables_are_written_through_the_grid(dsn):
@@ -591,6 +612,137 @@ def test_billing_read_is_a_partners_unless_granted_and_a_withdrawn_grant_hides_t
     assert _scalar_as(dsn, AUTH_MANAGER, select) == "0", (
         f"a per-person block on billing:read no longer hides {table} from a direct read: {_NOTICE} says the "
         "database enforces it for billing")
+
+
+# ── banking: a client's bank lines, since migration 524 ──────────────────────
+# `banking:read` is an Executive's by default and the API asks it on every banking route. The six tables below hold the
+# client's statements, lines, splits, reconciliations and matching rules; each read asks the grid through a policy
+# (524). One row of each is seeded as the administrator, in one statement, because the splits and matches hang off a
+# line and the line off a statement.
+_BANK_SEED = ("WITH s AS (INSERT INTO bank_statements (firm_id, client_id, bank_name, statement_from, statement_to) "
+              "VALUES ('{firm}', '{client}', 'Test Bank', '2026-04-01', '2026-04-30') RETURNING id), "
+              "t AS (INSERT INTO bank_transactions (statement_id, firm_id, client_id, transaction_date, description) "
+              "SELECT id, '{firm}', '{client}', '2026-04-02', 'UPI/ZOMATO' FROM s RETURNING id), "
+              "a AS (INSERT INTO chart_of_accounts (firm_id, account_code, account_name, account_type) "
+              "VALUES ('{firm}', '9999', 'Probe', 'Expense') RETURNING id), "
+              "sp AS (INSERT INTO bank_transaction_splits (firm_id, client_id, bank_transaction_id, account_id, amount_paise) "
+              "SELECT '{firm}', '{client}', t.id, a.id, 100 FROM t, a RETURNING id), "
+              "r AS (INSERT INTO bank_reconciliations (firm_id, client_id, period_start, period_end) "
+              "VALUES ('{firm}', '{client}', '2026-04-01', '2026-04-30') RETURNING id), "
+              "m AS (INSERT INTO bank_reconciliation_matches (firm_id, bank_transaction_id, match_type) "
+              "SELECT '{firm}', t.id, 'manual' FROM t RETURNING id) "
+              "INSERT INTO bank_matching_rules (firm_id, client_id, rule_name) VALUES ('{firm}', '{client}', 'Probe rule');")
+_BANK_LINE_TABLES = ["bank_transactions", "bank_statements", "bank_transaction_splits",
+                     "bank_reconciliations", "bank_reconciliation_matches", "bank_matching_rules"]
+
+
+@pytest.mark.parametrize("table", _BANK_LINE_TABLES)
+def test_a_block_on_reading_banking_hides_a_clients_bank_lines_from_a_direct_read(dsn, table):
+    """The Team screen's notice says a banking block is enforced by the database for the lines of a client's bank. Block
+    `banking:read` for an assigned Manager and the same JWT's PostgREST-style SELECT returns nothing, on all six tables;
+    before the block the Manager reads the row (so the probe is not vacuous)."""
+    seeded = _psql(dsn, _BANK_SEED.format(firm=FIRM, client=CLIENT))
+    assert seeded.returncode == 0, seeded.stderr
+    select = f"SELECT count(*) FROM {table};"
+
+    before = _scalar_as(dsn, AUTH_MANAGER, select)
+    assert before == "1", f"premise: the assigned Manager could not read the row ({before!r})"
+
+    _grant(dsn, MANAGER, "banking", "read", False)
+    asked = _scalar_as(dsn, AUTH_MANAGER, "SELECT public.my_permission('banking','read','Executive');")
+    assert asked == "f", f"premise: the grid does not refuse banking:read ({asked!r})"
+
+    after = _scalar_as(dsn, AUTH_MANAGER, select)
+    assert after == "0", (
+        f"a per-person block on banking:read no longer hides {table} from a direct read ({after!r} rows): "
+        f"{_NOTICE} says the database enforces it for a client's bank lines")
+
+
+def test_a_block_on_banking_leaves_the_bank_account_master_and_the_ledger_readable(dsn):
+    """WHAT 524 DELIBERATELY LEAVES ALONE, measured. The payment pickers on receipts, vendor payments and fixed assets
+    read `bank_accounts` from the browser for people who use those screens without Banking, and the journal a bank line
+    posted is the books, not the bank's data: blocking Banking must not take either away."""
+    seeded = _psql(dsn, _BANK_SEED.format(firm=FIRM, client=CLIENT) +
+                   f" INSERT INTO bank_accounts (firm_id, client_id, bank_name, account_no) "
+                   f"VALUES ('{FIRM}', '{CLIENT}', 'Test Bank', '000111222');"
+                   f" INSERT INTO journal_entries (firm_id, client_id, entry_date, reference_no, narration, entry_type, is_posted) "
+                   f"VALUES ('{FIRM}', '{CLIENT}', '2026-04-02', 'J-1', 'probe', 'Journal', false);")
+    assert seeded.returncode == 0, seeded.stderr
+    _grant(dsn, MANAGER, "banking", "read", False)
+    for table in ("bank_accounts", "journal_entries"):
+        n = _scalar_as(dsn, AUTH_MANAGER, f"SELECT count(*) FROM {table};")
+        assert n == "1", f"blocking banking:read hid {table} ({n!r}), which 524 leaves alone"
+
+
+def test_an_insert_that_asks_its_row_back_meets_the_read_policy_of_a_person_blocked_from_reading(dsn):
+    """WHAT THE MIGRATION'S HEADER SAYS ABOUT INSERT, MEASURED. The API inserts with the new row asked back
+    (`return=representation`, which is INSERT ... RETURNING) and Postgres checks that row against the SELECT policies
+    too, so a person a Partner left with `banking:write` and without `banking:read` is refused at the database on every
+    insert the API makes for them; a bare INSERT, which asks nothing back, is not touched by a SELECT policy. That state is
+    refused at the door now (`tests/test_a_banking_route_also_asks_for_banking_read.py`), which is why this is the second
+    lock and not the first; this test is here so the sentence in the migration cannot drift from what the database does."""
+    insert = (f"INSERT INTO bank_statements (firm_id, client_id, bank_name, statement_from, statement_to) "
+              f"VALUES ('{FIRM}', '{CLIENT}', 'Test Bank', '2026-04-01', '2026-04-30')")
+
+    before = _psql(dsn, _as(AUTH_MANAGER) + insert + " RETURNING id;")
+    assert before.returncode == 0, f"premise: an assigned Manager could not insert a statement ({before.stderr!r})"
+
+    _grant(dsn, MANAGER, "banking", "read", False)
+    asked = _scalar_as(dsn, AUTH_MANAGER, "SELECT public.my_permission('banking','write','Executive');")
+    assert asked == "t", f"premise: the grid refuses banking:write as well ({asked!r})"
+
+    returning = _psql(dsn, _as(AUTH_MANAGER) + insert + " RETURNING id;")
+    assert returning.returncode != 0 and "row-level security" in returning.stderr, (
+        "an INSERT ... RETURNING by a person blocked from reading banking was not refused by the read policy: the "
+        f"migration 524 header and the design record say it is ({returning.stderr!r})")
+
+    bare = _psql(dsn, _as(AUTH_MANAGER) + insert + ";")
+    assert bare.returncode == 0, f"a bare INSERT (no row asked back) was refused by a SELECT policy ({bare.stderr!r})"
+
+
+def test_a_reviewer_reads_no_bank_line_until_the_grid_says_so_and_stops_when_it_is_withdrawn(dsn):
+    """THE FLOOR AND THE GRID, BOTH WAYS. `PERMISSIONS["banking"]["read"]` is Executive and above, so an assigned
+    Reviewer with no grid entry reads nothing (before 524 they read the client's whole statement over PostgREST); a
+    Partner's per-person yes makes the same SELECT return the row, and withdrawing it hides it again."""
+    reviewer, auth_rev = "41500000-0000-0000-0000-0000000000f1", "41500000-1111-0000-0000-0000000000f1"
+    seeded = _psql(dsn, f"""
+        INSERT INTO auth.users (id, email) VALUES ('{auth_rev}', 'r@t.in');
+        INSERT INTO users (id, firm_id, auth_user_id, email, full_name, role)
+             VALUES ('{reviewer}', '{FIRM}', '{auth_rev}', 'r@t.in', 'R', 'Reviewer');
+        INSERT INTO user_client_assignments (firm_id, user_id, client_id)
+             VALUES ('{FIRM}', '{reviewer}', '{CLIENT}');
+    """ + _BANK_SEED.format(firm=FIRM, client=CLIENT))
+    assert seeded.returncode == 0, seeded.stderr
+    # every one of the six tables, because the floor is written once per table and a policy that names a lower one
+    # for a single table is exactly the slip a read of one table cannot see
+    for table in _BANK_LINE_TABLES:
+        select = f"SELECT count(*) FROM {table};"
+        assert _scalar_as(dsn, AUTH_MANAGER, select) == "1", f"premise: the assigned Manager cannot read {table}"
+        assert _scalar_as(dsn, auth_rev, select) == "0", f"a Reviewer with no grant read {table}"
+    _grant(dsn, reviewer, "banking", "read", True)
+    for table in _BANK_LINE_TABLES:
+        assert _scalar_as(dsn, auth_rev, f"SELECT count(*) FROM {table};") == "1", (
+            f"a per-person banking:read grant did not reach {table}")
+    _grant(dsn, reviewer, "banking", "read", False)
+    for table in _BANK_LINE_TABLES:
+        assert _scalar_as(dsn, auth_rev, f"SELECT count(*) FROM {table};") == "0", (
+            f"a withdrawn banking:read grant still reads {table}")
+
+
+def test_the_banking_tier_is_asked_once_per_query_and_not_once_per_row(dsn):
+    """THE RULE, NOT A SPELLING. `my_permission` is a STABLE plpgsql function that reads a table, and a policy that
+    calls it bare has it called once per ROW: measured on 100,000 rows the same count took 5.4 s with no tier policy,
+    61.1 s with the bare call and 6.3 s with the call in `(SELECT ...)`, where the planner evaluates it once as an
+    InitPlan. So the plan a signed-in person gets for each table must carry an InitPlan and must not carry the
+    function inside a Filter."""
+    for table in _BANK_LINE_TABLES:
+        plan = _scalar_lines_as(dsn, AUTH_MANAGER, f"EXPLAIN SELECT count(*) FROM {table};")
+        assert any("InitPlan" in line for line in plan), (
+            f"the plan for {table} has no InitPlan, so the banking tier is evaluated per row:\n" + "\n".join(plan))
+        filters = [line for line in plan if "Filter" in line]
+        assert filters, f"premise: the plan for {table} has no Filter line to inspect:\n" + "\n".join(plan)
+        assert not any("my_permission" in line for line in filters), (
+            f"{table}'s plan calls my_permission inside a Filter, which is once per row:\n" + "\n".join(plan))
 
 
 # ── payroll WRITES: the privilege (first lock) and the grid clause of the policies (second lock) ───────────────────────────
