@@ -84,12 +84,16 @@ def _floor_of(band: str) -> int:
 
 #: The two verdicts the product draws a line under, derived from the bands so they cannot drift from them: a client is CRITICAL
 #: below the floor of "At Risk" (or when a hard override says so), and AT RISK from there to the floor of "Needs Attention".
-#: "Critical clients" and "At-risk clients" on the Health pages, the executive dashboard's counts, the assistant's counts, the
-#: memory profile and the churn signals all mean exactly this and ask `is_critical` / `is_at_risk`, or the flags stored from them.
+#: "Critical clients" and "At-risk clients" on the Health pages, the executive dashboard's counts, the assistant's counts and the
+#: churn signals all mean exactly this and ask `is_critical` / `is_at_risk`, or the flags stored from them.
 #: (Other graded numbers in the product are other measures with their own words and lines: the relationship health in
 #: `services/intelligence_service` and the compliance risk level in `domain/compliance_record_service`.)
 CRITICAL_BELOW: int = _floor_of("At Risk")
 AT_RISK_BELOW: int = _floor_of("Needs Attention")
+#: The line under which a score is not "Healthy" or "Good": the floor of "Good". The band between it and `AT_RISK_BELOW` is the early
+#: warning beneath the two flags, and the executive dashboard counts it on a bar of its own, so "Healthy" there means only the bands
+#: Healthy and Good (POST-A-286). The engine flags nothing at this level and stores no flag for it, so there is no `is_…` for it.
+NEEDS_ATTENTION_BELOW: int = _floor_of("Good")
 
 
 def is_critical(score: int, hard_override: object = None) -> bool:

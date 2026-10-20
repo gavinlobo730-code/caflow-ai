@@ -9,7 +9,9 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
-import { gradeForScore } from "@/lib/health/vocabulary";
+import {
+  PORTFOLIO_BAR_LABELS, PORTFOLIO_UNSPLIT_HEALTHY_LABEL, gradeForScore, gradeTone, type HealthTone,
+} from "@/lib/health/vocabulary";
 import { scoreBasisLine, type ScoreBasis } from "@/lib/health/scoreBasis";
 import { formatDateTime, formatTime } from "@/lib/dates/format";
 import { ATTENTION, BRAND, GOLD, MUTED, PROBLEM, READY } from "@/lib/design/tokens";
@@ -48,6 +50,9 @@ interface ExecutiveDashboard {
   client_risk_insights: {
     critical_clients: number;
     at_risk_clients: number;
+    /** The engine's Needs Attention band (50-64), counted apart from the green bar; absent on a backend one deploy behind, which
+     *  counted those clients in `healthy_clients`. */
+    needs_attention_clients?: number;
     healthy_clients: number;
     unscored_clients?: number;
     compliance_failures: number;
@@ -90,11 +95,10 @@ function fmtRupees(paise: number): string {
 // `domain/health/scoring.GRADE_BANDS`). It had a ladder of its own — 85/70/55,
 // "Excellent / Good / Fair / Critical" — the third in the browser beside the
 // client badge's and the engine's, so one number read three ways.
+const TONE_COLOR: Record<HealthTone, string> = { ready: READY, attention: ATTENTION, problem: PROBLEM };
+
 function healthColor(score: number): string {
-  const band = gradeForScore(score);
-  if (band === "Healthy") return READY;
-  if (band === "Good" || band === "Needs Attention") return ATTENTION;
-  return PROBLEM;
+  return TONE_COLOR[gradeTone(gradeForScore(score))];
 }
 
 function healthLabel(score: number): string {
@@ -272,9 +276,20 @@ export default function ExecutiveDashboardPage() {
   const collectionDays = revenueOk && typeof revenue?.avg_collection_days === "number"
     ? revenue.avg_collection_days : null;
   const coverage = typeof health?.compliance_coverage === "number" ? health.compliance_coverage : null;
-  const totalClients = risk
-    ? risk.critical_clients + risk.at_risk_clients + risk.healthy_clients
-    : 0;
+  // A backend one deploy behind counts the Needs Attention band inside `healthy_clients`; the bar then says what it counts.
+  const needsAttention = typeof risk?.needs_attention_clients === "number" ? risk.needs_attention_clients : null;
+  const healthyLabel = needsAttention === null ? PORTFOLIO_UNSPLIT_HEALTHY_LABEL : PORTFOLIO_BAR_LABELS.healthy;
+  // The portfolio's bars, each the engine's own grade words in the product's three state colours (`lib/design/tokens`: a four-band
+  // ramp collapses its middle two rather than reaching for a fourth colour, and the brand gold on white is under 3:1 as text), so
+  // Needs Attention and At Risk are both the attention colour and are told apart by their labels and a hairline between segments.
+  // The Needs Attention bar exists only when the server counted it apart.
+  const portfolioBars = risk ? [
+    { key: "healthy", label: healthyLabel, count: risk.healthy_clients, color: TONE_COLOR[gradeTone("Good")] },
+    ...(needsAttention === null ? [] : [{ key: "needs", label: PORTFOLIO_BAR_LABELS.needsAttention, count: needsAttention, color: TONE_COLOR[gradeTone("Needs Attention")] }]),
+    { key: "atRisk", label: PORTFOLIO_BAR_LABELS.atRisk, count: risk.at_risk_clients, color: TONE_COLOR[gradeTone("At Risk")] },
+    { key: "critical", label: PORTFOLIO_BAR_LABELS.critical, count: risk.critical_clients, color: TONE_COLOR[gradeTone("Critical")] },
+  ] : [];
+  const totalClients = portfolioBars.reduce((n, b) => n + b.count, 0);
 
   return (
     <div className="min-h-screen bg-ps-bg">
@@ -326,7 +341,7 @@ export default function ExecutiveDashboardPage() {
             trend={capacity && capacity.overdue_tasks > 0 ? "down" : "neutral"}
           />
           <KPICard
-            label="At-Risk Clients"
+            label="At Risk or Critical"
             value={risk ? risk.at_risk_clients + risk.critical_clients : NO_DATA}
             sub={risk ? `${risk.critical_clients} critical${risk.unscored_clients ? ` • ${risk.unscored_clients} not yet scored` : ""}` : undefined}
             icon={<ShieldAlert size={18} style={{ color: PROBLEM }} />}
@@ -387,19 +402,15 @@ export default function ExecutiveDashboardPage() {
               <>
                 {totalClients > 0 && (
                   <div className="h-3 rounded-full overflow-hidden flex mb-3">
-                    {[
-                      { count: risk.healthy_clients, color: READY },
-                      { count: risk.at_risk_clients, color: ATTENTION },
-                      { count: risk.critical_clients, color: PROBLEM },
-                    ].map(({ count, color }, i) => (
-                      count > 0 && <div key={i} style={{ width: `${(count / totalClients) * 100}%`, backgroundColor: color }} />
+                    {portfolioBars.map(({ key, count, color }) => (
+                      count > 0 && <div key={key} style={{ width: `${(count / totalClients) * 100}%`, backgroundColor: color, boxShadow: "inset -1px 0 0 #fff" }} />
                     ))}
                   </div>
                 )}
                 <div className="space-y-3">
-                  <RiskBar label={`Healthy (${risk.healthy_clients})`} value={risk.healthy_clients} max={totalClients} color={READY} />
-                  <RiskBar label={`At Risk (${risk.at_risk_clients})`} value={risk.at_risk_clients} max={totalClients} color={ATTENTION} />
-                  <RiskBar label={`Critical (${risk.critical_clients})`} value={risk.critical_clients} max={totalClients} color={PROBLEM} />
+                  {portfolioBars.map(({ key, label, count, color }) => (
+                    <RiskBar key={key} label={`${label} (${count})`} value={count} max={totalClients} color={color} />
+                  ))}
                 </div>
                 {!!risk.unscored_clients && (
                   <p className="text-3xs text-ps-hint mt-3">

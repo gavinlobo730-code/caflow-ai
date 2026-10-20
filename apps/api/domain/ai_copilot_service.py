@@ -1079,8 +1079,8 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
         # ── The summary: a model's wording of THESE facts, or the plain sentence ─
         facts = {
             "clients": len(clients), "critical": risk["critical"],
-            "at_risk": risk["at_risk"], "healthy": risk["healthy"],
-            "unscored": risk["unscored"], "overdue_filings": overdue_filings,
+            "at_risk": risk["at_risk"], "needs_attention": risk["needs_attention"],
+            "healthy": risk["healthy"], "unscored": risk["unscored"], "overdue_filings": overdue_filings,
             "overdue_tasks": task_facts["overdue_tasks"],
             "workflow_failures": wf_failures, "pending_approvals": pending_approvals,
             "active_automations": active_automations,
@@ -1095,7 +1095,7 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
 Use ONLY the figures below, exactly as given. Do not add, derive, estimate or round any other figure (no percentages, no "about a third"). Highlight the most urgent issue first.
 
 Firm data as of {ist_now().strftime('%d %B %Y')}:
-- Clients in view: {facts['clients']} | Critical: {facts['critical']} | At-risk: {facts['at_risk']} | Healthy: {facts['healthy']} | No health score yet: {facts['unscored']}
+- Clients in view: {facts['clients']} | Critical: {facts['critical']} | At-risk: {facts['at_risk']} | Needs attention: {facts['needs_attention']} | Healthy or good: {facts['healthy']} | No health score yet: {facts['unscored']}
 - Overdue compliance filings: {facts['overdue_filings']}
 - Overdue tasks: {facts['overdue_tasks']}
 - Workflow failures: {facts['workflow_failures']} | Pending approvals: {facts['pending_approvals']}
@@ -1144,6 +1144,7 @@ Firm data as of {ist_now().strftime('%d %B %Y')}:
             "client_risk_insights": {
                 "critical_clients": risk["critical"],
                 "at_risk_clients": risk["at_risk"],
+                "needs_attention_clients": risk["needs_attention"],
                 "healthy_clients": risk["healthy"],
                 "unscored_clients": risk["unscored"],
                 # Overdue COMPLIANCE FILINGS. This was `tasks_overdue`: a count

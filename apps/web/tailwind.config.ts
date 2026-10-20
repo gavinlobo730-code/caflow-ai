@@ -14,6 +14,11 @@ const config: Config = {
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    // `lib/health/vocabulary.ts` holds the badge, text and bar classes of every health grade, and a class that appears in no scanned
+    // file is dropped from the stylesheet and renders with no colour at all. Only `lib/health` is named, not `lib/`: the wider glob
+    // also emitted three classes of the sign-in splash in `lib/auth/AuthGuard.tsx`, restyling a screen this change does not own.
+    // Guarded by `scripts/every-class-in-the-health-vocabulary-is-in-the-stylesheet.test.ts`, which builds the CSS.
+    "./lib/health/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
