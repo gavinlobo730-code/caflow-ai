@@ -94,7 +94,7 @@ class FakeApi:
 
 def _written():
     return {"gstr1_filed": 0, "gstr3b_filed": 0, "returns_not_yet_due": 0, "obligations_closed": 0,
-            "obligations_left_open": [], "returns_refused": []}
+            "obligations_left_open": [], "returns_refused": [], "health_not_scored": []}
 
 
 def _run(api, client=MONTHLY_CLIENT, written=None):

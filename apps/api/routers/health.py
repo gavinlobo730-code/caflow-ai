@@ -1006,6 +1006,7 @@ def calculate_score(
                 firm_id=firm_id,
             )
 
+        _expire_what_was_cached_from_the_scores(firm_id, client_id)
         return api_response(True, row)
 
     client = db.table("clients").select("id, client_name, is_internal").eq("id", client_id).eq("firm_id", firm_id).maybe_single().execute().data
@@ -1067,10 +1068,30 @@ def calculate_score(
             actor_id=current_user.get("auth_user_id"),
         )
 
+    _expire_what_was_cached_from_the_scores(firm_id, client_id)
     return api_response(True, saved)
 
 
 # ─── History ──────────────────────────────────────────────────────────────────
+
+def _expire_what_was_cached_from_the_scores(firm_id: str, client_id: Optional[str] = None) -> None:
+    """The executive dashboard (cached for an hour) counts clients by these scores and a client's intelligence report (cached for six) states
+    one, so a calculation that has just been saved makes what they cached stale: the next read recomputes. `client_id` narrows the reports
+    to that client's; without it every client's goes. A failure here never fails the calculation: the cached answer is merely behind, as it was."""
+    try:
+        from repositories.ai_copilot_repository import ai_copilot_repo, EXECUTIVE_SUMMARY, CLIENT_SUMMARY
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.expire_cached_summaries", firm_id=firm_id)
+        return
+    try:
+        ai_copilot_repo.expire_summaries(firm_id, EXECUTIVE_SUMMARY)
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.expire_executive_summaries", firm_id=firm_id)
+    try:
+        ai_copilot_repo.expire_summaries(firm_id, CLIENT_SUMMARY, client_id)
+    except Exception as exc:
+        capture_soft_failure(exc, operation="health.expire_client_summaries", firm_id=firm_id)
+
 
 @router.get("/scores/{client_id}/history")
 def get_score_history(
@@ -1247,6 +1268,8 @@ def recalculate_all(
             updated += 1
         except Exception as exc:
             capture_soft_failure(exc, operation="health.recalculate_all")
+    if updated:
+        _expire_what_was_cached_from_the_scores(firm_id)
     return api_response(True, {"updated": updated})
 
 

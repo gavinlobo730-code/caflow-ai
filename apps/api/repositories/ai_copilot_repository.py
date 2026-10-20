@@ -34,6 +34,12 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 _get_db = db_provider.request_db
 
+#: The `ai_summaries.summary_type` of the cached executive dashboard and of a client's cached intelligence report (its `entity_id` is the
+#: client). One name for the service that writes and reads each and for the Health screen's calculation, which expires both
+#: (`routers/health`) without importing anything that reaches a model: each states the client's health score.
+EXECUTIVE_SUMMARY = "executive"
+CLIENT_SUMMARY = "client"
+
 
 def _write_db():
     """The client every INSERT and UPDATE on the `ai_*` tables goes through: the privileged one (POST-A-250).
@@ -430,6 +436,22 @@ class AICopilotRepository(BaseRepository):
         }
         result = _write_db().table("ai_summaries").insert(record).execute()
         return result.data[0]
+
+    def expire_summaries(self, firm_id: str, summary_type: str, entity_id: Optional[str] = None) -> None:
+        """Mark this firm's cached summaries of this kind stale, whatever scope they were cached under, so the next read recomputes.
+
+        `entity_id` narrows it to the summaries of one entity (one client's report); without it every entity of the kind goes."""
+        if _USE_MOCK:
+            for s in MOCK_SUMMARIES:
+                if (s["firm_id"] == firm_id and s["summary_type"] == summary_type
+                        and (entity_id is None or s.get("entity_id") == entity_id)):
+                    s["is_stale"] = True
+            return
+        query = (_write_db().table("ai_summaries").update({"is_stale": True})
+                 .eq("firm_id", firm_id).eq("summary_type", summary_type).eq("is_stale", False))
+        if entity_id is not None:
+            query = query.eq("entity_id", entity_id)
+        query.execute()
 
     # ── Recommendations ───────────────────────────────────────────────────────
 

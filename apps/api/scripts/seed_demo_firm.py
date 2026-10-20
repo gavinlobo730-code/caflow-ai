@@ -1466,6 +1466,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "itr_filings": 0, "itr_waiting": 0, "itr_filed": 0, "itr_not_yet_filable": 0,
                "tds_challans": 0, "tds_deposits_not_yet_due": 0, "tds_statements_not_yet_due": 0,
                "tds_statements_filed": 0, "tds_statements_prepared": 0, "tds_quarters_without_deductions": 0,
+               "health_scored": 0, "health_not_scored": [],
                "returns_refused": []}
 
     # ── THE FIRM'S HSN LIBRARY COMES FIRST, AND IT IS A GATE ─────────────────
@@ -1671,8 +1672,36 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         _income_tax(api, c, client_id, firm.financial_year, written)
         # TDS reads the posted bills and the finalized payroll runs, and records their deposit and their statements.
         _tds(api, c, client_id, firm.financial_year, last_month, written)
+        # LAST OF ALL for this client, because the health engine reads everything above (the returns, the obligations, the books, the
+        # documents). Nothing calculates a score until somebody asks (POST-A-282), and the dashboards say "not yet scored" for a client
+        # with none, so a firm seeded to be looked at would show every client unscored. It is THIS client's Calculate and not the
+        # firm's Recalculate: with `--add-to-existing` the latter would also overwrite the scores of clients this run did not write.
+        _health_score(api, c, client_id, written)
 
     return written
+
+
+def _health_score(api: Api, c, client_id: str, written: dict) -> None:
+    """Calculate this client's health score, the way the Health screen's Calculate does. A refusal that is a finding is reported (the
+    run exits non-zero, the client is shown "not yet scored"); one that means every later call fails the same way stops the run."""
+    path = f"/api/health/scores/{client_id}/calculate"
+    try:
+        api.post(path, {})
+    except ApiRefusal as refusal:
+        if _stops_the_run(refusal.status):
+            raise
+        said = " — ".join(str(refusal).strip().splitlines()[:2])
+        _health_not_scored(written, c, said)
+    except (urllib.error.URLError, TimeoutError) as silence:
+        _health_not_scored(written, c, f"no answer ({silence}); the server may have saved it, so check the client's Health screen")
+    else:
+        written["health_scored"] += 1
+
+
+def _health_not_scored(written: dict, c, said: str) -> None:
+    msg = f"{c.name} health score: {said[:260]}"
+    written["health_not_scored"].append(msg)
+    print(f"    ! {msg}")
 
 
 def main() -> int:
@@ -1718,10 +1747,11 @@ def main() -> int:
     print(f"\ndone — {api.calls} API calls")
     for k, v in written.items():
         print(f"  {k.replace('_', ' '):24} {v}")
-    if written["returns_refused"] or written["obligations_left_open"]:
-        # Everything else was written; the exit code says the filing history, or the calendar beside it, is NOT whole.
-        print(f"\n{len(written['returns_refused'])} return(s) or record(s) were not filed or recorded and "
-              f"{len(written['obligations_left_open'])} filed return(s) left their obligation open; they are listed above.")
+    if written["returns_refused"] or written["obligations_left_open"] or written["health_not_scored"]:
+        # Everything else was written; the exit code says the filing history, the calendar beside it, or the health scores are NOT whole.
+        print(f"\n{len(written['returns_refused'])} return(s) or record(s) were not filed or recorded, "
+              f"{len(written['obligations_left_open'])} filed return(s) left their obligation open and "
+              f"{len(written['health_not_scored'])} client(s) have no health score; they are listed above.")
         for line in written["obligations_left_open"]:
             print(f"    ! {line}")
         return 2

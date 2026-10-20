@@ -47,8 +47,10 @@ from typing import Iterable, Optional
 #: the old code carries the invented figures above, and serving it after a
 #: deploy would put them back on the screen for up to an hour. A cached row of an
 #: older version is treated as absent. 3: `compliance_failures` counts the obligations that are late by their date (it asked for a
-#: stored word nothing writes, so every cached 0 from before is a number the screen must not serve).
-DASHBOARD_VERSION = 3
+#: stored word nothing writes, so every cached 0 from before is a number the screen must not serve). 4: a client's health is the health engine's
+#: stored score (`domain/health/client_scores`) or none; it was `clients.health_score`, which defaults to 100 and which nothing writes, so a
+#: cached row from before says every client is healthy and the firm's ring says 100.
+DASHBOARD_VERSION = 4
 
 #: The bands the page has always drawn. NOT `domain.health.scoring.GRADE_BANDS`:
 #: that is a five-band ladder for a client's own badge and this is a three-way
@@ -62,12 +64,12 @@ AT_RISK_BELOW = 70
 FILED = ("Filed", "Completed")
 
 
-def _score(client: dict) -> Optional[int]:
+def score_of(client: dict) -> Optional[int]:
     """A client's health score, or None where there is none.
 
-    `clients.health_score` is `INTEGER DEFAULT 100` (migration 003), so a column
-    present on the row is a number; an ABSENT or null one — a row built without
-    it, a failed read — is not a score and must not be read as 100.
+    The caller hands in clients whose `health_score` is the health engine's stored result (`domain/health/client_scores.attach`),
+    and None where the client has not been scored. An ABSENT or null one — a row built without it, a failed read, a client nobody
+    has calculated — is not a score and must not be read as 100.
     """
     v = client.get("health_score")
     if isinstance(v, bool) or not isinstance(v, (int, float)):
@@ -86,7 +88,7 @@ def client_risk(clients: Iterable[dict]) -> dict:
     """
     critical = at_risk = healthy = unscored = 0
     for c in clients:
-        s = _score(c)
+        s = score_of(c)
         status = c.get("status")
         if status == "critical" or (s is not None and s < CRITICAL_BELOW):
             critical += 1
@@ -102,7 +104,7 @@ def client_risk(clients: Iterable[dict]) -> dict:
 
 def average_health(clients: Iterable[dict]) -> Optional[int]:
     """The mean of the scores that exist, or None when none do (never 75)."""
-    scores = [s for s in (_score(c) for c in clients) if s is not None]
+    scores = [s for s in (score_of(c) for c in clients) if s is not None]
     if not scores:
         return None
     return sum(scores) // len(scores)
@@ -113,7 +115,7 @@ def churn_signals(clients: Iterable[dict], limit: int = 5) -> list[dict]:
     clients — the caller has already narrowed to them."""
     out = []
     for c in clients:
-        s = _score(c)
+        s = score_of(c)
         if s is not None and s < 50:
             out.append({
                 "client_name": c.get("client_name", "Unknown"),

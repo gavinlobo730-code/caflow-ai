@@ -31,6 +31,7 @@ import domain.ai_copilot_service as mod
 from domain.ai import narration
 from domain.billing import collection_days as cd
 from domain.practice import executive_dashboard as ed
+from tests.health_double import StoredScoresFrom
 
 FIRM = "f1"
 TODAY = date(2026, 10, 1)
@@ -96,6 +97,7 @@ def _world(monkeypatch, *, clients=(), tasks=(), records=(), cached=None, reply=
     svc = mod.ai_copilot_service
     repo = _Repo(cached)
     monkeypatch.setattr(mod, "_get_client_repo", lambda: _Clients(clients))
+    monkeypatch.setattr(mod, "_get_health_repo", lambda: StoredScoresFrom(clients))
     monkeypatch.setattr(mod, "_get_task_repo", lambda: _Tasks(tasks))
     monkeypatch.setattr(mod, "_get_compliance_records_repo", lambda: _Compliance(records))
     monkeypatch.setattr(mod, "_get_workflow_repo", lambda: _Workflows())
@@ -251,6 +253,45 @@ def test_a_missing_score_does_not_crash_the_dashboard(monkeypatch):
     svc, _ = _world(monkeypatch, clients=[
         {"id": "c1", "client_name": "A", "health_score": None, "status": "active"}])
     assert _dash(svc)["analysed_client_count"] == 1
+
+
+def test_the_column_nothing_writes_is_not_a_health_score(monkeypatch):
+    """`clients.health_score` is `INTEGER DEFAULT 100` and no code path writes it, so a roll-up that read it called every client Healthy
+    beside a Deadlines screen with hundreds of overdue filings. A client row that carries a 100 and has no stored engine score is not
+    healthy: it has not been scored."""
+    svc, _ = _world(monkeypatch, clients=[{"id": "c1", "client_name": "A", "health_score": 100, "status": "active"},
+                                          {"id": "c2", "client_name": "B", "health_score": 100, "status": "active"}])
+    monkeypatch.setattr(mod, "_get_health_repo", lambda: StoredScoresFrom([]))        # the engine has scored nobody
+    out = _dash(svc)
+    risk = out["client_risk_insights"]
+    assert (risk["healthy_clients"], risk["unscored_clients"]) == (0, 2)
+    assert out["firm_health_summary"]["overall_score"] is None
+
+
+def test_the_engines_stored_score_is_what_the_dashboard_counts(monkeypatch):
+    """The same score the client's own Health screen reads (`health_scores`), whatever the unwritten column on the client row says."""
+    svc, _ = _world(monkeypatch, clients=[{"id": "c1", "client_name": "A", "health_score": 100, "status": "active"},
+                                          {"id": "c2", "client_name": "B", "health_score": 100, "status": "active"},
+                                          {"id": "c3", "client_name": "C", "health_score": 100, "status": "active"},
+                                          {"id": "c4", "client_name": "D", "health_score": 100, "status": "active"}])
+    monkeypatch.setattr(mod, "_get_health_repo", lambda: StoredScoresFrom([
+        {"id": "c1", "health_score": 34}, {"id": "c2", "health_score": 55}, {"id": "c3", "health_score": 90}]))
+    out = _dash(svc)
+    risk = out["client_risk_insights"]
+    assert (risk["critical_clients"], risk["at_risk_clients"], risk["healthy_clients"], risk["unscored_clients"]) == (1, 1, 1, 1)
+    assert out["firm_health_summary"]["overall_score"] == (34 + 55 + 90) // 3, "the mean of the scores that EXIST"
+
+
+def test_a_stored_score_that_cannot_be_read_leaves_every_client_unscored(monkeypatch):
+    class _Broken:
+        def find_all(self, **kw):
+            raise RuntimeError("the table is unreachable")
+
+    svc, _ = _world(monkeypatch, clients=[{"id": "c1", "client_name": "A", "health_score": 100, "status": "active"}])
+    monkeypatch.setattr(mod, "_get_health_repo", lambda: _Broken())
+    out = _dash(svc)
+    assert out["analysed_client_count"] == 1
+    assert out["client_risk_insights"]["unscored_clients"] == 1 and out["client_risk_insights"]["healthy_clients"] == 0
 
 
 # ── nothing is invented ──────────────────────────────────────────────────────

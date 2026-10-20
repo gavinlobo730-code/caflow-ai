@@ -129,7 +129,7 @@ def _written():
     return {k: 0 for k in ("bf_losses", "disallowances_detected", "deduction_claims", "capital_gains",
                            "advance_tax_instalments", "advance_tax_not_yet_due", "itr_filings", "itr_waiting",
                            "itr_filed", "itr_not_yet_filable", "obligations_closed")} | {
-        "obligations_left_open": [], "returns_refused": []}
+        "obligations_left_open": [], "returns_refused": [], "health_not_scored": []}
 
 
 def _run(api, client, written=None, today=date(2026, 10, 19), monkeypatch=None):

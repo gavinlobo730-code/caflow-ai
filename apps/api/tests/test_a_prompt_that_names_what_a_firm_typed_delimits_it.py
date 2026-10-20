@@ -42,6 +42,7 @@ import re
 
 import domain.ai_copilot_service as mod
 from domain.ai import untrusted
+from tests.health_double import StoredScoresFrom
 
 API = pathlib.Path(__file__).resolve().parents[1]
 
@@ -246,6 +247,7 @@ def _capture_service(monkeypatch, rows):
             return row
 
     monkeypatch.setattr(mod, "_get_client_repo", lambda: _Clients())
+    monkeypatch.setattr(mod, "_get_health_repo", lambda: StoredScoresFrom([_Clients().find_by_id("c1")]))
     monkeypatch.setattr(mod, "_get_compliance_records_repo", lambda: _Compliance(rows))
     monkeypatch.setattr(svc, "_call_groq", capture)
     monkeypatch.setattr(svc, "_repo", _Summaries())

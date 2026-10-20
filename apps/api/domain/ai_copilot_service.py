@@ -46,6 +46,40 @@ def _get_task_repo():
     return task_repo
 
 
+def _get_health_repo():
+    from repositories.health_scores_repository import health_scores_repo
+    return health_scores_repo
+
+
+def _with_health(firm_id, clients):
+    """`clients` carrying the health engine's stored score as `health_score`, or None for a client not yet scored.
+
+    `clients.health_score` is a column nothing writes (it defaults to 100), so reading it called every client healthy. A read that
+    fails leaves every client unscored and says so in the log: an unknown is never shown as a value. One client is read by its key,
+    and no client is no read."""
+    from domain.health.client_scores import attach
+    if not clients:
+        return []
+    only = clients[0].get("id") if len(clients) == 1 else None
+    try:
+        rows = _get_health_repo().find_all(firm_id=firm_id, client_id=only)
+    except Exception:
+        _logger.warning("health scores could not be read; the clients are shown as not yet scored", exc_info=True)
+        rows = []
+    return attach(clients, rows)
+
+
+def _health_words(score):
+    """How a prompt states a client's health: the number out of 100, or that it has not been calculated."""
+    return "not yet scored" if score is None else f"{score}/100"
+
+
+def _score_below(client, limit):
+    """Whether the client has a stored health score and it is under `limit`. A client not yet scored is neither."""
+    score = client.get("health_score")
+    return score is not None and score < limit
+
+
 def _get_compliance_records_repo():
     """The canonical compliance_records repo (compliance_tasks/System B is
     being retired, R3.13d). Unlike System B's repo, this one has no
@@ -272,16 +306,18 @@ class AICopilotService:
                 # (None ⇒ firm-wide for Partner/Manager).
                 if allowed_client_ids is not None:
                     clients = [c for c in clients if str(c.get("id")) in allowed_client_ids]
+                clients = _with_health(firm_id, clients)
+                scored = {str(c.get("id")): c.get("health_score") for c in clients}
                 total = len(clients)
                 active = len([c for c in clients if c.get("status") == "active"])
                 at_risk = len([
                     c for c in clients
-                    if c.get("health_score", 100) < 60
+                    if _score_below(c, 60)
                     or c.get("status") in ("at_risk", "critical")
                 ])
                 critical = len([
                     c for c in clients
-                    if c.get("health_score", 100) < 40
+                    if _score_below(c, 40)
                     or c.get("status") == "critical"
                 ])
                 lines += [
@@ -298,6 +334,10 @@ class AICopilotService:
                     else:
                         client = _get_client_repo().find_by_id(context_id)
                     if client:
+                        # The score comes from the list already attached above. The client is looked up by id and the list is read
+                        # separately, so one the list does not hold is read by its key and is not called unscored for want of a look.
+                        health = (scored[str(context_id)] if str(context_id) in scored
+                                  else _with_health(firm_id, [client])[0]["health_score"])
                         # NO NAME, GSTIN OR PAN (ai-15, security_privacy-12). The
                         # client-level copilot was withdrawn for sending exactly
                         # these to a third party, and this builder — reachable by
@@ -309,7 +349,7 @@ class AICopilotService:
                         lines += [
                             "CLIENT: the client this conversation is about (name and tax IDs withheld)",
                             f"CLIENT STATUS: {client.get('status', 'unknown')}",
-                            f"HEALTH SCORE: {client.get('health_score', 'N/A')}",
+                            f"HEALTH SCORE: {_health_words(health)}",
                         ]
                         # Compliance records for this client
                         try:
@@ -495,7 +535,8 @@ class AICopilotService:
     @gateway.attributed("client_intelligence")
     async def get_client_intelligence(self, firm_id: str, client_id: str) -> dict:
         """Generate comprehensive AI intelligence for a single client."""
-        cached = self._repo.get_summary(firm_id, "client", client_id)
+        from repositories.ai_copilot_repository import CLIENT_SUMMARY
+        cached = self._repo.get_summary(firm_id, CLIENT_SUMMARY, client_id)
         if cached:
             return cached
 
@@ -510,7 +551,7 @@ class AICopilotService:
         # reaches the prompt.
         client_name = client_id
         client_status = "unknown"
-        client_health = "N/A"
+        client_health = _health_words(None)
         overdue_count = 0
         pending_count = 0
         compliance_types: list[str] = []
@@ -520,7 +561,7 @@ class AICopilotService:
             if client:
                 client_name = client.get("client_name", client_id)
                 client_status = client.get("status", "unknown")
-                client_health = client.get("health_score", "N/A")
+                client_health = _health_words(_with_health(firm_id, [client])[0]["health_score"])
         except Exception:
             pass
 
@@ -540,7 +581,7 @@ class AICopilotService:
 
 CLIENT DETAILS (name and tax IDs are withheld from this request):
 - Status: {client_status}
-- Health Score: {client_health}/100
+- Health Score: {client_health}
 - Overdue compliance tasks: {overdue_count}
 - Pending compliance tasks: {pending_count}
 - Active compliance types: {', '.join(compliance_types) if compliance_types else 'Not on record'}
@@ -563,7 +604,7 @@ Format as a structured professional report. Cite relevant sections of IT Act / C
 
         summary = self._repo.upsert_summary(
             firm_id,
-            "client",
+            CLIENT_SUMMARY,
             client_id,
             {
                 "title": "Client Intelligence Report",
@@ -937,9 +978,10 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
         from core.ist_clock import fy_bounds, ist_fy_label
         from domain.ai import narration
         from domain.practice import executive_dashboard as ed
+        from repositories.ai_copilot_repository import EXECUTIVE_SUMMARY
 
         scope = self._scope_key(allowed_client_ids)
-        cached = self._repo.get_summary(firm_id, "executive", scope)
+        cached = self._repo.get_summary(firm_id, EXECUTIVE_SUMMARY, scope)
         # A row written before DASHBOARD_VERSION carries figures this method no
         # longer produces (see the module note) and is treated as absent. A
         # current one is served as the payload itself — it used to be returned as
@@ -967,8 +1009,8 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
         # firm's counts — with the cache correctly keeping their answer apart
         # from a Partner's, which made it look handled.
         try:
-            clients = self._visible(
-                _get_client_repo().find_all(firm_id=firm_id), allowed_client_ids, "id")
+            clients = _with_health(firm_id, self._visible(
+                _get_client_repo().find_all(firm_id=firm_id), allowed_client_ids, "id"))
         except Exception:
             _logger.warning("executive dashboard: clients could not be read", exc_info=True)
 
@@ -1130,7 +1172,7 @@ Firm data as of {ist_now().strftime('%d %B %Y')}:
         ttl = timedelta(hours=1) if summary_source == "model" else timedelta(minutes=5)
         self._repo.upsert_summary(
             firm_id,
-            "executive",
+            EXECUTIVE_SUMMARY,
             scope,
             {
                 "title": "Executive Intelligence Dashboard",
