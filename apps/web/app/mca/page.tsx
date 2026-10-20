@@ -22,6 +22,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { useToast } from "@/components/ui/use-toast";
+import { obligationNote } from "@/lib/compliance/obligationNote";
 import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
@@ -175,6 +176,21 @@ function daysUntilKyc(kycDueDate: string): number {
 // own `crore()`, which divided PAISE by the rupee crore and showed every
 // company's capital 100× too large.
 
+/**
+ * What a filing recorded as filed says about the compliance calendar when its obligation was NOT closed by the same click
+ * (POST-A-267): the server's own sentence, read through the one helper behind a fixed lead, or nothing. The page decides
+ * nothing about the state, and a closed or already-filed obligation is not worth saying.
+ *
+ * It is returned as TEXT for the success message to carry, never shown as a toast of its own: the toaster holds ONE
+ * toast (`TOAST_LIMIT` in components/ui/use-toast), so a second toast raised in the same handler replaces the first and
+ * the sentence is gone before anyone could read it.
+ */
+const CALENDAR_NOT_MARKED = "The compliance calendar was not marked filed.";
+
+function calendarSentence(note: string | null): string | undefined {
+  return note ? `${CALENDAR_NOT_MARKED} ${note}` : undefined;
+}
+
 // ─── Add Filing Modal ────────────────────────────────────────────────────────
 
 function AddFilingModal({ clients, firmId, onClose, onAdded }: {
@@ -235,6 +251,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
       if (error) throw new Error(error.message);
       const filing = data as MCAFiling;
       filing.status = computeStatus(filing.due_date, filing.filed_date);
+      let calendar: string | undefined;
       if (status === "Filed") {
         // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this records a filing the CA made on MCA21.
         const res = await api.mca.setFilingStatus(filing.id, {
@@ -244,6 +261,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
           filing.status = "Filed";
           filing.filed_date = filedOn;
           filing.srn = srn.trim();
+          calendar = calendarSentence(obligationNote(res.data));
         } else {
           // The row exists and is pending: say so, with the server's sentence, rather than showing Filed.
           onAdded(filing);
@@ -253,7 +271,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
         }
       }
       onAdded(filing);
-      toast({ title: "MCA filing added" });
+      toast({ title: "MCA filing added", description: calendar });
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to save");
@@ -393,8 +411,9 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
               status: "filed", ca_approved: true, srn, filing_date: filedDate,
             });
             if (!res.success) throw new Error(res.error ?? "Failed to update");
+            return { ok: true as const, id: f.id, srn, label: `${f.client_name} · ${f.form_type}`, note: obligationNote(res.data) };
           }
-          return { ok: true as const, id: f.id, srn };
+          return { ok: true as const, id: f.id, srn, label: `${f.client_name} · ${f.form_type}`, note: null };
         } catch (e) {
           return {
             ok: false as const,
@@ -405,12 +424,15 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
         }
       }));
 
-      const succeeded = results.filter((r): r is { ok: true; id: string; srn: string } => r.ok);
+      const succeeded = results.filter((r): r is { ok: true; id: string; srn: string; label: string; note: string | null } => r.ok);
       const failed = results.filter((r): r is { ok: false; id: string; label: string; error: string } => !r.ok);
 
       if (succeeded.length > 0) {
         onFiled(succeeded.map(r => ({ id: r.id, filed_date: filedDate, srn: r.srn })));
       }
+      // Each sentence behind the filing it is about: five clients can leave the calendar open for the same reason.
+      const calendar = calendarSentence(
+        succeeded.filter(r => r.note).map(r => `${r.label}: ${r.note}`).join(" ") || null);
 
       if (failed.length > 0) {
         // Keep the modal open, showing only the rows that still need
@@ -419,8 +441,10 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
         const failedIds = new Set(failed.map(f => f.id));
         setRows(prev => prev.filter(f => failedIds.has(f.id)));
         setFailures(failed.map(f => ({ label: f.label, error: f.error })));
+        // The modal stays open, so nothing follows this toast to replace it.
+        if (calendar) toast({ title: "Recorded as filed", description: calendar });
       } else {
-        toast({ title: `Marked ${succeeded.length} filing${succeeded.length === 1 ? "" : "s"} as filed` });
+        toast({ title: `Marked ${succeeded.length} filing${succeeded.length === 1 ? "" : "s"} as filed`, description: calendar });
         onClose();
       }
     } finally {
@@ -526,6 +550,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function MCAPage() {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState(0);
   const [firmId, setFirmId] = useState("");
   const [filings, setFilings] = useState<MCAFiling[]>([]);
@@ -642,6 +667,8 @@ export default function MCAPage() {
           status: "filed", ca_approved: true, srn: filedForm.srn.trim(), filing_date: filedForm.filed_date,
         });
         if (!res.success) throw new Error(res.error ?? "Failed to update status");
+        const calendar = calendarSentence(obligationNote(res.data));
+        if (calendar) toast({ title: "Recorded as filed", description: calendar });
       }
       setFilings(prev => prev.map(f => f.id === id
         ? { ...f, status: "Filed" as FilingStatus, filed_date: filedForm.filed_date, srn: filedForm.srn.trim() }

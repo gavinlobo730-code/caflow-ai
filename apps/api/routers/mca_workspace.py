@@ -486,6 +486,64 @@ def create_filing(
         return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 
+def _company_facts(firm_id: str, filing: dict) -> tuple[list[dict], set[str]]:
+    """The client's ACTIVE companies, and the ids of those with this filing's form recorded as filed for its year (the
+    filing just recorded included). The obligation is the client's and the filings are the companies', so closing it
+    needs both."""
+    from services import mca_filing_closes_obligation as closes
+    client_id, form = filing.get("client_id"), filing.get("form_type")
+    if not client_id:
+        # A legacy row can carry no client (the base table's column is nullable): nothing is read for nobody, and the
+        # closer answers that the filing names no client. `.eq("client_id", None)` is not a null test to PostgREST.
+        return [], set()
+    if _USE_MOCK:
+        companies = [c for c in _MOCK_COMPANIES.values()
+                     if c.get("firm_id") == firm_id and c.get("client_id") == client_id and c.get("is_active", True)]
+        filed = [f for f in _MOCK_FILINGS.values()
+                 if f.get("firm_id") == firm_id and f.get("client_id") == client_id and f.get("form_type") == form
+                 and f.get("status") == "filed"]
+    else:
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        companies = (db.table("mca_companies").select("id,company_name,cin").eq("firm_id", firm_id)
+                     .eq("client_id", client_id).eq("is_active", True).execute().data) or []
+        filed = (db.table("mca_filings").select("company_id,company_cin,cin,financial_year,period").eq("firm_id", firm_id)
+                 .eq("client_id", client_id).eq("form_type", form).eq("status", "filed").execute().data) or []
+    return companies, closes.companies_that_filed(filed, closes.filing_year(filing), companies)
+
+
+def _close_the_obligation(current_user: dict, filing: dict) -> Optional[dict]:
+    """Close the calendar's obligation for the filing just recorded as filed, and say what became of it (POST-A-267), or
+    None for an event form, which has none to close. NEVER FAILS THE RECORDING: the filing is stored and the CA has said
+    it is filed. Whatever stops the obligation closing comes back in the answer for the screen to show and goes to the
+    error reporter."""
+    from core.observability import capture_soft_failure
+    from services import mca_filing_closes_obligation as closes
+    if not closes.is_asked_about(filing.get("form_type")):
+        return None
+    firm_id = current_user["firm_id"]
+    try:
+        companies, filed_company_ids = _company_facts(firm_id, filing)
+        return closes.close_for_filed_filing(
+            firm_id=firm_id, client_id=filing.get("client_id") or "", form_type=filing.get("form_type"),
+            financial_year=closes.filing_year(filing), company_id=closes.company_of(filing, companies),
+            filed_date=filing.get("filed_date"), srn=filing.get("srn"), actor=current_user,
+            may_write_compliance=can_user(current_user, "compliance", "write"),
+            companies=companies, filed_company_ids=filed_company_ids)
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="mca_workspace.close_the_obligation",
+                             firm_id=firm_id, client_id=filing.get("client_id"))
+        return {"state": "not_closed", "closed": False, "obligation_id": None,
+                "message": "The filing is recorded as filed, but the compliance calendar could not be updated just now. "
+                           "Mark the obligation filed from Compliance."}
+
+
+def _answered_with_the_obligation(current_user: dict, filing: dict) -> dict:
+    """`filing`, plus what became of its compliance obligation when it has one (an event form answers as it always did)."""
+    obligation = _close_the_obligation(current_user, filing)
+    return filing if obligation is None else {**filing, "compliance_obligation": obligation}
+
+
 @router.patch("/filings/{filing_id}/status")
 def update_filing_status(
     filing_id: str,
@@ -557,6 +615,7 @@ def update_filing_status(
                 event_type="mca_filing_done",
                 title=f"MCA {rec.get('form_type', '')} filed — SRN: {body.srn or 'N/A'}",
             )
+            return api_response(True, _answered_with_the_obligation(current_user, rec))
         return api_response(True, rec)
     except HTTPException:
         raise

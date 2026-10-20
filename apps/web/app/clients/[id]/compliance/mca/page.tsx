@@ -14,6 +14,7 @@ import { formatCroreLakh, type PaiseInput } from "@/lib/money/format";
 import { errorMessage } from "@/lib/api";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
+import { obligationNote } from "@/lib/compliance/obligationNote";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { panProblem } from "@/lib/identifiers/pan";
@@ -21,6 +22,7 @@ import { dinProblem } from "@/lib/identifiers/din";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 import { EmptyState } from "@/components/ui/states";
+import { Callout } from "@/components/ui/callout";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -431,6 +433,9 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
   const [filingDate, setFilingDate] = useState("");
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  // What the server said about the compliance calendar when a filing was recorded as filed and its obligation was not
+  // closed by the same click (POST-A-267). The sentence is the server's; the page decides nothing about the state.
+  const [calendarNote, setCalendarNote] = useState<string | null>(null);
 
   const annualForms = ["AOC-4", "MGT-7", "ADT-1"];
   const eventForms = ["DIR-12", "INC-22", "SH-7", "CHG-1", "CHG-4"];
@@ -510,12 +515,14 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
     }
     setConfirming(true);
     setConfirmError(null);
+    setCalendarNote(null);
     try {
       const res = await apiFetch(`/api/mca-workspace/filings/${confirmFiling.id}/status`, {
         method: "PATCH",
         body: JSON.stringify({ status: "filed", ca_approved: true, srn: srn.trim(), filing_date: filingDate }),
       });
       if (!res.success) throw new Error(res.error ?? "Failed to update status");
+      setCalendarNote(obligationNote(res.data));
       setConfirmFiling(null);
       load();
     } catch (err) {
@@ -534,6 +541,12 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
           refData={{ filing_id: demo.id }}
           onClose={() => setDemo(null)}
         />
+      )}
+      {calendarNote && (
+        <Callout tone="note" title="Recorded as filed. The compliance calendar was not marked filed.">
+          <span>{calendarNote}</span>{" "}
+          <button onClick={() => setCalendarNote(null)} className="underline">Dismiss</button>
+        </Callout>
       )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">{category === "annual" ? "Annual" : "Event"} Filings</h3>
