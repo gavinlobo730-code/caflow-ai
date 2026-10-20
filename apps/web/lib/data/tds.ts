@@ -572,6 +572,20 @@ export async function createTdsChallan(input: CreateChallanInput): Promise<Recor
   return resp.data;
 }
 
+/** What became of the monthly deposit obligations on the compliance calendar when a challan was recorded. The server answers it
+ *  with the challan (`POST /challans`); the sentence in `message` is the server's and is shown as written. */
+export interface CalendarAnswer {
+  state: "closed" | "not_closed" | string;
+  closed?: boolean;
+  /** The month the answer is about, `YYYY-MM`; absent for an answer about the whole call. */
+  month?: string | null;
+  message: string;
+  /** Somebody has something to do about it (a month left open): the server's judgement, so the screen draws attention from it. */
+  needs_action?: boolean;
+  filed_on?: string;
+  reference?: string;
+}
+
 /** tds_challans as migration 037 defines it. */
 export interface RecordedChallan {
   id: string;
@@ -589,6 +603,76 @@ export interface RecordedChallan {
   quarter: string;
   section: string | null;
   status: "deposited" | "matched" | "unmatched";
+  /** Present on the answer to recording a challan: the monthly deposit obligations it closed or left open, and why. */
+  compliance_obligations?: CalendarAnswer[];
+}
+
+/** One deduction's standing in the challan register (`GET /deposit-state`). A row is its state and only what is true of it besides: a
+ *  key is absent when it says nothing. The labels and the generic sentences are the server's and come once, in `legend`. */
+export type DepositStateKind = "deposited" | "part" | "not_deposited" | "not_recorded" | "nil" | "salary" | "undated";
+
+export interface DeductionDepositState {
+  state: DepositStateKind;
+  /** The server's sentence about THIS row (a part's rupees; a challan dated before the tax). Absent: read the state's own sentence
+   *  from `legend`. */
+  detail?: string;
+  /** For a not-deposited row: whether its deposit is late and by when ("Was due on 7 Jul 2025." / "Not due yet: due by 7 Jul 2026."). */
+  due_note?: string;
+  /** The deposit of a part or not-deposited row fell due before today (IST). Absent: it did not, or no date was judged. */
+  overdue?: boolean;
+  /** A challan that covers some of the row was paid after the date it fell due (the register's first-in-first-out order). */
+  paid_late?: boolean;
+  /** The serials of the challans that paid it. */
+  challans?: string[];
+  /** A challan that covers some of the row is dated before the tax was deducted (the register matches by order, not by date). */
+  dated_before?: boolean;
+}
+
+/** The server's words for a state, sent once per answer. */
+export interface DepositStateWords {
+  label: string;
+  sentence: string;
+}
+
+/** A thing the register itself shows that a reader of its figures should know (a challan recorded twice, a challan against a
+ *  demand, a challan larger than its quarter's deductions). The sentence is the server's. */
+export interface DepositStateWarning {
+  code: string;
+  message: string;
+}
+
+export interface TdsDepositState {
+  client_id: string;
+  /** The database's figure; null when it could not be read (the rows below are still answered). */
+  position: {
+    /** Tax deducted and not yet deposited, in quarters for which a challan is recorded. */
+    undeposited_paise: number;
+    /** Tax deducted in quarters for which NO challan is recorded: this product cannot say whether it was deposited. */
+    not_recorded_paise: number;
+    /** False when the figure above judges nothing (tax was deducted and no quarter of it has a challan recorded): show no figure. */
+    figure_known: boolean;
+    /** The server's one line on what the figure was judged against. */
+    basis: string;
+    /** The server's sentence about the second figure; null when there is none. */
+    caveat: string | null;
+  } | null;
+  /** Everything deducted for the client, whatever the section, with surcharge and cess. */
+  totals: { deducted_paise: number };
+  /** Keyed by deduction id. */
+  deductions: Record<string, DeductionDepositState>;
+  legend: Record<DepositStateKind, DepositStateWords>;
+  warnings: DepositStateWarning[];
+  /** What was read to answer: "15 deductions and 6 challans of this client." */
+  read: string;
+}
+
+/** What became of a client's tax deductions, from the challan register: the deposit position the cards show and each deduction's
+ *  state. The browser computes none of it. */
+export async function fetchTdsDepositState(clientId: string): Promise<TdsDepositState> {
+  const resp = await authedFetch<TdsDepositState>(
+    `/api/tds-workspace/deposit-state?client_id=${encodeURIComponent(clientId)}`);
+  if (!resp.success) throw new Error(resp.error ?? "Could not read the deposit position");
+  return resp.data;
 }
 
 export async function deleteTdsDeduction(id: string): Promise<void> {

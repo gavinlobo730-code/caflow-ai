@@ -46,6 +46,7 @@ from core.authz import effective_client_ids
 from domain.banking import entry as bank_entry
 from domain.hub.tiles import describe, not_recorded_caveat, tiles_for_scope
 from core import db_provider
+from services import tds_position_service
 
 logger = logging.getLogger("caflow.hub")
 
@@ -213,20 +214,10 @@ def _sum_paise(table: str, column: str, firm_id: str,
 
 
 def _tds_position(firm_id: str, client_ids: Optional[list[str]]) -> tuple[int, int]:
-    """(TDS deducted and not yet deposited, TDS deducted in quarters with no challan recorded), in paise, which the DATABASE
-    computes (CLAUDE.md's reporting rule: what crosses the wire is proportional to the answer, not to the ledger). The first is the
-    shortfall in quarters whose deposits are recorded here; the second is tax the books cannot say was deposited or not, and it is
-    not part of the first (migration 523). `client_ids` None is every client of the firm, a list is those clients, an empty list is
-    none. The function's name is written out at the call on purpose: `core/schema_guard` and the rpc-existence tests read the
-    literal first argument of an rpc call and cannot see a name held in a variable."""
-    data = _db().rpc("tds_deposit_position", {"p_firm_id": firm_id, "p_client_ids": client_ids}).execute().data
-    if isinstance(data, list):
-        data = data[0] if data else None
-    if not isinstance(data, dict) or data.get("undeposited_paise") is None or data.get("not_recorded_paise") is None:
-        # The function sums with a coalesce, so a genuine nothing is 0. An ANSWER that is absent is a read that did not happen,
-        # and `_safely` turns this into a tile with no figure: an unknown is never shown as a value.
-        raise RuntimeError("tds_deposit_position answered nothing")
-    return int(data["undeposited_paise"]), int(data["not_recorded_paise"])
+    """(TDS deducted and not yet deposited, TDS deducted in quarters with no challan recorded), in paise, which the DATABASE computes
+    (`services/tds_position_service`, the reader the TDS screen shares). The first is the shortfall in quarters whose deposits are
+    recorded here; the second is tax the books cannot say was deposited or not, and it is not part of the first (migration 523)."""
+    return tds_position_service.read(_db(), firm_id, client_ids)
 
 
 def hub(current_user: dict, client_id: Optional[str] = None) -> dict:

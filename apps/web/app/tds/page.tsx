@@ -26,7 +26,7 @@
  */
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   IndianRupee, Calendar, AlertCircle, Plus, X, FileText, Award, Upload, ArrowRight,
@@ -62,7 +62,7 @@ const TDS_IMPORT_COLUMNS = [
   { key: "section",         label: "TDS Section",      required: true,  hint: "e.g. 194C | 194J | 194A — the rate, threshold and §206AA floor are applied by the engine, not read from the file" },
   { key: "gross_amount_rs", label: "Gross Amount (₹)", required: true,  hint: "e.g. 100000 (in rupees)" },
   { key: "payment_date",    label: "Payment Date",     required: true,  hint: "YYYY-MM-DD e.g. 2025-05-15 — the financial year and the quarter are taken from this date" },
-  { key: "challan_no",      label: "Challan No",       required: false, hint: "BSR code + serial e.g. 0510001-12345" },
+  { key: "challan_no",      label: "Challan No",       required: false, hint: "A note only: it is stored with the deduction, shown nowhere on this screen and matched to nothing. Record the deposit itself as a challan on the Challans tab" },
 ];
 
 // PAN — IT Act §139A, through `lib/identifiers/pan.panProblem`. A DEDUCTEE
@@ -81,7 +81,7 @@ import { useToast } from "@/components/ui/use-toast";
 // resolved server-side — CLAUDE.md: zero business logic in the frontend.
 import {
   listTdsSections, previewTdsDeduction, createTdsDeduction, createTdsChallan,
-  fetchDepositDue, type DepositDueWorksheet,
+  fetchDepositDue, fetchTdsDepositState, currentFinancialYear, type DepositDueWorksheet, type TdsDepositState, type CalendarAnswer,
 } from "@/lib/data/tds";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
@@ -210,6 +210,8 @@ interface TDSChallan {
   quarter: string;             // 'Q1'..'Q4' — not "Q1 (Apr-Jun)"
   section: string | null;
   status: "deposited" | "matched" | "unmatched";
+  /** Only on the answer to recording one: what became of the monthly deposit obligations on the compliance calendar. */
+  compliance_obligations?: CalendarAnswer[];
 }
 
 interface TDSReturn {
@@ -444,7 +446,7 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
             <DateInput id="tds-payment-date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={paymentDate} onChange={setPaymentDate} onStateChange={dates.watch("paymentDate", "Payment date")} />
           </div>
           <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">Challan No.</label>
+            <label className="text-xs font-medium text-ps-body block mb-1">Challan No. (a note only)</label>
             <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={challanNo} onChange={e => setChallanNo(e.target.value)} placeholder="Optional" />
           </div>
         </div>
@@ -631,7 +633,9 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
   const [amtRupees, setAmtRupees] = useState("");
   const [period, setPeriod] = useState("Q1");
   const [section, setSection] = useState("194J");
-  const [fy, setFy] = useState("2025-26");
+  // From the clock, not a year typed into the source: a challan recorded under the wrong financial year is not counted for the
+  // quarter it paid (the register is judged per year and quarter), and this screen opened on a year already past.
+  const [fy, setFy] = useState(currentFinancialYear());
   // THE SPLIT (TDS-08/TDS-30). A challan that pays s.201(1A) interest or a
   // s.234E fee is not all tax, and until these fields existed the whole amount
   // was booked as TDS — so the section read as over-deposited and the deductee
@@ -781,6 +785,10 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
               <YearPicker value={fy} onChange={setFy} />
             </div>
           </div>
+          <p className="text-xs text-ps-hint">
+            A challan is matched to the deductions of the quarter and financial year it is recorded for. Record it for the quarter the
+            tax was deducted in, even if it was paid in the next one.
+          </p>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Section</label>
             {/* s.192 IS offered here and only here. A challan is a DEPOSIT, and
@@ -816,6 +824,18 @@ export default function TDSPage() {
   const [challans, setChallans] = useState<TDSChallan[]>([]);
   const [returns, setReturns] = useState<TDSReturn[]>([]);
   const [certificates, setCertificates] = useState<TDSCertificate[]>([]);
+  // What the challan register says became of this client's deductions (GET /deposit-state): the "not yet deposited" card and each
+  // row's Deposit column. The server computes all of it; null means it has not been read, and `depositStateError` says why not.
+  const [depositState, setDepositState] = useState<TdsDepositState | null>(null);
+  const [depositStateError, setDepositStateError] = useState<string | null>(null);
+  // What recording a challan did to the monthly deposit obligations on the compliance calendar, in the server's words.
+  const [calendarAnswers, setCalendarAnswers] = useState<CalendarAnswer[] | null>(null);
+  // Each read of the deposit state takes a number, and only the latest is allowed to land: an answer for the client open a moment
+  // ago, or an earlier refresh for this one that finished late, must not replace what is on screen now.
+  const depositSeq = useRef(0);
+  // The client open now. A modal's answer, or an import, that finishes after the CA switched client must not take the open client's
+  // read away (it would bump the counter, and the answer it lands is for a client that is no longer open).
+  const openClient = useRef("");
   const [loading, setLoading] = useState(true);
   const [showAddDeduction, setShowAddDeduction] = useState(false);
   const [showAddChallan, setShowAddChallan] = useState(false);
@@ -828,20 +848,47 @@ export default function TDSPage() {
   // state with no indication anything went wrong.
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
 
+  // `afterWrite`: the figures on screen no longer describe the books, so they are taken down until the new answer lands (a card
+  // saying what it said before the challan was recorded, beside a note saying the challan was recorded, is two answers at once).
+  async function refreshDepositState(clientId: string, afterWrite = false) {
+    if (clientId !== openClient.current) return;
+    const seq = ++depositSeq.current;
+    if (afterWrite) { setDepositState(null); setDepositStateError(null); }
+    try {
+      const got = await fetchTdsDepositState(clientId);
+      if (seq !== depositSeq.current) return;
+      setDepositState(got); setDepositStateError(null);
+    } catch (e) {
+      if (seq !== depositSeq.current) return;
+      setDepositState(null);
+      setDepositStateError(e instanceof Error ? e.message : "Could not read the deposit position.");
+    }
+  }
+
   useEffect(() => {
+    // A client switch starts from nothing, so no card or row can show the previous client's figures while this one is read, and a
+    // failure for the previous client does not blank this one's cards.
+    let live = true;
+    openClient.current = selectedClientId;
+    depositSeq.current += 1;
+    setDeductions([]); setChallans([]); setReturns([]); setCertificates([]);
+    setDepositState(null); setDepositStateError(null); setCalendarAnswers(null);
+    setTableError(false); setLoadErrorMessage(null);
+    // client_id is required by the queries below; an empty string would be sent as `client_id=eq.` and rejected.
+    if (!selectedClientId) { setLoading(false); return () => { live = false; }; }
+    setLoading(true);
+    void refreshDepositState(selectedClientId);
     async function load() {
       try {
         let fid = "";
         try {
           fid = await getFirmId();
         } catch (e) {
-          setLoadErrorMessage(e instanceof Error ? e.message : "Couldn't resolve your firm.");
+          if (live) setLoadErrorMessage(e instanceof Error ? e.message : "Couldn't resolve your firm.");
         }
+        if (!live) return;
         setFirmId(fid);
-        if (!fid) return;
-        // client_id is required by the query below; an empty string would be
-        // sent as `client_id=eq.` and rejected.
-        if (!selectedClientId) { setDeductions([]); setLoading(false); return; }
+        if (!fid) { setTableError(true); return; }
         const sb = getSupabaseClient();
         // A client paying a hundred vendors a month passes 1,000 deductions in ten months; an unpaged read stopped there
         // without a word and every total on this tab was short by what fell past it.
@@ -852,6 +899,7 @@ export default function TDSPage() {
           .eq("client_id", selectedClientId)
           .order("transaction_date", { ascending: false })
           .order("id"));
+        if (!live) return;
         if (error) {
           setTableError(true);
           setLoadErrorMessage(prev => prev ?? error.message);
@@ -875,6 +923,7 @@ export default function TDSPage() {
           sb.from("tds_certificates").select("*").eq("firm_id", fid)
             .eq("client_id", selectedClientId).order("created_at", { ascending: false }),
         ]);
+        if (!live) return;
         if (chalRes.error) {
           setTableError(true);
           setLoadErrorMessage(prev => prev ?? chalRes.error!.message);
@@ -894,18 +943,21 @@ export default function TDSPage() {
           setCertificates((certRes.data ?? []) as unknown as TDSCertificate[]);
         }
       } finally {
-        setLoading(false);
+        if (live) setLoading(false);
       }
     }
     load();
+    return () => { live = false; };
   }, [selectedClientId]);
 
   // Summary stats — all integer paise arithmetic
   const totalTDSPaise = deductions.reduce((s, d) => s + d.tds_paise, 0);
+  // The answer counts only for the client that is open: it is cleared on a switch, and this holds the cards and the column to it
+  // if an answer for another one were ever still in state.
+  const depositForClient = depositState && depositState.client_id === selectedClientId ? depositState : null;
   // Against the values the CHECK constraints actually store. Every one of
   // these compared to a capitalised string no row can hold, so all three read
   // zero however much work was outstanding (TDS-15).
-  const pendingChallans = challans.filter(c => c.status === "unmatched").length;
   const pendingReturns = returns.filter(r => !FILED.has(r.status)).length;
   const pendingCerts = certificates.filter(c => c.status === "pending" || c.status === "generated").length;
 
@@ -963,10 +1015,57 @@ export default function TDSPage() {
       render: (d) => <span className="font-medium text-ps-ink">{formatPaise(d.tds_paise)}</span>,
     },
     {
-      key: "challan_no", header: "Challan No", accessor: (d) => d.challan_no ?? "",
-      render: (d) => <span className="font-mono text-xs text-ps-label">{d.challan_no || "—"}</span>,
+      // What the challan register says became of this deduction (the server's words). It used to print `challan_no`, a field
+      // nothing writes for a deduction a purchase bill creates, so it was a dash for nearly every row.
+      key: "deposit", header: "Deposit",
+      accessor: (d) => {
+        const row = depositForClient?.deductions[d.id];
+        return row ? depositForClient?.legend[row.state]?.label ?? "" : "";
+      },
+      // A CSV says what the screen says: the label alone would read "Not deposited" for tax not due until next month, and "Deposited"
+      // for a deposit made four months late.
+      exportValue: (d) => {
+        const row = depositForClient?.deductions[d.id];
+        if (!row) return "";
+        const label = depositForClient?.legend[row.state]?.label ?? "";
+        return [label, row.due_note, row.challans && row.challans.length > 0 ? `challan ${row.challans.join(", ")}` : null]
+          .filter(Boolean).join(". ");
+      },
+      render: (d) => {
+        const row = depositForClient?.deductions[d.id];
+        if (!depositForClient || !row) {
+          return (
+            <span className="text-xs text-ps-hint"
+              title={depositStateError ?? (depositForClient ? "This deduction was added after the deposit state was read."
+                : "The deposit position has not been read yet.")}>
+              {depositStateError ? "Not read" : depositForClient ? "Added after the read" : "—"}
+            </span>
+          );
+        }
+        const words = depositForClient.legend[row.state];
+        // A row's own sentence (a part's rupees, a challan dated before the tax) replaces the state's.
+        const sentence = row.detail ?? words?.sentence;
+        // Not yet due is not a failure, and a deposit made late or with a challan dated before the tax is not drawn as ready: the
+        // server says which (`overdue`, `paid_late`, `dated_before`).
+        const tone = row.state === "deposited" ? (row.paid_late || row.dated_before ? "text-state-attention" : "text-state-ready")
+          : row.state === "part" || row.state === "not_deposited" ? (row.overdue ? "text-state-problem" : "text-state-attention")
+          : "text-ps-label";
+        // A sentence about THIS row (a part's rupees, a challan dated before the tax) is read on the screen, and not only in a hover
+        // title that reaches neither a keyboard nor a touch screen; the generic ones (the same for every row of a state) are said once
+        // under the cards and are a tooltip and screen-reader text here, so a client with hundreds of rows is not a wall of repeats.
+        const shown = row.state === "part" || row.dated_before === true;
+        return (
+          <span className="block" title={sentence}>
+            <span className={`text-xs font-medium ${tone}`}>{words?.label ?? "—"}</span>
+            {sentence && !shown && <span className="sr-only">{`. ${sentence}`}</span>}
+            {sentence && shown && <span className="block max-w-xs text-3xs leading-snug text-ps-label">{sentence}</span>}
+            {row.due_note && <span className={`block text-3xs leading-snug ${row.overdue || row.paid_late ? "text-state-problem" : "text-state-attention"}`}>{row.due_note}</span>}
+            {row.challans && row.challans.length > 0 && <span className="block font-mono text-3xs text-ps-hint">{row.challans.join(", ")}</span>}
+          </span>
+        );
+      },
     },
-  ], []);
+  ], [depositForClient, depositStateError]);
 
   const deductionFilters: FilterDef<TDSDeduction>[] = useMemo(() => [
     {
@@ -1013,13 +1112,58 @@ export default function TDSPage() {
         </div>
       )}
 
-      {/* Summary Cards */}
+      {/* What recording a challan did to the compliance calendar, in the server's words. The live region is always on the page, so
+          that what is put in it is announced; the tone is attention only for a month the server left open. */}
+      <div role="status" className="space-y-2 empty:!mt-0">
+        {calendarAnswers && calendarAnswers.length > 0 && (
+          <>
+            <Callout tone={calendarAnswers.some(a => a.needs_action) ? "attention" : "note"}
+              title="Challan recorded. What became of the monthly deposits on the compliance calendar:">
+              <ul className="list-disc pl-5 space-y-1">
+                {calendarAnswers.map((a, i) => (
+                  <li key={`${a.month ?? "all"}-${i}`}>{a.message}</li>
+                ))}
+              </ul>
+            </Callout>
+            <button type="button" onClick={() => setCalendarAnswers(null)} className="text-xs text-ps-label underline">Dismiss</button>
+          </>
+        )}
+      </div>
+      {/* Summary cards. A figure is shown only when it was read for the client chosen: before one is chosen, while the screen is
+          reading and when a read failed, the card says so and shows a dash (an unknown is never shown as a value). */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { icon: <IndianRupee className="w-4 h-4 text-blue-600" />, bg: "bg-blue-50", label: "Total TDS Deducted", value: loading ? "—" : formatPaise(totalTDSPaise), sub: "All time" },
-          { icon: <FileText className="w-4 h-4 text-amber-600" />, bg: "bg-state-attention-surface", label: "Pending Challans", value: String(pendingChallans), sub: "Undeposited" },
-          { icon: <Calendar className="w-4 h-4 text-red-600" />, bg: "bg-state-problem-surface", label: "Returns Due", value: String(pendingReturns), sub: "24Q/26Q/27Q" },
-          { icon: <Award className="w-4 h-4 text-purple-600" />, bg: "bg-purple-50", label: "Certificates Pending", value: String(pendingCerts), sub: "Form 16/16A" },
+          {
+            // The server's total (everything deducted for the client, surcharge and cess included), so that this card and the next
+            // count tax the same way.
+            icon: <IndianRupee className="w-4 h-4 text-blue-600" />, bg: "bg-blue-50", label: "Total TDS Deducted",
+            value: !selectedClientId || !depositForClient ? "—" : formatPaise(depositForClient.totals.deducted_paise),
+            sub: !selectedClientId ? "Choose a client" : depositStateError ? "Could not be read" : !depositForClient ? "Reading"
+              : "Recorded here, with surcharge and cess (salary tax is in payroll)", note: null as string | null,
+          },
+          {
+            // A figure only where the server could judge one: no read yet, a failed read, a position that could not be read and
+            // tax that no recorded challan can be set against all show a dash and say why.
+            icon: <FileText className="w-4 h-4 text-amber-600" />, bg: "bg-state-attention-surface", label: "Tax not yet deposited",
+            value: !selectedClientId || !depositForClient?.position || !depositForClient.position.figure_known ? "—"
+              : formatPaise(depositForClient.position.undeposited_paise),
+            sub: !selectedClientId ? "Choose a client"
+              : depositStateError ? "Could not be read"
+              : !depositForClient ? "Reading the challan register"
+              : !depositForClient.position ? "The position could not be read"
+              : depositForClient.position.basis,
+            note: depositForClient?.position?.caveat ?? null,
+          },
+          {
+            icon: <Calendar className="w-4 h-4 text-red-600" />, bg: "bg-state-problem-surface", label: "Returns Due",
+            value: !selectedClientId || loading || tableError ? "—" : String(pendingReturns),
+            sub: !selectedClientId ? "Choose a client" : tableError ? "Could not be read" : loading ? "Reading" : "24Q/26Q/27Q", note: null as string | null,
+          },
+          {
+            icon: <Award className="w-4 h-4 text-purple-600" />, bg: "bg-purple-50", label: "Certificates Pending",
+            value: !selectedClientId || loading || tableError ? "—" : String(pendingCerts),
+            sub: !selectedClientId ? "Choose a client" : tableError ? "Could not be read" : loading ? "Reading" : "Form 16/16A", note: null as string | null,
+          },
         ].map(c => (
           <div key={c.label} className="bg-white rounded-xl border border-ps-border p-4">
             <div className="flex items-center gap-2 mb-3">
@@ -1028,9 +1172,26 @@ export default function TDSPage() {
             </div>
             <p className="text-lg font-semibold text-ps-ink">{c.value}</p>
             <p className="text-xs text-ps-hint mt-0.5">{c.sub}</p>
+            {c.note && <p className="text-3xs leading-snug text-state-attention mt-1.5">{c.note}</p>}
           </div>
         ))}
       </div>
+      {depositStateError && (
+        <Callout tone="attention" title="The deposit state could not be read">
+          {depositStateError}. The Deposit column and the undeposited figure are not shown until it can be.
+        </Callout>
+      )}
+      {depositForClient && <p className="text-xs text-ps-hint">Deposit state read from {depositForClient.read}</p>}
+      {depositForClient && Object.values(depositForClient.deductions).some(r => r.state === "not_deposited") && (
+        <p className="text-xs text-ps-hint">Not deposited: {depositForClient.legend.not_deposited.sentence}</p>
+      )}
+      {depositForClient && depositForClient.warnings.length > 0 && (
+        <Callout tone="attention" title="About the challans recorded for this client">
+          <ul className="list-disc pl-5 space-y-1">
+            {depositForClient.warnings.map((w, i) => <li key={`${w.code}-${i}`}>{w.message}</li>)}
+          </ul>
+        </Callout>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-ps-border">
@@ -1099,7 +1260,7 @@ export default function TDSPage() {
           {deductions.length > 0 && (
             <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 px-1 text-xs text-ps-label">
               <span>Total Gross: <span className="font-semibold text-ps-ink">{formatPaise(deductions.reduce((s, d) => s + d.payment_amount_paise, 0))}</span></span>
-              <span>Total TDS: <span className="font-semibold text-ps-ink">{formatPaise(totalTDSPaise)}</span></span>
+              <span>Total of the TDS Amount column: <span className="font-semibold text-ps-ink">{formatPaise(totalTDSPaise)}</span></span>
             </div>
           )}
         </div>
@@ -1264,11 +1425,15 @@ export default function TDSPage() {
       )}
 
       {showAddDeduction && firmId && (
-        <AddDeductionModal clientId={selectedClientId} onClose={() => setShowAddDeduction(false)} onAdded={d => setDeductions(prev => [d, ...prev])} />
+        <AddDeductionModal clientId={selectedClientId} onClose={() => setShowAddDeduction(false)} onAdded={d => { setDeductions(prev => [d, ...prev]); void refreshDepositState(selectedClientId, true); }} />
       )}
       {showAddChallan && selectedClientId && (
         <AddChallanModal clientId={selectedClientId} onClose={() => setShowAddChallan(false)}
-          onAdded={c => setChallans(prev => [c, ...prev])} />
+          onAdded={c => {
+            setChallans(prev => [c, ...prev]);
+            setCalendarAnswers(c.compliance_obligations ?? null);
+            void refreshDepositState(selectedClientId, true);
+          }} />
       )}
 
       {showImport && firmId && (
@@ -1322,6 +1487,7 @@ export default function TDSPage() {
               const sb2 = getSupabaseClient();
               const { data } = await selectAll(() => sb2.from("tds_deductions").select("*").eq("firm_id", firmId).eq("client_id", selectedClientId).order("transaction_date", { ascending: false }).order("id"));
               if (data) setDeductions(data as TDSDeduction[]);
+              void refreshDepositState(selectedClientId, true);
             }
             return { imported, errors };
           }}
