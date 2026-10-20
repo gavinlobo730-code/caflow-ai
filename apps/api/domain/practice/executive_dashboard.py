@@ -46,8 +46,9 @@ from typing import Iterable, Optional
 #: dashboard is cached for an hour in `ai_summaries.metadata`; a row written by
 #: the old code carries the invented figures above, and serving it after a
 #: deploy would put them back on the screen for up to an hour. A cached row of an
-#: older version is treated as absent.
-DASHBOARD_VERSION = 2
+#: older version is treated as absent. 3: `compliance_failures` counts the obligations that are late by their date (it asked for a
+#: stored word nothing writes, so every cached 0 from before is a number the screen must not serve).
+DASHBOARD_VERSION = 3
 
 #: The bands the page has always drawn. NOT `domain.health.scoring.GRADE_BANDS`:
 #: that is a five-band ladder for a client's own badge and this is a three-way

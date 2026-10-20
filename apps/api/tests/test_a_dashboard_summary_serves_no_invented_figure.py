@@ -61,7 +61,7 @@ def test_the_summary_still_serves_its_counted_keys(monkeypatch):
 
     class _Records:
         def list_records(self, **_k): return []
-        def score_from_records(self, _r): return (100, None)
+        def score_from_records(self, _r, _today=None): return (100, None)
 
     monkeypatch.setattr(ts, "client_repo", _Repo())
     monkeypatch.setattr(ts, "task_repo", _Repo())

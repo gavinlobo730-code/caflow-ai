@@ -13,6 +13,7 @@ NOT a filing engine: it never submits anything, never touches GST/accounting/ban
 schemas, and never emails clients (escalations are internal only). All money/date
 logic is server-side; the pure helpers here are deterministic and unit-tested.
 """
+from domain.practice.compliance_overdue import is_overdue
 from domain.tds import vocabulary
 import os
 import logging
@@ -934,7 +935,9 @@ def aggregate_dashboard(records: list[dict], today: Optional[date] = None) -> di
         return str(r.get("due_date", ""))[:10]
 
     open_recs = [r for r in records if _OPEN_OBLIGATION(r.get("status"))]
-    overdue = [r for r in open_recs if _due(r) and _due(r) < today_s]
+    # The one rule (`domain/practice/compliance_overdue`): by its date, or moved to "Overdue" by hand. This asked the date alone, so a
+    # hand-set "Overdue" with a date ahead was an open obligation counted nowhere as late, on the tile beside the Deadlines screen.
+    overdue = [r for r in open_recs if is_overdue(r, today)]
     due_week = [r for r in open_recs if today_s <= _due(r) <= week_end]
     due_month = [r for r in open_recs if today_s <= _due(r) <= month_end]
 
@@ -943,11 +946,11 @@ def aggregate_dashboard(records: list[dict], today: Optional[date] = None) -> di
     for r in open_recs:
         staff = r.get("preparer_id") or r.get("assigned_to") or "unassigned"
         cl = r.get("client_id") or "unknown"
-        is_overdue = _due(r) and _due(r) < today_s
+        late = is_overdue(r, today)
         for bucket, key in ((by_staff, staff), (by_client, cl)):
             slot = bucket.setdefault(key, {"key": key, "obligations": 0, "overdue": 0})
             slot["obligations"] += 1
-            if is_overdue:
+            if late:
                 slot["overdue"] += 1
 
     return {
@@ -1492,6 +1495,7 @@ def dashboard(firm_id: str, today: Optional[date] = None, allowed_client_ids: Op
     records = _records_for(firm_id)
     if allowed_client_ids is not None:
         records = [r for r in records if str(r.get("client_id")) in allowed_client_ids]
+    today = today or ist_today()
     agg = aggregate_dashboard(records, today)
 
     # NAMES, RESOLVED ONCE, AND ADDITIVE (practice-hub-05). The buckets are keyed
@@ -1512,7 +1516,9 @@ def dashboard(firm_id: str, today: Optional[date] = None, allowed_client_ids: Op
     by_staff = [{**s, "label": ("Unassigned" if s["key"] == "unassigned"
                                 else staff_names.get(str(s["key"])))}
                 for s in agg["by_staff"]]
-    queue = [{**r, "client_name": client_names.get(str(r.get("client_id") or ""))}
+    # `overdue` is the server's answer for every row, by the one rule, so the screen filters and colours on it and does not decide
+    # lateness from the stored status (which lists only the rows somebody moved to "Overdue" by hand).
+    queue = [{**r, "client_name": client_names.get(str(r.get("client_id") or "")), "overdue": is_overdue(r, today)}
              for r in records]
     return {**agg, "by_client": by_client, "by_staff": by_staff, "queue": queue}
 

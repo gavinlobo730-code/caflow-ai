@@ -7,6 +7,7 @@ import logging
 from datetime import date, datetime, timezone, timedelta
 from typing import Optional
 from core.ist_clock import IST, ist_now, ist_today, ist_date_of
+from domain.practice.compliance_overdue import overdue_records
 
 logger = logging.getLogger("caflow.memory")
 
@@ -99,7 +100,8 @@ class MemoryPipeline:
             client_compliance = [c for c in compliance_items if c.get("client_id") == client_id]
             data_points += len(client_compliance)
 
-            missed = [c for c in client_compliance if c.get("status") == "Overdue"]
+            # Derived by date: nothing writes the stored word "Overdue" when a due date passes (domain/practice/compliance_overdue).
+            missed = overdue_records(client_compliance, ist_today())
 
             profile_data["missed_deadline_count"] = len(missed)
             profile_data["compliance_score"] = max(0, round(100 - (len(missed) / max(1, len(client_compliance)) * 50), 1))

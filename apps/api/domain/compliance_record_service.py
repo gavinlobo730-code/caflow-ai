@@ -11,6 +11,7 @@ from core.ist_clock import ist_now, ist_today
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.client_repository import client_repo
 from core import db_provider
+from domain.practice.compliance_overdue import is_overdue, is_settled
 
 # Valid status transitions. Phase 4.4 adds the terminal Filed -> Completed step
 # (Module D progression: ... -> Ready To File -> Filed -> Completed).
@@ -185,17 +186,20 @@ def _compute_risk_score(record: dict) -> int:
     due = record["due_date"]
     updated = record.get("updated_at", record["created_at"])
 
-    if status == "Filed":
+    # Settled owes nothing: "Completed" is the terminal step after Filed and a past date does not make it late.
+    if is_settled(status):
         return 0
-    if status == "Ready To File":
-        return 20
 
     today_d = ist_today()
     due_d = date.fromisoformat(due[:10])
     days_until_due = (due_d - today_d).days
 
-    if status == "Overdue" or days_until_due < 0:
+    # Before the "Ready To File" answer: a return that is prepared and has missed its date is the most urgent thing to file, and the
+    # health score already counts it as late (`is_overdue`), so its risk cannot be the lowest one in the module.
+    if is_overdue(record, today_d):
         return 90  # CRITICAL
+    if status == "Ready To File":
+        return 20
 
     if days_until_due <= 7:
         return 75  # HIGH
@@ -468,14 +472,18 @@ class ComplianceRecordService:
         return updated
 
     @staticmethod
-    def score_from_records(records: list[dict]) -> tuple[int, list[dict]]:
+    def score_from_records(records: list[dict], today: Optional[date] = None) -> tuple[int, list[dict]]:
         """Pure health-score math over an already-fetched record set (100,
         minus deductions). Factored out so callers who already have the
         firm's full compliance_records in memory (e.g. a dashboard summing
         risk across many clients) can score every client without an extra
-        DB round trip per client — see domain/task_service.py."""
-        overdue_records = [r for r in records if r["status"] == "Overdue"]
-        high_risk_records = [r for r in records if r["risk_score"] >= 70 and r["status"] != "Overdue"]
+        DB round trip per client — see domain/task_service.py.
+
+        OVERDUE IS DERIVED (`domain/practice/compliance_overdue`): this asked for the stored word "Overdue", which nothing writes
+        when a date passes, so a client whose every filing was months late lost nothing and scored 100. `today` is the CA's day."""
+        today = today or ist_today()
+        overdue_records = [r for r in records if is_overdue(r, today)]
+        high_risk_records = [r for r in records if r["risk_score"] >= 70 and not is_overdue(r, today)]
         missing_docs = len([r for r in records if r["status"] == "Awaiting Documents"])
 
         score: int = 100
@@ -505,9 +513,10 @@ class ComplianceRecordService:
             raise NotFoundError("Client", client_id)
 
         records = self.list_records(client_id=client_id, firm_id=firm_id)
-        overdue_records = [r for r in records if r["status"] == "Overdue"]
+        today = ist_today()
+        overdue_records = [r for r in records if is_overdue(r, today)]
         missing_docs = len([r for r in records if r["status"] == "Awaiting Documents"])
-        score, breakdown = self.score_from_records(records)
+        score, breakdown = self.score_from_records(records, today)
         risk_level = (
             "critical" if score < 40 else
             "high" if score < 60 else
@@ -539,14 +548,15 @@ class ComplianceRecordService:
 
         due_this_week = len([
             r for r in all_records
-            if r["status"] != "Filed" and today_str <= r["due_date"] <= week_end
+            if not is_settled(r["status"]) and today_str <= r["due_date"] <= week_end
         ])
-        overdue = len([r for r in all_records if r["status"] == "Overdue"])
+        # Derived by date: nothing writes the stored word "Overdue" when a due date passes (domain/practice/compliance_overdue).
+        overdue = len([r for r in all_records if is_overdue(r, today_d)])
         ready_for_review = len([r for r in all_records if r["status"] == "Ready For Review"])
         ready_to_file = len([r for r in all_records if r["status"] == "Ready To File"])
         filed_this_month = len([
             r for r in all_records
-            if r["status"] == "Filed" and (r.get("filed_date") or "") >= this_month_start
+            if is_settled(r["status"]) and (r.get("filed_date") or "") >= this_month_start
         ])
 
         clients = client_repo.find_all(firm_id=firm_id)

@@ -265,7 +265,6 @@ def test_the_client_report_names_a_kind_from_the_list_and_nothing_a_row_says(mon
 def test_the_firm_wide_compliance_report_groups_by_a_kind_from_the_list(monkeypatch):
     soon = [{"compliance_type": "GST", "client_id": "c1"}, {"compliance_type": INJECTION, "client_id": "c2"}]
     svc, seen = _capture_service(monkeypatch, [])
-    monkeypatch.setattr(mod, "_overdue_compliance_records", lambda *a, **k: [])
     monkeypatch.setattr(mod, "_due_soon_from_records", lambda *a, **k: soon)
     monkeypatch.setattr(mod, "_get_compliance_records_repo", lambda: _Compliance(soon))
     asyncio.run(svc.get_compliance_intelligence("f1"))

@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from core.ist_clock import ist_now, ist_today
 from domain.ai import gateway, groq_text, untrusted
+from domain.practice import compliance_overdue
 
 _logger = logging.getLogger("caflow.ai_copilot")
 
@@ -71,13 +72,6 @@ def _compliance_kind(value) -> str:
     return value if value in COMPLIANCE_TYPES else "Other"
 
 
-def _overdue_compliance_records(firm_id=None, client_id=None):
-    # Pushed server-side (status="Overdue") rather than fetching every status
-    # and filtering in Python — the repo's find_all() supports an equality
-    # filter on status.
-    return _get_compliance_records_repo().find_all(firm_id=firm_id, client_id=client_id, status="Overdue")
-
-
 def _due_within_days_compliance_records(days, firm_id=None, client_id=None):
     records = _get_compliance_records_repo().find_all(firm_id=firm_id, client_id=client_id)
     return _due_soon_from_records(records, days)
@@ -89,7 +83,7 @@ def _due_soon_from_records(records, days):
     horizon_s = (ist_today() + timedelta(days=days)).isoformat()
     return [
         r for r in records
-        if r.get("status") not in ("Filed", "Completed")
+        if not compliance_overdue.is_settled(r.get("status"))
         and today_s <= str(r.get("due_date", ""))[:10] <= horizon_s
     ]
 
@@ -322,7 +316,7 @@ class AICopilotService:
                             comp_records = _get_compliance_records_repo().find_all(
                                 firm_id=firm_id, client_id=context_id
                             )
-                            overdue_ct = [t for t in comp_records if t.get("status") == "Overdue"]
+                            overdue_ct = compliance_overdue.overdue_records(comp_records, ist_today())
                             pending_ct = [t for t in comp_records if t.get("status") == "Not Started"]
                             lines += [
                                 f"CLIENT OVERDUE COMPLIANCE TASKS: {len(overdue_ct)}",
@@ -347,7 +341,7 @@ class AICopilotService:
                 comp_records = self._visible(
                     _get_compliance_records_repo().find_all(firm_id=firm_id),
                     allowed_client_ids)
-                comp_overdue = [r for r in comp_records if r.get("status") == "Overdue"]
+                comp_overdue = compliance_overdue.overdue_records(comp_records, ist_today())
                 due_soon = _due_soon_from_records(comp_records, 7)
                 lines.append(f"OVERDUE COMPLIANCE FILINGS: {len(comp_overdue)}")
                 lines.append(f"COMPLIANCE FILINGS DUE IN 7 DAYS: {len(due_soon)}")
@@ -534,7 +528,7 @@ class AICopilotService:
             comp_records = _get_compliance_records_repo().find_all(
                 firm_id=firm_id, client_id=client_id
             )
-            overdue_count = len([t for t in comp_records if t.get("status") == "Overdue"])
+            overdue_count = len(compliance_overdue.overdue_records(comp_records, ist_today()))
             pending_count = len([t for t in comp_records if t.get("status") == "Not Started"])
             compliance_types = sorted({
                 _compliance_kind(t.get("compliance_type")) for t in comp_records if t.get("compliance_type")
@@ -679,7 +673,7 @@ Format as a structured professional report. Cite relevant sections of IT Act / C
             all_tasks = self._visible(
                 _get_compliance_records_repo().find_all(firm_id=firm_id),
                 allowed_client_ids)
-            overdue_tasks = [r for r in all_tasks if r.get("status") == "Overdue"]
+            overdue_tasks = compliance_overdue.overdue_records(all_tasks, ist_today())
             due_soon_tasks = _due_soon_from_records(all_tasks, 14)
         except Exception:
             pass
@@ -1014,8 +1008,7 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
         fy = ist_fy_label()
         coverage = ed.compliance_coverage(
             compliance_records, fy_bounds(fy)[0], today.isoformat())
-        overdue_filings = len([r for r in compliance_records
-                               if r.get("status") == "Overdue"])
+        overdue_filings = len(compliance_overdue.overdue_records(compliance_records, today))
         task_facts = ed.overdue_task_facts(overdue_tasks)
 
         # Revenue: the practice's own fee ledger, Partner-only. A failure here

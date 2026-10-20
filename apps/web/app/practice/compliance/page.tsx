@@ -45,7 +45,14 @@ interface Obligation {
    *  FIRM-WIDE queue, so a row without its client is a row nobody can act on.
    *  Optional because a backend older than the field does not send it. */
   client_name?: string | null;
+  /** The server's answer, by the one rule (`domain/practice/compliance_overdue`): not filed or completed, and either moved to Overdue
+   *  by hand or past its due date. The stored `status` is NOT this: nothing sets "Overdue" when a date passes, so the status filter
+   *  listed only the rows somebody had moved there by hand while the tile above counted every late one. Optional because a backend
+   *  older than the field does not send it. */
+  overdue?: boolean;
 }
+/** The queue filter that means "late", as distinct from a stored status. */
+const OVERDUE_FILTER = "__overdue";
 // Mirrors the visible "Compliance queue" table columns (see the <td> cells below).
 // The file falls back to the client ID where the name is absent: a blank cell
 // in an exported file cannot be looked up, an ID can.
@@ -67,6 +74,12 @@ interface Dashboard {
   by_staff: WorkloadRow[];
   by_client: WorkloadRow[];
   queue: Obligation[];
+}
+
+/** Whether a queue row is late: the server's flag, with the old reading only for the window where this page is deployed ahead of the
+ *  backend that sends it. */
+function isLate(o: Obligation, today: string): boolean {
+  return o.overdue ?? (o.status !== "Filed" && o.status !== "Completed" && o.due_date < today);
 }
 
 function ComplianceDashboard() {
@@ -128,11 +141,12 @@ function ComplianceDashboard() {
   const queue = useMemo(() => {
     const rows = dash?.queue ?? [];
     return rows.filter((o) => {
-      if (statusFilter !== "all" && o.status !== statusFilter) return false;
+      if (statusFilter === OVERDUE_FILTER) { if (!isLate(o, today)) return false; }
+      else if (statusFilter !== "all" && o.status !== statusFilter) return false;
       if (typeFilter !== "all" && o.compliance_type !== typeFilter) return false;
       return true;
     }).sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""));
-  }, [dash, statusFilter, typeFilter]);
+  }, [dash, statusFilter, typeFilter, today]);
 
   const types = useMemo(
     () => Array.from(new Set((dash?.queue ?? []).map((o) => o.compliance_type))).sort(),
@@ -206,7 +220,8 @@ function ComplianceDashboard() {
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
               className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600">
               <option value="all">All statuses</option>
-              {Object.keys(NEXT_STATUS).map((st) => <option key={st} value={st}>{st}</option>)}
+              <option value={OVERDUE_FILTER}>Overdue (past its due date)</option>
+              {Object.keys(NEXT_STATUS).filter((st) => st !== "Overdue").map((st) => <option key={st} value={st}>{st}</option>)}
             </select>
             <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
               className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600">
@@ -237,7 +252,7 @@ function ComplianceDashboard() {
             </thead>
             <tbody className="divide-y divide-ps-border">
               {queue.map((o) => {
-                const overdue = o.status !== "Filed" && o.status !== "Completed" && o.due_date < today;
+                const overdue = isLate(o, today);
                 return (
                   <tr key={o.id} className="hover:bg-ps-bg">
                     <td className="px-4 py-2.5 text-ps-body truncate max-w-[200px]" title={o.client_name ?? o.client_id}>

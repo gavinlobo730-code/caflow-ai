@@ -23,6 +23,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 from core.ist_clock import ist_now, ist_today
 from domain.money_text import whole_rupees
+from domain.practice.compliance_overdue import is_overdue, is_settled
 
 logger = logging.getLogger("caflow.services")
 
@@ -69,7 +70,10 @@ def compute_compliance_risk(
         due_soon = []
         late_history = 0
         for r in crecords:
-            status = (r.get("status") or "").lower()
+            # The one rule (`domain/practice/compliance_overdue`): this reader used to carry its own settled words, "filed" and
+            # "not_applicable", which is not a status of this table, so a Completed obligation with a past date counted as late
+            # here and as settled everywhere else.
+            settled = is_settled(r.get("status"))
             due_raw = r.get("due_date")
             due = None
             if due_raw:
@@ -77,16 +81,16 @@ def compute_compliance_risk(
                     due = date.fromisoformat(str(due_raw)[:10])
                 except ValueError:
                     due = None
-            if status in ("overdue",) or (due and due < today and status not in ("filed", "not_applicable")):
+            if is_overdue(r, today):
                 overdue.append(r)
-            elif due and today <= due <= week_ahead and status not in ("filed", "not_applicable"):
+            elif due and today <= due <= week_ahead and not settled:
                 due_soon.append(r)
             # Late history: filed after the due date. The evidence is `filed_date`, the DATE the CA recorded the filing
             # on (`compliance_records` has no `filed_at`; this read used the wrong name for as long as the rule existed, so
             # the +20 below never applied to anyone, POST-A-261). It is a calendar date and not a stamp, so there is no
             # Indian-day conversion to make. A filed record with no `filed_date` is not counted: absent evidence is not
             # evidence of lateness.
-            if status == "filed" and due and r.get("filed_date"):
+            if settled and due and r.get("filed_date"):
                 try:
                     filed = date.fromisoformat(str(r["filed_date"])[:10])
                     if filed > due:

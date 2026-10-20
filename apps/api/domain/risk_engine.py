@@ -8,6 +8,7 @@ from datetime import date, timedelta
 from typing import Optional
 from core.ist_clock import ist_today
 from core.authz import within_client_scope
+from domain.practice.compliance_overdue import is_overdue
 
 # THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. `ist_today()` at
 # module level is evaluated ONCE, at import, so on the long-lived uvicorn
@@ -177,8 +178,10 @@ def _derive_compliance_risks(firm_id: Optional[str], client_id: Optional[str]) -
             records = [r for r in records if r.get("client_id") == client_id]
 
     derived: list[dict] = []
+    today = ist_today()
     for r in records:
-        if r.get("status") == "Overdue":
+        # Derived by date: nothing writes the stored word "Overdue" when a due date passes (domain/practice/compliance_overdue).
+        if is_overdue(r, today):
             derived.append({
                 "id": f"risk-rec-{r['id']}",
                 "source": "compliance",

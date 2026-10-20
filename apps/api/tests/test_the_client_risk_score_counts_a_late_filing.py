@@ -17,7 +17,7 @@ CLIENT, OTHER = "client-a", "client-b"
 LONG_AGO = "2025-01-20"            # a due date well in the past: the record is filed, so it is not "overdue"
 
 
-def _record(client, *, due=LONG_AGO, filed="2025-01-25", status="filed", **extra):
+def _record(client, *, due=LONG_AGO, filed="2025-01-25", status="Filed", **extra):
     return {"id": f"{client}-{due}-{filed}", "client_id": client, "compliance_type": "GSTR-3B",
             "due_date": due, "filed_date": filed, "status": status, **extra}
 
@@ -55,7 +55,7 @@ def test_a_filed_record_with_no_recorded_date_is_not_counted_late(score):
 
 def test_only_a_filed_record_can_be_late_history(score):
     """An open record past its due date is OVERDUE (25 points), not late history; a filed_date on it means nothing."""
-    out = score([_record(CLIENT, status="pending", filed="2025-02-01")])
+    out = score([_record(CLIENT, status="Not Started", filed="2025-02-01")])
     assert out[CLIENT]["late_filing_history"] == 0
     assert out[CLIENT]["overdue_count"] == 1
 
