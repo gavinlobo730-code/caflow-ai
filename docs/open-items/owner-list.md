@@ -2,7 +2,7 @@
 
 Everything that is yours to decide, do or supply, and every statutory or legal point I will not assume. Kept in one place and refreshed, not scattered across replies. Each row names the ledger ids behind it (`decisions-taken-2026-10-14.md` has what I decided myself). Written in plain English: you decide the money and do what only you can do; the legal and statutory points need a primary text, a practising CA or counsel, and **nothing is built on a guess**.
 
-**At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (11, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
+**At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (13, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
 
 ## 1. The single most useful thing: let me read the primary texts
 
@@ -160,6 +160,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Who can supply it:** Claude once the government sites are reachable (section 1) for the texts; a practising CA or company secretary for the reading.
 - **Stays unbuilt meanwhile:** Any matching of MGT-7A to an obligation. The MCA workspace says an MGT-7A is matched to none, and the MGT-7 obligation stays open until it is marked filed from Compliance.
 - **Ledger:** POST-C-209
+
+### S13. A deposit against a demand (challan 281, minor head 400)
+
+- **Question:** Can a challan paid against a demand raised on regular assessment (minor head 400) ever settle tax a deductor deducted at source, for the monthly deposit rule, the interest and default sections and the challan details of the quarterly statement, or is it always a separate liability from the tax deducted?
+- **Needed:** The Income-tax Act and Rules on a deposit against a demand, and the ITNS 281 instructions; or a practising CA's answer.
+- **Who can supply it:** Claude once the government sites are reachable (section 1) for the texts; a practising CA for the reading.
+- **Stays unbuilt meanwhile:** Any rule that treats minor head 400 differently from 200. Today every reader counts a challan of either minor head as a deposit of the quarter's deductions, which can understate a default; the deposit position carries a warning saying so and the Challans tab shows each challan's minor head, so a demand payment can be told apart.
+- **Ledger:** POST-C-210
 
 ## 5. Wait-until-asked items the goal probably needs
 

@@ -33,7 +33,7 @@ whose covering challan is dated BEFORE the deduction says so (`dated_before`): t
 deposit worksheet, which judges each challan by its date, refuses such a part, so the two screens must not disagree in silence.
 
 WARNINGS are what the register itself shows that a reader of its figures should know. A challan recorded twice (the definition Form
-3CD clause 34 shares) and a challan against a demand (minor head 400, which every reader counts as a deposit: POST-A-274) are
+3CD clause 34 shares) and a challan against a demand (minor head 400, which every reader counts as a deposit: POST-C-210) are
 `register_warnings`, and neither is said of a salary challan, which the register ignores. A challan larger than the deductions of its
 quarter and section (`surplus`) is the one sign of a challan recorded for the wrong quarter, which this register cannot otherwise
 tell from a deposit made early, and it is worded as a question to check. Integer paise throughout.
@@ -214,7 +214,7 @@ def duplicate_challan_warnings(challans: Iterable[dict]) -> list[dict]:
 
 def demand_challan_warnings(challans: Iterable[dict]) -> list[dict]:
     """A challan against a demand (minor head 400) is counted as a deposit of the quarter's deductions like any other, which
-    understates a default (POST-A-274): the screen says so beside the figures instead of leaving it to be found. Not said of a salary
+    understates a default (POST-C-210): the screen says so beside the figures instead of leaving it to be found. Not said of a salary
     challan, which the register ignores."""
     return [{"code": GAP_CHALLAN_AGAINST_A_DEMAND, "challan_no": str(c.get("challan_no") or ""),
              "message": f"Challan {c.get('challan_no') or '(no serial)'} is a payment against a demand (minor head 400) and is counted as "

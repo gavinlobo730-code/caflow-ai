@@ -33,6 +33,7 @@ import path from "node:path";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const PAGE = fs.readFileSync(path.join(ROOT, "app/tds/page.tsx"), "utf8");
 const DATA = fs.readFileSync(path.join(ROOT, "lib/data/tds.ts"), "utf8");
+const MINOR_HEAD = fs.readFileSync(path.join(ROOT, "lib/tds/minorHead.ts"), "utf8");
 
 // The modal's request payload, sliced out so a field held in STATE and then
 // left out of the body cannot pass for one that is sent. That exact weakness
@@ -71,9 +72,11 @@ test("a split larger than the total is refused before the round trip", () => {
 });
 
 test("the minor head can be a 400 and cannot be anything else", () => {
-  assert.match(PAGE, /value="400"/,
+  assert.match(MINOR_HEAD, /"400": "400 — TDS regular assessment \(against a demand\)"/,
     "migration 037 defaults minor_head to '200' and nothing could send a 400, " +
     "so a deposit against a demand raised on regular assessment could not be recorded");
+  assert.match(PAGE, /\(\["200", "400"\] as const\)\.map\(h => <option key=\{h\} value=\{h\}>\{MINOR_HEAD_LABEL\[h\]\}<\/option>\)/,
+    "the form does not offer exactly the two minor heads, from the one table the list also reads");
   assert.match(PAGE, /e\.target\.value === "400" \? "400" : "200"/,
     "the minor head is one of two values; a free string would reach a CHECK-less " +
     "column and be wrong forever");

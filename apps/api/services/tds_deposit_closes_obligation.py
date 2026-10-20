@@ -20,7 +20,7 @@ THE RULE (`decide_month`, a pure function, holds it)
       * a month in which no tax was deducted has no deposit to make and is not closed here (nothing in the books says it was
         a nil month and not a month nobody has keyed; the CA marks it from Compliance);
       * a challan against a demand (minor head 400) is not a deposit of the tax deducted, and a month it paid part of is left
-        open (POST-A-274 is the rule for every reader of the register);
+        open (POST-C-210 is the question behind the rule for every reader of the register);
       * a payment dated in the future is refused by `mark_filed`, and the month is left open with a sentence;
       * A LATE CHALLAN CLOSES NOTHING BY ITSELF. The register matches a challan to a deduction by order within the quarter,
         and a challan carries a quarter and no month, so one paid after a month's due date may be the deposit for a later

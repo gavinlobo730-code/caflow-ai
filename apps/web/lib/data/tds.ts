@@ -14,6 +14,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "./getFirmId";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { obligationNote } from "@/lib/compliance/obligationNote";
+import { TDS_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
+import { readWindow } from "@/lib/lists/readWindow";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -324,6 +326,11 @@ export interface TDSSection {
    *  its own option would be offering ₹1,00,000 to a payee whose payer is not
    *  a bank. Optional so a frontend ahead of the backend renders no picker. */
   threshold_classes?: { key: string; label: string; threshold_paise: number }[];
+  /** The section's plain-English name (or its parent's, for a clause key), from `domain/tds/section_labels.py`; absent from a
+   *  server that predates it, null for a section with no name. */
+  label?: string | null;
+  /** The section a clause key such as "194J(A)" belongs to; the key itself on an ordinary section. */
+  parent_section?: string;
 }
 
 export interface TDSAmountResult {
@@ -344,8 +351,16 @@ export interface TDSAmountResult {
 
 /** IT Act Chapter XVII-B section list with current thresholds/rates — the
  * authoritative replacement for a hardcoded section dropdown. */
-export async function listTdsSections(fy?: string): Promise<{ fy: string; rates_verified: boolean; sections: TDSSection[] }> {
-  const resp = await authedFetch<{ fy: string; rates_verified: boolean; sections: TDSSection[] }>(
+export interface TdsSectionsAnswer {
+  fy: string;
+  rates_verified: boolean;
+  sections: TDSSection[];
+  /** The sections a challan may be recorded under, in the server's order (optional: a server one deploy behind sends none). */
+  challan_sections?: { section: string; label: string | null }[];
+}
+
+export async function listTdsSections(fy?: string): Promise<TdsSectionsAnswer> {
+  const resp = await authedFetch<TdsSectionsAnswer>(
     `/api/tds/sections${fy ? `?fy=${encodeURIComponent(fy)}` : ""}`
   );
   if (!resp.success) throw new Error(resp.error ?? "Failed to load TDS sections");
@@ -674,6 +689,44 @@ export async function fetchTdsDepositState(clientId: string): Promise<TdsDeposit
   if (!resp.success) throw new Error(resp.error ?? "Could not read the deposit position");
   return resp.data;
 }
+
+// ── A client's register, as windows the server cuts and counts ─────────────────────────────────────────────────────────
+
+/** A window of one of a client's TDS lists and the figures the screen shows over ALL of them (`apps/api/services/
+ *  tds_register_lists_service.py`). `figures` is the `totals` of the deductions and the `counts` of the returns and the
+ *  certificates; a challan window has none. The browser adds nothing up. */
+export interface TdsListWindow<T, F> {
+  rows: T[];
+  hasMore: boolean;
+  limit: number;
+  maxLimit: number;
+  figures: F | null;
+}
+
+export interface TdsDeductionTotals { count: number; payment_amount_paise: number; tds_paise: number }
+export interface TdsReturnCounts { not_filed: number; filed: number; overdue: number; total: number }
+export interface TdsCertificateCounts { pending: number; total: number }
+
+async function readTdsWindow<T, F>(path: string, rowsField: string, figuresField: string | null, what: string): Promise<TdsListWindow<T, F>> {
+  const resp = await authedFetch<unknown>(`${path}${path.includes("?") ? "&" : "?"}limit=${TDS_REGISTER_WINDOW_MAX}`);
+  if (!resp.success) throw new Error(resp.error ?? `Could not read the ${what}`);
+  const win = readWindow<T>(resp.data, rowsField, TDS_REGISTER_WINDOW_MAX);
+  if (!win) throw new Error(`The ${what} came back in a form this screen cannot read.`);
+  const raw = resp.data as Record<string, unknown> | null;
+  const figures = figuresField && raw && !Array.isArray(raw) ? ((raw[figuresField] as F | undefined) ?? null) : null;
+  return { rows: win.rows, hasMore: win.hasMore, limit: win.limit, maxLimit: win.maxLimit, figures };
+}
+
+const clientQuery = (clientId: string) => `client_id=${encodeURIComponent(clientId)}`;
+
+export const listTdsDeductions = (clientId: string) =>
+  readTdsWindow<Record<string, unknown>, TdsDeductionTotals>(`/api/tds-workspace/deductions?${clientQuery(clientId)}`, "deductions", "totals", "deductions");
+export const listTdsChallans = (clientId: string) =>
+  readTdsWindow<Record<string, unknown>, never>(`/api/tds-workspace/challans?${clientQuery(clientId)}`, "challans", null, "challans");
+export const listTdsReturns = (clientId: string) =>
+  readTdsWindow<Record<string, unknown>, TdsReturnCounts>(`/api/tds-workspace/returns?${clientQuery(clientId)}`, "returns", "counts", "returns");
+export const listTdsCertificates = (clientId: string) =>
+  readTdsWindow<Record<string, unknown>, TdsCertificateCounts>(`/api/tds-workspace/certificates?${clientQuery(clientId)}`, "certificates", "counts", "certificates");
 
 export async function deleteTdsDeduction(id: string): Promise<void> {
   const resp = await authedFetch<{ deleted: string }>(

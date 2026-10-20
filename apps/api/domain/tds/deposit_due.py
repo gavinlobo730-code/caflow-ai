@@ -240,7 +240,10 @@ def mapping_from_register(rows, challans, *, fy: str) -> "challan_mapping.Mappin
     from payroll and neither side of this register carries it.
     """
     events = [{"id": r.get("id"), "section": str(r.get("section") or "").strip() or "(no section)",
-               "on_date": str(r.get("transaction_date") or "")[:10], "doc_no": str(r.get("id") or ""),
+               "on_date": str(r.get("transaction_date") or "")[:10],
+               # The bill or payment the row came from, so two deductions of one day are ordered as the quarterly statement
+               # (which reads the bills and payments themselves) orders them: `challan_mapping.source_id_of`.
+               "source_id": str(r.get("purchase_bill_id") or r.get("purchase_payment_id") or r.get("id") or ""),
                "tds_paise": tax_of(r)}
               for r in rows if not is_salary(str(r.get("section") or ""))]
     paid = [{**c, "tds_paise": int(c.get("tds_paise") or 0) + int(c.get("surcharge_paise") or 0)}

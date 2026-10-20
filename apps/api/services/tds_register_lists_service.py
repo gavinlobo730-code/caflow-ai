@@ -1,0 +1,127 @@
+"""The four lists the TDS screen shows for one client, as windows the server cuts and counts (POST-A-276).
+
+WHAT THIS REPLACES
+    The screen read `tds_deductions`, `tds_challans`, `tds_returns` and `tds_certificates` straight from the database in the
+    browser (the frontend's second data path), where `rbac()` and the assignment scope never run, and then worked out its footer,
+    its "Returns Due" and "Certificates Pending" cards and the Overdue split of the Returns tab over whatever it had paged in.
+    The four endpoints in `routers/tds_workspace` existed beside it and nothing called them: they returned a bare array, in no
+    stated order, with no word on whether more rows existed.
+
+WHAT EACH ANSWER IS
+    A WINDOW: the rows in a stated total order (the day, latest first, and the id, so two requests never repeat or skip a row), the
+    server's `has_more` (one row more than the window is read, `core.list_window`), `limit` and `max_limit`. Beside the rows, the
+    figures the screen shows over them, taken over ALL of the client's rows by `domain/tds/screen_counts` and not over the window,
+    so a list that stops at a number never makes a total or a count shorter than the truth.
+
+    The figures are read with the narrow columns they need (`core.db_paging.fetch_all`, keyset), so a client with a long history
+    costs a few small pages and not the whole table.
+
+`TDS_LIST_MAX` is the ceiling one read may ask for. The screen lists a client's register whole and searches and sorts it in the
+browser, so it asks for the ceiling, as the entity register does; it is the one browser-side copy of this number
+(`TDS_REGISTER_WINDOW_MAX` in `lib/lists/window.ts`), and a test holds the two equal.
+"""
+from __future__ import annotations
+
+from typing import Callable, Optional
+
+from core.db_paging import fetch_all, fetch_window
+from core.ist_clock import ist_today
+from core.list_window import probe, split
+from domain.tds import screen_counts
+
+TDS_LIST_MAX = 2000
+
+
+def _window(rows: list, limit: int, has_more: bool, rows_field: str, **extra) -> dict:
+    return {rows_field: rows, "has_more": has_more, "limit": limit, "max_limit": TDS_LIST_MAX, **extra}
+
+
+def _sorted_latest_first(rows: list, field: str) -> list:
+    """`field` descending and then the id ascending: the order the database is asked for, for the in-memory store."""
+    ordered = sorted(rows, key=lambda r: str(r.get("id") or ""))
+    return sorted(ordered, key=lambda r: str(r.get(field) or ""), reverse=True)
+
+
+def _cut(rows: list, limit: int, offset: int) -> tuple[list, bool]:
+    return split(rows[offset:offset + probe(limit)], limit)
+
+
+def _read_window(base: Callable, order_field: str, limit: int, offset: int) -> tuple[list, bool]:
+    """One window of the query `base()` builds (a fresh builder each call, with its firm and client filters on it), in the stated
+    total order: `order_field` descending and then the id. `core.db_paging.fetch_window` reads it in requests the server will honour
+    (PostgREST answers at most `PAGE` rows to one request and says nothing when it cuts one short), and `split` takes the probe row
+    off and reports whether more existed."""
+    return split(fetch_window(base, order_field, count=probe(limit), start=offset), limit)
+
+
+# ── deductions ───────────────────────────────────────────────────────────────
+
+def deductions(db, firm_id: str, client_id: str, *, quarter: Optional[str], limit: int, offset: int) -> dict:
+    def narrow(q):
+        return q.eq("quarter", quarter) if quarter else q
+    rows, has_more = _read_window(
+        lambda: narrow(db.table("tds_deductions").select("*").eq("firm_id", firm_id).eq("client_id", client_id)),
+        "transaction_date", limit, offset)
+    every = fetch_all(lambda: narrow(db.table("tds_deductions").select("id, payment_amount_paise, tds_paise")
+                                     .eq("firm_id", firm_id).eq("client_id", client_id)),
+                      label="tds.lists.deductions")
+    return _window(rows, limit, has_more, "deductions", totals=screen_counts.deduction_totals(every))
+
+
+def deductions_in_memory(all_rows: list, *, quarter: Optional[str], limit: int, offset: int) -> dict:
+    rows = [d for d in all_rows if not quarter or d.get("quarter") == quarter]
+    window, has_more = _cut(_sorted_latest_first(rows, "transaction_date"), limit, offset)
+    return _window(window, limit, has_more, "deductions", totals=screen_counts.deduction_totals(rows))
+
+
+# ── challans ─────────────────────────────────────────────────────────────────
+
+def challans(db, firm_id: str, client_id: str, *, from_date: Optional[str], to_date: Optional[str], limit: int, offset: int) -> dict:
+    def narrow(q):
+        if from_date:
+            q = q.gte("payment_date", from_date)
+        if to_date:
+            q = q.lte("payment_date", to_date)
+        return q
+    rows, has_more = _read_window(
+        lambda: narrow(db.table("tds_challans").select("*").eq("firm_id", firm_id).eq("client_id", client_id)),
+        "payment_date", limit, offset)
+    return _window(rows, limit, has_more, "challans")
+
+
+def challans_in_memory(all_rows: list, *, from_date: Optional[str], to_date: Optional[str], limit: int, offset: int) -> dict:
+    rows = [c for c in all_rows
+            if (not from_date or str(c.get("payment_date") or "") >= from_date)
+            and (not to_date or str(c.get("payment_date") or "") <= to_date)]
+    window, has_more = _cut(_sorted_latest_first(rows, "payment_date"), limit, offset)
+    return _window(window, limit, has_more, "challans")
+
+
+# ── returns ──────────────────────────────────────────────────────────────────
+
+def returns(db, firm_id: str, client_id: str, *, limit: int, offset: int) -> dict:
+    rows, has_more = _read_window(
+        lambda: db.table("tds_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id), "due_date", limit, offset)
+    every = fetch_all(lambda: db.table("tds_returns").select("id, status, due_date").eq("firm_id", firm_id).eq("client_id", client_id),
+                      label="tds.lists.returns")
+    return _window(rows, limit, has_more, "returns", counts=screen_counts.return_counts(every, today=ist_today()))
+
+
+def returns_in_memory(all_rows: list, *, limit: int, offset: int) -> dict:
+    window, has_more = _cut(_sorted_latest_first(all_rows, "due_date"), limit, offset)
+    return _window(window, limit, has_more, "returns", counts=screen_counts.return_counts(all_rows, today=ist_today()))
+
+
+# ── certificates ─────────────────────────────────────────────────────────────
+
+def certificates(db, firm_id: str, client_id: str, *, limit: int, offset: int) -> dict:
+    rows, has_more = _read_window(
+        lambda: db.table("tds_certificates").select("*").eq("firm_id", firm_id).eq("client_id", client_id), "created_at", limit, offset)
+    every = fetch_all(lambda: db.table("tds_certificates").select("id, status").eq("firm_id", firm_id).eq("client_id", client_id),
+                      label="tds.lists.certificates")
+    return _window(rows, limit, has_more, "certificates", counts=screen_counts.certificate_counts(every))
+
+
+def certificates_in_memory(all_rows: list, *, limit: int, offset: int) -> dict:
+    window, has_more = _cut(_sorted_latest_first(all_rows, "created_at"), limit, offset)
+    return _window(window, limit, has_more, "certificates", counts=screen_counts.certificate_counts(all_rows))

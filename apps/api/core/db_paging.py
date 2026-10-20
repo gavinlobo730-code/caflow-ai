@@ -142,6 +142,39 @@ def fetch_all(
     return out
 
 
+def fetch_window(
+    make_query: Callable[[], Any],
+    order_field: str,
+    *,
+    count: int,
+    start: int = 0,
+    desc: bool = True,
+) -> list[dict]:
+    """Up to `count` rows from position `start` of the query, in a stated total order, read in requests the server will honour.
+
+    WHY THIS IS NOT `fetch_all`. A screen that shows a WINDOW of a register (the latest N, then the next N) needs the rows in the
+    order the screen shows them, a caller's `order_field` and not `id`, and only as many as the window holds. `fetch_all` returns every
+    row in `id` order. What the two share is the fault this module exists for: PostgREST answers at most `PAGE` rows to one request
+    and says nothing when it cuts a response short, so a window of 2,000 asked for in one `.range()` came back 1,000 long over a client
+    with 1,500 rows, and a caller that decides "more rows exist" from the answer being longer than the window read `False`
+    (the TDS register lists, found by review). Each request here asks for a size the server will honour.
+
+    The order is `order_field` (descending when `desc`) and then `id`, which is unique, so consecutive requests neither repeat a row
+    nor skip one. `make_query` returns a FRESH builder carrying the table, the projection and the filters, as for `fetch_all`. The
+    stop condition is a short page and nothing else, for the reason `fetch_all` gives.
+    """
+    out: list[dict] = []
+    position = start
+    while len(out) < count:
+        size = min(PAGE, count - len(out))
+        page = (make_query().order(order_field, desc=desc).order("id").range(position, position + size - 1).execute().data) or []
+        out.extend(page)
+        position += len(page)
+        if len(page) < size:
+            break
+    return out
+
+
 # How many values one `IN (...)` list carries. A PostgREST filter travels in
 # the URL, and a uuid is ~37 characters once quoted and comma-separated, so 150
 # is ~5.5 KB — well inside every proxy's limit.

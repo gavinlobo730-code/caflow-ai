@@ -67,9 +67,12 @@ test("a card shows a dash and says why before a client is chosen, while it reads
   assert.ok(/!depositForClient\?\.position/.test(cards), "the undeposited card shows a figure before the register was read, or when the position could not be");
   assert.ok(/depositStateError \? "Could not be read"/.test(cards), "a failed read of the register is not said on the card");
   assert.ok(/"The position could not be read"/.test(cards), "a position that could not be read (the rows were) is not said on the card");
-  // The other two count rows the page fetched; they are held to a dash while loading and when that read failed.
-  assert.equal((cards.match(/value: !selectedClientId \|\| loading \|\| tableError \? "—"/g) ?? []).length, 2,
-    "the returns and certificates cards show a count while the screen is loading or failed");
+  // The other two are the server's counts over all of the client's rows (`domain/tds/screen_counts`); a dash until they are read, and a
+  // dash again if their read failed.
+  assert.ok(/value: !selectedClientId \|\| !returnCounts \? "—" : String\(returnCounts\.not_filed\)/.test(cards),
+    "the returns card is not the server's count, or shows a count before it was read");
+  assert.ok(/value: !selectedClientId \|\| !certificateCounts \? "—" : String\(certificateCounts\.pending\)/.test(cards),
+    "the certificates card is not the server's count, or shows a count before it was read");
   // What is shown is what was read for the client that is open.
   assert.ok(/depositState\.client_id === selectedClientId \? depositState : null/.test(PAGE),
     "an answer for another client could still be drawn");
@@ -109,7 +112,7 @@ test("the deductions table asks the register what became of each deduction and n
   assert.ok(/\{row\.due_note && <span /.test(PAGE), "the server's due note is never drawn");
   assert.ok(!/row\.label|row\.detail !== null/.test(PAGE), "the page reads a per-row label the answer no longer carries");
   assert.ok(/This deduction was added after the deposit state was read\./.test(PAGE), "a row missing from an answer that did load says the answer was never read");
-  assert.ok(/\], \[depositForClient, depositStateError\]\);/.test(PAGE), "the columns do not follow the deposit state");
+  assert.ok(/\], \[depositForClient, depositStateError, choices\.labels\]\);/.test(PAGE), "the columns do not follow the deposit state and the section names");
   assert.ok(/depositStateError \? "Not read" : depositForClient \? "Added after the read" : "—"/.test(PAGE), "a row whose state was not read does not say so");
   // The manual form's typed number stays a NOTE and says so.
   assert.ok(PAGE.includes("Challan No. (a note only)"), "the deduction form's challan number is not marked as a note");
@@ -118,7 +121,7 @@ test("the deductions table asks the register what became of each deduction and n
 test("a failed read is said in words, and the cards say what they hold and when they are reading", () => {
   assert.ok(/\{depositStateError && \(\s*<Callout tone="attention" title="The deposit state could not be read">/.test(PAGE), "a failed read is a tooltip and a dash, not a sentence");
   assert.ok(PAGE.includes("Recorded here, with surcharge and cess (salary tax is in payroll)"), "the deducted card does not say it leaves salary tax (payroll's) out");
-  assert.equal((PAGE.match(/: loading \? "Reading" : "/g) ?? []).length, 2, "the returns and certificates cards show a bare dash while they read");
+  assert.equal((PAGE.match(/\(loading \? "Reading" : "Could not be read"\)/g) ?? []).length, 2, "the returns and certificates cards show a bare dash while they read");
 });
 
 test("the screen says what it read, and the footer says which total it is", () => {
@@ -160,8 +163,10 @@ test("the register is read again after anything that changes it, and a slow answ
   assert.equal((PAGE.match(/seq !== depositSeq\.current/g) ?? []).length, 2,
     "a late answer, or a late failure, for the client open a moment ago could replace the one now open");
   // A switch takes a number too, so an answer started for the previous client is stale, and starts from nothing.
-  assert.ok(/openClient\.current = selectedClientId;\s*depositSeq\.current \+= 1;\s*setDeductions\(\[\]\);[^\n]*\s*setDepositState\(null\); setDepositStateError\(null\); setCalendarAnswers\(null\);/.test(PAGE),
-    "a client switch does not take the open client, invalidate the answer in flight and clear the screen, the deposit state and the calendar answer");
+  assert.ok(/openClient\.current = selectedClientId;\s*depositSeq\.current \+= 1;\s*setDepositState\(null\); setDepositStateError\(null\); setCalendarAnswers\(null\);/.test(PAGE),
+    "a client switch does not take the open client, invalidate the answer in flight and clear the deposit state and the calendar answer");
+  assert.ok(/void loadLists\(selectedClientId, true\);/.test(PAGE) && /if \(fresh\) \{\s*setDeductions\(\[\]\); setChallans\(\[\]\); setCertificates\(\[\]\);/.test(PAGE),
+    "a client switch does not start the lists from nothing");
   // Each read takes its own number, so two overlapping reads cannot share one; a read for a client no longer open is not started.
   assert.ok(/const seq = \+\+depositSeq\.current;/.test(PAGE), "two overlapping reads can share a number");
   assert.ok(/if \(clientId !== openClient\.current\) return;/.test(PAGE), "a late write's refresh for the previous client could take the open client's read away");
@@ -170,7 +175,8 @@ test("the register is read again after anything that changes it, and a slow answ
   assert.ok(/if \(afterWrite\) \{ setDepositState\(null\); setDepositStateError\(null\); \}/.test(PAGE), "after a write the old figures stay until the new answer");
   assert.equal((PAGE.match(/refreshDepositState\(selectedClientId, true\)/g) ?? []).length, 3, "a deduction, a challan and an import must each take the old figures down");
   // The loading effect's guards: client A's rows never land on client B's page.
-  assert.ok((PAGE.match(/if \(!live\) return;/g) ?? []).length >= 3 && /if \(live\) setLoading\(false\);/.test(PAGE), "the load can land rows for the client that was open");
+  assert.ok(/const seq = \+\+listSeq\.current;/.test(PAGE) && /if \(seq !== listSeq\.current\) return;/.test(PAGE) && /if \(seq === listSeq\.current\) setLoading\(false\);/.test(PAGE),
+    "the load can land rows for the client that was open, or an older read can lower a newer one's loading flag");
 });
 
 test("the data module types the server's answer and reads no table itself for it", () => {

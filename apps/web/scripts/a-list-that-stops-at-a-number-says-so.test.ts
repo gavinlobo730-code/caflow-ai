@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
-  DIRECT_READ_WINDOW_MAX, ENTITY_REGISTER_WINDOW_MAX, LEAD_REGISTER_WINDOW_MAX, WINDOW_STEP, nextWindowLimit,
+  DIRECT_READ_WINDOW_MAX, ENTITY_REGISTER_WINDOW_MAX, LEAD_REGISTER_WINDOW_MAX, TDS_REGISTER_WINDOW_MAX, WINDOW_STEP, nextWindowLimit,
   windowDescription, windowSentence,
 } from "../lib/lists/window.ts";
 import { stripComments } from "./stripComments.ts";
@@ -120,6 +120,13 @@ test("the browser's two register ceilings equal the server's", () => {
   assert.ok(lead, "routers/lifecycle.py no longer declares LEAD_LIST_MAX");
   assert.equal(ENTITY_REGISTER_WINDOW_MAX, Number(entity![1]));
   assert.equal(LEAD_REGISTER_WINDOW_MAX, Number(lead![1]));
+});
+
+test("the browser's TDS register ceiling equals the server's", () => {
+  const svc = readFileSync(join(import.meta.dirname, "..", "..", "api", "services", "tds_register_lists_service.py"), "utf8");
+  const tds = svc.match(/^TDS_LIST_MAX\s*=\s*(\d+)/m);
+  assert.ok(tds, "services/tds_register_lists_service.py no longer declares TDS_LIST_MAX");
+  assert.equal(TDS_REGISTER_WINDOW_MAX, Number(tds![1]));
 });
 
 const DRAWERS = [

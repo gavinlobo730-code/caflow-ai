@@ -27,6 +27,8 @@ from services.period_validation_service import period_validation_service
 from models.fy import FYLabel
 from core.ist_clock import fy_bounds, ist_today
 from domain.tds import deductor_26as as D26
+from services import tds_register_lists_service as lists
+from services.tds_register_lists_service import TDS_LIST_MAX
 
 router = APIRouter(prefix="/api/tds-workspace", tags=["tds_workspace"])
 _logger = logging.getLogger("caflow.tds_workspace")
@@ -446,28 +448,23 @@ def tds_dashboard(
 def list_deductions(
     client_id: str = Query(...),
     quarter: Optional[str] = Query(None),
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=TDS_LIST_MAX),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("tds", "read")),
 ):
-    """List TDS deductions for client. IT Act §192-194Q."""
+    """A client's TDS deductions, latest payment first (IT Act §192-194Q), as a window: `{deductions, has_more, limit, max_limit,
+    totals}`. `totals` (how many, the gross column and the tax column) are over ALL of the client's deductions in the quarter asked
+    for, not over the window."""
     assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
-            rows = [d for d in _MOCK_DEDUCTIONS.values() if d["client_id"] == client_id]
-            if quarter:
-                rows = [d for d in rows if d.get("quarter") == quarter]
-            rows = rows[offset:offset + limit]
+            out = lists.deductions_in_memory([d for d in _MOCK_DEDUCTIONS.values() if d["client_id"] == client_id],
+                                             quarter=quarter, limit=limit, offset=offset)
         else:
             from core.supabase_client import get_supabase
-            sb = get_supabase()
-            q = sb.table("tds_deductions").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
-            if quarter:
-                q = q.eq("quarter", quarter)
-            rows = q.range(offset, offset + limit - 1).execute().data or []
-
-        return api_response(True, rows)
+            out = lists.deductions(get_supabase(), firm_id, client_id, quarter=quarter, limit=limit, offset=offset)
+        return api_response(True, out)
     except Exception as e:
         return _could_not(e, "list the TDS deductions")
 
@@ -510,6 +507,15 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
                             detail="transaction_date must be YYYY-MM-DD")
     taxable = int(body.get("payment_amount_paise") or 0)
 
+    # ASKED BEFORE THE ENGINE, NOT AFTER IT FAILS. This question used to be put only when `resolve_tds` raised, and two of the
+    # sections it refuses do not raise: section 192 is in the registry as a sentinel and computes a nil (a row recorded at nothing,
+    # with no word that nothing was withheld), and section 206C is tax collected and not deducted, which computes 0.1% of every
+    # rupee and files it on the wrong statement. The deduction form does not offer either (`vendor_eligible` on `GET /api/tds/sections`
+    # is this same function), so the save refuses what the form hides.
+    refusal = deduction_section_refusal(section, manual_register.fy_label(when))
+    if refusal:
+        raise HTTPException(status_code=422, detail=refusal)
+
     prior_taxable, prior_tds = (0, 0)
     if not _USE_MOCK and db is not None:
         prior_taxable, prior_tds = manual_register.prior_manual_aggregate(
@@ -540,11 +546,9 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
             has_pan=has_pan(pan),
         )
     except ValueError as ve:
-        # Same rule the vendor master asks — see routers/purchase_bills.py.
-        # A hand-typed register row can name any section at all, so this is
-        # the only place that refusal can be made for it.
-        named = deduction_section_refusal(section, manual_register.fy_label(when))
-        raise HTTPException(status_code=422, detail=named or str(ve))
+        # The registry's own words, for what the question above does not name (section 195 is not in the resident registry and has
+        # its own module).
+        raise HTTPException(status_code=422, detail=str(ve))
 
     # Named on EVERY row, not only where it currently bites. The CA cannot tell
     # from the number whether the register this aggregate does not see would
@@ -914,32 +918,23 @@ def list_challans(
     client_id: str = Query(...),
     from_date: Optional[str] = Query(None, description="Filter by payment_date >= from_date (YYYY-MM-DD)"),
     to_date: Optional[str] = Query(None, description="Filter by payment_date <= to_date (YYYY-MM-DD)"),
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=TDS_LIST_MAX),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("tds", "read")),
 ):
-    """List TDS challans for client."""
+    """A client's TDS challans, latest payment first, as a window: `{challans, has_more, limit, max_limit}`."""
     assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
-            rows = [c for c in _MOCK_CHALLANS.values() if c["client_id"] == client_id]
-            if from_date:
-                rows = [r for r in rows if r.get("payment_date", "") >= from_date]
-            if to_date:
-                rows = [r for r in rows if r.get("payment_date", "") <= to_date]
-            rows = rows[offset:offset + limit]
+            out = lists.challans_in_memory([c for c in _MOCK_CHALLANS.values() if c["client_id"] == client_id],
+                                           from_date=from_date, to_date=to_date, limit=limit, offset=offset)
         else:
             from core.supabase_client import get_supabase
-            # tds_challans has no challan_date column (migration 037) — payment_date
-            # is the real date column.
-            q = get_supabase().table("tds_challans").select("*").eq("firm_id", firm_id).eq("client_id", client_id)
-            if from_date:
-                q = q.gte("payment_date", from_date)
-            if to_date:
-                q = q.lte("payment_date", to_date)
-            rows = q.range(offset, offset + limit - 1).execute().data or []
-        return api_response(True, rows)
+            # tds_challans has no challan_date column (migration 037) — payment_date is the real date column.
+            out = lists.challans(get_supabase(), firm_id, client_id, from_date=from_date, to_date=to_date,
+                                 limit=limit, offset=offset)
+        return api_response(True, out)
     except Exception as e:
         return _could_not(e, "list the TDS challans")
 
@@ -1065,20 +1060,22 @@ def get_challan(challan_id: str, current_user: dict = Depends(rbac("tds", "read"
 @router.get("/returns")
 def list_returns(
     client_id: str = Query(...),
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=TDS_LIST_MAX),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("tds", "read")),
 ):
-    """List TDS returns for client."""
+    """A client's TDS returns, latest due date first, as a window: `{returns, has_more, limit, max_limit, counts}`. `counts` (Not
+    filed, Filed, Overdue, and the total) are over ALL of the client's returns, and Overdue is derived (a return not filed whose
+    Rule 31A due date has passed, on the Indian day) because `tds_returns` stores no such status."""
     assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
-            rows = [r for r in _MOCK_RETURNS.values() if r["client_id"] == client_id]
-            rows = rows[offset:offset + limit]
+            out = lists.returns_in_memory([r for r in _MOCK_RETURNS.values() if r["client_id"] == client_id],
+                                          limit=limit, offset=offset)
         else:
             from core.supabase_client import get_supabase
-            rows = get_supabase().table("tds_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
+            out = lists.returns(get_supabase(), firm_id, client_id, limit=limit, offset=offset)
         # `return_type`/`financial_year` are the 1961-Act ROUTING KEY, stored
         # permanently on both sides of the 2026 vocabulary fork (see
         # domain/tds/vocabulary.py). `_statement_label` is the translator that
@@ -1087,10 +1084,10 @@ def list_returns(
         # Form 140, with no way to tell the two vocabularies apart. Added
         # rather than translated in place, because `return_type` is also what
         # `update_return_status`/`_existing_tds_return` key on.
-        for r in rows:
+        for r in out["returns"]:
             r["statement_form"] = _statement_label(
                 r.get("return_type") or "", r.get("financial_year") or "")
-        return api_response(True, rows)
+        return api_response(True, out)
     except Exception as e:
         return _could_not(e, "list the TDS returns")
 
@@ -1578,28 +1575,29 @@ def update_return_status(
 @router.get("/certificates")
 def list_certificates(
     client_id: str = Query(...),
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=TDS_LIST_MAX),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(rbac("tds", "read")),
 ):
-    """List TDS certificates (Form 16/16A) for client. IT Act §203."""
+    """A client's TDS certificates (Form 16/16A, IT Act §203), newest first, as a window: `{certificates, has_more, limit,
+    max_limit, counts}`. `counts` (how many are still to be issued, and the total) are over ALL of the client's certificates."""
     assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
-            rows = [c for c in _MOCK_CERTIFICATES.values() if c["client_id"] == client_id]
-            rows = rows[offset:offset + limit]
+            out = lists.certificates_in_memory([c for c in _MOCK_CERTIFICATES.values() if c["client_id"] == client_id],
+                                               limit=limit, offset=offset)
         else:
             from core.supabase_client import get_supabase
-            rows = get_supabase().table("tds_certificates").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
+            out = lists.certificates(get_supabase(), firm_id, client_id, limit=limit, offset=offset)
         # Every row labelled in ITS OWN period's vocabulary, not the current
         # one: a register holds certificates from several years at once, and
         # the same stored '16A' is Form 16A for FY 2025-26 and Form 131 for
         # 2026-27. Derived per row for that reason.
-        rows = [{**r, **_certificate_display(str(r.get("certificate_type") or ""),
-                                             str(r.get("financial_year") or ""))}
-                for r in rows]
-        return api_response(True, rows)
+        out["certificates"] = [{**r, **_certificate_display(str(r.get("certificate_type") or ""),
+                                                            str(r.get("financial_year") or ""))}
+                               for r in out["certificates"]]
+        return api_response(True, out)
     except Exception as e:
         return _could_not(e, "list the TDS certificates")
 

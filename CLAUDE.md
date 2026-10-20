@@ -364,7 +364,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ITR RETURN BECOMES FILED BY RECORDING ITS ACKNOWLEDGEMENT, AND RECORDING IT CLOSES THE CALENDAR'S OBLIGATION
 - THE DEMO'S INCOME-TAX FACTS ARE FACTS, AND EVERY FIGURE THAT IS TAX COMES BACK FROM THE ENGINE
 
-### `docs/design-record/tax-tds.md` (20 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
+### `docs/design-record/tax-tds.md` (21 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 
 - From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it
 - A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD
@@ -386,6 +386,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A RECORDED CHALLAN CLOSES THE MONTHLY DEPOSIT OBLIGATIONS THAT ARE NOW PAID IN FULL AND ON TIME, AND A LATE ONE CLOSES NOTHING BY ITSELF
 - A QUARTER WITH NO CHALLAN RECORDED IS NOT RECORDED, AND THE DASHBOARD NEVER CALLS ITS TAX UNDEPOSITED
 - THE TDS SCREEN ASKS THE SERVER WHAT BECAME OF A DEDUCTION, AND A CARD SHOWS A DASH UNTIL IT HAS A FIGURE FOR THE CLIENT IT IS ABOUT
+- THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE ORDER BY EVERY READER, AND THE SECTIONS AND THEIR NAMES ARE THE SERVER'S
 
 ### `docs/design-record/tenancy-and-security.md` (43 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 

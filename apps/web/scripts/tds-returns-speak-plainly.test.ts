@@ -45,13 +45,18 @@ test("the Returns table prefers the Act-translated statement_form over the raw r
     "the raw routing key must no longer be rendered on its own");
 });
 
-test("both the Returns and Challans tables badge a readable status label", () => {
+test("the Returns table badges a readable status label, and the Challans table prints no status at all", () => {
   const src = code(PAGE);
   assert.match(src, /const STATUS_LABEL: Record<string, string> = \{/,
     "a label map must exist");
   assert.match(src, /ca_approved: "CA Approved"/, "and it must translate the raw enum values");
   const usages = (src.match(/STATUS_LABEL\[r\.status as string\] \?\? \(r\.status as string\)/g) ?? []).length;
-  assert.equal(usages, 2,
-    "both the challans tab and the returns tab must render through the label map " +
-    `(found ${usages} — the old code rendered {r.status as string} bare in both places)`);
+  assert.equal(usages, 1,
+    "the returns tab must render through the label map " +
+    `(found ${usages} — the old code rendered {r.status as string} bare)`);
+  // The challans tab used to be the second: it printed `status`, which `create_challan` writes as `deposited` for every challan, so
+  // the column said nothing. It shows the minor head instead (POST-A-277); the guard for that is in
+  // the-tds-screen-reads-its-lists-through-the-api.test.ts.
+  const challans = src.slice(src.indexOf("function ChallansTab"), src.indexOf("function ReturnsTab"));
+  assert.ok(!/STATUS_LABEL|STATUS_COLORS|r\.status/.test(challans), "the challans tab prints a status again");
 });
