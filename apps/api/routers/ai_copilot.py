@@ -19,6 +19,22 @@ _logger = logging.getLogger("caflow.ai_copilot")
 
 router = APIRouter(prefix="/api/ai-copilot", tags=["ai-copilot"])
 
+#: What the model is told for a figure that could not be read: the read failed, or its answer did not carry the figure. It is never a 0.
+#: A zero says "nothing is overdue", and a model asked what is due repeats it with confidence (POST-A-281 found the filed count read from
+#: a key the summary never returns, so it was always 0 whatever the books said).
+NOT_AVAILABLE = "not available"
+
+
+def _figure(source: Optional[dict], key: str):
+    """The figure a read gave, or None when the read failed (`source` is None) or its answer did not carry `key`."""
+    if source is None:
+        return None
+    return source.get(key)
+
+
+def _said(value) -> str:
+    return NOT_AVAILABLE if value is None else str(value)
+
 # No HTTP client, no URL and no model name here (ai-04). This route used to build
 # its own httpx request to Groq; it asks the ONE door now (`groq_text.chat`), which
 # redacts a PAN or GSTIN from what is sent, applies the timeout, the bounded retry
@@ -42,6 +58,8 @@ Be specific about numbers and deadlines. The context deliberately contains NO
 client names or identifiers — do not ask for them, invent them, or claim to know
 which client a figure belongs to. Answer with counts and general guidance, and
 tell the user to open the relevant screen for per-client detail.
+
+A figure shown as "not available" could not be read. Say that it could not be read; never treat it as zero.
 
 "Be specific" is not a licence to guess. If you are uncertain of a rule, a rate
 or a date, say so and recommend the CA verify it — a wrong figure stated
@@ -93,20 +111,23 @@ def _build_firm_context(firm_id: str, current_user: dict) -> str:
         task_svc = TaskDomainService()
         dashboard = task_svc.get_dashboard_summary(firm_id=firm_id, allowed_client_ids=allowed)
     except Exception:
-        dashboard = {}
+        _logger.warning("caflow.ai_copilot.firm_context_read_failed which=dashboard", exc_info=True)
+        dashboard = None
 
     try:
         from domain.compliance_record_service import compliance_record_service
         firm_summary = compliance_record_service.get_firm_summary(
             firm_id=firm_id, allowed_client_ids=allowed)
     except Exception:
-        firm_summary = {}
+        _logger.warning("caflow.ai_copilot.firm_context_read_failed which=compliance_summary", exc_info=True)
+        firm_summary = None
 
     try:
         from domain.risk_engine import get_risk_dashboard_stats
         risk_stats = get_risk_dashboard_stats(firm_id=firm_id, allowed_client_ids=allowed)
     except Exception:
-        risk_stats = {}
+        _logger.warning("caflow.ai_copilot.firm_context_read_failed which=risks", exc_info=True)
+        risk_stats = None
 
     try:
         from repositories.client_repository import client_repo
@@ -117,24 +138,26 @@ def _build_firm_context(firm_id: str, current_user: dict) -> str:
         # Only the COUNT reaches the prompt. See the note above the return below.
         client_count = len(filter_by_client(current_user, clients, key="id"))
     except Exception:
-        client_count = 0
+        _logger.warning("caflow.ai_copilot.firm_context_read_failed which=clients", exc_info=True)
+        client_count = None
 
     lines = [
-        f"Active Clients: {dashboard.get('active_clients', 0)}",
+        f"Active Clients: {_said(_figure(dashboard, 'active_clients'))}",
         # Count only — never the names. Groq is a third-party processor and a
         # client list is exactly the sort of thing an Indian CA practice must not
         # hand to one (ICAI client-confidentiality obligations). Aggregates keep
         # "what is my workload?" answerable while identifying nobody.
-        f"Clients: {client_count}",
-        f"Overdue Tasks: {dashboard.get('overdue_tasks', 0)}",
-        f"Tasks Due Today: {dashboard.get('tasks_due_today', 0)}",
-        f"Compliance Overdue: {dashboard.get('compliance_overdue', 0)}",
-        f"High-Risk Clients: {dashboard.get('high_risk_clients', 0)}",
-        f"Compliance Due This Week: {dashboard.get('compliance_due_week', 0)}",
-        f"Overdue Compliance Records: {firm_summary.get('overdue', 0)}",
-        f"Ready to File: {firm_summary.get('ready_to_file', 0)}",
-        f"Open Risks — Critical: {risk_stats.get('critical', 0)}, High: {risk_stats.get('high', 0)}, Medium: {risk_stats.get('medium', 0)}",
-        f"Total Open Risks: {risk_stats.get('total_open', 0)}",
+        f"Clients: {_said(client_count)}",
+        f"Overdue Tasks: {_said(_figure(dashboard, 'overdue_tasks'))}",
+        f"Tasks Due Today: {_said(_figure(dashboard, 'tasks_due_today'))}",
+        f"Compliance Overdue: {_said(_figure(dashboard, 'compliance_overdue'))}",
+        f"High-Risk Clients: {_said(_figure(dashboard, 'high_risk_clients'))}",
+        f"Compliance Due This Week: {_said(_figure(dashboard, 'compliance_due_week'))}",
+        f"Overdue Compliance Records: {_said(_figure(firm_summary, 'overdue'))}",
+        f"Ready to File: {_said(_figure(firm_summary, 'ready_to_file'))}",
+        f"Filed This Month: {_said(_figure(firm_summary, 'filed_this_month'))}",
+        f"Open Risks — Critical: {_said(_figure(risk_stats, 'critical'))}, High: {_said(_figure(risk_stats, 'high'))}, Medium: {_said(_figure(risk_stats, 'medium'))}",
+        f"Total Open Risks: {_said(_figure(risk_stats, 'total_open'))}",
     ]
     return "\n".join(lines)
 
@@ -156,47 +179,55 @@ def get_firm_context(current_user: dict = Depends(rbac("ai", "copilot"))):
         # counts instead of the caller's own firm's numbers.
         dashboard = TaskDomainService().get_dashboard_summary(firm_id=firm_id, allowed_client_ids=allowed)
     except Exception:
-        dashboard = {}
+        _logger.warning("caflow.ai_copilot.firm_context_read_failed which=dashboard", exc_info=True)
+        dashboard = None
 
     try:
         from domain.compliance_record_service import compliance_record_service
         firm_summary = compliance_record_service.get_firm_summary(
             firm_id=firm_id, allowed_client_ids=allowed)
     except Exception:
-        firm_summary = {}
+        _logger.warning("caflow.ai_copilot.firm_context_read_failed which=compliance_summary", exc_info=True)
+        firm_summary = None
 
     try:
         from domain.risk_engine import get_risk_dashboard_stats
         risk_stats = get_risk_dashboard_stats(firm_id=firm_id, allowed_client_ids=allowed)
     except Exception:
-        risk_stats = {}
+        _logger.warning("caflow.ai_copilot.firm_context_read_failed which=risks", exc_info=True)
+        risk_stats = None
 
     try:
         from repositories.client_repository import client_repo
         clients = filter_by_client(current_user, client_repo.find_all(firm_id=firm_id), key="id")
         client_list = [{"id": c["id"], "name": c["client_name"], "status": c.get("status")} for c in clients]
     except Exception:
-        client_list = []
+        _logger.warning("caflow.ai_copilot.firm_context_read_failed which=clients", exc_info=True)
+        client_list = None
 
+    # None is "could not be read", and is sent as null: a panel that is handed a 0 tells the CA nothing is overdue.
+    active_clients = _figure(dashboard, "active_clients")
+    if active_clients is None and client_list is not None:
+        active_clients = len(client_list)
     return api_response(True, {
-        "active_clients": dashboard.get("active_clients", len(client_list)),
+        "active_clients": active_clients,
         "clients": client_list,
         "tasks": {
-            "overdue": dashboard.get("overdue_tasks", 0),
-            "due_today": dashboard.get("tasks_due_today", 0),
-            "due_this_week": dashboard.get("tasks_due_week", 0),
+            "overdue": _figure(dashboard, "overdue_tasks"),
+            "due_today": _figure(dashboard, "tasks_due_today"),
+            "due_this_week": _figure(dashboard, "tasks_due_week"),
         },
         "compliance": {
-            "overdue": firm_summary.get("overdue", 0),
-            "due_this_week": dashboard.get("compliance_due_week", 0),
-            "ready_to_file": firm_summary.get("ready_to_file", 0),
-            "filed": firm_summary.get("filed", 0),
+            "overdue": _figure(firm_summary, "overdue"),
+            "due_this_week": _figure(dashboard, "compliance_due_week"),
+            "ready_to_file": _figure(firm_summary, "ready_to_file"),
+            "filed_this_month": _figure(firm_summary, "filed_this_month"),
         },
         "risks": {
-            "critical": risk_stats.get("critical", 0),
-            "high": risk_stats.get("high", 0),
-            "medium": risk_stats.get("medium", 0),
-            "total_open": risk_stats.get("total_open", 0),
+            "critical": _figure(risk_stats, "critical"),
+            "high": _figure(risk_stats, "high"),
+            "medium": _figure(risk_stats, "medium"),
+            "total_open": _figure(risk_stats, "total_open"),
         },
     })
 

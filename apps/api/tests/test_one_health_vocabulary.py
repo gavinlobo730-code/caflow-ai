@@ -268,3 +268,28 @@ def test_the_dashboard_spells_none_of_the_bar_labels_itself():
         assert f'key: "{key}", label: PORTFOLIO_BAR_LABELS.{label},' in code, f"the {key} bar's label is not {label}"
     assert 'key: "healthy", label: healthyLabel,' in code
     assert code.count("portfolioBars.map(") == 2, "the stacked bar and the rows are both drawn from the one list, so they cannot disagree"
+
+
+# ── the Health list's tiles count by the engine's grade and print its ranges (POST-A-292) ─────────────────────────────────────
+
+def test_the_health_list_counts_by_the_engines_grade_and_draws_no_score_line_of_its_own():
+    """The tiles counted a score under 35, 35 to 49 and 80 and over, and printed '(0–34)', '(35–49)' and '(80–100)' as text: right
+    today, and a second place to change when a band moves. The count is of rows whose grade is that band's word (the grade the server
+    stores beside the score, hard override included), the tab filters are the same test, and the ranges are built from the band table."""
+    code = _strip_comments(_SCORE_PAGES["health list"].read_text(encoding="utf-8"))
+    assert not re.search(r"overall_score\s*(<|<=|>|>=)\s*\d", code), "the Health list compares a score with a line of its own"
+    assert not re.search(r"\(\d+\u2013\d+\)", code), "the Health list spells a band's range as text"
+    assert code.count('c.grade === "Critical"') == 1 and code.count('c.grade === "At Risk"') == 1 and code.count('c.grade === "Healthy"') == 1
+    assert 'countOf("Critical")' in code and 'countOf("At Risk")' in code and 'countOf("Healthy")' in code
+    for grade in ("Critical", "At Risk", "Healthy"):
+        assert f'{grade} ({{gradeRangeLabel("{grade}")}})' in code, grade
+
+
+def test_the_browsers_range_text_is_built_from_the_band_table(vocab):
+    body = re.search(r"export function gradeRangeLabel\(grade: HealthGrade\): string \{(.*?)\n\}", vocab, re.S)
+    assert body, "gradeRangeLabel not found"
+    assert "HEALTH_GRADE_BANDS" in body.group(1) and "- 1" in body.group(1)
+    # the strings the table yields, worked out here from the engine's own bands
+    floors = [m for m, _ in scoring.GRADE_BANDS]
+    expected = {g: f"{floor}\u2013{100 if i == 0 else floors[i - 1] - 1}" for i, (floor, g) in enumerate(scoring.GRADE_BANDS)}
+    assert expected == {"Healthy": "80\u2013100", "Good": "65\u201379", "Needs Attention": "50\u201364", "At Risk": "35\u201349", "Critical": "0\u201334"}

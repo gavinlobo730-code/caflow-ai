@@ -405,3 +405,53 @@ def test_a_swallowed_read_outside_a_calculation_is_still_only_reported(monkeypat
     monkeypatch.setattr(hl, "_report_soft_failure", lambda exc, operation, **kw: reported.append(operation))
     hl.capture_soft_failure(RuntimeError("x"), operation="health.elsewhere")
     assert reported == ["health.elsewhere"] and hl._lost_reads.get() is None
+
+
+# ── the single-client Calculate route asks the same question (POST-A-289, the route the nightly run left behind) ─────────────────
+
+USER = {"id": "u1", "firm_id": FIRM, "auth_user_id": "u1", "role": "Partner"}
+
+
+def _route_world(monkeypatch, calculate):
+    db, expired, reported = _world(monkeypatch)
+    monkeypatch.setattr(hl, "_db", lambda: db)
+    monkeypatch.setattr(hl, "assert_client_access", lambda user, client_id: None)
+    logged: list = []
+    monkeypatch.setattr(hl.timeline_service, "log", lambda *a, **k: logged.append((a, k)))
+    monkeypatch.setattr(hl, "_calculate_scores_db", calculate)
+    _clients(db, {"id": "a", "client_name": "A"})
+    db.seed("health_scores", {"id": "old", "client_id": "a", "firm_id": FIRM, "overall_score": 34, "is_critical": True, "client_name": "A"})
+    return db, expired, logged
+
+
+def test_the_calculate_route_stores_nothing_when_a_read_behind_the_score_was_lost(monkeypatch):
+    """The nightly run and the Recalculate button refused to store a score computed through a failed read (every dimension counts as 100
+    then). The single-client route stored it: one click on Calculate while a read was failing replaced a Critical 34 with a Healthy 98."""
+    from fastapi import HTTPException
+
+    def calculate(_db, client_id, firm_id):
+        hl.capture_soft_failure(RuntimeError("timeout"), operation="health.dim_compliance_health_db", firm_id=firm_id)
+        return {"overall_score": 98, "health_grade": "Healthy", "grade": "Healthy", "is_at_risk": False}
+
+    db, expired, logged = _route_world(monkeypatch, calculate)
+    with pytest.raises(HTTPException) as refused:
+        hl.calculate_score(client_id="a", current_user=USER)
+    assert refused.value.status_code == 503 and "unchanged" in refused.value.detail
+    row, = db._tables["health_scores"]
+    assert row["overall_score"] == 34 and row["is_critical"] is True, "the last good score stays"
+    assert "health_score_history" not in db._tables, "no history row for a score that was not stored"
+    assert logged == [] and expired == [], "no timeline event, and the cached dashboard is not marked stale for a change that did not happen"
+    assert hl._lost_reads.get() is None, "the collector is put back"
+
+
+def test_the_calculate_route_still_stores_a_complete_calculation(monkeypatch):
+    def calculate(_db, client_id, firm_id):
+        return {"overall_score": 61, "health_grade": "Needs Attention", "grade": "Needs Attention", "is_at_risk": False}
+
+    db, expired, logged = _route_world(monkeypatch, calculate)
+    out = hl.calculate_score(client_id="a", current_user=USER)
+    assert out["success"] is True
+    row, = db._tables["health_scores"]
+    assert row["overall_score"] == 61 and row["trend"] == "+27" and row["last_calculated_at"]
+    assert [h["overall_score"] for h in db._tables["health_score_history"]] == [61]
+    assert len(logged) == 1 and expired, "a changed score is on the timeline and the cached figures are marked stale"

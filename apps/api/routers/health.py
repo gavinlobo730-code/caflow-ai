@@ -72,6 +72,25 @@ class _ScoreIncomplete(Exception):
     """A calculation that lost one or more reads: its score is not stored."""
 
 
+def _calculate_scores_or_say_a_read_was_lost(db, client_id: str, firm_id: str) -> dict:
+    """The score of a client from the books as they are, or `_ScoreIncomplete` when a read behind it failed.
+
+    Every dimension swallows a failed read and counts as 100 (right for a figure a person is looking at), so a score computed through a
+    lost read is falsely healthy, and STORING it replaces the last good one: a client that was Critical would read 98 until the next
+    calculation. The nightly sweep and the Recalculate button have refused to store such a score since POST-A-282; the single-client
+    Calculate route did not, and this is the one place all three ask."""
+    lost: list = []
+    token = _lost_reads.set(lost)
+    try:
+        scores = _calculate_scores_db(db, client_id, firm_id)
+    finally:
+        _lost_reads.reset(token)
+    if lost:
+        # Nothing is stored: the last good score stays, or the client stays "not yet scored", and the loss is counted.
+        raise _ScoreIncomplete(f"{len(lost)} read(s) lost, so no score was stored: {sorted(set(map(str, lost)))}")
+    return scores
+
+
 # ─── In-memory mock stores ────────────────────────────────────────────────────
 
 _MOCK_SCORES:    dict[str, dict] = {}   # client_id → score row
@@ -1035,7 +1054,15 @@ def calculate_score(
     if client.get("is_internal"):
         raise HTTPException(status_code=400, detail="Health scoring does not apply to the internal practice client.")
 
-    scores = _calculate_scores_db(db, client_id, firm_id)
+    try:
+        scores = _calculate_scores_or_say_a_read_was_lost(db, client_id, firm_id)
+    except _ScoreIncomplete as incomplete:
+        # 503, not a stored score: part of what this client's score is made of could not be read just now, and a score computed
+        # without it would be shown as a finding. The last stored score (if any) is untouched, and each lost read was reported.
+        raise HTTPException(
+            status_code=503,
+            detail="This client's score could not be calculated just now because part of the data behind it could not be read. "
+                   "The last score, if there is one, is unchanged. Try again in a moment.") from incomplete
 
     old_row = db.table("health_scores").select("overall_score, id").eq("client_id", client_id).eq("firm_id", firm_id).limit(1).execute().data
     old_overall = (old_row[0]["overall_score"] if old_row else None)
@@ -1266,15 +1293,7 @@ def recalculate_clients(db, firm_id: str, clients: list[dict]) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     for client in clients:
         try:
-            lost: list = []
-            token = _lost_reads.set(lost)
-            try:
-                scores = _calculate_scores_db(db, client["id"], firm_id)
-            finally:
-                _lost_reads.reset(token)
-            if lost:
-                # Nothing is stored: the last good score stays, or the client stays "not yet scored", and the loss is counted.
-                raise _ScoreIncomplete(f"{len(lost)} read(s) lost, so no score was stored: {sorted(set(map(str, lost)))}")
+            scores = _calculate_scores_or_say_a_read_was_lost(db, client["id"], firm_id)
             old_row = db.table("health_scores").select("overall_score").eq("client_id", client["id"]).eq("firm_id", firm_id).limit(1).execute().data
             if old_row:
                 scores["trend"] = f"{scores['overall_score'] - old_row[0]['overall_score']:+d}"
