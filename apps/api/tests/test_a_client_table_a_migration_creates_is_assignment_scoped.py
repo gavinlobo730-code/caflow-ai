@@ -30,8 +30,11 @@ WHAT COUNTS AS SCOPED, AND WHAT DOES NOT
 
 A policy that is RESTRICTIVE (a PERMISSIVE one ORs with the others and WIDENS
 access), covers FOR ALL (a RESTRICTIVE policy on SELECT alone leaves INSERT,
-UPDATE and DELETE open), and asks `can_access_client(client_id::text)` — the one
-helper that lets a Partner through and everyone else needs an assignment row.
+UPDATE and DELETE open), and asks the assignment scope: `can_access_client(client_id::text)`,
+the one helper that lets a Partner through and everyone else needs an assignment row, or
+since migration 526 its once-per-query form, which asks `my_assigned_client_ids()` (a policy
+that calls the function bare is called once per ROW and the real-Postgres rule
+`test_the_assignment_scope_reads_the_callers_clients_once_per_query_pg` refuses it).
 It may be written out as a `CREATE POLICY ... ON public.<table>` or issued from a
 `FOREACH` loop over a list of tables; both shapes are in use since 370 and the
 rule is about the effect, not the spelling.
@@ -150,12 +153,12 @@ _NARROWED = re.compile(r"\bFOR\s+(SELECT|INSERT|UPDATE|DELETE)\b", re.I)
 
 def _is_scope_policy(stmt: str) -> bool:
     return (re.search(r"\bRESTRICTIVE\b", stmt, re.I) is not None
-            and re.search(r"can_access_client\(\s*client_id::text\s*\)", stmt, re.I) is not None
+            and re.search(r"can_access_client\(\s*client_id::text\s*\)|my_assigned_client_ids\(\s*\)", stmt, re.I) is not None
             and not _NARROWED.search(stmt))
 
 
 def tables_scoped_by(sql: str) -> set[str]:
-    """Tables this text puts a RESTRICTIVE, FOR ALL, can_access_client policy on."""
+    """Tables this text puts a RESTRICTIVE, FOR ALL, assignment-scope policy on."""
     clean = _strip_comments(sql)
     scoped: set[str] = set()
 
@@ -233,14 +236,15 @@ def test_the_scope_reader_finds_both_spellings_in_use():
 def test_every_client_table_a_migration_creates_is_assignment_scoped():
     gaps = scope_gaps(_real_migrations())
     assert not gaps, (
-        "These tables carry a client_id and no RESTRICTIVE FOR ALL "
-        "can_access_client(client_id::text) policy. Migration 084's loop has "
+        "These tables carry a client_id and no RESTRICTIVE FOR ALL assignment-scope "
+        "policy (can_access_client(client_id::text), or the once-per-query form of "
+        "migration 526 that asks my_assigned_client_ids()). Migration 084's loop has "
         "never run again, so a table created now is firm-wide unless its own "
         "migration says otherwise: a Manager, Executive or Reviewer assigned to "
         "NOTHING can read — and, below Partner, write — every client's rows "
         "over PostgREST, where RLS is the only control. Whether a screen reads "
         "the table today is not the question; `authenticated` can.\n"
-        "Add the policy (389 and 407 are the pattern), or, if the table is "
+        "Add the policy (389 and 407 are the pattern; write the expression as 526 does, so it is asked once per query), or, if the table is "
         "portal-side and a RESTRICTIVE policy would deny a portal principal "
         "their own record, add it to EXEMPT with the reason.\n  "
         + "\n  ".join(f"{t}  (created in {m})" for t, m in sorted(gaps.items())))
@@ -308,6 +312,18 @@ def test_a_permissive_policy_widens_access_and_is_not_a_scope():
 
 def test_a_policy_for_select_alone_leaves_the_writes_open():
     assert set(_gaps(_TABLE + _SCOPE.replace("FOR ALL", "FOR SELECT"))) == {"widgets"}
+
+
+def test_the_once_per_query_form_migration_526_uses_is_a_scope_too():
+    """526 rewrote every assignment scope as a set test; a table created after it is
+    written that way, and a rule that knew only the function call would call it a gap."""
+    once = _SCOPE.replace(
+        "public.can_access_client(client_id::text)",
+        "COALESCE((client_id::text IS NULL OR (SELECT public.get_my_role()) = 'Partner' "
+        "OR client_id::text IN (SELECT public.my_assigned_client_ids())), false)")
+    assert _gaps(_TABLE + once) == {}
+    # and the set test is a scope only because it asks the helper: the same text without it is not one
+    assert set(_gaps(_TABLE + once.replace("my_assigned_client_ids", "my_employee_ids"))) == {"widgets"}
 
 
 def test_a_policy_that_does_not_ask_the_assignment_helper_is_not_a_scope():

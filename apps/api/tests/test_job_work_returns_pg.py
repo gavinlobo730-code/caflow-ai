@@ -144,13 +144,14 @@ def test_the_table_is_assignment_scoped_by_a_restrictive_policy_for_all_commands
     Manager could read another client's job-work movements."""
     rows = _rows(db, f"""
         SELECT polname || '|' || polcmd::text || '|' || polpermissive::text || '|' ||
-               (pg_get_expr(polqual, polrelid) ILIKE '%can_access_client%')::text || '|' ||
-               (pg_get_expr(polwithcheck, polrelid) ILIKE '%can_access_client%')::text
+               (pg_get_expr(polqual, polrelid) ~* 'can_access_client|my_assigned_client_ids')::text || '|' ||
+               (pg_get_expr(polwithcheck, polrelid) ~* 'can_access_client|my_assigned_client_ids')::text
           FROM pg_policy
          WHERE polrelid = 'public.{TABLE}'::regclass
            AND polname = '{TABLE}_assignment_scope';""")
     # polcmd '*' is FOR ALL; polpermissive false is RESTRICTIVE; USING and
-    # WITH CHECK both ask can_access_client.
+    # WITH CHECK both ask the assignment scope (can_access_client, or since migration 526 its once-per-query set form,
+    # which asks my_assigned_client_ids()).
     assert rows == [f"{TABLE}_assignment_scope|*|false|true|true"], rows
 
 

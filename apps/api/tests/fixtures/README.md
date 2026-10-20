@@ -144,7 +144,9 @@ where the migrations carry `auth.uid()` — the Supabase linter's initplan
 rewrite, same predicate — and, since migration 525, every policy that asked who
 is calling (`get_my_firm_id()`, `get_my_role()`, `get_my_user_id()`,
 `my_internal_client_id()`, `my_permission(...)`, `my_role_at_least(...)`) carries
-the same wrapper. `GUARD_SQL` folds all of them back before hashing, on both
+the same wrapper, and since migration 526 every call of `can_access_client((<column>)::text)`
+is written as a set-based test that asks `my_assigned_client_ids()`. `GUARD_SQL` folds all of
+them back before hashing (the wrapper to the bare call, the set-based test to the call), on both
 sides, so a refresh taken with an older `GUARD_SQL` would NOT compare cleanly.
 The 2026-09-03 snapshot predates the wider fold: `client_health_scores` and
 `client_health_overrides` (`firm_isolation`, written wrapped by migration 046)
