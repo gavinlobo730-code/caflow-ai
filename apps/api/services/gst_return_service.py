@@ -167,7 +167,10 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
 
 
 from domain.accounting import opening_documents as _opening
+from core import db_provider
 from core.db_paging import fetch_all
+
+_service_db = db_provider.service_db_or_none
 
 
 def _posted_sales(db, firm_id, client_id, start, end) -> list[dict]:
@@ -508,7 +511,29 @@ def _bank_lines_declaring_gst(db, firm_id, client_id, start, end) -> list[dict]:
     `posted_journal_id` is asked for twice over — in the filter and again in
     `declared_gst` — because a test double that ignores `.not_` would
     otherwise let an unposted line onto the return.
+
+    READ WITH THE SERVER'S ACCESS, NOT THE CALLER'S. A return is built from
+    ALL of the client's documents, and a bank line carrying GST is one of
+    them. The bank tables answer a signed-in person only if their Banking
+    access reaches them (migration 524) and a read their tier hides comes back
+    as zero rows, not as an error: a person who holds `gst:compute` and no
+    Banking would have had a bank charge's input credit and a bank receipt's
+    output tax silently left OUT of the return they prepare, a return that is
+    wrong and says nothing. Every route that builds one asks
+    `assert_client_access` first, and what comes out of this read is the
+    declared tax of a line, which the return states anyway. The line's
+    DESCRIPTION is selected too, because the GSTR-3B drill-down names the line
+    by it (`_bank_detail_rows`, `party`): that text is already in the narration
+    of the line's posted journal entry, which migration 524 leaves alone
+    (`journal_entries` stays readable to every assigned staff role straight
+    from the database, and over the API under `accounting:read`), so reading it
+    with the server's access hands the drill-down nothing the same person
+    cannot already read at the database. Over the API a person with `gst:read`
+    and without `accounting:read` sees that one text by this one route. The
+    unposted lines, which carry the narrations nobody has yet matched to a
+    party, are not in this read (it asks `posted_journal_id` not null).
     """
+    db = _service_db() or db
     return fetch_all(lambda: db.table("bank_transactions")
             # Spelled out rather than pulled from a constant so
             # test_backend_columns_exist_pg can read every name and check it

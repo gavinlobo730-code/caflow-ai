@@ -155,3 +155,65 @@ def test_these_guards_are_not_vacuous():
         assert not is_known_permission(r, "delete"), (
             f"{r} gained a delete action — 415's CASE needs it")
     assert set(PERMISSIONS) >= {"billing", "client", "task", "document", "firm"}
+
+
+# ── migration 524: a client's bank lines ask banking:read, at PERMISSIONS' own floor ─────────────────────────────
+
+MIGRATION_524 = next((Path(__file__).resolve().parents[1] / "migrations")
+                     .glob("524_the_database_asks_the_banking_tier_*_read.sql"))
+ROLLBACK_524 = next((Path(__file__).resolve().parents[1] / "migrations")
+                    .glob("524_the_database_asks_the_banking_tier_*_read_rollback.sql"))
+
+
+def _floor(resource: str, action: str) -> str:
+    """The lowest role PERMISSIONS lets do `resource:action`: the minimum a policy must name."""
+    from core.permissions import ROLE_HIERARCHY
+    allowed = PERMISSIONS[resource][action]
+    return next(r.value for r in ROLE_HIERARCHY if r in allowed)
+
+
+def _524_policies() -> list[tuple[str, str]]:
+    """(table, the floor the policy names) for every policy 524 creates."""
+    sql = MIGRATION_524.read_text(encoding="utf-8")
+    out = []
+    for m in re.finditer(r'CREATE POLICY "([a-z_]+)" ON public\.([a-z_]+)\s+'
+                         r"AS RESTRICTIVE FOR SELECT TO authenticated\s+"
+                         r"USING \(\(SELECT public\.my_permission\('([a-z]+)', '([a-z]+)', '([A-Za-z]+)'\)\)\);", sql):
+        _name, table, resource, action, floor = m.groups()
+        assert (resource, action) == ("banking", "read"), (table, resource, action)
+        out.append((table, floor))
+    return out
+
+
+def test_524_names_banking_read_at_the_floor_permissions_gives_it():
+    """The floor the policies name is the one `rbac("banking", "read")` resolves a role through, so a per-person
+    yes or no and the role fallback mean the same thing at the route and at the table."""
+    assert is_known_permission("banking", "read")
+    floor = _floor("banking", "read")
+    assert floor == "Executive", f"PERMISSIONS moved banking:read's floor to {floor}: the policies of 524 must follow"
+    policies = _524_policies()
+    assert {f for _t, f in policies} == {floor}, policies
+
+
+def test_524_wraps_the_call_so_it_is_asked_once_per_query_and_not_once_per_row():
+    """The spelling that makes the rule true on a table of 100,000 lines (61 s against 6 s, measured); the plan-level
+    proof is in the real-Postgres sibling. Every call in the migration is inside `(SELECT ...)`."""
+    sql = MIGRATION_524.read_text(encoding="utf-8")
+    code = "\n".join(line for line in sql.splitlines() if not line.lstrip().startswith("--"))
+    calls = len(re.findall(r"my_permission\(", code))
+    wrapped = len(re.findall(r"\(SELECT public\.my_permission\(", code))
+    assert calls == wrapped == 6, (calls, wrapped)
+
+
+def test_524_covers_six_tables_and_its_rollback_drops_exactly_those_policies():
+    sql = MIGRATION_524.read_text(encoding="utf-8")
+    created = set(re.findall(r'CREATE POLICY "([a-z_]+)"', sql))
+    dropped_by_rollback = set(re.findall(r'DROP POLICY IF EXISTS "([a-z_]+)"', ROLLBACK_524.read_text(encoding="utf-8")))
+    assert len(created) == 6 and created == dropped_by_rollback, (created, dropped_by_rollback)
+    assert {t for t, _f in _524_policies()} == {
+        "bank_transactions", "bank_statements", "bank_transaction_splits",
+        "bank_reconciliations", "bank_reconciliation_matches", "bank_matching_rules"}
+    # the closing check counts what the migration creates
+    assert "IF n <> 6 THEN" in sql
+    # bank_accounts is left out on purpose (the payment pickers read it); a policy there would be a decision
+    assert "bank_accounts" not in re.findall(r"ON public\.([a-z_]+)", sql)

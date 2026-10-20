@@ -105,6 +105,20 @@ def test_the_notice_states_no_count_because_a_count_goes_stale():
     assert not re.search(r"\d", DENIAL_REACH_NOTICE), DENIAL_REACH_NOTICE
 
 
+def test_the_notice_names_each_family_whose_read_the_database_enforces_and_what_it_leaves_out():
+    """Payroll since 485/490, billing since 495 and a client's bank lines since 524 are read through the grid, and the
+    sentence says so: a Partner who unticks Banking reads "enforced by the PracticeSync server" and nothing about the
+    database unless it is told. The real-Postgres sibling holds the list of tables; this holds that the SENTENCE still
+    names each family, and that the bank sentence says what it does not cover (the bank account master, which the
+    payment pickers read)."""
+    text = " ".join(DENIAL_REACH_NOTICE.lower().split())
+    for family in ("payroll", "billing", "banking"):
+        assert family in text, f"the notice no longer names {family}"
+    assert "bank transactions" in text and "reconciliations" in text
+    assert "list of bank accounts is not covered" in text, (
+        "the bank sentence must say that the bank account list is not covered")
+
+
 # ── What it says about THIS repository is measured from it ───────────────────
 
 def _is_the_products_own(route) -> bool:

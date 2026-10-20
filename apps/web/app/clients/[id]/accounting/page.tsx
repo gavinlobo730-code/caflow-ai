@@ -25,6 +25,10 @@ import {
 } from "@/lib/api";
 import { cachedReport, reportKey } from "@/lib/accounting/reportCache";
 import {
+  bankCountDecision, readingFromAnswer, unmatchedBankTile, type UnmatchedBankReading,
+} from "@/lib/accounting/unmatchedBankTile";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import {
   plBucket, bsBucket, PL_REV_ORDER, PL_EXP_ORDER, BS_ASSET_ORDER, BS_LIAB_ORDER, BS_EQ_ORDER,
 } from "@/lib/accounting/scheduleIiiCaptions";
 import PeriodPicker from "@/components/PeriodPicker";
@@ -441,8 +445,17 @@ function AccountingDashboard({
   const router = useRouter();
   const [stats, setStats] = useState({
     revenue_paise: 0, expenses_paise: 0, cash_paise: 0,
-    unmatched_bank: 0, journal_count: 0,
+    journal_count: 0,
   });
+  // The unmatched-bank count is its own reading with four states (see
+  // lib/accounting/unmatchedBankTile). It comes from the server, behind
+  // banking:read, because the bank tables answer a person whose Banking access is
+  // blocked with zero rows (migration 524) and a count over zero visible rows would
+  // print as "0 unmatched". The permission map only decides whether to ASK; the
+  // server asks the person's access again on every request.
+  const { can, resolved: permissionsResolved } = usePermissions();
+  const bankDecision = bankCountDecision(permissionsResolved, can("banking", "read"));
+  const [bankReading, setBankReading] = useState<UnmatchedBankReading>({ kind: "waiting" });
   const [recentEntries, setRecentEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "the fetch failed" from "this client genuinely has no
@@ -476,15 +489,9 @@ function AccountingDashboard({
       // rejecting, so they need no equivalent — hence the explicit check below.
       let revenue = 0, expenses = 0, cash = 0;
       try {
-        const [plRes, cfRes, unmatched, recentRes, journalCount] = await Promise.all([
+        const [plRes, cfRes, recentRes, journalCount] = await Promise.all([
           (api.accounting.profitLoss({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { revenue: { total_paise: number }; cost_of_sales: { total_paise: number }; operating_expenses: { total_paise: number } } }>).catch(() => null),
           (api.accounting.cashFlow({ client_id: clientId, start_date: start, end_date: end }) as Promise<{ success: boolean; data: { closing_cash_paise: number } }>).catch(() => null),
-          // Unmatched bank transactions
-          supabase
-            .from("bank_transactions")
-            .select("id", { count: "exact", head: true })
-            .eq("client_id", clientId)
-            .eq("match_status", "unmatched"),
           // Recent journal entries
           supabase
             .from("journal_entries")
@@ -514,15 +521,15 @@ function AccountingDashboard({
         }
         if (cfRes?.success) cash = cfRes.data.closing_cash_paise ?? 0;
 
-        if (unmatched.error || recentRes.error || journalCount.error) throw new Error("dashboard query failed");
+        if (recentRes.error || journalCount.error) throw new Error("dashboard query failed");
 
         setStats({
           revenue_paise: revenue, expenses_paise: expenses, cash_paise: cash,
-          unmatched_bank: unmatched.count ?? 0, journal_count: journalCount.count ?? 0,
+          journal_count: journalCount.count ?? 0,
         });
         setRecentEntries((recentRes.data as JournalEntry[]) ?? []);
       } catch {
-        setStats({ revenue_paise: 0, expenses_paise: 0, cash_paise: 0, unmatched_bank: 0, journal_count: 0 });
+        setStats({ revenue_paise: 0, expenses_paise: 0, cash_paise: 0, journal_count: 0 });
         setRecentEntries([]);
         setLoadFailed(true);
       } finally {
@@ -537,6 +544,21 @@ function AccountingDashboard({
     load();
   }, [clientId, financialYear]);
 
+  useEffect(() => {
+    if (!clientId || clientId === "_placeholder") return;
+    if (bankDecision === "wait") { setBankReading({ kind: "waiting" }); return; }
+    if (bankDecision === "not_allowed") { setBankReading({ kind: "not_allowed" }); return; }
+    let current = true;
+    setBankReading({ kind: "waiting" });
+    api.banking.unmatchedCount({ client_id: clientId })
+      .then(
+        (res) => { if (current) setBankReading(readingFromAnswer(res)); },
+        () => { if (current) setBankReading({ kind: "failed" }); },
+      );
+    return () => { current = false; };
+  }, [clientId, bankDecision]);
+
+  const bankTile = unmatchedBankTile(bankReading);
   const netPL = stats.revenue_paise - stats.expenses_paise;
   /** A figure, or "—" when the load failed. Never a zero we cannot stand behind. */
   const unknownIfFailed = (value: string) => (loadFailed ? "—" : value);
@@ -585,7 +607,13 @@ function AccountingDashboard({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <DashCard label="Posted Entries (FY)" value={unknownIfFailed(String(stats.journal_count))} accent="gray" action={() => onNavigate("day-book")} />
-        <DashCard label="Unmatched Bank Txns" value={unknownIfFailed(String(stats.unmatched_bank))} accent={!loadFailed && stats.unmatched_bank > 0 ? "amber" : "gray"} action={() => router.push(`/clients/${clientId}/bank/`)} />
+        <DashCard
+          label="Unmatched Bank Txns"
+          value={bankTile.value}
+          note={bankTile.note}
+          accent={bankTile.attention ? "amber" : "gray"}
+          action={bankTile.opensBank ? () => router.push(`/clients/${clientId}/bank/`) : undefined}
+        />
         {/* Not behind the placeholder: the chart of accounts has its own loader
             and its own error, so it is still trustworthy when this one failed. */}
         <DashCard label="Accounts" value={String(accounts.length)} accent="gray" action={() => onNavigate("coa")} />
@@ -628,7 +656,7 @@ function AccountingDashboard({
   );
 }
 
-function DashCard({ label, value, accent, action }: { label: string; value: string; accent: string; action?: () => void }) {
+function DashCard({ label, value, accent, action, note }: { label: string; value: string; accent: string; action?: () => void; note?: string | null }) {
   const colors: Record<string, string> = {
     green: "bg-green-50 border-green-100", red: "bg-state-problem-surface border-red-100",
     emerald: "bg-emerald-50 border-emerald-100", orange: "bg-orange-50 border-orange-100",
@@ -639,13 +667,26 @@ function DashCard({ label, value, accent, action }: { label: string; value: stri
     green: "text-green-800", red: "text-red-800", emerald: "text-emerald-800",
     orange: "text-orange-800", blue: "text-blue-800", amber: "text-amber-800", gray: "text-ps-ink",
   };
+  const body = (
+    <>
+      <p className="text-3xs font-medium text-ps-label mb-1">{label}</p>
+      <p className={`text-lg font-bold tabular-nums ${textColors[accent] ?? "text-ps-ink"}`}>{value}</p>
+      {note && <p className="mt-0.5 text-3xs text-ps-hint">{note}</p>}
+    </>
+  );
+  // A card with nowhere to go (the unmatched-bank tile for someone who may not open the Bank screen)
+  // is a plain card: no tab stop, no hover lift, nothing that looks pressable and does nothing. The
+  // button pins its content to the top (a button centres its content when a grid row stretches it),
+  // so a sibling that gains a note line does not drop its label and figure below the others'.
+  if (!action) {
+    return <div className={`rounded-xl border p-4 text-left ${colors[accent] ?? colors.gray}`}>{body}</div>;
+  }
   return (
     <button
       onClick={action}
-      className={`rounded-xl border p-4 text-left transition-shadow hover:shadow-sm ${colors[accent] ?? colors.gray}`}
+      className={`flex flex-col justify-start rounded-xl border p-4 text-left transition-shadow hover:shadow-sm ${colors[accent] ?? colors.gray}`}
     >
-      <p className="text-3xs font-medium text-ps-label mb-1">{label}</p>
-      <p className={`text-lg font-bold tabular-nums ${textColors[accent] ?? "text-ps-ink"}`}>{value}</p>
+      {body}
     </button>
   );
 }

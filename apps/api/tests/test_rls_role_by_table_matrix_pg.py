@@ -85,9 +85,9 @@ THE FILE, AND WHAT IT IS ALLOWED TO SAY
     observed value is recorded and nothing claims it is right.
 
 BREAKING IT ON PURPOSE
-    Sixteen holes this repository already closed once are put back in a copy of the
-    world, thirteen of them by running the migration's own rollback file (468, 469,
-    470, 478, 483, 484, 485, 487, 488, 489, 490, 495, 499): each must turn named cells red. `liveness-dropped-from-every-helper`
+    Seventeen holes this repository already closed once are put back in a copy of the
+    world, fourteen of them by running the migration's own rollback file (468, 469,
+    470, 478, 483, 484, 485, 487, 488, 489, 490, 495, 499, 524): each must turn named cells red. `liveness-dropped-from-every-helper`
     is migration 468 reversed; dropping the check from `get_my_role` ALONE
     turns only two cells red (a suspended Partner writes `fx_rates`, whose
     policy asks the role and never the firm) because `get_my_firm_id` still
@@ -1137,7 +1137,11 @@ CONTROLS = (
     ("reviewer-writes-slice-1-487-reopened",
      "migration 487 rolled back: a Reviewer assigned to the client writes its invoices, bills, receipts, payments, notes, "
      "catalogue items, bank accounts and bank transactions again",
-     lambda: _migration_sql("487_a_reviewer_cannot_write_the_accounting_documents_or_the_bank_tables_rollback.sql"),
+     # 524's read tier hides a bank line from a Reviewer, and an UPDATE has to find the row it changes, so with 524 in
+     # place rolling back 487 alone changes nothing on `bank_transactions`: two layers close that hole. 524 is rolled back
+     # first so this control measures 487 and the 524 control below measures 524.
+     lambda: _migration_sql("524_the_database_asks_the_banking_tier_when_a_clients_bank_lines_are_read_rollback.sql") + "\n"
+     + _migration_sql("487_a_reviewer_cannot_write_the_accounting_documents_or_the_bank_tables_rollback.sql"),
      ("client_sales_invoices", "purchase_bills", "receipts", "receipt_allocations", "purchase_payments",
       "purchase_payment_allocations", "credit_notes", "debit_notes", "purchase_credit_notes", "sales_debit_notes",
       "service_catalogue", "bank_accounts", "bank_transactions"),
@@ -1201,6 +1205,12 @@ CONTROLS = (
      {("manager", "fee_engagements", "select"), ("exec_assigned", "fee_invoices", "select"),
       ("reviewer", "fee_invoices", "select"), ("reviewer", "fee_receipts", "select"),
       ("exec_unassigned", "fee_receipts", "select")}),
+    ("banking-read-tier-524-reopened",
+     "migration 524 rolled back: a Reviewer assigned to the client reads its bank lines again, and a Partner's block "
+     "on banking:read hides nothing from a direct read",
+     lambda: _migration_sql("524_the_database_asks_the_banking_tier_when_a_clients_bank_lines_are_read_rollback.sql"),
+     ("bank_transactions",),
+     {("reviewer", "bank_transactions", "select")}),
     ("suspended-own-row-506-reopened",
      "migration 506 rolled back: users_own_row_select and users_own_row_rename ask only the sign-in id again, so a "
      "suspended member still reads and renames their own users row",

@@ -94,7 +94,13 @@ _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 #: rather than a test.
 _EMPTY_BRS_BUCKET = {"items": [], "total_paise": 0, "count": 0, "listed": 0}
 
-router = APIRouter(prefix="/api/banking", tags=["banking"])
+# EVERY banking route also asks `banking:read`, and asks it FIRST (a router-level dependency runs before a route's own). Migration 524 makes
+# the database answer ZERO ROWS to a person whose Banking read a Partner has blocked, and the services below read under the caller's own
+# sign-in, so a person left with `banking:write` or `banking:approve` and no read passed their route's guard and then met a 404, a "0 changed"
+# that read as success, or (on an insert, which asks for the new row back and so meets the read policy too) a database refusal worded as a
+# server fault. Refusing at the door says what is wrong, in the words every other refusal uses (POST-A-219's finalise-tier rule for payroll
+# is the precedent). `tests/test_a_banking_route_also_asks_for_banking_read.py` holds it over the route table.
+router = APIRouter(prefix="/api/banking", tags=["banking"], dependencies=[Depends(rbac("banking", "read"))])
 
 
 _db = db_provider.request_db_or_none
@@ -2134,6 +2140,31 @@ def entry_counts(
                                     "tds_decision_pending")})
     return api_response(True, bank_entry_service.counts(
         db, current_user["firm_id"], client_id, bank_account_id=bank_account_id))
+
+
+@router.get("/unmatched-count")
+def unmatched_count(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("banking", "read")),
+):
+    """How many of the client's bank lines have no match yet (`match_status` is
+    `unmatched`), over every account: the figure on the accounting dashboard's
+    "Unmatched Bank Txns" tile. NOT the Entries tab's `to_do`, which counts by
+    entry state; the tile has always meant the stored match status.
+
+    It lives here, behind `rbac("banking", "read")`, because the dashboard used
+    to count the table from the browser, and since migration 524 that read
+    answers a person whose Banking is blocked with ZERO ROWS: a count of 0, on a
+    tile that reads as "every line is matched". The permission map the browser
+    decided from is resolved at sign-in and on each token refresh, so a person
+    blocked since then still passed it; this route asks the grid on the request,
+    and a refusal reaches the tile as a dash, never a zero."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"unmatched": 0})
+    return api_response(True, {"unmatched": bank_entry_service.unmatched_count(
+        db, current_user["firm_id"], client_id)})
 
 
 @router.get("/entries/{txn_id}")
