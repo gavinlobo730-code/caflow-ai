@@ -80,6 +80,22 @@ def clean_filed_date(v: object) -> str:
     return when.isoformat()
 
 
+def year_end_not_yet_reached_on(financial_year: Optional[str], filed_on: str) -> Optional[str]:
+    """The last day of `financial_year` when `filed_on` is EARLIER than it (so the return cannot have been filed on that date), else None.
+
+    A return for a financial year cannot have been filed before the year ended (the same rule `_filed_date_for` applies to the period
+    end of an obligation, and `mark_filed` to the date it is given). This is the rule asked of the date a CA types into a filing
+    BEFORE it is stored, by the two screens that store one themselves (the ITR acknowledgement and the MCA filing), so the filing and
+    the compliance calendar cannot disagree about it. A label that is not a year is not judged (None): nothing is known to compare."""
+    from core.ist_clock import fy_bounds, normalise_fy_label
+    try:
+        # Normalised first: `fy_bounds` reads the first four characters and ignores the rest, so "2025-99" would be judged as FY 2025-26.
+        year_end = fy_bounds(normalise_fy_label(str(financial_year or "")))[1]
+    except ValueError:
+        return None
+    return year_end if str(filed_on)[:10] < year_end else None
+
+
 def _closes_a_gst_period(record: dict) -> bool:
     """Whether recording this obligation as filed closes a GST period — the
     two returns of supplies, GSTR-1 and GSTR-3B. Asked of the service that owns

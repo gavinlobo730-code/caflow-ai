@@ -255,11 +255,25 @@ def test_a_filing_that_names_no_client_or_firm_matches_nothing(world):
         assert answer["state"] == "not_closed" and answer["closed"] is False
 
 
-def test_a_date_before_the_year_ended_is_said_and_the_filing_keeps_what_was_typed(world):
+def test_a_date_before_the_year_ended_is_refused_at_the_door_and_nothing_is_stored(world):
+    """It used to be stored on the filing while the calendar refused it, leaving the two disagreeing (POST-A-290): the door judges it
+    first, by the rule the ITR acknowledgement applies, and a refused date changes nothing."""
     obligation = _obligation()
-    out = _file(_filing(world), day="2026-03-30")
-    assert out["success"] is True and out["data"]["status"] == "filed" and out["data"]["filed_date"] == "2026-03-30"
-    answer = _answer(out)
+    filing = _filing(world)
+    out = _file(filing, day="2026-03-30")
+    assert out["success"] is False and out["data"] is None
+    assert "cannot have been filed before the year ended on 2026-03-31" in out["error"] and "Nothing was changed" in out["error"]
+    row = next(f for f in world.rows("mca_filings") if f["id"] == filing["id"])
+    assert row["status"] == "in_progress" and row["filed_date"] is None and row["srn"] is None
+    assert _now(obligation)["status"] == OPEN
+
+
+def test_the_calendar_door_still_refuses_a_date_before_the_year_ended_when_something_else_asks(world):
+    """The refusal at the door is the first line; `mark_filed` is the second, and a direct caller of the closer still gets it said."""
+    obligation = _obligation()
+    answer = closes.close_for_filed_filing(
+        firm_id=FIRM, client_id=CLIENT, form_type="AOC-4", financial_year=FY, company_id=None, filed_date="2026-03-30", srn=SRN,
+        actor=USER, may_write_compliance=True, companies=[], filed_company_ids=[])
     assert answer["state"] == "not_closed" and "before the period it declares ended on 2026-03-31" in answer["message"]
     assert _now(obligation)["status"] == OPEN
 

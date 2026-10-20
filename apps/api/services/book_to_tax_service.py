@@ -147,6 +147,13 @@ def depreciation_per_books(db, firm_id: str, client_id: str, fy_start: str,
     except Exception as e:                                        # noqa: BLE001
         _logger.warning("book depreciation for %s: %s", client_id, e)
         value = None
+    if value is None and _mv.has_nothing_to_depreciate(db, firm_id, client_id, fy_start, fy_end):
+        # A client with no fixed asset on the register and no depreciation in the ledger has nothing to depreciate: the charge in the
+        # accounts is nil, which is a reading and not a failure to read. Without this the bridge could never complete for an
+        # individual with a small business and no assets (POST-A-268).
+        return DerivedInput(0, (
+            "No depreciation was charged in the accounts: the client has no fixed assets on the register and the ledger holds "
+            "no depreciation for the year."), True)
     if value is None:
         return DerivedInput(None, (
             "Depreciation charged in the accounts could not be read — the "

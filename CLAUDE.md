@@ -198,13 +198,14 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE WEB SERVER IS GUNICORN 22.0.0, THE TWO REQUEST-SMUGGLING ADVISORIES ARE OFF THE BASELINE, AND WHAT WAS NOT TRIED IS NAMED
 - THE SCHEMA GUARD EXPECTS COLUMNS ON TABLES A MIGRATION CREATES, AND A WORD OF THE SQL AROUND A TABLE NAME IS NOT ONE
 
-### `docs/design-record/filing-and-compliance.md` (5 entries): Filing to government portals, trackers and the period lock
+### `docs/design-record/filing-and-compliance.md` (6 entries): Filing to government portals, trackers and the period lock
 
 - AND THE PRODUCT WORDS THAT POSITION ONCE
 - THERE ARE TWO TRACKERS AND BOTH LOCK THE PERIOD
 - A GST RETURN IS APPROVED, REBUILT AND REOPENED THROUGH THE API, AND THE DATABASE ASKS WHO MAY APPROVE
 - AN MCA FILING RECORDED AS FILED CLOSES ITS CALENDAR OBLIGATION, AND THE OBLIGATION IS THE CLIENT'S WHILE THE FILINGS ARE THE COMPANIES'
 - A COMPLIANCE OBLIGATION IS OVERDUE BY ITS DATE, BECAUSE NOTHING WRITES THE WORD, AND ONE FUNCTION SAYS SO FOR EVERY READER
+- AN MCA FILING'S DATE IS JUDGED BEFORE IT IS STORED, BY THE RULE THE ITR ACKNOWLEDGEMENT USES
 
 ### `docs/design-record/fixed-assets-and-inventory.md` (13 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
 
@@ -347,7 +348,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A RETURN RECORDED AS FILED IN THE WORKSPACE CLOSES ITS COMPLIANCE OBLIGATION THROUGH THE ONE DOOR THAT CLOSES ONE, ONLY WHEN IT CAN TELL WHICH OBLIGATION AND WHETHER THEY ARE ALL FILED, AND NEVER FAILS THE FILING
 - A GST RETURN PERIOD IS A TYPE, AND A STRING THAT IS NOT A MONTH IS A 422 AT THE DOOR
 
-### `docs/design-record/tax-income-tax.md` (15 entries): Income tax: ITR kinds and engines, capital gains, tax audit and 3CD, losses, entity reliefs, section 43B(h)
+### `docs/design-record/tax-income-tax.md` (16 entries): Income tax: ITR kinds and engines, capital gains, tax audit and 3CD, losses, entity reliefs, section 43B(h)
 
 - §115BAC DISAPPLIES CHAPTER XII-BA, and the AMT surcharge ladder is the ASSESSEE's own
 - THE FOUR REINVESTMENT SECTIONS ARE NOT ONE RULE WITH FOUR NAMES
@@ -364,6 +365,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - HOUSE PROPERTY AND SALARY ARE WORKINGS, KEPT AS INPUTS AND RECOMPUTED, AND THEY FEED A BOX ON THE CA'S CLICK
 - AN ITR RETURN BECOMES FILED BY RECORDING ITS ACKNOWLEDGEMENT, AND RECORDING IT CLOSES THE CALENDAR'S OBLIGATION
 - THE DEMO'S INCOME-TAX FACTS ARE FACTS, AND EVERY FIGURE THAT IS TAX COMES BACK FROM THE ENGINE
+- A CLIENT WITH NO FIXED ASSETS AND NO DEPRECIATION IN THE LEDGER HAS A NIL CHARGE, NOT AN UNREADABLE ONE
 
 ### `docs/design-record/tax-tds.md` (21 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 

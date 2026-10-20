@@ -706,12 +706,9 @@ def _filed_after_the_year_it_declares(financial_year: Optional[str], filing_date
     date it is given (`compliance_record_service._filed_date_for` refuses a date earlier than the obligation's period end),
     applied to the date the CA typed BEFORE it is stored, so the acknowledgement and the calendar cannot disagree about it.
     A label that is not a year is not judged here."""
-    from core.ist_clock import fy_bounds
-    try:
-        year_end = fy_bounds(str(financial_year or ""))[1]
-    except ValueError:
-        return
-    if filing_date < year_end:
+    from domain.compliance_record_service import year_end_not_yet_reached_on
+    year_end = year_end_not_yet_reached_on(financial_year, filing_date)
+    if year_end:
         raise HTTPException(400, detail=(
             f"A return for FY {financial_year} cannot have been filed before the year ended on {year_end}. "
             "Check the date on the acknowledgement."))

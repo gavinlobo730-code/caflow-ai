@@ -37,6 +37,7 @@ from models.common import api_response
 from core.permissions import can_user, rbac
 from core.authz import assert_client_access, can_access_client, effective_client_ids
 from core.validators import validate_cin, validate_din, validate_pan
+from domain.compliance_record_service import clean_filed_date
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.compliance_engine import mca_due_date, MCA_AGM_OFFSET_DAYS
@@ -544,6 +545,59 @@ def _answered_with_the_obligation(current_user: dict, filing: dict) -> dict:
     return filing if obligation is None else {**filing, "compliance_obligation": obligation}
 
 
+#: The annual forms that describe a financial year, and so cannot have been filed before it ended. ADT-1 is filed within days of an
+#: appointment and an event form has no year to wait for, so neither is judged. MGT-7A is not asked (POST-C-209).
+_FILED_ONLY_AFTER_THE_YEAR_ENDS = frozenset({"AOC-4", "MGT-7"})
+
+
+def _filed_before_the_year_it_declares_ended(filing: dict, filing_date: str) -> Optional[str]:
+    """The sentence refusing `filing_date` for this filing when its year had not ended on that day, or None (POST-A-290).
+
+    The calendar refuses such a date when the filing closes the obligation (`mark_filed`), so a filing that kept the date and an
+    obligation left open with the reason in the answer disagreed with each other; the date is judged BEFORE it is stored, by the same
+    rule as the ITR acknowledgement (`compliance_record_service.year_end_not_yet_reached_on`). A filing whose year is not a year is
+    not judged: nothing is known to compare."""
+    if filing.get("form_type") not in _FILED_ONLY_AFTER_THE_YEAR_ENDS:
+        return None
+    from domain.compliance_record_service import year_end_not_yet_reached_on
+    from services import mca_filing_closes_obligation as closes
+    year = closes.filing_year(filing)
+    year_end = year_end_not_yet_reached_on(year, filing_date)
+    if not year_end:
+        return None
+    return (f"An {filing['form_type']} for FY {year} cannot have been filed before the year ended on {year_end}. "
+            "Check the filing date. Nothing was changed.")
+
+
+def _judged_filing_date(filing: dict, raw: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """(the date to store, None) for a stated filing date that is acceptable, (None, None) for none stated, or (None, the sentence).
+
+    A real date, not in the future (IST): free text reached the DATE column and came back as "Unable to complete MCA operation" with
+    no reason, and a day ahead was stored on the filing while the calendar refused it (POST-A-290). `clean_filed_date` is the rule the
+    ITR acknowledgement and the GST status door apply; the year-end floor is `_filed_before_the_year_it_declares_ended`."""
+    if not raw:
+        return None, None
+    try:
+        day = clean_filed_date(raw)
+    except ValueError as refusal:
+        return None, f"{str(refusal).replace('filed_date', 'filing_date')}. Nothing was changed."
+    too_early = _filed_before_the_year_it_declares_ended(filing, day)
+    return (None, too_early) if too_early else (day, None)
+
+
+def _status_updates(body: "UpdateFilingStatusRequest", filing_date: Optional[str]) -> dict:
+    """The columns a status change writes. Real column is filed_date (migration 012); the request field keeps the frontend's
+    "filing_date" name, mapped here."""
+    updates: dict = {"status": body.status}
+    if body.srn:
+        updates["srn"] = body.srn
+    if filing_date:
+        updates["filed_date"] = filing_date
+    if body.acknowledgement_url:
+        updates["acknowledgement_url"] = body.acknowledgement_url
+    return updates
+
+
 @router.patch("/filings/{filing_id}/status")
 def update_filing_status(
     filing_id: str,
@@ -573,21 +627,15 @@ def update_filing_status(
             if not can_user(current_user, "mca", "approve"):
                 raise HTTPException(status_code=403, detail="Only Manager or above can mark filings as filed")
 
-        updates: dict = {"status": body.status}
-        if body.srn:
-            updates["srn"] = body.srn
-        if body.filing_date:
-            # Real column is filed_date (migration 012); request field keeps
-            # the frontend's "filing_date" name, mapped here.
-            updates["filed_date"] = body.filing_date
-        if body.acknowledgement_url:
-            updates["acknowledgement_url"] = body.acknowledgement_url
-
         # Read first: marking a filing "filed" writes the MCA21 SRN and
         # acknowledgement onto it (Companies Act §92/§137/§139).
         existing = _load_or_none(current_user, "mca_filings", _MOCK_FILINGS, filing_id)
         if existing is None:
             return api_response(False, None, "Filing not found")
+        filing_date, refusal = _judged_filing_date(existing, body.filing_date)
+        if refusal:
+            return api_response(False, None, refusal)
+        updates = _status_updates(body, filing_date)
         # A filing recorded as filed is reopened or rewritten only by someone who may approve MCA filings
         # (migration 493 says the same to the database), whatever status it is being moved to.
         if existing.get("status") == "filed" and not can_user(current_user, "mca", "approve"):
