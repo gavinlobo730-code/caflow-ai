@@ -72,6 +72,9 @@ class TaskDomainService:
         return {
             "active_clients": len(active_clients),
             "tasks_due_today": len([t for t in open_tasks if t.get("due_date") == today_str]),
+            # Open tasks due today or in the next seven days, by the same window as `compliance_due_week` (an overdue task is counted
+            # under `overdue_tasks`, not here). The firm-context panel read a key of this name that nothing returned, so it was always 0.
+            "tasks_due_week": len([t for t in open_tasks if today_str <= str(t.get("due_date") or "")[:10] <= week_end]),
             "overdue_tasks": len(overdue_tasks),
             "waiting_client": len([t for t in open_tasks if t.get("status") == "waiting_client"]),
             "review_required": len([t for t in open_tasks if t.get("status") == "review_required"]),

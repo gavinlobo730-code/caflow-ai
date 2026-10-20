@@ -93,6 +93,15 @@ export const HEALTH_GRADE_BANDS: readonly { min: number; grade: HealthGrade }[] 
 
 export const HEALTH_GRADES: readonly HealthGrade[] = HEALTH_GRADE_BANDS.map((b) => b.grade);
 
+/** A band's score range as the text a screen prints, "0–34" or "80–100": built from the band table, so the words beside a count cannot
+ *  disagree with the line the engine draws. A band runs from its own floor to one below the floor of the band above it. */
+export function gradeRangeLabel(grade: HealthGrade): string {
+  const i = HEALTH_GRADE_BANDS.findIndex((b) => b.grade === grade);
+  if (i < 0) return "";
+  const top = i === 0 ? 100 : HEALTH_GRADE_BANDS[i - 1].min - 1;
+  return `${HEALTH_GRADE_BANDS[i].min}–${top}`;
+}
+
 /** The band for a composite score — the FALLBACK for a surface holding only a
  *  number. Prefer the server's `grade` wherever the payload carries one. */
 export function gradeForScore(score: number): HealthGrade {

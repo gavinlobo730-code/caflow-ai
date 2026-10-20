@@ -211,12 +211,17 @@ export default function ClientHealthPage() {
   async function handleRecalculate() {
     setRecalculating(true);
     try {
-      const json: ApiResponse<HealthScore> = await apiFetch(
+      const json: ApiResponse<HealthScore> & { detail?: string } = await apiFetch(
         `/api/health/scores/${clientId}/calculate`, { method: "POST" }
       );
       if (json.success) setScore(json.data);
       await loadAll();
-    } catch { /* non-fatal */ }
+      // A refusal is said, after the re-read (which clears the line): the server did not store a score built from data it could not
+      // read, and a click that appears to do nothing is read as a score that is up to date.
+      if (!json.success) setError(json.error ?? json.detail ?? "The score could not be calculated just now.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The score could not be calculated just now.");
+    }
     finally { setRecalculating(false); }
   }
 

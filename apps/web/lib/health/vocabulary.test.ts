@@ -78,3 +78,13 @@ test("the portfolio bars are named with the engine's grade words", () => {
   assert.equal(PORTFOLIO_BAR_LABELS.critical, "Critical");
   assert.equal(PORTFOLIO_UNSPLIT_HEALTHY_LABEL, "Healthy, Good or Needs Attention");
 });
+
+test("a band's range is built from the band table: the text beside a count is the line the engine draws", async () => {
+  const { gradeRangeLabel } = await import("./vocabulary.ts");
+  assert.equal(gradeRangeLabel("Critical"), "0–34");
+  assert.equal(gradeRangeLabel("At Risk"), "35–49");
+  assert.equal(gradeRangeLabel("Needs Attention"), "50–64");
+  assert.equal(gradeRangeLabel("Good"), "65–79");
+  assert.equal(gradeRangeLabel("Healthy"), "80–100");
+  assert.equal(gradeRangeLabel("Fine" as never), "", "a word that is not a grade has no range");
+});

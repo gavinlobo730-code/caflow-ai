@@ -10,7 +10,7 @@ import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatDate } from "@/lib/dates/format";
 import {
-  GRADE_BAR_CLASS, HEALTH_GRADE_BANDS, gradeBadgeClass, gradeForScore, gradeOf, scoreBarClass, scoreTextClass,
+  GRADE_BAR_CLASS, HEALTH_GRADE_BANDS, gradeBadgeClass, gradeForScore, gradeOf, gradeRangeLabel, scoreBarClass, scoreTextClass,
   type HealthGrade,
 } from "@/lib/health/vocabulary";
 import { PageHeader } from "@/components/ui/page-header";
@@ -189,16 +189,18 @@ export default function HealthPage() {
     }
   }
 
-  // ─── Derived stats — Product Bible Chapter 16 score bands ─────────────────
-  // Healthy: 80-100, Good: 65-79, Needs Attention: 50-64, At Risk: 35-49, Critical: 0-34
+  // ─── Derived stats — the engine's five grades (`lib/health/vocabulary`) ─────
 
   const avgScore =
     clients.length > 0
       ? Math.round(clients.reduce((s, c) => s + c.overall_score, 0) / clients.length)
       : 0;
-  const criticalCount = clients.filter((c) => c.overall_score < 35).length;
-  const atRiskCount = clients.filter((c) => c.overall_score >= 35 && c.overall_score < 50).length;
-  const healthyCount = clients.filter((c) => c.overall_score >= 80).length;
+  // Counted by the engine's own word for each row (`grade`, which the server stores beside the score and which already accounts for a
+  // hard override), not by score lines the page draws itself: a line drawn here is a second place to change when the bands move.
+  const countOf = (grade: Grade) => clients.filter((c) => c.grade === grade).length;
+  const criticalCount = countOf("Critical");
+  const atRiskCount = countOf("At Risk");
+  const healthyCount = countOf("Healthy");
 
   // Score distribution (Product Bible bands)
   const gradeCounts: Record<Grade, number> = { "Healthy": 0, "Good": 0, "Needs Attention": 0, "At Risk": 0, "Critical": 0 };
@@ -213,9 +215,9 @@ export default function HealthPage() {
   const filtered = useMemo(
     () =>
       clients.filter((c) => {
-        if (filterTab === "Critical") return c.overall_score < 35;
-        if (filterTab === "At-Risk") return c.overall_score >= 35 && c.overall_score < 50;
-        if (filterTab === "Healthy") return c.overall_score >= 80;
+        if (filterTab === "Critical") return c.grade === "Critical";
+        if (filterTab === "At-Risk") return c.grade === "At Risk";
+        if (filterTab === "Healthy") return c.grade === "Healthy";
         return true;
       }),
     [clients, filterTab],
@@ -324,19 +326,19 @@ export default function HealthPage() {
         <Card className="bg-state-problem-surface border-state-problem-border shadow-sm">
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-red-600">{criticalCount}</p>
-            <p className="text-xs text-state-problem mt-1">Critical (0–34)</p>
+            <p className="text-xs text-state-problem mt-1">Critical ({gradeRangeLabel("Critical")})</p>
           </CardContent>
         </Card>
         <Card className="bg-state-attention-surface border-state-attention-border shadow-sm">
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-amber-600">{atRiskCount}</p>
-            <p className="text-xs text-amber-500 mt-1">At Risk (35–49)</p>
+            <p className="text-xs text-amber-500 mt-1">At Risk ({gradeRangeLabel("At Risk")})</p>
           </CardContent>
         </Card>
         <Card className="bg-green-50 border-green-200 shadow-sm">
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-green-600">{healthyCount}</p>
-            <p className="text-xs text-green-500 mt-1">Healthy (80–100)</p>
+            <p className="text-xs text-green-500 mt-1">Healthy ({gradeRangeLabel("Healthy")})</p>
           </CardContent>
         </Card>
       </div>
