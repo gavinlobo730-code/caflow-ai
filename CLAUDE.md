@@ -394,7 +394,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS SCREEN ASKS THE SERVER WHAT BECAME OF A DEDUCTION, AND A CARD SHOWS A DASH UNTIL IT HAS A FIGURE FOR THE CLIENT IT IS ABOUT
 - THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE ORDER BY EVERY READER, AND THE SECTIONS AND THEIR NAMES ARE THE SERVER'S
 
-### `docs/design-record/tenancy-and-security.md` (44 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (45 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -440,6 +440,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SCOPE CHECK BELOW A MOCK-MODE EARLY RETURN IS NOW A TREE-WIDE RULE, AND A NARROWING THAT IS BOUND MUST BE READ
 - THE APPROVAL ENGINE CARRIES ONLY A REQUEST TYPE SOMETHING RAISES, AND ITS ACTION LIVES IN ITS OWN SERVICE MODULE, NOT IN THE REGISTRY
 - THE DATABASE ASKS THE BANKING TIER WHEN A CLIENT'S BANK LINES ARE READ, AND THE HEALTH SCORE AND THE GST RETURN READ THEM WITH THE SERVER'S ACCESS
+- EVERY CLIENT TABLE ASKS THE ASSIGNMENT SCOPE OR IS ON A SHRINK-ONLY LIST THAT SAYS WHY NOT, AND THE BANK'S CHILDREN TOOK IT FIRST
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
@@ -1198,10 +1199,13 @@ PostgREST. That is why:
   loop that HAS NEVER RUN AGAIN. Six tables created since are read straight from the
   browser and had firm-wide access only until migration 370: `bank_accounts` (093),
   `debit_notes` (145), `purchase_credit_notes` / `sales_debit_notes` (210),
-  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). About 44
-  more are still in that state and are deliberately NOT fixed — nothing reaches them
-  from the browser — so the durable half is the rule, asserted:
-  `tests/test_a_table_the_browser_reads_is_assignment_scoped_pg.py`. **Do not "fix" it
+  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). A further 23
+  are still in that state (the bank's splits, rules and matches were closed by migration 527; the rest are POST-A-299). The premise
+  they were left on, "nothing reaches them from the browser", is false: PostgREST answers for every granted table and
+  the API runs as the caller. The durable half is the rule, asserted:
+  `tests/test_a_table_the_browser_reads_is_assignment_scoped_pg.py` for the tables the browser reads and
+  `tests/test_every_client_table_is_assignment_scoped_or_says_why_pg.py` for all of them, with a shrink-only list of what
+  is left and why. **Do not "fix" it
   by re-running 084's loop**: migration 262 replaced the payroll policies with
   per-command ones so the EMPLOYEE PORTAL can read a payslip, and a portal principal —
   a portal user, an employee — has no `users` row, so `can_access_client` denies them

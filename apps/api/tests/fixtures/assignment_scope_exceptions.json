@@ -1,0 +1,194 @@
+{
+  "_what": "Every public table with a client_id column that the authenticated role can reach and that carries no RESTRICTIVE policy asking the assignment scope (my_assigned_client_ids / can_access_client), with the reason. Held SHRINK-ONLY by tests/test_every_client_table_is_assignment_scoped_or_says_why_pg.py: a table that gains the scope must leave this file, and a new client table cannot join it as 'pending'. Kinds: parent = a policy of the table asks the named parent table, whose own policies carry the scope (verified); own = the named policy is the table's own rule (verified to exist); source = the assignment source itself; pending = firm policy only, with the ledger item that closes it.",
+  "tables": {
+    "account_period_balances": {
+      "kind": "parent",
+      "via": "clients",
+      "why": "its only policy asks client_id IN (SELECT id FROM clients), and clients carries the assignment scope, so a balance is as visible as its client"
+    },
+    "ais_reconciliations": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy and a role tier on writes; pending the assignment scope"
+    },
+    "ais_records": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy and a role tier on writes; pending the assignment scope"
+    },
+    "ais_uploads": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy and a role tier on writes; pending the assignment scope"
+    },
+    "bank_statement_column_mappings": {
+      "kind": "own",
+      "policy": "bank_statement_column_mappings_role_update",
+      "why": "a saved column layout is the practice's memory of how a bank formats its export: the firm-wide second look of find_mapping (BANK-26) reuses a layout drawn for one account on another account of the firm, so reads are firm-wide on purpose and a scope would end that for everyone but a Partner; it holds column headings and positions, not a client's figures; writes carry a role tier (Executive and above); find_mapping's habit of updating ANOTHER account's layout is POST-A-300"
+    },
+    "client_instructions": {
+      "kind": "own",
+      "policy": "client_instructions_assignment",
+      "why": "a Manager is firm-wide in the knowledge base and its instructions by design (docs/architecture/11-revenue-ops-and-knowledge.md); everyone below a Manager needs an assignment row"
+    },
+    "client_payroll_settings": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "client_portal_sessions": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "client_pt_registrations": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "client_statutory_identity": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "client_year_locks": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "demo_filings": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "engagements": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "fx_adjustments": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "fx_revaluations": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "income_tax_asset_blocks": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy and a role tier on writes; pending the assignment scope"
+    },
+    "inventory_stock_ledger": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "knowledge_articles": {
+      "kind": "own",
+      "policy": "knowledge_articles_assignment",
+      "why": "a Manager is firm-wide in the knowledge base by design (docs/architecture/11-revenue-ops-and-knowledge.md); a firm-level article has no client; everyone below a Manager needs an assignment row"
+    },
+    "notifications": {
+      "kind": "own",
+      "policy": "notifications_recipient_scope",
+      "why": "a notification is its recipient's (user_id) and a Partner reads all; it is about a person, not about the client it names"
+    },
+    "onboarding_checklists": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "party_credit_balances": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "party_credit_ledger": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "payroll_it_declarations": {
+      "kind": "parent",
+      "via": "payroll_employees",
+      "why": "its rows follow their employee: the RESTRICTIVE payroll_it_declarations_employee_in_reach policy (migration 485) asks the employee row, and payroll_employees carries the assignment scope (262)"
+    },
+    "payroll_loan_recoveries": {
+      "kind": "parent",
+      "via": "payroll_employees",
+      "why": "its rows follow their employee: the RESTRICTIVE payroll_loan_recoveries_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
+    },
+    "payroll_loans": {
+      "kind": "parent",
+      "via": "payroll_employees",
+      "why": "its rows follow their employee: the RESTRICTIVE payroll_loans_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
+    },
+    "payroll_one_time_earnings": {
+      "kind": "parent",
+      "via": "payroll_employees",
+      "why": "its rows follow their employee: the RESTRICTIVE payroll_one_time_earnings_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
+    },
+    "payroll_perquisites": {
+      "kind": "parent",
+      "via": "payroll_employees",
+      "why": "its rows follow their employee: the RESTRICTIVE payroll_perquisites_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
+    },
+    "payroll_salary_revisions": {
+      "kind": "parent",
+      "via": "payroll_employees",
+      "why": "its rows follow their employee: the RESTRICTIVE payroll_salary_revisions_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
+    },
+    "payroll_settlements": {
+      "kind": "parent",
+      "via": "payroll_employees",
+      "why": "its rows follow their employee: the RESTRICTIVE payroll_settlements_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
+    },
+    "properties": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "reconciliation_findings": {
+      "kind": "own",
+      "policy": "reconciliation_findings_partner_read",
+      "why": "read by a Partner only and written by the server"
+    },
+    "reconciliation_runs": {
+      "kind": "own",
+      "policy": "reconciliation_runs_partner_read",
+      "why": "read by a Partner only and written by the server"
+    },
+    "recurring_invoice_templates": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "schedule_iii_ratio_explanations": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy and a role tier on writes; pending the assignment scope"
+    },
+    "schedule_iii_ratio_inputs": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy and a role tier on writes; pending the assignment scope"
+    },
+    "schedule_iii_unbilled_reviews": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy and a role tier on writes; pending the assignment scope"
+    },
+    "tally_migration_jobs": {
+      "kind": "pending",
+      "ledger": "POST-A-299",
+      "why": "firm policy only; pending the assignment scope"
+    },
+    "user_client_assignments": {
+      "kind": "source",
+      "why": "it IS the assignment source: my_assigned_client_ids() and can_access_client read it as their owner, and migration 084 left it out of the scope on purpose; who may change it is migration 478's rule"
+    }
+  }
+}

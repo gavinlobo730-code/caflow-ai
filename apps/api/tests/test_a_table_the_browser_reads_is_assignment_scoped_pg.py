@@ -25,13 +25,12 @@ of the firm, assigned to nothing, could read and write every client's bank
 account numbers, both kinds of note, every 2B reconciliation and every §197
 certificate.
 
-Roughly 44 further `client_id` tables are in the same state and are NOT fixed,
-because nothing reaches them from the browser: the backend uses the
-service-role key, which bypasses RLS entirely, so there the control is the
-app-layer `.eq("firm_id", …)` filter with `core.authz`. That premise is exactly
-the kind that expires quietly — migration 062 made the same bet and lost it —
-so this test is the premise itself, asserted. Add a `.from("payroll_loans")` to
-a screen and this fails until the policy exists.
+Roughly 44 further `client_id` tables were in the same state, left on the premise that nothing reaches them from the browser. THAT PREMISE WAS
+WRONG TWICE (PostgREST answers for every table `authenticated` is granted, and the API runs as the caller when USE_USER_JWT is on). The
+14-10-2026 decision (POST-B-016) left them and deferred the question to the extension of the role-by-table matrix (POST-A-008);
+`test_every_client_table_is_assignment_scoped_or_says_why_pg` is that settlement: it holds the whole population with a shrink-only list of
+what is left and why, and migration 527 closed the bank's children first. THIS file still holds the narrower, older rule for the tables the
+browser reads: add a `.from("payroll_loans")` to a screen and it fails until the policy exists.
 
 WHY THE FIX IS NOT "RUN 084'S LOOP AGAIN"
 
