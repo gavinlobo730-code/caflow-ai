@@ -25,6 +25,7 @@ from typing import Optional
 
 from core.db_paging import fetch_all
 from domain.income_tax import form_3cd as f3cd
+from domain.tds import deposit_state  # the one definition of a duplicated challan, shared with the TDS screen
 
 _logger = logging.getLogger("caflow.form_3cd")
 
@@ -160,7 +161,7 @@ def _clause_32(db, firm_id: str, client_id: str) -> tuple[Optional[object], str]
                     "named regardless of whether any row exists.")
 
 
-GAP_CHALLAN_RECORDED_MORE_THAN_ONCE = "challan_recorded_more_than_once"
+GAP_CHALLAN_RECORDED_MORE_THAN_ONCE = deposit_state.GAP_CHALLAN_RECORDED_MORE_THAN_ONCE
 
 
 def _deposits_by_deduction(rows: list, challans: list, fy_label: str) -> tuple[dict[str, int], list[dict]]:
@@ -196,14 +197,7 @@ def _deposits_by_deduction(rows: list, challans: list, fy_label: str) -> tuple[d
             covered[str(row.get("id"))] = mapping.for_deduction(row.get("id")).deposited_paise
         warnings.extend({**g, "quarter": quarter} for g in mapping.gaps
                         if g.get("code") == challan_mapping.GAP_CHALLAN_EXCEEDS_DEDUCTIONS)
-    seen: dict[tuple, int] = {}
-    for c in challans:
-        key = (str(c.get("bsr_code") or ""), str(c.get("challan_no") or ""), str(c.get("payment_date") or "")[:10])
-        seen[key] = seen.get(key, 0) + 1
-    warnings.extend({"code": GAP_CHALLAN_RECORDED_MORE_THAN_ONCE, "bsr_code": k[0], "challan_no": k[1],
-                     "payment_date": k[2], "times": n,
-                     "message": f"Challan {k[1]} of {k[2]} is recorded {n} times, and each is counted as a deposit."}
-                    for k, n in sorted(seen.items()) if n > 1)
+    warnings.extend(deposit_state.duplicate_challan_warnings(challans))
     return covered, warnings
 
 

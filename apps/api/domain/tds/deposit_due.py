@@ -207,15 +207,18 @@ def paid_on_dates(row: dict, deposits: "Optional[challan_mapping.Mapping]") -> l
     register says it drew on (a part with no date, or dated before the deduction, is not counted), or, for a row the register
     does not cover, the row's own `challan_date`. Empty when none of its tax is counted as paid."""
     deducted_on = _as_date(row.get("transaction_date"))
-    if deducted_on is None or _tax_of(row) <= 0:
+    if deducted_on is None or tax_of(row) <= 0:
         return []
-    parts, _refused = _deposits_of(row, _tax_of(row), deducted_on, deposits)
+    parts, _refused = _deposits_of(row, tax_of(row), deducted_on, deposits)
     # A date before the deduction is not a date the tax was paid on: the register's own parts already refuse one, and the
     # row's hand-set `challan_date` (the fallback for a row the register does not cover) is held to the same rule here.
     return [paid_on for _paise, paid_on in parts if paid_on >= deducted_on]
 
 
-def _tax_of(row: dict) -> int:
+def tax_of(row: dict) -> int:
+    """The tax a deduction owes: its tax, surcharge and cess. The one definition in Python: the deposit worksheet, the register's match
+    and the TDS screen's per-row state read it. The database function behind the tile (migration 523) states the same sum in SQL and
+    is held to this one by its parity test; Form 3CD clause 34 measures `tds_paise` alone, as the quarterly statement does."""
     return (int(row.get("tds_paise") or 0) + int(row.get("surcharge_paise") or 0) + int(row.get("cess_paise") or 0))
 
 
@@ -238,7 +241,7 @@ def mapping_from_register(rows, challans, *, fy: str) -> "challan_mapping.Mappin
     """
     events = [{"id": r.get("id"), "section": str(r.get("section") or "").strip() or "(no section)",
                "on_date": str(r.get("transaction_date") or "")[:10], "doc_no": str(r.get("id") or ""),
-               "tds_paise": _tax_of(r)}
+               "tds_paise": tax_of(r)}
               for r in rows if not is_salary(str(r.get("section") or ""))]
     paid = [{**c, "tds_paise": int(c.get("tds_paise") or 0) + int(c.get("surcharge_paise") or 0)}
             for c in challans if not is_salary(str(c.get("section") or ""))]
@@ -268,9 +271,7 @@ def build(rows, *, month: str, due_date: date, as_at: date,
         deducted_on = _as_date(row.get("transaction_date"))
         if deducted_on is None:
             continue
-        tax = (int(row.get("tds_paise") or 0)
-               + int(row.get("surcharge_paise") or 0)
-               + int(row.get("cess_paise") or 0))
+        tax = tax_of(row)
         parts, refused = _deposits_of(row, tax, deducted_on, deposits)
         covered = min(tax, sum(paise for paise, _ in parts))
         if refused:

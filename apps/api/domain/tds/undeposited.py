@@ -9,8 +9,9 @@ THE ANSWER IS THE CHALLAN REGISTER'S. A challan pays the deductions of its own f
 first in first out (`challan_mapping`), so what a group (client, financial year, quarter, section) has left undeposited is
 `max(0, deducted - paid)` whatever the order of the fill, and the total is the sum of those. Migration 523's
 `public.tds_deposit_position` (522's `tds_undeposited_paise` is now a wrapper over its first figure) computes it where the rows are,
-because a firm-wide tile may not fetch rows proportional to the ledger. THIS MODULE IS ITS TWIN, a literal Python port of the SQL, and its only user is the in-memory database double the suites
-use (`tests/e2e_harness.py`: mock mode has no SQL functions); production runs the SQL.
+because a firm-wide tile may not fetch rows proportional to the ledger. THIS MODULE IS ITS TWIN, a literal Python port of the SQL, and
+its users are the in-memory database double the suites use (`tests/e2e_harness.py`: mock mode has no SQL functions) and the TDS
+screen's deposit-state route in mock mode (`routers/tds_workspace.deposit_state`); production runs the SQL.
 `tests/test_the_undeposited_tds_asks_the_challan_register_pg.py` holds the two identical over a real Postgres, and
 `tests/test_the_undeposited_tds_asks_the_challan_register.py` holds this port to the register's own match
 (`deposit_due.mapping_from_register`) for every section the registry holds.

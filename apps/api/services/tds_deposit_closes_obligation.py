@@ -155,6 +155,19 @@ def close_for_recorded_challan(
     *, db, firm_id: str, client_id: str, financial_year: Optional[str], quarter: Optional[str], challan_id: str,
     section: Optional[str], actor: Optional[dict], may_write_compliance: bool,
 ) -> list[dict[str, Any]]:
+    """`_close`'s answers, each with `needs_action`: whether somebody has something to do about it. A month left open (not closed,
+    not allowed to, or one that could not be found to update) needs a person; a month closed, one already filed and the plain
+    "nothing on the calendar" do not. The screen draws the answer from this and does not read the state words itself."""
+    out = _close(db=db, firm_id=firm_id, client_id=client_id, financial_year=financial_year, quarter=quarter,
+                 challan_id=challan_id, section=section, actor=actor, may_write_compliance=may_write_compliance)
+    return [{**a, "needs_action": (a.get("state") in (NOT_CLOSED, NOT_ALLOWED)
+                                   or (a.get("state") == NOT_ON_THE_CALENDAR and "month" in a))} for a in out]
+
+
+def _close(
+    *, db, firm_id: str, client_id: str, financial_year: Optional[str], quarter: Optional[str], challan_id: str,
+    section: Optional[str], actor: Optional[dict], may_write_compliance: bool,
+) -> list[dict[str, Any]]:
     """Close the monthly deposit obligations this challan paid in full, and say what became of each month it paid in.
 
     Returns a list of `{state, closed, obligation_id, message, month}` (a closed month also carries `filed_on` and `reference`; the answers about the

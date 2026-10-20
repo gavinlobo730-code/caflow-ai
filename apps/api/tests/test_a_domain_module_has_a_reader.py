@@ -95,16 +95,6 @@ NO_READER_YET: dict[str, str] = {
         "a live request. `tests/test_the_demo_practice_is_a_real_set_of_books"
         ".py` is what holds it honest instead, and it asserts the fixture "
         "holds no database handle and reaches no network at all.",
-    "domain/tds/undeposited.py":
-        "NOT A DEFECT, a SQL aggregate's twin whose reader is a test double. It is the Python port of migration 523's "
-        "`public.tds_deposit_position` (TDS deducted and not yet deposited, and not recorded, the hub's TDS tile), kept so the in-memory "
-        "database double the suites use (`tests/e2e_harness.py`, whose rpc handler delegates to it) has the same rule as "
-        "the SQL, and held identical to the SQL over a real Postgres by "
-        "`tests/test_the_undeposited_tds_asks_the_challan_register_pg.py`: the house pattern for a SQL aggregate "
-        "(`stock_position`, `schedule_iii_ageing`). Production runs the SQL, and the hub has no mock-mode path to wire it "
-        "into (`get_service_supabase` raises without SUPABASE_URL), so an importer added to the production tree only to "
-        "satisfy this list would be a reader that applies nothing. The test after this one fails the day a production "
-        "module imports it, which is when this entry is deleted.",
 }
 
 

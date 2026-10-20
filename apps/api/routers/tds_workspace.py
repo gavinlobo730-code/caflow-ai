@@ -883,6 +883,32 @@ def deposit_due(
         return _could_not(e, "build the TDS deposit worksheet")
 
 
+@router.get("/deposit-state")
+def deposit_state(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("tds", "read")),
+):
+    """What became of one client's tax deductions, from the CHALLAN REGISTER, for the TDS screen: the deposit position (tax
+    deducted and not yet deposited, and, apart, tax deducted in quarters with no challan recorded) and each deduction's state."""
+    assert_client_access(current_user, client_id)
+    try:
+        firm_id = current_user["firm_id"]
+        from services import tds_deposit_state_service as state
+        if _USE_MOCK:
+            from domain.tds import undeposited
+            deductions = [d for d in _MOCK_DEDUCTIONS.values() if d.get("client_id") == client_id]
+            challans = [c for c in _MOCK_CHALLANS.values() if c.get("client_id") == client_id]
+            got = undeposited.position(deductions, challans, client_ids=[client_id])
+            return api_response(True, state.assemble(client_id, deductions, challans, tuple(got)))
+        from core.supabase_client import get_supabase
+        return api_response(True, state.read(get_supabase(), firm_id, client_id))
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.exception("caflow.tds.deposit_state failed")
+        return _could_not(e, "read the TDS deposit position")
+
+
 @router.get("/challans")
 def list_challans(
     client_id: str = Query(...),

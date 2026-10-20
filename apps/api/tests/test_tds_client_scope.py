@@ -71,6 +71,7 @@ NAMED = [
     ("tds_dashboard", {}),
     ("list_deductions", {"quarter": None, "limit": 50, "offset": 0}),
     ("list_challans", {"from_date": None, "to_date": None, "limit": 50, "offset": 0}),
+    ("deposit_state", {}),
     ("list_returns", {"limit": 50, "offset": 0}),
     ("list_certificates", {"limit": 50, "offset": 0}),
 ]
