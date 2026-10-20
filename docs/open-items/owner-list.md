@@ -153,6 +153,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** The 2025-Act fork of the return forms.
 - **Ledger:** POST-B-119
 
+### S12. Companies Act annual filings (MCA)
+
+- **Question:** Which companies file MGT-7A instead of MGT-7, and does a filed MGT-7A discharge the annual-return obligation (60 days after the AGM) that the calendar generates for every company?
+- **Needed:** Rule 11 of the Companies (Management and Administration) Rules 2014 as amended, and the MGT-7A instruction kit; or a practising CA's or company secretary's answer for an OPC and a small company.
+- **Who can supply it:** Claude once the government sites are reachable (section 1) for the texts; a practising CA or company secretary for the reading.
+- **Stays unbuilt meanwhile:** Any matching of MGT-7A to an obligation. The MCA workspace says an MGT-7A is matched to none, and the MGT-7 obligation stays open until it is marked filed from Compliance.
+- **Ledger:** POST-C-209
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.
