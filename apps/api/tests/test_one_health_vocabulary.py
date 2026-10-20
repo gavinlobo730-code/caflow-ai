@@ -167,3 +167,104 @@ def test_the_badge_prefers_the_servers_grade():
         src = caller.read_text(encoding="utf-8")
         assert re.search(r"<HealthBadge[^>]*\bgrade=\{", src, re.S), (
             f"{caller.name} renders the badge without the server's grade")
+
+
+# ── how a grade LOOKS: one table per look, and no page keeps a ladder of its own (POST-A-286, POST-A-287) ───────────────────────
+
+#: Every page that prints a score or a grade. None may define its own colour function or badge table, and the two list pages may not
+#: type the grade as the letters A to F, which the engine retired.
+_SCORE_PAGES = {
+    "health list": _WEB / "app" / "health" / "page.tsx",
+    "at-risk list": _WEB / "app" / "health" / "at-risk" / "page.tsx",
+    "critical list": _WEB / "app" / "health" / "critical" / "page.tsx",
+    "firm-level detail": _WEB / "app" / "health" / "[client_id]" / "HealthDetailClient.tsx",
+    "client Health tab": _WEB / "app" / "clients" / "[id]" / "health" / "page.tsx",
+}
+_GRADES = [band for _, band in scoring.GRADE_BANDS]
+
+
+def _table(src: str, name: str) -> dict[str, str]:
+    body = re.search(rf"export const {name}[^=]*=\s*\{{(.*?)\}};", src, re.S)
+    assert body, f"{name} not found — the guard cannot check what it cannot read"
+    return dict(re.findall(r'"([A-Za-z ]+)":\s*"([^"]+)"', body.group(1)))
+
+
+@pytest.mark.parametrize("table", ["GRADE_BADGE_CLASS", "GRADE_TEXT_CLASS", "GRADE_BAR_CLASS", "GRADE_TONE"])
+def test_each_look_has_one_entry_per_grade_of_the_engine_and_no_other(vocab, table):
+    assert list(_table(vocab, table)) == _GRADES
+
+
+def test_the_three_tones_read_the_grades_in_order_of_severity(vocab):
+    tone = _table(vocab, "GRADE_TONE")
+    assert [tone[g] for g in _GRADES] == ["ready", "ready", "attention", "attention", "problem"]
+
+
+def test_the_classes_are_the_severity_tokens_and_each_look_has_five_different_ones(vocab):
+    for table, prefix in (("GRADE_BADGE_CLASS", "bg-sev-"), ("GRADE_TEXT_CLASS", "text-sev-"), ("GRADE_BAR_CLASS", "bg-sev-")):
+        classes = list(_table(vocab, table).values())
+        assert all(prefix in c for c in classes), table
+        assert len(set(classes)) == 5, f"two grades share a look in {table}"
+
+
+def test_a_number_is_coloured_as_its_badge_is(vocab):
+    """The 66 printed amber beside a blue badge, and the 45 printed amber beside a red-orange one."""
+    badge, text = _table(vocab, "GRADE_BADGE_CLASS"), _table(vocab, "GRADE_TEXT_CLASS")
+    for grade in _GRADES:
+        assert re.search(r"text-sev-\w+$", badge[grade]).group(0) == text[grade], grade
+
+
+@pytest.mark.parametrize("name", sorted(_SCORE_PAGES))
+def test_no_score_page_keeps_a_colour_ladder_or_a_badge_table_of_its_own(name):
+    code = _strip_comments(_SCORE_PAGES[name].read_text(encoding="utf-8"))
+    assert "@/lib/health/vocabulary" in code, f"the {name} does not read the vocabulary"
+    for private in ("function scoreColor", "function scoreBg", "function scoreBarColor", "function gradeBadge",
+                    "function gradeBadgeColor", 'type Grade = "A"', '"bg-sev-ok-surface'):
+        assert private not in code, f"the {name} defines its own: {private}"
+
+
+def test_the_two_list_pages_ask_for_the_engines_word_whatever_the_stored_grade_is():
+    """A stored row can carry a legacy letter or nothing: the page shows the grade of the score then, as the other three do."""
+    for name in ("at-risk list", "critical list"):
+        code = _strip_comments(_SCORE_PAGES[name].read_text(encoding="utf-8"))
+        assert code.count("gradeOf(c.health_grade, c.overall_score)") == 2, f"{name}: the badge's class AND its word ask for the grade of the score"
+        assert "{c.health_grade}" not in code, f"{name} prints the stored grade, which can be a legacy letter or nothing"
+        assert "scoreTextClass(c.overall_score)" in code, name
+
+
+def test_the_dashboard_ring_takes_its_colour_from_the_grade_tone_and_not_a_ladder_of_its_own():
+    code = _strip_comments(_SCREENS["executive ring"].read_text(encoding="utf-8"))
+    assert "gradeTone(gradeForScore(score))" in code
+    assert 'band === "Good"' not in code, "the ring still branches on grade words itself"
+
+
+def test_the_portfolio_bar_labels_are_built_from_the_engines_grades(vocab):
+    """Healthy or Good, Needs Attention, At Risk, Critical: by INDEX into the grade table, so the words cannot drift from it."""
+    body = re.search(r"export const PORTFOLIO_BAR_LABELS = \{(.*?)\} as const;", vocab, re.S)
+    assert body, "PORTFOLIO_BAR_LABELS not found"
+    assert re.search(r"healthy:\s*`\$\{HEALTH_GRADES\[0\]\} or \$\{HEALTH_GRADES\[1\]\}`", body.group(1))
+    named = dict(re.findall(r"(\w+):\s*HEALTH_GRADES\[(\d)\]", body.group(1)))
+    assert {k: _GRADES[int(i)] for k, i in named.items()} == {
+        "needsAttention": "Needs Attention", "atRisk": "At Risk", "critical": "Critical"}
+    assert _GRADES[0] == "Healthy" and _GRADES[1] == "Good"
+    assert re.search(r"PORTFOLIO_UNSPLIT_HEALTHY_LABEL = `\$\{HEALTH_GRADES\[0\]\}, \$\{HEALTH_GRADES\[1\]\} or \$\{HEALTH_GRADES\[2\]\}`", vocab)
+
+
+def test_each_portfolio_bar_takes_the_colour_of_its_own_grades_tone():
+    """The Needs Attention bar was gold, 2.89:1 on white, and the next edit could put it back or draw At Risk green: the bar's colour is
+    the tone of the grade it counts, through the one table, and the table maps each tone to its audited token."""
+    code = _strip_comments(_SCREENS["executive ring"].read_text(encoding="utf-8"))
+    for key, grade in (("healthy", "Good"), ("needs", "Needs Attention"), ("atRisk", "At Risk"), ("critical", "Critical")):
+        assert re.search(rf'key: "{key}", label: [^,]+, count: [^,]+, color: TONE_COLOR\[gradeTone\("{grade}"\)\] \}}', code), (
+            f"the {key} bar is not coloured by the tone of {grade}")
+    assert "const TONE_COLOR: Record<HealthTone, string> = { ready: READY, attention: ATTENTION, problem: PROBLEM };" in code
+
+
+def test_the_dashboard_spells_none_of_the_bar_labels_itself():
+    code = _strip_comments(_SCREENS["executive ring"].read_text(encoding="utf-8"))
+    for label in _GRADES:
+        assert not re.search(rf"label=\{{`{label}\b", code), f"the dashboard spells the {label} bar itself"
+    assert code.count("PORTFOLIO_BAR_LABELS.") == 4 and "healthyLabel" in code, "all four labels are the vocabulary's: Healthy or Good, Needs Attention, At Risk, Critical"
+    for key, label in (("needs", "needsAttention"), ("atRisk", "atRisk"), ("critical", "critical")):
+        assert f'key: "{key}", label: PORTFOLIO_BAR_LABELS.{label},' in code, f"the {key} bar's label is not {label}"
+    assert 'key: "healthy", label: healthyLabel,' in code
+    assert code.count("portfolioBars.map(") == 2, "the stacked bar and the rows are both drawn from the one list, so they cannot disagree"

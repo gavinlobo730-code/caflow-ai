@@ -247,26 +247,26 @@ def _firm_profile(monkeypatch, clients, scored):
 def test_the_memory_profiles_portfolio_figure_is_the_mean_of_the_stored_scores(monkeypatch):
     profile = _firm_profile(monkeypatch, CLIENTS, [{"id": "c1", "health_score": 30}, {"id": "c2", "health_score": 80}])
     assert profile["portfolio_compliance_score"] == 55.0
-    assert profile["common_risk_categories"], "one client is under 40"
+    assert profile["common_risk_categories"] is None, "which categories are common is not computed, so nothing is stored (POST-A-284)"
 
 
-def test_a_portfolio_with_a_fifth_of_its_clients_under_forty_is_declining(monkeypatch):
-    profile = _firm_profile(monkeypatch, CLIENTS[:2], [{"id": "c1", "health_score": 30}, {"id": "c2", "health_score": 80}])
-    assert profile["portfolio_health_trend"] == "declining"
-    profile = _firm_profile(monkeypatch, CLIENTS[:2], [{"id": "c1", "health_score": 60}, {"id": "c2", "health_score": 80}])
-    assert profile["portfolio_health_trend"] == "stable"
+def test_the_memory_profile_states_no_trend_because_none_is_computed(monkeypatch):
+    """It used to say "declining" when a fifth of ALL clients were critical and "stable" otherwise. A trend is a comparison over time."""
+    for scores in ([30, 80], [60, 80]):
+        profile = _firm_profile(monkeypatch, CLIENTS[:2], [{"id": f"c{i + 1}", "health_score": s} for i, s in enumerate(scores)])
+        assert profile["portfolio_health_trend"] is None
 
 
 def test_a_portfolio_with_no_client_under_forty_names_no_risk_category(monkeypatch):
     profile = _firm_profile(monkeypatch, CLIENTS, [{"id": "c1", "health_score": 80}, {"id": "c2", "health_score": 90}])
     assert profile["portfolio_compliance_score"] == 85.0
-    assert profile["common_risk_categories"] == []
+    assert profile["common_risk_categories"] is None
 
 
 def test_the_memory_profile_does_not_invent_a_portfolio_figure_when_nothing_is_scored(monkeypatch):
     profile = _firm_profile(monkeypatch, CLIENTS, [])
     assert profile["portfolio_compliance_score"] is None, "it used to say 75.0"
-    assert profile["common_risk_categories"] == []
+    assert profile["common_risk_categories"] is None
 
 
 # ── the seeded firm ──────────────────────────────────────────────────────────
@@ -603,8 +603,9 @@ def test_the_memory_profile_counts_no_client_scored_when_the_scores_cannot_be_re
         memory.memory_pipeline.compute_firm_profile(FIRM)
     assert any("health scores could not be read" in r.getMessage() and r.exc_info for r in caplog.records)
     profile = store.saved[-1]
-    assert profile["portfolio_compliance_score"] is None and profile["common_risk_categories"] == []
-    assert profile["portfolio_health_trend"] == "stable", "the portfolio keys are still written, as unknown, and not left to the column default"
+    assert profile["portfolio_compliance_score"] is None and profile["common_risk_categories"] is None
+    assert "portfolio_health_trend" in profile and profile["portfolio_health_trend"] is None, (
+        "the portfolio keys are still written, as unknown, and not left to the column default")
 
 
 def test_a_cached_dashboard_from_before_the_scores_were_the_engines_is_not_served():

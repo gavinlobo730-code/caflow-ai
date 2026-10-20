@@ -12,8 +12,8 @@ import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import {
-  HEALTH_DIMENSIONS, HEALTH_DIMENSION_KEYS, gradeOf, weightLabel as weightBpToLabel,
-  type HealthDimensionKey, type HealthGrade,
+  HEALTH_DIMENSIONS, HEALTH_DIMENSION_KEYS, gradeBadgeClass, gradeOf, scoreBarClass, scoreTextClass,
+  weightLabel as weightBpToLabel, type HealthDimensionKey, type HealthGrade,
 } from "@/lib/health/vocabulary";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -144,33 +144,6 @@ const EMPTY_OVERRIDE_FORM = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function scoreColor(score: number): string {
-  if (score >= 80) return "text-green-600";
-  if (score >= 65) return "text-blue-600";
-  if (score >= 50) return "text-amber-600";
-  if (score >= 35) return "text-orange-600";
-  return "text-red-600";
-}
-
-function scoreBarColor(score: number): string {
-  if (score >= 80) return "bg-sev-ok";
-  if (score >= 65) return "bg-sev-low";
-  if (score >= 50) return "bg-sev-medium";
-  if (score >= 35) return "bg-sev-high";
-  return "bg-sev-critical";
-}
-
-function gradeBadgeColor(grade: Grade): string {
-  const map: Record<Grade, string> = {
-    "Healthy":          "bg-sev-ok-surface text-sev-ok",
-    "Good":             "bg-sev-low-surface text-sev-low",
-    "Needs Attention":  "bg-sev-medium-surface text-sev-medium",
-    "At Risk":          "bg-sev-high-surface text-sev-high",
-    "Critical":         "bg-sev-critical-surface text-sev-critical",
-  };
-  return map[grade] ?? "bg-gray-100 text-gray-700";
-}
-
 // ─── Dimension Card ───────────────────────────────────────────────────────────
 
 interface DimensionCardProps {
@@ -241,7 +214,7 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className={`text-sm font-bold ${scoreColor(value.score)}`}>
+              <span className={`text-sm font-bold ${scoreTextClass(value.score)}`}>
                 {value.score}
               </span>
               <ChevronDown
@@ -253,7 +226,7 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
           <p className="text-3xs text-gray-400 mb-2">{meta.description}</p>
           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all ${scoreBarColor(value.score)}`}
+              className={`h-full rounded-full transition-all ${scoreBarClass(value.score)}`}
               style={{ width: `${value.score}%` }}
             />
           </div>
@@ -567,7 +540,7 @@ export default function ClientHealthDetailPage() {
         <CardContent className="p-6">
           <div className="flex items-center gap-6">
             <div className="text-center">
-              <p className={`text-6xl font-black ${scoreColor(health.overall_score)}`}>
+              <p className={`text-6xl font-black ${scoreTextClass(health.overall_score)}`}>
                 {health.overall_score}
               </p>
               <p className="text-xs text-gray-500 mt-1">/ 100</p>
@@ -580,7 +553,7 @@ export default function ClientHealthDetailPage() {
             <div className="w-px h-16 bg-gray-200" />
             <div>
               <p className="text-xs text-gray-500 mb-1">Score Band</p>
-              <Badge className={`text-sm px-3 py-1 font-semibold ${gradeBadgeColor(health.grade)}`}>
+              <Badge className={`text-sm px-3 py-1 font-semibold ${gradeBadgeClass(health.grade)}`}>
                 {health.grade}
               </Badge>
             </div>
@@ -645,14 +618,15 @@ export default function ClientHealthDetailPage() {
                     <tr key={record.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3 text-gray-500 text-xs">{formatDate(record.recorded_at)}</td>
                       <td className="px-3 py-3">
-                        <span className={`font-bold ${scoreColor(record.overall_score)}`}>
+                        <span className={`font-bold ${scoreTextClass(record.overall_score)}`}>
                           {record.overall_score}
                         </span>
                         <span className="text-xs text-gray-400">/100</span>
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={`text-2xs ${gradeBadgeColor((record.health_grade ?? "Critical") as Grade)}`}>
-                          {record.health_grade ?? "—"}
+                        {/* The engine's word for the score; a stored letter or nothing reads as the band of the score. */}
+                        <Badge className={`text-2xs ${gradeBadgeClass(gradeOf(record.health_grade, record.overall_score))}`}>
+                          {gradeOf(record.health_grade, record.overall_score)}
                         </Badge>
                       </td>
                     </tr>
@@ -763,7 +737,7 @@ export default function ClientHealthDetailPage() {
                                 {override.computed_score}
                               </span>
                             )}
-                            <span className={`font-bold ${scoreColor(override.override_score)}`}>
+                            <span className={`font-bold ${scoreTextClass(override.override_score)}`}>
                               {override.override_score}
                             </span>
                           </span>

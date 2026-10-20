@@ -10,19 +10,14 @@ import { formatDate } from "@/lib/dates/format";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { gradeBadgeClass, gradeOf, scoreTextClass } from "@/lib/health/vocabulary";
 
-type Grade = "A" | "B" | "C" | "D" | "F";
 
 interface ClientScore {
   id: string; client_id: string; client_name?: string;
-  overall_score: number; health_grade: Grade; is_critical: boolean; last_calculated_at?: string;
+  overall_score: number; health_grade: string | null; is_critical: boolean; last_calculated_at?: string;
 }
 
-function scoreColor(s: number) { return s >= 70 ? "text-green-600" : s >= 40 ? "text-amber-600" : "text-red-600"; }
-function gradeBadge(g: Grade) {
-  const m: Record<Grade, string> = { A: "bg-green-100 text-green-700", B: "bg-blue-100 text-blue-700", C: "bg-yellow-100 text-yellow-700", D: "bg-orange-100 text-orange-700", F: "bg-state-problem-surface text-state-problem" };
-  return m[g] ?? "bg-gray-100 text-gray-600";
-}
 
 export default function CriticalClientsPage() {
   const [clients, setClients] = useState<ClientScore[]>([]);
@@ -78,8 +73,8 @@ export default function CriticalClientsPage() {
                 {clients.map((c) => (
                   <tr key={c.id} className="hover:bg-brand-light/10">
                     <td className="px-5 py-3 text-gray-800 text-xs font-medium">{c.client_name ?? c.client_id.slice(0,12)}</td>
-                    <td className="px-3 py-3"><span className={`font-bold ${scoreColor(c.overall_score)}`}>{c.overall_score}</span><span className="text-xs text-gray-400">/100</span></td>
-                    <td className="px-3 py-3"><Badge className={`text-3xs ${gradeBadge(c.health_grade)}`}>{c.health_grade}</Badge></td>
+                    <td className="px-3 py-3"><span className={`font-bold ${scoreTextClass(c.overall_score)}`}>{c.overall_score}</span><span className="text-xs text-gray-400">/100</span></td>
+                    <td className="px-3 py-3"><Badge className={`text-3xs ${gradeBadgeClass(gradeOf(c.health_grade, c.overall_score))}`}>{gradeOf(c.health_grade, c.overall_score)}</Badge></td>
                     <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(c.last_calculated_at)}</td>
                     <td className="px-3 py-3"><Link href={`/health/${c.client_id}`} className="text-xs text-brand hover:text-brand/70 hover:underline">View →</Link></td>
                   </tr>

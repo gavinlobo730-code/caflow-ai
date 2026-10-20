@@ -13,6 +13,17 @@ logger = logging.getLogger("caflow.memory")
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
+#: The firm profile's figures that nothing computes. Each is written as NOTHING on every run (and starts as nothing on a new row,
+#: `memory_repository.upsert_firm_profile`): they used to be filled by the database's column defaults, a portfolio score of 75, a
+#: billing recovery rate of 85, a revenue and a team trend of "stable", and by two literals (a pair of risk categories whenever any
+#: client was critical, and a trend that was the share of critical clients over all clients). A trend is a comparison over time,
+#: which none of these is. Deriving them is a decision, not an oversight: a recovery rate needs the billing ledger, a trend needs a
+#: stated period and threshold, and nothing reads either today (POST-A-284).
+NOT_COMPUTED_FIRM_FIGURES = (
+    "common_risk_categories", "portfolio_health_trend", "billing_recovery_rate", "team_utilisation_trend",
+    "revenue_growth_trend", "avg_revenue_per_client_paise", "common_bottleneck_types",
+)
+
 
 def _get_client_repo():
     from repositories.client_repository import client_repo
@@ -208,10 +219,15 @@ class MemoryPipeline:
         return results
 
     def compute_firm_profile(self, firm_id: str) -> dict:
-        """Generate firm-level intelligence from all client and workflow data."""
+        """Generate firm-level intelligence from all client and workflow data.
+
+        What nothing here computes is written as NOTHING on every run (`NOT_COMPUTED_FIRM_FIGURES`), never as a value: this profile used
+        to carry a portfolio score of 75, a billing recovery rate of 85 and "stable" three times from the database's own column
+        defaults, a pair of risk categories written as literals whenever any client was critical, and a "trend" that was the share of
+        critical clients over ALL clients, the unscored included. A row created before is cleared by the next run (POST-A-284)."""
         clients = _get_client_repo().find_all(firm_id=firm_id)
 
-        profile_data = {}
+        profile_data = {key: None for key in NOT_COMPUTED_FIRM_FIGURES}
 
         try:
             # Portfolio health: the health engine's stored scores (`domain/health/client_scores`), and NONE, not 75, when no client
@@ -227,12 +243,8 @@ class MemoryPipeline:
             attached = attach(clients, score_rows)
             scored = [c["health_score"] for c in attached if c["health_score"] is not None]
             avg_health = round(sum(scored) / len(scored), 1) if scored else None
-            critical = len([c for c in attached if c["health_critical"] is True])
 
             profile_data["portfolio_compliance_score"] = avg_health
-            profile_data["common_risk_categories"] = ["gst_delay", "document_missing"] if critical > 0 else []
-            portfolio_trend = "declining" if critical > len(clients) * 0.2 else "stable"
-            profile_data["portfolio_health_trend"] = portfolio_trend
         except Exception as e:
             logger.warning("Portfolio profile error: %s", e)
 

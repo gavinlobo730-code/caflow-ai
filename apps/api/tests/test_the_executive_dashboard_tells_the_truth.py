@@ -270,7 +270,7 @@ def test_the_column_nothing_writes_is_not_a_health_score(monkeypatch):
 
 def test_the_engines_stored_score_is_what_the_dashboard_counts(monkeypatch):
     """The same score and the same verdict the client's own Health screen reads (`health_scores`), whatever the unwritten column on the
-    client row says: critical under 35, at risk from 35 to 49, and the rest of the scored clients healthy."""
+    client row says: critical under 35, at risk from 35 to 49, needing attention from 50 to 64, and the rest of the scored clients healthy or good."""
     svc, _ = _world(monkeypatch, clients=[{"id": f"c{i}", "client_name": n, "health_score": 100, "status": "active"}
                                           for i, n in enumerate("ABCDE")])
     monkeypatch.setattr(mod, "_get_health_repo", lambda: StoredScoresFrom([
@@ -278,7 +278,8 @@ def test_the_engines_stored_score_is_what_the_dashboard_counts(monkeypatch):
         {"id": "c3", "health_score": 90}]))
     out = _dash(svc)
     risk = out["client_risk_insights"]
-    assert (risk["critical_clients"], risk["at_risk_clients"], risk["healthy_clients"], risk["unscored_clients"]) == (1, 1, 2, 1)
+    assert (risk["critical_clients"], risk["at_risk_clients"], risk["needs_attention_clients"], risk["healthy_clients"],
+            risk["unscored_clients"]) == (1, 1, 1, 1, 1), "55 is the Needs Attention band, not the green bar"
     assert out["firm_health_summary"]["overall_score"] == (34 + 45 + 55 + 90) // 4, "the mean of the scores that EXIST"
     assert [(x["client_name"], x["signal"]) for x in out["churn_signals"]] == [
         ("A", "Health score 34 — Critical"), ("B", "Health score 45 — At Risk")]

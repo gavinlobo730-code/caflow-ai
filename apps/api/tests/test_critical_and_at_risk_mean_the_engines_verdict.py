@@ -124,26 +124,28 @@ def _risk(clients):
 
 def test_the_dashboard_counts_a_client_scoring_38_at_risk_because_the_engine_does():
     risk, _ = _risk([_client("a", 38), _client("b", 67), _client("c", 39), _client("d", 69)])
-    assert risk == {"critical": 0, "at_risk": 2, "healthy": 2, "unscored": 0}, "38 and 39 are at risk (the old split at 40 called them critical), 67 and 69 are not (the old split at 70 called them at risk)"
+    assert risk == {"critical": 0, "at_risk": 2, "needs_attention": 0, "healthy": 2, "unscored": 0}, "38 and 39 are at risk (the old split at 40 called them critical), 67 and 69 are not (the old split at 70 called them at risk)"
 
 
 def test_the_dashboard_counts_by_the_stored_verdict_whatever_the_score_would_say_and_says_so():
     clients = [_client("a", 80, health_is_critical=True, health_is_at_risk=False), _client("b", 20), _client("c", 40)]
     risk, signals = _risk(clients)
-    assert risk == {"critical": 2, "at_risk": 1, "healthy": 0, "unscored": 0}
+    assert risk == {"critical": 2, "at_risk": 1, "needs_attention": 0, "healthy": 0, "unscored": 0}
     assert [(s["client_name"], s["signal"], s["risk"]) for s in signals] == [
         ("B", "Health score 20 — Critical", "high"), ("A", "Health score 80 — Critical", "high"), ("C", "Health score 40 — At Risk", "medium")]
 
 
 def test_a_stored_verdict_that_says_neither_beats_a_threshold_the_score_alone_would_cross():
+    """The stored verdict outranks the score for the two FLAGS: no critical or at-risk count, no churn signal. It does not make a 40 a
+    healthy client: the green count is the engine's Healthy and Good bands only (POST-A-286), so the client is counted needing a look."""
     risk, signals = _risk([_client("a", 40, health_is_critical=False, health_is_at_risk=False)])
-    assert risk["healthy"] == 1 and signals == []
+    assert (risk["critical"], risk["at_risk"], risk["needs_attention"], risk["healthy"]) == (0, 0, 1, 0) and signals == []
 
 
 def test_a_recorded_status_still_counts_and_the_more_severe_of_status_and_verdict_wins():
     clients = [dict(_client("a", 90), status="critical"), dict(_client("b", 90), status="at_risk"), dict(_client("c", 20), status="at_risk")]
     risk, _ = _risk(clients)
-    assert risk == {"critical": 2, "at_risk": 1, "healthy": 0, "unscored": 0}, "a is critical by status, b at risk by status, c critical by verdict"
+    assert risk == {"critical": 2, "at_risk": 1, "needs_attention": 0, "healthy": 0, "unscored": 0}, "a is critical by status, b at risk by status, c critical by verdict"
 
 
 def test_the_churn_signals_are_worst_first_and_carry_no_scratch_keys():
@@ -157,7 +159,9 @@ def test_a_client_flagged_but_without_a_score_is_not_a_signal_and_a_flag_must_be
     the boolean True and not anything truthy."""
     assert ed.churn_signals([{"client_name": "X", "health_critical": True}]) == []
     scored = {"client_name": "Y", "health_score": 20, "health_critical": "yes", "health_at_risk": 1}
-    assert ed.churn_signals([scored]) == [] and ed.client_risk([scored]) == {"critical": 0, "at_risk": 0, "healthy": 1, "unscored": 0}
+    assert ed.churn_signals([scored]) == []
+    assert ed.client_risk([scored]) == {"critical": 0, "at_risk": 0, "needs_attention": 1, "healthy": 0, "unscored": 0}, (
+        "no verdict, but a score of 20 is not healthy")
     assert mod._flagged({"health_critical": "yes"}, "health_critical") is False
     assert mod._flagged({"health_critical": True}, "health_at_risk", "health_critical") is True
 
@@ -174,7 +178,7 @@ def test_a_client_scoring_zero_is_a_signal_and_a_client_flagged_both_ways_is_cri
 def test_a_signal_for_a_client_with_no_name_says_unknown_and_a_non_numeric_score_is_no_score():
     assert ed.churn_signals([{"health_score": 20, "health_critical": True}])[0]["client_name"] == "Unknown"
     assert ed.client_risk([{"health_score": "high", "health_critical": None, "health_at_risk": None}]) == {
-        "critical": 0, "at_risk": 0, "healthy": 0, "unscored": 1}
+        "critical": 0, "at_risk": 0, "needs_attention": 0, "healthy": 0, "unscored": 1}
 
 
 def test_the_churn_signals_stop_at_the_limit():
@@ -203,7 +207,8 @@ def test_the_dashboard_counts_the_same_clients_the_health_page_lists(monkeypatch
     attached = attach(clients, list(rows.values()))
     risk = ed.client_risk(attached)
     assert (risk["critical"], risk["at_risk"]) == (len(page["critical_clients"]), len(page["at_risk_clients"])) == (2, 3)
-    assert risk["healthy"] == len(rows) - 5
+    assert (risk["needs_attention"], risk["healthy"]) == (2, 2), "50 and 55 need attention; 67 and 90 are healthy or good"
+    assert sum(risk[k] for k in ("critical", "at_risk", "needs_attention", "healthy", "unscored")) == len(rows)
 
 
 # ── the assistant ────────────────────────────────────────────────────────────
@@ -263,9 +268,12 @@ def _profile(monkeypatch, clients):
     return store.saved[-1]
 
 
-def test_the_memory_profile_counts_critical_by_the_engines_verdict(monkeypatch):
-    assert _profile(monkeypatch, [_client("a", 36), _client("b", 38), _client("c", 90)])["common_risk_categories"] == [], \
-        "36 and 38 are at risk, not critical"
-    assert _profile(monkeypatch, [_client("a", 34), _client("b", 90)])["common_risk_categories"] != []
-    assert _profile(monkeypatch, [_client("a", 90, health_is_critical=True), _client("b", 90)])["common_risk_categories"] != [], \
-        "the stored critical verdict counts at any score"
+def test_the_memory_profile_states_no_risk_category_or_trend_whatever_the_engines_verdicts_are(monkeypatch):
+    """The profile used to write a literal pair of risk categories whenever the engine called any client critical (and a "declining"
+    trend when more than a fifth were), so this test asserted that 36 and 38 (at risk) did not trigger them and 34 or a stored critical
+    verdict did. Nothing computes either figure now (POST-A-284), so no verdict may produce a value for them."""
+    for clients in ([_client("a", 36), _client("b", 38), _client("c", 90)], [_client("a", 34), _client("b", 90)],
+                    [_client("a", 90, health_is_critical=True), _client("b", 90)]):
+        profile = _profile(monkeypatch, clients)
+        assert profile["common_risk_categories"] is None and profile["portfolio_health_trend"] is None
+    assert _profile(monkeypatch, [_client("a", 36), _client("b", 38), _client("c", 90)])["portfolio_compliance_score"] == 54.7

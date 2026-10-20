@@ -42,6 +42,8 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
+from domain.health import scoring
+
 #: Bumped whenever the SHAPE OR MEANING of the stored payload changes. The
 #: dashboard is cached for an hour in `ai_summaries.metadata`; a row written by
 #: the old code carries the invented figures above, and serving it after a
@@ -52,7 +54,9 @@ from typing import Iterable, Optional
 #: cached row from before says every client is healthy and the firm's ring says 100. 5: critical and at risk are the health engine's own verdict
 #: (`domain/health/scoring`), the same clients the Health pages list, and no longer a split of the book at 40 and 70 of this module's own.
 #: 6: the firm health figure says which scores it is the mean of and how old the oldest is (`score_basis`).
-DASHBOARD_VERSION = 6
+#: 7: the green "healthy" count no longer includes the engine's Needs Attention band, which has a count of its own (`needs_attention`), so a
+#: cached row from before counts those clients as healthy.
+DASHBOARD_VERSION = 7
 
 #: Compliance statuses that mean the obligation is done.
 FILED = ("Filed", "Completed")
@@ -72,12 +76,15 @@ def score_of(client: dict) -> Optional[int]:
 
 
 def client_risk(clients: Iterable[dict]) -> dict:
-    """Critical / at-risk / healthy, and the ones nobody has scored.
+    """Critical / at-risk / needs-attention / healthy, and the ones nobody has scored.
 
     CRITICAL AND AT RISK ARE THE ENGINE'S VERDICT, not a threshold of this module's: the clients the Health pages list under those two
     words (`health_critical` / `health_at_risk`, `domain/health/client_scores`). This split the book at 40 and 70 while the engine said
-    35 and 50, so a client scoring 38 was "At Risk" on its own Health page and counted critical here. "Healthy" is what is left of the
-    scored clients: the engine flagged neither (its bands Healthy, Good and Needs Attention).
+    35 and 50, so a client scoring 38 was "At Risk" on its own Health page and counted critical here. NEEDS ATTENTION is the band
+    beneath the two flags (50 to 64), counted apart because a client badged "Needs Attention" on its own Health page sat in the green
+    "Healthy" bar (POST-A-286). "Healthy" means only what it says, the engine's bands Healthy and Good (from `NEEDS_ATTENTION_BELOW`
+    up), so a scored client under that line that no flag accounts for (a row whose stored flags disagree with its score) is counted
+    needing attention and never healthy: the worst this can do is ask for a look at a client the engine did not flag.
 
     Each client lands in ONE bucket, and the more severe of the recorded status (`critical` or `at_risk`, which a CA marked) and the
     engine's verdict decides it. A client with
@@ -85,19 +92,22 @@ def client_risk(clients: Iterable[dict]) -> dict:
     counted them healthy by subtraction (`len(clients) - critical - at_risk`),
     which made "no information" read as "no problem".
     """
-    critical = at_risk = healthy = unscored = 0
+    critical = at_risk = needs_attention = healthy = unscored = 0
     for c in clients:
         status = c.get("status")
+        score = score_of(c)
         if status == "critical" or c.get("health_critical") is True:
             critical += 1
         elif status == "at_risk" or c.get("health_at_risk") is True:
             at_risk += 1
-        elif score_of(c) is None:
+        elif score is None:
             unscored += 1
+        elif score < scoring.NEEDS_ATTENTION_BELOW:
+            needs_attention += 1
         else:
             healthy += 1
-    return {"critical": critical, "at_risk": at_risk, "healthy": healthy,
-            "unscored": unscored}
+    return {"critical": critical, "at_risk": at_risk, "needs_attention": needs_attention,
+            "healthy": healthy, "unscored": unscored}
 
 
 def average_health(clients: Iterable[dict]) -> Optional[int]:
@@ -246,8 +256,11 @@ def template_summary(facts: dict) -> str:
     n = facts["clients"]
     if n == 0:
         return "No clients are in view for this scope, so there is nothing to summarise."
-    parts = [f"{n} clients in view: {facts['critical']} critical, "
-             f"{facts['at_risk']} at risk."]
+    flagged = f"{n} clients in view: {facts['critical']} critical, {facts['at_risk']} at risk"
+    # The engine's own name for the band, and only when there are any: a count of zero is a reading but not worth a clause.
+    if facts.get("needs_attention"):
+        flagged += f", {facts['needs_attention']} in the Needs Attention band"
+    parts = [flagged + "."]
     if facts.get("unscored"):
         parts.append(f"{facts['unscored']} have no health score yet.")
     parts.append(f"{facts['overdue_filings']} filings are overdue and "

@@ -9,7 +9,10 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatDate } from "@/lib/dates/format";
-import { HEALTH_GRADE_BANDS, gradeForScore, gradeOf } from "@/lib/health/vocabulary";
+import {
+  GRADE_BAR_CLASS, HEALTH_GRADE_BANDS, gradeBadgeClass, gradeForScore, gradeOf, scoreBarClass, scoreTextClass,
+  type HealthGrade,
+} from "@/lib/health/vocabulary";
 import { PageHeader } from "@/components/ui/page-header";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -56,8 +59,8 @@ function normalizeScore(raw: Record<string, unknown>): ClientHealth {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-// Product Bible Chapter 16 score bands
-type Grade = "Healthy" | "Good" | "Needs Attention" | "At Risk" | "Critical";
+// Product Bible Chapter 16 score bands: the engine's five grades (`lib/health/vocabulary`).
+type Grade = HealthGrade;
 
 // Product Bible Chapter 16 — 7 dimensions
 interface HealthDimensions {
@@ -100,29 +103,6 @@ const GRADE_RANK: Record<Grade, number> = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function scoreColor(score: number): string {
-  if (score >= 70) return "text-green-600";
-  if (score >= 40) return "text-amber-600";
-  return "text-red-600";
-}
-
-function scoreBg(score: number): string {
-  if (score >= 70) return "bg-green-500";
-  if (score >= 40) return "bg-yellow-500";
-  return "bg-red-500";
-}
-
-function gradeBadge(grade: Grade): string {
-  const map: Record<Grade, string> = {
-    "Healthy":         "bg-sev-ok-surface text-sev-ok",
-    "Good":            "bg-sev-low-surface text-sev-low",
-    "Needs Attention": "bg-sev-medium-surface text-sev-medium",
-    "At Risk":         "bg-sev-high-surface text-sev-high",
-    "Critical":        "bg-sev-critical-surface text-sev-critical",
-  };
-  return map[grade] ?? "bg-gray-100 text-gray-700";
-}
-
 // ─── Mini dimension dots ─────────────────────────────────────────────────────
 
 function DimensionDots({ dimensions }: { dimensions: HealthDimensions }) {
@@ -141,7 +121,7 @@ function DimensionDots({ dimensions }: { dimensions: HealthDimensions }) {
       {scores.map((score, i) => (
         <div
           key={i}
-          className={`w-2.5 h-2.5 rounded-full ${scoreBg(score)}`}
+          className={`w-2.5 h-2.5 rounded-full ${scoreBarClass(score)}`}
           title={`${score}/100`}
         />
       ))}
@@ -260,7 +240,7 @@ export default function HealthPage() {
       align: "right",
       render: (c) => (
         <span>
-          <span className={`text-lg font-bold ${scoreColor(c.overall_score)}`}>{c.overall_score}</span>
+          <span className={`text-lg font-bold ${scoreTextClass(c.overall_score)}`}>{c.overall_score}</span>
           <span className="text-xs text-gray-400">/100</span>
         </span>
       ),
@@ -271,7 +251,7 @@ export default function HealthPage() {
       accessor: (c) => GRADE_RANK[c.grade] ?? 0,
       sortable: true,
       render: (c) => (
-        <Badge className={`text-xs font-bold ${gradeBadge(c.grade)}`}>{c.grade}</Badge>
+        <Badge className={`text-xs font-bold ${gradeBadgeClass(c.grade)}`}>{c.grade}</Badge>
       ),
     },
     {
@@ -337,7 +317,7 @@ export default function HealthPage() {
       <div className="grid grid-cols-4 gap-4">
         <Card className="bg-white border-gray-200 shadow-sm">
           <CardContent className="p-4 text-center">
-            <p className={`text-3xl font-bold ${scoreColor(avgScore)}`}>{avgScore}</p>
+            <p className={`text-3xl font-bold ${scoreTextClass(avgScore)}`}>{avgScore}</p>
             <p className="text-xs text-gray-500 mt-1">Avg Score</p>
           </CardContent>
         </Card>
@@ -369,13 +349,6 @@ export default function HealthPage() {
             {(["Healthy", "Good", "Needs Attention", "At Risk", "Critical"] as Grade[]).map((grade) => {
               const count = gradeCounts[grade];
               const heightPct = maxGradeCount > 0 ? (count / maxGradeCount) * 100 : 0;
-              const colors: Record<Grade, string> = {
-                "Healthy":         "bg-sev-ok",
-                "Good":            "bg-sev-low",
-                "Needs Attention": "bg-sev-medium",
-                "At Risk":         "bg-sev-high",
-                "Critical":        "bg-sev-critical",
-              };
               const shortLabel: Record<Grade, string> = {
                 "Healthy":         "H",
                 "Good":            "G",
@@ -388,7 +361,7 @@ export default function HealthPage() {
                   <span className="text-xs text-gray-500">{count}</span>
                   <div className="w-full flex items-end" style={{ height: "60px" }}>
                     <div
-                      className={`w-full rounded-t ${colors[grade]} transition-all`}
+                      className={`w-full rounded-t ${GRADE_BAR_CLASS[grade]} transition-all`}
                       style={{ height: `${Math.max(heightPct, 4)}%` }}
                     />
                   </div>

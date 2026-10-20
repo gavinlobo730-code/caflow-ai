@@ -12,8 +12,8 @@ import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { PageHeader } from "@/components/ui/page-header";
 import {
-  HEALTH_DIMENSIONS, dimensionLabel, gradeOf, weightLabel,
-  type HealthDimensionKey, type HealthGrade,
+  HEALTH_DIMENSIONS, dimensionLabel, gradeBadgeClass, gradeOf, scoreBarClass, scoreTextClass, weightLabel,
+  type HealthDimensionKey,
 } from "@/lib/health/vocabulary";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -129,29 +129,6 @@ const SEVERITY_COLORS: Record<string, string> = {
   warning:  "bg-sev-medium-surface text-sev-medium",
   critical: "bg-sev-critical-surface text-sev-critical",
 };
-
-function scoreColor(s: number) {
-  if (s >= 70) return "text-green-600";
-  if (s >= 40) return "text-amber-600";
-  return "text-red-600";
-}
-
-function scoreBarColor(s: number) {
-  if (s >= 70) return "bg-green-500";
-  if (s >= 40) return "bg-yellow-500";
-  return "bg-red-500";
-}
-
-function gradeBadge(g: HealthGrade) {
-  const map: Record<HealthGrade, string> = {
-    "Healthy":         "bg-sev-ok-surface text-sev-ok",
-    "Good":            "bg-sev-low-surface text-sev-low",
-    "Needs Attention": "bg-sev-medium-surface text-sev-medium",
-    "At Risk":         "bg-sev-high-surface text-sev-high",
-    "Critical":        "bg-sev-critical-surface text-sev-critical",
-  };
-  return map[g];
-}
 
 const EMPTY_OVERRIDE = { dimension: "compliance_health", override_score: "", reason: "", expires_at: "" };
 
@@ -393,7 +370,7 @@ export default function ClientHealthPage() {
         <CardContent className="p-6">
           <div className="flex items-center gap-6">
             <div className="text-center">
-              <p className={`text-6xl font-black ${scoreColor(score.overall_score)}`}>{score.overall_score}</p>
+              <p className={`text-6xl font-black ${scoreTextClass(score.overall_score)}`}>{score.overall_score}</p>
               <p className="text-xs text-gray-500 mt-1">/ 100</p>
             </div>
             <div className="w-px h-16 bg-gray-200" />
@@ -401,7 +378,7 @@ export default function ClientHealthPage() {
               <p className="text-xs text-gray-500 mb-1">Grade</p>
               {(() => {
                 const g = gradeOf(score.grade ?? score.health_grade, score.overall_score);
-                return <Badge className={`text-lg px-3 py-1 ${gradeBadge(g)}`}>{g}</Badge>;
+                return <Badge className={`text-lg px-3 py-1 ${gradeBadgeClass(g)}`}>{g}</Badge>;
               })()}
             </div>
             <div className="w-px h-16 bg-gray-200" />
@@ -429,11 +406,11 @@ export default function ClientHealthPage() {
                     </p>
                     {val === null
                       ? <span className="text-sm text-ps-hint">—</span>
-                      : <span className={`text-sm font-bold ${scoreColor(val)}`}>{val}</span>}
+                      : <span className={`text-sm font-bold ${scoreTextClass(val)}`}>{val}</span>}
                   </div>
                   <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                     {val !== null && (
-                      <div className={`h-full rounded-full ${scoreBarColor(val)}`} style={{ width: `${val}%` }} />
+                      <div className={`h-full rounded-full ${scoreBarClass(val)}`} style={{ width: `${val}%` }} />
                     )}
                   </div>
                 </CardContent>
@@ -485,13 +462,13 @@ export default function ClientHealthPage() {
                     <tr key={h.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3 text-gray-500 text-xs">{formatDate(h.recorded_at)}</td>
                       <td className="px-3 py-3">
-                        <span className={`font-bold ${scoreColor(h.overall_score)}`}>{h.overall_score}</span>
+                        <span className={`font-bold ${scoreTextClass(h.overall_score)}`}>{h.overall_score}</span>
                         <span className="text-xs text-gray-400">/100</span>
                       </td>
                       <td className="px-3 py-3">
                         {(() => {
                           const g = gradeOf(h.health_grade, h.overall_score);
-                          return <Badge className={`text-2xs ${gradeBadge(g)}`}>{g}</Badge>;
+                          return <Badge className={`text-2xs ${gradeBadgeClass(g)}`}>{g}</Badge>;
                         })()}
                       </td>
                     </tr>
@@ -564,7 +541,7 @@ export default function ClientHealthPage() {
                                 {o.computed_score}
                               </span>
                             )}
-                            <span className={scoreColor(o.override_score)}>{o.override_score}</span>
+                            <span className={scoreTextClass(o.override_score)}>{o.override_score}</span>
                           </span>
                         ) : (
                           <span className="text-ps-hint line-through">{o.override_score}</span>

@@ -110,3 +110,86 @@ export function gradeOf(serverGrade: unknown, score: number): HealthGrade {
     ? (serverGrade as HealthGrade)
     : gradeForScore(score);
 }
+
+// ─── How a grade LOOKS ───────────────────────────────────────────────────────
+//
+// A score is coloured by its grade, never by a ladder of the page's own. Five pages copied a `scoreColor` that turned green from 70,
+// amber from 40 and red below, while the badge beside the number graded 80 / 65 / 50 / 35: a 66 was "Good" in a green badge and
+// printed in amber, a 45 was "At Risk" and printed amber beside a red-orange badge. Two list pages also typed the grade as the
+// letters A to F, which the engine retired, so the engine's real words ("At Risk", "Critical") fell through to a grey badge. The
+// classes below are the tokens the badges already used (`sev-*`), so a number and its badge are one colour. Pinned from the Python
+// side (`tests/test_one_health_vocabulary.py`): one entry per grade of `domain/health/scoring.GRADE_BANDS`, and no page defines
+// its own.
+
+export const GRADE_BADGE_CLASS: Readonly<Record<HealthGrade, string>> = {
+  "Healthy": "bg-sev-ok-surface text-sev-ok",
+  "Good": "bg-sev-low-surface text-sev-low",
+  "Needs Attention": "bg-sev-medium-surface text-sev-medium",
+  "At Risk": "bg-sev-high-surface text-sev-high",
+  "Critical": "bg-sev-critical-surface text-sev-critical",
+};
+
+export const GRADE_TEXT_CLASS: Readonly<Record<HealthGrade, string>> = {
+  "Healthy": "text-sev-ok",
+  "Good": "text-sev-low",
+  "Needs Attention": "text-sev-medium",
+  "At Risk": "text-sev-high",
+  "Critical": "text-sev-critical",
+};
+
+export const GRADE_BAR_CLASS: Readonly<Record<HealthGrade, string>> = {
+  "Healthy": "bg-sev-ok",
+  "Good": "bg-sev-low",
+  "Needs Attention": "bg-sev-medium",
+  "At Risk": "bg-sev-high",
+  "Critical": "bg-sev-critical",
+};
+
+/** The three-colour reading of a grade, for a surface that draws one ring or bar in the product's ready / attention / problem tokens
+ *  rather than the five severity classes: Healthy and Good are ready, Needs Attention and At Risk are attention, Critical is a
+ *  problem. The executive dashboard's ring takes its colour from here, and had a ladder of its own (a score of 70 amber). */
+export type HealthTone = "ready" | "attention" | "problem";
+
+export const GRADE_TONE: Readonly<Record<HealthGrade, HealthTone>> = {
+  "Healthy": "ready",
+  "Good": "ready",
+  "Needs Attention": "attention",
+  "At Risk": "attention",
+  "Critical": "problem",
+};
+
+export function gradeTone(grade: HealthGrade): HealthTone {
+  return GRADE_TONE[grade];
+}
+
+/** The badge of a grade. */
+export function gradeBadgeClass(grade: HealthGrade): string {
+  return GRADE_BADGE_CLASS[grade];
+}
+
+/** The colour of a score printed as text: its grade's. */
+export function scoreTextClass(score: number): string {
+  return GRADE_TEXT_CLASS[gradeForScore(score)];
+}
+
+/** The colour of a score drawn as a bar or a dot: its grade's. */
+export function scoreBarClass(score: number): string {
+  return GRADE_BAR_CLASS[gradeForScore(score)];
+}
+
+// ─── The executive dashboard's portfolio bars ────────────────────────────────
+//
+// Four bars, each the engine's own grade words (POST-A-286). The green one is the bands Healthy and Good, and Needs Attention has a
+// bar of its own: it used to sit inside a bar called "Healthy". The wording is built from the grades above, so it cannot drift from
+// them.
+
+export const PORTFOLIO_BAR_LABELS = {
+  healthy: `${HEALTH_GRADES[0]} or ${HEALTH_GRADES[1]}`,
+  needsAttention: HEALTH_GRADES[2],
+  atRisk: HEALTH_GRADES[3],
+  critical: HEALTH_GRADES[4],
+} as const;
+
+/** What an older server's `healthy_clients` counted, said honestly for the window where the page has redeployed ahead of the API:
+ *  every scored client that is neither critical nor at risk, Needs Attention included. */
+export const PORTFOLIO_UNSPLIT_HEALTHY_LABEL = `${HEALTH_GRADES[0]}, ${HEALTH_GRADES[1]} or ${HEALTH_GRADES[2]}`;
