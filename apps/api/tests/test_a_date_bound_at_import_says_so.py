@@ -215,9 +215,13 @@ def test_the_two_live_writers_ask_the_clock_at_call_time():
     """Behaviour, not spelling: the two sites whose figure is WRITTEN must call
     the clock inside the function rather than close over a constant."""
     src = (API / "domain" / "ai_insight_service.py").read_text(encoding="utf-8")
-    assert "days_left = (due - ist_today()).days" in src
-    # The risk's age: the clock is asked inside the function, and the stamp is converted to its Indian day (POST-A-251).
-    assert '(ist_today() - ist_date_of(r["created_at"])).days' in src
+    # The generator asks the clock ONCE, inside the function, and every date it writes or compares is read off that one day (so a
+    # press that straddles Indian midnight judges all of its records against the same day).
+    gen = src[src.index("def generate_insights_for_client"):src.index("\ndef get_all_insights")]
+    assert "    today = ist_today()\n" in gen
+    assert "days_left = (due - today).days" in gen
+    # The risk's age: the stamp is converted to its Indian day (POST-A-251).
+    assert '(today - ist_date_of(r["created_at"])).days' in gen
 
     auto = (API / "domain" / "automation_engine.py").read_text(encoding="utf-8")
     # The statistic asks the clock INSIDE the function (its day is then compared with each execution's Indian day).

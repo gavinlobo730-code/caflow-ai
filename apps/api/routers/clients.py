@@ -17,6 +17,7 @@ from services.audit_service import log_event
 from services.internal_client_service import assert_can_view_client
 from core.authz import effective_client_ids, can_access_client
 from core.ist_clock import ist_today
+from domain.practice.compliance_overdue import is_settled, overdue_records
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 _logger = logging.getLogger("caflow.clients")
@@ -73,7 +74,7 @@ def _check_delete_blockers(client_id: str, firm_id: str, client_pan: str | None 
 
     active_records = [
         r for r in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
-        if r.get("status") not in ("Filed",)
+        if not is_settled(r.get("status"))
     ]
     if active_records:
         blockers.append(
@@ -235,7 +236,8 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
         },
         "summary": {
             "total_tasks": len(tasks),
-            "overdue_count": sum(1 for t in tasks if t.get("status") == "Overdue"),
+            # Derived by date: nothing writes the stored word "Overdue" when a due date passes (domain/practice/compliance_overdue).
+            "overdue_count": len(overdue_records(tasks, ist_today())),
             "pending_count": sum(1 for t in tasks if t.get("status") == "Not Started"),
             "filed_count": sum(1 for t in tasks if t.get("status") in ("Filed", "Completed")),
             "document_count": len(docs),

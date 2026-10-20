@@ -17,6 +17,7 @@ from datetime import timedelta, datetime
 from typing import Optional
 import uuid
 from core.ist_clock import ist_date_of, ist_today
+from domain.practice.compliance_overdue import is_overdue, is_settled
 
 # THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. A module-level
 # `today = ist_today()` is evaluated ONCE, when the module is imported — so on
@@ -169,25 +170,45 @@ def generate_insights_for_client(client_id: str, firm_id: Optional[str] = None) 
 
     new_insights: list[dict] = []
     records = compliance_record_service.list_records(client_id=client_id, firm_id=firm_id)
+    today = ist_today()
+
+    # PRESSING GENERATE TWICE RAISES NOTHING THE SECOND TIME. Every insight below is written, and nothing used to ask whether the
+    # client already had it, so each press added the same rows again. That was a nuisance while the overdue branch could not fire
+    # (nothing writes the status it asked for); now that "overdue" is read from the date a client with thirty late obligations
+    # would get thirty critical rows per press. An insight that is still OPEN or ACKNOWLEDGED for this client is already in front of
+    # somebody; a DISMISSED one was put away on purpose and is raised again only if it is still true when somebody asks again.
+    # THE TITLE ALONE IS NOT THE IDENTITY: the GSTR-1 and the TDS return of one month share a period label and so a title. What
+    # tells two obligations apart is the start of the description (the kind, and for an overdue filing the whole sentence), and what
+    # must NOT tell two presses apart is the part that changes by the day ("due in 3 day(s)"), so each caller passes the `stem` of
+    # its description that identifies it.
+    raised = [(i.get("title"), i.get("description") or "")
+              for i in ai_insights_repo.find_all(firm_id=firm_id, client_id=client_id)
+              if i.get("status") in ("open", "acknowledged")]
+
+    def raise_once(row: dict, stem: str = "") -> None:
+        if any(title == row["title"] and description.startswith(stem) for title, description in raised):
+            return
+        raised.append((row["title"], row["description"]))
+        new_insights.append(ai_insights_repo.create({**row, "firm_id": firm_id}))
 
     for record in records:
-        if record["status"] == "Overdue":
-            insight = ai_insights_repo.create({
+        # Derived by date: nothing writes the stored word "Overdue" when a due date passes (domain/practice/compliance_overdue).
+        if is_overdue(record, today):
+            description = f"{record['compliance_type']} for {record['period_label']} is overdue. Penalties may apply."
+            raise_once({
                 "client_id": client_id,
                 "client_name": client_name,
-                "firm_id": firm_id,
                 "category": "compliance",
                 "severity": "critical",
                 "title": f"Overdue Filing: {record['period_label']}",
-                "description": f"{record['compliance_type']} for {record['period_label']} is overdue. Penalties may apply.",
+                "description": description,
                 "recommendation": "File immediately to avoid further penalties.",
                 "status": "open",
-            })
-            new_insights.append(insight)
+            }, stem=description)
 
         try:
             due = datetime.fromisoformat(record["due_date"]).date()
-            # ist_today() at CALL time, never the module-level constant. This
+            # `today` is ist_today() read at CALL time (above), never the module-level constant. This
             # arithmetic decides both the `0 <= days_left <= 7` gate and the
             # figure written into the insight's own description, and the row is
             # PERSISTED by `ai_insights_repo.create` below — so against a date
@@ -195,29 +216,26 @@ def generate_insights_for_client(client_id: str, firm_id: Optional[str] = None) 
             # "due in 13 day(s)" and fell outside the gate entirely, while one
             # due in a fortnight generated an "approaching" insight that was
             # not.
-            days_left = (due - ist_today()).days
-            if 0 <= days_left <= 7 and record["status"] not in ("Filed",):
-                insight = ai_insights_repo.create({
+            days_left = (due - today).days
+            if 0 <= days_left <= 7 and not is_settled(record["status"]):
+                raise_once({
                     "client_id": client_id,
                     "client_name": client_name,
-                    "firm_id": firm_id,
                     "category": "compliance",
                     "severity": "high",
                     "title": f"Deadline Approaching: {record['period_label']}",
                     "description": f"{record['compliance_type']} due in {days_left} day(s). Current status: {record['status']}.",
                     "recommendation": "Expedite filing process to avoid late fees.",
                     "status": "open",
-                })
-                new_insights.append(insight)
+                }, stem=f"{record['compliance_type']} due in ")
         except Exception:
             pass
 
     health = compliance_record_service.get_client_health_score(client_id, firm_id=firm_id)
     if health["health_score"] < 50:
-        insight = ai_insights_repo.create({
+        raise_once({
             "client_id": client_id,
             "client_name": client_name,
-            "firm_id": firm_id,
             "category": "performance",
             "severity": "high",
             "title": "Low Health Score — Compliance Intervention Needed",
@@ -225,7 +243,6 @@ def generate_insights_for_client(client_id: str, firm_id: Optional[str] = None) 
             "recommendation": "Review and resolve overdue compliance records and pending tasks.",
             "status": "open",
         })
-        new_insights.append(insight)
 
     # The client's OWN open document risks, read the way the Risks screen reads
     # them (`risk_engine.get_all_risks`: the `document_risks` table in
@@ -240,17 +257,16 @@ def generate_insights_for_client(client_id: str, firm_id: Optional[str] = None) 
         r for r in get_all_risks(firm_id=firm_id, client_id=client_id, status="open")
         if r.get("source") == "document"
         and r.get("created_at")
-        # ist_today(), for the reason on `days_left` above: an open risk stops
+        # `today` (call time), for the reason on `days_left` above: an open risk stops
         # ageing the moment the process stops restarting, so nothing ever
         # crosses seven days on a deployment that has been up a week.
         and ist_date_of(r["created_at"]) is not None
-        and (ist_today() - ist_date_of(r["created_at"])).days > 7
+        and (today - ist_date_of(r["created_at"])).days > 7
     ]
     if old_risks:
-        insight = ai_insights_repo.create({
+        raise_once({
             "client_id": client_id,
             "client_name": client_name,
-            "firm_id": firm_id,
             "category": "risk",
             "severity": "medium",
             "title": f"{len(old_risks)} Unresolved Document Risk(s) Over 7 Days",
@@ -258,7 +274,6 @@ def generate_insights_for_client(client_id: str, firm_id: Optional[str] = None) 
             "recommendation": "Review and resolve or acknowledge outstanding document risks.",
             "status": "open",
         })
-        new_insights.append(insight)
 
     return new_insights
 

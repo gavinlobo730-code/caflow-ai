@@ -79,7 +79,7 @@ def world(monkeypatch):
         "records": [
             _rec(MINE_A, -3), _rec(MINE_A, -10, ctype="TDS_NON_SALARY_DEPOSIT"),
             _rec(MINE_A, 3), _rec(MINE_B, 5), _rec(MINE_B, 20),
-            _rec(MINE_B, -4, status="filed"),
+            _rec(MINE_B, -4, status="Filed"),
             _rec(THEIRS, -1), _rec(THEIRS, -2), _rec(THEIRS, 2),
         ],
         "tasks": [_task(MINE_A, "u-mgr"), _task(MINE_A, None), _task(MINE_B, "u-other"),

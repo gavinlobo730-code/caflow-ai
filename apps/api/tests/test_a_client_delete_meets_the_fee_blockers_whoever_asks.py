@@ -149,3 +149,13 @@ def test_a_failed_blocker_read_does_not_delete_the_client(world):
     assert refused.value.status_code == 503
     repo.soft_delete.assert_not_called()
     log.assert_not_called()
+
+
+def test_a_completed_compliance_record_is_not_one_that_is_not_yet_filed(world):
+    """Filed and Completed are the two settled states (`domain/practice/compliance_overdue`): the blocker counts the others."""
+    import routers.clients as rc
+    rc.compliance_records_repo.find_all.return_value = [
+        {"id": 1, "status": "Filed"}, {"id": 2, "status": "Completed"}, {"id": 3, "status": "In Progress"},
+        {"id": 4, "status": "Overdue"}]
+    blockers = _blockers()
+    assert "2 active compliance record(s) not yet filed" in blockers, blockers

@@ -8,6 +8,7 @@ from services.task_service import is_valid_transition
 from services.activity_service import log_activity
 from core.ist_clock import ist_today
 from core.authz import within_client_scope
+from domain.practice.compliance_overdue import is_settled, overdue_records
 
 
 class TaskDomainService:
@@ -44,10 +45,11 @@ class TaskDomainService:
         # R3.13d: compliance_records (System A) is the sole source now —
         # compliance_tasks (System B) is being retired.
         all_records = within_client_scope(compliance_record_service.list_records(firm_id=firm_id), allowed_client_ids)
-        compliance_overdue = len([r for r in all_records if r.get("status") == "Overdue"])
+        # Overdue is derived: nothing writes the stored word when a date passes (domain/practice/compliance_overdue).
+        compliance_overdue = len(overdue_records(all_records, today))
         compliance_due_week = len([
             r for r in all_records
-            if r.get("status") not in ("Filed",) and today_str <= r.get("due_date", "") <= week_end
+            if not is_settled(r.get("status")) and today_str <= r.get("due_date", "") <= week_end
         ])
 
         # Batched instead of N+1: get_client_health_score() used to be called
@@ -60,7 +62,7 @@ class TaskDomainService:
             records_by_client.setdefault(r.get("client_id"), []).append(r)
         high_risk_clients = sum(
             1 for c in active_clients
-            if compliance_record_service.score_from_records(records_by_client.get(c["id"], []))[0] < 50
+            if compliance_record_service.score_from_records(records_by_client.get(c["id"], []), today)[0] < 50
         )
 
         # find_overdue() now takes firm_id directly — pushed to the query

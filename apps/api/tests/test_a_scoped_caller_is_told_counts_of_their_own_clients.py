@@ -87,7 +87,7 @@ class _Compliance:
     def list_records(self, **_k):
         return list(self.RECORDS)
 
-    def score_from_records(self, records):
+    def score_from_records(self, records, today=None):
         return (10 if records else 100, None)  # a client with a record scores as high risk
 
 
