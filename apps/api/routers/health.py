@@ -46,7 +46,7 @@ from core.observability import capture_soft_failure
 from core.authz import filter_by_client, assert_client_access, can_access_client, effective_client_ids
 from services.timeline_service import timeline_service
 from core.ist_clock import ist_today
-from domain.health.scoring import DIMENSION_WEIGHTS_BP, DIMENSIONS, grade, weighted_score
+from domain.health.scoring import DIMENSION_WEIGHTS_BP, DIMENSIONS, grade, is_at_risk, is_critical, weighted_score
 from domain.health.overrides import apply_overrides, as_payload
 from core import db_provider
 
@@ -533,8 +533,8 @@ def _calculate_scores_mock(client_id: str) -> dict:
         "trend":          "+0",
         "hard_override":  hard_override,
         "hard_override_reason": HARD_OVERRIDE_REASONS.get(hard_override) if hard_override else None,
-        "is_critical":    overall_score < 35 or hard_override is not None,
-        "is_at_risk":     35 <= overall_score < 50,
+        "is_critical":    is_critical(overall_score, hard_override),
+        "is_at_risk":     is_at_risk(overall_score),
         # Legacy flat columns kept for backward-compat with existing DB rows
         "compliance_score":        dim_scores["compliance_health"],
         "accounting_score":        dim_scores["accounting_quality"],
@@ -589,8 +589,8 @@ def _calculate_scores_db(db, client_id: str, firm_id: str) -> dict:
         "trend":          "+0",
         "hard_override":  hard_override,
         "hard_override_reason": HARD_OVERRIDE_REASONS.get(hard_override) if hard_override else None,
-        "is_critical":    overall_score < 35 or hard_override is not None,
-        "is_at_risk":     35 <= overall_score < 50,
+        "is_critical":    is_critical(overall_score, hard_override),
+        "is_at_risk":     is_at_risk(overall_score),
         # Legacy flat columns kept for backward-compat with existing DB schema
         "compliance_score":        dim_scores["compliance_health"],
         "accounting_score":        dim_scores["accounting_quality"],

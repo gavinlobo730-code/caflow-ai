@@ -79,7 +79,7 @@ domain/inventory_service.py :: B905 :: apply_purchase_to_inventory :: 2
 domain/memory_pipeline.py :: F401 :: <module> :: 1
 domain/memory_pipeline.py :: F541 :: MemoryPipeline.detect_deadline_at_risk :: 1
 domain/memory_pipeline.py :: F841 :: MemoryPipeline.compute_client_profile :: 1
-domain/memory_pipeline.py :: F841 :: MemoryPipeline.compute_firm_profile :: 2
+domain/memory_pipeline.py :: F841 :: MemoryPipeline.compute_firm_profile :: 1
 domain/notification_fixtures.py :: F401 :: <module> :: 4
 domain/payroll/annexure2.py :: F841 :: build_annexure_ii :: 1
 domain/payroll/attendance.py :: B904 :: _whole_number :: 1

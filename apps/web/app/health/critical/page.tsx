@@ -56,13 +56,13 @@ export default function CriticalClientsPage() {
       <PageHeader
         icon={<AlertOctagon size={20} className="text-state-problem" />}
         title="Critical Clients"
-        subtitle="Health score below 40 — requires immediate attention"
+        subtitle="Clients the health engine marks Critical — requires immediate attention"
       />
       {error && <Callout tone="problem">{error}</Callout>}
       {loading ? (
         <TableSkeleton cols={5} rows={3} />
       ) : clients.length === 0 ? (
-        <Card className="bg-white border-gray-200 shadow-sm"><CardContent className="py-12 text-center"><p className="text-sm text-gray-500">No critical clients — all scores are 40 or above</p></CardContent></Card>
+        <Card className="bg-white border-gray-200 shadow-sm"><CardContent className="py-12 text-center"><p className="text-sm text-gray-500">No critical clients</p></CardContent></Card>
       ) : (
         <Card className="bg-white border-gray-200 shadow-sm">
           <CardContent className="p-0">

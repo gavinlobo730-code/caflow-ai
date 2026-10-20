@@ -224,10 +224,10 @@ class MemoryPipeline:
                 # profile without the portfolio keys (a first profile would then keep the database's default of 75).
                 logger.warning("health scores could not be read; the firm profile counts no client as scored", exc_info=True)
                 score_rows = []
-            scored = [c["health_score"] for c in attach(clients, score_rows) if c["health_score"] is not None]
+            attached = attach(clients, score_rows)
+            scored = [c["health_score"] for c in attached if c["health_score"] is not None]
             avg_health = round(sum(scored) / len(scored), 1) if scored else None
-            critical = len([s for s in scored if s < 40])
-            at_risk = len([s for s in scored if 40 <= s < 70])
+            critical = len([c for c in attached if c["health_critical"] is True])
 
             profile_data["portfolio_compliance_score"] = avg_health
             profile_data["common_risk_categories"] = ["gst_delay", "document_missing"] if critical > 0 else []

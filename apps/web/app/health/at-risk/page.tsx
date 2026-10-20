@@ -12,7 +12,7 @@ import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 
 type Grade = "A" | "B" | "C" | "D" | "F";
-interface ClientScore { id: string; client_id: string; client_name?: string; overall_score: number; health_grade: Grade; is_at_risk: boolean; last_calculated_at?: string; }
+interface ClientScore { id: string; client_id: string; client_name?: string; overall_score: number; health_grade: Grade; is_at_risk: boolean; is_critical?: boolean; last_calculated_at?: string; }
 
 function scoreColor(s: number) { return s >= 70 ? "text-green-600" : s >= 40 ? "text-amber-600" : "text-red-600"; }
 function gradeBadge(g: Grade) { const m: Record<Grade, string> = { A: "bg-green-100 text-green-700", B: "bg-blue-100 text-blue-700", C: "bg-yellow-100 text-yellow-700", D: "bg-orange-100 text-orange-700", F: "bg-state-problem-surface text-state-problem" }; return m[g] ?? "bg-gray-100 text-gray-600"; }
@@ -33,16 +33,15 @@ export default function AtRiskClientsPage() {
         const supabase = getSupabaseClient();
         const { data, error: sbError } = await supabase
           .from("health_scores")
-          .select("id, client_id, client_name, overall_score, health_grade, is_at_risk, last_calculated_at")
+          .select("id, client_id, client_name, overall_score, health_grade, is_at_risk, is_critical, last_calculated_at")
           .eq("is_at_risk", true)
+          .eq("is_critical", false)
           .order("overall_score");
         if (sbError) throw sbError;
-        // Filter out critical (score < 40) — show 40–59 only. Kept exactly as
-        // it was: is_at_risk's own band is 35-49 (routers/health.py:_grade),
-        // narrower than this page's stated "40-59" — a pre-existing
-        // score-band mismatch, not something this conversion should silently
-        // resolve either way.
-        setClients(((data as ClientScore[]) ?? []).filter((c) => c.overall_score >= 40));
+        // Exactly the clients the health engine flags at risk and not critical: the Health dashboard route lists the same
+        // two flags, and the executive dashboard and the assistant count by them. This page used to drop anything under 40
+        // and say "40-59", while the engine's own band is 35-49, so a client scoring 38 was at risk everywhere but here.
+        setClients((data as ClientScore[]) ?? []);
       } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
       finally { setLoading(false); }
     })();
@@ -53,7 +52,7 @@ export default function AtRiskClientsPage() {
       <PageHeader
         icon={<AlertTriangle size={20} className="text-amber-500" />}
         title="At-Risk Clients"
-        subtitle="Health score 40–59 — monitor closely"
+        subtitle="Clients the health engine marks At Risk — monitor closely"
       />
       {error && <Callout tone="problem">{error}</Callout>}
       {loading ? (
