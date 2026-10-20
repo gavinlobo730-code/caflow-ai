@@ -156,8 +156,15 @@ python3 scripts/db/guard_drift.py declared_guards.json live_guards.json
 `GUARD_SQL` is exported for the console route, exactly as `INTROSPECT_SQL` is.
 Expressions are compared as an md5 — 597 policies and 1,116 constraints carry
 about 150 KB of SQL, and a fixture nobody can read in a diff is a fixture
-nobody checks — after folding the linter's `( SELECT auth.uid() AS uid)`
-rewrite back to `auth.uid()`, which is the same predicate.
+nobody checks — after folding a wrapped helper call, `( SELECT auth.uid() AS
+uid)` or `( SELECT get_my_firm_id() AS get_my_firm_id)` and the same for
+`get_my_role`, `get_my_user_id`, `my_internal_client_id`, `my_permission`,
+`my_role_at_least`, `auth.jwt` and `auth.role`, back to the bare call, which is
+the same predicate (migration 525 wrapped them in the database; the committed
+2026-09-03 fixture was hashed with the older fold, which covered `auth.*` only,
+so `client_health_scores.firm_isolation` and `client_health_overrides.firm_isolation`,
+written wrapped by migration 046, show as informational `policies_differ` lines
+until the fixture is captured again with today's `GUARD_SQL`).
 
 The report leads with the four directions that break something:
 
