@@ -268,7 +268,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A RELEASED PAYROLL RUN RECORDS THE LOAN WRITE-DOWN IT STILL OWES, A REVERSAL IS CLAIMED, AND A DELETE OR RECOMPUTE ACTS ONLY ON A RUN STILL IN THE STATE IT SAW
 - A MONTHLY FIGURE ON A SCREEN IS THE SERVER'S, SERVED ON THE ROW, AND A COLUMN IS NAMED FOR WHAT IT ADDS UP
 
-### `docs/design-record/reporting.md` (9 entries): Reporting: Schedule III captions, report performance, paging, exports
+### `docs/design-record/reporting.md` (10 entries): Reporting: Schedule III captions, report performance, paging, exports
 
 - The fixed-assets note is a MOVEMENT, and there is one of it
 - PAGING IS NOT THE SAME AS BOUNDING, AND A RECONCILIATION NEEDED BOTH
@@ -279,6 +279,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A READ THAT FEEDS A FIGURE PAGES EVEN WHEN ITS SCREEN IS NOT AN EXPORT, AND THE RULE NAMES THE (SCREEN, TABLE)
 - A READ THAT IS THE ONLY WAY TO FIND OR CHECK A RECORD PAGES TOO, ON ITS OWN LIST, AND A DUPLICATE CHECK THAT IGNORED A FAILED READ WOULD HAVE INSERTED THE FILE AGAIN
 - A ROW-SECURITY POLICY ASKS WHO IS CALLING ONCE PER QUERY AND NOT ONCE PER ROW, AND THE RULE IS A TEST OVER pg_policy
+- THE ASSIGNMENT SCOPE READS THE CALLER'S CLIENTS ONCE PER QUERY, AND THE DRIFT GUARD FOLDS THE REWRITE BACK TO THE CALL IT REPLACED
 
 ### `docs/design-record/screens-and-site.md` (25 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 

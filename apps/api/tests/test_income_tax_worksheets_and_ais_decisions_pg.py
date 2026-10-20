@@ -41,6 +41,7 @@ THE TRAP THIS IS BUILT AROUND
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -365,4 +366,6 @@ def test_the_assignment_policy_is_restrictive_for_all_and_asks_the_helper(db, ta
     # PERMISSIVE would OR with the firm policy and widen access; a policy on
     # SELECT alone would leave INSERT, UPDATE and DELETE open.
     assert permissive == "RESTRICTIVE" and cmd == "ALL", got
-    assert "can_access_client" in qual and "can_access_client" in with_check, got
+    # Migration 526 rewrote the call as a once-per-query set test that asks my_assigned_client_ids(); either spelling is
+    # the assignment scope, and the other tests of this module hold what it admits.
+    assert re.search(r"can_access_client|my_assigned_client_ids", qual) and re.search(r"can_access_client|my_assigned_client_ids", with_check), got

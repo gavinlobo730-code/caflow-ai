@@ -160,7 +160,9 @@ nobody checks — after folding a wrapped helper call, `( SELECT auth.uid() AS
 uid)` or `( SELECT get_my_firm_id() AS get_my_firm_id)` and the same for
 `get_my_role`, `get_my_user_id`, `my_internal_client_id`, `my_permission`,
 `my_role_at_least`, `auth.jwt` and `auth.role`, back to the bare call, which is
-the same predicate (migration 525 wrapped them in the database; the committed
+the same predicate (migration 525 wrapped them in the database), and after a second fold that
+writes migration 526's set-based form of the assignment scope back as
+`can_access_client((<column>)::text)`, which is the same predicate too (the committed
 2026-09-03 fixture was hashed with the older fold, which covered `auth.*` only,
 so `client_health_scores.firm_isolation` and `client_health_overrides.firm_isolation`,
 written wrapped by migration 046, show as informational `policies_differ` lines
