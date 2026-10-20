@@ -192,11 +192,16 @@ export default function HealthPage() {
   async function handleRecalculateAll() {
     setRecalculating(true);
     try {
-      const json: ApiResponse<{ updated: number }> = await apiFetch(
+      const json: ApiResponse<{ updated: number; failed?: number }> = await apiFetch(
         "/api/health/recalculate-all", { method: "POST" }
       );
       if (!json.success) throw new Error(json.error ?? "Recalculation failed");
       await loadHealthData();
+      // A client whose calculation lost a read keeps whatever score it had (or stays unscored) and is said so here, not shown as done.
+      const failed = json.data?.failed ?? 0;
+      if (failed > 0) {
+        setError(`${failed} client${failed === 1 ? "" : "s"} could not be scored just now; any score ${failed === 1 ? "it" : "they"} had is unchanged.`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Recalculation failed");
     } finally {

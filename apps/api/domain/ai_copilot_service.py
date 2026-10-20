@@ -66,7 +66,8 @@ def _with_health(firm_id, clients):
         rows = _get_health_repo().find_all(firm_id=firm_id, client_id=only)
     except Exception:
         _logger.warning("health scores could not be read; the clients are shown as not yet scored", exc_info=True)
-        rows = []
+        # Marked, so that a figure built from the clients can say the scores could not be READ and not that nobody has been scored.
+        return [{**c, "health_unreadable": True} for c in attach(clients, [])]
     return attach(clients, rows)
 
 
@@ -1153,6 +1154,7 @@ Firm data as of {ist_now().strftime('%d %B %Y')}:
             "growth_opportunities": ed.growth_opportunities(clients),
             "firm_health_summary": {
                 "overall_score": avg_score,
+                "overall_score_basis": ed.score_basis(clients),
                 "compliance_coverage": coverage["percent"],
                 "compliance_coverage_basis": {
                     "due": coverage["due"], "filed": coverage["filed"],

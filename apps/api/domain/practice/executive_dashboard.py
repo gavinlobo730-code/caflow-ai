@@ -51,7 +51,8 @@ from typing import Iterable, Optional
 #: stored score (`domain/health/client_scores`) or none; it was `clients.health_score`, which defaults to 100 and which nothing writes, so a
 #: cached row from before says every client is healthy and the firm's ring says 100. 5: critical and at risk are the health engine's own verdict
 #: (`domain/health/scoring`), the same clients the Health pages list, and no longer a split of the book at 40 and 70 of this module's own.
-DASHBOARD_VERSION = 5
+#: 6: the firm health figure says which scores it is the mean of and how old the oldest is (`score_basis`).
+DASHBOARD_VERSION = 6
 
 #: Compliance statuses that mean the obligation is done.
 FILED = ("Filed", "Completed")
@@ -105,6 +106,26 @@ def average_health(clients: Iterable[dict]) -> Optional[int]:
     if not scores:
         return None
     return sum(scores) // len(scores)
+
+
+def score_basis(clients: Iterable[dict]) -> dict:
+    """What the firm health figure is the mean of: how many of the clients have a stored score, out of how many, and the Indian
+    calendar day the OLDEST of those scores was calculated on.
+
+    The figure is a mean over the scores that exist, so with one client of eight scored it is that one client's score, and a score is
+    a fact about the day it was calculated, not about today: a figure that does not say either is a reading shown as more than it is.
+    The oldest day and not the newest, because the mean is only as current as its stalest part, and NO day when any scored client
+    has no recorded time, because the oldest of a set with a hole in it is not known.
+
+    `unreadable` is True when the stored scores could not be read at all (`ai_copilot_service._with_health` marks every client), in
+    which case "none of them has been scored" would be a false sentence: the honest one is that the scores could not be read."""
+    from core.ist_clock import ist_day_iso
+    clients = list(clients)
+    scored = [c for c in clients if score_of(c) is not None]
+    days = [ist_day_iso(c.get("health_calculated_at")) for c in scored]
+    oldest = min(days) if days and all(days) else None
+    return {"scored": len(scored), "clients": len(clients), "oldest_calculated_on": oldest,
+            "unreadable": any(c.get("health_unreadable") is True for c in clients)}
 
 
 def churn_signals(clients: Iterable[dict], limit: int = 5) -> list[dict]:

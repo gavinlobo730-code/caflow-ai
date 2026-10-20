@@ -93,3 +93,13 @@ test("no server-side estimate is read or shown", () => {
   assert.ok(!src.includes("team_utilisation_percent"));
   assert.ok(!src.includes("avg_tasks_per_staff"));
 });
+
+test("the Firm Health ring says which scores it is the mean of and how old the oldest is, from the server's own basis (POST-A-282)", () => {
+  const src = code();
+  // The figure is the mean of the scores that EXIST, so it names how many (one client of eight scored is that client's score) and
+  // the day the oldest was calculated. Every fact comes from the payload; the page does no counting or date arithmetic of its own.
+  assert.ok(/\{scoreBasisLine\(health\?\.overall_score_basis\) && \(\s*<p className="text-3xs text-ps-hint mb-3">\{scoreBasisLine\(health\?\.overall_score_basis\)\}<\/p>\s*\)\}/.test(src),
+    "the ring is drawn without its caption, or the caption is not shown whenever the server sent a basis");
+  assert.ok(src.includes('from "@/lib/health/scoreBasis"'));
+  assert.ok(!/oldest_calculated_on/.test(src), "the page reads the day itself instead of handing the basis to scoreBasisLine");
+});

@@ -38,11 +38,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone, date, timedelta
+import contextvars
 import uuid
 
 from models.common import api_response
 from core.permissions import rbac
-from core.observability import capture_soft_failure
+from core.observability import capture_soft_failure as _report_soft_failure
 from core.authz import filter_by_client, assert_client_access, can_access_client, effective_client_ids
 from services.timeline_service import timeline_service
 from core.ist_clock import ist_today
@@ -51,6 +52,24 @@ from domain.health.overrides import apply_overrides, as_payload
 from core import db_provider
 
 router = APIRouter(prefix="/api/health", tags=["health"])
+
+#: The reads a calculation lost. Every dimension below swallows a failed read and counts as 100, so that one failed read does not look
+#: like a finding about the client (the right call for a score a person is looking at). A score STORED from a calculation that lost
+#: a read is a different thing: it overwrites the last good one, and a client that was Critical would read 98 and Healthy until the
+#: next night. `recalculate_clients` collects the losses of each client here and stores nothing for a client that lost any.
+_lost_reads: contextvars.ContextVar[Optional[list]] = contextvars.ContextVar("health_lost_reads", default=None)
+
+
+def capture_soft_failure(exc: Exception, **context) -> None:
+    """Report a swallowed failure (`core.observability`) and, while a calculation is being collected, note which read was lost."""
+    sink = _lost_reads.get()
+    if sink is not None:
+        sink.append(context.get("operation"))
+    _report_soft_failure(exc, **context)
+
+
+class _ScoreIncomplete(Exception):
+    """A calculation that lost one or more reads: its score is not stored."""
 
 
 # ─── In-memory mock stores ────────────────────────────────────────────────────
@@ -1217,35 +1236,45 @@ def list_overrides(
     return api_response(True, _annotate_overrides(rows, dims))
 
 
-@router.post("/recalculate-all")
-def recalculate_all(
-    current_user: dict = Depends(rbac("client", "write")),
-):
-    """Recalculate health scores for all clients in the firm — or, for an
-    assignment-scoped caller (rbac("client","write") admits Manager, who is
-    assignment-scoped under M3, not just Partner), every client they are
-    actually assigned to. M2 audit finding: this write previously touched
-    every client in the firm regardless of the caller's own assignment."""
-    db = _db()
-    firm_id = current_user["firm_id"]
-    if not db:
-        return api_response(True, {"updated": 0, "message": "No DB — mock mode"})
+def clients_to_score(db, firm_id: str) -> list[dict]:
+    """The clients a firm's health is calculated for: the live ones (not deleted), not archived, and never the firm's own practice client
+    (guardrail G2: the internal practice client is never health-scored or triaged). `client_name` is selected because the health list
+    renders it straight off `health_scores`: a row first created by a recalculation used to carry NULL and read "—" until somebody
+    recalculated that one client by hand (calculate_score has always stamped it).
 
-    # Guardrail G2: the internal practice client is never health-scored / triaged.
-    # client_name is selected and saved because the health list renders it
-    # straight off health_scores: a row first created here used to carry NULL
-    # and read "—" until somebody recalculated that one client by hand
-    # (calculate_score has always stamped it).
-    clients_res = db.table("clients").select("id, client_name").eq("firm_id", firm_id).eq("is_internal", False).execute()
-    clients = clients_res.data or []
-    eff = effective_client_ids(current_user)
-    if eff is not None:
-        clients = [c for c in clients if str(c["id"]) in eff]
-    updated = 0
+    This is the population every other roll-up counts (`client_repo.find_all`), so a client the dashboards would never count is not
+    scored either; the Recalculate button used to score the deleted and the archived too. Paged: an unpaged read cuts at the first
+    thousand rows without a word, which would leave the rest of a large firm unscored."""
+    from core.db_paging import fetch_all
+    return fetch_all(
+        lambda: (db.table("clients").select("id, client_name")
+                 .eq("firm_id", firm_id).eq("is_internal", False)
+                 .is_("deleted_at", None).neq("status", "archived")),
+        key="id", label="health.clients_to_score")
+
+
+def recalculate_clients(db, firm_id: str, clients: list[dict]) -> dict:
+    """Calculate, store and record the health score of each of `clients`, by the same function the single-client route uses.
+
+    One client failing never stops the others (it is reported, and counted in `failed`). What was cached from the old scores (the
+    executive dashboard, the clients' intelligence reports) is marked stale once, after the loop, if any score was saved. Called by the
+    Recalculate button for the caller's own clients and by the nightly sweep for the whole firm (`jobs/health_scores_job`).
+
+    A client whose calculation lost a read (a dimension counts as 100 when its own read fails) is NOT stored: a figure computed from a
+    failed read would replace the last good one with a falsely healthy score, and a nightly run would do it to a whole firm."""
+    updated = failed = 0
     now = datetime.now(timezone.utc).isoformat()
     for client in clients:
         try:
-            scores = _calculate_scores_db(db, client["id"], firm_id)
+            lost: list = []
+            token = _lost_reads.set(lost)
+            try:
+                scores = _calculate_scores_db(db, client["id"], firm_id)
+            finally:
+                _lost_reads.reset(token)
+            if lost:
+                # Nothing is stored: the last good score stays, or the client stays "not yet scored", and the loss is counted.
+                raise _ScoreIncomplete(f"{len(lost)} read(s) lost, so no score was stored: {sorted(set(map(str, lost)))}")
             old_row = db.table("health_scores").select("overall_score").eq("client_id", client["id"]).eq("firm_id", firm_id).limit(1).execute().data
             if old_row:
                 scores["trend"] = f"{scores['overall_score'] - old_row[0]['overall_score']:+d}"
@@ -1267,10 +1296,32 @@ def recalculate_all(
             }).execute()
             updated += 1
         except Exception as exc:
-            capture_soft_failure(exc, operation="health.recalculate_all")
+            failed += 1
+            capture_soft_failure(exc, operation="health.recalculate_all", firm_id=firm_id, client_id=client.get("id"))
     if updated:
         _expire_what_was_cached_from_the_scores(firm_id)
-    return api_response(True, {"updated": updated})
+    return {"updated": updated, "failed": failed}
+
+
+@router.post("/recalculate-all")
+def recalculate_all(
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """Recalculate health scores for all clients in the firm — or, for an
+    assignment-scoped caller (rbac("client","write") admits Manager, who is
+    assignment-scoped under M3, not just Partner), every client they are
+    actually assigned to. M2 audit finding: this write previously touched
+    every client in the firm regardless of the caller's own assignment."""
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        return api_response(True, {"updated": 0, "failed": 0, "message": "No DB — mock mode"})
+
+    clients = clients_to_score(db, firm_id)
+    eff = effective_client_ids(current_user)
+    if eff is not None:
+        clients = [c for c in clients if str(c["id"]) in eff]
+    return api_response(True, recalculate_clients(db, firm_id, clients))
 
 
 @router.post("/scores/{client_id}/override")

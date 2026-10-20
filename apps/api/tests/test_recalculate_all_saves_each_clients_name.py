@@ -26,6 +26,12 @@ class _Query:
     def eq(self, *_a, **_k):
         return self
 
+    def is_(self, *_a, **_k):
+        return self
+
+    def neq(self, *_a, **_k):
+        return self
+
     def limit(self, *_a, **_k):
         return self
 

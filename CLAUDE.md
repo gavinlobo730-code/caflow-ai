@@ -120,7 +120,7 @@ The long per-area design write-ups were moved out of this file on 10 October 202
 They are verbatim in `docs/design-record/`. **Before changing an area, open its record file** and read the entries
 listed for it below; each headline is the rule in one line. Entries that stayed in this file are not listed.
 
-### `docs/design-record/ai.md` (11 entries): AI providers, the model gateway, redaction, budgets and what a model may and may not do
+### `docs/design-record/ai.md` (12 entries): AI providers, the model gateway, redaction, budgets and what a model may and may not do
 
 - A MODEL MAY WORD A COMPUTED FACT AND MAY NOT ADD TO IT, AND A SCREEN THAT CANNOT COMPUTE A FIGURE SAYS SO
 - EVERY MODEL CALL GOES THROUGH ONE DOOR PER PROVIDER, AND A READING IS A PROPOSAL, NOT A WRITE
@@ -133,6 +133,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A CA CORRECTS A STAGED NOTICE'S READING BEFORE APPROVING IT, BY THE RULE THAT CHECKED THE MODEL, AND THE MODEL'S OWN READING IS KEPT
 - A CLIENT'S HEALTH IS THE HEALTH ENGINE'S STORED SCORE, AND A CLIENT WITH NONE IS NOT YET SCORED, NEVER HEALTHY
 - CRITICAL AND AT RISK ARE THE HEALTH ENGINE'S VERDICT, STORED BESIDE THE SCORE, AND EVERY ROLL-UP ASKS IT AND DRAWS NO LINE OF ITS OWN
+- A CLIENT'S HEALTH IS RECALCULATED EVERY NIGHT BY THE FUNCTION THE BUTTON USES, AND THE FIRM FIGURE SAYS WHICH SCORES IT IS THE MEAN OF AND HOW OLD THE OLDEST IS
 
 ### `docs/design-record/annual-update-and-statutory-data.md` (4 entries): What changes every financial year and the statutory data a human must supply
 

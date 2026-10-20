@@ -284,6 +284,27 @@ def test_the_engines_stored_score_is_what_the_dashboard_counts(monkeypatch):
         ("A", "Health score 34 — Critical"), ("B", "Health score 45 — At Risk")]
 
 
+def test_the_firm_figure_says_which_scores_it_is_the_mean_of_and_how_old_the_oldest_is(monkeypatch):
+    """With one client of three scored the figure is that one client's score, and a score is a fact about the day it was calculated.
+    The day is the Indian one: 19:00 UTC on the 19th is already the 20th in India."""
+    svc, _ = _world(monkeypatch, clients=[{"id": f"c{i}", "client_name": n, "health_score": 100, "status": "active"}
+                                          for i, n in enumerate("ABC")])
+    monkeypatch.setattr(mod, "_get_health_repo", lambda: StoredScoresFrom([
+        {"id": "c0", "health_score": 40, "health_calculated_at": "2026-10-19T19:00:00+00:00"},
+        {"id": "c1", "health_score": 60, "health_calculated_at": "2026-10-18T05:00:00+00:00"}]))
+    out = _dash(svc)
+    assert out["firm_health_summary"]["overall_score"] == 50
+    assert out["firm_health_summary"]["overall_score_basis"] == {"scored": 2, "clients": 3, "oldest_calculated_on": "2026-10-18", "unreadable": False}
+
+
+def test_a_firm_nobody_has_scored_says_so_in_the_basis_too(monkeypatch):
+    svc, _ = _world(monkeypatch, clients=[{"id": "c1", "client_name": "A", "health_score": 100, "status": "active"}])
+    monkeypatch.setattr(mod, "_get_health_repo", lambda: StoredScoresFrom([]))
+    out = _dash(svc)
+    assert out["firm_health_summary"]["overall_score"] is None
+    assert out["firm_health_summary"]["overall_score_basis"] == {"scored": 0, "clients": 1, "oldest_calculated_on": None, "unreadable": False}
+
+
 def test_a_stored_score_that_cannot_be_read_leaves_every_client_unscored(monkeypatch):
     class _Broken:
         def find_all(self, **kw):

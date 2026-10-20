@@ -1673,8 +1673,8 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         # TDS reads the posted bills and the finalized payroll runs, and records their deposit and their statements.
         _tds(api, c, client_id, firm.financial_year, last_month, written)
         # LAST OF ALL for this client, because the health engine reads everything above (the returns, the obligations, the books, the
-        # documents). Nothing calculates a score until somebody asks (POST-A-282), and the dashboards say "not yet scored" for a client
-        # with none, so a firm seeded to be looked at would show every client unscored. It is THIS client's Calculate and not the
+        # documents). The nightly sweep calculates a score, but a firm seeded to be looked at is looked at before the first night, and
+        # the dashboards say "not yet scored" for a client with none. It is THIS client's Calculate and not the
         # firm's Recalculate: with `--add-to-existing` the latter would also overwrite the scores of clients this run did not write.
         _health_score(api, c, client_id, written)
 
