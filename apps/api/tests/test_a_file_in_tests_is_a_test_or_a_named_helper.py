@@ -68,6 +68,9 @@ HELPERS = {
     "_frontend_select_parser.py",
     "_schema_checked_db.py",
     "e2e_harness.py",
+    # A stand-in for the health engine's stored scores (`repositories/health_scores_repository`) for the tests whose fixture clients carry a
+    # `health_score`; five test files use it, so none of them grows its own copy.
+    "health_double.py",
     "generate_gst_parity_vectors.py",
     # PAY-21. Five guards read `inspect.getsource(routers.payroll.create_run)`
     # BY NAME to assert something about the payroll run's computation. Moving

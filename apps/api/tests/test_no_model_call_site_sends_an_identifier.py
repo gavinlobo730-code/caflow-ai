@@ -30,6 +30,7 @@ from domain.ai import groq_text
 from domain.ai.redaction import (
     GSTIN_PLACEHOLDER, PAN_PLACEHOLDER, contains_identifier, redact, redact_messages,
 )
+from tests.health_double import StoredScoresFrom
 
 # Well-formed, and deliberately not any real party's.
 GSTIN = "27AAAAA0000A1Z5"
@@ -176,6 +177,7 @@ def one_client(monkeypatch):
             return []
 
     monkeypatch.setattr(mod, "_get_client_repo", lambda: _Clients())
+    monkeypatch.setattr(mod, "_get_health_repo", lambda: StoredScoresFrom([CLIENT_ROW]))
     monkeypatch.setattr(mod, "_get_compliance_records_repo", lambda: _Compliance())
     return mod
 

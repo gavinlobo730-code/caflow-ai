@@ -6,7 +6,8 @@ THE WORD IS NOT WRITTEN. `compliance_records.status` is the stored workflow stat
 obligations on the seeded demo firm. Readers in seven backend modules still asked the stored word, so on the same firm the executive
 dashboard said `compliance_failures` 0, the client health score deducted nothing for any of them, the risk engine and the insight generator
 raised nothing, and the AI assistant was told "OVERDUE COMPLIANCE FILINGS: 0". The same firm, two answers. (The dashboard's firm health ring
-reads another column, `clients.health_score`, which nothing writes: that is a separate item on the ledger, POST-A-279.)
+used to read another column, `clients.health_score`, which nothing writes; it reads the health engine's stored score now,
+`domain/health/client_scores`.)
 
 THE RULE, the browser's with this table's own settled words. Not settled, and either somebody moved it to "Overdue" by hand or its due date is
 strictly BEFORE today: an obligation due today is not late until the day is out. Settled is "Filed" and "Completed" (the terminal step after

@@ -21,6 +21,7 @@ import json
 import pytest
 
 import domain.ai_copilot_service as mod
+from tests.health_double import StoredScoresFrom
 
 FIRM = "f1"
 MINE, THEIRS = "c-mine", "c-theirs"
@@ -87,6 +88,7 @@ def world(monkeypatch):
     repo = _Repo()
     svc = mod.ai_copilot_service
     monkeypatch.setattr(mod, "_get_client_repo", lambda: _Clients())
+    monkeypatch.setattr(mod, "_get_health_repo", lambda: StoredScoresFrom(_Clients().find_all()))
     monkeypatch.setattr(mod, "_get_task_repo", lambda: _Tasks())
     monkeypatch.setattr(mod, "_get_compliance_records_repo", lambda: _Compliance())
     monkeypatch.setattr(mod, "_get_workflow_repo", lambda: _Workflows())

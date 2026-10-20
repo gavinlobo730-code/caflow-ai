@@ -68,6 +68,7 @@ import pytest
 from tests import _marketing_claims as ledger
 from tests._marketing_copy import MARKETING, blank_class_names, blank_comments, sentences_in_source
 from tests._marketing_vocabulary import topics_of
+from tests.health_double import StoredScoresFrom
 
 API = Path(__file__).resolve().parents[1]
 REPO = API.parents[1]
@@ -631,6 +632,7 @@ def _copilot(monkeypatch):
 
     monkeypatch.setattr(mod, "_GROQ_API_KEY", "k")
     monkeypatch.setattr(mod, "_get_client_repo", lambda: _Clients())
+    monkeypatch.setattr(mod, "_get_health_repo", lambda: StoredScoresFrom(_Clients().find_all()))
     monkeypatch.setattr(mod, "_get_task_repo", lambda: _Tasks())
     monkeypatch.setattr(mod, "_get_compliance_records_repo", lambda: _Compliance())
     monkeypatch.setattr(mod, "_get_workflow_repo", lambda: _Workflows())

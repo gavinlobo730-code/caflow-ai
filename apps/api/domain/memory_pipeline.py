@@ -18,6 +18,10 @@ def _get_client_repo():
     from repositories.client_repository import client_repo
     return client_repo
 
+def _get_health_repo():
+    from repositories.health_scores_repository import health_scores_repo
+    return health_scores_repo
+
 def _get_task_repo():
     from repositories.task_repository import task_repo
     return task_repo
@@ -210,11 +214,20 @@ class MemoryPipeline:
         profile_data = {}
 
         try:
-            # Portfolio health
-            health_scores = [c.get("health_score", 75) for c in clients if c.get("health_score")]
-            avg_health = round(sum(health_scores) / len(health_scores), 1) if health_scores else 75.0
-            critical = len([c for c in clients if c.get("health_score", 100) < 40])
-            at_risk = len([c for c in clients if 40 <= c.get("health_score", 100) < 70])
+            # Portfolio health: the health engine's stored scores (`domain/health/client_scores`), and NONE, not 75, when no client
+            # has been scored. This read `clients.health_score`, a column nothing writes and that defaults to 100.
+            from domain.health.client_scores import attach
+            try:
+                score_rows = _get_health_repo().find_all(firm_id=firm_id)
+            except Exception:
+                # A read that fails leaves every client not yet scored, as it does for the dashboard and the assistant, and not a
+                # profile without the portfolio keys (a first profile would then keep the database's default of 75).
+                logger.warning("health scores could not be read; the firm profile counts no client as scored", exc_info=True)
+                score_rows = []
+            scored = [c["health_score"] for c in attach(clients, score_rows) if c["health_score"] is not None]
+            avg_health = round(sum(scored) / len(scored), 1) if scored else None
+            critical = len([s for s in scored if s < 40])
+            at_risk = len([s for s in scored if 40 <= s < 70])
 
             profile_data["portfolio_compliance_score"] = avg_health
             profile_data["common_risk_categories"] = ["gst_delay", "document_missing"] if critical > 0 else []
