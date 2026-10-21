@@ -409,6 +409,21 @@ def _render_merge_fields(content: str, fields: dict) -> str:
     return content
 
 
+def _numbering_db(request_db):
+    """The client the number sequence is read with: every letter of the firm in view, not the caller's.
+
+    The number is ONE sequence for the firm, under a unique index on (firm_id, engagement_number), and it is taken from
+    the newest letter. Read as a Manager assigned to some clients, that newest letter was the newest of THEIR clients'
+    letters, so once the database hides another client's letters (migration 529) the next number was one already used,
+    the insert failed on the index, and it failed every time: the Manager could not raise a letter again. The route has
+    authorised the caller and the client already, and what comes back is a number, so the read uses the privileged
+    client. Without one (mock mode, a test double) the caller's own client is the only one there is.
+    """
+    if not request_db:
+        return None
+    return db_provider.service_db_or_none() or request_db
+
+
 def _next_engagement_no(db, firm_id: str) -> str:
     """Generate sequential engagement number like EL-2026-0001."""
     year = ist_today().year
@@ -1123,7 +1138,7 @@ def create_engagement(
 
     now = datetime.now(timezone.utc).isoformat()
     engagement_id = str(uuid.uuid4())
-    engagement_number = _next_engagement_no(db, firm_id)
+    engagement_number = _next_engagement_no(_numbering_db(db), firm_id)
 
     # Resolve template content if template_id provided
     content = ""

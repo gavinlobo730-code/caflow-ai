@@ -394,7 +394,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS SCREEN ASKS THE SERVER WHAT BECAME OF A DEDUCTION, AND A CARD SHOWS A DASH UNTIL IT HAS A FIGURE FOR THE CLIENT IT IS ABOUT
 - THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE ORDER BY EVERY READER, AND THE SECTIONS AND THEIR NAMES ARE THE SERVER'S
 
-### `docs/design-record/tenancy-and-security.md` (46 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (47 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -442,6 +442,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE DATABASE ASKS THE BANKING TIER WHEN A CLIENT'S BANK LINES ARE READ, AND THE HEALTH SCORE AND THE GST RETURN READ THEM WITH THE SERVER'S ACCESS
 - EVERY CLIENT TABLE ASKS THE ASSIGNMENT SCOPE OR IS ON A SHRINK-ONLY LIST THAT SAYS WHY NOT, AND THE BANK'S CHILDREN TOOK IT FIRST
 - ELEVEN CLIENT TABLES ONLY THE API USES AND THREE THAT HANG FROM THEM TOOK THE ASSIGNMENT SCOPE, A ROW WITH NO CLIENT IS NOT THE PRACTICE'S, AND THE CATALOG RULE NOW FOLLOWS A CHILD TO ITS PARENT
+- THE ENGAGEMENT LETTERS TOOK THE ASSIGNMENT SCOPE, TWENTY TABLES THAT HANG FROM A CLIENT'S ROW NOW FOLLOW IT, AND A LETTER NUMBER IS THE FIRM'S AND IS READ WITH EVERY LETTER IN VIEW
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
@@ -1200,9 +1201,10 @@ PostgREST. That is why:
   loop that HAS NEVER RUN AGAIN. Six tables created since are read straight from the
   browser and had firm-wide access only until migration 370: `bank_accounts` (093),
   `debit_notes` (145), `purchase_credit_notes` / `sales_debit_notes` (210),
-  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). A further 12
-  are still in that state (the bank's splits, rules and matches were closed by migration 527 and eleven more tables by 528; the rest are
-  POST-A-299), and 18 tables with no client of their own that hang from a client table carry a bare firm policy (POST-A-302). The premise
+  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). A further 11
+  are still in that state (the bank's splits, rules and matches were closed by migration 527, eleven more tables by 528 and the engagement letters
+  by 529; the rest are POST-A-299), and the tables with no client of their own that hang from a client table follow their parent since 529
+  (the catalog's `children` list is empty and stays so). The premise
   they were left on, "nothing reaches them from the browser", is false: PostgREST answers for every granted table and
   the API runs as the caller. The durable half is the rule, asserted:
   `tests/test_a_table_the_browser_reads_is_assignment_scoped_pg.py` for the tables the browser reads and
