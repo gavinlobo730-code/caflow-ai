@@ -394,7 +394,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS SCREEN ASKS THE SERVER WHAT BECAME OF A DEDUCTION, AND A CARD SHOWS A DASH UNTIL IT HAS A FIGURE FOR THE CLIENT IT IS ABOUT
 - THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE ORDER BY EVERY READER, AND THE SECTIONS AND THEIR NAMES ARE THE SERVER'S
 
-### `docs/design-record/tenancy-and-security.md` (50 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (51 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -446,6 +446,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A GRANT OF ACCESS NAMES A MEMBER AND A CLIENT OF THE FIRM THAT WRITES IT, AND A GRANT THAT DOES NOT GRANTS NOTHING
 - THREE ROUTES ASKED A FIRM-LEVEL QUESTION AS THE CALLER AND ANSWERED FOR THEIR SLICE OF THE FIRM, AND A RUN-ALL WAS NOT CONFINED TO THE CALLER'S CLIENTS
 - A NUMBER THAT IS ONE LINE FOR THE WHOLE FIRM IS READ WITH THE WHOLE FIRM IN VIEW, AND WHICH SERIES THOSE ARE IS READ OFF THEIR UNIQUE KEY
+- THE STATUTORY IDENTITY, THE PAYROLL SETTINGS AND THE PT REGISTRATIONS TOOK THE ASSIGNMENT SCOPE, AND THERE WAS NO EMPLOYEE OR PORTAL BRANCH TO KEEP
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
@@ -1204,9 +1205,9 @@ PostgREST. That is why:
   loop that HAS NEVER RUN AGAIN. Six tables created since are read straight from the
   browser and had firm-wide access only until migration 370: `bank_accounts` (093),
   `debit_notes` (145), `purchase_credit_notes` / `sales_debit_notes` (210),
-  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). A further 11
-  are still in that state (the bank's splits, rules and matches were closed by migration 527, eleven more tables by 528 and the engagement letters
-  by 529; the rest are POST-A-299), and the tables with no client of their own that hang from a client table follow their parent since 529
+  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). A further 8
+  are still in that state (the bank's splits, rules and matches were closed by migration 527, eleven more tables by 528, the engagement letters
+  by 529 and the statutory identity, payroll settings and PT registrations by 531; the rest are POST-A-299), and the tables with no client of their own that hang from a client table follow their parent since 529
   (the catalog's `children` list is empty and stays so). The premise
   they were left on, "nothing reaches them from the browser", is false: PostgREST answers for every granted table and
   the API runs as the caller. The durable half is the rule, asserted:
