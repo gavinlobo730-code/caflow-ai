@@ -12,7 +12,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field, field_validator
 
-from core.authz import assert_client_access, filter_by_client
+from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from core.permissions import rbac
 from models.common import api_response
 from services import recurring_journal_service as svc
@@ -180,9 +180,25 @@ def generate_one(template_id: str = Path(...),
 def run_due(client_id: Optional[str] = Query(None),
             as_of: Optional[str] = Query(None, description="YYYY-MM-DD; defaults to today IST"),
             current_user: dict = Depends(rbac("accounting", "write"))):
-    """Generate drafts for every due template. Idempotent; never posts."""
+    """Generate drafts for every due template of the caller's clients. Idempotent; never posts.
+
+    With no `client_id` the run is confined to the clients the caller may reach, the way the recurring purchase bills
+    and the recurring invoices are: one call for a Partner (no restriction), one per assigned client for anyone else,
+    and an EMPTY set means nothing runs and never "no filter". Before POST-A-307 a Manager assigned to one client started
+    a draft for every client of the firm and the audit line named them (the service lists every active template of the
+    firm with the privileged client). Nothing is posted either way; whose drafts is the point."""
     if client_id:
         assert_client_access(current_user, client_id)
-    out = svc.run_due(current_user["firm_id"], client_id=client_id, as_of=as_of,
-                      actor_id=current_user.get("id"))
-    return api_response(True, out)
+        targets = [client_id]
+    else:
+        eff = effective_client_ids(current_user)
+        targets = [None] if eff is None else sorted(eff)
+
+    merged: dict = {"generated": [], "skipped": [], "failed": []}
+    for target in targets:
+        res = svc.run_due(current_user["firm_id"], client_id=target, as_of=as_of,
+                          actor_id=current_user.get("id"))
+        for key in merged:
+            merged[key].extend(res.get(key) or [])
+    merged.update({f"{k}_count": len(v) for k, v in list(merged.items())})
+    return api_response(True, merged)

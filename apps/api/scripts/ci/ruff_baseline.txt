@@ -301,7 +301,7 @@ routers/lifecycle.py :: B904 :: convert_lead :: 1
 routers/lifecycle.py :: C901 :: convert_lead :: 25
 routers/lifecycle.py :: F401 :: <module> :: 1
 routers/lifecycle.py :: F541 :: convert_lead :: 2
-routers/lifecycle.py :: PLR0915 :: convert_lead :: 100
+routers/lifecycle.py :: PLR0915 :: convert_lead :: 99
 routers/mca_workspace.py :: F841 :: create_company :: 1
 routers/mca_workspace.py :: F841 :: create_filing :: 1
 routers/mca_workspace.py :: F841 :: filing_history :: 1

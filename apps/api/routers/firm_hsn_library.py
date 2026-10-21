@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.firm_hsn_library import FirmHsnLibraryIn, FirmHsnLibraryUpdateIn
+from core import db_provider
 from core.list_window import split
 from core.permissions import rbac
 from domain.gst.goods_or_services import kind_word
@@ -411,6 +412,19 @@ _USAGE_CHECKS = [
 ]
 
 
+def _usage_db(request_db):
+    """The client the question "is this code still used?" is read with: every document of the FIRM, not the caller's.
+
+    Every table the check reads is assignment-scoped (the lines follow their documents: the invoices, credit notes and
+    bills since 084, the debit notes since 370, the recurring templates since 528), so read as a Manager assigned to some clients the check saw only THEIR clients'
+    documents and a code another client's invoice still used was reported unused and could be deleted. The line stores the
+    code as text, so nothing is orphaned; the guard exists to keep a used code visible for the audit trail, and a guard that
+    answers for part of the firm is not one. The route has asked `accounting:write` and the code is looked up under the
+    firm already, every query below carries the firm (directly or through the document it hangs from), and what comes back
+    is a list of labels, so the read uses the privileged client. Without one (a test double) the caller's own is all there is."""
+    return db_provider.service_db_or_none() or request_db
+
+
 def _find_hsn_usage(db, firm_id: str, hsn_code: str) -> list[str]:
     """Where a code is still referenced, checked by exact string match on
     hsn_sac — the only way to detect usage, since nothing joins back to
@@ -491,7 +505,7 @@ def purge_code(
                  .eq("id", library_id).eq("firm_id", firm_id).execute().data or [])
         if not owned:
             raise HTTPException(status_code=404, detail="Code not found in your library.")
-        used_in = _find_hsn_usage(db, firm_id, owned[0]["hsn_code"])
+        used_in = _find_hsn_usage(_usage_db(db), firm_id, owned[0]["hsn_code"])
         if used_in:
             return api_response(False, None, _blocked_message(used_in))
         db.table("firm_hsn_library").delete().eq("id", library_id).eq("firm_id", firm_id).execute()
@@ -542,7 +556,7 @@ def bulk_purge_codes(
         rows = (db.table("firm_hsn_library").select("id, hsn_code")
                 .eq("firm_id", firm_id).in_("id", ids).execute().data or [])
         for row in rows:
-            used_in = _find_hsn_usage(db, firm_id, row["hsn_code"])
+            used_in = _find_hsn_usage(_usage_db(db), firm_id, row["hsn_code"])
             if used_in:
                 blocked.append({"id": row["id"], "hsn_code": row["hsn_code"], "used_in": used_in})
                 continue
