@@ -126,6 +126,10 @@ def _next_proposal_no(db, firm_id: str) -> str:
     if not db:
         n = len(_MOCK_PROPOSALS) + 1
         return f"PROP-{year}-{n:04d}"
+    # The number is one line for the FIRM, so the newest proposal must be the firm's newest, not the newest of the clients the
+    # caller is assigned to (`proposals` is assignment-scoped); the caller has been authorised by the route, and what comes back
+    # is a number. Without a privileged client the caller's own is all there is.
+    db = db_provider.service_db_or_none() or db
     res = db.table("proposals").select("proposal_no").eq("firm_id", firm_id).order("created_at", desc=True).limit(1).execute()
     rows = res.data or []
     if rows:
