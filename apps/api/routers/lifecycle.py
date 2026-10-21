@@ -42,6 +42,21 @@ _MOCK_RENEWALS:  list[dict] = []
 _db = db_provider.request_db_or_none
 
 
+def _letters_db(request_db):
+    """The client a LEAD'S engagement letters are read with: every letter of the lead, not the caller's.
+
+    A lead's stage is worked out over its letters (the most advanced live one; the most recently signed one), and a
+    letter that names both the lead and a client the caller is not assigned to is hidden from the caller by the database
+    (migration 529), so the computation ran over part of the evidence: a signed letter was "not found" (a 409) or a stage
+    fell back further than it should. The route has authorised the caller already (the lead is looked up under the firm,
+    and a named client is checked with `assert_client_access`), and what comes back is a stage or a letter to link, so the
+    read uses the privileged client, narrowed by the lead and the firm as before. Without one (mock mode, a test double)
+    the caller's own client is the only one there is. The same reasoning as `engagement_letters._numbering_db`."""
+    if not request_db:
+        return None
+    return db_provider.service_db_or_none() or request_db
+
+
 # ── Client-assignment scope (M2) ──────────────────────────────────────────────
 # `core.authz` makes only the **Partner** firm-wide (`_FIRMWIDE_ROLES`); a
 # Manager, Executive or Reviewer sees only the clients in
@@ -242,6 +257,41 @@ def _stage_rank(stage: Optional[str]) -> int:
         return _PIPELINE_STAGE_ORDER.index(stage)  # type: ignore[arg-type]
     except (ValueError, TypeError):
         return -1
+
+
+def _signed_letters_of_lead(db, lead_id: str, firm_id: str) -> list[dict]:
+    """Every SIGNED engagement letter of a lead, read with `_letters_db` (see there): the signed letter is the mandate
+    a conversion rests on, and a letter that also names a client the caller cannot see is still the lead's letter."""
+    return (
+        _letters_db(db).table("engagements")
+        .select("id, fee_amount_paise, template_id, title, start_date, "
+                "engagement_number, signed_at, created_at")
+        .eq("lead_id", lead_id)
+        .eq("firm_id", firm_id)
+        .eq("status", "Signed")
+        .execute()
+        .data
+    ) or []
+
+
+def _link_signed_letter(db, letter_id: str, client_id: str, firm_id: str, now: str) -> Optional[str]:
+    """Stamp the signed letter with the client just made (H16), as the CALLER, and say so when it did not take.
+
+    The letter was READ with the privileged client, so it can be one the caller's own sign-in cannot see (it names a
+    client they are not assigned to). The write is deliberately not widened to match: the database then answers an
+    update of a row it hides with an empty result and no error, so nothing is raised, and a conversion used to go on
+    as though the letter were linked. The sentence is the refusal. Returns the warning, or None when the letter was linked."""
+    try:
+        done = db.table("engagements").update({
+            "client_id": client_id,
+            "updated_at": now,
+        }).eq("id", letter_id).eq("firm_id", firm_id).execute()
+    except Exception as e:
+        return f"Client created, but linking the signed engagement to it failed: {e}"
+    if not (getattr(done, "data", None) or []):
+        return ("Client created, but the signed engagement letter was not linked to it: the letter belongs to a client "
+                "you are not assigned to, so ask a Partner to link it.")
+    return None
 
 
 def _pick_signed_engagement(rows: list[dict]) -> Optional[dict]:
@@ -502,7 +552,7 @@ def revert_lead_after_engagement_closed(
             if old_stage not in _ENGAGEMENT_PHASE_STAGES:
                 return False
             eng_rows = (
-                db.table("engagements").select("status, is_deleted")
+                _letters_db(db).table("engagements").select("status, is_deleted")
                 .eq("lead_id", lead_id).eq("firm_id", firm_id)
                 .execute().data
             ) or []
@@ -958,16 +1008,7 @@ def convert_lead(
     # CGST Act Section 31 — service must be preceded by a documented engagement.
     # Objective 5: more than one signed letter can exist (revised terms); select the
     # most recently signed as the authoritative mandate rather than an arbitrary row.
-    signed_engagements = (
-        db.table("engagements")
-        .select("id, fee_amount_paise, template_id, title, start_date, "
-                "engagement_number, signed_at, created_at")
-        .eq("lead_id", lead_id)
-        .eq("firm_id", current_user["firm_id"])
-        .eq("status", "Signed")
-        .execute()
-        .data
-    ) or []
+    signed_engagements = _signed_letters_of_lead(db, lead_id, current_user["firm_id"])
     chosen_engagement = _pick_signed_engagement(signed_engagements)
     if not chosen_engagement:
         raise HTTPException(
@@ -1064,13 +1105,9 @@ def convert_lead(
 
     # H16: stamp the signed engagement with the resulting client so it is no longer
     # lead-only — keeps the engagement from being orphaned. Reported, not silent.
-    try:
-        db.table("engagements").update({
-            "client_id": client_id,
-            "updated_at": now,
-        }).eq("id", signed_engagement_id).eq("firm_id", firm_id).execute()
-    except Exception as e:
-        warnings.append(f"Client created, but linking the signed engagement to it failed: {e}")
+    link_warning = _link_signed_letter(db, signed_engagement_id, client_id, firm_id, now)
+    if link_warning:
+        warnings.append(link_warning)
 
     # Objective 4: populate the fee engagement from the SIGNED letter instead of a
     # meaningless "General"/₹0 placeholder. The letter carries the fee and (via its

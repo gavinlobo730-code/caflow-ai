@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.service_catalogue import ServiceCatalogueIn, ServiceCatalogueUpdateIn
+from core import db_provider
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from core.ist_clock import ist_today
@@ -825,6 +826,17 @@ _SERVICE_USAGE_CHECKS = [
 ]
 
 
+def _usage_db(request_db):
+    """The client the question "is this service still used?" is read with: every document of the FIRM, not the caller's.
+
+    The lines and documents it reads are assignment-scoped, so read as a Manager assigned to some clients the check saw
+    only THEIR clients' documents and a service another client's invoice still used was reported unused. The route has asked
+    `accounting:write` and has looked the service up under the firm (`owned`), the lines are found by that service's id,
+    and what comes back is a list of labels, so the read uses the privileged client. Without one (a test double) the
+    caller's own is all there is. The same reasoning as `firm_hsn_library._usage_db`."""
+    return db_provider.service_db_or_none() or request_db
+
+
 def _find_service_usage(db, service_id: str) -> list[str]:
     """Two-step per document type (fetch linked lines, then their parents'
     status) rather than a single embedded-join query — PostgREST supports
@@ -961,7 +973,7 @@ def delete_service(
                  .eq("id", service_id).eq("firm_id", firm_id).execute().data or [])
         if not owned:
             raise HTTPException(status_code=404, detail="Service not found.")
-        used_in = _find_service_usage(db, service_id)
+        used_in = _find_service_usage(_usage_db(db), service_id)
         if used_in:
             return api_response(False, None, _service_blocked_message(used_in))
         db.table("service_catalogue").delete().eq("id", service_id).eq("firm_id", firm_id).execute()
