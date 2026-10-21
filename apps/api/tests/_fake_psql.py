@@ -13,6 +13,8 @@ WHY IT EXISTS
 WHAT IT MODELS, AND ONLY THIS
     * the tracking tables (`schema_migrations`, `schema_migration_failures`) as a
       JSON file, so a second run sees what the first run recorded;
+    * a statement `RAISE_WARNING '<text>';` as a `WARNING:  <text>` line on stderr of a call that succeeds,
+      the way psql prints what a migration's `RAISE WARNING` said;
     * a migration's EFFECT as the statements before a line reading `FAIL_HERE;`
       that were COMMITTED: all of them when the call carried no transaction, none
       when it carried `--single-transaction` or the file opened its own BEGIN
@@ -71,10 +73,13 @@ if stdin:
     statements = [s.strip() for s in stdin.split(";") if s.strip()]
     own_txn = any(s.upper().startswith(("BEGIN", "START TRANSACTION")) for s in statements)
     effects = []
+    warnings = []
     for s in statements:
         if s.startswith("INSERT INTO schema_migrations"):
             m = re.search(r"VALUES \('([^']*)', '([^']*)'", s)
             effects.append(("tracked", m.group(1), m.group(2)))
+        elif s.startswith("RAISE_WARNING "):
+            warnings.append(s[len("RAISE_WARNING "):].strip().strip("'"))
         elif s == "FAIL_HERE":
             if not (wrapped or own_txn):
                 for e in effects:
@@ -90,6 +95,8 @@ if stdin:
             state["committed"].append(e[1])
         else:
             state["applied"][e[1]] = e[2]
+    for w in warnings:
+        sys.stderr.write("psql:<stdin>:2: WARNING:  " + w + "\n")
     save()
     sys.exit(0)
 

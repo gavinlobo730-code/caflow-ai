@@ -78,7 +78,7 @@ def is_assigned(firm_id: str, user_id: Optional[str], client_id: Optional[str]) 
     # M2: delegate to the central authorization engine — single source of truth
     # for client-assignment (no duplicated query logic).
     from core.authz import is_client_assigned
-    return is_client_assigned(user_id, client_id)
+    return is_client_assigned(user_id, client_id, firm_id)
 
 
 def _assert_client_access(current_user: dict, client_id: str, *, write: bool = False,

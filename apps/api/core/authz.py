@@ -79,22 +79,32 @@ def assigned_client_ids(user: dict) -> set[str]:
     should use effective_client_ids/can_access_client which apply the dev
     permissive rule)."""
     uid = user.get("id")
-    if _USE_MOCK or not uid:
+    firm_id = user.get("firm_id")
+    if _USE_MOCK or not uid or not firm_id:
+        # A member who cannot be placed in a firm has no assignment to vouch for. Every signed-in member carries a firm; an
+        # unfiltered read here would count a row another firm wrote, so the absence of the firm is an empty set and never
+        # "no filter" (migration 530).
         return set()
+    # Only a row WRITTEN IN THE MEMBER'S OWN FIRM counts (migration 530): `users.id` is a global key and this read bypasses
+    # row security, so a row a Partner of another firm planted for this member must not grant a client of this one.
     res = (
         _db().table("user_client_assignments")
         .select("client_id")
         .eq("user_id", uid)
+        .eq("firm_id", firm_id)
         .execute()
     )
     return {str(r["client_id"]) for r in (res.data or []) if r.get("client_id")}
 
 
-def is_client_assigned(user_id: Optional[str], client_id: Optional[str]) -> bool:
+def is_client_assigned(user_id: Optional[str], client_id: Optional[str], firm_id: Optional[str]) -> bool:
     """Low-level check: is this (internal) user id assigned to this client?
     Canonical assignment primitive — other modules (e.g. knowledge_service)
-    delegate here rather than re-implementing the query. Mock/dev permissive."""
-    if not user_id or not client_id:
+    delegate here rather than re-implementing the query. Mock/dev permissive.
+
+    `firm_id` is the member's firm and has no default: a row written in another firm does not count (migration 530), and a
+    caller that cannot name the firm is told no, never answered from every firm."""
+    if not user_id or not client_id or not firm_id:
         return False
     if _USE_MOCK:
         return True
@@ -103,6 +113,7 @@ def is_client_assigned(user_id: Optional[str], client_id: Optional[str]) -> bool
         .select("id")
         .eq("user_id", user_id)
         .eq("client_id", client_id)
+        .eq("firm_id", firm_id)
         .limit(1)
         .execute()
     )

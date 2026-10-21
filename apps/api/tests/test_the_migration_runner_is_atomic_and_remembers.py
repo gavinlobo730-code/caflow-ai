@@ -347,6 +347,51 @@ def test_a_dry_run_says_how_each_file_would_run(env, tmp_path):
     assert sorted(report.not_atomic) == ["901_own.sql", "902_marked.sql"]
 
 
+# ── what a migration can say about itself (migration 530's count of the rows it leaves alone) ──────────────────────
+# psql runs with client_min_messages=warning and a clean run's stderr is discarded, so migration 530's `RAISE NOTICE`
+# never reached the production apply log although its header, its design-record entry and a ledger line said it did.
+
+SAYS = "CREATE TABLE a (id int);\nRAISE_WARNING 'migration 900: 3 rows name another firm and are left alone';\n"
+
+
+def test_a_migration_that_warns_with_its_number_is_heard(env, tmp_path):
+    d = _dir(tmp_path, {"900_says.sql": SAYS})
+    report = am.run(None, migrations_dir=d)
+    assert report.ok and report.messages == {"900_says.sql": ["migration 900: 3 rows name another firm and are left alone"]}
+
+
+def test_a_warning_postgres_raises_on_its_own_is_not_a_message(env, tmp_path):
+    d = _dir(tmp_path, {"900_noise.sql": "CREATE TABLE a (id int);\nRAISE_WARNING 'there is already a transaction in progress';\n"})
+    report = am.run(None, migrations_dir=d)
+    assert report.ok and report.messages == {}, "only a line that opens with 'migration <number>:' is the migration speaking"
+
+
+def test_a_migration_with_nothing_to_say_adds_nothing(env, tmp_path):
+    d = _dir(tmp_path, {"900_quiet.sql": "CREATE TABLE a (id int);\n"})
+    assert am.run(None, migrations_dir=d).messages == {}
+
+
+def test_a_failed_migration_reports_no_message(env, tmp_path):
+    d = _dir(tmp_path, {"900_bad.sql": "RAISE_WARNING 'migration 900: 1 row';\nFAIL_HERE;\n"})
+    report = am.run(None, migrations_dir=d, continue_on_error=True)
+    assert not report.ok and report.messages == {}
+
+
+def test_the_message_is_in_the_json_the_text_report_and_the_actions_annotation(env, tmp_path, monkeypatch, capsys):
+    d = _dir(tmp_path, {"900_says.sql": SAYS})
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    assert am.main(["--migrations-dir", str(d), "--json"]) == 0
+    out = capsys.readouterr()
+    assert json.loads(out.out)["messages"] == {"900_says.sql": ["migration 900: 3 rows name another firm and are left alone"]}
+    assert "::notice title=Migration message::900_says.sql: migration 900: 3 rows name another firm and are left alone" in out.err
+    assert "::notice" not in out.out, "stdout is the JSON document and nothing else"
+
+    (d / "901_says.sql").write_text(SAYS.replace("900", "901"))
+    monkeypatch.delenv("GITHUB_ACTIONS")
+    assert am.main(["--migrations-dir", str(d)]) == 0
+    assert "NOTE 901_says.sql: migration 901: 3 rows" in capsys.readouterr().out
+
+
 def test_the_annotation_text_cannot_end_the_command_early():
     assert "\n" not in am._annotation_text("a\nb\r%")
     assert am._annotation_text("100%") == "100%25"

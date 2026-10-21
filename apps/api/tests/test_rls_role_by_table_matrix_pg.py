@@ -450,6 +450,16 @@ SEED_VALUES: dict[tuple[str, str], dict] = {
     ("payroll_runs", "X"): {"status": "finalized"},
     # fx_rates' policies read `source`
     ("fx_rates", "A"): {"source": "manual"},
+    # a grant of access names a member of the row's own firm (migration 530 asks it of every write), and a foreign key to
+    # `users` is left empty by `_parent_pk`: without a member the copy an insert probe tries would be refused for naming
+    # nobody, and the cell would stop measuring the role. The suspended Partner is a member of firm one that the database
+    # treats as nobody, so seeding the grant on them changes what no actor can reach; firm two's own Partner is firm two's.
+    ("user_client_assignments", "A"): {"user_id": USER_ID["suspended"]},
+    ("user_client_assignments", "B"): {"user_id": USER_ID["suspended"]},
+    ("user_client_assignments", "X"): {"user_id": USER_ID["other"]},
+    ("user_permissions", "A"): {"user_id": USER_ID["suspended"]},
+    ("user_permissions", "B"): {"user_id": USER_ID["suspended"]},
+    ("user_permissions", "X"): {"user_id": USER_ID["other"]},
     # a match names TWO clients and no foreign key says which: both are the row's own
     ("cross_client_matches", "A"): {"client_id_a": CLIENT_A, "client_id_b": CLIENT_A},
     ("cross_client_matches", "B"): {"client_id_a": CLIENT_B, "client_id_b": CLIENT_B},
