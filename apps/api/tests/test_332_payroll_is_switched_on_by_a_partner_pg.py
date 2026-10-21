@@ -102,6 +102,10 @@ def db(pg_template):
             _client(CLI_NONE, "Has neither"),
             f"INSERT INTO users (id, firm_id, auth_user_id, email, full_name, role) "
             f"VALUES ('{MANAGER}','{FIRM}','{MANAGER}','mgr332@t.in','Mgr','Manager');",
+            # The Manager is assigned to the client under test: since migration 531 the table asks the client's assignment scope,
+            # and this module measures the column grants, not the scope (test_the_statutory_identity_and_the_two_payroll_settings_
+            # tables_take_the_clients_assignment_scope_pg measures that).
+            f"INSERT INTO user_client_assignments (firm_id, user_id, client_id) VALUES ('{FIRM}','{MANAGER}','{CLI_NONE}');",
             f"INSERT INTO payroll_employees (id, firm_id, client_id, name) VALUES "
             f"(gen_random_uuid(),'{FIRM}','{CLI_EMP}','Asha');",
             f"INSERT INTO payroll_runs (id, firm_id, client_id, month, status) VALUES "
