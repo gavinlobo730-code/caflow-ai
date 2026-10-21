@@ -445,7 +445,12 @@ def convert(db, firm_id: str, client_id: str, cheque_id: str, *, presented_on=No
     the same engines the same client. Handing the engine the privileged one would
     quietly take that defence in depth off every converted cheque. None means "the
     same client", which is what the tests and a deployment without per-user JWTs
-    have."""
+    have.
+
+    ONE READ IS THE EXCEPTION AND IT RETURNS A NUMBER, NOT A ROW: an issued cheque's vendor payment takes the next
+    firm-wide `VPMT-` number, and `services.numbering` reads that series with the privileged client whatever the engine was
+    handed (a member assigned to some clients would otherwise be given a number another client's payment already holds).
+    Every write the engine makes stays on `engine_db`."""
     today = today or ist_today()
     engine_db = engine_db if engine_db is not None else db
     row = _get(db, firm_id, client_id, cheque_id)

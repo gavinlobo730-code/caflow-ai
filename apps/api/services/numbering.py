@@ -50,8 +50,10 @@ def draft_placeholder_invoice_no() -> str:
     return f"{PLACEHOLDER_INVOICE_NO_PREFIX}{uuid.uuid4().hex[:10].upper()}"
 
 
-#: Every auto-numbered document series in the product: table -> (number column,
-#: the columns its UNIQUE constraint covers besides the number itself).
+#: Every series `next_sequence` reads back: table -> (number column, the columns its UNIQUE
+#: constraint covers besides the number itself). (Other numbers are found elsewhere: the sales
+#: invoice and the reverse-charge document by their own series modules, per client; the fee
+#: invoice by a database counter; the engagement letter and the proposal firm-wide.)
 #:
 #: The scope is not decoration. A sequence computed over a NARROWER scope than
 #: the constraint hands the same number to two rows the database will not accept
@@ -120,12 +122,37 @@ def sequence_after(existing, prefix: str) -> int:
     return highest + 1
 
 
+def is_firm_wide(table: str) -> bool:
+    """True for a series whose UNIQUE scope does not include the client: one number line for the whole firm."""
+    return "client_id" not in NUMBER_SERIES[table][1]
+
+
+def _firm_wide_db(request_db):
+    """The client a FIRM-WIDE series is read with: every row of the firm, not the caller's.
+
+    A series numbered per (firm, client) is read by someone who has that client's access, so their own view of it is the
+    whole series. A series numbered for the FIRM (the vendor payment, today) is not: the table is assignment-scoped, so a
+    Manager assigned to client A reads only A's payments (and none of the practice's own internal client, which only a
+    Partner reads), the newest they can see is not the newest of the firm, and the next number can be one another client's
+    payment already holds. The insert then fails on the firm-wide unique key and
+    fails again on every retry, because their own maximum never passes the hidden numbers (the letter number of migration
+    529 again). The read returns a number and nothing else, the scope carries the firm, and the caller has been
+    authorised by the route, so it uses the privileged client. Without one (mock mode, a test double) the caller's own is
+    all there is."""
+    if not request_db:
+        return request_db
+    from core import db_provider
+    return db_provider.service_db_or_none() or request_db
+
+
 def next_sequence(db, table: str, prefix: str, **scope) -> int:
     """Read back the highest number in `table`'s series and return the next one.
 
     `scope` must name exactly the columns NUMBER_SERIES records for the table —
     the ones its UNIQUE constraint covers. Passing fewer produces numbers the
     database will reject; passing more silently narrows the series.
+
+    A series that is numbered for the whole firm is read with `_firm_wide_db`, whatever client the caller passed.
 
     A read that fails RAISES. The previous `except Exception: return 1` turned a
     transient PostgREST failure into the number 1, which is either a collision
@@ -137,6 +164,8 @@ def next_sequence(db, table: str, prefix: str, **scope) -> int:
         raise ValueError(
             f"{table} is numbered per {expected}; got {tuple(sorted(scope))}. "
             "The sequence scope must match the UNIQUE constraint exactly.")
+    if is_firm_wide(table):
+        db = _firm_wide_db(db)
     query = db.table(table).select(number_field)
     for column, value in scope.items():
         query = query.eq(column, value)

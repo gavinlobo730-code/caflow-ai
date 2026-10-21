@@ -24,6 +24,7 @@ from services.audit_service import log_event
 from core.authz import assert_client_access, filter_by_client
 from core.observability import capture_soft_failure, capture_posting_failure
 from core.list_window import MAX_LIST_LIMIT, split
+from core.db_paging import fetch_all
 
 _logger = logging.getLogger("caflow.banking")
 
@@ -104,8 +105,9 @@ router = APIRouter(prefix="/api/banking", tags=["banking"], dependencies=[Depend
 
 
 _db = db_provider.request_db_or_none
-# The delete check's payroll probe only (see `_delete_blockers`): the caller's own sign-in cannot see payroll rows
-# unless they hold payroll:read, and a probe that cannot see the answer must not say "nothing there".
+# Two reads that must see the whole firm and return a fact, never a row: the delete check's payroll probe (see
+# `_delete_blockers`: the caller's own sign-in cannot see payroll rows unless they hold payroll:read, and a probe that cannot
+# see the answer must not say "nothing there") and the next free bank-account ledger code (`_next_bank_account_code`).
 _service_db = db_provider.service_db_or_none
 
 
@@ -229,9 +231,17 @@ def _next_bank_account_code(db, firm_id: str) -> str:
 
     Scanned across the WHOLE firm, not one client: chart_of_accounts is unique on
     (firm_id, account_code), so a code already used by another client — or by the
-    shared client_id IS NULL chart — is not available here either."""
-    rows = (db.table("chart_of_accounts").select("account_code")
-            .eq("firm_id", firm_id).execute().data or [])
+    shared client_id IS NULL chart — is not available here either.
+
+    And so it is read with a client that SEES the whole firm, whatever it is handed: `chart_of_accounts` is
+    assignment-scoped (and its rows of the practice's own internal client are hidden from everyone but a Partner), so read as
+    the caller a member assigned to some clients saw only their clients' ledgers and the firm-level ones, proposed a code
+    another client's ledger already held, and every retry of `_ensure_bank_ledger` proposed the same one. The caller has been
+    authorised by the route and what comes back is a code; the INSERT of the ledger stays on the caller's own client. Without
+    a privileged client (mock mode, a test double) the one it was handed is all there is. Read in keyset pages, because
+    PostgREST cuts a response at about a thousand rows without saying so and a code missed there is a code proposed twice."""
+    rows = fetch_all(lambda: (_service_db() or db).table("chart_of_accounts").select("id, account_code")
+                     .eq("firm_id", firm_id), key="id", label="bank account codes")
     used = set()
     for r in rows:
         code = str(r.get("account_code") or "").strip()
