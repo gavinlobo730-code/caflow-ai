@@ -73,6 +73,15 @@ The scanner reads the file the way the server does — comments, string literals
 mistaken for transaction control. `python scripts/db/apply_migrations.py --dry-run --json`
 shows how each pending file would run before you merge.
 
+**A migration can say something to whoever reads the run.** psql runs with
+`client_min_messages=warning` and a clean run's output is discarded, so a `RAISE NOTICE` in
+a migration is never seen. A migration that has a fact to report (migration 530 counts the
+access rows that name a member or a client of another firm than their own, and deletes
+none) writes `RAISE WARNING 'migration NNN: ...'`. The runner keeps those lines and only
+those (Postgres's own warnings are not), and shows them as `messages` in `--json`, as a
+`NOTE` line in the text report, and as a notice annotation on the run's summary page under
+Actions.
+
 **A failure is remembered, and a remembered failure keeps the run red.** A file that fails
 is recorded in `schema_migration_failures` at its checksum and is not attempted again. The
 next run skips it, still applies what else is pending, and **exits non-zero** with an error

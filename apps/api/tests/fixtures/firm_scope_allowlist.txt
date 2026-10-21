@@ -12,9 +12,7 @@
 # `token=`, `signature=`, `symbol=`, `via=`).
 #
 # Sorted by (file, function, table, operation).
-core/auth.py | _get_user_and_firm | call:_permission_overrides | read | 1 | principal-lookup
 core/auth.py | _get_user_and_firm | users | read | 1 | principal-lookup
-core/auth.py | _permission_overrides | user_permissions | read | 1 | principal-lookup
 core/auth.py | get_current_user | call:_get_user_and_firm | read | 1 | principal-lookup
 core/portal_auth.py | get_current_portal_client | call:list_portal_memberships | read | 1 | principal-lookup
 core/portal_auth.py | get_current_portal_employee | payroll_employees | read | 1 | principal-lookup
@@ -35,7 +33,6 @@ jobs/scheduler.py | run_due_schedules | repo:workflow_repo.list_schedules_due | 
 repositories/ai_copilot_repository.py | AICopilotRepository.list_messages | ai_messages | read | 1 | repository-contract
 repositories/ai_insights_repository.py | AIInsightsRepository.create | ai_insights | insert | 1 | repository-contract
 repositories/approval_repository.py | ApprovalRepository.create | approval_requests | insert | 1 | repository-contract
-repositories/assignment_repository.py | AssignmentRepository.create | user_client_assignments | read | 1 | repository-contract
 repositories/assignment_rule_repository.py | AssignmentRuleRepository.create | assignment_rules | insert | 1 | repository-contract
 repositories/assignment_rule_repository.py | AssignmentRuleRepository.delete | assignment_rules | delete | 1 | repository-contract
 repositories/assignment_rule_repository.py | AssignmentRuleRepository.delete_by_recurring_config | assignment_rules | delete | 1 | repository-contract

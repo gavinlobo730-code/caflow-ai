@@ -32,7 +32,7 @@ _USER_LOOKUP_CACHE_TTL_SECONDS = 30
 _user_lookup_cache: dict[str, tuple[float, dict, Optional[dict]]] = {}
 
 
-def _permission_overrides(supabase, user_id) -> dict:
+def _permission_overrides(supabase, user_id, firm_id) -> dict:
     """This person's per-person access overrides (migration 403), keyed
     ``"resource:action"`` -> bool.
 
@@ -51,13 +51,17 @@ def _permission_overrides(supabase, user_id) -> dict:
     failing to the role is precisely the behaviour this firm had before anybody
     ticked a box. It is logged, not swallowed.
     """
-    if not user_id:
+    if not user_id or not firm_id:
+        # No firm to read the member's rows in means no override, which is the role: never the rows of every firm.
         return {}
     try:
+        # Only a row WRITTEN IN THE MEMBER'S OWN FIRM counts (migration 530): the read bypasses row security and `users.id`
+        # is a global key, so a row a Partner of another firm wrote for this member is not their answer.
         rows = (
             supabase.table("user_permissions")
             .select("resource, action, granted")
             .eq("user_id", user_id)
+            .eq("firm_id", firm_id)
             .execute()
         ).data or []
     except Exception:
@@ -179,7 +183,7 @@ def _get_user_and_firm(supabase, auth_user_id: str) -> tuple[Optional[dict], Opt
     # overrides", i.e. silently back to role-only access with nothing to see.
     user_data = {
         **user_data,
-        "permission_overrides": _permission_overrides(supabase, user_data.get("id")),
+        "permission_overrides": _permission_overrides(supabase, user_data.get("id"), user_data.get("firm_id")),
     }
     _user_lookup_cache[auth_user_id] = (time.monotonic(), user_data, firm_row)
     return user_data, firm_row

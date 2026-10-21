@@ -46,6 +46,15 @@ ATOMICITY
     Which of the four applied to a file is reported (`not_atomic` in --json), so
     "ran without a wrapper" is a thing a person can see rather than assume.
 
+What a migration can say about itself
+-------------------------------------
+    psql runs with client_min_messages=warning and a clean run's stderr is thrown away,
+    so a `RAISE NOTICE` in a migration reaches nobody. A migration that has a fact to
+    put in front of the person reading the run (how many rows it found and left alone)
+    writes `RAISE WARNING 'migration NNN: ...'`: the runner keeps those lines, and only
+    those, in the report (`messages` in --json, a `NOTE` line in the text report, a
+    notice annotation under Actions).
+
 Usage
 -----
     python scripts/db/apply_migrations.py --dsn "postgresql://user@host:5432/db" \
@@ -323,6 +332,12 @@ class RunReport:
     # Migrations this run APPLIED without a wrapping transaction, and the reason.
     # An applied file that is not here ran atomically.
     not_atomic: dict[str, str] = field(default_factory=dict)
+    # What an APPLIED migration said about itself with `RAISE WARNING 'migration NNN: ...'`: the one way a migration
+    # can put a fact (how many rows it found that it deliberately left alone) in front of the person reading the
+    # run. psql runs with client_min_messages=warning, so a NOTICE never arrives, and a clean run's stderr is
+    # otherwise discarded. Keyed by file name; only lines that open with "migration <number>:" are kept, so the
+    # warnings Postgres raises on its own never reach this report.
+    messages: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def unresolved_failures(self) -> list[str]:
@@ -607,10 +622,26 @@ def run(
         if mig.name in previously_failed:
             _clear_failure(dsn, mig.name)
         report.applied.append(mig.name)
+        said = migration_messages(r.stderr)
+        if said:
+            report.messages[mig.name] = said
         if not plan.wrap:
             report.not_atomic[mig.name] = plan.reason
 
     return report
+
+
+_MIGRATION_MESSAGE = re.compile(r"WARNING:\s+(migration \d+:.*)$")
+
+
+def migration_messages(stderr: str) -> list[str]:
+    """The `RAISE WARNING 'migration NNN: ...'` lines of a successful run's stderr, without psql's prefix."""
+    found = []
+    for line in stderr.splitlines():
+        m = _MIGRATION_MESSAGE.search(line.strip())
+        if m:
+            found.append(m.group(1).strip())
+    return found
 
 
 def _first_error(stderr: str) -> str:
@@ -658,6 +689,7 @@ def main(argv: list[str] | None = None) -> int:
             "failed": report.failed,
             "duplicate_numbers": report.duplicate_numbers,
             "not_atomic": report.not_atomic,
+            "messages": report.messages,
             "ok": report.ok,
         }, indent=2))
     else:
@@ -671,13 +703,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  FAIL {f['file']}: {f['error']}")
         for name in report.unresolved_failures:
             print(f"  FAILED EARLIER, STILL UNAPPLIED {name}")
+        for name, said in report.messages.items():
+            for line in said:
+                print(f"  NOTE {name}: {line}")
 
     annotate(report)
     return 0 if report.ok else 1
 
 
 def annotate(report: RunReport, stream=None) -> None:
-    """One GitHub error annotation per failure and per remembered failure.
+    """One GitHub error annotation per failure and per remembered failure, and one notice per message a
+    migration said about itself (`RAISE WARNING 'migration NNN: ...'`).
 
     The job log of a run that exits 1 says so in a red line at the bottom; an
     annotation puts the FILE NAME on the run's summary page, where the person
@@ -689,6 +725,9 @@ def annotate(report: RunReport, stream=None) -> None:
     if os.environ.get("GITHUB_ACTIONS") != "true":
         return
     stream = stream or sys.stderr
+    for name, said in report.messages.items():
+        for line in said:
+            print("::notice title=Migration message::" + _annotation_text(f"{name}: {line}"), file=stream)
     for f in report.failed:
         print("::error title=Migration failed::"
               + _annotation_text(f"{f['file']}: {f['error']}"), file=stream)

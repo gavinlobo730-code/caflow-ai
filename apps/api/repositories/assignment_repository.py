@@ -31,8 +31,10 @@ class AssignmentRepository:
             _MOCK_ASSIGNMENTS.append(row)
             return row
 
+        # In the caller's firm only (migration 530): a row of another firm for the same pair is not this assignment, and
+        # reporting it back as "already linked" would tell a Partner it worked while their own firm's list shows nothing.
         existing = (_db().table("user_client_assignments").select("*")
-                    .eq("user_id", user_id).eq("client_id", client_id).limit(1).execute())
+                    .eq("firm_id", firm_id).eq("user_id", user_id).eq("client_id", client_id).limit(1).execute())
         if existing.data:
             return existing.data[0]
         res = (_db().table("user_client_assignments")
