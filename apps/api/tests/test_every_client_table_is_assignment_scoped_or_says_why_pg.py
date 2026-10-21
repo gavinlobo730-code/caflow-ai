@@ -10,10 +10,10 @@ WHY THIS EXISTS
     USE_USER_JWT is on, which is the production default. So a Manager assigned to no client could read and change another
     client's rows in those tables with their own sign-in.
 
-    Migration 527 closed the bank's children and 528 eleven more tables and five children. This test is the ratchet for
-    the rest: the list in `tests/fixtures/assignment_scope_exceptions.json` is exactly the tables that still carry no
-    RESTRICTIVE policy asking `my_assigned_client_ids()` / `can_access_client`, with the reason each is not done, and it can
-    only shrink.
+    Migration 527 closed the bank's children, 528 eleven more tables and five children, and 529 the engagement letters and
+    twenty children (the `children` list is empty now). This test is the ratchet for the rest: the list in
+    `tests/fixtures/assignment_scope_exceptions.json` is exactly the tables that still carry no RESTRICTIVE policy asking
+    `my_assigned_client_ids()` / `can_access_client`, with the reason each is not done, and it can only shrink.
 
     A SECOND POPULATION, FOUND WHILE WRITING 528: the tables WITHOUT a `client_id` that hang from a client table (an
     allocation, a line, a version, a log, a step) and carry a bare firm policy. They name no client of their own, so the
@@ -30,9 +30,10 @@ WHY THIS EXISTS
         everyone in, or one that reads `clients` uncorrelated, or one written through `users` and `auth.uid()`, is classified
         as following a client and does not. It is a ratchet against the next careless policy, not a proof, and the
         behavioural half is the data-driven proof of each migration (`test_the_staff_only_client_tables_take_..._pg.py`);
-      * it needs a foreign key: a table that names its client without one (`task_tags` and `task_timeline_events` have a
-        `task_id`, `ri_cross_client_signals` a `client_ids` array) is not in the population (POST-A-305 lists them and the
-        third population that would);
+      * it needs a foreign key: a table that names the row it hangs from without one is not in the population unless it is
+        named in `NAMED_LINKS` below (`task_tags` and `task_timeline_events` have a `task_id` and no constraint, so they are
+        named; `ri_cross_client_signals`, whose `client_ids` array points at no table at all, is not, and POST-A-305 lists it
+        and the third population that would find such tables);
       * it does not read `relrowsecurity` or a policy's roles (no table needs that today).
     A child that follows a client table which ITSELF has no scope is not protected by it, so a policy that reads only tables
     on the `pending` list is flagged (`test_a_child_does_not_borrow_its_scope_from_a_table_that_has_none`).
@@ -105,10 +106,14 @@ SELECT coalesce(json_agg(x ORDER BY x.tbl), '[]'::json) FROM (
 # (the tables and the functions its expressions refer to), not from its text, so an alias, a line break or a schema prefix
 # cannot hide it.
 _CHILD_QUERY = """
-WITH RECURSIVE keyed AS (
+WITH RECURSIVE named(child, parent) AS (VALUES __NAMED__), keyed AS (
   SELECT c.oid FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r'
      AND (c.relname = 'clients' OR EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'client_id' AND NOT a.attisdropped))
 ), kids(oid) AS (
+  SELECT c.oid FROM pg_class c JOIN named n ON n.child = c.relname
+   WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r'
+     AND NOT EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'client_id' AND NOT a.attisdropped)
+  UNION
   SELECT c.oid FROM pg_class c JOIN pg_constraint f ON f.conrelid = c.oid AND f.contype = 'f'
    WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND c.relname <> 'firms'
      AND f.confrelid IN (SELECT oid FROM keyed)
@@ -126,8 +131,10 @@ SELECT json_build_object(
                     FROM (VALUES ('r', 'SELECT'), ('a', 'INSERT'), ('w', 'UPDATE'), ('d', 'DELETE')) AS k(cmd, priv)
                    WHERE has_table_privilege('authenticated', c.oid, k.priv)
                       OR (k.priv <> 'DELETE' AND has_any_column_privilege('authenticated', c.oid, k.priv))),
-      'parents', (SELECT coalesce(json_agg(DISTINCT regexp_replace(f.confrelid::regclass::text, '^public\\.', '')), '[]'::json)
-                    FROM pg_constraint f WHERE f.conrelid = c.oid AND f.contype = 'f'),
+      'parents', (SELECT coalesce(json_agg(DISTINCT x.parent), '[]'::json)
+                    FROM (SELECT regexp_replace(f.confrelid::regclass::text, '^public\\.', '') AS parent
+                            FROM pg_constraint f WHERE f.conrelid = c.oid AND f.contype = 'f'
+                          UNION SELECT n.parent FROM named n WHERE n.child = c.relname) x),
       'policies', (SELECT coalesce(json_agg(json_build_object(
                       'name', p.polname, 'permissive', p.polpermissive, 'cmd', p.polcmd::text,
                       'tables', (SELECT coalesce(json_agg(DISTINCT regexp_replace(d.refobjid::regclass::text, '^public\\.', '')), '[]'::json)
@@ -143,6 +150,11 @@ SELECT json_build_object(
     WHERE c.oid IN (SELECT oid FROM kids)
       AND (has_any_column_privilege('authenticated', c.oid, 'SELECT, INSERT, UPDATE') OR has_table_privilege('authenticated', c.oid, 'DELETE'))));
 """
+
+# A table that names the row it hangs from in a column that carries no foreign key (so the scan above cannot find it): child ->
+# parent. Written out by hand on purpose and checked against the schema by `test_a_named_link_is_a_real_child`, so a rename
+# is a red test and not a table that quietly leaves the population (POST-A-305).
+NAMED_LINKS = {"task_tags": ("tasks", "task_id"), "task_timeline_events": ("tasks", "task_id")}   # child: (parent, the column)
 
 # What a policy may call and still be "computed from the row, the firm and the role alone". Anything else it calls is a
 # personal door (an employee's own payslips, a portal contact's own receipts) and narrows the policy to a person.
@@ -192,7 +204,8 @@ def catalog(pg_template):
     try:
         r = _psql(f"{admin} dbname={name}", _QUERY)
         assert r.returncode == 0, r.stderr
-        kids = _psql(f"{admin} dbname={name}", _CHILD_QUERY)
+        named = ", ".join(f"('{c}', '{p}')" for c, (p, _col) in NAMED_LINKS.items()) or "('', '')"     # an empty VALUES list is a syntax error
+        kids = _psql(f"{admin} dbname={name}", _CHILD_QUERY.replace("__NAMED__", named))
         assert kids.returncode == 0, kids.stderr
         child_data = json.loads(kids.stdout)
         return {
@@ -202,6 +215,20 @@ def catalog(pg_template):
         }
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
+
+
+@pytest.fixture(scope="module")
+def catalog_columns(pg_template):
+    admin = _HARNESS_PG.strip()
+    names = ", ".join(f"'{c}'" for c in NAMED_LINKS) or "''"
+    r = _psql(f"{admin} dbname={pg_template.name}",
+              f"SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ({names})")
+    assert r.returncode == 0, r.stderr
+    out: dict = {}
+    for line in r.stdout.splitlines():
+        table, _, column = line.partition("|")
+        out.setdefault(table, []).append(column)
+    return out
 
 
 @pytest.fixture(scope="module")
@@ -372,6 +399,19 @@ def test_the_child_population_is_not_vacuous(children, keyed):
 
 
 @pg_only
+def test_a_named_link_is_a_real_child(children, keyed, catalog_columns):
+    """`NAMED_LINKS` is typed by hand, so each entry is checked against the schema three ways: the child carries the column
+    named, the parent is a table with a client of its own, and a policy of the child READS that parent (from pg_depend). The
+    last is the one that cannot be satisfied by the list itself, which the scan adds to the child's parents whatever it says."""
+    for child, (parent, column) in NAMED_LINKS.items():
+        assert child in children, f"{child} is named as hanging from {parent} but the scan does not find it as a child"
+        assert parent in keyed, f"{child}: {parent} is not a table with a client of its own"
+        assert any(parent in policy["tables"] for policy in children[child]["policies"]), (
+            f"{child} is named as hanging from {parent} through {column}, and no policy of it reads {parent}")
+        assert column in catalog_columns.get(child, []), f"{child} has no column {column}"
+
+
+@pg_only
 def test_every_child_of_a_client_table_follows_it_or_is_on_the_list(children, keyed, listed_children):
     gaps = sorted(t for t, c in children.items() if unscoped_commands(c, keyed) and t not in listed_children)
     assert not gaps, (
@@ -406,15 +446,18 @@ def test_every_listed_child_is_verified_for_the_reason_it_gives(children, listed
 
 # The lists are SHRINK-ONLY. The ceilings are the sizes on the day the rule was last lowered: a new gap cannot join a list
 # without raising a constant in a diff somebody reads, and closing one lowers the constant in the same commit.
-MAX_LISTED_TABLES = 27
-MAX_LISTED_CHILDREN = 18
+MAX_LISTED_TABLES = 26
+MAX_LISTED_CHILDREN = 0
 
 
 def test_the_lists_only_shrink(listed, listed_children):
-    assert len(listed) <= MAX_LISTED_TABLES, (
+    """The ceiling is the size of the list on the day it was last lowered, and the list has to MATCH it: a table cannot join
+    (scope it, or raise the constant in a diff somebody reads), and one that leaves lowers the constant in the same commit, so a
+    raised constant with nothing behind it fails too."""
+    assert len(listed) == MAX_LISTED_TABLES, (
         f"{len(listed)} client tables are listed against a ceiling of {MAX_LISTED_TABLES}: a table cannot join the list, "
-        "scope it (a `<table>_assignment_scope` and a `<table>_internal_partner_only` policy) or lower the ceiling when one leaves")
-    assert len(listed_children) <= MAX_LISTED_CHILDREN, (
+        "scope it (a `<table>_assignment_scope` and a `<table>_internal_partner_only` policy), and lower the ceiling when one leaves")
+    assert len(listed_children) == MAX_LISTED_CHILDREN, (
         f"{len(listed_children)} children are listed against a ceiling of {MAX_LISTED_CHILDREN}: add `<table>_parent_visible` "
         "instead of listing, and lower the ceiling when one leaves")
 
