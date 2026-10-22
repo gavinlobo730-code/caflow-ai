@@ -23,7 +23,12 @@ WHAT THIS DRIVES, AND HOW
     * the reopen removes the row and the checks answer open again; the generic status route does the same pair;
     * locking an already-locked year and unlocking an open one write nothing and are not audited a second time;
     * CONTROL: with no privileged client (the fallback to the request's own, which is the previous behaviour) the lock insert is
-      refused by the database and the engagement is left locked with the year open, the half-way failure the ledger recorded.
+      refused by the database. Since POST-A-315 the lock is written BEFORE the engagement is marked locked, so that refusal now
+      leaves the engagement approved and the year open (nothing half-written), where it used to leave the engagement locked
+      over an open year, the half-way failure the ledger recorded;
+    * ORDER (POST-A-315): a failure of the engagement's own update, after the lock was written, leaves the year CLOSED and the
+      engagement still approved, through the final-approval route and the generic status route alike, and a second press finishes
+      the job without a second lock row or a second audit entry.
 
 Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode job.
 """
@@ -256,14 +261,70 @@ def test_the_lock_is_written_by_the_privileged_client_whatever_the_request_signs
     assert [r[0] for r in _locks(w)] == [FY]
 
 
-def test_without_a_privileged_client_the_signed_in_write_is_refused_and_the_engagement_is_left_locked_with_the_year_open(world, monkeypatch):
-    """CONTROL: the previous behaviour (the write made with the request's own client) fails at the database, AFTER the engagement
-    row was written as locked: the half-way failure the ledger recorded."""
+def test_without_a_privileged_client_the_signed_in_write_is_refused_and_nothing_is_half_written(world, monkeypatch):
+    """CONTROL: the previous behaviour (the write made with the request's own client) fails at the database. The lock is written
+    first now (POST-A-315), so the engagement is never marked locked over an open year, which is what this used to leave."""
     w = world
     import core.db_provider
     monkeypatch.setattr(core.db_provider, "service_db_or_none", lambda: None)
     with pytest.raises(SignedInError):
         _final_approve(w)
-    assert _status(w) == "locked" and _locks(w) == [], "the engagement should be left locked with no lock row"
+    assert _status(w) == "approved" and _locks(w) == [], "the engagement must not read locked while the year is open"
     from services import period_lock_service
     assert period_lock_service.closure_reason(w.manager_db, FIRM, CLIENT_A, IN_THE_YEAR) is None
+
+
+class _EngagementUpdateFails:
+    """The request's client with the engagement's move to "locked" refused, as a lost connection between the two writes would."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def table(self, name):
+        query = self._inner.table(name)
+        if name != "year_end_engagements":
+            return query
+
+        class Engagements:
+            def update(self, values, *a, **k):
+                if values.get("status") == "locked":
+                    raise SignedInError("connection lost before the engagement was updated", "08006")
+                return query.update(values, *a, **k)
+
+            def __getattr__(self, attr):
+                return getattr(query, attr)
+        return Engagements()
+
+    def __getattr__(self, attr):
+        return getattr(self._inner, attr)
+
+
+def _status_route(w):
+    from routers.year_end import EngagementStatusIn, update_engagement_status
+    return update_engagement_status(ENGAGEMENT, EngagementStatusIn(status="locked"), current_user=PARTNER)
+
+
+@pytest.mark.parametrize("press", [_final_approve, _status_route], ids=["final-approve", "status-route"])
+def test_a_failure_between_the_two_writes_leaves_the_clients_year_closed_and_a_second_press_finishes_it(world, monkeypatch, press):
+    w = world
+    import core.supabase_client
+    monkeypatch.setattr(core.supabase_client, "get_supabase", lambda *a, **k: _EngagementUpdateFails(w.partner_db))
+    with pytest.raises(SignedInError, match="connection lost"):
+        press(w)
+
+    # the books are closed and the engagement still reads approved: the failure is visible and the year is safe
+    assert _status(w) == "approved"
+    assert [r[0] for r in _locks(w)] == [FY], _locks(w)
+    from services import period_lock_service
+    assert CLOSED in (period_lock_service.closure_reason(w.manager_db, FIRM, CLIENT_A, IN_THE_YEAR) or "")
+    with pytest.raises(ValueError, match=CLOSED):
+        _kernel_post(w.manager_db, CLIENT_A, IN_THE_YEAR)
+    assert _neighbours(w) == NEIGHBOURS
+
+    # pressing it again finishes the job: one lock row, one audit entry, the engagement locked
+    monkeypatch.setattr(core.supabase_client, "get_supabase", lambda *a, **k: w.partner_db)
+    out = press(w)
+    assert out["success"], out
+    assert _status(w) == "locked" and [r[0] for r in _locks(w)] == [FY]
+    assert [(a[1], a[3]) for a, _k in w.audit] == [("client_year_lock", "lock")], w.audit
+    assert _neighbours(w) == NEIGHBOURS

@@ -823,6 +823,9 @@ _SERVICE_USAGE_CHECKS = [
     ("a purchase bill", "purchase_bill_lines", "bill_id", "purchase_bills"),
     ("a credit note", "credit_note_lines", "credit_note_id", "credit_notes"),
     ("a debit note", "debit_note_lines", "debit_note_id", "debit_notes"),
+    # Migration 210's two note families carry the service link too (ledger POST-A-312); their status is draft or issued.
+    ("a sales debit note", "sales_debit_note_lines", "debit_note_id", "sales_debit_notes"),
+    ("a purchase credit note", "purchase_credit_note_lines", "credit_note_id", "purchase_credit_notes"),
 ]
 
 
@@ -874,6 +877,17 @@ def _find_service_usage(db, service_id: str) -> list[str]:
                      .in_("id", rt_ids).execute().data or [])
         if any(t.get("status") != "archived" for t in templates):
             found.append("a recurring invoice template")
+    # recurring_purchase_bill_template_lines.service_catalogue_id is ON DELETE SET NULL (migration 379), so the FK would not
+    # stop the delete: it would quietly cut the link from a template that is still billing. Same rule as the sales-side
+    # templates: an "archived" template never generates again and does not count (ledger POST-A-312).
+    rpb_lines = (db.table("recurring_purchase_bill_template_lines").select("id, template_id")
+                 .eq("service_catalogue_id", service_id).execute().data or [])
+    rpb_ids = list({ln["template_id"] for ln in rpb_lines if ln.get("template_id")})
+    if rpb_ids:
+        rpb_templates = (db.table("recurring_purchase_bill_templates").select("id, status")
+                         .in_("id", rpb_ids).execute().data or [])
+        if any(t.get("status") != "archived" for t in rpb_templates):
+            found.append("a recurring purchase bill template")
     # billing_schedules.service_id is NOT NULL (migration 206), same reasoning —
     # a deactivated schedule (is_active=false) never generates again.
     if (db.table("billing_schedules").select("id")
@@ -919,6 +933,22 @@ def _find_service_usage_mock(service_id: str) -> list[str]:
         for ln in MOCK_DEBIT_NOTE_LINES if ln.get("service_catalogue_id") == service_id
     ):
         found.append("a debit note")
+
+    from routers.sales_debit_notes import MOCK_SALES_DEBIT_NOTE_LINES, MOCK_SALES_DEBIT_NOTES
+    sdn_by_id = {d.get("id"): d for d in MOCK_SALES_DEBIT_NOTES}
+    if any(
+        (sdn_by_id.get(ln.get("debit_note_id")) or {}).get("status") not in ("draft", "cancelled")
+        for ln in MOCK_SALES_DEBIT_NOTE_LINES if ln.get("service_catalogue_id") == service_id
+    ):
+        found.append("a sales debit note")
+
+    from routers.purchase_credit_notes import MOCK_PURCHASE_CREDIT_NOTE_LINES, MOCK_PURCHASE_CREDIT_NOTES
+    pcn_by_id = {c.get("id"): c for c in MOCK_PURCHASE_CREDIT_NOTES}
+    if any(
+        (pcn_by_id.get(ln.get("credit_note_id")) or {}).get("status") not in ("draft", "cancelled")
+        for ln in MOCK_PURCHASE_CREDIT_NOTE_LINES if ln.get("service_catalogue_id") == service_id
+    ):
+        found.append("a purchase credit note")
 
     from services.recurring_invoice_service import MOCK_RECURRING_TEMPLATES
     if any(

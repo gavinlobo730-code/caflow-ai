@@ -27,12 +27,15 @@ RELATIONSHIP TO opening_balance_service.py
     other's entries. test_trial_balance_import_service.py pins that separation.
 
 SCOPING
-    chart_of_accounts is firm-level: UNIQUE (firm_id, account_name), and all 129
-    accounts in production carry client_id NULL. phase2_journal_service._find_account
-    resolves 'client_id = this client OR NULL' accordingly. So accounts are
-    shared across a firm's clients and any account this import has to create is
-    created firm-level. The CLIENT scoping lives on the journal entry, which is
-    what makes one client's trial balance distinct from another's.
+    chart_of_accounts is UNIQUE on (firm_id, account_name) AND on (firm_id, account_code), whichever client an account
+    belongs to. Most accounts are firm-level (client_id NULL) and shared across a firm's clients, and
+    phase2_journal_service._find_account resolves 'client_id = this client OR NULL' accordingly; any account this import has
+    to create is created firm-level. But a client can own a ledger too (the per-bank ledgers routers/banking creates carry the
+    client's id, with codes from 1101 up and names such as 'HDFC Bank - 7890'), so the NAMES this import may MATCH are this
+    client's and the firm-level ones, while the CODES and NAMES it may not COLLIDE with are the whole firm's, another client's
+    included (ledger POST-A-313): a code or a name another client's ledger holds answered 23505 at the insert, as a generic 500.
+    The CLIENT scoping of the books lives on the journal entry, which is what makes one client's trial balance distinct from
+    another's.
 
 All money is integer paise. Opening positions are book figures, not supplies —
 no GST arises (CGST Act s.7 — bringing forward a balance is not a supply).
@@ -56,6 +59,7 @@ from domain.accounting.trial_balance import (
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from core import db_provider
+from core.db_paging import fetch_all
 from core.ist_clock import ist_today
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -95,13 +99,36 @@ def _resolve_or_create_accounts(db, firm_id: str, client_id: str,
     firm-level' to mirror _find_account. Without the case-insensitive match an
     import of "CASH" would try to create a second account alongside "Cash" and
     hit UNIQUE (firm_id, account_name) at the insert instead."""
-    existing = (db.table("chart_of_accounts")
-                .select("id, account_name, account_code, client_id")
-                .eq("firm_id", firm_id)
-                .or_(f"client_id.eq.{client_id},client_id.is.null")
-                .execute().data or [])
-    by_name = {(r.get("account_name") or "").strip().casefold(): r["id"] for r in existing}
-    used_codes = {(r.get("account_code") or "").strip().upper() for r in existing}
+    # THE WHOLE FIRM'S CHART, read with a client that sees all of it and in keyset pages. Both unique keys are the firm's, so a
+    # check made over this client's accounts and the firm-level ones alone cannot see a code or a name another client's ledger
+    # holds, and the insert then fails with 23505. `chart_of_accounts` is assignment-scoped, so read as the caller a member
+    # assigned to some clients would not see the others' ledgers either; the route has authorised the caller, what comes back
+    # is only names and codes used to avoid a collision, and the INSERT stays on the caller's own client. Without a privileged
+    # client (mock mode, a test double) the one it was handed is all there is. PostgREST cuts a response at about a thousand
+    # rows without saying so, and a code missed there is a code proposed twice.
+    reader = db_provider.service_db_or_none() or db
+    firm_chart = fetch_all(
+        lambda: reader.table("chart_of_accounts").select("id, account_name, account_code, client_id").eq("firm_id", firm_id),
+        key="id", label="trial balance import: the firm's chart of accounts")
+    # MATCH by name only among this client's accounts and the firm-level ones; another client's ledger is not this client's
+    # account, even where its name is the same.
+    # (a uuid is compared as the lower-case text the database returns, so a client id typed in capitals is still this client's)
+    mine = str(client_id).lower()
+    by_name = {(r.get("account_name") or "").strip().casefold(): r["id"]
+               for r in firm_chart if r.get("client_id") is None or str(r["client_id"]).lower() == mine}
+    held_elsewhere = {(r.get("account_name") or "").strip().casefold()
+                      for r in firm_chart if r.get("client_id") is not None and str(r["client_id"]).lower() != mine}
+    used_codes = {(r.get("account_code") or "").strip().upper() for r in firm_chart}
+
+    # Every refusal BEFORE the first insert: an import that stops half way has already created accounts as a side effect of
+    # being rejected (the same reason `validate` runs before any database work).
+    for row in rows:
+        name = row.account_name.strip()
+        if name.casefold() not in by_name and name.casefold() in held_elsewhere:
+            raise TrialBalanceError(
+                f"The account '{name}' is another client's ledger in this firm, and an account name can be used once in a "
+                f"firm, so this import cannot create it again. Rename that row in the trial balance (for example with this "
+                f"client's name) and run the import again.")
 
     resolved: dict[str, str] = {}
     for row in rows:

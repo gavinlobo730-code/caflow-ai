@@ -413,6 +413,25 @@ def update_engagement_status(
 
     _assert_transition_allowed(row["status"], new_status, role, data.comment)
 
+    # The client's year is closed BEFORE the engagement is marked locked (ledger POST-A-315): the two are separate statements,
+    # and a failure between them must leave the books closed and the engagement still "approved" (repaired by pressing the
+    # transition again, `set_client_lock` being idempotent), never an engagement that reads "locked" over an open year. Only a
+    # move to "locked" locks anything, so the other transitions, the reopen included, pass through untouched; the reopen
+    # keeps the opposite order below (status first, then the unlock), which fails the same safe way.
+    from services.year_end_workflow_service import lock_year_if_completing
+    lock_year_if_completing(
+        db, firm_id, row.get("financial_year"), new_status,
+        # public.users.id — the INTERNAL id. client_year_locks.locked_by FKs it
+        # (migration 289); auth_user_id was passed here and failed that FK,
+        # leaving the engagement locked and the year open.
+        actor_id=current_user.get("id"),
+        actor_auth_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
+        # The engagement's own client — a year-end closes one entity's year,
+        # never the whole practice's.
+        client_id=row.get("client_id"),
+    )
+
     now = datetime.now(timezone.utc).isoformat()
     # Two literal payloads rather than one built up in a variable: only a
     # literal dict has column names test_backend_columns_exist_pg.py can read
@@ -443,26 +462,12 @@ def update_engagement_status(
             .data[0]
         )
 
-    from services.year_end_workflow_service import (
-        lock_year_if_completing, unlock_year_on_reopen)
-    lock_year_if_completing(
-        db, firm_id, row.get("financial_year"), new_status,
-        # public.users.id — the INTERNAL id. client_year_locks.locked_by FKs it
-        # (migration 289); auth_user_id was passed here and failed that FK,
-        # leaving the engagement locked and the year open.
-        actor_id=current_user.get("id"),
-        actor_auth_id=current_user.get("auth_user_id"),
-        actor_email=current_user.get("email"),
-        # The engagement's own client — a year-end closes one entity's year,
-        # never the whole practice's.
-        client_id=row.get("client_id"),
-    )
+    from services.year_end_workflow_service import unlock_year_on_reopen
+
     if _is_reopen(row["status"], new_status):
-        # After the status write, matching the lock's own ordering. If this
-        # fails the engagement reads "approved" with the year still locked,
-        # which is recoverable through the ordinary steps — final-approve is
-        # idempotent on an already-locked year, and the reopen can then be
-        # taken again.
+        # After the status write, the opposite order to the lock above and for the same reason: if this fails the
+        # engagement reads "approved" with the year still locked (the books stay closed), which is recoverable through the
+        # ordinary steps — final-approve is idempotent on an already-locked year, and the reopen can then be taken again.
         unlock_year_on_reopen(
             db, firm_id, row.get("financial_year"), (data.comment or "").strip(),
             actor_id=current_user.get("id"),

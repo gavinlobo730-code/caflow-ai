@@ -334,6 +334,27 @@ def final_approve(
             detail=f"Can only final-approve an approved engagement. Current: {eng['status']}",
         )
 
+    # The client's year is closed FIRST and the engagement is marked locked second (ledger POST-A-315). The two are separate
+    # statements, so a failure between them (an outage, a timeout) leaves one of two states, and the order picks which: lock
+    # first leaves the books CLOSED and the engagement still "approved", which the Partner repairs by pressing final approval
+    # again (set_client_lock is idempotent on a locked year); status first left an engagement that read "locked" over a year
+    # that was open, and nothing on the screen said so. The reopen takes the same safe order the other way round (status
+    # first, then the unlock), so a failure there leaves the year locked.
+    from services.year_end_workflow_service import lock_year_if_completing
+    lock_year_if_completing(
+        db, firm_id, eng.get("financial_year"), "locked",
+        # public.users.id — the INTERNAL id. client_year_locks.locked_by FKs it
+        # (migration 289), and auth_user_id was passed here: the INSERT failed
+        # the FK, the exception propagated, and the status row had already
+        # been written — engagement locked, client's year still open.
+        actor_id=current_user.get("id"),
+        actor_auth_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
+        # The engagement's own client — a year-end closes one entity's year,
+        # never the whole practice's.
+        client_id=eng.get("client_id"),
+    )
+
     updates = {
         "status":            "locked",
         "final_approved_by": current_user.get("id"),
@@ -354,21 +375,6 @@ def final_approve(
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"),
               new_data={"status": "locked"})
-
-    from services.year_end_workflow_service import lock_year_if_completing
-    lock_year_if_completing(
-        db, firm_id, eng.get("financial_year"), "locked",
-        # public.users.id — the INTERNAL id. client_year_locks.locked_by FKs it
-        # (migration 289), and auth_user_id was passed here: the INSERT failed
-        # the FK, the exception propagated, and the status row above had already
-        # been written — engagement locked, client's year still open.
-        actor_id=current_user.get("id"),
-        actor_auth_id=current_user.get("auth_user_id"),
-        actor_email=current_user.get("email"),
-        # The engagement's own client — a year-end closes one entity's year,
-        # never the whole practice's.
-        client_id=eng.get("client_id"),
-    )
 
     return api_response(True, updated)
 

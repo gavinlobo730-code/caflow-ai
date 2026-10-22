@@ -10,11 +10,13 @@ WHY IT EXISTS
     This is the smallest thing that lets the production function run unchanged against a real database as `authenticated`
     (with a user's token claims) or as `service_role`: it executes SQL through `psql` the way the pg tests already do, so it
     needs no PostgREST. It speaks only the calls the year-end code makes (`select`, `insert`, `update`, `delete`, `eq`,
-    `limit`, `order`, `single`, `maybe_single`, `rpc`) and RAISES on anything else, so a change to the code under test
+    `in_`, `limit`, `order`, `single`, `maybe_single`, `rpc`) and RAISES on anything else, so a change to the code under test
     that reaches for a call this does not model fails loudly instead of being answered wrongly.
 
 WHAT IT DOES NOT MODEL
-    PostgREST's own parsing, its row cap, embedded selects, `or_`/`in_` filters and JSON columns. Equality filters only.
+    PostgREST's own parsing, its row cap, embedded selects (and a filter on an embedded table) and `or_` filters. A dict or a list
+    is written as JSON text; a JSON column is read back as the JSON the database returns.
+    Equality filters, and `in_` over a plain list of values (an empty list matches nothing, as PostgREST's does).
 """
 from __future__ import annotations
 
@@ -45,6 +47,8 @@ def _lit(value: Any) -> str:
         return "true" if value else "false"
     if isinstance(value, (int, float)):
         return str(value)
+    if isinstance(value, (dict, list)):                       # a json / jsonb value, as PostgREST sends one
+        return "'" + json.dumps(value).replace("'", "''") + "'"
     return "'" + str(value).replace("'", "''") + "'"
 
 
@@ -94,7 +98,7 @@ class _Query:
         self._cols = "*"
         self._rows: list[dict] = []
         self._values: dict = {}
-        self._filters: list[tuple[str, Any]] = []
+        self._filters: list[tuple[str, str, Any]] = []
         self._limit: Optional[int] = None
         self._order: list[str] = []
         self._one = False
@@ -116,7 +120,11 @@ class _Query:
         return self
 
     def eq(self, column: str, value: Any) -> "_Query":
-        self._filters.append((_ident(column), value))
+        self._filters.append(("eq", _ident(column), value))
+        return self
+
+    def in_(self, column: str, values) -> "_Query":
+        self._filters.append(("in", _ident(column), list(values)))
         return self
 
     def limit(self, n: int) -> "_Query":
@@ -138,7 +146,9 @@ class _Query:
     def _where(self) -> str:
         if not self._filters:
             return ""
-        return " WHERE " + " AND ".join(f"{c} = {_lit(v)}" for c, v in self._filters)
+        return " WHERE " + " AND ".join(
+            f"{c} = {_lit(v)}" if op == "eq" else (f"{c} IN ({', '.join(_lit(x) for x in v)})" if v else "false")
+            for op, c, v in self._filters)
 
     def execute(self) -> _Resp:
         t = f"public.{self._table}"

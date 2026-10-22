@@ -409,6 +409,12 @@ _USAGE_CHECKS = [
     ("a debit note", "debit_note_lines", "debit_notes"),
     ("a purchase bill", "purchase_bill_lines", "purchase_bills"),
     ("a recurring invoice template", "recurring_invoice_template_lines", "recurring_invoice_templates"),
+    # Three more tables carry the code (ledger POST-A-312): the sales debit note and purchase credit note lines (migration 210)
+    # and the recurring purchase bill template lines (migration 379). Left out, a code that only one of them used was reported
+    # unused and could be purged.
+    ("a sales debit note", "sales_debit_note_lines", "sales_debit_notes"),
+    ("a purchase credit note", "purchase_credit_note_lines", "purchase_credit_notes"),
+    ("a recurring purchase bill template", "recurring_purchase_bill_template_lines", "recurring_purchase_bill_templates"),
 ]
 
 
@@ -451,8 +457,8 @@ def _find_hsn_usage(db, firm_id: str, hsn_code: str) -> list[str]:
 def _find_hsn_usage_mock(hsn_code: str) -> list[str]:
     """Mock-mode equivalent of _find_hsn_usage, mirrors service_catalogue.py's
     delete_service mock branch (deferred import of each router's in-memory
-    store to avoid a circular import). Best-effort: recurring invoice
-    templates have no mock line store, so they're not checked here — the
+    store to avoid a circular import). Best-effort: the recurring invoice
+    and recurring purchase bill templates have no mock line store, so they're not checked here — the
     real (Supabase) path above is exhaustive."""
     found: list[str] = []
     from routers.service_catalogue import MOCK_SERVICES
@@ -470,6 +476,12 @@ def _find_hsn_usage_mock(hsn_code: str) -> list[str]:
     from routers.purchase_bills import MOCK_PURCHASE_BILL_LINES
     if any(ln.get("hsn_sac") == hsn_code for ln in MOCK_PURCHASE_BILL_LINES):
         found.append("a purchase bill")
+    from routers.sales_debit_notes import MOCK_SALES_DEBIT_NOTE_LINES
+    if any(ln.get("hsn_sac") == hsn_code for ln in MOCK_SALES_DEBIT_NOTE_LINES):
+        found.append("a sales debit note")
+    from routers.purchase_credit_notes import MOCK_PURCHASE_CREDIT_NOTE_LINES
+    if any(ln.get("hsn_sac") == hsn_code for ln in MOCK_PURCHASE_CREDIT_NOTE_LINES):
+        found.append("a purchase credit note")
     return found
 
 
