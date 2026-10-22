@@ -356,9 +356,41 @@ def test_the_service_needs_only_the_service_client(monkeypatch):
     reaches for no other."""
     import routers.accounting as accounting
     assert accounting._prod_db.__name__ == "service_db_or_none"
-    src = (API / "services" / "year_lock_service.py").read_text(encoding="utf-8")
-    for name in ("request_db", "get_supabase", "db_provider"):
-        assert name not in src, name
+    # THE RULE, NOT A SPELLING OF IT. The module also holds the client year lock (migration 532), whose table the signed-in role
+    # reads and the API writes, so one function names the privileged-client door (`_lock_table_db`) and one function calls it
+    # (`set_client_lock`). Nothing else in the module may name a client accessor, import one (at module level, or inside a
+    # function, aliased or not), or call that helper: the PIN functions reach for the db they were handed and for no other.
+    import ast
+    tree = ast.parse((API / "services" / "year_lock_service.py").read_text(encoding="utf-8"))
+    accessors = {"request_db", "get_supabase", "db_provider", "service_db_or_none", "service_db", "get_service_supabase",
+                 "request_db_or_none", "service_db_or_503", "supabase_client"}
+    def imported(n):
+        """Every name an import statement binds or reaches: the module, its dotted parts, and each imported name."""
+        mod = (n.module or "") if isinstance(n, ast.ImportFrom) else ""
+        parts = set(mod.split(".")) | {mod}
+        for a in n.names:
+            parts |= {a.name, *a.name.split(".")}
+        return parts
+
+    reaching, calling = {}, []
+    for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]:
+        if fn.name == "_lock_table_db":
+            continue
+        names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)} | {n.attr for n in ast.walk(fn) if isinstance(n, ast.Attribute)}
+        for n in ast.walk(fn):
+            if isinstance(n, (ast.Import, ast.ImportFrom)):
+                names |= imported(n)
+        hit = names & accessors
+        if hit:
+            reaching[fn.name] = sorted(hit)
+        if fn.name != "set_client_lock" and any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_lock_table_db"
+                                                 for n in ast.walk(fn)):
+            calling.append(fn.name)
+    assert reaching == {}, reaching
+    assert calling == [], f"only set_client_lock may take the privileged client for the lock table: {calling}"
+    module_level = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
+    assert not [n for n in module_level if accessors & imported(n)], (
+        "the module imports a client accessor at module level: only `_lock_table_db` may reach for one, and only when called")
 
 
 def test_the_year_lock_route_carries_the_pin_through_and_refuses_an_oversized_one(monkeypatch):
