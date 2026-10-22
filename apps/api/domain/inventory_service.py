@@ -477,10 +477,11 @@ def _insert_and_cache(
     test double that never set it) — semantically the same "never
     written" state as an explicit 0.
     """
+    claimed_version = expected_version + 1
     update_payload = {
         "stock_qty_units": str(calc["running_qty_units"]),
         "avg_cost_paise": calc["running_avg_cost_paise"],
-        "stock_version": expected_version + 1,
+        "stock_version": claimed_version,
     }
     claim = (
         db.table("service_catalogue").update(update_payload)
@@ -531,8 +532,40 @@ def _insert_and_cache(
         # and identical between production and the in-memory test doubles.
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    inserted = ledger_writer(db).table("inventory_stock_ledger").insert(row).execute()
+    try:
+        inserted = ledger_writer(db).table("inventory_stock_ledger").insert(row).execute()
+    except Exception:
+        # THE CLAIM ABOVE ALREADY MOVED THE CACHE (ledger POST-A-321). The ledger is what every later movement chains from and
+        # what closing stock is summed from; the item's cached quantity and cost are a copy of its tail. A refused insert
+        # (a constraint, a network error) left the copy AHEAD of the chain, and every caller swallows this failure by design
+        # (a sale must still issue), so the stock screen showed a movement the ledger never recorded. Put the copy back to the
+        # ledger's tail, then raise as before so the caller reports it.
+        _restore_stock_cache_from_ledger(db, service_catalogue_id, claimed_version=claimed_version)
+        raise
     return inserted.data[0] if inserted.data else row
+
+
+def _restore_stock_cache_from_ledger(db, service_catalogue_id: str, *, claimed_version: int) -> None:
+    """Put an item's cached quantity and average cost back to what its ledger's last row says, after a movement claimed the
+    cache and then failed to record itself. The restore is a compare-and-set on the version the failed movement wrote
+    (`claimed_version`), so a movement that has since claimed the item has already rewritten the cache from the ledger and is
+    left alone; it writes the version one further on, so the counter only ever moves forward. An item with no ledger row has
+    a cache of nothing, which is what the ledger says. Best-effort and reported: a failure here leaves the copy ahead, which is
+    the state this function exists to end, so it is never silent."""
+    try:
+        tail = _last_ledger_row(db, service_catalogue_id)
+        restored = {
+            "stock_qty_units": str(tail["running_qty_units"]) if tail else "0",
+            "avg_cost_paise": int(tail.get("running_avg_cost_paise") or 0) if tail else 0,
+            "stock_version": claimed_version + 1,
+        }
+        (db.table("service_catalogue").update(restored)
+         .eq("id", service_catalogue_id).eq("stock_version", claimed_version).execute())
+    except Exception as swallowed:
+        capture_posting_failure(
+            swallowed, operation="_insert_and_cache.restore_cache",
+            service_catalogue_id=service_catalogue_id,
+        )
 
 
 def _set_ledger_journal_entry_id(db, ledger_row_id: Optional[str], journal_entry_id: Optional[str]) -> None:
@@ -748,7 +781,24 @@ def seed_opening_balances_batch(
             e, operation="seed_opening_balances_batch.ledger_insert",
             firm_id=firm_id, row_count=len(ledger_rows),
         )
-        return
+        # The journals above were posted BEFORE this insert (so each ledger row could carry its journal's id), and a refused
+        # insert left the general ledger carrying inventory the stock ledger lacks, the tie-out the ledger exists to protect
+        # (ledger POST-A-321). But a failure the client SAW is not always a failure the database HAD: an insert that
+        # committed and then timed out reaches here too, and reversing the journals then would leave the stock ledger
+        # carrying inventory the general ledger lacks, the mirror-image mismatch. So ask the ledger what it holds.
+        recorded = _opening_rows_that_landed(db, firm_id=firm_id, item_ids=[lr["service_catalogue_id"] for lr in ledger_rows])
+        if recorded is None:
+            return                      # could not tell (reported): reversing could be as wrong as leaving it, so neither
+        if not recorded:
+            # none landed (one statement: all or none): reverse what was posted, same-day so it nets within the period
+            # the original was open in
+            _reverse_unrecorded_opening_journals(
+                db, firm_id=firm_id, created_by=created_by,
+                posted={c: (journal_id_by_client.get(c), totals["movement_date"]) for c, totals in totals_by_client.items()},
+            )
+            return
+        # the insert committed although the client saw it fail: the ledger HAS the rows, the journals stand, and the cache
+        # is written below as after any successful insert
     try:
         db.table("service_catalogue").upsert(cache_rows, on_conflict="id").execute()
     except Exception as e:
@@ -1124,6 +1174,46 @@ def post_inventory_trueup_journal_entry(
             source_type=source_type, source_id=source_id, total_value_paise=total_value,
         )
         return None
+
+
+def _opening_rows_that_landed(db, *, firm_id: str, item_ids: list) -> Optional[bool]:
+    """Did the batch's opening rows reach the stock ledger? True/False, or None when the ledger could not be asked (reported).
+    Read with the request's own client: the rows are the caller's clients' (the privileged client is used only to WRITE the
+    ledger), and a brand-new item has no opening row of an earlier import to be mistaken for this one's."""
+    from core.db_paging import fetch_all_in
+    try:
+        rows = fetch_all_in(
+            lambda: db.table("inventory_stock_ledger").select("id, service_catalogue_id")
+            .eq("firm_id", firm_id).eq("movement_type", "opening"),
+            "service_catalogue_id", item_ids, label="seed_opening_balances_batch: which opening rows landed",
+        )
+    except Exception as swallowed:
+        capture_posting_failure(swallowed, operation="seed_opening_balances_batch.ledger_probe", firm_id=firm_id,
+                                row_count=len(item_ids))
+        return None
+    return bool(rows)
+
+
+def _reverse_unrecorded_opening_journals(db, *, firm_id: str, created_by: Optional[str], posted: dict) -> None:
+    """Reverse each opening-stock journal a batch posted whose ledger rows were then refused. `posted` maps a client to
+    (journal entry id or None, the entry's date); a client whose journal was never posted (a chart without the accounts, a
+    zero total) has nothing to reverse. Each reversal is its own attempt and its own report, so one refusal does not leave
+    the rest standing."""
+    from services.phase2_journal_service import phase2_journal_service
+    for client_id, (journal_id, entry_date) in posted.items():
+        if not journal_id:
+            continue
+        try:
+            phase2_journal_service.reverse_entry(
+                db, firm_id, journal_id, entry_date,
+                narration="Reversal: the opening stock this entry brought forward was not recorded in the stock ledger",
+                created_by=created_by,
+            )
+        except Exception as swallowed:
+            capture_posting_failure(
+                swallowed, operation="seed_opening_balances_batch.reverse_journal",
+                firm_id=firm_id, client_id=client_id, journal_entry_id=journal_id,
+            )
 
 
 def post_opening_stock_journal_entry(
