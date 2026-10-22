@@ -59,6 +59,7 @@ FAIL CLOSED
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 from fastapi import HTTPException
@@ -69,6 +70,27 @@ _logger = logging.getLogger("caflow.period_lock")
 # closed. Deliberately different wording from a real lock reason: the CA can act
 # on "the year is locked", and all they can do about this one is try again.
 UNVERIFIABLE = "Could not confirm this period is open. Please try again."
+
+# The two sentences `public.period_closure_reason` gives (migration 361) and the twin below gives, in one place, so that a
+# database refusal carried inside an error message can be recognised and answered in the CA's words (`closure_sentence_in`).
+# tests/test_period_lock_reason_parity_pg.py pins the SQL to the twin; this pins the recogniser to both.
+_FIRM_YEAR_LOCKED = "Financial year {fy} is locked. Unlock it, or post a reversal in an open year."
+_CLIENT_YEAR_CLOSED = ("FY {fy} is closed for this client — its year-end has been finalised. "
+                       "Reopen the year before posting to it.")
+_CLOSURE_SENTENCE = re.compile("|".join(
+    re.escape(t).replace(re.escape("{fy}"), r"\d{4}-\d{2}") for t in (_FIRM_YEAR_LOCKED, _CLIENT_YEAR_CLOSED)))
+
+
+def closure_sentence_in(text: object) -> Optional[str]:
+    """The closure sentence inside an error message, or None.
+
+    For a database function that refused a posting dated in a closed year (migration 533) whose refusal reached the API as an
+    exception because the Python pre-check was not the one that spoke: a lock set between the check and the call, or a door
+    that did not pre-check. The sentence names the remedy, so it is what the person should read, as a 422, and not a generic
+    failure.
+    """
+    m = _CLOSURE_SENTENCE.search(str(text))
+    return m.group(0) if m else None
 
 
 def closure_reason(db, firm_id: str, client_id: Optional[str],
@@ -215,15 +237,13 @@ def _closure_from_tables(db, firm_id: str, client_id: Optional[str],
         firm = (db.table("firms").select("locked_financial_years")
                 .eq("id", firm_id).limit(1).execute().data or [{}])[0]
         if fy_label in (firm.get("locked_financial_years") or []):
-            return (f"Financial year {fy_label} is locked. Unlock it, or post a "
-                    f"reversal in an open year.")
+            return _FIRM_YEAR_LOCKED.format(fy=fy_label)
 
         locked = (db.table("client_year_locks").select("id")
                   .eq("firm_id", firm_id).eq("client_id", client_id)
                   .eq("financial_year", fy_label).limit(1).execute().data) or []
         if locked:
-            return (f"FY {fy_label} is closed for this client — its year-end has "
-                    f"been finalised. Reopen the year before posting to it.")
+            return _CLIENT_YEAR_CLOSED.format(fy=fy_label)
     except Exception as e:                                       # noqa: BLE001
         # Same fail-closed rule as the SQL path. A source that cannot answer is
         # not a source saying "open".
@@ -275,6 +295,24 @@ def reason_from_tables(db, firm_id: str, client_id: Optional[str],
         _logger.warning("period lock could not be read from tables (%s)", e)
         return UNVERIFIABLE
     return None
+
+
+def assert_not_closed(db, firm_id: str, client_id: Optional[str],
+                      date_str: Optional[str], cache: Optional[dict] = None) -> None:
+    """Raise 422 carrying the closure's reason, or return quietly.
+
+    The CLOSURES only (`closure_reason`): the firm's locked year and this client's
+    finalised year-end, and not a filed return. Where `assert_open` is asked by a
+    document that FEEDS a return, this is asked by a posting that does not: a
+    customer receipt, whose journal reaches the ledger through
+    `settle_receipt_atomic` and not through the kernel that asks it for every
+    other posting (ledger POST-A-316, migration 533). The database function asks
+    the same question as its second lock; this is the one a person reads, raised
+    before a receipt number is taken or a row is written.
+    """
+    reason = closure_reason(db, firm_id, client_id, date_str, cache)
+    if reason:
+        raise HTTPException(status_code=422, detail=reason)
 
 
 def assert_open(db, firm_id: str, client_id: Optional[str],

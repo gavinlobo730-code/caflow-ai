@@ -140,6 +140,12 @@ def _assert_open_where_a_receipt_feeds_a_return(db, firm_id: str, client_id: str
     GOODS), so the original argument still governs the ordinary case — recording
     a payment received on 20 June on 15 July stays an ordinary thing to do.
 
+    TWO QUESTIONS, IN ONE HELPER BECAUSE BOTH DOORS ALREADY ASK IT (POST-A-316):
+    the CLOSURES (the client's finalised year-end), asked of every client and
+    first; then the filed-return lock, for the clients above only. They are
+    different questions with different scopes, and a door that asked the second
+    and not the first let a receipt into a year the CA had finalised.
+
     WHAT WOULD CHANGE THIS AGAIN: a filing type whose figures depend on the
     balance sheet or on collections — an ITR, a tax audit report, GSTR-9 — being
     recorded in public.filings. `gst_filing_record_service.FILING_TYPE_*` is the
@@ -148,6 +154,14 @@ def _assert_open_where_a_receipt_feeds_a_return(db, firm_id: str, client_id: str
     """
     if db is None:
         return
+    # THE CLOSURES COME FIRST AND ARE ASKED OF EVERY CLIENT (POST-A-316). The firm's locked year is the validator's, asked by
+    # the door above; this is the CLIENT's finalised year-end, which a plain rupee receipt never reached because it posts
+    # through `settle_receipt_atomic` and not through the kernel that asks `closure_reason` for every other posting. Nothing
+    # about it depends on the receipt's shape or on the client's advance-tax flag: a finalised year is the CA saying these
+    # books are finished. It is asked here, before a number is taken or a row is written, with the closure's own sentence
+    # (it names the remedy: reopen the year), and asked again by the database function itself (migration 533), which is what
+    # a direct call reaches. The FILED-RETURN branch is the part below and stays gated on the flag.
+    period_lock_service.assert_not_closed(db, firm_id or "", client_id, receipt_date)
     from services.gst_advance_service import advance_tax_applicable
     if not advance_tax_applicable(db, firm_id or "", client_id):
         return
@@ -536,6 +550,11 @@ def _settle_receipt_via_atomic_rpc(
                 status_code=409,
                 detail="A receipt numbering collision was detected; please retry.",
             ) from e
+        # The database function asks the same closure question the door asked (migration 533); when it is the one that
+        # speaks (a year closed between the two, or a call that skipped the door) the person reads the sentence, not a failure.
+        refusal = period_lock_service.closure_sentence_in(e)
+        if refusal:
+            raise HTTPException(status_code=422, detail=refusal) from e
         raise
 
     out = result.data or {}
