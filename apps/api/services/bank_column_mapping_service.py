@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from core.ist_clock import ist_now
 from core.list_window import probe
 from domain.banking.normalizer import (
     MAPPING_KEYS, StatementParseError, header_fingerprint, validate_mapping,
@@ -140,15 +141,21 @@ def save_mapping(db, firm_id: str, client_id: str, bank_account_id: str,
         return {**row, "id": "mock-mapping-id"}
 
     existing = find_mapping(db, firm_id, bank_account_id, fingerprint)
-    if existing:
+    if existing and existing.get("match_scope") == "account":
         # Re-mapping the same layout is a correction, not a second answer. The
         # unique index would refuse an insert anyway; updating in place keeps
         # the row's identity so anything referring to it still resolves.
+        #
+        # ONLY WHEN THE ROW IS THIS ACCOUNT'S (ledger POST-A-300). `find_mapping`'s second look, at any account of the firm
+        # with the same header layout, is a convenience for READING an import (BANK-26). It returned another account's row
+        # here too, and the update below changed the layout saved for client A's account while client B's account, whose
+        # correction it was, still had none. A layout found elsewhere in the practice is not this account's to overwrite:
+        # fall through and record one of its own.
         out = (db.table("bank_statement_column_mappings").update({
             "mapping": columns,
             "header_labels": labels,
-            "updated_at": "now()",
-        }).eq("id", existing["id"]).execute().data) or []
+            "updated_at": ist_now().isoformat(),
+        }).eq("id", existing["id"]).eq("firm_id", firm_id).eq("bank_account_id", bank_account_id).execute().data) or []
         return out[0] if out else {**existing, **row}
     # Written inline with literal keys rather than .insert(row):
     # tests/test_backend_columns_exist_pg.py reads the column names out of the

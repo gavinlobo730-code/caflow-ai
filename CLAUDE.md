@@ -154,10 +154,11 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A FOREIGN AMOUNT IS SHOWN WITH ITS CURRENCY'S OWN DECIMALS, TAKEN FROM THE MASTER AND NEVER GUESSED
 - A STORED FIGURE THE PRODUCT COMPUTED SAYS SO ON THE ROW, AND THE DOCUMENT OF RECORD OUTRANKS IT
 
-### `docs/design-record/banking.md` (2 entries): Bank data: Account Aggregator position, bank entries, credit cards, matching rules
+### `docs/design-record/banking.md` (3 entries): Bank data: Account Aggregator position, bank entries, credit cards, matching rules
 
 - Register as an FIU
 - WHAT A BANK TAUGHT THE IMPORTER IS LISTED BESIDE THE IMPORT, A FAILED READ IS NOT "NOTHING TAUGHT", AND A LAYOUT CAN BE FORGOTTEN
+- A LAYOUT FOUND ELSEWHERE IN THE PRACTICE IS OFFERED FOR READING AND NEVER OVERWRITTEN BY A SAVE
 
 ### `docs/design-record/deployment-and-operations.md` (7 entries): Deployment, monitoring, request ids, service levels, runbooks and security headers
 
@@ -169,7 +170,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A BACKEND EVENT NAMES THE BUILD IT CAME FROM, AN UNLABELLED AI ROW NAMES NO RETIRED MODEL, AND A ROUTE NOTHING CALLED IS GONE
 - A BROAD HANDLER ON A MONEY OR LEDGER PATH REPORTS WHAT IT SWALLOWS, AND A ROLLBACK THAT DID NOT RUN IS A POSTING FAILURE
 
-### `docs/design-record/documents-sales-purchase.md` (13 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
+### `docs/design-record/documents-sales-purchase.md` (14 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 
 - THE DEMO SEEDER HAS BEEN RUN OVER A REAL DATABASE, AND EVERY DEFECT IT EXPOSED IS A RULE NOW
 - A TEMPLATE CHANGES THE LAYOUT AND NEVER THE PARTICULARS, AND THE PRACTICE'S TEMPLATE REACHES THE PRACTICE'S OWN DOCUMENT ONLY
@@ -184,6 +185,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A BILLING SCHEDULE KEEPS THE DAY IT STARTED ON, A DUE SCHEDULE WHOSE PERIOD IS ALREADY BILLED ADVANCES, A PLACEHOLDER NUMBER IS NOT ISSUED, AND TWO EDITORS OF AN ARTICLE BOTH KEEP THEIR TEXT
 - A LINE ON A DOCUMENT NAMES AN ITEM OF THE DOCUMENT'S OWN CLIENT, AND THE API ASKS ONCE BEFORE IT WRITES
 - A CUSTOMER STATEMENT EMAIL LEAVES A ROW A CA CAN READ, AND "SENT" IS WHAT THE MAIL SERVICE SAID
+- THE "IS THIS CODE OR SERVICE STILL USED?" CHECKS READ EVERY LINE TABLE THAT CARRIES THE CODE, OR NAME THE ONES THEY DO NOT, AND AN ARCHIVED TEMPLATE DOES NOT PIN A SERVICE
 
 ### `docs/design-record/engineering-and-ci.md` (11 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
@@ -240,7 +242,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE SEVEN ITR FORMS ARE `domain/income_tax/itr_json.ITR_FORMS`, derived from the `ITRForm` Literal the field mappings and the comm
 - A REQUIRED YEAR PARAMETER IS DECLARED WITH NO DEFAULT, AND `= ...` IS NOT A WAY TO SAY REQUIRED
 
-### `docs/design-record/ledger-and-money.md` (8 entries): The general ledger, posting kernel, period locks, money columns, reports and interest/cheque/price-list features
+### `docs/design-record/ledger-and-money.md` (9 entries): The general ledger, posting kernel, period locks, money columns, reports and interest/cheque/price-list features
 
 - A VOUCHER'S LINES HAVE AN ORDER AND TWO FUNCTIONS RECORD IT
 - THE LIVE REPORTS LEAVE AS A SERVER-MADE PDF OR EXCEL THAT IS THE SCREEN, AND A REPORT THAT DOES NOT FOOT IS NOT PRINTED
@@ -250,11 +252,13 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE INDIAN DAY IS NEVER READ OFF THE UTC CLOCK, AND THE RULE IS A TEST WITH AN EMPTY ALLOWLIST, WHOSE LIMITS ARE WRITTEN DOWN
 - A STOCK, DISPOSAL OR BANK POSTING ASKS THE FILED-RETURN LOCK WHEN ITS EFFECT REACHES A RETURN, AND THE OTHERS THE LEDGER LISTED STAY OPEN ON PURPOSE, EACH FOR A REASON WRITTEN BESIDE IT
 - A RANGE OF DAYS IS A RANGE OF INDIAN DAYS, A STORED STAMP IS SHOWN AS THE INDIAN DAY IT FELL ON, AND THE AGEING NOTE'S "TODAY" IS THE INDIAN ONE
+- A YEAR-END IS FINALISED BY CLOSING THE CLIENT'S YEAR FIRST AND MARKING THE ENGAGEMENT LOCKED SECOND, AND THE REOPEN TAKES THE OPPOSITE ORDER, SO A FAILURE BETWEEN THE TWO LEAVES THE BOOKS CLOSED
 
-### `docs/design-record/opening-balances-and-imports.md` (2 entries): Opening balances as documents and the bulk imports of a migrated client's books
+### `docs/design-record/opening-balances-and-imports.md` (3 entries): Opening balances as documents and the bulk imports of a migrated client's books
 
 - A MIGRATED CLIENT'S BOOKS COME OVER IN BULK, AND EVERY IMPORT SAYS WHAT IT DID NOT DO
 - THE UPLOAD SCREENS WERE DRIVEN IN A BROWSER ONCE, AND AN EXCEL DATE CELL IS A SERIAL NUMBER
+- A TRIAL-BALANCE IMPORT MATCHES ONLY ITS OWN CLIENT'S ACCOUNTS AND CHECKS ITS NEW NAMES AND CODES AGAINST THE WHOLE FIRM'S CHART, BECAUSE BOTH UNIQUE KEYS ARE THE FIRM'S
 
 ### `docs/design-record/payroll.md` (10 entries): Payroll: accrual, PF on actual wages, bonus, monthly review, declarations
 
@@ -395,7 +399,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS SCREEN ASKS THE SERVER WHAT BECAME OF A DEDUCTION, AND A CARD SHOWS A DASH UNTIL IT HAS A FIGURE FOR THE CLIENT IT IS ABOUT
 - THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE ORDER BY EVERY READER, AND THE SECTIONS AND THEIR NAMES ARE THE SERVER'S
 
-### `docs/design-record/tenancy-and-security.md` (59 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (60 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -456,6 +460,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A WRITER THAT HANDS THE CALLER'S OWN CLIENT TO A TABLE THE CALLER MAY NOT WRITE PASSES IN MOCK MODE AND IS REFUSED IN PRODUCTION, AND THE STAFF COST RATE AND THE FEE INVOICE WRITES WERE TWO SUCH
 - THE PARTY-CREDIT TABLES AND THE STOCK LEDGER ARE WRITTEN BY THE API'S PRIVILEGED CLIENT AND READ BY THE ASSIGNED, AND A TABLE NOTHING USES IS REACHED BY NOBODY
 - THE INTERNAL PRACTICE CANNOT BE ASSIGNED BY A SIGNED-IN SESSION AND IS A PARTNER'S IN NINE MORE TABLES, AN ENGAGEMENT LETTER TAKES THE TIER ITS ROUTES ASK, AND ONLY A PARTNER CLEARS THE CLIENT OF A ROW THAT IS THEN OPEN TO THE FIRM
+- NOTHING IN THE API HARD-DELETES A CLIENT, SO NO API PATH TURNS A TALLY JOB INTO A FIRM-LEVEL ONE, THAT PREMISE IS A TEST, AND A PARTNER'S OWN TOKEN CAN STILL DO IT OVER POSTGREST
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
