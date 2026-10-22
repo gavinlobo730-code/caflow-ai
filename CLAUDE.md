@@ -394,7 +394,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS SCREEN ASKS THE SERVER WHAT BECAME OF A DEDUCTION, AND A CARD SHOWS A DASH UNTIL IT HAS A FIGURE FOR THE CLIENT IT IS ABOUT
 - THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE ORDER BY EVERY READER, AND THE SECTIONS AND THEIR NAMES ARE THE SERVER'S
 
-### `docs/design-record/tenancy-and-security.md` (57 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (58 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -453,6 +453,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE WRITERS OF FOUR TABLES MOVE TO THE PRIVILEGED CLIENT IN A CHANGE THAT SHIPS BEFORE THE MIGRATION THAT FORCES THEM TO, BECAUSE THE OLD API AGAINST REVOKED GRANTS FAILS SOFT AND WRONG
 - THE RECORD THAT A RETURN WAS FILED IS WRITTEN BY THE API ONLY, BECAUSE THE PERIOD LOCK IS WHAT THAT ROW IS
 - A WRITER THAT HANDS THE CALLER'S OWN CLIENT TO A TABLE THE CALLER MAY NOT WRITE PASSES IN MOCK MODE AND IS REFUSED IN PRODUCTION, AND THE STAFF COST RATE AND THE FEE INVOICE WRITES WERE TWO SUCH
+- THE PARTY-CREDIT TABLES AND THE STOCK LEDGER ARE WRITTEN BY THE API'S PRIVILEGED CLIENT AND READ BY THE ASSIGNED, AND A TABLE NOTHING USES IS REACHED BY NOBODY
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
@@ -1216,9 +1217,9 @@ PostgREST. That is why:
   loop that HAS NEVER RUN AGAIN. Six tables created since are read straight from the
   browser and had firm-wide access only until migration 370: `bank_accounts` (093),
   `debit_notes` (145), `purchase_credit_notes` / `sales_debit_notes` (210),
-  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). A further 7
+  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). A further 3
   are still in that state (the bank's splits, rules and matches were closed by migration 527, eleven more tables by 528, the engagement letters
-  by 529, the statutory identity, payroll settings and PT registrations by 531 and the year locks by 532; the rest are POST-A-299), and the tables with no client of their own that hang from a client table follow their parent since 529
+  by 529, the statutory identity, payroll settings and PT registrations by 531, the year locks by 532 and the party-credit tables, the stock ledger and `demo_filings` (revoked altogether) by 536; the rest are POST-A-299), and the tables with no client of their own that hang from a client table follow their parent since 529
   (the catalog's `children` list is empty and stays so). The premise
   they were left on, "nothing reaches them from the browser", is false: PostgREST answers for every granted table and
   the API runs as the caller. The durable half is the rule, asserted:

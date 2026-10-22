@@ -21,22 +21,12 @@
       "ledger": "POST-A-299",
       "why": "firm policy only; pending the assignment scope"
     },
-    "demo_filings": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy only; pending the assignment scope"
-    },
     "fx_adjustments": {
       "kind": "pending",
       "ledger": "POST-A-299",
       "why": "firm policy only; pending the assignment scope"
     },
     "fx_revaluations": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy only; pending the assignment scope"
-    },
-    "inventory_stock_ledger": {
       "kind": "pending",
       "ledger": "POST-A-299",
       "why": "firm policy only; pending the assignment scope"
@@ -50,16 +40,6 @@
       "kind": "own",
       "policy": "notifications_recipient_scope",
       "why": "a notification is its recipient's (user_id) and a Partner reads all; it is about a person, not about the client it names"
-    },
-    "party_credit_balances": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy only; pending the assignment scope"
-    },
-    "party_credit_ledger": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy only; pending the assignment scope"
     },
     "payroll_it_declarations": {
       "kind": "parent",
