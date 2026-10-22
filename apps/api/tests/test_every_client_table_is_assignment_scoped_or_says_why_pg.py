@@ -33,8 +33,8 @@ WHY THIS EXISTS
         behavioural half is the data-driven proof of each migration (`test_the_staff_only_client_tables_take_..._pg.py`);
       * it needs a foreign key: a table that names the row it hangs from without one is not in the population unless it is
         named in `NAMED_LINKS` below (`task_tags` and `task_timeline_events` have a `task_id` and no constraint, so they are
-        named; `ri_cross_client_signals`, whose `client_ids` array points at no table at all, is not, and POST-A-305 lists it
-        and the third population that would find such tables);
+        named; `ri_cross_client_signals`, whose `client_ids` array pointed at no table at all, was not, and was dropped by
+        migration 538; POST-A-305 lists the third population that would find such tables);
       * it does not read `relrowsecurity` or a policy's roles (no table needs that today).
     A child that follows a client table which ITSELF has no scope is not protected by it, so a policy that reads only tables
     on the `pending` list is flagged (`test_a_child_does_not_borrow_its_scope_from_a_table_that_has_none`).

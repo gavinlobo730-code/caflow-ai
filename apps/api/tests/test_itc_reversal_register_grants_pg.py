@@ -98,6 +98,21 @@ NOT_FOR_THE_API = {
     # `apps/api` or `apps/web` reads or writes it, it held every privilege for every signed-in member, and 536 took all of
     # them away from `authenticated`, `anon` and PUBLIC. The deny-list test below proves the denial is real.
     "demo_filings",
+    # Migration 538 (POST-A-305): ten tables the signed-in role neither reads nor writes (nine that nothing in `apps/api` or
+    # `apps/web` uses at all, found by the table-use scanner and a grep of both trees, and one used only on `service_db`), each of
+    # which held every privilege for every signed-in member behind a firm policy. 538 took every privilege away from
+    # `authenticated`, `anon` and PUBLIC. The deny-list test below proves the denial is real. (`xbrl_tag_mappings` is closed too,
+    # but is in production only and so is not in this list.)
+    "ai_trigger_registry",   # nothing reads or writes it
+    "entity_addresses",      # nothing reads or writes it (the entities screen reads `entities` alone)
+    "entity_documents",      # nothing reads or writes it
+    "lead_activities",       # nothing reads or writes it (the lifecycle router writes `leads` alone)
+    "lead_contacts",         # nothing reads or writes it
+    "pending_invites",       # nothing reads or writes it (a staff invite is a `users` row)
+    "permission_grants",     # nothing reads or writes it (the per-person grid is `user_permissions`)
+    "recurring_journal_template_lines",  # read and written only by the recurring-journal service on `service_db`
+    "retainer_logs",         # nothing reads or writes it
+    "team_members",          # the retired staff table (`users` is the staff table; three comments still mention it)
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.

@@ -12,6 +12,10 @@ _get_db = db_provider.request_db
 
 
 class EscalationRuleRepository(BaseRepository[dict]):
+    """Reads the firm's escalation rules. It has no write methods on purpose: nothing in the product writes the table with a
+    signed-in session (migration 538 took the signed-in role's writes away), and `BaseRepository.create/update` raise
+    NotImplementedError, so a future caller fails loudly instead of reaching a database that would refuse it."""
+
 
     def find_by_id(self, id: str) -> Optional[dict]:
         if _USE_MOCK:
@@ -83,38 +87,6 @@ class EscalationRuleRepository(BaseRepository[dict]):
                     applicable.append(rule)
 
         return applicable
-
-    def create(self, data: dict) -> dict:
-        if _USE_MOCK:
-            import uuid
-            record = {
-                "id": str(uuid.uuid4()),
-                **data,
-                "created_at": self.now_iso(),
-                "updated_at": self.now_iso()
-            }
-            return record
-        result = _get_db().table("escalation_rules").insert({
-            **data,
-            "created_at": self.now_iso(),
-            "updated_at": self.now_iso()
-        }).execute()
-        return result.data[0] if result.data else None
-
-    def update(self, id: str, data: dict) -> Optional[dict]:
-        if _USE_MOCK:
-            return None
-        result = _get_db().table("escalation_rules").update({
-            **data,
-            "updated_at": self.now_iso()
-        }).eq("id", id).execute()
-        return result.data[0] if result.data else None
-
-    def delete(self, id: str) -> bool:
-        if _USE_MOCK:
-            return True
-        _get_db().table("escalation_rules").delete().eq("id", id).execute()
-        return True
 
     def get_or_raise(self, id: str) -> dict:
         from core.exceptions import NotFoundError
