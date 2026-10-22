@@ -94,6 +94,10 @@ NOT_FOR_THE_API = {
     "ai_summaries",
     "ai_feedback",
     "ai_actions",
+    # Migration 536 (POST-A-299): migration 087's sandbox table for the browser-side filing demo, deleted long ago. Nothing in
+    # `apps/api` or `apps/web` reads or writes it, it held every privilege for every signed-in member, and 536 took all of
+    # them away from `authenticated`, `anon` and PUBLIC. The deny-list test below proves the denial is real.
+    "demo_filings",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.
