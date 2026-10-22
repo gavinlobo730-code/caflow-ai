@@ -195,7 +195,9 @@ def test_unassigned_client_is_refused(seeded_db):
     """journal_entries_assignment_scope, restated in the body."""
     r = _psql(seeded_db, _as_end_user("JNL-UNASSIGNED", client=UNASSIGNED_CLIENT), tuples=True)
     assert r.returncode != 0, "posting for an unassigned client must be refused"
-    assert "not assigned to the caller" in r.stderr, r.stderr
+    # Migration 533 put migration 486's guard in front of the body, so this is its wording ("not one the caller can reach"),
+    # not the body's older "not assigned to the caller"; both mean the same refusal.
+    assert "not one the caller can reach" in r.stderr, r.stderr
     assert _entries(seeded_db, "JNL-UNASSIGNED") == 0
 
 
@@ -215,7 +217,7 @@ def test_valid_jwt_without_a_user_row_is_refused(seeded_db):
     ghost = "99999999-9999-9999-9999-999999999999"
     r = _psql(seeded_db, _as_end_user("JNL-GHOST", auth_uid=ghost), tuples=True)
     assert r.returncode != 0, "a JWT with no user record must not post"
-    assert "no user record" in r.stderr, r.stderr
+    assert "no live user record" in r.stderr, r.stderr          # 486's guard's wording since migration 533
     assert _entries(seeded_db, "JNL-GHOST") == 0
 
 

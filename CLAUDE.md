@@ -394,7 +394,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS SCREEN ASKS THE SERVER WHAT BECAME OF A DEDUCTION, AND A CARD SHOWS A DASH UNTIL IT HAS A FIGURE FOR THE CLIENT IT IS ABOUT
 - THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE ORDER BY EVERY READER, AND THE SECTIONS AND THEIR NAMES ARE THE SERVER'S
 
-### `docs/design-record/tenancy-and-security.md` (52 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (53 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -448,6 +448,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A NUMBER THAT IS ONE LINE FOR THE WHOLE FIRM IS READ WITH THE WHOLE FIRM IN VIEW, AND WHICH SERIES THOSE ARE IS READ OFF THEIR UNIQUE KEY
 - THE STATUTORY IDENTITY, THE PAYROLL SETTINGS AND THE PT REGISTRATIONS TOOK THE ASSIGNMENT SCOPE, AND THERE WAS NO EMPLOYEE OR PORTAL BRANCH TO KEEP
 - THE YEAR LOCK OF A CLIENT WAS INVISIBLE TO EVERY CHECK MADE UNDER A SIGN-IN, AND IT IS NOW READ BY THE MEMBERS WHO POST INTO THE CLIENT AND WRITTEN BY THE API ALONE
+- THE TWO DATABASE FUNCTIONS THAT WRITE THE LEDGER ASK WHETHER THE YEAR IS CLOSED, AND THE ONE THAT NEVER ASKED WHO MAY POST ASKS THAT TOO
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
@@ -601,14 +602,12 @@ _Longer design records for this area were moved to `docs/design-record/ai.md`; s
   financial year, or this client's year-end was finalised — and `period_lock_reason`
   is those two plus *a return covering the date has been filed*, calling the first
   rather than restating it. **The posting kernel asks only the closures**, so nothing
-  reaches the GL inside a year somebody closed through it. ⚠️ **That is exact for the
-  Python kernel and not for the database** (POST-A-316, found 21-10-2026 by the review of
-  migration 532): `post_journal_atomic` and `settle_receipt_atomic` are SECURITY DEFINER
-  functions a signed-in person may call with their own token, neither reads
-  `client_year_locks` or asks `period_closure_reason`, and the API's plain rupee customer
-  receipt posts through `settle_receipt_atomic` and not through the kernel, so a
-  finalised client year (and the firm's locked year, for a direct call) does not stop
-  those doors. The filed-return branch is asked where
+  reaches the GL inside a year somebody closed. The two database functions the ledger is
+  written through, `post_journal_atomic` and `settle_receipt_atomic`, ask `period_closure_reason`
+  themselves since migration 533 (POST-A-316), so a direct call with a signed-in token and the
+  API's plain rupee receipt, which posts through the second and never reaches the kernel, are
+  refused a finalised client year in the closure's own words (the API's receipt also asks the
+  firm's locked year first, of the validator, in the validator's). The filed-return branch is asked where
   a document that FEEDS a return is written — sales invoices, purchase bills, credit
   and debit notes, and the manual journal, which can move any account including the tax
   ledgers — and by the edit and delete paths (266/275/276). It is deliberately NOT in
