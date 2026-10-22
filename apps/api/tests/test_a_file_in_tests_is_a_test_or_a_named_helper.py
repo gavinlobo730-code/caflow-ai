@@ -113,6 +113,11 @@ HELPERS = {
     # Python, which is how the year lock's table could refuse every signed-in write and no test notice. Imported by
     # `test_a_year_end_is_finalised_and_reopened_under_a_request_sign_in_pg.py`.
     "_signed_in_postgrest.py",
+    # POST-A-319 / POST-A-299. ONE scanner for "who writes this table": the AST of every module of the API, `scripts/` included, reports
+    # each place a table's name is used as a value or written in SQL text. The guards that hold `filings`, the two party-credit tables
+    # and the stock ledger to their one writer each carried a copy and the copies drifted (one could not see a table name held in a
+    # constant), so they import this.
+    "_table_uses.py",
     # POST-A-048 / POST-A-072. A PostgREST double that has the ~1000-row cap, for tests that exist to prove a read
     # PAGES: a double that returns everything from one `.execute()` passes against exactly the defect those tests are
     # written for. Imported by `test_a_read_that_pages_reads_every_page_and_the_indian_day.py`.

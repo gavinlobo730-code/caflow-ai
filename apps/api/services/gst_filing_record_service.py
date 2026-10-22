@@ -286,6 +286,16 @@ def build_filings_row(
     return row
 
 
+def _filings_db(request_db):
+    """The client `filings` is written with: the privileged one where there is one, the caller's own where there is no other
+    (mock mode, a test double), and None staying None. The same shape as `year_lock_service._lock_table_db`, for the same
+    reason: the table is a lock's evidence, and a signed-in session may not write it."""
+    if not request_db:
+        return request_db
+    from core import db_provider
+    return db_provider.service_db_or_none() or request_db
+
+
 def record_filing(
     db, *, firm_id: str, client_id: str, filing_type: str, period: str,
     filed_date: Optional[str] = None, arn: Optional[str] = None,
@@ -323,14 +333,35 @@ def record_filing(
         arn=arn, tax_payable_paise=tax_payable_paise, summary=summary,
         bounds=bounds, frequency=frequency,
     )
-    existing = (db.table("filings").select("id")
+    # `filings` IS WRITTEN WITH THE PRIVILEGED CLIENT (ledger POST-A-319; a migration that follows takes the signed-in write away). The period lock reads this table, so
+    # a row any assigned member could delete or rewrite was a lock any assigned member could lift: the signed-in role holds no
+    # write on it now. The routes that call this (the GST workspace's mark-filed, the obligation path and the compliance
+    # record) have already checked the role and the client; the one fact the row policy used to ask on top, that the client is
+    # THIS firm's, is asked here when the client is a privileged one (with one client for both there is nothing the row policy
+    # supplied that this swap took away, and the statements below name the firm and the client themselves).
+    request_db = db
+    db = _filings_db(db)
+    if db is not request_db:
+        owned = (db.table("clients").select("id").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+        if not owned:
+            raise ValidationError("client_id", "This client is not one of the firm's, so no filing is recorded for it.")
+    # The lookup deliberately does NOT filter on `deleted_at`: until the signed-in write is taken away any assigned member can soft-delete a
+    # filing over PostgREST, and `period_lock_reason` reads only live rows, so a soft-deleted row for this return is the lock a
+    # member lifted. Recording the return again REVIVES it (`deleted_at` is written back to null) instead of updating a row that
+    # stays invisible to the lock while the screen says the period is locked.
+    existing = (db.table("filings").select("id, deleted_at")
+                .eq("firm_id", firm_id)
                 .eq("client_id", client_id)
                 .eq("filing_type", filing_type)
                 .eq("period_start", row["period_start"])
                 .eq("period_end", row["period_end"])
-                .limit(1).execute().data) or []
+                .limit(50).execute().data) or []
+    # A live row first: when a soft-deleted twin and a live row both match (this table has no unique key, see the docstring),
+    # refreshing the dead one would leave two live rows claiming the period.
+    existing = sorted(existing, key=lambda r: r.get("deleted_at") is not None)
     if existing:
-        db.table("filings").update(row).eq("id", existing[0]["id"]).execute()
+        (db.table("filings").update({**row, "deleted_at": None})
+         .eq("id", existing[0]["id"]).eq("firm_id", firm_id).eq("client_id", client_id).execute())
         row["id"] = existing[0]["id"]
     else:
         db.table("filings").insert(row).execute()
