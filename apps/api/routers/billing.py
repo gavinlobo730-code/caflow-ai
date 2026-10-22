@@ -21,6 +21,7 @@ from core.permissions import rbac
 from services import billing_service
 from services import collections_service
 from services import fee_billing_service
+from services.audit_service import log_event
 from repositories.invoice_repository import invoice_repo
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
@@ -369,8 +370,14 @@ def list_staff_cost_rates(current_user: dict = Depends(rbac("billing", "read")))
 def set_staff_cost_rate(user_id: str, body: StaffCostRateIn,
                         current_user: dict = Depends(rbac("billing", "write"))):
     """Capture a staff member's cost rate (integer paise)."""
-    return api_response(True, billing_service.set_staff_cost_rate(
-        current_user["firm_id"], user_id, body.cost_rate_paise))
+    out = billing_service.set_staff_cost_rate(current_user["firm_id"], user_id, body.cost_rate_paise)
+    # the write is made with the privileged client, which has no sign-in, so the database's audit trigger records nothing
+    # for it (migration 111 returns early without an auth.uid()): the route records it. Only the fact of the change and the
+    # member are logged, not the rate itself.
+    log_event(current_user["firm_id"], "user", user_id, "cost_rate_set",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              new_data={"cost_rate_set": body.cost_rate_paise is not None})
+    return api_response(True, out)
 
 
 class StaffBillableRateIn(BaseModel):

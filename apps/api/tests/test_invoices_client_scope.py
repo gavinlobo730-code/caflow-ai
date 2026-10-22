@@ -260,12 +260,15 @@ def test_changing_status_on_another_clients_invoice_is_refused(deny, monkeypatch
 
 def test_changing_status_on_your_own_invoice_still_works(deny, monkeypatch):
     monkeypatch.setattr(iv.invoice_repo, "find_by_id", lambda iid: INVOICES.get(iid))
+    written = []
     monkeypatch.setattr(iv.invoice_repo, "change_status",
-                        lambda iid, status: {"id": iid, "status": status})
+                        lambda iid, status, **k: written.append(k) or {"id": iid, "status": status})
     monkeypatch.setattr(iv, "log_event", lambda *a, **k: None)
     out = iv.change_invoice_status("INV-MINE", iv.StatusChangeRequest(new_status="Issued"),
                                    current_user=USER)
     assert out["data"]["invoice"]["status"] == "Issued"
+    # the write names the caller's firm (the privileged client has no row security) and the status it read
+    assert written == [{"firm_id": FIRM, "only_from": "Draft"}], written
 
 
 def test_deleting_another_clients_invoice_is_refused(deny, monkeypatch):

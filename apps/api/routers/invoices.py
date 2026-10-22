@@ -94,8 +94,19 @@ class GenerateFromTimeQuery(BaseModel):
     billable_only: bool = True
 
 
+#: The status moves a person may make by hand. Paid is reached by a receipt (migration 172) and left by nobody, and an invoice
+#: that has had money received against it moves only between Issued and Overdue, which is what the nightly check does too.
+_MANUAL_STATUS_MOVES: dict[str, tuple[str, ...]] = {
+    "Draft": ("Issued",),
+    "Issued": ("Overdue",),
+    "Overdue": ("Issued",),
+}
+#: The two statuses an invoice that has had money received may move between by hand (what the nightly check does as well).
+_MOVES_THAT_FOLLOW_RECEIPTS_FREELY = frozenset(("Issued", "Overdue"))
+
+
 class StatusChangeRequest(BaseModel):
-    new_status: str = Field(..., description="New status: Draft, Issued, Paid, or Overdue")
+    new_status: str = Field(..., description="New status: Issued or Overdue (Paid comes from a receipt; Draft is where an invoice starts)")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -309,23 +320,54 @@ def change_invoice_status(
     current_user: dict = Depends(rbac("billing", "write")),
 ):
     """
-    Transition invoice status: Draft → Issued → Paid → Overdue
+    Move an invoice between the statuses a person may set: Draft -> Issued, Issued -> Overdue and Overdue -> Issued.
+    Paid is never set here (a receipt that covers the total does it) and nothing moves out of Paid.
 
     Request body:
-      - new_status: One of 'Draft', 'Issued', 'Paid', 'Overdue'
+      - new_status: One of 'Draft', 'Issued', 'Paid', 'Overdue' (Paid is refused in words)
     """
     firm_id = current_user.get("firm_id")
     invoice = _assert_invoice_scope(current_user, invoice_id)
 
     # Validate new_status
-    valid_statuses = {"Draft", "Issued", "Paid", "Overdue"}
+    valid_statuses = ("Draft", "Issued", "Paid", "Overdue")
     if body.new_status not in valid_statuses:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
         )
 
-    updated = invoice_repo.change_status(invoice_id, body.new_status)
+    # 'Paid' is not a status anyone sets (ledger POST-A-320): since migration 172 an invoice is Paid because its RECEIPTS cover
+    # its total (`record_fee_receipt_atomic` moves `paid_paise` and the status together), and a bare flip would leave a Paid
+    # invoice with nothing received, which is the lie that migration closed. The route used to be unreachable in production
+    # (the update it ran was refused by the database), so refusing the one transition costs nobody anything.
+    if body.new_status == "Paid":
+        raise HTTPException(
+            status_code=422,
+            detail="An invoice becomes Paid when receipts cover its total: record a receipt against it instead.",
+        )
+
+    # The other half of the same lie, from the other side: an invoice that is Paid, or has had money received against it,
+    # must not be moved back to Draft (where the delete route would then remove it with its receipts orphaned) or on to a
+    # state that contradicts what the receipts say. The moves a person may make are the three below.
+    current = invoice.get("status")
+    if body.new_status not in _MANUAL_STATUS_MOVES.get(current, ()):
+        raise HTTPException(
+            status_code=422,
+            detail=(f"An invoice that is {current} cannot be moved to {body.new_status} by hand."
+                    if current in _MANUAL_STATUS_MOVES else
+                    f"An invoice that is {current} cannot be moved to another status by hand."),
+        )
+    if int(invoice.get("paid_paise") or 0) > 0 and {current, body.new_status} != _MOVES_THAT_FOLLOW_RECEIPTS_FREELY:
+        raise HTTPException(
+            status_code=422,
+            detail="Money has been received against this invoice, so its status follows its receipts and is not changed by hand.",
+        )
+
+    updated = invoice_repo.change_status(invoice_id, body.new_status, firm_id=firm_id, only_from=current)
+    if not updated:
+        # the invoice changed under this request (a receipt landed, the overdue check ran): say so rather than "success"
+        raise HTTPException(status_code=409, detail="The invoice changed while this was being done. Reload it and try again.")
     log_event(firm_id, "invoice", invoice_id, "status_change",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               old_data={"status": invoice.get("status")}, new_data={"status": body.new_status})
@@ -354,6 +396,20 @@ def delete_invoice(
             status_code=400,
             detail=f"Cannot delete invoice with status '{invoice.get('status')}'. Only Draft invoices can be deleted.",
         )
+    # A Draft can carry receipts (the receipt function does not ask the status), and deleting it would orphan them.
+    if int(invoice.get("paid_paise") or 0) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete an invoice that has receipts recorded against it.",
+        )
 
-    invoice_repo.delete(invoice_id)
+    firm_id = current_user.get("firm_id")
+    if not invoice_repo.delete(invoice_id, firm_id=firm_id):
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    # The privileged client carries no sign-in, so the database's own audit trigger records nothing for this write
+    # (migration 111 returns early when there is no auth.uid()): the route records it.
+    log_event(firm_id, "invoice", invoice_id, "delete",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              old_data={"status": invoice.get("status"), "invoice_no": invoice.get("invoice_no")},
+              new_data={"deleted": True})
     return api_response(True, {"deleted": True})

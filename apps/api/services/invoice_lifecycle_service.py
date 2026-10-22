@@ -41,7 +41,11 @@ def run_overdue_check(firm_id: Optional[str] = None, client_id: Optional[str] = 
         if due is None:
             continue
         if due < today:
-            updated = invoice_repo.change_status(invoice["id"], "Overdue")
+            # Each row names its own firm (the nightly job runs once per firm and the manual check names the caller's, and the
+            # privileged write must be confined whichever form calls), and the write is conditional on the invoice still being
+            # Issued: a receipt that covered it since it was read must not be overwritten by Overdue.
+            updated = invoice_repo.change_status(invoice["id"], "Overdue", firm_id=invoice.get("firm_id") or firm_id,
+                                                 only_from="Issued")
             if updated:
                 transitioned.append(invoice["id"])
                 logger.info(

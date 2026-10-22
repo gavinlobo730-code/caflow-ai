@@ -646,7 +646,7 @@ LITERAL_INVENTORY = {
     "domain/hub/worklist.py": (1, "a column heading"),
     "domain/practice/compliance_overdue.py": (1, "STORED_OVERDUE, the rule's own word"),
     "mock_data.py": (2, "mock compliance records whose status was set by hand"),
-    "routers/invoices.py": (1, "the invoice statuses, where a job writes it"),
+    "routers/invoices.py": (4, "the fee invoice's own statuses and the moves a person may make by hand (a table, a pair and the vocabulary)"),
     "routers/lifecycle.py": (1, "a legacy engagement status mapped to another"),
     "services/hub_service.py": (1, "the compliance_records CHECK vocabulary, for the outstanding count"),
     "services/intelligence_service.py": (3, "invoices (a job writes 'Overdue' onto an invoice)"),
