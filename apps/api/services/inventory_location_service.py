@@ -368,7 +368,7 @@ def transfer(db, *, firm_id: str, client_id: str, service_catalogue_id: str,
     # of the client's own shelves — the item's quantity, value and average cost
     # are exactly what they were. Recomputing them would make the chain
     # disagree with itself across a pair that nets to zero.
-    from domain.inventory_service import _last_ledger_row
+    from domain.inventory_service import _last_ledger_row, ledger_writer
     previous = _last_ledger_row(db, service_catalogue_id) or {}
     running_qty = previous.get("running_qty_units", "0")
     running_value = int(previous.get("running_value_paise") or 0)
@@ -399,7 +399,8 @@ def transfer(db, *, firm_id: str, client_id: str, service_catalogue_id: str,
     # be a write nobody notices failing, and PostgREST rejects the WHOLE insert
     # on one such column. The same reason `routers/bills_of_entry.py` spells
     # its insert out.
-    db.table("inventory_stock_ledger").insert({
+    writer = ledger_writer(db)
+    writer.table("inventory_stock_ledger").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "service_catalogue_id": service_catalogue_id,
@@ -418,7 +419,7 @@ def transfer(db, *, firm_id: str, client_id: str, service_catalogue_id: str,
         "running_value_paise": running_value,
         "running_avg_cost_paise": running_avg,
     }).execute()
-    db.table("inventory_stock_ledger").insert({
+    writer.table("inventory_stock_ledger").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "service_catalogue_id": service_catalogue_id,

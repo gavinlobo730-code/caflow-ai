@@ -32,6 +32,19 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _credit_db(request_db):
+    """The client the two sub-ledger tables are WRITTEN with: the privileged one where there is one, the caller's own where
+    there is no other (mock mode, a test double), and None staying None. `party_credit_balances` is the figure
+    `apply_credit` trusts to settle a document, and `party_credit_ledger` is the trail that explains it, so a signed-in
+    session will not be allowed to write either (a migration that follows this change takes the grant away); the routes that reach this service check the
+    caller's access to the client first, and every statement below still names the firm and the client, because the privileged client does not.
+    Reads stay on the caller's client: row security is the second lock there."""
+    if not request_db:
+        return request_db
+    from core import db_provider
+    return db_provider.service_db_or_none() or request_db
+
+
 def _outstanding(doc: dict, applied_to_type: str) -> int:
     # Same formula as bank_posting_service (CGST Act §34 / IT Act §194C/194J
     # TDS-net payable) so a credit application reconciles with aging/statements.
@@ -80,6 +93,7 @@ class PartyCreditService:
         self._validate_party_type(party_type)
         if amount_paise <= 0:
             raise HTTPException(status_code=422, detail="amount_paise must be positive")
+        wdb = _credit_db(db)
 
         for _attempt in range(max_retries):
             existing = (db.table("party_credit_balances").select("id, balance_paise")
@@ -88,7 +102,7 @@ class PartyCreditService:
                         .limit(1).execute().data or [None])[0]
             if not existing:
                 try:
-                    db.table("party_credit_balances").insert({
+                    wdb.table("party_credit_balances").insert({
                         "firm_id": firm_id, "client_id": client_id, "party_type": party_type,
                         "party_id": party_id, "balance_paise": amount_paise, "updated_at": _now(),
                     }).execute()
@@ -100,15 +114,16 @@ class PartyCreditService:
             else:
                 raw_balance = existing.get("balance_paise")
                 new_balance = int(raw_balance or 0) + amount_paise
-                upd = (db.table("party_credit_balances")
+                upd = (wdb.table("party_credit_balances")
                        .update({"balance_paise": new_balance, "updated_at": _now()})
-                       .eq("id", existing["id"]).eq("balance_paise", raw_balance).execute())
+                       .eq("id", existing["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
+                       .eq("balance_paise", raw_balance).execute())
                 if upd.data:
                     break
         else:
             raise HTTPException(status_code=409, detail="Party credit balance is being updated concurrently — please retry.")
 
-        ledger_row = (db.table("party_credit_ledger").insert({
+        ledger_row = (wdb.table("party_credit_ledger").insert({
             "firm_id": firm_id, "client_id": client_id, "party_type": party_type, "party_id": party_id,
             "amount_paise": amount_paise, "kind": "grant", "source_type": source_type,
             "source_id": source_id, "notes": notes, "created_by": created_by,
@@ -144,6 +159,7 @@ class PartyCreditService:
         self._validate_party_type(party_type)
         if amount_paise <= 0:
             raise HTTPException(status_code=422, detail="amount_paise must be positive")
+        wdb = _credit_db(db)
 
         for _attempt in range(max_retries):
             existing = (db.table("party_credit_balances").select("id, balance_paise")
@@ -158,16 +174,17 @@ class PartyCreditService:
                     detail=(f"This {party_type}'s credit of {amount_paise} paise has already been "
                             f"used against an invoice (only {balance} paise left). Undo that "
                             "application first."))
-            upd = (db.table("party_credit_balances")
+            upd = (wdb.table("party_credit_balances")
                    .update({"balance_paise": balance - amount_paise, "updated_at": _now()})
-                   .eq("id", existing["id"]).eq("balance_paise", raw_balance).execute())
+                   .eq("id", existing["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
+                   .eq("balance_paise", raw_balance).execute())
             if upd.data:
                 break
         else:
             raise HTTPException(status_code=409,
                                 detail="Party credit balance is being updated concurrently — please retry.")
 
-        ledger_row = (db.table("party_credit_ledger").insert({
+        ledger_row = (wdb.table("party_credit_ledger").insert({
             "firm_id": firm_id, "client_id": client_id, "party_type": party_type, "party_id": party_id,
             "amount_paise": -amount_paise, "kind": "revocation", "source_type": source_type,
             "source_id": source_id, "notes": notes, "created_by": created_by,
@@ -230,6 +247,7 @@ class PartyCreditService:
         table = _DOC_TABLE[applied_to_type]
         label_col = _DOC_LABEL_COL[applied_to_type]
         party_col = "customer_id" if applied_to_type == "sales_invoice" else "vendor_id"
+        wdb = _credit_db(db)
 
         # 1) Decrement the credit balance (CAS) — validated against FRESH state
         #    on every attempt so a concurrent application can't overdraw it.
@@ -247,9 +265,10 @@ class PartyCreditService:
                                     detail=f"Requested application (₹{rupees_paise(amount_paise)}) exceeds "
                                            f"the available credit (₹{rupees_paise(current_balance)}).")
             new_balance = current_balance - amount_paise
-            upd = (db.table("party_credit_balances")
+            upd = (wdb.table("party_credit_balances")
                    .update({"balance_paise": new_balance, "updated_at": _now()})
-                   .eq("id", existing["id"]).eq("balance_paise", raw_balance).execute())
+                   .eq("id", existing["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
+                   .eq("balance_paise", raw_balance).execute())
             if upd.data:
                 break
         else:
@@ -295,7 +314,7 @@ class PartyCreditService:
             self._restore_balance(db, firm_id, client_id, party_type, party_id, amount_paise, max_retries)
             raise
 
-        ledger_row = (db.table("party_credit_ledger").insert({
+        ledger_row = (wdb.table("party_credit_ledger").insert({
             "firm_id": firm_id, "client_id": client_id, "party_type": party_type, "party_id": party_id,
             "amount_paise": -amount_paise, "kind": "application",
             "applied_to_type": applied_to_type, "applied_to_id": applied_to_id, "created_by": created_by,
@@ -308,6 +327,7 @@ class PartyCreditService:
         """Best-effort compensation: undo step 1's decrement after step 2 failed
         for ANY reason (validation or CAS exhaustion), so a rejected application
         never silently burns the party's credit."""
+        wdb = _credit_db(db)
         for _attempt in range(max_retries):
             cur = (db.table("party_credit_balances").select("id, balance_paise")
                    .eq("firm_id", firm_id).eq("client_id", client_id)
@@ -316,9 +336,10 @@ class PartyCreditService:
             if not cur:
                 return
             raw = cur.get("balance_paise")
-            upd = (db.table("party_credit_balances")
+            upd = (wdb.table("party_credit_balances")
                    .update({"balance_paise": int(raw or 0) + amount_paise, "updated_at": _now()})
-                   .eq("id", cur["id"]).eq("balance_paise", raw).execute())
+                   .eq("id", cur["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
+                   .eq("balance_paise", raw).execute())
             if upd.data:
                 return
         from core.observability import capture_posting_failure

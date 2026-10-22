@@ -227,6 +227,20 @@ def _compute_stock_out_fifo(prev_qty: Decimal, prev_value_paise: int,
     }
 
 
+def ledger_writer(request_db):
+    """The client the stock ledger is WRITTEN with: the privileged one where there is one, the caller's own where there is
+    no other (mock mode, a test double), and None staying None. The ledger's running totals are what every later movement
+    chains from and its deltas are what closing stock is summed from and what ties to the Inventory control account, so a
+    signed-in session will not be allowed to write it (a migration that follows this change takes the grant away). Every route that reaches a posting here has
+    already checked the caller's access to the client, and the movement's item was claimed through the CALLER's client one statement earlier
+    (`_insert_and_cache`'s compare-and-set on `service_catalogue`, which row security confines to the caller's own
+    clients), so the row written here is for an item the caller can reach. Reads stay on the caller's client."""
+    if not request_db:
+        return request_db
+    from core import db_provider
+    return db_provider.service_db_or_none() or request_db
+
+
 def _last_ledger_row(db, service_catalogue_id: str) -> Optional[dict]:
     """The row every new movement chains its running totals from.
 
@@ -517,7 +531,7 @@ def _insert_and_cache(
         # and identical between production and the in-memory test doubles.
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    inserted = db.table("inventory_stock_ledger").insert(row).execute()
+    inserted = ledger_writer(db).table("inventory_stock_ledger").insert(row).execute()
     return inserted.data[0] if inserted.data else row
 
 
@@ -531,7 +545,7 @@ def _set_ledger_journal_entry_id(db, ledger_row_id: Optional[str], journal_entry
     if not ledger_row_id or not journal_entry_id:
         return
     try:
-        db.table("inventory_stock_ledger").update(
+        ledger_writer(db).table("inventory_stock_ledger").update(
             {"journal_entry_id": journal_entry_id}
         ).eq("id", ledger_row_id).execute()
     except Exception as e:
@@ -728,7 +742,7 @@ def seed_opening_balances_batch(
         lr["journal_entry_id"] = journal_id_by_client.get(lr["client_id"])
 
     try:
-        db.table("inventory_stock_ledger").insert(ledger_rows).execute()
+        ledger_writer(db).table("inventory_stock_ledger").insert(ledger_rows).execute()
     except Exception as e:
         capture_posting_failure(
             e, operation="seed_opening_balances_batch.ledger_insert",

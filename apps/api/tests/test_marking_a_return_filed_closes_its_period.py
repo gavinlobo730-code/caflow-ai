@@ -46,6 +46,8 @@ def app_db(monkeypatch):
     monkeypatch.setattr(mod, "_USE_MOCK", False)
     monkeypatch.setattr(mod, "log_event", lambda *a, **k: None)
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: db)
+    # `filings` is written with the privileged client (see record_filing); in this test the one database is both.
+    monkeypatch.setattr("core.db_provider.service_db_or_none", lambda: db)
     monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.test")
     db.seed("firms", {"id": "F1", "name": "F1", "locked_financial_years": []})
     app = FastAPI()

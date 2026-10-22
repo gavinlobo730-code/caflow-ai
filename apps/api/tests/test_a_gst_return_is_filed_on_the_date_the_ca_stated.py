@@ -373,6 +373,8 @@ def calendar(monkeypatch):
     monkeypatch.setattr(mod, "_USE_MOCK", False)
     monkeypatch.setattr(mod, "log_event", lambda *a, **k: None)
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: d)
+    # `filings` is written with the privileged client (see record_filing); in this test the one database is both.
+    monkeypatch.setattr("core.db_provider.service_db_or_none", lambda: d)
     monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.test")
     d.seed("firms", {"id": "F1", "name": "F1", "locked_financial_years": []})
     d.seed("compliance_calendar", {
