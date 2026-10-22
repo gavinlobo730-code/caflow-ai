@@ -72,13 +72,68 @@ class _ScoreIncomplete(Exception):
     """A calculation that lost one or more reads: its score is not stored."""
 
 
+class _NothingToScore(Exception):
+    """A client with nothing on record for the engine to judge: no score is stored (POST-A-288)."""
+
+
+def _has_anything_to_score_db(db, client_id: str, firm_id: str) -> bool:
+    """True when at least one source the engine reads holds a row for this client (POST-A-288).
+
+    A client for whom NONE of these holds a row has given the engine nothing to judge, and the engine starts every dimension at 100
+    and takes points off for what it finds, so it would score such a client near 100 (98: only the portal-login line takes points) and
+    call it neither critical nor at risk. That is the absence of information read as the absence of a problem, which `client_risk`'s
+    docstring exists to stop. Any row at all counts, a filed return and a closed notice included: they are what a good score is made
+    of. The sources are everything the engine reads: the tables of the seven dimensions, the two the hard-override detector reads
+    on its own (GSTR-3B returns and advance-tax instalments, so a client whose only record is a return overdue by more than two
+    months is Critical and not "not yet scored") and the CA's own live overrides.
+
+    A probe that cannot be read is NOT an answer: it is reported as a lost read (so the calculation is refused and nothing is
+    stored, as for every other lost read) and counts as evidence here, because "we could not look" must never be turned into
+    "there is nothing to look at"."""
+    # One literal chain per source, so that the firm-scope reader and the visibility guards can see each query.
+    probes = (
+        ("compliance_records", lambda: db.table("compliance_records").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
+        ("government_notices", lambda: db.table("government_notices").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
+        ("tasks", lambda: db.table("tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
+        ("document_requests", lambda: db.table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
+        ("ai_insights", lambda: db.table("ai_insights").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
+        ("bank_transactions", lambda: _bank_db(db).table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
+        ("client_portal_sessions", lambda: db.table("client_portal_sessions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
+        ("gstr3b_returns", lambda: db.table("gstr3b_returns").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
+        ("advance_tax_payments", lambda: db.table("advance_tax_payments").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
+        ("health_overrides", lambda: db.table("health_overrides").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("is_active", True).limit(1)),
+    )
+    for source, probe in probes:
+        try:
+            if probe().execute().data:
+                return True
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.evidence", source=source, firm_id=firm_id, client_id=client_id)
+            return True
+    return False
+
+
+def _forget_a_score_made_of_nothing(db, firm_id: str, client_id: str) -> bool:
+    """Remove the stored score of a client that has nothing on record, so it reads "not yet scored" again; True when there was one.
+
+    A score stored for a client the engine now has nothing to judge was made of nothing (the Calculate button and the client
+    Overview's first visit stored 98 for empty clients long before the nightly sweep did), or of rows that no longer exist; either way
+    it is a figure about no information, and left in place it would stay Healthy and counted for ever, while Calculate now refuses to
+    refresh it. The history rows are kept: they are what was shown on the day. Pinned by firm and client."""
+    gone = db.table("health_scores").delete().eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
+    return bool(gone)
+
+
 def _calculate_scores_or_say_a_read_was_lost(db, client_id: str, firm_id: str) -> dict:
     """The score of a client from the books as they are, or `_ScoreIncomplete` when a read behind it failed.
 
     Every dimension swallows a failed read and counts as 100 (right for a figure a person is looking at), so a score computed through a
     lost read is falsely healthy, and STORING it replaces the last good one: a client that was Critical would read 98 until the next
     calculation. The nightly sweep and the Recalculate button have refused to store such a score since POST-A-282; the single-client
-    Calculate route did not, and this is the one place all three ask."""
+    Calculate route did not, and this is the one place all three ask.
+
+    `_NothingToScore` (raised by `_calculate_scores_db` for a client the engine has nothing on record to judge, POST-A-288) is not a
+    lost read and is not caught here: each of the three callers words it its own way."""
     lost: list = []
     token = _lost_reads.set(lost)
     try:
@@ -610,7 +665,12 @@ def _calculate_scores_db(db, client_id: str, firm_id: str) -> dict:
     """
     Real DB score calculation — Product Bible Chapter 16 dimensions.
     Integer arithmetic only — no float.
+
+    Raises `_NothingToScore` for a client with no row in any source the dimensions read (POST-A-288): the engine starts every dimension
+    at 100, so such a client would be stored as 98 and counted Healthy, which says "no problem" about "no information".
     """
+    if not _has_anything_to_score_db(db, client_id, firm_id):
+        raise _NothingToScore(f"client {client_id} has nothing on record for the engine to judge")
     dim_scores = {
         "compliance_health":     _dim_compliance_health_db(db, client_id, firm_id),
         "accounting_quality":    _dim_accounting_quality_db(db, client_id, firm_id),
@@ -1085,6 +1145,22 @@ def calculate_score(
             status_code=503,
             detail="This client's score could not be calculated just now because part of the data behind it could not be read. "
                    "The last score, if there is one, is unchanged. Try again in a moment.") from incomplete
+    except _NothingToScore as nothing:
+        # 409, not a stored score: there is nothing recorded for this client for a score to be made of, and the engine would have
+        # called it healthy. A score it already had, made of nothing, is removed so that the screens stop showing it.
+        removed = False
+        try:
+            removed = _forget_a_score_made_of_nothing(db, firm_id, client_id)
+            if removed:
+                _expire_what_was_cached_from_the_scores(firm_id, client_id)
+        except Exception as exc:
+            capture_soft_failure(exc, operation="health.forget_score_made_of_nothing", firm_id=firm_id, client_id=client_id)
+        raise HTTPException(
+            status_code=409,
+            detail="This client has nothing recorded that the health score reads (returns or obligations, GSTR-3B or advance-tax "
+                   "records, tasks, document requests, notices, bank lines, insights, overrides or portal visits), so there is "
+                   "nothing to score yet. A score is calculated once something is recorded."
+                   + (" The score it had, which was made of nothing, has been removed." if removed else "")) from nothing
 
     old_row = db.table("health_scores").select("overall_score, id").eq("client_id", client_id).eq("firm_id", firm_id).limit(1).execute().data
     old_overall = (old_row[0]["overall_score"] if old_row else None)
@@ -1310,8 +1386,10 @@ def recalculate_clients(db, firm_id: str, clients: list[dict]) -> dict:
     Recalculate button for the caller's own clients and by the nightly sweep for the whole firm (`jobs/health_scores_job`).
 
     A client whose calculation lost a read (a dimension counts as 100 when its own read fails) is NOT stored: a figure computed from a
-    failed read would replace the last good one with a falsely healthy score, and a nightly run would do it to a whole firm."""
-    updated = failed = 0
+    failed read would replace the last good one with a falsely healthy score, and a nightly run would do it to a whole firm. And a client
+    with nothing on record at all (`_NothingToScore`) is not stored either, loses any score it had, and is counted in `unscored`, not
+    in `failed`."""
+    updated = failed = unscored = cleared = 0
     now = datetime.now(timezone.utc).isoformat()
     for client in clients:
         try:
@@ -1336,12 +1414,22 @@ def recalculate_clients(db, firm_id: str, clients: list[dict]) -> dict:
                                   if not isinstance(v, dict)},
             }).execute()
             updated += 1
+        except _NothingToScore:
+            # Not a failure and not a score: the client has nothing on record, so it reads "not yet scored" (a score it already
+            # had, made of nothing, is removed) and is counted apart from the ones that could not be calculated.
+            try:
+                if _forget_a_score_made_of_nothing(db, firm_id, client["id"]):
+                    cleared += 1
+                unscored += 1
+            except Exception as exc:
+                failed += 1
+                capture_soft_failure(exc, operation="health.forget_score_made_of_nothing", firm_id=firm_id, client_id=client.get("id"))
         except Exception as exc:
             failed += 1
             capture_soft_failure(exc, operation="health.recalculate_all", firm_id=firm_id, client_id=client.get("id"))
-    if updated:
+    if updated or cleared:
         _expire_what_was_cached_from_the_scores(firm_id)
-    return {"updated": updated, "failed": failed}
+    return {"updated": updated, "failed": failed, "unscored": unscored}
 
 
 @router.post("/recalculate-all")
@@ -1356,7 +1444,7 @@ def recalculate_all(
     db = _db()
     firm_id = current_user["firm_id"]
     if not db:
-        return api_response(True, {"updated": 0, "failed": 0, "message": "No DB — mock mode"})
+        return api_response(True, {"updated": 0, "failed": 0, "unscored": 0, "message": "No DB — mock mode"})
 
     clients = clients_to_score(db, firm_id)
     eff = effective_client_ids(current_user)

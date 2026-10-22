@@ -12,7 +12,7 @@ WHAT IS HELD
     * `routers/health.recalculate_clients` is the one loop (score, trend against the last stored score, upsert, history row, one
       expiry of what was cached from the old scores), used by the button for the caller's clients and by the job for the firm's.
     * `jobs/health_scores_job.run_health_scores_for_firm` runs it for a firm that is active, counts a client that would not score
-      without stopping the others, and raises only when it had clients and scored none, so the run row says `failed`.
+      without stopping the others, and raises only when clients failed and none was scored (POST-A-288: a firm whose clients all have nothing on record is not a failed run), so the run row says `failed`.
     * The sweep runs it as a gated, logged, claimed job before the memory pipeline.
 """
 from __future__ import annotations
@@ -84,7 +84,7 @@ def test_a_run_stores_each_clients_score_with_its_name_and_one_history_row(monke
     db, expired, _ = _world(monkeypatch)
     _clients(db, {"id": "a", "client_name": "Anand & Co"}, {"id": "b", "client_name": "Bose Ltd"})
     out = job.run_health_scores_for_firm(FIRM)
-    assert out == {"clients": 2, "updated": 2, "failed": 0}
+    assert out == {"clients": 2, "updated": 2, "failed": 0, "unscored": 0}
     stored = {r["client_id"]: r for r in db._tables["health_scores"]}
     assert set(stored) == {"a", "b"} and stored["a"]["client_name"] == "Anand & Co" and stored["a"]["overall_score"] == 70
     assert stored["a"]["firm_id"] == FIRM and stored["a"]["last_calculated_at"]
@@ -112,7 +112,7 @@ def test_what_was_cached_from_the_old_scores_is_marked_stale_once_per_run(monkey
 
 def test_a_firm_with_no_clients_runs_clean_and_expires_nothing(monkeypatch):
     _, expired, _ = _world(monkeypatch)
-    assert job.run_health_scores_for_firm(FIRM) == {"clients": 0, "updated": 0, "failed": 0} and expired == []
+    assert job.run_health_scores_for_firm(FIRM) == {"clients": 0, "updated": 0, "failed": 0, "unscored": 0} and expired == []
 
 
 # ── a client that will not score ─────────────────────────────────────────────
@@ -121,7 +121,7 @@ def test_one_client_that_will_not_score_is_counted_and_reported_and_the_others_a
     db, expired, reported = _world(monkeypatch, fails=("b",))
     _clients(db, {"id": "a"}, {"id": "b"}, {"id": "c"})
     out = job.run_health_scores_for_firm(FIRM)
-    assert out == {"clients": 3, "updated": 2, "failed": 1}
+    assert out == {"clients": 3, "updated": 2, "failed": 1, "unscored": 0}
     assert sorted(r["client_id"] for r in db._tables["health_scores"]) == ["a", "c"]
     assert [(op, kw["firm_id"], kw["client_id"]) for op, kw in reported] == [("health.recalculate_all", FIRM, "b")]
     assert expired, "the two that were saved still expire the caches"
@@ -198,7 +198,7 @@ def test_the_recalculate_button_scores_the_callers_clients_through_the_same_loop
     monkeypatch.setattr(hl, "_db", lambda: db)
     monkeypatch.setattr(hl, "effective_client_ids", lambda user: {"a"})
     out = hl.recalculate_all(current_user={"id": "u1", "firm_id": FIRM, "auth_user_id": "u1", "role": "Manager"})
-    assert out["data"] == {"updated": 1, "failed": 0}
+    assert out["data"] == {"updated": 1, "failed": 0, "unscored": 0}
     assert [r["client_id"] for r in db._tables["health_scores"]] == ["a"] and expired
 
 
@@ -256,7 +256,7 @@ def test_a_calculation_that_lost_a_read_stores_nothing_and_leaves_the_last_good_
 
     monkeypatch.setattr(hl, "_calculate_scores_db", calculate)
     out = job.run_health_scores_for_firm(FIRM)
-    assert out == {"clients": 2, "updated": 1, "failed": 1}
+    assert out == {"clients": 2, "updated": 1, "failed": 1, "unscored": 0}
     assert hl._lost_reads.get() is None, "the collector is put back after each calculation, so later swallowed reads are not collected"
     stored = {r["client_id"]: r for r in db._tables["health_scores"]}
     assert stored["a"]["overall_score"] == 34 and stored["a"]["is_critical"] is True, "the last good score stays"
@@ -319,7 +319,7 @@ def test_a_manager_with_no_assigned_client_recalculates_nobody(monkeypatch):
     monkeypatch.setattr(hl, "_db", lambda: db)
     monkeypatch.setattr(hl, "effective_client_ids", lambda user: set())
     out = hl.recalculate_all(current_user={"id": "u1", "firm_id": FIRM, "auth_user_id": "u1", "role": "Manager"})
-    assert out["data"] == {"updated": 0, "failed": 0} and "health_scores" not in db._tables and expired == []
+    assert out["data"] == {"updated": 0, "failed": 0, "unscored": 0} and "health_scores" not in db._tables and expired == []
 
 
 def test_the_trend_is_signed_and_is_against_that_clients_own_previous_score_in_that_firm(monkeypatch):
@@ -396,7 +396,7 @@ def test_a_lost_read_of_one_client_is_not_blamed_on_the_next(monkeypatch):
         return {"overall_score": 70, "health_grade": "Good"}
 
     monkeypatch.setattr(hl, "_calculate_scores_db", calculate)
-    assert job.run_health_scores_for_firm(FIRM) == {"clients": 3, "updated": 2, "failed": 1}
+    assert job.run_health_scores_for_firm(FIRM) == {"clients": 3, "updated": 2, "failed": 1, "unscored": 0}
     assert sorted(r["client_id"] for r in db._tables["health_scores"]) == ["b", "c"]
 
 
