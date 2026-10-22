@@ -234,6 +234,25 @@ def _upgrade_stored_hash(db, firm_id: str, old_hash: str, pin: str) -> None:
 # other client in the practice.
 #
 # Both are enforced: a posting is refused if either applies.
+#
+# WHO WRITES THE ROW, AND WHO READS IT (migration 532, POST-A-314). The row is written by the API and by nobody signed in:
+# migration 289's only policy asked a `firm_id` token claim this project never issues, so every signed-in session was refused
+# every row of the table, and a finalise failed on the INSERT after it had already written the engagement as locked. 532
+# revoked the signed-in role's writes (the lock and the unlock are Partner acts that the routes check and the audit log
+# records) and gave the signed-in role a READ scoped to the clients it is assigned to, which is what the period checks
+# (`period_closure_reason`, `period_lock_reason`, both SECURITY INVOKER) need to see a finalised year at all. So this module
+# reads and writes the table with the privileged client, after the route has authorised the act, and the period checks of
+# everything else read it as the caller.
+
+def _lock_table_db(request_db):
+    """The client `client_year_locks` is read and written with: the privileged one where there is one, the caller's own where
+    there is no other (mock mode, a test double), and None staying None. The caller is a route that has already checked that
+    the person is a Partner and that the engagement is in their firm; every query below carries that firm."""
+    if not request_db:
+        return request_db
+    from core import db_provider
+    return db_provider.service_db_or_none() or request_db
+
 
 def is_client_year_locked(db, firm_id: str, client_id: str,
                           financial_year: str) -> bool:
@@ -273,6 +292,7 @@ def set_client_lock(db, firm_id: str, client_id: str, financial_year: str,
         no year-end engagements yet; the identical bug was found and fixed once
         already in banking.py's column-mapping save.
     """
+    db = _lock_table_db(db)
     already = is_client_year_locked(db, firm_id, client_id, financial_year)
     if lock and not already:
         db.table("client_year_locks").insert({

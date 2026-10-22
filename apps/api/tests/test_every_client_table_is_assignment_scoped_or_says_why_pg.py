@@ -11,8 +11,8 @@ WHY THIS EXISTS
     client's rows in those tables with their own sign-in.
 
     Migration 527 closed the bank's children, 528 eleven more tables and five children, 529 the engagement letters and
-    twenty children (the `children` list is empty now), and 531 the statutory identity, the payroll settings and the PT
-    registrations. This test is the ratchet for the rest: the list in
+    twenty children (the `children` list is empty now), 531 the statutory identity, the payroll settings and the PT
+    registrations, and 532 the year locks. This test is the ratchet for the rest: the list in
     `tests/fixtures/assignment_scope_exceptions.json` is exactly the tables that still carry no RESTRICTIVE policy asking
     `my_assigned_client_ids()` / `can_access_client`, with the reason each is not done, and it can only shrink.
 
@@ -447,7 +447,7 @@ def test_every_listed_child_is_verified_for_the_reason_it_gives(children, listed
 
 # The lists are SHRINK-ONLY. The ceilings are the sizes on the day the rule was last lowered: a new gap cannot join a list
 # without raising a constant in a diff somebody reads, and closing one lowers the constant in the same commit.
-MAX_LISTED_TABLES = 23
+MAX_LISTED_TABLES = 22
 MAX_LISTED_CHILDREN = 0
 
 

@@ -394,7 +394,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS SCREEN ASKS THE SERVER WHAT BECAME OF A DEDUCTION, AND A CARD SHOWS A DASH UNTIL IT HAS A FIGURE FOR THE CLIENT IT IS ABOUT
 - THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE ORDER BY EVERY READER, AND THE SECTIONS AND THEIR NAMES ARE THE SERVER'S
 
-### `docs/design-record/tenancy-and-security.md` (51 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (52 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -447,6 +447,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THREE ROUTES ASKED A FIRM-LEVEL QUESTION AS THE CALLER AND ANSWERED FOR THEIR SLICE OF THE FIRM, AND A RUN-ALL WAS NOT CONFINED TO THE CALLER'S CLIENTS
 - A NUMBER THAT IS ONE LINE FOR THE WHOLE FIRM IS READ WITH THE WHOLE FIRM IN VIEW, AND WHICH SERIES THOSE ARE IS READ OFF THEIR UNIQUE KEY
 - THE STATUTORY IDENTITY, THE PAYROLL SETTINGS AND THE PT REGISTRATIONS TOOK THE ASSIGNMENT SCOPE, AND THERE WAS NO EMPLOYEE OR PORTAL BRANCH TO KEEP
+- THE YEAR LOCK OF A CLIENT WAS INVISIBLE TO EVERY CHECK MADE UNDER A SIGN-IN, AND IT IS NOW READ BY THE MEMBERS WHO POST INTO THE CLIENT AND WRITTEN BY THE API ALONE
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
@@ -600,7 +601,14 @@ _Longer design records for this area were moved to `docs/design-record/ai.md`; s
   financial year, or this client's year-end was finalised — and `period_lock_reason`
   is those two plus *a return covering the date has been filed*, calling the first
   rather than restating it. **The posting kernel asks only the closures**, so nothing
-  reaches the GL inside a year somebody closed. The filed-return branch is asked where
+  reaches the GL inside a year somebody closed through it. ⚠️ **That is exact for the
+  Python kernel and not for the database** (POST-A-316, found 21-10-2026 by the review of
+  migration 532): `post_journal_atomic` and `settle_receipt_atomic` are SECURITY DEFINER
+  functions a signed-in person may call with their own token, neither reads
+  `client_year_locks` or asks `period_closure_reason`, and the API's plain rupee customer
+  receipt posts through `settle_receipt_atomic` and not through the kernel, so a
+  finalised client year (and the firm's locked year, for a direct call) does not stop
+  those doors. The filed-return branch is asked where
   a document that FEEDS a return is written — sales invoices, purchase bills, credit
   and debit notes, and the manual journal, which can move any account including the tax
   ledgers — and by the edit and delete paths (266/275/276). It is deliberately NOT in
@@ -1205,9 +1213,9 @@ PostgREST. That is why:
   loop that HAS NEVER RUN AGAIN. Six tables created since are read straight from the
   browser and had firm-wide access only until migration 370: `bank_accounts` (093),
   `debit_notes` (145), `purchase_credit_notes` / `sales_debit_notes` (210),
-  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). A further 8
+  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). A further 7
   are still in that state (the bank's splits, rules and matches were closed by migration 527, eleven more tables by 528, the engagement letters
-  by 529 and the statutory identity, payroll settings and PT registrations by 531; the rest are POST-A-299), and the tables with no client of their own that hang from a client table follow their parent since 529
+  by 529, the statutory identity, payroll settings and PT registrations by 531 and the year locks by 532; the rest are POST-A-299), and the tables with no client of their own that hang from a client table follow their parent since 529
   (the catalog's `children` list is empty and stays so). The premise
   they were left on, "nothing reaches them from the browser", is false: PostgREST answers for every granted table and
   the API runs as the caller. The durable half is the rule, asserted:
