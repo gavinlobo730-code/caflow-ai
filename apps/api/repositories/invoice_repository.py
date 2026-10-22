@@ -130,24 +130,45 @@ class InvoiceRepository(BaseRepository[dict]):
         }).execute()
         return result.data[0]
 
-    def update(self, id: str, data: dict) -> Optional[dict]:
+    # ── writes ────────────────────────────────────────────────────────────────────────────────────────────────────────
+    # `fee_invoices` is written with the PRIVILEGED client (ledger POST-A-320). Migrations 172 and 245 took UPDATE from the
+    # signed-in role on purpose (the browser used to force-set `status = 'Paid'` whatever the receipt, and `paid_paise` and
+    # the receipts are now the record), so under the caller's own sign-in (USE_USER_JWT, the production default) every
+    # update below was refused with 42501 while a double accepted it: the overdue check, the status route and the delete
+    # route all failed for every caller. The routes and the lifecycle job have already decided who may touch which invoice,
+    # and the privileged client carries no row security, so every statement NAMES THE FIRM: `firm_id` is required of the
+    # caller and a write for one invoice cannot reach another firm's.
+    @staticmethod
+    def _writer(firm_id: str):
+        # a statement that names no firm would run unconfined on a client that carries no row security
+        if not firm_id:
+            raise ValueError("A fee invoice is written for a named firm.")
+        return db_provider.service_db()
+
+    def update(self, id: str, data: dict, *, firm_id: str, only_from: Optional[str] = None) -> Optional[dict]:
+        """`only_from` makes the write conditional on the invoice still being in that status (a compare-and-set): the
+        overdue check reads an invoice as Issued and writes Overdue a moment later, and a receipt that covered it in between
+        must not be overwritten."""
         if _USE_MOCK:
             invoice = INVOICE_INDEX.get(id)
-            if not invoice:
+            if not invoice or (only_from is not None and invoice.get("status") != only_from):
                 return None
             invoice.update({**data, "updated_at": self.now_iso()})
             return invoice
-        result = _get_db().table("fee_invoices").update({
+        query = self._writer(firm_id).table("fee_invoices").update({
             **data,
             "updated_at": self.now_iso(),
-        }).eq("id", id).execute()
+        }).eq("id", id).eq("firm_id", firm_id)
+        if only_from is not None:
+            query = query.eq("status", only_from)
+        result = query.execute()
         return result.data[0] if result.data else None
 
-    def change_status(self, id: str, new_status: str) -> Optional[dict]:
-        """Transition invoice to new status (Draft -> Issued -> Paid)"""
-        return self.update(id, {"status": new_status})
+    def change_status(self, id: str, new_status: str, *, firm_id: str, only_from: Optional[str] = None) -> Optional[dict]:
+        """Move an invoice to a new status; with `only_from`, only if it is still in that one (None when it is not)."""
+        return self.update(id, {"status": new_status}, firm_id=firm_id, only_from=only_from)
 
-    def delete(self, id: str) -> bool:
+    def delete(self, id: str, *, firm_id: str) -> bool:
         if _USE_MOCK:
             invoice = INVOICE_INDEX.get(id)
             if not invoice:
@@ -155,11 +176,11 @@ class InvoiceRepository(BaseRepository[dict]):
             invoice["is_deleted"] = True
             invoice["deleted_at"] = self.now_iso()
             return True
-        _get_db().table("fee_invoices").update({
+        result = self._writer(firm_id).table("fee_invoices").update({
             "is_deleted": True,
             "deleted_at": self.now_iso(),
-        }).eq("id", id).execute()
-        return True
+        }).eq("id", id).eq("firm_id", firm_id).execute()
+        return bool(result.data)
 
     def generate_next_invoice_number(self, firm_id: str, current_date: Optional[str] = None) -> str:
         """
@@ -226,7 +247,7 @@ class InvoiceRepository(BaseRepository[dict]):
         next_seq = result.data if isinstance(result.data, int) else 1
         return _format(next_seq)
 
-    def soft_delete(self, id: str) -> bool:
+    def soft_delete(self, id: str, *, firm_id: str) -> bool:
         if _USE_MOCK:
             invoice = INVOICE_INDEX.get(id)
             if not invoice:
@@ -234,10 +255,10 @@ class InvoiceRepository(BaseRepository[dict]):
             invoice["is_deleted"] = True
             invoice["deleted_at"] = self.now_iso()
             return True
-        result = _get_db().table("fee_invoices").update({
+        result = self._writer(firm_id).table("fee_invoices").update({
             "is_deleted": True,
             "deleted_at": self.now_iso(),
-        }).eq("id", id).execute()
+        }).eq("id", id).eq("firm_id", firm_id).execute()
         return bool(result.data)
 
     def get_revenue_by_period(

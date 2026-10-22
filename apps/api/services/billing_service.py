@@ -516,7 +516,10 @@ def list_staff_cost_rates(firm_id: str) -> list[dict]:
     """Staff cost rates (partner-visible). Capture/display only."""
     if _USE_MOCK:
         return [{"user_id": uid, "cost_rate_paise": rate} for uid, rate in MOCK_COST_RATES.items()]
-    rows = (_db().table("users").select("id, full_name, role, cost_rate_paise")
+    # The privileged client, naming the firm: `users` shows a signed-in caller their own row only (migrations 153 and 506),
+    # so read as the caller this listed one person, the Partner asking, as though that were the firm's staff. The route has
+    # asked billing:read and the statement is pinned to the caller's firm.
+    rows = (db_provider.service_db().table("users").select("id, full_name, role, cost_rate_paise")
             .eq("firm_id", firm_id).execute().data or [])
     return rows
 
@@ -528,9 +531,18 @@ def set_staff_cost_rate(firm_id: str, user_id: str, cost_rate_paise: Optional[in
     if _USE_MOCK:
         MOCK_COST_RATES[user_id] = cost_rate_paise
         return {"user_id": user_id, "cost_rate_paise": cost_rate_paise}
-    row = (_db().table("users").update({"cost_rate_paise": cost_rate_paise})
+    # THE PRIVILEGED CLIENT, deliberately (ledger POST-A-320): migration 153 left the signed-in role UPDATE on `users.full_name`
+    # and nothing else (migration 194 undid that and 246 granted it again, so the grant that stands is 246's), so under the caller's own sign-in (USE_USER_JWT, the production default) this update was refused with
+    # 42501 for everyone, a Partner included, while a double accepted it. The route (`rbac("billing", "write")`) has already
+    # decided who may set a rate, and the statement names the firm, so the privileged client takes nothing the policy gave.
+    # `time_rates_service`, this function's sibling for the billable rate, does the same.
+    row = (db_provider.service_db().table("users").update({"cost_rate_paise": cost_rate_paise})
            .eq("id", user_id).eq("firm_id", firm_id).execute())
-    return row.data[0] if row.data else {"user_id": user_id, "cost_rate_paise": cost_rate_paise}
+    if not row.data:
+        # a member of another firm, or no member at all: the update matched nothing, and saying the rate was set would be a lie
+        raise HTTPException(status_code=404, detail="No such member in this firm.")
+    # the same two fields the mock returns, and no more: the privileged client hands back the whole `users` row
+    return {"user_id": user_id, "cost_rate_paise": row.data[0].get("cost_rate_paise")}
 
 
 def mark_time_entries_billed(firm_id: str, entry_ids: list[str], invoice_id: str) -> dict:

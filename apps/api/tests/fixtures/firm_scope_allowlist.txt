@@ -76,10 +76,7 @@ repositories/escalation_rule_repository.py | EscalationRuleRepository.delete | e
 repositories/escalation_rule_repository.py | EscalationRuleRepository.find_by_id | escalation_rules | read | 1 | repository-contract
 repositories/escalation_rule_repository.py | EscalationRuleRepository.update | escalation_rules | update | 1 | repository-contract
 repositories/invoice_repository.py | InvoiceRepository.create | fee_invoices | insert | 1 | repository-contract
-repositories/invoice_repository.py | InvoiceRepository.delete | fee_invoices | update | 1 | repository-contract
 repositories/invoice_repository.py | InvoiceRepository.find_by_id | fee_invoices | read | 1 | repository-contract
-repositories/invoice_repository.py | InvoiceRepository.soft_delete | fee_invoices | update | 1 | repository-contract
-repositories/invoice_repository.py | InvoiceRepository.update | fee_invoices | update | 1 | repository-contract
 repositories/notifications_repository.py | NotificationsRepository.create | notifications | insert | 1 | repository-contract
 repositories/reminders_repository.py | RemindersRepository.create | reminders | insert | 1 | repository-contract
 repositories/reminders_repository.py | RemindersRepository.find_by_id | reminders | read | 1 | repository-contract

@@ -72,7 +72,7 @@ def record_receipt(firm_id: str, invoice_id: str, data: dict) -> dict:
         updates: dict = {"paid_paise": new_paid}
         if total > 0 and new_paid >= total:
             updates["status"] = "Paid"
-        invoice_repo.update(invoice_id, updates)
+        invoice_repo.update(invoice_id, updates, firm_id=firm_id)
         return receipt
 
     db = _db()
