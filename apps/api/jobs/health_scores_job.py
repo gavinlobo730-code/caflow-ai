@@ -11,7 +11,9 @@ WHY THIS EXISTS
 WHAT IT DOES NOT DO
     * It does not run for a firm someone deactivated (the memory job's rule, and its fail-open read).
     * It does not raise for one client that would not score: that client is counted in `failed` and reported, and the others are
-      scored. It raises only when it had clients and scored none, so the run row says `failed` and the sweep retakes the job.
+      scored. It raises only when clients failed and none was scored, so the run row says `failed` and the sweep retakes the job.
+    * It stores nothing for a client with nothing on record at all (POST-A-288): the engine would have called it near 100, so it
+      stays "not yet scored", is counted in `unscored` and is not a failure.
     * It sends nothing to anyone and calls no model: a score is arithmetic on rows already held.
     * It writes the stored score, one `health_score_history` row per client per night and marks the cached dashboard and the clients'
       cached reports stale once, which is what the button does.
@@ -41,8 +43,10 @@ def run_health_scores_for_firm(firm_id: str) -> dict:
     clients = health.clients_to_score(db, firm_id)
     outcome = health.recalculate_clients(db, firm_id, clients)
     summary = {"clients": len(clients), **outcome}
-    logger.info("Health scores for firm %s: %d clients, %d scored, %d failed",
-                firm_id, summary["clients"], summary["updated"], summary["failed"])
-    if clients and not outcome["updated"]:
+    logger.info("Health scores for firm %s: %d clients, %d scored, %d failed, %d with nothing on record",
+                firm_id, summary["clients"], summary["updated"], summary["failed"], summary["unscored"])
+    # A run in which every client that could be judged failed raises; a firm whose clients have nothing on record yet (all of them
+    # `unscored`) is not a failed run, it is a firm with nothing to score.
+    if outcome["failed"] and not outcome["updated"]:
         raise RuntimeError(f"no client of firm {firm_id} could be scored ({outcome['failed']} failed)")
     return summary

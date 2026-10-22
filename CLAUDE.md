@@ -120,7 +120,7 @@ The long per-area design write-ups were moved out of this file on 10 October 202
 They are verbatim in `docs/design-record/`. **Before changing an area, open its record file** and read the entries
 listed for it below; each headline is the rule in one line. Entries that stayed in this file are not listed.
 
-### `docs/design-record/ai.md` (14 entries): AI providers, the model gateway, redaction, budgets and what a model may and may not do
+### `docs/design-record/ai.md` (15 entries): AI providers, the model gateway, redaction, budgets and what a model may and may not do
 
 - A MODEL MAY WORD A COMPUTED FACT AND MAY NOT ADD TO IT, AND A SCREEN THAT CANNOT COMPUTE A FIGURE SAYS SO
 - EVERY MODEL CALL GOES THROUGH ONE DOOR PER PROVIDER, AND A READING IS A PROPOSAL, NOT A WRITE
@@ -136,6 +136,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A CLIENT'S HEALTH IS RECALCULATED EVERY NIGHT BY THE FUNCTION THE BUTTON USES, AND THE FIRM FIGURE SAYS WHICH SCORES IT IS THE MEAN OF AND HOW OLD THE OLDEST IS
 - THE HEALTH WORDS ON A SCREEN ARE THE ENGINE'S FIVE: THE DASHBOARD COUNTS THE NEEDS ATTENTION BAND APART, ONE TABLE COLOURS EVERY SCORE, AND THE MEMORY PROFILE STORES NOTHING FOR WHAT IT DOES NOT COMPUTE
 - A FIGURE THE FIRM CONTEXT CANNOT READ IS NOT AVAILABLE AND NEVER ZERO, THE HEALTH TILES COUNT BY THE ENGINE'S GRADE, AND A CALCULATION THAT LOST A READ STORES NOTHING WHICHEVER BUTTON ASKED
+- A CLIENT WITH NOTHING ON RECORD IS NOT YET SCORED AND NEVER NEAR 100, BECAUSE THE ENGINE STARTS AT 100 AND CAN ONLY JUDGE WHAT IT FINDS
 
 ### `docs/design-record/annual-update-and-statutory-data.md` (4 entries): What changes every financial year and the statutory data a human must supply
 
