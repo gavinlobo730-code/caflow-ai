@@ -71,10 +71,7 @@ repositories/engagement_repository.py | EngagementRepository.create | fee_engage
 repositories/engagement_repository.py | EngagementRepository.find_by_id | fee_engagements | read | 1 | repository-contract
 repositories/engagement_repository.py | EngagementRepository.soft_delete | fee_engagements | update | 1 | repository-contract
 repositories/engagement_repository.py | EngagementRepository.update | fee_engagements | update | 1 | repository-contract
-repositories/escalation_rule_repository.py | EscalationRuleRepository.create | escalation_rules | insert | 1 | repository-contract
-repositories/escalation_rule_repository.py | EscalationRuleRepository.delete | escalation_rules | delete | 1 | repository-contract
 repositories/escalation_rule_repository.py | EscalationRuleRepository.find_by_id | escalation_rules | read | 1 | repository-contract
-repositories/escalation_rule_repository.py | EscalationRuleRepository.update | escalation_rules | update | 1 | repository-contract
 repositories/invoice_repository.py | InvoiceRepository.create | fee_invoices | insert | 1 | repository-contract
 repositories/invoice_repository.py | InvoiceRepository.find_by_id | fee_invoices | read | 1 | repository-contract
 repositories/notifications_repository.py | NotificationsRepository.create | notifications | insert | 1 | repository-contract
