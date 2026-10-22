@@ -130,7 +130,10 @@ non-Partner is told 404, never 403, so its existence is not disclosed.*
   tables. 074's list names `sales_invoices`, which does not exist, so migration 075 added
   the same policy to `client_sales_invoices`; migration 079 added it to
   `knowledge_articles`. The loop in 074 ran once: **nothing asserts that a client-keyed
-  table created later joins it.** The assignment scope of migration 084 covers a table it
+  table created later joins it** (119 of the 177 tables with an assignment scope had no such
+  policy on 22-10-2026; migration 537 added it to nine parents and made the assignment table
+  itself refuse the practice from a signed-in session, which is what answers the rest,
+  POST-A-306). The assignment scope of migration 084 covers a table it
   reaches for the same reason (a non-Partner needs an assignment row and the internal
   client has none), and the role-by-table matrix in
   `apps/api/tests/test_rls_role_by_table_matrix_pg.py` tries every actor against every

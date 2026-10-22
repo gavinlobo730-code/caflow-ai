@@ -400,6 +400,9 @@ def test_the_rollback_restores_the_policies_and_the_functions_and_a_second_run_c
                           "UNION ALL SELECT 'function', proname, '', replace(pg_get_functiondef(oid), E'\\n', ' '), '' FROM pg_proc "
                           "WHERE pronamespace = 'public'::regnamespace AND proname IN ('my_assigned_client_ids', 'can_access_client', "
                           "'user_is_in_my_firm', 'client_is_in_my_firm', 'my_permission') ORDER BY 1, 2")
+    # 530 is applied once first and the state AFTER that is the one compared: migration 537 narrows the two assignment policies
+    # again (the practice cannot be assigned), so the state the template starts in is not the state 530 leaves
+    assert _psql_file(dsn, MIGRATION).returncode == 0
     migrated = snapshot()
     assert _psql_file(dsn, MIGRATION).returncode == 0
     assert snapshot() == migrated, "a second run changed something"

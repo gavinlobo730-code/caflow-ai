@@ -123,9 +123,11 @@ ALL_TABLES = ["engagements", *CHILDREN]
 POLICIES = {"engagements": ["engagements_assignment_scope", "engagements_internal_partner_only"]}
 POLICIES.update({t: [f"{t}_parent_visible"] for t in CHILDREN})
 # parents that carry the internal practice's Partner-only guard: a child of one of these only follows a parent that hides the
-# practice's rows from a member assigned to it. The others do not (POST-A-306), and no assertion is made about them here.
+# practice's rows from a member assigned to it. Since migration 537 (POST-A-306) every parent of a child here does, so every
+# table of this file is checked for it.
 GUARDED_PARENTS = {"engagements", "credit_notes", "client_sales_invoices", "purchase_bills", "customer_payments", "documents",
-                   "year_end_engagements"}
+                   "year_end_engagements", "debit_notes", "purchase_credit_notes", "sales_debit_notes", "onboarding_workflows",
+                   "tasks", "recurring_journal_templates", "recurring_purchase_bill_templates", "workflow_instances", "itr_filings"}
 PRACTICE_TABLES = ["engagements"] + [t for t, ps in CHILDREN.items() if all(p in GUARDED_PARENTS for p, _c in ps)]
 
 # the rows of the parents, as SQL literals. `n` is 1 for the seeded row and 2 for the row a person under test inserts, so a
