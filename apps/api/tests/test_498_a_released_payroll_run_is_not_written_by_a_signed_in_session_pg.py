@@ -344,6 +344,10 @@ def test_a_signed_in_session_cannot_delete_a_client_with_a_released_run(db):
     # The fixture's two posted journals would be refused by the ledger's own immutability triggers when the client's
     # rows cascade, which is a different refusal; remove them (as the owner, with triggers off) so this one is measured.
     _ok(db, "SET session_replication_role = replica; DELETE FROM journal_entries;")
+    # Migration 540 took DELETE on clients from the signed-in role, so a Partner is now refused before any cascade starts. This
+    # measures the guard under it (the case when a platform default or a dashboard change hands the privilege back), as the
+    # tests of 499, 519, 532 and 536 measure the second lock of their tables.
+    _ok(db, "GRANT DELETE ON public.clients TO authenticated;")
     r = _as(db, "partner", f"DELETE FROM clients WHERE id = '{CLIENT}';")
     assert _refused(r, "payroll run cannot be changed from a signed-in session"), r.stderr
     assert _count(db, f"SELECT count(*) FROM clients WHERE id = '{CLIENT}';") == 1
