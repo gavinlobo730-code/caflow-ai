@@ -137,6 +137,9 @@ _VENDOR_DEPENDENCY_TABLES: list[tuple[str, str, str | None]] = [
     ("payments", "purchase_payments", "payment_date"),
     ("debit_notes", "debit_notes", "debit_note_date"),
     ("credit_notes", "purchase_credit_notes", "credit_note_date"),
+    # A schedule and not an accounting record, so it carries no date (the customer side's recurring template is the same). Its
+    # vendor_id is ON DELETE CASCADE, so a hard delete of the vendor would remove the schedule without a word.
+    ("recurring_templates", "recurring_purchase_bill_templates", None),
 ]
 # Tables with a deleted_at (soft-delete) column — a deleted row is no longer
 # a live accounting record and must not block a vendor's permanent delete.
@@ -751,7 +754,7 @@ def get_vendor_dependencies(
         vend = _load_vendor_or_404(current_user, vendor_id)
         opening = vend.get("opening_balance_paise") or 0
         if _USE_MOCK:
-            deps = {"counts": {"bills": 0, "payments": 0, "debit_notes": 0, "credit_notes": 0,
+            deps = {"counts": {"bills": 0, "payments": 0, "debit_notes": 0, "credit_notes": 0, "recurring_templates": 0,
                                "opening_balance": 1 if opening else 0},
                     "total": 1 if opening else 0, "has_any": bool(opening)}
         else:

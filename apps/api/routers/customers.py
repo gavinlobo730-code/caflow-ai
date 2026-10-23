@@ -152,11 +152,15 @@ _DEPENDENCY_TABLES: list[tuple[str, str, str | None]] = [
     ("invoices", "client_sales_invoices", "invoice_date"),
     ("receipts", "receipts", "receipt_date"),
     ("credit_notes", "credit_notes", "credit_note_date"),
+    # A CGST §34(3) debit note. Its customer_id is ON DELETE CASCADE like the rest, and it was the one document table that cascades
+    # from customers and was not listed here (migration 210 added it long after this list was written), so a customer whose only
+    # record was an issued debit note could be hard-deleted and the document would go with it.
+    ("debit_notes", "sales_debit_notes", "debit_note_date"),
     ("recurring_templates", "recurring_invoice_templates", None),
 ]
 # Tables with a deleted_at (soft-delete) column — a deleted row is no longer
 # a live accounting record and must not block a customer's permanent delete.
-_SOFT_DELETE_DEPENDENCY_TABLES = {"client_sales_invoices", "credit_notes"}
+_SOFT_DELETE_DEPENDENCY_TABLES = {"client_sales_invoices", "credit_notes", "sales_debit_notes"}
 
 
 def _customer_dependencies(db, customer_id: str, opening_balance_paise: int) -> dict:
@@ -747,7 +751,7 @@ def get_customer_dependencies(
         cust = _load_customer_or_404(current_user, customer_id)
         opening = cust.get("opening_balance_paise") or 0
         if _USE_MOCK:
-            deps = {"counts": {"invoices": 0, "receipts": 0, "credit_notes": 0,
+            deps = {"counts": {"invoices": 0, "receipts": 0, "credit_notes": 0, "debit_notes": 0,
                                "recurring_templates": 0,
                                "opening_balance": 1 if opening else 0},
                     "total": 1 if opening else 0, "has_any": bool(opening)}
@@ -781,8 +785,8 @@ def delete_customer(
     be reactivated.
 
     permanent=True: hard delete. Allowed ONLY when the customer has no linked
-    accounting records (invoices, receipts, credit notes, recurring templates,
-    opening balance). Every FK is ON DELETE CASCADE, so this guard — not the
+    accounting records (invoices, receipts, credit notes, debit notes, recurring
+    templates, opening balance). Every FK is ON DELETE CASCADE, so this guard — not the
     database — is what protects the books; we refuse with 409 when records exist.
     """
     try:

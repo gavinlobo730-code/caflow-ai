@@ -48,7 +48,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**528 open items** (23 before the demo, 505 after); 14 after-demo items are `high` priority; 31 are UNSURE. A further **150 items are parked** (not counted above).
+**528 open items** (23 before the demo, 505 after); 13 after-demo items are `high` priority; 31 are UNSURE. A further **150 items are parked** (not counted above).
 
 <!-- counts:end -->
 

@@ -2042,6 +2042,7 @@ function Vendors({ clientId }: { clientId: string }) {
                       ["payments", "Payments"],
                       ["debit_notes", "Debit notes"],
                       ["credit_notes", "Credit notes"],
+                      ["recurring_templates", "Recurring templates"],
                       ["opening_balance", "Opening balance"],
                     ] as const)
                       .filter(([k]) => (deleteDeps.dependencies?.[k] ?? 0) > 0)

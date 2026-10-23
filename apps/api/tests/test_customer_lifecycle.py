@@ -65,7 +65,7 @@ def test_dependencies_none_allows_delete(monkeypatch):
     assert res["data"]["total"] == 0
 
 
-@pytest.mark.parametrize("table", ["client_sales_invoices", "receipts", "credit_notes", "recurring_invoice_templates"])
+@pytest.mark.parametrize("table", ["client_sales_invoices", "receipts", "credit_notes", "sales_debit_notes", "recurring_invoice_templates"])
 def test_dependencies_block_when_records_exist(monkeypatch, table):
     db = _setup(monkeypatch)
     _new(db, id="CUST")
@@ -75,7 +75,7 @@ def test_dependencies_block_when_records_exist(monkeypatch, table):
     assert res["data"]["total"] >= 1
 
 
-@pytest.mark.parametrize("table", ["client_sales_invoices", "credit_notes"])
+@pytest.mark.parametrize("table", ["client_sales_invoices", "credit_notes", "sales_debit_notes"])
 def test_soft_deleted_records_do_not_block_delete(monkeypatch, table):
     """A soft-deleted invoice/credit note (deleted_at set) is no longer a live
     accounting record and must not count as a dependency — otherwise a

@@ -525,13 +525,24 @@ def test_the_privileged_client_and_the_owner_also_insert_and_delete_the_lines_of
 @pytest.mark.parametrize("table", WITH_DRAFT)
 def test_deleting_an_issued_document_removes_its_lines_without_the_trigger_refusing_the_cascade(world, table):
     """The branch for a document that cannot be found: by the time the cascade reaches a line its document is gone, so nothing is
-    left to judge it by. (That a member with the tier can delete an issued document's header at all is POST-A-330.)"""
-    parent, *_rest = SPECS[table]
-    status = SPECS[table][4][0]
+    left to judge it by. A signed-in session can no longer delete an issued header itself (migration 541), so the document goes the
+    way it still can: with its customer or vendor. The two note tables that name their vendor without a foreign key have no such
+    way, so for them the header's own rule is taken out of the way and what is under test is still the line trigger's."""
+    parent, _fk, _draft, _unit, states = SPECS[table]
+    status = states[0]
     pid = world.ids["parent_of"][f"{table}:{status}"]
-    r = _psql(world.dsn, _as("partner") + f"DELETE FROM {parent} WHERE id = '{pid}';")
+    if parent in ("debit_notes", "purchase_credit_notes"):
+        done = _psql(world.dsn, f"ALTER TABLE {parent} DISABLE TRIGGER a_document_that_is_not_a_draft_keeps_its_particulars;")
+        assert done.returncode == 0, done.stderr
+        target = f"DELETE FROM {parent} WHERE id = '{pid}';"
+    else:
+        owner = "customer" if parent in ("client_sales_invoices", "credit_notes", "sales_debit_notes") else "vendor"
+        party = _rows(world.dsn, f"SELECT {owner}_id FROM {parent} WHERE id = '{pid}'")[0][0]
+        target = f"DELETE FROM {owner}s WHERE id = '{party}';"
+    r = _psql(world.dsn, _as("partner") + target)
     assert "cannot be changed from a signed-in session" not in r.stderr, r.stderr
     assert r.returncode == 0, r.stderr
+    assert _rows(world.dsn, f"SELECT count(*) FROM {parent} WHERE id = '{pid}'") == [["0"]]
     assert _rows(world.dsn, f"SELECT count(*) FROM {table} WHERE id = '{world.row(table, status)}'") == [["0"]]
 
 
