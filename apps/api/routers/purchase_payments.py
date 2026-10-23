@@ -24,6 +24,7 @@ from domain.accounting.payment_account import (
     stamp as _stamp_posting_account,
     stamp_all as _stamp_posting_accounts,
 )
+from domain.currency.fx_writer import fx_writer
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
@@ -925,7 +926,7 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
         raise HTTPException(status_code=409, detail=f"Bill {bill_id} is being updated concurrently — please retry.")
 
     if fx_diff != 0:
-        db.table("fx_adjustments").insert({
+        fx_writer(db).table("fx_adjustments").insert({
             "firm_id": firm_id, "client_id": client_id, "kind": "realized",
             "document_type": "purchase_payment", "document_id": payment.get("id"), "currency": ccy,
             "settlement_rate": str(R1), "base_delta_paise": fx_diff,

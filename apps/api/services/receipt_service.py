@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 
 from domain.accounting.payment_account import resolve_payment_account
+from domain.currency.fx_writer import fx_writer
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
@@ -385,7 +386,7 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
             db.table("receipt_allocations").insert(alloc_rows).execute()
 
         if fx_diff != 0:
-            db.table("fx_adjustments").insert({
+            fx_writer(db).table("fx_adjustments").insert({
                 "firm_id": firm_id, "client_id": client_id, "kind": "realized",
                 "document_type": "receipt", "document_id": receipt_id, "currency": ccy,
                 "settlement_rate": str(R1), "base_delta_paise": fx_diff,

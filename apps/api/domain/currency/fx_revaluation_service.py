@@ -29,6 +29,7 @@ from fastapi import HTTPException
 
 from domain.currency.conversion import to_base_minor
 from domain.currency import currency_service
+from domain.currency.fx_writer import fx_writer
 from services.period_validation_service import period_validation_service
 from services.phase2_journal_service import phase2_journal_service as K
 from core.db_paging import fetch_all
@@ -284,14 +285,15 @@ class FXRevaluationService:
                 narration=f"Auto-reversal of {ccy} {item_type} revaluation {period_end}",
                 created_by=actor.get("id"))
 
-            db.table("fx_revaluations").insert({
+            wdb = fx_writer(db)
+            wdb.table("fx_revaluations").insert({
                 "firm_id": firm_id, "client_id": client_id, "period_end": period_end,
                 "currency": ccy, "item_type": item_type, "item_ref": item_ref, "closing_rate": str(rc),
                 "target_adjustment_paise": target, "delta_paise": delta,
                 "journal_entry_id": entry_id, "reversal_entry_id": reversal_id,
                 "run_by": actor.get("id"),
             }).execute()
-            db.table("fx_adjustments").insert({
+            wdb.table("fx_adjustments").insert({
                 "firm_id": firm_id, "client_id": client_id, "kind": "unrealized",
                 "document_type": "revaluation", "document_id": entry_id, "currency": ccy,
                 "closing_rate": str(rc), "base_delta_paise": delta,
