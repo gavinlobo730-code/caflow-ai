@@ -3327,6 +3327,7 @@ function Customers({
                       ["invoices", "Invoices"],
                       ["receipts", "Receipts"],
                       ["credit_notes", "Credit notes"],
+                      ["debit_notes", "Debit notes"],
                       ["recurring_templates", "Recurring templates"],
                       ["opening_balance", "Opening balance"],
                     ] as const)

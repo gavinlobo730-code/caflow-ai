@@ -446,3 +446,20 @@ def test_e2e_permanent_delete_succeeds_when_genuinely_clean(monkeypatch):
     out = ve.delete_vendor("VEND", current_user=_E2E_CALLER, permanent=True)
     assert out["success"] is True
     assert not any(r["id"] == "VEND" for r in db.rows("vendors"))
+
+
+@pytest.mark.parametrize("table", ["purchase_bills", "purchase_payments", "debit_notes", "purchase_credit_notes",
+                                   "recurring_purchase_bill_templates"])
+def test_e2e_a_vendors_records_block_a_permanent_delete_table_by_table(monkeypatch, table):
+    """`recurring_purchase_bill_templates.vendor_id` is ON DELETE CASCADE like the customer side's template, and the vendor list did not
+    name it, so a vendor with only a live schedule could be hard-deleted and the schedule would go with it."""
+    db = _e2e_setup(monkeypatch)
+    db.seed("vendors", {"id": "VEND", "firm_id": _E2E_FIRM, "client_id": "CLI", "name": "Acme", "is_active": True,
+                        "opening_balance_paise": 0})
+    db.seed(table, {"vendor_id": "VEND", "firm_id": _E2E_FIRM})
+    out = ve.get_vendor_dependencies("VEND", current_user=_E2E_CALLER)
+    assert out["data"]["can_delete"] is False
+    with pytest.raises(HTTPException) as e:
+        ve.delete_vendor("VEND", current_user=_E2E_CALLER, permanent=True)
+    assert e.value.status_code == 409
+    assert any(r["id"] == "VEND" for r in db.rows("vendors")), f"the vendor was deleted with a row in {table}"
