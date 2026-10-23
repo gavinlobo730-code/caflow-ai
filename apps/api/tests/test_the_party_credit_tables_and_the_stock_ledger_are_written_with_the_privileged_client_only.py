@@ -1,4 +1,5 @@
-"""The party-credit tables and the stock ledger are written with the privileged client, and by nothing else (ledger POST-A-299).
+"""The party-credit tables, the stock ledger and the item's cached stock figures are written with the privileged client, and by nothing else
+(ledger POST-A-299 and POST-A-327).
 
 THE DEFECT
     `party_credit_balances` (the figure `apply_credit` trusts to settle a document), `party_credit_ledger` (the trail behind it)
@@ -17,6 +18,13 @@ WHAT IS HELD (no database)
     * the two helpers are the only functions of those modules that name a privileged client (by the accessor names listed in the
       test, however imported), and the privileged receiver is used ONLY to write the three tables: a read, a compare-and-set on
       the catalogue or a document-table update moved onto it would take row security away from a statement that relies on it;
+    * the item's CACHED STOCK FIGURES (`service_catalogue.stock_qty_units`, `avg_cost_paise`, `stock_version`, a copy of the
+      ledger's last row, which the catalogue's Stock column, the product form's "stock already started" gate, the item ledger's
+      item block and the stock reconciliation show; the stock register, the reorder check and the next movement's cost read the
+      LEDGER) are written by three functions only, through the same helper: the movement's compare-and-set, its restore after a
+      refused ledger insert, and the opening-stock batch's upsert (`_write_opening_cache`, fed by `seed_opening_balances_batch`). The privileged client carries no row security, so the first two name the firm and the
+      client, and the batch hands the upsert only the rows whose id the caller's own client reads as that firm's and that
+      client's. A catalogue edit of anything else (the name, the rate) stays on the request's client;
     * `demo_filings` is read and written by nothing, in the API or in the browser, and the browser does not `.from()` the others;
     * the helpers hand out the privileged client where there is one, the request's own where there is none (mock mode), and
       `None` stays `None`;
@@ -127,13 +135,47 @@ def test_each_write_goes_through_the_client_its_helper_returned_and_never_the_on
                     assert min(a.lineno for a in bindings) < line, f"{rel} {fn}: {receiver.id} is bound after its first write"
 
 
-def test_the_privileged_receivers_are_used_only_to_write_the_protected_tables():
+CACHE_COLUMNS = {"stock_qty_units", "avg_cost_paise", "stock_version"}
+# the only functions that WRITE the item's cached stock figures (a statement on the catalogue chained off the privileged helper)
+CACHE_WRITERS = {("domain/inventory_service.py", "_insert_and_cache"), ("domain/inventory_service.py", "_restore_stock_cache_from_ledger"),
+                 ("domain/inventory_service.py", "_write_opening_cache")}
+# the only functions that BUILD a cache column as a value to store (a payload may be handed to a writer in another function)
+CACHE_BUILDERS = {("domain/inventory_service.py", "_insert_and_cache"), ("domain/inventory_service.py", "_restore_stock_cache_from_ledger"),
+                  ("domain/inventory_service.py", "seed_opening_balances_batch")}
+# functions that put the ledger's figure under one of those names to SHOW it, and write nothing: a response overlay and a report's own
+# `avg_cost_paise`. A new one is classified here with its reason, or it is a builder above.
+CACHE_DISPLAYS = {("routers/inventory.py", "list_stock_items"): "the stock register shows the ledger's last row under the cache's names",
+                  ("domain/reporting/stock_position.py", "position"): "a report's own average cost, summed from the ledger"}
+
+
+def _enclosing_function(node, parents):
+    while node in parents:
+        node = parents[node]
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return node.name
+    return "<module>"
+
+
+def _chain(call, parents):
+    """Every (verb, call node) chained off a `.table(...)` call, in order."""
+    out, up = [], call
+    while isinstance(parents.get(up), ast.Attribute) and isinstance(parents.get(parents[up]), ast.Call):
+        out.append((parents[up].attr, parents[parents[up]]))
+        up = parents[parents[up]]
+    return out
+
+
+def _eq_columns(chain):
+    return {c.args[0].value for verb, c in chain if verb == "eq" and c.args and isinstance(c.args[0], ast.Constant)}
+
+
+def test_the_privileged_receivers_are_used_only_to_write_the_protected_tables_and_the_items_cache():
     """The privileged client carries no row security, so it must not be handed a statement that relies on it: a READ of a
-    protected table, the compare-and-set on the item's catalogue row (whose row-security confinement is the argument that the
-    ledger row written next is for an item the caller can reach) or the update of a document table all stay on the caller's
-    client. Every `.table(...)` called on a receiver that came from the helper must name one of the three tables and chain a
-    write verb."""
-    seen = 0
+    protected table or the update of a document table stays on the caller's client. Every `.table(...)` called on a receiver
+    that came from the helper must name one of the three tables and chain a write verb, or be the item's cache: an UPDATE that
+    names the firm and the client (the compare-and-set and its restore) or the opening batch's UPSERT, which is handed only the
+    rows the caller's client has read as this client's."""
+    seen = catalogue = 0
     for rel in (CREDIT_FILE, *STOCK_FILES):
         tree = ast.parse((API_ROOT / rel).read_text(encoding="utf-8"))
         parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
@@ -151,13 +193,80 @@ def test_the_privileged_receivers_are_used_only_to_write_the_protected_tables():
                 continue
             seen += 1
             name = call.args[0].value if call.args and isinstance(call.args[0], ast.Constant) else None
+            chain = _chain(call, parents)
+            verbs = [v for v, _c in chain]
+            if name == "service_catalogue":
+                catalogue += 1
+                fn = _enclosing_function(call, parents)
+                assert (rel, fn) in CACHE_WRITERS, f"{rel}:{call.lineno} {fn} writes the item's cache with the privileged client and is not named"
+                if "update" in verbs:
+                    assert {"firm_id", "client_id"} <= _eq_columns(chain), (
+                        f"{rel}:{call.lineno} {fn} updates the item's cache with a client that has no row security and does not name the "
+                        f"firm and the client (filters: {sorted(_eq_columns(chain))})")
+                else:
+                    assert verbs[:1] == ["upsert"] and fn == "_write_opening_cache", (rel, call.lineno, fn, verbs)
+                continue
             assert name in EXPECTED_WRITERS, f"{rel}:{call.lineno} the privileged client is used on {name!r}, which is not one of the three tables"
-            verbs, up = [], call
-            while isinstance(parents.get(up), ast.Attribute) and isinstance(parents.get(parents[up]), ast.Call):
-                verbs.append(parents[up].attr)
-                up = parents[parents[up]]
             assert set(verbs) & WRITE_VERBS, f"{rel}:{call.lineno} the privileged client READS {name} (chain: {verbs}); reads stay on the caller's client"
-    assert seen >= 10, seen            # the walk found the writers: a vacuous pass would find none
+    assert seen >= 14 and catalogue >= 4, (seen, catalogue)       # the walk found the writers: a vacuous pass would find none
+
+
+def _cache_mentions(source: str):
+    """(function, line, shape) for every place a module builds one of the cache columns as a value to store: a dict key, a
+    subscript assignment or a keyword argument."""
+    tree = ast.parse(source)
+    parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            for key in node.keys:
+                if isinstance(key, ast.Constant) and key.value in CACHE_COLUMNS:
+                    yield _enclosing_function(node, parents), key.lineno, "dict key"
+        elif isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store):
+            if isinstance(node.slice, ast.Constant) and node.slice.value in CACHE_COLUMNS:
+                yield _enclosing_function(node, parents), node.lineno, "subscript assignment"
+        elif isinstance(node, ast.keyword) and node.arg in CACHE_COLUMNS:
+            yield _enclosing_function(node, parents), node.value.lineno, "keyword argument"
+
+
+def _cache_builders(text: str) -> set:
+    """The functions of a module that build one of the cache columns as a value to store (a dict key, a subscript assignment, a
+    keyword argument), whether or not they write the catalogue themselves: a payload built in one function and handed to a
+    writer in another is the shape that a rule on "writes the catalogue AND names the column" would miss."""
+    return {fn for fn, *_ in _cache_mentions(text)}
+
+
+def test_only_three_functions_build_the_items_cached_stock_figures_and_no_spelling_hides_one():
+    """Every function that builds a cache column as a value to store is one of the named three, or is a named display (the stock
+    register shows the ledger's figure under those names; a report has an `avg_cost_paise` of its own) that writes nothing. A
+    pydantic field of that name would let a request body carry the figure into an update, so none may exist."""
+    found, fields = set(), []
+    for rel, text in _sources():
+        if not any(c in text for c in CACHE_COLUMNS):
+            continue
+        tree = ast.parse(text)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                fields += [(rel, node.name, st.target.id) for st in node.body
+                           if isinstance(st, ast.AnnAssign) and isinstance(st.target, ast.Name) and st.target.id in CACHE_COLUMNS]
+        found |= {(rel, fn) for fn in _cache_builders(text)}
+    assert not fields, f"a request model or class declares a cache column: {fields}"
+    assert found - set(CACHE_DISPLAYS) == CACHE_BUILDERS, found
+    assert set(CACHE_DISPLAYS) <= found, "a named display no longer builds those names: take it off the list"
+
+
+def test_the_cache_guard_sees_every_shape_a_cache_write_can_take():
+    shapes = {
+        "a dict key": 'def f(db):\n    db.table("service_catalogue").update({"stock_qty_units": 1}).execute()\n',
+        "a subscript assignment": 'def f(db):\n    p = {}\n    p["stock_version"] = 1\n    return p\n',
+        "a keyword argument": 'def f(db):\n    db.table("service_catalogue").update(dict(avg_cost_paise=1)).execute()\n',
+        "the table held in a constant": 'T = "service_catalogue"\n\ndef f(db):\n    db.table(T).update({"stock_version": 1}).execute()\n',
+        "an upsert": 'def f(db):\n    db.table("service_catalogue").upsert([{"stock_qty_units": 1}]).execute()\n',
+        "a payload built here and written elsewhere": 'def build():\n    return {"stock_version": 1, "avg_cost_paise": 2}\n',
+    }
+    for label, source in shapes.items():
+        assert _cache_builders(source), f"the cache guard is blind to: {label}"
+    reader = 'def f(db):\n    rows = db.table("service_catalogue").select("id").execute().data\n    return [r["stock_qty_units"] for r in rows]\n'
+    assert _cache_builders(reader) == set(), "reading a cache column is not building one"
 
 
 PRIVILEGED_NAMES = {"service_db", "service_db_or_none", "service_db_or_503", "get_service_supabase", "_service_client"}
@@ -225,8 +334,19 @@ class _Recording:
     """Wraps an in-memory double. A write to a protected table is recorded with its filters; with `refuse` it raises as the
     database now does for a signed-in session."""
 
-    def __init__(self, inner, protected, refuse):
+    def __init__(self, inner, protected, refuse, guard_cache=False):
         self.inner, self.protected, self.refuse, self.log, self.refused = inner, set(protected), refuse, [], []
+        self.guard_cache = guard_cache
+
+    def covers(self, name, payload) -> bool:
+        """Is this write one the database now refuses a signed-in session: a protected table, or (with `guard_cache`) an
+        update or upsert of the catalogue that names one of the item's cached stock columns."""
+        if name in self.protected:
+            return True
+        if self.guard_cache and name == "service_catalogue":
+            rows = payload if isinstance(payload, list) else [payload]
+            return any(isinstance(r, dict) and CACHE_COLUMNS & set(r) for r in rows)
+        return False
 
     def table(self, name):
         return _Statement(self, self.inner.table(name), name)
@@ -246,7 +366,7 @@ class _Statement:
         def call(*args, **kwargs):
             if attr in WRITE_VERBS:
                 self._verb, self._payload = attr, args[0] if args else None
-                if self._owner.refuse and self._name in self._owner.protected:
+                if self._owner.refuse and self._owner.covers(self._name, self._payload):
                     # recorded BEFORE it raises, so a writer left on the request's client is seen even where the caller swallows
                     # the refusal (the stock callers do, by design)
                     self._owner.refused.append((self._name, attr))
@@ -259,7 +379,7 @@ class _Statement:
 
     def execute(self):
         result = self._query.execute()
-        if self._verb in WRITE_VERBS and self._name in self._owner.protected:
+        if self._verb in WRITE_VERBS and self._owner.covers(self._name, self._payload):
             self._owner.log.append({"table": self._name, "verb": self._verb, "filters": list(self._filters),
                                     "payload": self._payload})
         return result
@@ -269,10 +389,10 @@ CREDIT_TABLES = {"party_credit_balances", "party_credit_ledger"}
 STOCK_AND_CREDIT = CREDIT_TABLES | {"inventory_stock_ledger"}
 
 
-def _pair(monkeypatch, protected):
+def _pair(monkeypatch, protected, guard_cache=False):
     """One in-memory store seen through two clients: the request's (refuses the protected writes) and the privileged one."""
     inner = FakeDB()
-    request, privileged = _Recording(inner, protected, True), _Recording(inner, protected, False)
+    request, privileged = _Recording(inner, protected, True, guard_cache), _Recording(inner, protected, False, guard_cache)
     monkeypatch.setattr(core.db_provider, "service_db_or_none", lambda: privileged)
     return inner, request, privileged
 
@@ -448,3 +568,201 @@ def test_with_no_privileged_client_the_stock_ledger_is_written_through_the_reque
         quantity=Decimal("1"), total_cost_paise=100_00, movement_type="purchase", source_type="purchase_bill",
         source_id="b", reference_no="B")
     assert len(inner.rows("inventory_stock_ledger")) == 1
+
+
+# ── the item's cached stock figures ──────────────────────────────────────────
+
+def _cache_updates(log):
+    return [e for e in log if e["table"] == "service_catalogue"]
+
+
+def test_the_double_refuses_a_cache_write_and_lets_a_catalogue_edit_through():
+    inner = FakeDB()
+    inner.seed("service_catalogue", {"id": "item-1", "firm_id": FIRM, "client_id": CLIENT, "name": "Widget", "kind": "good"})
+    request = _Recording(inner, set(), True, guard_cache=True)
+    for payload in ({"stock_qty_units": "5"}, {"avg_cost_paise": 1}, {"stock_version": 9}):
+        with pytest.raises(RuntimeError, match="permission denied"):
+            request.table("service_catalogue").update(payload).eq("id", "item-1")
+    with pytest.raises(RuntimeError, match="permission denied"):
+        request.table("service_catalogue").upsert([{"id": "item-1", "stock_qty_units": "5"}], on_conflict="id")
+    # an edit of anything else is the request's own, as before
+    request.table("service_catalogue").update({"name": "Gadget"}).eq("id", "item-1").execute()
+    assert inner.rows("service_catalogue")[0]["name"] == "Gadget"
+    assert len(request.refused) == 4
+
+
+def test_a_movement_claims_the_items_cache_through_the_privileged_client_and_names_the_firm_and_the_client(monkeypatch):
+    inner, request, privileged = _pair(monkeypatch, STOCK, guard_cache=True)
+    _item(inner)
+    inventory_service.record_stock_in(
+        request, firm_id=FIRM, client_id=CLIENT, service_catalogue_id="item-1", movement_date="2026-04-10",
+        quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="purchase", source_type="purchase_bill",
+        source_id="bill-1", reference_no="BILL-1")
+    inventory_service.record_stock_out(
+        request, firm_id=FIRM, client_id=CLIENT, service_catalogue_id="item-1", movement_date="2026-04-15",
+        quantity=Decimal("3"), movement_type="sale", source_type="sales_invoice", source_id="inv-1", reference_no="INV-1")
+    assert request.log == [] and request.refused == []                  # nothing was written through the request's client
+    claims = _cache_updates(privileged.log)
+    # (an item that never had a version is tried as 0 and then as NULL, so the first movement logs two attempts)
+    assert len(claims) >= 2 and all(e["verb"] == "update" for e in claims)
+    for entry in claims:
+        eq = {a[0]: a[1] for kind, a in entry["filters"] if kind == "eq"}
+        assert eq.get("id") == "item-1" and eq.get("firm_id") == FIRM and eq.get("client_id") == CLIENT, entry
+    row = inner.rows("service_catalogue")[0]
+    assert row["stock_qty_units"] == "7" and row["stock_version"] == 2
+
+
+def test_an_item_of_another_client_is_not_claimed_by_a_movement_for_this_one(monkeypatch):
+    """The compare-and-set used to lean on row security to confine it to the caller's own clients. It names the client now,
+    so an item that is somebody else's matches nothing, however the id came to be handed over."""
+    inner, request, privileged = _pair(monkeypatch, STOCK, guard_cache=True)
+    inner.seed("service_catalogue", {"id": "theirs", "firm_id": FIRM, "client_id": OTHER_CLIENT, "name": "Theirs", "kind": "good",
+                                     "stock_qty_units": "4", "avg_cost_paise": 500, "stock_version": 3})
+    with pytest.raises(HTTPException):
+        inventory_service.record_stock_in(
+            request, firm_id=FIRM, client_id=CLIENT, service_catalogue_id="theirs", movement_date="2026-04-10",
+            quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="purchase", source_type="purchase_bill",
+            source_id="bill-1", reference_no="BILL-1")
+    theirs = inner.rows("service_catalogue")[0]
+    assert (theirs["stock_qty_units"], theirs["avg_cost_paise"], theirs["stock_version"]) == ("4", 500, 3)
+    assert inner.rows("inventory_stock_ledger") == []
+    attempts = _cache_updates(privileged.log)
+    assert attempts and len(attempts) == len(privileged.log), "the only thing the privileged client was asked to do is the refused claim"
+    for entry in attempts:
+        eq = {a[0]: a[1] for kind, a in entry["filters"] if kind == "eq"}
+        assert eq.get("firm_id") == FIRM and eq.get("client_id") == CLIENT, entry
+
+
+def test_a_refused_ledger_insert_restores_the_cache_through_the_privileged_client(monkeypatch):
+    inner, request, privileged = _pair(monkeypatch, STOCK, guard_cache=True)
+    _item(inner)
+    original_table = privileged.table
+
+    def table(name):
+        if name == "inventory_stock_ledger":
+            class Refused:
+                def __getattr__(self, attr):
+                    def call(*a, **k):
+                        raise RuntimeError("ledger insert refused")
+                    return call
+            return Refused()
+        return original_table(name)
+
+    privileged.table = table
+    with pytest.raises(RuntimeError, match="ledger insert refused"):
+        inventory_service.record_stock_in(
+            request, firm_id=FIRM, client_id=CLIENT, service_catalogue_id="item-1", movement_date="2026-04-10",
+            quantity=Decimal("10"), total_cost_paise=10_000_00, movement_type="purchase", source_type="purchase_bill",
+            source_id="bill-1", reference_no="BILL-1")
+    assert request.log == [] and request.refused == []
+    writes = _cache_updates(privileged.log)
+    assert len(writes) >= 2                                    # the claim (once or twice for an item with no version) and the restore
+    for entry in writes:
+        eq = {a[0]: a[1] for kind, a in entry["filters"] if kind == "eq"}
+        assert eq.get("firm_id") == FIRM and eq.get("client_id") == CLIENT, entry
+    assert writes[-1]["payload"]["stock_qty_units"] == "0"     # the last statement is the restore, from the ledger's tail
+    row = inner.rows("service_catalogue")[0]
+    assert row["stock_qty_units"] == "0" and row["avg_cost_paise"] == 0           # the ledger has no row, so the copy says nothing
+    assert row["stock_version"] == 2                                                 # the counter only moves forward
+
+
+def test_the_opening_batch_caches_through_the_privileged_client_for_this_clients_items_only(monkeypatch, caplog):
+    from tests.test_inventory_opening_stock_journal import _seed_coa, _seed_item, _wire
+    inner, request, privileged = _pair(monkeypatch, STOCK, guard_cache=True)
+    _wire(monkeypatch, inner)
+    _seed_coa(inner, firm_id="firm-inv-1", client_id="client-inv-1")
+    rows = []
+    for _ in range(2):
+        item_id = str(uuid.uuid4())
+        _seed_item(inner, item_id)
+        rows.append({"id": item_id, "client_id": "client-inv-1", "name": "Mine", "kind": "good", "opening_qty_units": "10",
+                     "opening_cost_paise": 100_00, "created_at": "2026-04-01T00:00:00Z"})
+    # a row whose id is ANOTHER client's item: the upsert would rewrite its client and name if it were handed over
+    theirs = inner.seed("service_catalogue", {"id": str(uuid.uuid4()), "firm_id": "firm-inv-1", "client_id": "client-other",
+                                              "name": "Theirs", "kind": "good", "stock_qty_units": "1", "avg_cost_paise": 9})
+    rows.append({"id": theirs["id"], "client_id": "client-inv-1", "name": "Mine", "kind": "good", "opening_qty_units": "10",
+                 "opening_cost_paise": 100_00, "created_at": "2026-04-01T00:00:00Z"})
+    # and one that is ANOTHER FIRM's item under the same client id string: the firm is part of "this client's" (client ids are
+    # unique in production, so this is the belt to the braces, and it is what an upsert on a service-role client must never cross)
+    foreign = inner.seed("service_catalogue", {"id": str(uuid.uuid4()), "firm_id": "firm-other", "client_id": "client-inv-1",
+                                               "name": "Foreign", "kind": "good", "stock_qty_units": "2", "avg_cost_paise": 8})
+    rows.append({"id": foreign["id"], "client_id": "client-inv-1", "name": "Mine", "kind": "good", "opening_qty_units": "10",
+                 "opening_cost_paise": 100_00, "created_at": "2026-04-01T00:00:00Z"})
+    with caplog.at_level("WARNING", logger=inventory_service._logger.name):
+        inventory_service.seed_opening_balances_batch(request, firm_id="firm-inv-1", created_by="user-1", rows=rows)
+    assert any("2 of 4 opening-stock cache rows" in r.getMessage() and "left out" in r.getMessage() for r in caplog.records), \
+        [r.getMessage() for r in caplog.records]                       # a row that was left out is said, not silently dropped
+    assert request.log == [] and request.refused == []
+    upserts = [e for e in _cache_updates(privileged.log) if e["verb"] == "upsert"]
+    assert len(upserts) == 1 and {r["id"] for r in upserts[0]["payload"]} == {r["id"] for r in rows[:2]}, upserts
+    other = next(r for r in inner.rows("service_catalogue") if r["id"] == theirs["id"])
+    assert (other["client_id"], other["name"], other["stock_qty_units"], other["avg_cost_paise"]) == ("client-other", "Theirs", "1", 9)
+    other_firm = next(r for r in inner.rows("service_catalogue") if r["id"] == foreign["id"])
+    assert (other_firm["firm_id"], other_firm["name"], other_firm["stock_qty_units"], other_firm["avg_cost_paise"]) == ("firm-other", "Foreign", "2", 8)
+    mine = [r for r in inner.rows("service_catalogue") if r["id"] in {x["id"] for x in rows[:2]}]
+    assert all(r["stock_qty_units"] == "10" for r in mine)
+
+
+class _CountingIn:
+    """The request's client with the sizes of every `.in_()` list sent to the catalogue recorded (a PostgREST filter is part of the
+    URL, which is why `fetch_all_in` chunks), and, optionally, the catalogue READ refused."""
+
+    def __init__(self, inner, *, fail_reads=False):
+        self.inner, self.sizes, self.fail_reads = inner, [], fail_reads
+
+    def table(self, name):
+        query = self.inner.table(name)
+        if name != "service_catalogue":
+            return query
+        owner = self
+
+        class Catalogue:
+            def __getattr__(self, attr):
+                target = getattr(query, attr)
+
+                def call(*args, **kwargs):
+                    if attr == "select" and owner.fail_reads:
+                        raise RuntimeError("catalogue unreadable")
+                    if attr == "in_":
+                        owner.sizes.append(len(list(args[1])))
+                    result = target(*args, **kwargs)
+                    return self if result is query else result
+                return call
+        return Catalogue()
+
+    def __getattr__(self, attr):
+        return getattr(self.inner, attr)
+
+
+def _cache_rows_for(inner, n):
+    rows = []
+    for i in range(n):
+        item = inner.seed("service_catalogue", {"id": f"bulk-{i}", "firm_id": FIRM, "client_id": CLIENT, "name": f"Item {i}", "kind": "good"})
+        rows.append({"id": item["id"], "firm_id": FIRM, "client_id": CLIENT, "name": f"Item {i}", "stock_qty_units": "10", "avg_cost_paise": 100})
+    return rows
+
+
+def test_the_membership_read_is_chunked_for_a_large_import_and_every_row_is_still_cached(monkeypatch):
+    """A 300-product import is the reason the batch exists; an unchunked `.in_()` of its ids is a URL the gateway refuses."""
+    from core.db_paging import IN_CHUNK
+    inner, request, privileged = _pair(monkeypatch, STOCK, guard_cache=True)
+    rows = _cache_rows_for(inner, IN_CHUNK * 2 + 10)
+    counting = _CountingIn(request)
+    inventory_service._write_opening_cache(counting, firm_id=FIRM, cache_rows=rows)
+    assert len(counting.sizes) >= 3 and max(counting.sizes) <= IN_CHUNK, counting.sizes
+    upserts = [e for e in _cache_updates(privileged.log) if e["verb"] == "upsert"]
+    assert len(upserts) == 1 and len(upserts[0]["payload"]) == len(rows)
+    assert request.log == [] and request.refused == []
+
+
+def test_a_membership_read_that_fails_writes_no_cache_and_says_so(monkeypatch):
+    """The failure must not fail OPEN: handing the upsert every row because the check could not be made is the one thing the
+    check exists to prevent."""
+    inner, request, privileged = _pair(monkeypatch, STOCK, guard_cache=True)
+    rows = _cache_rows_for(inner, 3)
+    reported = []
+    monkeypatch.setattr(inventory_service, "capture_posting_failure", lambda exc, **ctx: reported.append((str(exc), ctx)))
+    inventory_service._write_opening_cache(_CountingIn(request, fail_reads=True), firm_id=FIRM, cache_rows=rows)
+    assert privileged.log == [] and request.log == []
+    assert all(r.get("stock_qty_units") != "10" for r in inner.rows("service_catalogue")), "a cache was written although the check failed"
+    assert len(reported) == 1 and reported[0][1].get("operation") == "seed_opening_balances_batch.cache_upsert", reported
