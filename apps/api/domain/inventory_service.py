@@ -228,13 +228,18 @@ def _compute_stock_out_fifo(prev_qty: Decimal, prev_value_paise: int,
 
 
 def ledger_writer(request_db):
-    """The client the stock ledger is WRITTEN with: the privileged one where there is one, the caller's own where there is
-    no other (mock mode, a test double), and None staying None. The ledger's running totals are what every later movement
-    chains from and its deltas are what closing stock is summed from and what ties to the Inventory control account, so a
-    signed-in session will not be allowed to write it (a migration that follows this change takes the grant away). Every route that reaches a posting here has
-    already checked the caller's access to the client, and the movement's item was claimed through the CALLER's client one statement earlier
-    (`_insert_and_cache`'s compare-and-set on `service_catalogue`, which row security confines to the caller's own
-    clients), so the row written here is for an item the caller can reach. Reads stay on the caller's client."""
+    """The client the stock ledger and the item's cached stock figures are WRITTEN with: the privileged one where there is one,
+    the caller's own where there is no other (mock mode, a test double), and None staying None. The ledger's running totals
+    are what every later movement chains from and its deltas are what closing stock is summed from and what ties to the
+    Inventory control account, and `service_catalogue.stock_qty_units`, `avg_cost_paise` and `stock_version` are a copy of
+    its last row (what the catalogue's Stock column, the product form's "stock already started" gate, the item block of the
+    item ledger and the stock reconciliation show or compare; the stock register, the reorder check and the next movement's
+    cost read the LEDGER, not the copy), so a signed-in session will not be allowed to write either (migrations that follow
+    take the writes away). Every route that reaches a posting here
+    has already checked the caller's access to the client. The privileged client carries no row security, so each statement
+    it runs here names the firm and the client itself: the compare-and-set on the item (which used to lean on row security
+    to confine it to the caller's own clients) names both, and an item that is not this client's matches nothing, exactly as
+    an item the caller could not see did. Reads stay on the caller's client."""
     if not request_db:
         return request_db
     from core import db_provider
@@ -483,9 +488,12 @@ def _insert_and_cache(
         "avg_cost_paise": calc["running_avg_cost_paise"],
         "stock_version": claimed_version,
     }
+    # The item's cache is written with the privileged client and NAMES the firm and the client: the statement used to lean on
+    # row security to confine it to the caller's clients, and the privileged client has none (POST-A-327).
     claim = (
-        db.table("service_catalogue").update(update_payload)
-        .eq("id", service_catalogue_id).eq("stock_version", expected_version)
+        ledger_writer(db).table("service_catalogue").update(update_payload)
+        .eq("id", service_catalogue_id).eq("firm_id", firm_id).eq("client_id", client_id)
+        .eq("stock_version", expected_version)
         .execute()
     )
     if not claim.data and expected_version == 0:
@@ -494,8 +502,9 @@ def _insert_and_cache(
         # never set it) never matches .eq("stock_version", 0) — try the
         # NULL form too before concluding a real conflict.
         claim = (
-            db.table("service_catalogue").update(update_payload)
-            .eq("id", service_catalogue_id).is_("stock_version", "null")
+            ledger_writer(db).table("service_catalogue").update(update_payload)
+            .eq("id", service_catalogue_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .is_("stock_version", "null")
             .execute()
         )
     if not claim.data:
@@ -540,12 +549,13 @@ def _insert_and_cache(
         # (a constraint, a network error) left the copy AHEAD of the chain, and every caller swallows this failure by design
         # (a sale must still issue), so the stock screen showed a movement the ledger never recorded. Put the copy back to the
         # ledger's tail, then raise as before so the caller reports it.
-        _restore_stock_cache_from_ledger(db, service_catalogue_id, claimed_version=claimed_version)
+        _restore_stock_cache_from_ledger(db, service_catalogue_id, claimed_version=claimed_version,
+                                         firm_id=firm_id, client_id=client_id)
         raise
     return inserted.data[0] if inserted.data else row
 
 
-def _restore_stock_cache_from_ledger(db, service_catalogue_id: str, *, claimed_version: int) -> None:
+def _restore_stock_cache_from_ledger(db, service_catalogue_id: str, *, claimed_version: int, firm_id: str, client_id: str) -> None:
     """Put an item's cached quantity and average cost back to what its ledger's last row says, after a movement claimed the
     cache and then failed to record itself. The restore is a compare-and-set on the version the failed movement wrote
     (`claimed_version`), so a movement that has since claimed the item has already rewritten the cache from the ledger and is
@@ -559,8 +569,9 @@ def _restore_stock_cache_from_ledger(db, service_catalogue_id: str, *, claimed_v
             "avg_cost_paise": int(tail.get("running_avg_cost_paise") or 0) if tail else 0,
             "stock_version": claimed_version + 1,
         }
-        (db.table("service_catalogue").update(restored)
-         .eq("id", service_catalogue_id).eq("stock_version", claimed_version).execute())
+        (ledger_writer(db).table("service_catalogue").update(restored)
+         .eq("id", service_catalogue_id).eq("firm_id", firm_id).eq("client_id", client_id)
+         .eq("stock_version", claimed_version).execute())
     except Exception as swallowed:
         capture_posting_failure(
             swallowed, operation="_insert_and_cache.restore_cache",
@@ -799,13 +810,7 @@ def seed_opening_balances_batch(
             return
         # the insert committed although the client saw it fail: the ledger HAS the rows, the journals stand, and the cache
         # is written below as after any successful insert
-    try:
-        db.table("service_catalogue").upsert(cache_rows, on_conflict="id").execute()
-    except Exception as e:
-        capture_posting_failure(
-            e, operation="seed_opening_balances_batch.cache_upsert",
-            firm_id=firm_id, row_count=len(cache_rows),
-        )
+    _write_opening_cache(db, firm_id=firm_id, cache_rows=cache_rows)
 
 
 def record_stock_in(
@@ -1192,6 +1197,40 @@ def _opening_rows_that_landed(db, *, firm_id: str, item_ids: list) -> Optional[b
                                 row_count=len(item_ids))
         return None
     return bool(rows)
+
+
+def _write_opening_cache(db, *, firm_id: str, cache_rows: list) -> None:
+    """Cache the opening quantity and cost of the batch's items. The upsert is written with the privileged client, which carries
+    no row security, and an upsert rewrites the firm, the client and the name of a row it finds by id. So it is handed only the
+    rows whose id the CALLER's own client reads under this firm AND this client (row security is the second lock on that
+    read): an id that is another client's, or that nobody can see, is left out and never overwritten, and the omission is
+    logged (POST-A-327). Never raises: a read that fails writes NO cache (the ledger and the journals stand, and the cache is
+    a copy that the stock reconciliation names when it disagrees) and is reported."""
+    try:
+        mine = _cache_rows_of_these_clients_items(db, firm_id=firm_id, cache_rows=cache_rows)
+        if len(mine) != len(cache_rows):
+            _logger.warning(
+                "seed_opening_balances_batch: %d of %d opening-stock cache rows name an item that is not this firm's and "
+                "this client's (or that the caller's client cannot read) and were left out", len(cache_rows) - len(mine), len(cache_rows))
+        if mine:
+            ledger_writer(db).table("service_catalogue").upsert(mine, on_conflict="id").execute()
+    except Exception as e:
+        capture_posting_failure(
+            e, operation="seed_opening_balances_batch.cache_upsert",
+            firm_id=firm_id, row_count=len(cache_rows),
+        )
+
+
+def _cache_rows_of_these_clients_items(db, *, firm_id: str, cache_rows: list) -> list:
+    """The batch's cache rows whose item the caller's client reads as this firm's AND the row's own client's. A read failure
+    raises (see `_write_opening_cache`)."""
+    from core.db_paging import fetch_all_in
+    found = fetch_all_in(
+        lambda: db.table("service_catalogue").select("id, client_id").eq("firm_id", firm_id),
+        "id", [r["id"] for r in cache_rows], label="seed_opening_balances_batch: which items are these clients'",
+    )
+    owner = {str(r["id"]): str(r["client_id"]) for r in found}
+    return [r for r in cache_rows if owner.get(str(r["id"])) == str(r["client_id"])]
 
 
 def _reverse_unrecorded_opening_journals(db, *, firm_id: str, created_by: Optional[str], posted: dict) -> None:
