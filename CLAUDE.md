@@ -401,7 +401,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS SCREEN ASKS THE SERVER WHAT BECAME OF A DEDUCTION, AND A CARD SHOWS A DASH UNTIL IT HAS A FIGURE FOR THE CLIENT IT IS ABOUT
 - THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE ORDER BY EVERY READER, AND THE SECTIONS AND THEIR NAMES ARE THE SERVER'S
 
-### `docs/design-record/tenancy-and-security.md` (65 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (66 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -468,6 +468,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SIGNED-IN MEMBER WHO IS NOT A PARTNER CANNOT CLEAR THE CLIENT OF ELEVEN MORE TABLES OR MOVE A SHARED ACCOUNT, THE SAME FUNCTION GUARDS THE WORKFLOW OF AN ONBOARDING TASK, AND NOBODY SIGNED IN CAN DELETE A CLIENT ROW
 - THE WRITERS OF THE TWO FX RECORD TABLES MOVE TO THE PRIVILEGED CLIENT BEFORE THE GRANT IS TAKEN AWAY, AND THE PORTAL SESSION LOG ALREADY WAS
 - THE HEADER OF AN ISSUED INVOICE, BILL OR NOTE KEEPS ITS PARTICULARS, A SIGNED-IN SESSION CANNOT DELETE ONE OR INSERT ONE ISSUED, AND THE DATABASE'S OWN CASCADE IS TOLD APART FROM A STATEMENT BY THE TRIGGER DEPTH.
+- THE TWO FX RECORD TABLES AND THE PORTAL SESSION LOG ARE WRITTEN BY THE API ONLY AND READ BY THE ASSIGNED, AND THE SHRINK-ONLY LIST OF CLIENT TABLES WITH NO SCOPE HAS NO PENDING ENTRY LEFT.
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
@@ -1231,9 +1232,9 @@ PostgREST. That is why:
   loop that HAS NEVER RUN AGAIN. Six tables created since are read straight from the
   browser and had firm-wide access only until migration 370: `bank_accounts` (093),
   `debit_notes` (145), `purchase_credit_notes` / `sales_debit_notes` (210),
-  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). A further 3
-  are still in that state (the bank's splits, rules and matches were closed by migration 527, eleven more tables by 528, the engagement letters
-  by 529, the statutory identity, payroll settings and PT registrations by 531, the year locks by 532 and the party-credit tables, the stock ledger and `demo_filings` (revoked altogether) by 536; the rest are POST-A-299), and the tables with no client of their own that hang from a client table follow their parent since 529
+  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). The rest
+  were closed in tranches (the bank's splits, rules and matches by migration 527, eleven more tables by 528, the engagement letters
+  by 529, the statutory identity, payroll settings and PT registrations by 531, the year locks by 532, the party-credit tables, the stock ledger and `demo_filings` (revoked altogether) by 536, and the two FX record tables and the portal session log by 542), so no client table is left on the shrink-only list as `pending`, and the tables with no client of their own that hang from a client table follow their parent since 529
   (the catalog's `children` list is empty and stays so). The premise
   they were left on, "nothing reaches them from the browser", is false: PostgREST answers for every granted table and
   the API runs as the caller. The durable half is the rule, asserted:

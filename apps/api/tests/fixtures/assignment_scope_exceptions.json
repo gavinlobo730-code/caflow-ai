@@ -16,21 +16,6 @@
       "policy": "client_instructions_assignment",
       "why": "a Manager is firm-wide in the knowledge base and its instructions by design (docs/architecture/11-revenue-ops-and-knowledge.md); everyone below a Manager needs an assignment row"
     },
-    "client_portal_sessions": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy only; pending the assignment scope"
-    },
-    "fx_adjustments": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy only; pending the assignment scope"
-    },
-    "fx_revaluations": {
-      "kind": "pending",
-      "ledger": "POST-A-299",
-      "why": "firm policy only; pending the assignment scope"
-    },
     "knowledge_articles": {
       "kind": "own",
       "policy": "knowledge_articles_assignment",
