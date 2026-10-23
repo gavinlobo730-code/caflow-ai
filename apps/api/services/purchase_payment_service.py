@@ -20,6 +20,7 @@ from fastapi import HTTPException
 
 from core.authz import can_access_client
 from domain.accounting.payment_account import resolve_payment_account
+from domain.currency.fx_writer import fx_writer
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
@@ -567,7 +568,7 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
             db.table("purchase_payment_allocations").insert(alloc_rows).execute()
 
         if fx_diff != 0:
-            db.table("fx_adjustments").insert({
+            fx_writer(db).table("fx_adjustments").insert({
                 "firm_id": firm_id, "client_id": client_id, "kind": "realized",
                 "document_type": "purchase_payment", "document_id": payment_id, "currency": ccy,
                 "settlement_rate": str(R1), "base_delta_paise": fx_diff,
