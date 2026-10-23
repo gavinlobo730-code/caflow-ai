@@ -535,6 +535,11 @@ def test_the_rollback_restores_the_earlier_behaviour_and_a_reapply_closes_it_aga
     guarded = reads()
     assert guarded["tasks"] == 1
 
+    # rollbacks run in reverse order: migration 540 attaches this migration's trigger function to twelve more columns, and a function
+    # that triggers depend on cannot be dropped
+    for later in sorted(MIGRATIONS.glob("540_*_rollback.sql")):
+        done = _psql_file(dsn, later)
+        assert done.returncode == 0, done.stderr
     rolled = _psql_file(dsn, ROLLBACK)
     assert rolled.returncode == 0, rolled.stderr
     assert _catalog(dsn) == [], "the rollback left something behind"
