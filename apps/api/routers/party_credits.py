@@ -92,7 +92,7 @@ def apply_party_credit(
         row = party_credit_service.apply_credit(
             db, current_user["firm_id"], data.client_id, data.party_type, data.party_id,
             data.amount_paise, data.applied_to_type, data.applied_to_id,
-            created_by=current_user.get("id"),
+            created_by=current_user.get("id"), actor=current_user,
         )
         return api_response(True, row)
     except HTTPException:

@@ -139,14 +139,15 @@ class JournalPostingService:
             capture_soft_failure(swallowed, operation="journal_posting.timeline", firm_id=firm_id, journal_id=journal_id)
 
         # Deferred downstream action — runs only now that the journal is on the books.
-        settlement = self._dispatch_deferred(db, firm_id, je, journal_id, actor_id)
+        settlement = self._dispatch_deferred(db, firm_id, je, journal_id, actor_id, actor_auth_id)
         return {"id": journal_id, "is_posted": True, "posted_at": now, "settlement": settlement}
 
-    def _dispatch_deferred(self, db, firm_id, je, journal_id, actor_id) -> Optional[dict]:
+    def _dispatch_deferred(self, db, firm_id, je, journal_id, actor_id, actor_auth_id=None) -> Optional[dict]:
         if je.get("source_type") == "bank_transaction" and je.get("source_id"):
             # Lazy import avoids a circular dependency (bank posting → this service).
             from services.bank_posting_service import bank_posting_service
-            return bank_posting_service.settle_on_post(db, firm_id, je["source_id"], journal_id, actor_id)
+            return bank_posting_service.settle_on_post(db, firm_id, je["source_id"], journal_id, actor_id,
+                                                       actor_auth_id=actor_auth_id)
         return None
 
     # ── Audit ───────────────────────────────────────────────────────────────────

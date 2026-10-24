@@ -20,6 +20,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 from domain.money_text import rupees_paise
+from services.document_header_writer import update_header
 
 _logger = logging.getLogger("caflow.party_credit")
 
@@ -226,7 +227,7 @@ class PartyCreditService:
     def apply_credit(
         self, db, firm_id: str, client_id: str, party_type: str, party_id: str,
         amount_paise: int, applied_to_type: str, applied_to_id: str,
-        created_by: Optional[str] = None, max_retries: int = 5,
+        created_by: Optional[str] = None, max_retries: int = 5, *, actor: dict | None = None,
     ) -> dict:
         """Consume amount_paise of the party's credit balance against a specific
         invoice/bill: decrements the balance (CAS), appends an 'application'
@@ -302,9 +303,11 @@ class PartyCreditService:
                 raw_paid = doc.get("paid_paise")
                 new_paid = int(raw_paid or 0) + amount_paise
                 new_status = "paid" if amount_paise >= outstanding else "partially_paid"
-                upd = (db.table(table).update({"paid_paise": new_paid, "status": new_status, "updated_at": _now()})
-                       .eq("id", applied_to_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                       .eq("paid_paise", raw_paid).execute())
+                upd = update_header(
+                    db, table, applied_to_id, {"paid_paise": new_paid, "status": new_status, "updated_at": _now()},
+                    firm_id=firm_id, client_id=client_id, actor=actor, expect={"paid_paise": raw_paid},
+                    before={"paid_paise": int(raw_paid or 0), "status": doc.get("status")},
+                    reason="a party's credit was applied")
                 if upd.data:
                     doc_applied = True
                     break

@@ -571,6 +571,33 @@ def test_an_issued_cheque_converts_into_one_vendor_payment_settled_like_a_normal
     assert row["converted_payment_id"] == doc["id"] and row["converted_receipt_id"] is None
 
 
+def test_the_settled_amount_of_the_bill_an_issued_cheque_pays_is_written_by_the_privileged_client_and_audited(monkeypatch):
+    """The one write of the conversion that is NOT made on the engine's client (POST-A-331): the paid amount and status of the bill
+    go through the header door, on the privileged client, with an audit row from the code, because the database's own capture
+    trigger records nothing for a write that has no sign-in. Everything else the engine writes stays on `engine_db`."""
+    import core.supabase_client as sc
+    db = _book(monkeypatch)
+    bill = _received_bill(1)
+    amount = bill["net_payable_paise"]
+    cheque = svc.create(
+        db, FIRM, CLI, direction=P.ISSUED, customer_id=None, vendor_id="VEND", cheque_no="55002",
+        cheque_date="2026-11-15", amount_paise=amount, drawee_bank=None, bank_account_id=None,
+        allocations=[{"purchase_bill_id": bill["id"], "allocated_paise": amount}],
+        notes=None, actor=CALLER, today=TODAY)
+    door, engine = _Spy(db), _Spy(db)
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: door)
+
+    svc.convert(db, FIRM, CLI, cheque["id"], actor=CALLER, today=TODAY, engine_db=engine)
+
+    assert "purchase_bills" in door.tables, "the bill's settled amount was written by the privileged client"
+    row = next(r for r in db.rows("purchase_bills") if r["id"] == bill["id"])
+    assert (row["paid_paise"], row["status"]) == (amount, "paid")
+    audit = [r for r in db.rows("audit_log") if r.get("entity_type") == "purchase_bill" and r.get("entity_id") == bill["id"]
+             and r.get("action") == "update" and "paid_paise" in (r.get("new_data") or {})]
+    assert len(audit) == 1 and audit[0]["new_data"]["paid_paise"] == amount and audit[0]["old_data"]["paid_paise"] == 0
+    assert audit[0]["actor_id"] == CALLER["auth_user_id"]
+
+
 # ── what may be recorded ─────────────────────────────────────────────────────
 
 def test_the_same_cheque_number_twice_for_one_party_is_refused_and_a_cancelled_one_frees_it(monkeypatch):

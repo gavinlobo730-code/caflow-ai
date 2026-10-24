@@ -22,6 +22,7 @@ from domain.gst import compensation_cess
 from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.document_header_writer import update_header
 from domain.gst import place_of_supply
 from domain.gst import inter_state as _inter_state
 from domain.gst import supply_classification
@@ -2203,11 +2204,12 @@ def issue_invoice(
                                 "Cannot issue — journal posting failed. Invoice remains a draft; retry.")
 
         now_iso = datetime.now(timezone.utc).isoformat()
-        upd = db.table("client_sales_invoices").update({
-            "status":           "issued",
-            "issued_at":        now_iso,
-            "journal_entry_id": journal_id,
-        }).eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
+        upd = update_header(
+            db, "client_sales_invoices", invoice_id,
+            {"status": "issued", "issued_at": now_iso, "journal_entry_id": journal_id},
+            firm_id=current_user.get("firm_id"), client_id=inv.get("client_id"), actor=current_user,
+            before={"status": inv.get("status"), "issued_at": inv.get("issued_at"),
+                    "journal_entry_id": inv.get("journal_entry_id")})
         updated_inv = upd.data[0] if upd.data else {**inv, "status": "issued", "journal_entry_id": journal_id}
 
         log_event(
@@ -2350,9 +2352,10 @@ def cancel_invoice(
         # because the `already` check above then skips straight back to this
         # same failing update. The status flip is the fact, updated_at carries
         # the time, and audit_log records who and when.
-        upd = db.table("client_sales_invoices").update({
-            "status": "cancelled",
-        }).eq("id", invoice_id).eq("firm_id", firm_id).execute()
+        upd = update_header(
+            db, "client_sales_invoices", invoice_id, {"status": "cancelled"},
+            firm_id=firm_id, client_id=inv.get("client_id"), actor=current_user,
+            before={"status": status})
 
         updated = upd.data[0] if upd.data else {}
 
@@ -2557,7 +2560,10 @@ def repost_journal(
         if not journal_id:
             return api_response(False, None, "Cannot repost — journal posting failed. Retry after setup.")
 
-        db.table("client_sales_invoices").update({"journal_entry_id": journal_id}).eq("id", invoice_id).eq("firm_id", firm_id).execute()
+        update_header(
+            db, "client_sales_invoices", invoice_id, {"journal_entry_id": journal_id},
+            firm_id=firm_id, client_id=inv.get("client_id"), actor=current_user,
+            before={"journal_entry_id": inv.get("journal_entry_id")})
         log_event(firm_id, "sales_invoice", invoice_id, "repost_journal",
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
                   new_data={"journal_entry_id": journal_id})

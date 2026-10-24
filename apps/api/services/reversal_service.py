@@ -19,6 +19,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from services.document_header_writer import update_header
+
 from fastapi import HTTPException
 
 from services.period_validation_service import period_validation_service
@@ -31,7 +33,7 @@ def _now() -> str:
 
 
 def _rollback_invoice_paid(db, firm_id: str, client_id: str, invoice_id: str, amount_paise: int,
-                           txn_amount: int = 0, max_retries: int = 5) -> None:
+                           txn_amount: int = 0, max_retries: int = 5, *, actor: dict | None = None) -> None:
     """CAS-decrement a sales invoice's paid_paise by exactly amount_paise (an
     allocation being undone) and recompute status. Mirrors
     purchase_payments._rollback_bill_claim, but raises on CAS exhaustion
@@ -49,7 +51,7 @@ def _rollback_invoice_paid(db, firm_id: str, client_id: str, invoice_id: str, am
     and paid_txn together, so guarding one guards both."""
     for _attempt in range(max_retries):
         rows = (db.table("client_sales_invoices")
-                .select("total_paise, paid_paise, credited_paise, debit_note_paise, paid_txn")
+                .select("total_paise, paid_paise, credited_paise, debit_note_paise, paid_txn, status")
                 .eq("id", invoice_id).eq("firm_id", firm_id).eq("client_id", client_id)
                 .limit(1).execute().data or [])
         if not rows:
@@ -62,17 +64,19 @@ def _rollback_invoice_paid(db, firm_id: str, client_id: str, invoice_id: str, am
         reverted_txn = max(int(inv.get("paid_txn") or 0) - txn_amount, 0)
         status = ("paid" if (total > 0 and reverted + credited >= total)
                   else "partially_paid" if reverted > 0 else "issued")
-        result = (db.table("client_sales_invoices")
-                  .update({"paid_paise": reverted, "paid_txn": reverted_txn, "status": status})
-                  .eq("id", invoice_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                  .eq("paid_paise", raw_paid).execute())
+        result = update_header(
+            db, "client_sales_invoices", invoice_id,
+            {"paid_paise": reverted, "paid_txn": reverted_txn, "status": status},
+            firm_id=firm_id, client_id=client_id, actor=actor, expect={"paid_paise": raw_paid},
+            before={"paid_paise": int(raw_paid or 0), "paid_txn": int(inv.get("paid_txn") or 0), "status": inv.get("status")},
+            reason="a receipt's allocation was undone")
         if result.data:
             return
     raise HTTPException(status_code=409, detail=f"Invoice {invoice_id} is being updated concurrently — please retry.")
 
 
 def _rollback_bill_paid(db, firm_id: str, client_id: str, bill_id: str, amount_paise: int,
-                        txn_amount: int = 0, max_retries: int = 5) -> None:
+                        txn_amount: int = 0, max_retries: int = 5, *, actor: dict | None = None) -> None:
     """CAS-decrement a purchase bill's paid_paise by exactly amount_paise (the
     payment's true AP relief being undone) and recompute status. Same shape as
     _rollback_invoice_paid / purchase_payments._rollback_bill_claim.
@@ -82,7 +86,7 @@ def _rollback_bill_paid(db, firm_id: str, client_id: str, bill_id: str, amount_p
     the same gap)."""
     for _attempt in range(max_retries):
         rows = (db.table("purchase_bills")
-                .select("net_payable_paise, paid_paise, credit_note_paise, debited_paise, paid_txn")
+                .select("net_payable_paise, paid_paise, credit_note_paise, debited_paise, paid_txn, status")
                 .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
                 .limit(1).execute().data or [])
         if not rows:
@@ -95,10 +99,12 @@ def _rollback_bill_paid(db, firm_id: str, client_id: str, bill_id: str, amount_p
         reverted_txn = max(int(bill.get("paid_txn") or 0) - txn_amount, 0)
         status = ("paid" if reverted + debited >= effective_payable
                   else "partially_paid" if reverted > 0 else "received")
-        result = (db.table("purchase_bills")
-                  .update({"paid_paise": reverted, "paid_txn": reverted_txn, "status": status})
-                  .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                  .eq("paid_paise", raw_paid).execute())
+        result = update_header(
+            db, "purchase_bills", bill_id,
+            {"paid_paise": reverted, "paid_txn": reverted_txn, "status": status},
+            firm_id=firm_id, client_id=client_id, actor=actor, expect={"paid_paise": raw_paid},
+            before={"paid_paise": int(raw_paid or 0), "paid_txn": int(bill.get("paid_txn") or 0), "status": bill.get("status")},
+            reason="a payment's allocation was undone")
         if result.data:
             return
     raise HTTPException(status_code=409, detail=f"Bill {bill_id} is being updated concurrently — please retry.")
@@ -120,7 +126,7 @@ def _payment_ap_relief(db, firm_id: str, client_id: str, payment: dict) -> int:
 
 
 def reverse_receipt(db, firm_id: str, receipt_id: str, reversal_date: str,
-                    created_by: Optional[str] = None) -> dict:
+                    created_by: Optional[str] = None, *, actor: dict | None = None) -> dict:
     """Undo a customer receipt: decrement every allocated invoice's paid_paise
     back down (CAS), void the receipt_allocations rows, reverse the posted
     journal (append-only, through the kernel), and mark the receipt reversed.
@@ -158,7 +164,7 @@ def reverse_receipt(db, firm_id: str, receipt_id: str, reversal_date: str,
         # for a plain-INR one, which never has a nonzero paid_txn anyway.
         txn_amt = int(alloc.get("allocated_txn") or 0)
         if inv_id and (amt > 0 or txn_amt > 0):
-            _rollback_invoice_paid(db, firm_id, client_id, inv_id, amt, txn_amt)
+            _rollback_invoice_paid(db, firm_id, client_id, inv_id, amt, txn_amt, actor=actor)
     if allocations:
         db.table("receipt_allocations").update({"is_voided": True}).eq("receipt_id", receipt_id).execute()
 
@@ -179,7 +185,7 @@ def reverse_receipt(db, firm_id: str, receipt_id: str, reversal_date: str,
 
 
 def reverse_payment(db, firm_id: str, payment_id: str, reversal_date: str,
-                    created_by: Optional[str] = None) -> dict:
+                    created_by: Optional[str] = None, *, actor: dict | None = None) -> dict:
     """Undo a vendor payment: decrement every settled bill's paid_paise back
     down (CAS), reverse the posted journal, and mark the payment reversed.
     Firm-scoped lookup, client_id read from the payment row itself. Raises
@@ -222,7 +228,7 @@ def reverse_payment(db, firm_id: str, payment_id: str, reversal_date: str,
         # Absent/None for a plain-INR payment, which never set paid_txn.
         txn_amount = int(payment.get("txn_amount") or 0)
         if ap_relief > 0 or txn_amount > 0:
-            _rollback_bill_paid(db, firm_id, client_id, bill_id, ap_relief, txn_amount)
+            _rollback_bill_paid(db, firm_id, client_id, bill_id, ap_relief, txn_amount, actor=actor)
         bills_adjusted = [bill_id]
     else:
         # Python-side is_voided filter (not .eq()) — a row lacking the key must
@@ -239,7 +245,7 @@ def reverse_payment(db, firm_id: str, payment_id: str, reversal_date: str,
             # reverse_receipt's identical handling.
             txn_amt = int(alloc.get("allocated_txn") or 0)
             if _bill_id and (amt > 0 or txn_amt > 0):
-                _rollback_bill_paid(db, firm_id, client_id, _bill_id, amt, txn_amt)
+                _rollback_bill_paid(db, firm_id, client_id, _bill_id, amt, txn_amt, actor=actor)
                 bills_adjusted.append(_bill_id)
         if allocations:
             db.table("purchase_payment_allocations").update({"is_voided": True}).eq("purchase_payment_id", payment_id).execute()

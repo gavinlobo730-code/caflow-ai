@@ -200,7 +200,8 @@ def convert_cheque(
     # The engines get the REQUEST-scoped client (the caller's own, under RLS when
     # per-user JWTs are on), as the Receipts screen and the bank match queue give
     # them; only the register's own table needs the privileged one (and the engine's
-    # read of the next firm-wide vendor-payment number, which returns a number and no row).
+    # read of the next firm-wide vendor-payment number, which returns a number and no row, and
+    # the settled amount of the invoice or bill, which the engines write through the header door).
     from core.supabase_client import get_supabase
     return api_response(True, service.convert(
         db, current_user["firm_id"], body.client_id, cheque_id,

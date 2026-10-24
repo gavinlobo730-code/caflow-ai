@@ -25,6 +25,7 @@ from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from core.uploads import accept_upload, safe_path_segment
 from services.audit_service import log_event
+from services.document_header_writer import update_header
 from services.line_item_ownership import ItemOwner, check as check_items_are_the_clients
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
@@ -522,9 +523,12 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
                 new_debited = debited + dn_total
                 settled = paid + new_debited
                 new_status = "paid" if settled >= effective_payable else ("partially_paid" if settled > 0 else bill.get("status"))
-                upd = (db.table("purchase_bills").update({"debited_paise": new_debited, "status": new_status})
-                       .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                       .eq("debited_paise", raw_debited).execute())
+                upd = update_header(
+                    db, "purchase_bills", bill_id,
+                    {"debited_paise": new_debited, "status": new_status},
+                    firm_id=firm_id, client_id=client_id, actor=current_user,
+                    expect={"debited_paise": raw_debited},
+                    before={"debited_paise": debited, "status": bill.get("status")})
                 if upd.data:
                     prior_bill = {"debited_paise": debited, "status": bill.get("status")}
                     break
@@ -536,9 +540,12 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
                     "purchase_bill_id": bill_id, "allocated_paise": dn_total,
                 }).execute()
             except Exception:
-                db.table("purchase_bills").update(
-                    {"debited_paise": debited, "status": prior_bill["status"]}) \
-                    .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+                update_header(
+                    db, "purchase_bills", bill_id,
+                    {"debited_paise": debited, "status": prior_bill["status"]},
+                    firm_id=firm_id, client_id=client_id, actor=current_user,
+                    before={"debited_paise": new_debited, "status": new_status},
+                    reason="the debit note's application could not be recorded")
                 raise
 
         # ── Post the GL journal; roll back the sub-ledger on failure. ──
@@ -550,9 +557,12 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             if prior_bill is not None and bill_id:
                 try:
                     db.table("debit_note_allocations").delete().eq("debit_note_id", dn_id).eq("purchase_bill_id", bill_id).execute()
-                    db.table("purchase_bills").update(
-                        {"debited_paise": prior_bill["debited_paise"], "status": prior_bill["status"]}) \
-                        .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+                    update_header(
+                        db, "purchase_bills", bill_id,
+                        {"debited_paise": prior_bill["debited_paise"], "status": prior_bill["status"]},
+                        firm_id=firm_id, client_id=client_id, actor=current_user,
+                        before={"debited_paise": new_debited, "status": new_status},
+                        reason="the debit note's journal could not be posted")
                 except Exception as swallowed:
                     capture_posting_failure(swallowed, operation="debit_note.allocation_rollback", firm_id=firm_id, debit_note_id=dn_id, bill_id=bill_id)
             # A deliberate business-rule rejection (e.g. a locked-FY check inside the
@@ -568,9 +578,12 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             return api_response(False, None, "Unable to issue debit note. Please try again.")
 
         applied = dn_total if (bill_id and dn_total > 0) else 0
-        upd = db.table("debit_notes").update({
-            "status": "issued", "journal_entry_id": journal_id, "applied_paise": applied,
-        }).eq("id", dn_id).eq("firm_id", firm_id).execute()
+        upd = update_header(
+            db, "debit_notes", dn_id,
+            {"status": "issued", "journal_entry_id": journal_id, "applied_paise": applied},
+            firm_id=firm_id, client_id=client_id, actor=current_user,
+            before={"status": dn.get("status"), "journal_entry_id": dn.get("journal_entry_id"),
+                    "applied_paise": dn.get("applied_paise")})
         updated = upd.data[0] if upd.data else {**dn, "status": "issued"}
         log_event(firm_id or "", "debit_note", dn_id, "status_change",
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),

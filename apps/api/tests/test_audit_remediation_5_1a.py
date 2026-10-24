@@ -160,8 +160,10 @@ def test_h3_reallocation_never_drifts(monkeypatch):
     import routers.receipts as rc
     import core.supabase_client as sc
     db = FakeDB()
-    db.seed("client_sales_invoices", {"id": "INV", "firm_id": "F", "total_paise": 100000, "paid_paise": 0, "status": "issued"})
-    db.seed("receipts", {"id": "R", "firm_id": "F", "amount_paise": 100000})
+    # Both rows carry their client, as every real row does: a settlement is written naming the document, its firm AND its client
+    # (the privileged client has no row security to confine it), and refuses a document with no client.
+    db.seed("client_sales_invoices", {"id": "INV", "firm_id": "F", "client_id": "C", "total_paise": 100000, "paid_paise": 0, "status": "issued"})
+    db.seed("receipts", {"id": "R", "firm_id": "F", "client_id": "C", "amount_paise": 100000})
     monkeypatch.setattr(rc, "_USE_MOCK", False)
     monkeypatch.setattr(rc, "log_event", lambda *a, **k: None)
     monkeypatch.setattr(sc, "get_supabase", lambda: db)

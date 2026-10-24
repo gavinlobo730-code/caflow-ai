@@ -17,6 +17,7 @@ from core import db_provider
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.document_header_writer import update_header
 from services.line_item_ownership import ItemOwner, check as check_items_are_the_clients
 from domain.accounting import opening_documents as _opening
 from services.period_validation_service import period_validation_service
@@ -715,10 +716,12 @@ def issue_credit_note(
                 new_credited = credited + cn_total
                 settled = paid + new_credited
                 new_status = "paid" if settled >= effective_total else ("partially_paid" if settled > 0 else inv.get("status"))
-                upd = (db.table("client_sales_invoices").update({
-                    "credited_paise": new_credited, "status": new_status,
-                }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                  .eq("credited_paise", raw_credited).execute())
+                upd = update_header(
+                    db, "client_sales_invoices", inv_id,
+                    {"credited_paise": new_credited, "status": new_status},
+                    firm_id=firm_id, client_id=client_id, actor=current_user,
+                    expect={"credited_paise": raw_credited},
+                    before={"credited_paise": credited, "status": inv.get("status")})
                 if upd.data:
                     prior_inv = {"credited_paise": credited, "status": inv.get("status")}
                     supply_invoice = {"invoice_date": inv.get("invoice_date")}
@@ -731,9 +734,12 @@ def issue_credit_note(
                     "sales_invoice_id": inv_id, "allocated_paise": cn_total,
                 }).execute()
             except Exception:
-                db.table("client_sales_invoices").update({
-                    "credited_paise": credited, "status": prior_inv["status"],
-                }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+                update_header(
+                    db, "client_sales_invoices", inv_id,
+                    {"credited_paise": credited, "status": prior_inv["status"]},
+                    firm_id=firm_id, client_id=client_id, actor=current_user,
+                    before={"credited_paise": new_credited, "status": new_status},
+                    reason="the credit note's application could not be recorded")
                 raise
 
         # ── Post the GL journal (Dr Sales Returns + Dr GST reversed / Cr Trade
@@ -750,9 +756,12 @@ def issue_credit_note(
                 try:
                     (_write_db().table("credit_note_allocations").delete()
                      .eq("credit_note_id", cn_id).eq("sales_invoice_id", inv_id).eq("firm_id", firm_id).execute())
-                    db.table("client_sales_invoices").update({
-                        "credited_paise": prior_inv["credited_paise"], "status": prior_inv["status"],
-                    }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+                    update_header(
+                        db, "client_sales_invoices", inv_id,
+                        {"credited_paise": prior_inv["credited_paise"], "status": prior_inv["status"]},
+                        firm_id=firm_id, client_id=client_id, actor=current_user,
+                        before={"credited_paise": new_credited, "status": new_status},
+                        reason="the credit note's journal could not be posted")
                 except Exception as swallowed:
                     capture_posting_failure(swallowed, operation="credit_note.allocation_rollback", firm_id=firm_id, credit_note_id=cn_id, invoice_id=inv_id)
             # A deliberate business-rule rejection (e.g. period_validation_service's
@@ -777,9 +786,11 @@ def issue_credit_note(
         # committed. A credit note could not be issued: the ledger moved and
         # the document stayed draft. The status flip is the fact, updated_at
         # carries the time, and audit_log records who and when.
-        upd = db.table("credit_notes").update({
-            "status": "issued", "applied_paise": applied,
-        }).eq("id", cn_id).eq("firm_id", firm_id).execute()
+        upd = update_header(
+            db, "credit_notes", cn_id,
+            {"status": "issued", "applied_paise": applied},
+            firm_id=firm_id, client_id=client_id, actor=current_user,
+            before={"status": cn.get("status"), "applied_paise": cn.get("applied_paise")})
         updated_cn = upd.data[0] if upd.data else {**cn, "status": "issued", "applied_paise": applied}
 
         log_event(

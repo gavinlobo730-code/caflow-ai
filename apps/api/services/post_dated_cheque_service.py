@@ -450,7 +450,12 @@ def convert(db, firm_id: str, client_id: str, cheque_id: str, *, presented_on=No
     ONE READ IS THE EXCEPTION AND IT RETURNS A NUMBER, NOT A ROW: an issued cheque's vendor payment takes the next
     firm-wide `VPMT-` number, and `services.numbering` reads that series with the privileged client whatever the engine was
     handed (a member assigned to some clients would otherwise be given a number another client's payment already holds).
-    Every write the engine makes stays on `engine_db`."""
+    Every write the engine makes stays on `engine_db` EXCEPT ONE, MADE FOR A DIFFERENT REASON (POST-A-331): the settled amount and
+    status of the invoice or bill the engine settles against (its `paid_paise`, `paid_txn` and `status`) are written through
+    `services.document_header_writer.update_header`, on the privileged client, naming the document, its firm and its client
+    itself, with an audit row from the code, because a database rule that asks who is writing can only tell the API's settlement
+    from a member's direct write if the API's is not made as the member. The route has asserted the caller's access to the client
+    before it gets here, so row security is no longer a second lock on that one write."""
     today = today or ist_today()
     engine_db = engine_db if engine_db is not None else db
     row = _get(db, firm_id, client_id, cheque_id)

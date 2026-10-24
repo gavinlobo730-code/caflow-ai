@@ -40,6 +40,7 @@ from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.document_header_writer import update_header
 from services.line_item_ownership import ItemOwner, check as check_items_are_the_clients
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
@@ -443,10 +444,12 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
                 effective_total = total + new_debit_note
                 settled = paid + credited
                 new_status = "paid" if settled >= effective_total else ("partially_paid" if settled > 0 else inv.get("status"))
-                upd = (db.table("client_sales_invoices").update({
-                    "debit_note_paise": new_debit_note, "status": new_status,
-                }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                  .eq("debit_note_paise", raw_debit_note).execute())
+                upd = update_header(
+                    db, "client_sales_invoices", inv_id,
+                    {"debit_note_paise": new_debit_note, "status": new_status},
+                    firm_id=firm_id, client_id=client_id, actor=current_user,
+                    expect={"debit_note_paise": raw_debit_note},
+                    before={"debit_note_paise": prior_debit_note, "status": inv.get("status")})
                 if upd.data:
                     prior_inv = {"debit_note_paise": prior_debit_note, "status": inv.get("status")}
                     break
@@ -458,9 +461,12 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
                     "sales_invoice_id": inv_id, "allocated_paise": sdn_total,
                 }).execute()
             except Exception:
-                db.table("client_sales_invoices").update({
-                    "debit_note_paise": prior_debit_note, "status": prior_inv["status"],
-                }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+                update_header(
+                    db, "client_sales_invoices", inv_id,
+                    {"debit_note_paise": prior_debit_note, "status": prior_inv["status"]},
+                    firm_id=firm_id, client_id=client_id, actor=current_user,
+                    before={"debit_note_paise": new_debit_note, "status": new_status},
+                    reason="the sales debit note's application could not be recorded")
                 raise
 
         # ── Post the GL journal (Dr Trade Receivables / Cr Sales / Cr GST Output).
@@ -476,9 +482,12 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
             if prior_inv is not None and inv_id:
                 try:
                     db.table("sales_debit_note_allocations").delete().eq("debit_note_id", sdn_id).eq("sales_invoice_id", inv_id).execute()
-                    db.table("client_sales_invoices").update({
-                        "debit_note_paise": prior_inv["debit_note_paise"], "status": prior_inv["status"],
-                    }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+                    update_header(
+                        db, "client_sales_invoices", inv_id,
+                        {"debit_note_paise": prior_inv["debit_note_paise"], "status": prior_inv["status"]},
+                        firm_id=firm_id, client_id=client_id, actor=current_user,
+                        before={"debit_note_paise": new_debit_note, "status": new_status},
+                        reason="the sales debit note's journal could not be posted")
                 except Exception as swallowed:
                     capture_posting_failure(swallowed, operation="sales_debit_note.allocation_rollback", firm_id=firm_id, debit_note_id=sdn_id, invoice_id=inv_id)
             # A deliberate business-rule rejection (e.g. a locked-FY check inside the
@@ -495,9 +504,12 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
 
         now_iso = datetime.now(timezone.utc).isoformat()
         applied = sdn_total if (inv_id and sdn_total > 0) else 0
-        upd = db.table("sales_debit_notes").update({
-            "status": "issued", "journal_entry_id": journal_id, "applied_paise": applied,
-        }).eq("id", sdn_id).eq("firm_id", firm_id).execute()
+        upd = update_header(
+            db, "sales_debit_notes", sdn_id,
+            {"status": "issued", "journal_entry_id": journal_id, "applied_paise": applied},
+            firm_id=firm_id, client_id=client_id, actor=current_user,
+            before={"status": sdn.get("status"), "journal_entry_id": sdn.get("journal_entry_id"),
+                    "applied_paise": sdn.get("applied_paise")})
         updated = upd.data[0] if upd.data else {**sdn, "status": "issued", "applied_paise": applied}
 
         log_event(
