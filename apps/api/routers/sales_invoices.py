@@ -1761,6 +1761,22 @@ def _reject_locked_invoice_fields(data: dict) -> None:
         )
 
 
+def _reject_an_edit_the_invoice_cannot_take(status: str, data: dict) -> None:
+    """The two refusals an edit of an existing invoice can meet before it is applied, as one call (the route sits at the lint
+    ratchet's statement baseline): an issued invoice's locked fields, and a draft's document discount sent without its lines.
+
+    A document discount is spread across the lines and the tax is charged on what is left (CGST s.15(3)(a)), so it is worked out
+    from the lines. Written to the header alone it would show a discount that reduced no tax, and `domain/accounting/draft_integrity`
+    would refuse the draft at issue with advice (save it again) that does nothing; refuse it here, where the cause is."""
+    if status != "draft":
+        _reject_locked_invoice_fields(data)
+    elif "lines" not in data and ("discount_paise" in data or "discount_percent_bps" in data):
+        raise HTTPException(
+            status_code=422,
+            detail=("A document discount is spread over the invoice's lines and the tax is charged on what is left, so send the "
+                    "lines with it and the totals are worked out again."))
+
+
 @router.patch("/{invoice_id}")
 def update_invoice(
     invoice_id: str,
@@ -1789,8 +1805,7 @@ def update_invoice(
                     status = inv.get("status")
                     if status == "cancelled":
                         raise HTTPException(status_code=422, detail="Cancelled invoices cannot be updated")
-                    if status != "draft":
-                        _reject_locked_invoice_fields(data)
+                    _reject_an_edit_the_invoice_cannot_take(status, data)
                     if "invoice_no" in data:
                         _assert_invoice_no_available(
                             None, current_user.get("firm_id"), inv.get("client_id"),
@@ -1817,8 +1832,7 @@ def update_invoice(
         status = resp.data[0]["status"]
         if status == "cancelled":
             raise HTTPException(status_code=422, detail="Cancelled invoices cannot be updated")
-        if status != "draft":
-            _reject_locked_invoice_fields(data)
+        _reject_an_edit_the_invoice_cannot_take(status, data)
         if "invoice_no" in data:
             _assert_invoice_no_available(
                 db, firm_id, resp.data[0]["client_id"], data["invoice_no"], exclude_id=invoice_id,

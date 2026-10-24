@@ -15,6 +15,7 @@ from fastapi import HTTPException
 
 from core.db_paging import fetch_all
 from domain.accounting import draft_integrity as rule
+from domain.currency.document_currency import document_currency_from_row
 
 _MONEY = "id, taxable_amount_paise, cgst_paise, sgst_paise, igst_paise"
 
@@ -43,9 +44,23 @@ def assert_draft_adds_up(db, kind: str, header: dict) -> None:
     doc_id = header.get("id")
     if not doc_id:
         raise ValueError("a draft is checked by its id")
-    found = rule.problems(kind, header, _LINES[kind](db, str(doc_id)))
+    found = rule.problems(kind, header, _LINES[kind](db, str(doc_id)), to_base=_converter(db, kind, header))
     if found:
         raise HTTPException(status_code=422, detail=rule.refusal(kind, found))
+
+
+def _converter(db, kind: str, header: dict):
+    """What takes a line sum in the document's currency to rupees' paise: the document's own stored rate and its currency's minor
+    unit, read the way the posting reads them (`document_currency_from_row`), so the check and the journal convert alike. Nothing
+    for a document in rupees. A stored rate that is not a positive number is refused in words and not left to `to_base`."""
+    if not rule.is_foreign(kind, header):
+        return None
+    currency = document_currency_from_row(db, header)
+    if currency.rate <= 0:
+        raise HTTPException(status_code=422, detail=(
+            f"Cannot issue this {rule.NAME_OF[kind]}: the exchange rate recorded on it is not a positive number, so its rupee "
+            "figures cannot be checked against its lines. Nothing was posted."))
+    return currency.to_base
 
 
 def assert_a_draft(header: dict, *, not_a_draft: str) -> None:

@@ -19,16 +19,22 @@ WHY THE QUESTION IS ASKED AT ISSUE
 
 WHAT IT CHECKS, AND WHAT IT DELIBERATELY DOES NOT
     Only identities the creating code makes true by construction and that every stored document in production satisfied on
-    24-10-2026 (read-only counts over all six tables, in every status):
+    24-10-2026 (read-only counts over all six tables, in every status; the recorded-GST identity is the one two issued June 2026
+    test invoices do not meet, which is named in the commit and the design record):
 
-      * the flag is clear;
+      * the carried-over flag is clear (an invoice and a bill: the four notes have no such column);
       * the total is the sum of its parts, in the way the document's own create path adds them (an invoice: taxable + the three
         tax heads + cess + round-off; a bill: the same without round-off, but the taxable value alone on a reverse-charge bill, where
         the supplier charged no tax; a note: taxable + the three tax heads); `total_gst_paise` is the three heads;
+      * an invoice's round-off is EXACTLY what rounding to the nearest rupee gives (half up), and nil unless the invoice is marked
+        for rounding and is in rupees: round-off is the one term of the total the lines say nothing about, so without this a
+        forged round-off with a matching total passed;
       * a bill's net payable is its total less what was withheld;
       * the header's taxable value and tax heads are the sums over the lines (an invoice's discount too, and a bill's blocked-credit
-        columns over the lines that carry `itc_eligible` false); in a foreign currency the header is in rupees and the lines are not,
-        so the foreign-currency columns `txn_taxable` and `txn_total_gst` are compared with the lines instead.
+        columns over the lines that carry `itc_eligible` false). In a foreign currency the lines are in the document's currency and
+        the header is in rupees, converted per head from the line sums at the document's own stored rate (the way the create and
+        edit paths do it), so the header is compared with the CONVERTED line sums, and the document's own currency columns
+        `txn_taxable` and `txn_total_gst` are compared with the raw line sums.
 
     It does not recompute the tax from a rate, the discount from a percentage or the withholding from the vendor's section: those
     are decisions the create path takes with inputs the issue route does not have, and a mismatch there would be a refusal of a
@@ -38,7 +44,7 @@ WHAT IT CHECKS, AND WHAT IT DELIBERATELY DOES NOT
 """
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, NamedTuple, Optional
+from typing import Any, Callable, Iterable, Mapping, NamedTuple, Optional
 
 from domain.money_text import rupees_paise
 
@@ -76,6 +82,9 @@ NAME_OF = {
 _HAS_CESS = frozenset({SALES_INVOICE, PURCHASE_BILL})
 _HAS_ROUND_OFF = frozenset({SALES_INVOICE})
 _HAS_FOREIGN = frozenset({SALES_INVOICE, PURCHASE_BILL})
+#: `is_opening` exists on two tables only (migration 391: the invoice and the bill). The four notes have no such column, so there is
+#: nothing for a member to set on them and nothing to ask.
+_HAS_OPENING = frozenset({SALES_INVOICE, PURCHASE_BILL})
 
 
 def _paise(row: Mapping[str, Any], column: str) -> int:
@@ -87,7 +96,8 @@ def _rupees(paise: int) -> str:
     return f"₹{rupees_paise(paise)}"
 
 
-def _is_foreign(kind: str, header: Mapping[str, Any]) -> bool:
+def is_foreign(kind: str, header: Mapping[str, Any]) -> bool:
+    """Is this a document in a currency other than rupees (only an invoice and a bill can be)?"""
     if kind not in _HAS_FOREIGN:
         return False
     currency = (header.get("txn_currency") or "INR").strip().upper()
@@ -98,13 +108,43 @@ def _sum(lines: Iterable[Mapping[str, Any]], column: str) -> int:
     return sum(_paise(line, column) for line in lines)
 
 
+def nearest_rupee_delta(amount_paise: int) -> int:
+    """What is ADDED to an amount to make it a whole rupee, half up: -49..+50 paise, nil when already whole. The invoice's round-off
+    (`routers/sales_invoices._round_off_paise`, which a test holds equal to this over every remainder)."""
+    remainder = amount_paise % 100
+    if remainder == 0:
+        return 0
+    return -remainder if remainder < 50 else 100 - remainder
+
+
+def _says(extra_terms: list[str]) -> str:
+    """'the taxable value plus the tax', 'plus the tax and cess', 'plus the tax, cess and round-off'."""
+    terms = ["the tax"] + extra_terms
+    joined = terms[0] if len(terms) == 1 else ", ".join(terms[:-1]) + " and " + terms[-1]
+    return "the taxable value plus " + joined
+
+
 def _opening_problems(kind: str, header: Mapping[str, Any]) -> list[Problem]:
-    if not header.get("is_opening"):
+    if kind not in _HAS_OPENING or not header.get("is_opening"):
         return []
     name = NAME_OF[kind]
     return [Problem(OPENING,
                     f"it is flagged as a carried-over (opening) {name}. An opening {name} is created already "
                     f"{'received' if kind == PURCHASE_BILL else 'issued'}, never issued from a draft, and is left out of the returns")]
+
+
+def _round_off_problems(kind: str, header: Mapping[str, Any], before_rounding: int, round_off: int) -> list[Problem]:
+    """An invoice's round-off is the nearest-rupee delta of what it would otherwise total, and only when the invoice is marked for
+    rounding and is in rupees (`_create_invoice_core` and the edit path both: `round_off_enabled and currency == INR`)."""
+    if kind not in _HAS_ROUND_OFF:
+        return []
+    enabled = bool(header.get("round_off_enabled")) and not is_foreign(kind, header)
+    expected = nearest_rupee_delta(before_rounding) if enabled else 0
+    if round_off == expected:
+        return []
+    why = ("rounding it to the nearest rupee gives " + _rupees(expected)) if enabled else (
+        "it is not rounded off (it is not marked for rounding, or it is in a foreign currency)")
+    return [Problem(ARITHMETIC, f"its round-off is {_rupees(round_off)} but {why}")]
 
 
 def _header_problems(kind: str, header: Mapping[str, Any]) -> list[Problem]:
@@ -120,8 +160,8 @@ def _header_problems(kind: str, header: Mapping[str, Any]) -> list[Problem]:
         parts_say = "the taxable value alone, because the supplier charged no tax on a reverse-charge bill"
     else:
         parts = taxable + gst + cess + round_off
-        parts_say = "the taxable value plus the tax" + (", cess" if kind in _HAS_CESS else "") + (
-            " and round-off" if kind in _HAS_ROUND_OFF else "")
+        parts_say = _says((["cess"] if kind in _HAS_CESS else []) + (["round-off"] if kind in _HAS_ROUND_OFF else []))
+    found.extend(_round_off_problems(kind, header, taxable + gst + cess, round_off))
     total = _paise(header, "total_paise")
     if total != parts:
         found.append(Problem(ARITHMETIC, f"its total is {_rupees(total)} but {parts_say} come to {_rupees(parts)}"))
@@ -138,8 +178,9 @@ def _header_problems(kind: str, header: Mapping[str, Any]) -> list[Problem]:
 
 
 def _foreign_problems(header: Mapping[str, Any], rows: list[Mapping[str, Any]]) -> list[Problem]:
-    """A document in a foreign currency: the header is in rupees and the lines are not, so the header's own currency totals
-    (`txn_taxable`, `txn_total_gst`) are what the lines are compared with."""
+    """A document in a foreign currency keeps the currency's own totals beside its rupee columns: `txn_taxable` and `txn_total_gst`
+    are what the raw line sums (the lines are in that currency) must say. The rupee columns are compared separately, with the line
+    sums converted at the document's rate."""
     found: list[Problem] = []
     line_taxable = _sum(rows, "taxable_amount_paise")
     line_gst = _sum(rows, "cgst_paise") + _sum(rows, "sgst_paise") + _sum(rows, "igst_paise")
@@ -154,7 +195,8 @@ def _foreign_problems(header: Mapping[str, Any], rows: list[Mapping[str, Any]]) 
     return found
 
 
-def _blocked_credit_problems(header: Mapping[str, Any], rows: list[Mapping[str, Any]]) -> list[Problem]:
+def _blocked_credit_problems(header: Mapping[str, Any], rows: list[Mapping[str, Any]],
+                             convert: Callable[[int], int]) -> list[Problem]:
     """A bill's blocked-credit columns (CGST Act s.17(5)) against the lines marked as not eligible for input credit."""
     found: list[Problem] = []
     blocked = [r for r in rows if r.get("itc_eligible") is False]
@@ -164,42 +206,57 @@ def _blocked_credit_problems(header: Mapping[str, Any], rows: list[Mapping[str, 
         ("IGST", "ineligible_itc_igst_paise", "igst_paise"),
         ("cess", "ineligible_itc_cess_paise", "cess_paise"),
     ):
-        if _paise(header, column) != _sum(blocked, line_column):
+        expected = convert(_sum(blocked, line_column))
+        if _paise(header, column) != expected:
             found.append(Problem(LINES,
                                  f"its blocked-credit {label} is {_rupees(_paise(header, column))} but the lines marked as not "
-                                 f"eligible for input credit carry {_rupees(_sum(blocked, line_column))}"))
+                                 f"eligible for input credit carry {_rupees(expected)}"))
     return found
 
 
-def _line_problems(kind: str, header: Mapping[str, Any], rows: list[Mapping[str, Any]]) -> list[Problem]:
-    """The header against its lines."""
+def _line_problems(kind: str, header: Mapping[str, Any], rows: list[Mapping[str, Any]],
+                   convert: Callable[[int], int]) -> list[Problem]:
+    """The header against its lines. `convert` takes a line sum to the header's unit: rupees' own paise for a rupee document, and
+    the document's currency converted at its stored rate for a foreign one."""
     if not rows:
         return [Problem(LINES, f"it has no lines, so nothing stands behind its {_rupees(_paise(header, 'total_paise'))}")]
-    if _is_foreign(kind, header):
-        return _foreign_problems(header, rows)
-    found: list[Problem] = []
+    found = _foreign_problems(header, rows) if is_foreign(kind, header) else []
     checks = [("taxable value", "taxable_amount_paise"), ("CGST", "cgst_paise"), ("SGST", "sgst_paise"), ("IGST", "igst_paise")]
     if kind in _HAS_CESS:
         checks.append(("cess", "cess_paise"))
     if kind == SALES_INVOICE:
         checks.append(("discount", "discount_paise"))
     for label, column in checks:
-        if _paise(header, column) != _sum(rows, column):
+        expected = convert(_sum(rows, column))
+        if _paise(header, column) != expected:
             found.append(Problem(LINES, f"its {label} is {_rupees(_paise(header, column))} but its lines come to "
-                                        f"{_rupees(_sum(rows, column))}"))
+                                        f"{_rupees(expected)}" + (" at the document's exchange rate" if is_foreign(kind, header) else "")))
     if kind == PURCHASE_BILL:
-        found.extend(_blocked_credit_problems(header, rows))
+        found.extend(_blocked_credit_problems(header, rows, convert))
     return found
 
 
-def problems(kind: str, header: Mapping[str, Any], lines: Optional[Iterable[Mapping[str, Any]]]) -> list[Problem]:
+def problems(kind: str, header: Mapping[str, Any], lines: Optional[Iterable[Mapping[str, Any]]], *,
+             to_base: Optional[Callable[[int], int]] = None) -> list[Problem]:
     """What does not hold for this draft, as sentences with their kind; an empty list means it adds up and may be issued.
 
     `header` is the stored row exactly as the issue route read it and `lines` the document's stored lines (None or empty is a
-    draft with no lines, which has nothing behind its figures)."""
+    draft with no lines, which has nothing behind its figures). `to_base` takes an amount in the document's currency to rupees' paise
+    at the document's stored rate; a foreign-currency document cannot be judged without it and asking is a programming error, while
+    a document in rupees needs none."""
     if kind not in KINDS:
         raise ValueError(f"{kind!r} is not a document kind this check knows")
-    return _opening_problems(kind, header) + _header_problems(kind, header) + _line_problems(kind, header, list(lines or []))
+    if is_foreign(kind, header):
+        if to_base is None:
+            raise ValueError("a foreign-currency document is compared with its lines through its own conversion (to_base)")
+        convert = to_base
+    else:
+        convert = _same
+    return _opening_problems(kind, header) + _header_problems(kind, header) + _line_problems(kind, header, list(lines or []), convert)
+
+
+def _same(amount: int) -> int:
+    return amount
 
 
 def refusal(kind: str, problem_list: list[Problem]) -> str:

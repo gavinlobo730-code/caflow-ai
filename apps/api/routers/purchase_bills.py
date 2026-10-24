@@ -1564,8 +1564,7 @@ def update_purchase_bill(
                     status = b.get("status")
                     if status == "cancelled":
                         raise HTTPException(status_code=422, detail="Cancelled bills cannot be updated")
-                    if status != "draft":
-                        _reject_locked_bill_fields(data)
+                    _reject_an_edit_the_bill_cannot_take(status, data, b)
                     if data.get("credit_days") is not None or data.get("due_date"):
                         base_date = data.get("bill_date") or b.get("bill_date")
                         apply_credit_days_due_date(data, base_date)
@@ -1868,11 +1867,14 @@ def receive_purchase_bill(
         # so the draft is asked whether it adds up to its own lines (and is not flagged as carried over) before anything is posted.
         draft_integrity_service.assert_draft_adds_up(db, draft_integrity.PURCHASE_BILL, bill)
         now_iso = datetime.now(timezone.utc).isoformat()
-        upd = update_header(
+        update_header(
             db, "purchase_bills", bill_id, {"status": "received", "received_at": now_iso},
             firm_id=current_user.get("firm_id"), client_id=bill.get("client_id"), actor=current_user,
             before={"status": bill.get("status"), "received_at": bill.get("received_at")})
-        updated_bill = upd.data[0] if upd.data else {**bill, "status": "received"}
+        # The journal is posted from the row the figures were CHECKED on, with the two columns this write changed, and not from the row
+        # the status UPDATE returned: a member's own token can change a draft's header between the check and the write, and the
+        # returned row would carry that (the other five issue routes post from the row they checked, as this one now does).
+        updated_bill = {**bill, "status": "received", "received_at": now_iso}
 
         # task #103: the bill above is already flipped to "received" — if the
         # journal fails to post (journal_for_purchase_bill now re-raises
