@@ -316,6 +316,10 @@ USERS_READERS_THAT_DO_NOT_AUTHORISE = {
     "discard_posted_journal", "discard_posted_journal__unguarded",
     # Counts a firm's users before purging it; platform-admin and service role.
     "platform_purge_firm",
+    # Resolves the person a PRIVILEGED posting names (migration 545) to their auth id for the audit log, inside the entry's own firm. It
+    # runs only when nobody is signed in (it returns at once for a signed-in caller), is closed to every signed-in role, and decides
+    # nothing about what anyone may do.
+    "carry_audit_actor",
     # Asks whether an id the CALLER NAMES (a member a grant of access is written for) belongs to the caller's firm.
     # The caller is still resolved by get_my_firm_id(), which is NULL for a suspended or signed-out member, so a
     # suspension reaches it (the comparison with NULL is never true); `users` is read for the TARGET, not for the caller.

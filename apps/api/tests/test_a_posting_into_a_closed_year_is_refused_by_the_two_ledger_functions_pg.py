@@ -249,7 +249,7 @@ def test_the_unguarded_post_function_is_the_body_the_last_defining_migration_wro
     """Derived by scanning the migration directory, so it cannot be pointed at a stale ancestor: the highest-numbered
     migration that defines the original name (not a rollback, not this one)."""
     definers = sorted(p for p in MIGRATIONS.glob("*.sql")
-                      if not p.name.endswith("_rollback.sql") and p != MIGRATION
+                      if not p.name.endswith("_rollback.sql") and p.name < MIGRATION.name       # (migrations after 533 redefine the wrapper, not this body)
                       and re.search(r"FUNCTION\s+public\.post_journal_atomic\s*\(", p.read_text()))
     last = definers[-1]
     assert last.name.startswith("418_"), f"the last definer of post_journal_atomic is now {last.name}: derive from it"
@@ -262,6 +262,8 @@ def test_the_receipt_wrapper_is_migration_486s_with_the_closure_block_added_and_
     stripped = re.sub(r"-- THE CLOSURE \(migration 533\).*?END LOOP;\n", "", live, flags=re.S)
     stripped = stripped.replace("    v_reason text;\n    v_date   text;\n    v_day    date;\n", "    -- (nothing to declare)\n")
     assert stripped != live, "the closure block was not found"
+    stripped = re.sub(r"    -- MIGRATION 545:.*?    PERFORM public\.carry_audit_actor\([^\n]*\n", "", stripped, flags=re.S)           # migration 545: the audit actor carried
+    stripped = stripped.replace(" - 'audit_actor'", "")                              # ...and the reserved payload key removed again
     assert _normalise(stripped) == _body(M486, "settle_receipt_atomic")
 
 
@@ -568,9 +570,15 @@ def test_the_rollback_restores_the_previous_functions_and_reproduces_the_defect_
     assert _post(dsn, "partner", CLIENT_A, FINALISED_A, "RB-1")[0]
     assert _settle(dsn, "partner", CLIENT_A, FINALISED_A, "RB-2")[0]
     assert _post(dsn, "reviewer_a", CLIENT_A, OPEN, "RB-3")[0]
-    # re-apply: both close again and the definitions are exactly what they were
+    # re-apply: both close again and the definitions are exactly what they were. The migrations after 533 that redefine the wrappers
+    # (545 carries the audit actor) are applied again, in order, because 533's own re-apply gives back 533's text alone.
     done = _psql_file(dsn, MIGRATION)
     assert done.returncode == 0, done.stderr
+    later = sorted(p for p in MIGRATIONS.glob("*.sql") if not p.name.endswith("_rollback.sql") and p.name > MIGRATION.name
+                   and re.search(r"CREATE (?:OR REPLACE )?FUNCTION\s+public\.(post_journal_atomic|settle_receipt_atomic)\s*\(", p.read_text()))
+    for path in later:
+        done = _psql_file(dsn, path)
+        assert done.returncode == 0, (path.name, done.stderr)
     assert _definitions(dsn) == after
     assert not _post(dsn, "partner", CLIENT_A, FINALISED_A, "RB-4")[0]
     assert not _post(dsn, "reviewer_a", CLIENT_A, OPEN, "RB-5")[0]
