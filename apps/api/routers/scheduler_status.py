@@ -5,6 +5,7 @@ POST /api/scheduler/run    — manual trigger (same as trigger-scheduler-run)
 """
 from fastapi import APIRouter, Depends
 from models.common import api_response
+from core.authz import assert_firmwide_job
 from core.permissions import rbac
 
 router = APIRouter(prefix="/api/scheduler", tags=["scheduler"])
@@ -68,6 +69,10 @@ def trigger_run(
     Scoped to the caller's firm by default (tenant isolation) — mirrors
     /api/tasks/trigger-scheduler-run. Idempotent per day unless force=true.
     """
+    # The sibling route (POST /api/tasks/trigger-scheduler-run) has always refused a caller who is not firm-wide; this one asked only
+    # `team:write`, which the role grid gives to the Partner alone but a per-person override can give to anyone, and the batch it
+    # starts runs privileged across EVERY client of the firm (recurring journals, the bank's trusted-rule posting, escalations).
+    assert_firmwide_job(current_user, "The daily automation batch")
     from jobs.scheduler import run_daily_jobs
     firm_id = current_user.get("firm_id")
     results = run_daily_jobs(firm_id=firm_id, force=force)

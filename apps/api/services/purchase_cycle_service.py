@@ -198,6 +198,37 @@ def _one_order(db, firm_id: str, order_id: str) -> dict:
     return rows[0]
 
 
+def order_of_client(db, firm_id: str, order_id: str, client_id: str) -> dict:
+    """The purchase order, or the 404 "That purchase order was not found." unless it is THIS client's.
+
+    For a route that takes the client from the request and the order from the path: the routes read and write through the
+    privileged client by firm and id, so an order of another client of the same firm was reached by naming one's own client beside
+    the other's id. A missing order and one of another client answer with the same words. `client_id` has no default."""
+    row = _one_order(db, firm_id, order_id)
+    if str(row.get("client_id")).lower() != str(client_id).lower():
+        raise HTTPException(status_code=404, detail="That purchase order was not found.")
+    return row
+
+
+def receipt_of_client(db, firm_id: str, receipt_id: str, client_id: str) -> dict:
+    """The goods receipt, or the 404 "That goods receipt was not found." unless it is THIS client's (see `order_of_client`)."""
+    res = (db.table("goods_receipt_notes").select("id, client_id")
+           .eq("firm_id", firm_id).eq("id", receipt_id).limit(1).execute())
+    rows = res.data or []
+    if not rows or str(rows[0].get("client_id")).lower() != str(client_id).lower():
+        raise HTTPException(status_code=404, detail="That goods receipt was not found.")
+    return rows[0]
+
+
+def bill_of_client(db, firm_id: str, bill_id: str, client_id: str) -> dict:
+    """The purchase bill, or the 404 "That bill was not found." unless it is THIS client's (see `order_of_client`)."""
+    res = (db.table("purchase_bills").select("id, client_id")
+           .eq("firm_id", firm_id).eq("id", bill_id).limit(1).execute())
+    rows = res.data or []
+    if not rows or str(rows[0].get("client_id")).lower() != str(client_id).lower():
+        raise HTTPException(status_code=404, detail="That bill was not found.")
+    return rows[0]
+
 # ── What an order still has open ─────────────────────────────────────────────
 
 def order_open_position(db, firm_id: str, order_id: str) -> dict:

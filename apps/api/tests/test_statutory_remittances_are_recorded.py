@@ -42,6 +42,9 @@ class _Table:
         self._filters.append((col, None))
         return self
 
+    def limit(self, _n):
+        return self
+
     def _matches(self, row) -> bool:
         return all(row.get(c) == v for c, v in self._filters)
 
@@ -63,10 +66,11 @@ class _Table:
 class _DB:
     def __init__(self):
         self.rows: list[dict] = []
+        self.entries: list[dict] = []
 
     def table(self, name):
-        assert name == "statutory_remittances", name
-        return _Table(self.rows)
+        assert name in ("statutory_remittances", "journal_entries"), name
+        return _Table(self.rows if name == "statutory_remittances" else self.entries)
 
 
 @pytest.fixture()
@@ -192,9 +196,30 @@ def test_a_paid_remittance_with_no_entry_is_reported_as_unlinked(db):
 
 def test_linking_the_payment_clears_it_from_that_list(db):
     row = _record(db, status=svc.PAID, paid_on="2026-10-20")
-    assert svc.link_payment(db, firm_id=FIRM, remittance_id=row["id"],
+    db.entries.append({"id": "je-1", "firm_id": FIRM, "client_id": CLIENT})
+    assert svc.link_payment(db, firm_id=FIRM, client_id=CLIENT, remittance_id=row["id"],
                             journal_entry_id="je-1")
     assert svc.unlinked(db, firm_id=FIRM, client_id=CLIENT) == []
+
+
+def test_a_remittance_of_another_client_is_neither_linked_nor_retracted(db):
+    """The routes assert the client the caller NAMED; the service must act only on that client's remittance."""
+    row = _record(db, status=svc.PAID, paid_on="2026-10-20")
+    db.entries.append({"id": "je-1", "firm_id": FIRM, "client_id": "someone-else"})
+    db.entries.append({"id": "je-2", "firm_id": FIRM, "client_id": "someone-else"})
+    # the remittance is c1's; naming another client finds nothing
+    assert not svc.link_payment(db, firm_id=FIRM, client_id="someone-else", remittance_id=row["id"],
+                                journal_entry_id="je-2")
+    assert not svc.retract(db, firm_id=FIRM, client_id="someone-else", remittance_id=row["id"])
+    assert db.rows[0].get("journal_entry_id") is None and not db.rows[0].get("deleted_at")
+
+
+def test_a_payment_cannot_be_linked_to_an_entry_of_another_client(db):
+    row = _record(db, status=svc.PAID, paid_on="2026-10-20")
+    db.entries.append({"id": "je-9", "firm_id": FIRM, "client_id": "someone-else"})
+    with pytest.raises(svc.RemittanceError):
+        svc.link_payment(db, firm_id=FIRM, client_id=CLIENT, remittance_id=row["id"], journal_entry_id="je-9")
+    assert db.rows[0].get("journal_entry_id") is None
 
 
 def test_a_remittance_only_filed_is_not_reported_as_unlinked(db):
@@ -206,7 +231,7 @@ def test_a_remittance_only_filed_is_not_reported_as_unlinked(db):
 
 def test_retracting_is_a_soft_delete(db):
     row = _record(db)
-    assert svc.retract(db, firm_id=FIRM, remittance_id=row["id"])
+    assert svc.retract(db, firm_id=FIRM, client_id=CLIENT, remittance_id=row["id"])
     assert db.rows, "the row must survive — the challan number is held nowhere else"
     assert db.rows[0]["deleted_at"]
 

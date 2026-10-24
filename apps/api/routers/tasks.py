@@ -4,7 +4,7 @@ from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import (
-    filter_by_client, assert_client_access, is_firmwide, firmwide_roles_label,
+    filter_by_client, assert_client_access, assert_firmwide_job,
 )
 from repositories.task_repository import task_repo
 from repositories.client_repository import client_repo
@@ -465,19 +465,8 @@ def delete_task(task_id: str, current_user: dict = Depends(rbac("task", "delete"
 
 
 def _assert_firmwide_job(current_user: dict, what: str) -> None:
-    """Refuse a firm-WIDE job to a caller who is not firm-wide.
-
-    403, not the 404 used for a row: nothing is being hidden, and there is no id
-    to hide. These run across every client in the firm — escalations, recurring
-    generation, the whole daily batch — and there is no honest partial version,
-    so running a subset and calling it "the firm's daily jobs" would be worse
-    than refusing.
-    """
-    if not is_firmwide(current_user):
-        raise HTTPException(
-            status_code=403,
-            detail=f"{what} runs across every client in the firm and is limited "
-                   f"to {firmwide_roles_label()}.")
+    """Refuse a firm-WIDE job to a caller who is not firm-wide (`core.authz.assert_firmwide_job`, the one guard)."""
+    assert_firmwide_job(current_user, what)
 
 
 @router.post("/trigger-escalations")

@@ -87,6 +87,7 @@ def order_lines(
     assert_client_access(current_user, client_id)
     if _mock():
         return api_response(True, [])
+    svc.order_of_client(_db(), current_user.get("firm_id"), order_id, client_id)
     return api_response(True, svc.order_lines(
         _db(), current_user.get("firm_id"), order_id))
 
@@ -103,6 +104,7 @@ def order_position(
         return api_response(True, {"order": None, "lines": [],
                                    "status_would_be": "approved",
                                    "posts_nothing": oc.POSTS_NOTHING})
+    svc.order_of_client(_db(), current_user.get("firm_id"), order_id, client_id)
     return api_response(True, svc.order_open_position(
         _db(), current_user.get("firm_id"), order_id))
 
@@ -133,6 +135,7 @@ def update_order(
     assert_client_access(current_user, client_id)
     if _mock():
         return api_response(True, {"id": order_id})
+    svc.order_of_client(_db(), current_user.get("firm_id"), order_id, client_id)
     return api_response(True, svc.update_order(
         _db(), current_user.get("firm_id"), order_id, payload.model_dump()))
 
@@ -160,6 +163,7 @@ def receipt_lines(
     assert_client_access(current_user, client_id)
     if _mock():
         return api_response(True, [])
+    svc.receipt_of_client(_db(), current_user.get("firm_id"), receipt_id, client_id)
     return api_response(True, svc.receipt_lines(
         _db(), current_user.get("firm_id"), receipt_id))
 
@@ -195,6 +199,7 @@ def update_receipt(
     assert_client_access(current_user, client_id)
     if _mock():
         return api_response(True, {"id": receipt_id})
+    svc.receipt_of_client(_db(), current_user.get("firm_id"), receipt_id, client_id)
     return api_response(True, svc.update_receipt(
         _db(), current_user.get("firm_id"), receipt_id, payload.model_dump()))
 
@@ -219,5 +224,6 @@ def match_bill(
                                    "caveats": [], "acceptance_date": None,
                                    "acceptance_source": "",
                                    "ca_review_required": True})
+    svc.bill_of_client(_db(), current_user.get("firm_id"), bill_id, client_id)
     return api_response(True, svc.match_bill(
         _db(), current_user.get("firm_id"), bill_id))

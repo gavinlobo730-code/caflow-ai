@@ -619,8 +619,13 @@ def update_bank_account(
         return api_response(True, update)
     firm_id = current_user["firm_id"]
     prior = (db.table("bank_accounts").select("*")
-             .eq("id", account_id).eq("firm_id", firm_id).limit(1).execute().data or [{}])[0]
-    assert_client_access(current_user, prior.get("client_id"))
+             .eq("id", account_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
+    # A MISSING account (or one the caller's row security hides) is the same 404 as one in a client they may not reach. The guard
+    # used to read `or [{}]` and then assert access to the client of an empty row, which is None and passes, so a PATCH of an
+    # account that was not there answered success with nothing saved, and the scope was proven only by the UPDATE finding nothing.
+    if not prior:
+        raise HTTPException(status_code=404, detail="Bank account not found.")
+    assert_client_access(current_user, prior.get("client_id"), detail="Bank account not found.")
     # BANK-21. The sign the CA typed is the STATEMENT's, and the type it is
     # read against is the one this PATCH leaves the account in — a PATCH may
     # carry a new opening balance, a new account_type, or both, and reading

@@ -221,7 +221,7 @@ def update_bill_of_entry(
         return api_response(True, {"id": be_id, **data.model_dump(exclude_none=True)})
     from core.supabase_client import get_service_supabase
     db = get_service_supabase()
-    row = svc.get(db, current_user.get("firm_id"), be_id)
+    row = svc.get(db, current_user.get("firm_id"), be_id, client_id=client_id)
     if row.get("status") == "posted":
         raise HTTPException(
             status_code=409,
@@ -280,6 +280,7 @@ def update_bill_of_entry(
                    "notes": _merged("notes"),
                })
                .eq("id", be_id).eq("firm_id", current_user.get("firm_id"))
+               .eq("client_id", client_id)
                .execute().data) or []
     # THE SAME CARRY-OVER THE CREATE PATH RUNS. A correction that raises the
     # basic customs duty raises what the goods cost, and a carry-over on the
@@ -310,7 +311,7 @@ def post_bill_of_entry(
     from core.supabase_client import get_service_supabase
     from services.audit_service import log_event
     row = svc.post(get_service_supabase(), current_user.get("firm_id"), be_id,
-                   actor_id=current_user.get("id"))
+                   client_id=client_id, actor_id=current_user.get("id"))
     log_event(current_user.get("firm_id") or "", "bill_of_entry", be_id, "post",
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"),
@@ -332,7 +333,7 @@ def delete_bill_of_entry(
     from core.supabase_client import get_service_supabase
     from services.audit_service import log_event
     db = get_service_supabase()
-    row = svc.get(db, current_user.get("firm_id"), be_id)
+    row = svc.get(db, current_user.get("firm_id"), be_id, client_id=client_id)
     if row.get("status") == "posted":
         raise HTTPException(
             status_code=409,
@@ -342,7 +343,7 @@ def delete_bill_of_entry(
     from datetime import datetime, timezone
     db.table("bills_of_entry").update(
         {"deleted_at": datetime.now(timezone.utc).isoformat()}
-    ).eq("id", be_id).eq("firm_id", current_user.get("firm_id")).execute()
+    ).eq("id", be_id).eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id).execute()
     log_event(current_user.get("firm_id") or "", "bill_of_entry", be_id, "delete",
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), old_data=row)

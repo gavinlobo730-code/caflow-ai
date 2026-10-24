@@ -72,6 +72,19 @@ def firmwide_roles_label() -> str:
     return ", ".join(names[:-1]) + " and " + names[-1]
 
 
+def assert_firmwide_job(user: dict, what: str) -> None:
+    """Refuse a firm-WIDE job to a caller who is not firm-wide.
+
+    403, not the 404 used for a row: nothing is being hidden, and there is no id to hide. These run across every client in the
+    firm (escalations, recurring generation, the whole daily batch, the bank's trusted-rule sweep, the recurring journals) and
+    there is no honest partial version, so running a subset and calling it "the firm's daily jobs" would be worse than refusing.
+    A role grid that gives a non-Partner the permission to trigger one does not make them firm-wide: the jobs run privileged."""
+    if not is_firmwide(user):
+        raise HTTPException(
+            status_code=403,
+            detail=f"{what} runs across every client in the firm and is limited to {firmwide_roles_label()}.")
+
+
 def assigned_client_ids(user: dict) -> set[str]:
     """The set of client ids explicitly assigned to this user.
 
