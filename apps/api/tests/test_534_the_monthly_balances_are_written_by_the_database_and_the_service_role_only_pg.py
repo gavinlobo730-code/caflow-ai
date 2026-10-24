@@ -138,6 +138,13 @@ def _bucket(dsn: str, client: str, day: str) -> tuple[int, int]:
     return int(row[0]), int(row[1])
 
 
+# Migration 546 took EXECUTE on the two ledger functions away from signed-in users: the API calls them as the server. This file
+# drives the SIGNED-IN branch of the wrappers (the second lock, kept on purpose), so the throwaway database hands the grant back.
+# The real grants are asserted in test_546_... and against the migrated template, never against a database handed back to.
+HAND_BACK_546 = ("GRANT EXECUTE ON FUNCTION public.post_journal_atomic(jsonb, jsonb) TO authenticated; "
+                 "GRANT EXECUTE ON FUNCTION public.settle_receipt_atomic(jsonb, jsonb, jsonb, jsonb) TO authenticated;")
+
+
 @pytest.fixture()
 def dsn(pg_template):
     admin = _ADMIN.strip()
@@ -147,6 +154,7 @@ def dsn(pg_template):
         pytest.skip("could not create throwaway db")
     d = f"{admin} dbname={name}"
     try:
+        assert _psql(d, HAND_BACK_546).returncode == 0
         auth = ", ".join(f"('{a}', '{n}@t.in')" for n, (_i, a, _r) in PEOPLE.items())
         members = ", ".join(f"('{i}', '{FIRM}', '{a}', '{n}@t.in', '{n}', '{r}', true)" for n, (i, a, r) in PEOPLE.items())
         seed = _psql(d, f"""

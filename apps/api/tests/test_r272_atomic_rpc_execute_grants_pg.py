@@ -55,6 +55,10 @@ RPCS = {
     "post_journal_atomic":       "public.post_journal_atomic(jsonb,jsonb)",
 }
 
+# Migration 546: the API posts a journal and a plain receipt through its privileged client, so these two are executable by the
+# service role alone; a signed-in role holds neither (test_546_... drives that end to end).
+SERVER_ONLY = {"post_journal_atomic", "settle_receipt_atomic"}
+
 
 def _psql(dsn: str, sql: str, tuples: bool = False) -> subprocess.CompletedProcess:
     args = ["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q"]
@@ -111,7 +115,10 @@ def test_the_api_roles_can_still_execute(migrated_db, name):
                has_function_privilege('service_role',  '{sig}', 'EXECUTE');
     """, tuples=True)
     authed, service = r.stdout.strip().split("|")
-    assert authed == "t", f"the API cannot execute {name} — journal/invoice/receipt writes would 500"
+    if name in SERVER_ONLY:
+        assert authed == "f", f"a signed-in role can execute {name}: it is the server's alone since migration 546"
+    else:
+        assert authed == "t", f"the API cannot execute {name} — journal/invoice/receipt writes would 500"
     assert service == "t", f"background jobs cannot execute {name}"
 
 
@@ -144,7 +151,11 @@ def test_execute_is_granted_explicitly_not_inherited_from_public(migrated_db, na
         f"{name} still grants EXECUTE to PUBLIC — and PUBLIC includes anon "
         f"(acl item: {public_grants}, full acl: {acl})"
     )
-    assert any(i.startswith("authenticated=") for i in items), (
-        f"{name} must grant EXECUTE to authenticated explicitly (acl: {acl})")
+    if name in SERVER_ONLY:
+        assert not any(i.startswith("authenticated=") for i in items), (
+            f"{name} grants EXECUTE to authenticated, which migration 546 took away (acl: {acl})")
+    else:
+        assert any(i.startswith("authenticated=") for i in items), (
+            f"{name} must grant EXECUTE to authenticated explicitly (acl: {acl})")
     assert any(i.startswith("service_role=") for i in items), (
         f"{name} must grant EXECUTE to service_role explicitly (acl: {acl})")

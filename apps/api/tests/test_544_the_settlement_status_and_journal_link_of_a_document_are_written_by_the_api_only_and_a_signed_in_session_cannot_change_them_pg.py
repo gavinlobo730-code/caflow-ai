@@ -22,7 +22,7 @@ WHAT THIS HOLDS (a real database, as each person)
       API builds for an opening document.
     * WHO IS JUDGED, FOR AN UPDATE: `current_user`. The privileged client and the owner change everything; a SECURITY DEFINER
       function owned by the owner passes when a Manager calls it, and its SECURITY INVOKER twin is refused (the one difference the
-      design stands on); the real `settle_receipt_atomic` still settles an invoice for a Manager; the anonymous role is judged in a
+      design stands on); the real `settle_receipt_atomic` still settles an invoice when the server calls it; the anonymous role is judged in a
       worst case. A foreign-key SET NULL passes because it runs as the table's owner, and there is NO exemption for a write made
       from inside another trigger: one that writes a settlement as the signed-in caller is refused. No function of the schema writes
       these tables except the two named, which is pinned from the function sources, dynamic SQL included.
@@ -663,10 +663,11 @@ def test_a_function_that_runs_as_its_owner_settles_for_a_manager_and_its_invoker
     assert _by_the_settlement_trigger(out, "paid_paise", "status"), out
 
 
-def test_the_real_receipt_settlement_still_settles_an_invoice_for_a_manager(world):
+def test_the_real_receipt_settlement_still_settles_an_invoice_when_the_server_posts_it(world):
     """`settle_receipt_atomic` is what the API's plain rupee receipt calls and what the trigger must not refuse: it is SECURITY DEFINER,
     runs as its owner, and writes the invoice's paid amount and status inside the database. The `role` setting migrations 498 to 543
-    test would have judged it as the caller."""
+    test would have judged it as the caller. It is called as the SERVER, as the API calls it since migration 546 took the signed-in
+    grant away (a Manager's own token is refused by the privilege, which test_546_... asserts)."""
     inv = world.row("client_sales_invoices", "issued")
     world.owner(f"UPDATE client_sales_invoices SET total_paise = 100000 WHERE id = '{inv}'")
     cust = _ids(world)["customer"]
@@ -680,7 +681,7 @@ def test_the_real_receipt_settlement_still_settles_an_invoice_for_a_manager(worl
     alloc = [{"sales_invoice_id": inv, "allocated_paise": 100000}]
     sql = (f"SELECT settle_receipt_atomic('{json.dumps(receipt)}'::jsonb, '{json.dumps(entry)}'::jsonb, "
            f"'{json.dumps(lines)}'::jsonb, '{json.dumps(alloc)}'::jsonb);")
-    done = _commit_as(world.dsn, "manager_a", sql)
+    done = _commit_as(world.dsn, "service_role", sql)
     assert done.returncode == 0, done.stderr
     assert _rows(world.dsn, f"SELECT paid_paise, status FROM client_sales_invoices WHERE id = '{inv}'") == [["100000", "paid"]]
     # and the same invoice cannot be pushed further by hand

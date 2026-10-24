@@ -121,6 +121,13 @@ def _as_end_user(ref: str, firm: str = FIRM, client: str = CLIENT,
     )
 
 
+# Migration 546 took EXECUTE on the two ledger functions away from signed-in users: the API calls them as the server. This file
+# drives the SIGNED-IN branch of the wrappers (the second lock, kept on purpose), so the throwaway database hands the grant back.
+# The real grants are asserted in test_546_... and against the migrated template, never against a database handed back to.
+HAND_BACK_546 = ("GRANT EXECUTE ON FUNCTION public.post_journal_atomic(jsonb, jsonb) TO authenticated; "
+                 "GRANT EXECUTE ON FUNCTION public.settle_receipt_atomic(jsonb, jsonb, jsonb, jsonb) TO authenticated;")
+
+
 @pytest.fixture()
 def seeded_db(pg_template):
     """Clone conftest's session-scoped migrated template rather than replaying
@@ -133,6 +140,7 @@ def seeded_db(pg_template):
         pytest.skip("could not clone the migrated template")
     dsn = f"{admin} dbname={dbname}"
     try:
+        assert _psql(dsn, HAND_BACK_546).returncode == 0
         seed = _psql(dsn, SEED)
         assert seed.returncode == 0, f"seed failed: {seed.stderr}"
         yield dsn
@@ -158,22 +166,25 @@ def test_rpc_is_security_definer_with_pinned_search_path(seeded_db):
     assert "search_path" in config, "a SECURITY DEFINER function must pin its search_path"
 
 
-def test_anon_and_public_cannot_execute_the_rpc(seeded_db):
+def test_anon_and_public_cannot_execute_the_rpc(pg_template):
     """The anon key ships in the browser bundle. SECURITY DEFINER + PUBLIC EXECUTE
     would mean anyone at all could post to any firm's ledger."""
-    r = _psql(seeded_db, """
+    # the grants as migrated (migration 546), read from the template: the fixture's database was handed the signed-in grant back
+    r = _psql(f"{_ADMIN.strip()} dbname={pg_template.name}", """
         SELECT has_function_privilege('anon', 'public.post_journal_atomic(jsonb,jsonb)', 'EXECUTE'),
                has_function_privilege('authenticated', 'public.post_journal_atomic(jsonb,jsonb)', 'EXECUTE'),
                has_function_privilege('service_role', 'public.post_journal_atomic(jsonb,jsonb)', 'EXECUTE');
     """, tuples=True)
     anon, authed, service = r.stdout.strip().split("|")
     assert anon == "f", "anon must NOT be able to execute the posting RPC"
-    assert authed == "t", "the API runs as `authenticated` under USE_USER_JWT — it must be able to"
+    assert authed == "f", "since migration 546 the API posts through its privileged client: no signed-in role may execute the posting RPC"
     assert service == "t", "background jobs run as service_role — they must be able to"
 
 
-def test_authenticated_end_user_can_post_a_journal(seeded_db):
-    """THE regression. This is the exact call that returned 42501 in production."""
+def test_with_the_grant_handed_back_an_end_user_session_posts_through_the_definer_function(seeded_db):
+    """THE regression of migration 271 (the exact call that returned 42501 in production): a SECURITY DEFINER function called
+    from a signed-in session needs no table privilege. Since migration 546 a signed-in session may not execute the function at all,
+    so the fixture hands the grant back; the definer behaviour is what this still proves."""
     r = _psql(seeded_db, _as_end_user("JNL-001"), tuples=True)
     assert r.returncode == 0, f"an assigned user must be able to post a journal: {r.stderr}"
     assert _entries(seeded_db, "JNL-001") == 1

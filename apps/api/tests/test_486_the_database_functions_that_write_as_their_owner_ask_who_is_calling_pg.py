@@ -234,6 +234,8 @@ def test_a_receipt_and_its_journal_must_name_one_firm_for_everyone(db):
 
 
 def test_a_receipt_is_settled_by_accounting_write_or_a_bank_match(db):
+    # Migration 546: the receipt function is the server's alone. Its signed-in branch is driven with the grant handed back.
+    _ok(db, "GRANT EXECUTE ON FUNCTION public.settle_receipt_atomic(jsonb, jsonb, jsonb, jsonb) TO authenticated;")
     for who in ("partner", "manager", "exec_a", "service", None):
         state, _ = _call(db, who, _settle())
         assert state != "42501", (who, state)           # the guard passed; the function answered for itself
@@ -347,7 +349,9 @@ SIGNATURES = {
 @pytest.mark.parametrize("name,sig", sorted(SIGNATURES.items()))
 def test_the_originals_are_out_of_reach_and_the_wrappers_are_in(db, name, sig):
     q = lambda role, fn: _ok(db, f"SELECT has_function_privilege('{role}', 'public.{fn}({sig})'::regprocedure, 'EXECUTE');")
-    assert q("authenticated", name) == "t" and q("service_role", name) == "t" and q("anon", name) == "f"
+    # settle_receipt_atomic has been the server's alone since migration 546 (the API calls it through its privileged client)
+    signed_in = "f" if name == "settle_receipt_atomic" else "t"
+    assert q("authenticated", name) == signed_in and q("service_role", name) == "t" and q("anon", name) == "f"
     assert q("authenticated", f"{name}__unguarded") == "f" and q("anon", f"{name}__unguarded") == "f"
     assert q("service_role", f"{name}__unguarded") == "t"
     assert _ok(db, f"SELECT prosecdef FROM pg_proc WHERE oid = 'public.{name}({sig})'::regprocedure;") == "t"

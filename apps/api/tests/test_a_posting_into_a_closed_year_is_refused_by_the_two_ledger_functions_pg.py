@@ -171,6 +171,13 @@ def _written(dsn: str, ref: str) -> int:
     return _count(dsn, "journal_entries", f"reference_no = '{ref}'")
 
 
+# Migration 546 took EXECUTE on the two ledger functions away from signed-in users: the API calls them as the server. This file
+# drives the SIGNED-IN branch of the wrappers (the second lock, kept on purpose), so the throwaway database hands the grant back.
+# The real grants are asserted in test_546_... and against the migrated template, never against a database handed back to.
+HAND_BACK_546 = ("GRANT EXECUTE ON FUNCTION public.post_journal_atomic(jsonb, jsonb) TO authenticated; "
+                 "GRANT EXECUTE ON FUNCTION public.settle_receipt_atomic(jsonb, jsonb, jsonb, jsonb) TO authenticated;")
+
+
 @pytest.fixture()
 def dsn(pg_template):
     admin = _ADMIN.strip()
@@ -180,6 +187,7 @@ def dsn(pg_template):
         pytest.skip("could not create throwaway db")
     d = f"{admin} dbname={name}"
     try:
+        assert _psql(d, HAND_BACK_546).returncode == 0
         auth = ", ".join(f"('{a}', '{n}@t.in')" for n, (_i, a, _r, _f, _act) in PEOPLE.items()) + f", ('{STRANGER}', 'employee@t.in')"
         members = ", ".join(f"('{i}', '{f}', '{a}', '{n}@t.in', '{n}', '{r}', {str(act).lower()})"
                             for n, (i, a, r, f, act) in PEOPLE.items())
@@ -222,12 +230,14 @@ def _acl(dsn: str, sig: str) -> dict[str, bool]:
             for r in ("anon", "authenticated", "service_role")}
 
 
-def test_the_original_names_are_the_definer_wrappers_and_the_originals_are_the_service_roles(dsn):
+def test_the_original_names_are_the_definer_wrappers_and_the_originals_are_the_service_roles(dsn, pg_template):
+    template = f"{_ADMIN.strip()} dbname={pg_template.name}"      # the grants as migrated: the fixture's own database was handed one back
     for sig, raw in ((POST, POST_RAW), (SETTLE, SETTLE_RAW)):
         assert _one(dsn, f"SELECT prosecdef FROM pg_proc WHERE oid = '{sig}'::regprocedure") == "t"
         assert _one(dsn, f"SELECT prosecdef FROM pg_proc WHERE oid = '{raw}'::regprocedure") == "t"
-        assert _acl(dsn, sig) == {"anon": False, "authenticated": True, "service_role": True}, sig
-        assert _acl(dsn, raw) == {"anon": False, "authenticated": False, "service_role": True}, raw
+        # migration 546: a wrapper is the server's alone (533 left it to every signed-in user)
+        assert _acl(template, sig) == {"anon": False, "authenticated": False, "service_role": True}, sig
+        assert _acl(template, raw) == {"anon": False, "authenticated": False, "service_role": True}, raw
     for sig in (POST, SETTLE):
         body = _text(dsn, f"SELECT prosrc FROM pg_proc WHERE oid = '{sig}'::regprocedure")
         assert "period_closure_reason" in body and "assert_caller_acts_for" in body, sig
@@ -264,6 +274,7 @@ def test_the_receipt_wrapper_is_migration_486s_with_the_closure_block_added_and_
     assert stripped != live, "the closure block was not found"
     stripped = re.sub(r"    -- MIGRATION 545:.*?    PERFORM public\.carry_audit_actor\([^\n]*\n", "", stripped, flags=re.S)           # migration 545: the audit actor carried
     stripped = stripped.replace(" - 'audit_actor'", "")                              # ...and the reserved payload key removed again
+    stripped = re.sub(r"    -- MIGRATION 546:.*?    END IF;\n", "", stripped, flags=re.S)   # migration 546: a privileged call names a client of its firm
     assert _normalise(stripped) == _body(M486, "settle_receipt_atomic")
 
 
@@ -571,7 +582,7 @@ def test_the_rollback_restores_the_previous_functions_and_reproduces_the_defect_
     assert _settle(dsn, "partner", CLIENT_A, FINALISED_A, "RB-2")[0]
     assert _post(dsn, "reviewer_a", CLIENT_A, OPEN, "RB-3")[0]
     # re-apply: both close again and the definitions are exactly what they were. The migrations after 533 that redefine the wrappers
-    # (545 carries the audit actor) are applied again, in order, because 533's own re-apply gives back 533's text alone.
+    # (545 carries the audit actor, 546 asks a privileged call for a client of its firm) are applied again, in order, because 533's own re-apply gives back 533's text alone.
     done = _psql_file(dsn, MIGRATION)
     assert done.returncode == 0, done.stderr
     later = sorted(p for p in MIGRATIONS.glob("*.sql") if not p.name.endswith("_rollback.sql") and p.name > MIGRATION.name
@@ -579,6 +590,7 @@ def test_the_rollback_restores_the_previous_functions_and_reproduces_the_defect_
     for path in later:
         done = _psql_file(dsn, path)
         assert done.returncode == 0, (path.name, done.stderr)
+    assert _psql(dsn, HAND_BACK_546).returncode == 0       # 546 took the signed-in grant away again; the fixture had handed it back
     assert _definitions(dsn) == after
     assert not _post(dsn, "partner", CLIENT_A, FINALISED_A, "RB-4")[0]
     assert not _post(dsn, "reviewer_a", CLIENT_A, OPEN, "RB-5")[0]

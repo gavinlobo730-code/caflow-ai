@@ -100,6 +100,13 @@ def _as_authenticated(sql: str) -> str:
             f"SELECT set_config('request.jwt.claims', '{claims}', true); {sql}")
 
 
+# Migration 546 took EXECUTE on the two ledger functions away from signed-in users: the API calls them as the server. This file
+# drives the SIGNED-IN branch of the wrappers (the second lock, kept on purpose), so the throwaway database hands the grant back.
+# The real grants are asserted in test_546_... and against the migrated template, never against a database handed back to.
+HAND_BACK_546 = ("GRANT EXECUTE ON FUNCTION public.post_journal_atomic(jsonb, jsonb) TO authenticated; "
+                 "GRANT EXECUTE ON FUNCTION public.settle_receipt_atomic(jsonb, jsonb, jsonb, jsonb) TO authenticated;")
+
+
 @pytest.fixture()
 def db(pg_template):
     admin = _ADMIN.strip()
@@ -109,6 +116,7 @@ def db(pg_template):
         pytest.skip("could not clone the migrated template")
     dsn = f"{admin} dbname={name}"
     try:
+        assert _psql(dsn, HAND_BACK_546).returncode == 0
         seed = _psql(dsn, SEED)
         assert seed.returncode == 0, f"seed failed: {seed.stderr}"
         yield dsn

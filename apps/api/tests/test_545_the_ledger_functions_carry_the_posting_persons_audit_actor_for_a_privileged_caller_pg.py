@@ -158,6 +158,13 @@ def _kinds(dsn: str, where: str) -> set[tuple[str, str]]:
     return {(r[0], r[1]) for r in _audit(dsn, where)}
 
 
+# Migration 546 took EXECUTE on the two ledger functions away from signed-in users: the API calls them as the server. This file
+# drives the SIGNED-IN branch of the wrappers (the second lock, kept on purpose), so the throwaway database hands the grant back.
+# The real grants are asserted in test_546_... and against the migrated template, never against a database handed back to.
+HAND_BACK_546 = ("GRANT EXECUTE ON FUNCTION public.post_journal_atomic(jsonb, jsonb) TO authenticated; "
+                 "GRANT EXECUTE ON FUNCTION public.settle_receipt_atomic(jsonb, jsonb, jsonb, jsonb) TO authenticated;")
+
+
 @pytest.fixture()
 def dsn(pg_template):
     admin = _ADMIN.strip()
@@ -167,6 +174,7 @@ def dsn(pg_template):
         pytest.skip("could not create throwaway db")
     d = f"{admin} dbname={name}"
     try:
+        assert _psql(d, HAND_BACK_546).returncode == 0
         auth = ", ".join(f"('{a}', '{n}@t.in')" for n, (_i, a, _r, _f) in PEOPLE.items())
         members = ", ".join(f"('{i}', '{f}', '{a}', '{n}@t.in', '{n}', '{r}', true)" for n, (i, a, r, f) in PEOPLE.items())
         seed = _psql(d, f"""
@@ -400,9 +408,8 @@ def test_the_carrier_and_the_reader_are_closed_even_where_the_platform_grants_ne
         assert acl["anon"] is False and acl["authenticated"] is False, (sig, acl)
 
 
-def test_the_wrappers_grants_are_the_ones_533_gave(dsn):
-    for sig in (POST, SETTLE):
-        assert _acl(dsn, sig) == {"anon": False, "authenticated": True, "service_role": True}, sig
+# (migration 546 took the wrappers' signed-in grant away; the grants are asserted in test_546_..., not here, where the fixture
+# hands the grant back so the signed-in branch can still be driven)
 
 
 def _norm(sql: str) -> str:
@@ -433,6 +440,15 @@ DECL_ADDED = r" v_carried boolean := false;"
 META_ADDED = r" \|\| CASE WHEN v_carried THEN jsonb_build_object\('actor_source', 'carried'\) ELSE '\{\}'::jsonb END"
 
 
+LATER_546 = {          # migration 546's block in each wrapper, as it reads once whitespace is folded and comments are gone
+    "post_journal_atomic": r"IF auth\.uid\(\) IS NULL AND NOT EXISTS \( SELECT 1 FROM public\.clients c WHERE c\.id = v_client AND c\.firm_id = v_firm\) THEN "
+    r"RAISE EXCEPTION 'post_journal_atomic: client % is not a client of firm %', v_client, v_firm USING ERRCODE = '42501'; END IF; ",
+    "settle_receipt_atomic": r"IF auth\.uid\(\) IS NULL AND NOT EXISTS \( SELECT 1 FROM public\.clients c WHERE c\.id = NULLIF\(p_journal_entry->>'client_id', ''\)::uuid "
+    r"AND c\.firm_id = NULLIF\(p_journal_entry->>'firm_id', ''\)::uuid\) THEN RAISE EXCEPTION 'settle_receipt_atomic: client % is not a client of firm %', "
+    r"NULLIF\(p_journal_entry->>'client_id', ''\)::uuid, NULLIF\(p_journal_entry->>'firm_id', ''\)::uuid USING ERRCODE = '42501'; END IF; ",
+}
+
+
 def test_the_four_functions_are_their_last_definition_plus_exactly_the_added_lines(dsn):
     # audit_capture <- 336 ; audit_capture_journal_line <- 266 ; the wrappers <- 533
     assert _last_definer("audit_capture").name.startswith("336_"), _last_definer("audit_capture").name
@@ -455,6 +471,8 @@ def test_the_four_functions_are_their_last_definition_plus_exactly_the_added_lin
         live = _norm(_text(dsn, f"SELECT prosrc FROM pg_proc WHERE oid = '{sig}'::regprocedure"))
         live, n = re.subn(carry, "", live, count=1)
         assert n == 1, f"{name} does not carry the audit actor exactly once"
+        live, n = re.subn(LATER_546[name], "", live, count=1)        # migration 546: a privileged call names a client of its firm
+        assert n == 1, f"{name} does not carry migration 546's block exactly once"
         assert live.count(strip[0]) == 1, f"{name} does not remove the reserved key exactly once"
         live = live.replace(strip[0], strip[1], 1)
         assert live == _norm(_function_body(_last_definer(name).read_text(), name)), name
@@ -539,6 +557,9 @@ def test_the_rollback_restores_the_previous_definitions_and_the_actor_is_lost_an
     ok, jid = _post(dsn, "service", "RB-1", created_by=PEOPLE["manager_a"][0])
     assert ok and _audit(dsn, f"entity_id = '{jid}'") == [], "after the rollback a privileged caller is audited by nobody"
     assert _psql_file(dsn, MIGRATION).returncode == 0
+    for later in sorted(MIGRATIONS.glob("546_*.sql")):          # 545 over a database that carries 546 gives back 545 alone
+        if not later.name.endswith("_rollback.sql"):
+            assert _psql_file(dsn, later).returncode == 0
     ok, jid = _post(dsn, "service", "RB-2", created_by=PEOPLE["manager_a"][0])
     assert ok and {r[2] for r in _audit(dsn, f"entity_id = '{jid}'")} == {PEOPLE["manager_a"][1]}
     assert _sources(dsn) == before, "a rollback and a re-apply must give back the same definitions"
@@ -547,4 +568,10 @@ def test_the_rollback_restores_the_previous_definitions_and_the_actor_is_lost_an
 def test_applying_it_twice_changes_nothing(dsn):
     before = _sources(dsn)
     assert _psql_file(dsn, MIGRATION).returncode == 0
-    assert _sources(dsn) == before
+    once = _sources(dsn)                                # over a database that carries 546, 545 gives back its own two wrappers
+    assert _psql_file(dsn, MIGRATION).returncode == 0
+    assert _sources(dsn) == once, "applying 545 a second time changed something"
+    for later in sorted(MIGRATIONS.glob("546_*.sql")):
+        if not later.name.endswith("_rollback.sql"):
+            assert _psql_file(dsn, later).returncode == 0
+    assert _sources(dsn) == before, "545 then 546 must give back the chain's definitions"
