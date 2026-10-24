@@ -113,6 +113,14 @@ NOT_FOR_THE_API = {
     "recurring_journal_template_lines",  # read and written only by the recurring-journal service on `service_db`
     "retainer_logs",         # nothing reads or writes it
     "team_members",          # the retired staff table (`users` is the staff table; three comments still mention it)
+    # Migration 543 (POST-A-327, POST-A-333): three tables with no reader and no writer anywhere (the table-use scanner finds a
+    # retention-position tuple naming the first and nothing for the other two; `apps/web` names none of them; production holds no
+    # row in any). Each held every write verb for every signed-in member, behind migration 540's trigger alone. 543 took every
+    # privilege away from `authenticated`, `anon` and PUBLIC and gave `service_role` its four explicitly. The deny-list test below
+    # proves the denial is real for each name.
+    "activity_logs",
+    "ai_evidence",
+    "ai_signals",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.
