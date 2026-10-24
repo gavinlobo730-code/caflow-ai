@@ -229,6 +229,11 @@ def world(seeded):
     try:
         w = World(f"{admin} dbname={name}")
         w.ids = {table: dict(rows) for table, rows in ids.items()}
+        # Migration 543 took every privilege on activity_logs, ai_evidence and ai_signals away from the signed-in role (nothing reads
+        # or writes them). The trigger of this migration stays on them as a SECOND LOCK, and this file measures that lock: the
+        # privilege is handed back in the throwaway copy, as a later grant or the platform's defaults might hand it back.
+        handed_back = _psql(w.dsn, "GRANT SELECT, UPDATE ON public.activity_logs, public.ai_evidence, public.ai_signals TO authenticated;")
+        assert handed_back.returncode == 0, handed_back.stderr
         yield w
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
