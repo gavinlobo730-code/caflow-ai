@@ -651,7 +651,7 @@ class _Rpc:
         """Mirror migrations/152 post_journal_atomic: insert header + lines
         atomically (trivially atomic in-memory), with (firm, client, reference_no,
         entry_date) idempotency. Returns the entry id."""
-        entry = dict(self.params["p_entry"])
+        entry = {k: v for k, v in self.params["p_entry"].items() if k != "audit_actor"}     # migration 545 removes it first
         lines = self.params["p_lines"]
         entries = self.db._tables.setdefault("journal_entries", [])
         ref = entry.get("reference_no")
@@ -731,7 +731,7 @@ class _Rpc:
         attribute the request to someone else's committed row). Mirrors 162's
         balance/zero guard and per-invoice allocation aggregation too."""
         receipt = dict(self.params["p_receipt"])
-        entry = dict(self.params["p_journal_entry"])
+        entry = {k: v for k, v in self.params["p_journal_entry"].items() if k != "audit_actor"}     # migration 545 removes it first
         lines = self.params["p_journal_lines"]
         allocations = self.params["p_allocations"]
 

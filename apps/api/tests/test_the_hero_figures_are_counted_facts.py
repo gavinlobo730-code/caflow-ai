@@ -85,8 +85,11 @@ EXPECTED_PYTHON_TABLE_WRITERS = {
     ("services/manual_journal_service.py", "journal_lines"),
 }
 EXPECTED_PYTHON_RPC_CALLERS = {
-    ("services/phase2_journal_service.py", "post_journal_atomic"),
-    ("services/receipt_service.py", "settle_receipt_atomic"),
+    # Since POST-A-317 the kernel and the plain receipt reach the two functions through ONE door, `services/ledger_door.ledger_rpc`
+    # (the privileged client, the posting person carried), and `tests/test_the_two_ledger_functions_are_called_through_the_privileged_
+    # client_from_one_place.py` holds that the kernel and the receipt service are its only two callers.
+    ("services/ledger_door.py", "post_journal_atomic"),
+    ("services/ledger_door.py", "settle_receipt_atomic"),
     ("services/manual_journal_service.py", "edit_posted_journal"),
 }
 

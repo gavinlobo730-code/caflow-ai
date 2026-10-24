@@ -289,12 +289,15 @@ async def _carry_user_token(request: Request, call_next):
     request-scoped Supabase client (get_supabase) can run as the end user when
     USE_USER_JWT is enabled. No-op when the header is absent (background jobs)."""
     from core.supabase_client import set_request_token, reset_request_token
+    from core import request_actor
     auth = request.headers.get("authorization") or request.headers.get("Authorization")
     token = auth[7:].strip() if auth and auth[:7].lower() == "bearer " else None
     handle = set_request_token(token)
+    actor_handle = request_actor.begin()
     try:
         return await call_next(request)
     finally:
+        request_actor.end(actor_handle)
         reset_request_token(handle)
 
 
@@ -721,7 +724,7 @@ def root():
 def healthcheck():
     from fastapi.responses import JSONResponse
     from models.common import api_response
-    from services import ai_status_service
+    from services import ai_status_service, ledger_door
     from core import schema_guard
 
     # ops-19: tables and functions the code calls and the database lacks. A copy of
@@ -775,6 +778,10 @@ def healthcheck():
         # like the line above it touches no network and cannot turn this route into a 503. Model
         # names and times are configuration and live behind the Partner's AI status screen.
         "ai": ai_status_service.health_words(),
+        # Who calls the two ledger-writing database functions in this process (POST-A-317): `server` once the posting kernel and the
+        # plain receipt go through services/ledger_door on the privileged client. Migration 546 revokes the signed-in grant, so it is
+        # not merged until a deployment answers `server` here.
+        "ledger_door": ledger_door.door_words(),
     })
 
 

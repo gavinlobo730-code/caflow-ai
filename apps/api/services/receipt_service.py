@@ -22,6 +22,7 @@ from domain.accounting.payment_account import resolve_payment_account
 from domain.currency.fx_writer import fx_writer
 from services.audit_service import log_event
 from services.document_header_writer import update_header
+from services.ledger_door import ledger_rpc
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
@@ -534,12 +535,13 @@ def _settle_receipt_via_atomic_rpc(
     ]
 
     try:
-        result = db.rpc("settle_receipt_atomic", {
+        # POST-A-317: the privileged client, after the route's own checks (services/ledger_door.py says why and what stays asked).
+        result = ledger_rpc(db, "settle_receipt_atomic", {
             "p_receipt": receipt_payload,
             "p_journal_entry": entry_payload,
             "p_journal_lines": line_payloads,
             "p_allocations": alloc_payloads,
-        }).execute()
+        }, firm_id=firm_id, client_id=client_id).execute()
     except Exception as e:
         if _is_missing_rpc_function(e):
             raise RuntimeError(

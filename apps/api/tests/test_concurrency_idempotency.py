@@ -186,7 +186,13 @@ def test_cas_guard_retries_on_stale_paid(monkeypatch):
     # The invoice's settlement is written by the API's privileged client (POST-A-331), which the harness points at the same store:
     # the concurrent writer has to be seen by that client too, or the simulation never reaches the write it is about.
     import core.supabase_client as sc
-    monkeypatch.setattr(sc, "get_service_supabase", lambda: no_rpc)
+
+    class _ServiceDB(_NoRpcDB):
+        """The privileged client the harness hands out: the wrapped tables, and the database functions (the real client has both,
+        and the ledger is posted through it since POST-A-317; only the request's own client is the one with no rpc)."""
+        def rpc(self, fn, params=None): return db.rpc(fn, params)
+
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: _ServiceDB(wrapped_table))
     _receipt(no_rpc, inv_id, 40000)
 
     inv = next(i for i in db.rows("client_sales_invoices") if i["id"] == inv_id)
