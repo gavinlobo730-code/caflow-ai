@@ -189,8 +189,11 @@ REPORTED_EXPOSURES: tuple = ()
 #: handed on without a visible filter is a decision somebody makes on purpose.
 #: 41 -> 40 on 18-10-2026 (POST-A-156/POST-C-204): the AS 18 note's transfer-pricing query, which named the loans table by a
 #: variable, was removed with the claim it served. The budget only ever moves on purpose.
+#: 40 -> 37 on 24-10-2026 (POST-A-331, fourth slice): the bank settlement of an invoice or bill, its undo and the application of a
+#: party's credit named their table in a variable; they write through `services/document_header_writer`, whose six statements are
+#: literal chains the reader can read.
 UNREADABLE_BUDGET = {
-    "table_named_by_a_variable": 40,
+    "table_named_by_a_variable": 37,
     "handed_on_without_a_visible_firm_filter": 8,
     "same_name_calls_not_provably_the_helper": 5,
 }

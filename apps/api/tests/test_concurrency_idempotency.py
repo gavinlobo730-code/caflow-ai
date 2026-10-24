@@ -181,7 +181,12 @@ def test_cas_guard_retries_on_stale_paid(monkeypatch):
         def __init__(self, table_fn): self._table_fn = table_fn
         def table(self, name): return self._table_fn(name)
 
-    _receipt(_NoRpcDB(wrapped_table), inv_id, 40000)
+    no_rpc = _NoRpcDB(wrapped_table)
+    # The invoice's settlement is written by the API's privileged client (POST-A-331), which the harness points at the same store:
+    # the concurrent writer has to be seen by that client too, or the simulation never reaches the write it is about.
+    import core.supabase_client as sc
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: no_rpc)
+    _receipt(no_rpc, inv_id, 40000)
 
     inv = next(i for i in db.rows("client_sales_invoices") if i["id"] == inv_id)
     # The concurrent ₹50 + this ₹400 both land — nothing lost.

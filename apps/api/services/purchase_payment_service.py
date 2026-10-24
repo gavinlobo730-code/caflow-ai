@@ -22,6 +22,7 @@ from core.authz import can_access_client
 from domain.accounting.payment_account import resolve_payment_account
 from domain.currency.fx_writer import fx_writer
 from services.audit_service import log_event
+from services.document_header_writer import update_header
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 from services import tds_register_service
@@ -309,7 +310,7 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
             for _attempt in range(6):
                 bill_resp = (
                     db.table("purchase_bills")
-                    .select("net_payable_paise, paid_paise, debited_paise, credit_note_paise")
+                    .select("net_payable_paise, paid_paise, debited_paise, credit_note_paise, status")
                     .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
                     .limit(1)
                     .execute()
@@ -325,13 +326,12 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
                 if new_paid + debited > effective_payable:
                     raise HTTPException(status_code=422, detail=f"Bill {bill_id}: allocation would exceed bill outstanding")
                 new_status = "paid" if new_paid + debited >= effective_payable else "partially_paid"
-                upd = (db.table("purchase_bills").update({
-                    "paid_paise": new_paid,
-                    "status":     new_status,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }).eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                  .eq("paid_paise", raw_paid)   # compare-and-set guard
-                  .execute())
+                upd = update_header(
+                    db, "purchase_bills", bill_id,
+                    {"paid_paise": new_paid, "status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()},
+                    firm_id=firm_id, client_id=client_id, actor=actor,
+                    expect={"paid_paise": raw_paid},   # compare-and-set guard
+                    before={"paid_paise": old_paid, "status": bill.get("status")})
                 if upd.data:
                     break                        # CAS won
             else:
@@ -537,7 +537,7 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
         for (bill, f, ap_relieved) in settle_plan:
             bill_id = bill["id"]
             for _attempt in range(6):
-                cur = (db.table("purchase_bills").select("paid_paise, paid_txn, txn_net_payable")
+                cur = (db.table("purchase_bills").select("paid_paise, paid_txn, txn_net_payable, status")
                        .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
                        .limit(1).execute().data or [None])[0]
                 if not cur:
@@ -551,10 +551,11 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
                 if fresh_new_paid_txn > txn_net_payable:
                     raise HTTPException(status_code=422, detail=f"Bill {bill_id}: allocation would exceed bill outstanding")
                 fresh_status = "paid" if fresh_new_paid_txn >= txn_net_payable else "partially_paid"
-                upd = (db.table("purchase_bills")
-                       .update({"paid_paise": fresh_new_paid, "paid_txn": fresh_new_paid_txn, "status": fresh_status})
-                       .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                       .eq("paid_paise", raw_paid).execute())
+                upd = update_header(
+                    db, "purchase_bills", bill_id,
+                    {"paid_paise": fresh_new_paid, "paid_txn": fresh_new_paid_txn, "status": fresh_status},
+                    firm_id=firm_id, client_id=client_id, actor=actor, expect={"paid_paise": raw_paid},
+                    before={"paid_paise": old_paid, "paid_txn": old_paid_txn, "status": cur.get("status")})
                 if upd.data:
                     break                        # CAS won
             else:
@@ -615,7 +616,7 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
 
 
 def _adjust_bill_paid(db, firm_id: str, client_id: str, bill_id: str, delta_paise: int,
-                      max_retries: int = 5) -> None:
+                      max_retries: int = 5, *, actor: dict | None = None) -> None:
     """Apply a signed delta to a purchase bill's paid_paise and recompute status.
     Integer paise; paid clamped at >= 0. The AP mirror of routers/receipts.py's
     _adjust_invoice_paid — used to REVERSE then RE-APPLY a payment's allocations
@@ -628,7 +629,7 @@ def _adjust_bill_paid(db, firm_id: str, client_id: str, bill_id: str, delta_pais
         return
     for _attempt in range(max_retries):
         resp = (db.table("purchase_bills")
-                .select("net_payable_paise, paid_paise, debited_paise, credit_note_paise")
+                .select("net_payable_paise, paid_paise, debited_paise, credit_note_paise, status")
                 .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
         if not resp.data:
             return
@@ -644,9 +645,10 @@ def _adjust_bill_paid(db, firm_id: str, client_id: str, bill_id: str, delta_pais
             new_paid = 0
         status = ("paid" if new_paid + debited >= effective_payable
                   else "partially_paid" if new_paid > 0 else "received")
-        result = (db.table("purchase_bills").update({"paid_paise": new_paid, "status": status})
-                  .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                  .eq("paid_paise", raw_paid).execute())
+        result = update_header(
+            db, "purchase_bills", bill_id, {"paid_paise": new_paid, "status": status},
+            firm_id=firm_id, client_id=client_id, actor=actor, expect={"paid_paise": raw_paid},
+            before={"paid_paise": int(raw_paid or 0), "status": bill.get("status")})
         if result.data:
             return
         # Lost the race — retry against the now-current paid_paise.
@@ -735,7 +737,7 @@ def update_allocations_core(firm_id: str, payment_id: str, allocations: list, ac
     # paid_paise is recomputed from scratch and never inflated by repeated
     # re-allocation.
     for old in prior:
-        _adjust_bill_paid(db, firm_id, client_id, old.get("purchase_bill_id"), -int(old.get("allocated_paise", 0) or 0))
+        _adjust_bill_paid(db, firm_id, client_id, old.get("purchase_bill_id"), -int(old.get("allocated_paise", 0) or 0), actor=actor)
     db.table("purchase_payment_allocations").delete().eq("purchase_payment_id", payment_id).execute()
 
     alloc_payloads = []
@@ -749,7 +751,7 @@ def update_allocations_core(firm_id: str, payment_id: str, allocations: list, ac
             "purchase_bill_id":    bill_id,
             "allocated_paise":     amt,
         })
-        _adjust_bill_paid(db, firm_id, client_id, bill_id, amt)
+        _adjust_bill_paid(db, firm_id, client_id, bill_id, amt, actor=actor)
 
     if alloc_payloads:
         db.table("purchase_payment_allocations").insert(alloc_payloads).execute()

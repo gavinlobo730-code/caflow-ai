@@ -41,6 +41,7 @@ from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from core.uploads import accept_upload, safe_path_segment
 from services.audit_service import log_event
+from services.document_header_writer import update_header
 from services.line_item_ownership import ItemOwner, check as check_items_are_the_clients
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
@@ -521,10 +522,12 @@ def issue_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("a
                 effective_payable = net_payable + new_credit_note
                 settled = paid + debited
                 new_status = "paid" if settled >= effective_payable else ("partially_paid" if settled > 0 else bill.get("status"))
-                upd = (db.table("purchase_bills").update({
-                    "credit_note_paise": new_credit_note, "status": new_status,
-                }).eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                  .eq("credit_note_paise", raw_credit_note).execute())
+                upd = update_header(
+                    db, "purchase_bills", bill_id,
+                    {"credit_note_paise": new_credit_note, "status": new_status},
+                    firm_id=firm_id, client_id=client_id, actor=current_user,
+                    expect={"credit_note_paise": raw_credit_note},
+                    before={"credit_note_paise": prior_credit_note, "status": bill.get("status")})
                 if upd.data:
                     prior_bill = {"credit_note_paise": prior_credit_note, "status": bill.get("status")}
                     break
@@ -536,9 +539,12 @@ def issue_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("a
                     "purchase_bill_id": bill_id, "allocated_paise": pcn_total,
                 }).execute()
             except Exception:
-                db.table("purchase_bills").update({
-                    "credit_note_paise": prior_credit_note, "status": prior_bill["status"],
-                }).eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+                update_header(
+                    db, "purchase_bills", bill_id,
+                    {"credit_note_paise": prior_credit_note, "status": prior_bill["status"]},
+                    firm_id=firm_id, client_id=client_id, actor=current_user,
+                    before={"credit_note_paise": new_credit_note, "status": new_status},
+                    reason="the purchase credit note's application could not be recorded")
                 raise
 
         # ── Post the GL journal (Dr Purchases / Dr GST Input / Cr Trade Payables).
@@ -554,9 +560,12 @@ def issue_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("a
             if prior_bill is not None and bill_id:
                 try:
                     db.table("purchase_credit_note_allocations").delete().eq("credit_note_id", pcn_id).eq("purchase_bill_id", bill_id).execute()
-                    db.table("purchase_bills").update({
-                        "credit_note_paise": prior_bill["credit_note_paise"], "status": prior_bill["status"],
-                    }).eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+                    update_header(
+                        db, "purchase_bills", bill_id,
+                        {"credit_note_paise": prior_bill["credit_note_paise"], "status": prior_bill["status"]},
+                        firm_id=firm_id, client_id=client_id, actor=current_user,
+                        before={"credit_note_paise": new_credit_note, "status": new_status},
+                        reason="the purchase credit note's journal could not be posted")
                 except Exception as swallowed:
                     capture_posting_failure(swallowed, operation="purchase_credit_note.allocation_rollback", firm_id=firm_id, credit_note_id=pcn_id, bill_id=bill_id)
             # A deliberate business-rule rejection (e.g. a locked-FY check inside the
@@ -572,9 +581,12 @@ def issue_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("a
             return api_response(False, None, "Unable to issue credit note. Please try again.")
 
         applied = pcn_total if (bill_id and pcn_total > 0) else 0
-        upd = db.table("purchase_credit_notes").update({
-            "status": "issued", "journal_entry_id": journal_id, "applied_paise": applied,
-        }).eq("id", pcn_id).eq("firm_id", firm_id).execute()
+        upd = update_header(
+            db, "purchase_credit_notes", pcn_id,
+            {"status": "issued", "journal_entry_id": journal_id, "applied_paise": applied},
+            firm_id=firm_id, client_id=client_id, actor=current_user,
+            before={"status": pcn.get("status"), "journal_entry_id": pcn.get("journal_entry_id"),
+                    "applied_paise": pcn.get("applied_paise")})
         updated = upd.data[0] if upd.data else {**pcn, "status": "issued", "applied_paise": applied}
 
         log_event(

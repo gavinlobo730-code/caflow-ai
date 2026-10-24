@@ -16,6 +16,7 @@ from core.exceptions import document_failure_detail
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from services.audit_service import log_event
+from services.document_header_writer import update_header
 from services import receipt_service
 from services import reversal_service
 # Re-exported for backward compat — collections_service and tests import these here.
@@ -30,7 +31,7 @@ router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 
 
 def _adjust_invoice_paid(db, firm_id: str, client_id: str, inv_id: str, delta_paise: int,
-                         max_retries: int = 5) -> None:
+                         max_retries: int = 5, *, actor: dict | None = None) -> None:
     """Apply a signed delta to an invoice's paid_paise and recompute status.
     Integer paise; paid clamped at >= 0. Used to REVERSE then RE-APPLY a receipt's
     allocations on re-allocation so paid_paise is recomputed from scratch and never
@@ -47,7 +48,7 @@ def _adjust_invoice_paid(db, firm_id: str, client_id: str, inv_id: str, delta_pa
         return
     for _attempt in range(max_retries):
         inv_resp = (db.table("client_sales_invoices")
-                    .select("total_paise,paid_paise,credited_paise,debit_note_paise")
+                    .select("total_paise,paid_paise,credited_paise,debit_note_paise,status")
                     .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
         if not inv_resp.data:
             return
@@ -63,9 +64,10 @@ def _adjust_invoice_paid(db, firm_id: str, client_id: str, inv_id: str, delta_pa
             new_paid = 0
         status = ("paid" if (total > 0 and new_paid + credited >= total)
                   else ("partially_paid" if new_paid > 0 else "issued"))
-        result = (db.table("client_sales_invoices").update({"paid_paise": new_paid, "status": status})
-                  .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                  .eq("paid_paise", raw_paid).execute())
+        result = update_header(
+            db, "client_sales_invoices", inv_id, {"paid_paise": new_paid, "status": status},
+            firm_id=firm_id, client_id=client_id, actor=actor, expect={"paid_paise": raw_paid},
+            before={"paid_paise": int(raw_paid or 0), "status": inv.get("status")})
         if result.data:
             return
         # Lost the race — retry against the now-current paid_paise.
@@ -305,7 +307,7 @@ def update_allocations(
         # repeated re-allocation. (Previously the old allocation rows were deleted
         # but their amounts were never subtracted from paid_paise.)
         for old in prior:
-            _adjust_invoice_paid(db, firm_id, receipt_client_id, old.get("sales_invoice_id"), -int(old.get("allocated_paise", 0) or 0))
+            _adjust_invoice_paid(db, firm_id, receipt_client_id, old.get("sales_invoice_id"), -int(old.get("allocated_paise", 0) or 0), actor=current_user)
         db.table("receipt_allocations").delete().eq("receipt_id", receipt_id).execute()
 
         alloc_payloads = []
@@ -319,7 +321,7 @@ def update_allocations(
                 "sales_invoice_id": inv_id,
                 "allocated_paise":  alloc_amt,
             })
-            _adjust_invoice_paid(db, firm_id, receipt_client_id, inv_id, alloc_amt)
+            _adjust_invoice_paid(db, firm_id, receipt_client_id, inv_id, alloc_amt, actor=current_user)
 
         if alloc_payloads:
             db.table("receipt_allocations").insert(alloc_payloads).execute()
@@ -362,6 +364,7 @@ def reverse_receipt(
         db = get_supabase()
         result = reversal_service.reverse_receipt(
             db, current_user["firm_id"], receipt_id, data.reversal_date, created_by=current_user.get("id"),
+            actor=current_user,
         )
         log_event(
             current_user.get("firm_id", ""), "receipt", receipt_id,

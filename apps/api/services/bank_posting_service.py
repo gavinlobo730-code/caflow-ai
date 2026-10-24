@@ -31,6 +31,7 @@ from services.bank_reconciliation_service import bank_reconciliation_service
 from services.banking_service import assert_bank_account_is_inr
 from core.ist_clock import ist_today
 from core.observability import capture_soft_failure
+from services.document_header_writer import update_header
 
 _logger = logging.getLogger("caflow.bank_posting")
 
@@ -671,7 +672,8 @@ class BankPostingService:
         # action. settle_on_post carries the CAS guard that makes a double-click
         # safe, so it is reused here rather than reimplemented.
         settled = self.settle_on_post(db, firm_id, txn_id, journal_entry_id, actor_id=actor_id,
-                                      gst_rate_bps=gst_rate_bps, is_interstate=is_interstate)
+                                      gst_rate_bps=gst_rate_bps, is_interstate=is_interstate,
+                                      actor_auth_id=actor_auth_id)
 
         try:
             from services.audit_service import log_event
@@ -695,7 +697,7 @@ class BankPostingService:
     # ── Deferred settlement — runs only when the draft journal is posted ───────
     def settle_on_post(self, db, firm_id, txn_id, journal_id, actor_id=None,
                        gst_rate_bps: Optional[int] = None,
-                       is_interstate: bool = False) -> Optional[dict]:
+                       is_interstate: bool = False, actor_auth_id: Optional[str] = None) -> Optional[dict]:
         """Called by journal_posting_service.post_draft once the bank draft is on
         the books: mark the transaction posted and settle its invoice/bill. Idempotent.
 
@@ -746,7 +748,7 @@ class BankPostingService:
             return None                                   # lost the race to a concurrent caller
 
         amount, _ = _amount(txn)
-        settled = self._settle(db, firm_id, txn, amount, actor_id)
+        settled = self._settle(db, firm_id, txn, amount, actor_id, actor_auth_id)
         try:
             timeline_service.log(txn["client_id"], "accounting", "Bank Transaction Posted",
                                  f"Posted to ledger ({txn.get('category') or 'mapped'})", "success",
@@ -757,21 +759,22 @@ class BankPostingService:
         return settled
 
     # ── B.3.4 settlement ──────────────────────────────────────────────────────
-    def _settle(self, db, firm_id, txn, amount, actor_id=None) -> Optional[dict]:
+    def _settle(self, db, firm_id, txn, amount, actor_id=None, actor_auth_id=None) -> Optional[dict]:
         cat, mt, mid = txn.get("category"), txn.get("matched_entity_type"), txn.get("matched_entity_id")
         client_id = txn.get("client_id")
         if cat in pmap.SETTLES_SALES_INVOICE and mt == "sales_invoice" and mid:
             return self._settle_doc(db, firm_id, client_id, "client_sales_invoices", mid, amount, "invoice_no",
                                     "total_paise, debit_note_paise, credited_paise, customer_id",
-                                    self._invoice_outstanding, "customer_id", "customer", txn, actor_id)
+                                    self._invoice_outstanding, "customer_id", "customer", txn, actor_id, actor_auth_id)
         if cat in pmap.SETTLES_PURCHASE_BILL and mt == "purchase_bill" and mid:
             return self._settle_doc(db, firm_id, client_id, "purchase_bills", mid, amount, "bill_no",
                                     "total_paise, net_payable_paise, credit_note_paise, debited_paise, vendor_id",
-                                    self._bill_outstanding, "vendor_id", "vendor", txn, actor_id)
+                                    self._bill_outstanding, "vendor_id", "vendor", txn, actor_id, actor_auth_id)
         return None
 
     def _settle_doc(self, db, firm_id, client_id, table, doc_id, amount, label_col,
-                    extra_cols, outstanding_fn, party_col, party_type, txn, actor_id=None) -> Optional[dict]:
+                    extra_cols, outstanding_fn, party_col, party_type, txn, actor_id=None,
+                    actor_auth_id=None) -> Optional[dict]:
         # F3 fix: scope the settled doc to the txn's firm AND client so a
         # matched_entity_id belonging to another client (even within the firm)
         # cannot be settled / have its accounting state altered. Mirrors the
@@ -813,8 +816,15 @@ class BankPostingService:
                     **({"credited_to_party_paise": excess} if excess > 0 else {})}
         new_paid = paid + alloc
         status = "paid" if alloc >= outstanding else "partially_paid"
-        db.table(table).update({"paid_paise": new_paid, "status": status, "updated_at": _now()}) \
-            .eq("id", doc_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+        # The settled amount is written through the header door (POST-A-331): the privileged client, the document, its firm and
+        # its client named, and the audit row the database's capture trigger does not write for a write with no sign-in. The person
+        # is the Supabase auth id only; the internal id this method also carries is a different kind of id.
+        actor = {"auth_user_id": actor_auth_id}
+        update_header(
+            db, table, doc_id, {"paid_paise": new_paid, "status": status, "updated_at": _now()},
+            firm_id=firm_id, client_id=client_id, actor=actor,
+            before={"paid_paise": paid, "status": doc.get("status")},
+            reason="a bank transaction was posted")
         result = {"entity": table, "label": doc.get(label_col), "allocated_paise": alloc,
                   "new_paid_paise": new_paid, "total_paise": total, "status": status}
         if excess > 0:
@@ -935,7 +945,7 @@ class BankPostingService:
         # 2 and 3, in that order: the credit was granted out of the settlement's
         # excess, so it is unwound before the settlement that produced it.
         revoked = self._revoke_overpayment_credit(db, firm_id, client_id, txn_id, actor_id)
-        unsettled = self._unsettle(db, firm_id, txn)
+        unsettled = self._unsettle(db, firm_id, txn, actor_auth_id)
 
         # Back to "matched" rather than "unmatched" when a document is still
         # linked: the CA's identification of WHICH invoice this is was not the
@@ -1001,7 +1011,7 @@ class BankPostingService:
                 created_by=actor_id, notes=f"Undo of bank transaction {txn_id}"))
         return {"revocations": len(out), "paise": sum(int(g["amount_paise"]) for g in grants)}
 
-    def _unsettle(self, db, firm_id, txn) -> Optional[dict]:
+    def _unsettle(self, db, firm_id, txn, actor_auth_id=None) -> Optional[dict]:
         """Give the invoice or bill back what this transaction paid off.
 
         The allocation is NOT stored per transaction, so it is recovered as
@@ -1067,8 +1077,12 @@ class BankPostingService:
             status = doc.get("status") if doc.get("status") in ("draft", "cancelled") else back_to_unpaid
         else:
             status = "paid" if outstanding_fn(probe) <= 0 else "partially_paid"
-        db.table(table).update({"paid_paise": new_paid, "status": status, "updated_at": _now()}) \
-            .eq("id", mid).eq("firm_id", firm_id).eq("client_id", client_id).execute()
+        actor = {"auth_user_id": actor_auth_id}
+        update_header(
+            db, table, mid, {"paid_paise": new_paid, "status": status, "updated_at": _now()},
+            firm_id=firm_id, client_id=client_id, actor=actor,
+            before={"paid_paise": paid, "status": doc.get("status")},
+            reason="a bank posting was undone")
         return {"entity": table, "label": doc.get(label_col), "reversed_paise": give_back,
                 "new_paid_paise": new_paid, "status": status}
 

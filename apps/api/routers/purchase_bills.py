@@ -26,6 +26,7 @@ from core.observability import capture_soft_failure
 from core.exceptions import document_failure_detail
 from core.permissions import rbac
 from services.audit_service import log_event
+from services.document_header_writer import update_header
 from services.credit_terms import resolve_credit_terms, apply_credit_days_due_date, apply_due_date_credit_days
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
@@ -1840,10 +1841,10 @@ def receive_purchase_bill(
                 bill["bill_date"])
 
         now_iso = datetime.now(timezone.utc).isoformat()
-        upd = db.table("purchase_bills").update({
-            "status":      "received",
-            "received_at": now_iso,
-        }).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+        upd = update_header(
+            db, "purchase_bills", bill_id, {"status": "received", "received_at": now_iso},
+            firm_id=current_user.get("firm_id"), client_id=bill.get("client_id"), actor=current_user,
+            before={"status": bill.get("status"), "received_at": bill.get("received_at")})
         updated_bill = upd.data[0] if upd.data else {**bill, "status": "received"}
 
         # task #103: the bill above is already flipped to "received" — if the
@@ -1861,9 +1862,11 @@ def receive_purchase_bill(
             if not journal_id:
                 raise RuntimeError("purchase-bill journal posting returned no id")
         except Exception as jerr:
-            db.table("purchase_bills").update({
-                "status": "draft", "received_at": None,
-            }).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+            update_header(
+                db, "purchase_bills", bill_id, {"status": "draft", "received_at": None},
+                firm_id=current_user.get("firm_id"), client_id=bill.get("client_id"), actor=current_user,
+                before={"status": "received", "received_at": now_iso},
+                reason="the bill's journal could not be posted")
             # A deliberate business-rule rejection (e.g. period_validation_service's
             # locked-FY check inside the journal kernel) carries a real, actionable
             # status+message the CA needs — collapsing it into "Please try again" is
@@ -1879,8 +1882,10 @@ def receive_purchase_bill(
                                 document_failure_detail(jerr, action="receive the purchase bill"))
 
         # Persist the journal link so cancellation can reverse it directly.
-        db.table("purchase_bills").update({"journal_entry_id": journal_id}).eq(
-            "id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+        update_header(
+            db, "purchase_bills", bill_id, {"journal_entry_id": journal_id},
+            firm_id=current_user.get("firm_id"), client_id=bill.get("client_id"), actor=current_user,
+            before={"journal_entry_id": bill.get("journal_entry_id")})
 
         # The TDS register follows the CREDIT, which is what receiving the bill
         # is: s.194C(3) and its neighbours all say deduct at credit to the
@@ -2031,10 +2036,11 @@ def cancel_purchase_bill(
                 created_by=current_user.get("id"),
             )
 
-        upd = db.table("purchase_bills").update({
-            "status":       "cancelled",
-            "cancelled_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", bill_id).eq("firm_id", firm_id).execute()
+        upd = update_header(
+            db, "purchase_bills", bill_id,
+            {"status": "cancelled", "cancelled_at": datetime.now(timezone.utc).isoformat()},
+            firm_id=firm_id, client_id=bill.get("client_id"), actor=current_user,
+            before={"status": status})
         updated = upd.data[0] if upd.data else {}
 
         # The credit is undone, so the deduction never happened. Leaving the

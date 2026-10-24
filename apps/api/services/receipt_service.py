@@ -21,6 +21,7 @@ from fastapi import HTTPException
 from domain.accounting.payment_account import resolve_payment_account
 from domain.currency.fx_writer import fx_writer
 from services.audit_service import log_event
+from services.document_header_writer import update_header
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
@@ -356,7 +357,7 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
             inv_id = inv["id"]
             for _attempt in range(6):
                 cur = (db.table("client_sales_invoices")
-                       .select("paid_paise,paid_txn,txn_total")
+                       .select("paid_paise,paid_txn,txn_total,status")
                        .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
                        .limit(1).execute().data or [None])[0]
                 if not cur:
@@ -369,10 +370,11 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
                 if fresh_new_paid_txn > txn_total:
                     raise HTTPException(status_code=422, detail=f"Invoice {inv_id}: allocation would exceed invoice outstanding")
                 fresh_status = "paid" if fresh_new_paid_txn >= txn_total else "partially_paid"
-                upd = (db.table("client_sales_invoices")
-                       .update({"paid_paise": fresh_new_paid, "paid_txn": fresh_new_paid_txn, "status": fresh_status})
-                       .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                       .eq("paid_paise", old_paid).execute())
+                upd = update_header(
+                    db, "client_sales_invoices", inv_id,
+                    {"paid_paise": fresh_new_paid, "paid_txn": fresh_new_paid_txn, "status": fresh_status},
+                    firm_id=firm_id, client_id=client_id, actor=actor, expect={"paid_paise": old_paid},
+                    before={"paid_paise": old_paid, "paid_txn": old_paid_txn, "status": cur.get("status")})
                 if upd.data:
                     break                        # CAS won
             else:
@@ -852,7 +854,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
             for _attempt in range(6):
                 inv_resp = (
                     db.table("client_sales_invoices")
-                    .select("total_paise,paid_paise,credited_paise,debit_note_paise")
+                    .select("total_paise,paid_paise,credited_paise,debit_note_paise,status")
                     .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
                     .limit(1)
                     .execute()
@@ -871,12 +873,11 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
                 if new_paid + credited > total:
                     raise HTTPException(status_code=422, detail=f"Invoice {inv_id}: allocation would exceed invoice outstanding")
                 new_status = "paid" if (new_paid + credited) >= total else "partially_paid"
-                upd = (db.table("client_sales_invoices").update({
-                    "paid_paise": new_paid,
-                    "status":     new_status,
-                }).eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                  .eq("paid_paise", old_paid)   # compare-and-set guard
-                  .execute())
+                upd = update_header(
+                    db, "client_sales_invoices", inv_id, {"paid_paise": new_paid, "status": new_status},
+                    firm_id=firm_id, client_id=client_id, actor=actor,
+                    expect={"paid_paise": old_paid},   # compare-and-set guard
+                    before={"paid_paise": old_paid, "status": inv.get("status")})
                 if upd.data:
                     break                        # CAS won
             else:

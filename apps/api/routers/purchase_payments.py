@@ -26,6 +26,7 @@ from domain.accounting.payment_account import (
 )
 from domain.currency.fx_writer import fx_writer
 from services.audit_service import log_event
+from services.document_header_writer import update_header
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 from services import tds_register_service
@@ -125,7 +126,7 @@ def _insert_payment_or_compensate(db, firm_id: str, payload: dict, journal_entry
 
 def _claim_bill_outstanding(
     db, firm_id: str, client_id: str, bill_id: str, amount_paise: int, net_payable_paise: int,
-    max_retries: int = 5,
+    max_retries: int = 5, *, actor: dict | None = None,
 ) -> None:
     """H4: atomically reserve amount_paise against a purchase bill's outstanding
     balance via compare-and-swap on paid_paise, BEFORE any journal/payment is
@@ -138,7 +139,7 @@ def _claim_bill_outstanding(
     """
     for _ in range(max_retries):
         cur_paid = (
-            db.table("purchase_bills").select("paid_paise, debited_paise, credit_note_paise")
+            db.table("purchase_bills").select("paid_paise, debited_paise, credit_note_paise, status")
             .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .limit(1).execute().data
         ) or []
@@ -163,12 +164,10 @@ def _claim_bill_outstanding(
                        f"(₹{rupees_paise(outstanding)}).")
         new_paid = paid_paise + amount_paise
         new_status = "paid" if new_paid + debited_paise >= effective_payable else "partially_paid"
-        result = (
-            db.table("purchase_bills").update({"paid_paise": new_paid, "status": new_status})
-            .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("paid_paise", raw_paid)
-            .execute()
-        )
+        result = update_header(
+            db, "purchase_bills", bill_id, {"paid_paise": new_paid, "status": new_status},
+            firm_id=firm_id, client_id=client_id, actor=actor, expect={"paid_paise": raw_paid},
+            before={"paid_paise": paid_paise, "status": cur_paid[0].get("status")})
         if result.data:
             return
         # Lost the race to a concurrent payment on this same bill — retry against
@@ -178,7 +177,7 @@ def _claim_bill_outstanding(
 
 def _rollback_bill_claim(
     db, firm_id: str, client_id: str, bill_id: str, amount_paise: int, net_payable_paise: int,
-    max_retries: int = 5,
+    max_retries: int = 5, *, actor: dict | None = None,
 ) -> None:
     """Undo a successful _claim_bill_outstanding reservation after a downstream
     failure (journal/payment insert). Decrements paid_paise by exactly our own
@@ -186,7 +185,7 @@ def _rollback_bill_claim(
     snapshot, since another payment may have claimed on top of ours since."""
     for _ in range(max_retries):
         cur = (
-            db.table("purchase_bills").select("paid_paise, debited_paise, credit_note_paise")
+            db.table("purchase_bills").select("paid_paise, debited_paise, credit_note_paise, status")
             .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .limit(1).execute().data
         ) or []
@@ -202,12 +201,11 @@ def _rollback_bill_claim(
             "paid" if reverted + debited_paise >= effective_payable
             else "partially_paid" if reverted > 0 else "received"
         )
-        result = (
-            db.table("purchase_bills").update({"paid_paise": reverted, "status": reverted_status})
-            .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("paid_paise", raw_paid)
-            .execute()
-        )
+        result = update_header(
+            db, "purchase_bills", bill_id, {"paid_paise": reverted, "status": reverted_status},
+            firm_id=firm_id, client_id=client_id, actor=actor, expect={"paid_paise": raw_paid},
+            before={"paid_paise": paid_paise, "status": cur[0].get("status")},
+            reason="the payment could not be recorded")
         if result.data:
             return
     _logger.error(
@@ -582,7 +580,7 @@ def create_purchase_payment(
             # H4: reserve amount_paise of outstanding atomically BEFORE any journal or
             # payment row is created — see _claim_bill_outstanding for why the previous
             # read-then-check-then-insert let concurrent payments overpay the same bill.
-            _claim_bill_outstanding(db, firm_id, client_id, purchase_bill_id, amount_paise, net_payable_paise)
+            _claim_bill_outstanding(db, firm_id, client_id, purchase_bill_id, amount_paise, net_payable_paise, actor=current_user)
 
         # ── §194 / §195: an advance is the EARLIER event ────────────────────
         # This path allocates the whole payment to the linked bill when there is
@@ -668,12 +666,12 @@ def create_purchase_payment(
             )
         except Exception:
             if purchase_bill_id:
-                _rollback_bill_claim(db, firm_id, client_id, purchase_bill_id, amount_paise, net_payable_paise)
+                _rollback_bill_claim(db, firm_id, client_id, purchase_bill_id, amount_paise, net_payable_paise, actor=current_user)
             raise
 
         # Reconcile paid_paise/status from the ledger of actual payment rows if linked
         if purchase_bill_id:
-            _update_bill_payment_status(db, firm_id, client_id, purchase_bill_id, amount_paise)
+            _update_bill_payment_status(db, firm_id, client_id, purchase_bill_id, amount_paise, actor=current_user)
 
         # THE REGISTER, OR THE DEDUCTION IS INVISIBLE TO COMPLIANCE. A tds row
         # that exists only in the GL has no challan to pay by the 7th (Rule 30)
@@ -902,7 +900,7 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
     # retry (re-validate against FRESH state on every attempt; a genuine
     # concurrent race surfaces as 422/409, never a silent overwrite).
     for _attempt in range(6):
-        cur = (db.table("purchase_bills").select("paid_paise, paid_txn, txn_net_payable")
+        cur = (db.table("purchase_bills").select("paid_paise, paid_txn, txn_net_payable, status")
                .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
                .limit(1).execute().data or [None])[0]
         if not cur:
@@ -916,10 +914,11 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
             raise HTTPException(status_code=422, detail=f"Bill {bill_id}: payment would exceed the bill's outstanding")
         fresh_new_paid = old_paid + ap_relieved
         fresh_status = "paid" if fresh_new_paid_txn >= txn_net_payable else "partially_paid"
-        upd = (db.table("purchase_bills")
-               .update({"paid_paise": fresh_new_paid, "paid_txn": fresh_new_paid_txn, "status": fresh_status})
-               .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
-               .eq("paid_paise", raw_paid).execute())
+        upd = update_header(
+            db, "purchase_bills", bill_id,
+            {"paid_paise": fresh_new_paid, "paid_txn": fresh_new_paid_txn, "status": fresh_status},
+            firm_id=firm_id, client_id=client_id, actor=actor, expect={"paid_paise": raw_paid},
+            before={"paid_paise": old_paid, "paid_txn": old_paid_txn, "status": cur.get("status")})
         if upd.data:
             break
     else:
@@ -940,7 +939,7 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
 
 
 def _update_bill_payment_status(db, firm_id: str, client_id: str, bill_id: str, paid_paise: int = 0,
-                                max_retries: int = 5) -> None:
+                                max_retries: int = 5, *, actor: dict | None = None) -> None:
     """Recompute a purchase bill's paid_paise + status from ALL recorded payments so
     the AP sub-ledger reconciles to the GL (H11). The current payment row is already
     inserted, so we sum from the DB (never add it again — the old code double-counted).
@@ -997,12 +996,11 @@ def _update_bill_payment_status(db, firm_id: str, client_id: str, bill_id: str, 
 
             if total_paid == int(raw_paid or 0):
                 return   # already reconciled — nothing to write
-            result = (
-                db.table("purchase_bills").update(
-                    {"paid_paise": total_paid, "status": new_status, "updated_at": _now_iso()}
-                ).eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                .eq("paid_paise", raw_paid).execute()
-            )
+            result = update_header(
+                db, "purchase_bills", bill_id,
+                {"paid_paise": total_paid, "status": new_status, "updated_at": _now_iso()},
+                firm_id=firm_id, client_id=client_id, actor=actor, expect={"paid_paise": raw_paid},
+                before={"paid_paise": int(raw_paid or 0), "status": bill.get("status")})
             if result.data:
                 return
             # Lost the race — another write touched paid_paise between our read
@@ -1033,6 +1031,7 @@ def reverse_purchase_payment(
         db = _get_db()
         result = reversal_service.reverse_payment(
             db, current_user["firm_id"], payment_id, data.reversal_date, created_by=current_user.get("id"),
+            actor=current_user,
         )
         log_event(
             current_user.get("firm_id", ""), "purchase_payment", payment_id,
