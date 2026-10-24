@@ -80,9 +80,11 @@ def functions(pg_template):
 def test_the_scan_finds_the_definer_functions_at_all(functions):
     names = {f[0] for f in functions}
     assert len(functions) >= 25, f"only {len(functions)} functions found: the scan stopped seeing them"
-    for must in ("post_journal_atomic", "settle_receipt_atomic", "numbered_document_atomic",
-                 "assert_caller_acts_for", "get_my_firm_id"):
+    for must in ("numbered_document_atomic", "assert_caller_acts_for", "get_my_firm_id"):
         assert must in names, must
+    # migration 546: the two ledger writers are the server's alone, so the scan of what a signed-in user can call must not see them
+    for gone in ("post_journal_atomic", "settle_receipt_atomic"):
+        assert gone not in names, f"{gone} is executable by a signed-in user again"
 
 
 def test_every_definer_function_with_arguments_that_a_signed_in_user_can_call_asks_who_is_calling(functions):
