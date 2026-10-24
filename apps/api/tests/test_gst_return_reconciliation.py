@@ -15,7 +15,7 @@ import routers.purchase_credit_notes as pcn
 import services.gst_return_service as grs
 from models.invoices import PurchaseBillIn, PurchaseBillLineIn, InvoiceLineIn
 from tests.e2e_harness import (
-    FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, trial_balance,
+    FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, trial_balance, with_lines,
 )
 
 FIRM = "FIRM-A"
@@ -48,6 +48,7 @@ def _issue_invoice(db, no, taxable, cgst, sgst, igst=0, date="2025-06-10"):
         "total_paise": taxable + cgst + sgst + igst, "paid_paise": 0, "credited_paise": 0,
         "is_interstate": bool(igst), "supply_state_code": "27",
     })
+    with_lines(db, "sales_invoice", inv)
     assert si.issue_invoice(inv["id"], CALLER)["success"] is True
     return inv["id"]
 
@@ -100,6 +101,7 @@ def test_credit_note_reduces_output_and_still_reconciles(monkeypatch):
         "taxable_amount_paise": 2_00000, "cgst_paise": 18000, "sgst_paise": 18000, "igst_paise": 0,
         "total_paise": 2_36000, "is_interstate": False, "supply_state_code": "27",
     })
+    with_lines(db, "credit_note", cnrow)
     assert cn.issue_credit_note(cnrow["id"], CALLER)["success"] is True
 
     out = grs.gstr3b_from_books(db, FIRM, "CLI", PERIOD, GSTIN)

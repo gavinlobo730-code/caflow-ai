@@ -23,6 +23,8 @@ from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.document_header_writer import update_header
+from domain.accounting import draft_integrity
+from services import draft_integrity_service
 from domain.gst import place_of_supply
 from domain.gst import inter_state as _inter_state
 from domain.gst import supply_classification
@@ -2140,8 +2142,7 @@ def issue_invoice(
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         inv = resp.data[0]
-        if inv.get("status") != "draft":
-            raise HTTPException(status_code=422, detail="Only draft invoices can be issued")
+        draft_integrity_service.assert_a_draft(inv, not_a_draft="Only draft invoices can be issued")
         # FY-lock: issuing posts a dated journal — block if the year was locked after
         # the draft was created (deferred-posting gap).
         if inv.get("invoice_date"):
@@ -2188,6 +2189,9 @@ def issue_invoice(
                 f"or record the customer's state or GSTIN and re-open the draft."
             ))
 
+        # POST-A-335: the stored figures are what the journal posts, and a draft is a row a member's own token can still change,
+        # so the draft is asked whether it adds up to its own lines (and is not flagged as carried over) before anything is posted.
+        draft_integrity_service.assert_draft_adds_up(db, draft_integrity.SALES_INVOICE, inv)
         # Auto-create journal entry FIRST — CGST Act §9. If the Chart of Accounts
         # is not set up, this raises ValueError and the invoice stays a draft.
         try:

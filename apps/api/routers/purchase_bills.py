@@ -27,6 +27,8 @@ from core.exceptions import document_failure_detail
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.document_header_writer import update_header
+from domain.accounting import draft_integrity
+from services import draft_integrity_service
 from services.credit_terms import resolve_credit_terms, apply_credit_days_due_date, apply_due_date_credit_days
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
@@ -1496,6 +1498,28 @@ _SOFT_BILL_UPDATE_FIELDS = {"notes", "due_date", "credit_days", "our_reference",
                             "form_15ca_filed_on", "form_15cb_udin"}
 
 
+def _refuse_a_reverse_charge_change_that_leaves_the_total_behind(data: dict, row: dict) -> None:
+    """What a bill owes its supplier depends on the reverse-charge flag (CGST s.9(3)/(4): the supplier charged no tax, so the total is
+    the taxable value alone), and the total is worked out from the lines. A draft edited to change the flag WITHOUT its lines would
+    keep the old total under the new flag, and the issue-time check (`domain/accounting/draft_integrity`) would refuse it with advice
+    to save again; say so here, where the cause is."""
+    if "lines" not in data and data.get("is_reverse_charge") is not None \
+            and bool(data["is_reverse_charge"]) != bool(row.get("is_reverse_charge")):
+        raise HTTPException(
+            status_code=422,
+            detail=("Changing reverse charge changes what the supplier is owed, so send the bill's lines with it and the "
+                    "totals are worked out again."))
+
+
+def _reject_an_edit_the_bill_cannot_take(status: str, data: dict, row: dict) -> None:
+    """The two refusals an edit of an existing bill can meet before it is applied, as one call (the route sits at the lint
+    ratchet's statement baseline): a received bill's locked fields, and a draft's reverse-charge change without its lines."""
+    if status != "draft":
+        _reject_locked_bill_fields(data)
+    else:
+        _refuse_a_reverse_charge_change_that_leaves_the_total_behind(data, row)
+
+
 def _reject_locked_bill_fields(data: dict) -> None:
     """bill_no/bill_date/lines/is_inter_state are locked once a bill is
     received — a correction to any of those needs a Debit Note instead of a
@@ -1568,7 +1592,7 @@ def update_purchase_bill(
                         computed = _compute_bill_lines_and_totals(
                             lines_data, is_interstate, vendor, bill_date_for_calc,
                             current_user.get("firm_id") or "", dc, db=None, exclude_bill_id=bill_id,
-                            is_reverse_charge=bool(b.get("is_reverse_charge")),
+                            is_reverse_charge=bool(data.get("is_reverse_charge", b.get("is_reverse_charge"))),
                             owner=None,   # mock mode has no catalogue to read
                         )
                         MOCK_PURCHASE_BILL_LINES[:] = [ln for ln in MOCK_PURCHASE_BILL_LINES if ln.get("bill_id") != bill_id]
@@ -1618,8 +1642,7 @@ def update_purchase_bill(
         status = bill_row["status"]
         if status == "cancelled":
             raise HTTPException(status_code=422, detail="Cancelled bills cannot be updated")
-        if status != "draft":
-            _reject_locked_bill_fields(data)
+        _reject_an_edit_the_bill_cannot_take(status, data, bill_row)
         # FY-lock: block editing a bill dated in a locked year, and block moving it
         # INTO a locked year. (Create already validates; edits were the gap.)
         firm_id = current_user.get("firm_id") or ""
@@ -1673,7 +1696,9 @@ def update_purchase_bill(
             computed = _compute_bill_lines_and_totals(
                 lines_data, is_interstate, vendor, data.get("bill_date") or existing_date,
                 firm_id, dc, db=db, exclude_bill_id=bill_id,
-                is_reverse_charge=bool(bill_row.get("is_reverse_charge")),
+                # The flag the bill will HAVE after this edit, not the one it had: a draft edited to reverse charge and saved with
+                # its lines was totalled as if the supplier still charged the tax (POST-A-335, found by the issue-time check).
+                is_reverse_charge=bool(data.get("is_reverse_charge", bill_row.get("is_reverse_charge"))),
                 owner=ItemOwner(db, firm_id or "", bill_row.get("client_id") or ""),
             )
             db.table("purchase_bill_lines").delete().eq("bill_id", bill_id).execute()
@@ -1825,8 +1850,7 @@ def receive_purchase_bill(
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
         bill = resp.data[0]
-        if bill.get("status") != "draft":
-            raise HTTPException(status_code=422, detail="Only draft bills can be received")
+        draft_integrity_service.assert_a_draft(bill, not_a_draft="Only draft bills can be received")
         # FY-lock: receiving posts a dated journal — block if the year was locked
         # after the draft was created (deferred-posting gap).
         if bill.get("bill_date"):
@@ -1840,6 +1864,9 @@ def receive_purchase_bill(
                 db, current_user.get("firm_id") or "", bill.get("client_id"),
                 bill["bill_date"])
 
+        # POST-A-335: the stored figures are what the journal posts, and a draft is a row a member's own token can still change,
+        # so the draft is asked whether it adds up to its own lines (and is not flagged as carried over) before anything is posted.
+        draft_integrity_service.assert_draft_adds_up(db, draft_integrity.PURCHASE_BILL, bill)
         now_iso = datetime.now(timezone.utc).isoformat()
         upd = update_header(
             db, "purchase_bills", bill_id, {"status": "received", "received_at": now_iso},

@@ -171,7 +171,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A BACKEND EVENT NAMES THE BUILD IT CAME FROM, AN UNLABELLED AI ROW NAMES NO RETIRED MODEL, AND A ROUTE NOTHING CALLED IS GONE
 - A BROAD HANDLER ON A MONEY OR LEDGER PATH REPORTS WHAT IT SWALLOWS, AND A ROLLBACK THAT DID NOT RUN IS A POSTING FAILURE
 
-### `docs/design-record/documents-sales-purchase.md` (14 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
+### `docs/design-record/documents-sales-purchase.md` (15 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 
 - THE DEMO SEEDER HAS BEEN RUN OVER A REAL DATABASE, AND EVERY DEFECT IT EXPOSED IS A RULE NOW
 - A TEMPLATE CHANGES THE LAYOUT AND NEVER THE PARTICULARS, AND THE PRACTICE'S TEMPLATE REACHES THE PRACTICE'S OWN DOCUMENT ONLY
@@ -187,6 +187,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A LINE ON A DOCUMENT NAMES AN ITEM OF THE DOCUMENT'S OWN CLIENT, AND THE API ASKS ONCE BEFORE IT WRITES
 - A CUSTOMER STATEMENT EMAIL LEAVES A ROW A CA CAN READ, AND "SENT" IS WHAT THE MAIL SERVICE SAID
 - THE "IS THIS CODE OR SERVICE STILL USED?" CHECKS READ EVERY LINE TABLE THAT CARRIES THE CODE, OR NAME THE ONES THEY DO NOT, AND AN ARCHIVED TEMPLATE DOES NOT PIN A SERVICE
+- A DRAFT IS ASKED WHETHER IT ADDS UP TO ITS OWN LINES BEFORE IT IS ISSUED, BECAUSE THE ISSUE POSTS FROM THE STORED HEADER AND A MEMBER'S OWN TOKEN CAN STILL CHANGE A DRAFT'S HEADER.
 
 ### `docs/design-record/engineering-and-ci.md` (11 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 

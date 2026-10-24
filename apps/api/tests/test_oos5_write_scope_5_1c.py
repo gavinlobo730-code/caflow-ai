@@ -182,11 +182,17 @@ def _seed_bill(monkeypatch, firm, status="draft"):
     # (FY-lock check + kernel reversal) are covered in test_purchase_bill_cancellation.py.
     monkeypatch.setattr(pjs.phase2_journal_service, "reverse_entry", lambda *a, **k: "REV")
     monkeypatch.setattr(pvs.period_validation_service, "validate_posting_date", lambda *a, **k: None)
+    # A bill as the API leaves a draft (POST-A-335 asks a draft whether it adds up to its lines before it is received): the figures
+    # are the lines', the GST column is the three heads and the net payable is the total less the tax withheld.
     row = {"id": "BILL", "firm_id": firm, "client_id": "A",
-           "status": status, "total_paise": 100000, "paid_paise": 0}
+           "status": status, "total_paise": 100000, "paid_paise": 0,
+           "taxable_amount_paise": 100000, "cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0,
+           "total_gst_paise": 0, "net_payable_paise": 100000}
     if status != "draft":
         row["journal_entry_id"] = "J1"      # a received bill carries its posted journal
     db.seed("purchase_bills", row)
+    db.seed("purchase_bill_lines", {"bill_id": "BILL", "taxable_amount_paise": 100000, "cgst_paise": 0,
+                                    "sgst_paise": 0, "igst_paise": 0, "cess_paise": 0, "itc_eligible": True})
     return pb, db
 
 
@@ -272,7 +278,10 @@ def _seed_cn(monkeypatch, firm, status="draft"):
     import services.phase2_journal_service as pjs
     monkeypatch.setattr(pjs.phase2_journal_service, "journal_for_credit_note", lambda **k: "JID")
     db.seed("credit_notes", {"id": "CN", "firm_id": firm, "client_id": "A",
-                             "status": status, "total_paise": 50000})
+                             "status": status, "total_paise": 50000, "taxable_amount_paise": 50000,
+                             "cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0, "total_gst_paise": 0})
+    db.seed("credit_note_lines", {"credit_note_id": "CN", "taxable_amount_paise": 50000, "cgst_paise": 0,
+                                  "sgst_paise": 0, "igst_paise": 0})
     return cn, db
 
 

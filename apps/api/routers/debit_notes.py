@@ -26,6 +26,8 @@ from core.permissions import rbac
 from core.uploads import accept_upload, safe_path_segment
 from services.audit_service import log_event
 from services.document_header_writer import update_header
+from domain.accounting import draft_integrity
+from services import draft_integrity_service
 from services.line_item_ownership import ItemOwner, check as check_items_are_the_clients
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
@@ -473,8 +475,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Debit note {dn_id} not found")
         dn = resp.data[0]
-        if dn.get("status") != "draft":
-            raise HTTPException(status_code=422, detail="Only draft debit notes can be issued")
+        draft_integrity_service.assert_a_draft(dn, not_a_draft="Only draft debit notes can be issued")
         if dn.get("debit_note_date"):
             period_validation_service.validate_posting_date(firm_id or "", dn["debit_note_date"])
             # Re-checked at ISSUE, not only at create: a draft raised in June
@@ -483,6 +484,9 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             period_lock_service.assert_open(
                 db, firm_id or "", dn.get("client_id"), dn["debit_note_date"])
 
+        # POST-A-335: the stored figures are what the journal posts, and a draft is a row a member's own token can still change,
+        # so the draft is asked whether it adds up to its own lines (and is not flagged as carried over) before anything is posted.
+        draft_integrity_service.assert_draft_adds_up(db, draft_integrity.DEBIT_NOTE, dn)
         client_id = dn.get("client_id", "")
         dn_total = int(dn.get("total_paise") or 0)
         bill_id = dn.get("purchase_bill_id")

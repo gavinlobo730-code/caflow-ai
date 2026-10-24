@@ -40,7 +40,7 @@ import routers.sales_debit_notes as sdn
 import routers.purchase_credit_notes as pcn
 import services.gst_return_service as grs
 from models.invoices import PurchaseBillIn, PurchaseBillLineIn
-from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
+from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, with_lines
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "id": "u-int", "auth_user_id": "auth",
@@ -283,6 +283,7 @@ def _issue(db, no, *, customer, taxable, igst=0, cgst=0, sgst=0,
         "igst_paise": igst, "total_paise": taxable + cgst + sgst + igst,
         "paid_paise": 0, "credited_paise": 0, "is_interstate": interstate,
         "supply_state_code": pos})
+    with_lines(db, "sales_invoice", inv)
     assert si.issue_invoice(inv["id"], CALLER)["success"] is True
     return inv["id"]
 

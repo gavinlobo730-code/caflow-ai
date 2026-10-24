@@ -21,7 +21,7 @@ import routers.sales_invoices as si
 import routers.credit_notes as cn
 import services.receipt_service as rsvc
 from services.customer_statement_service import customer_statement_service
-from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, trial_balance
+from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, trial_balance, with_lines
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "id": "u-int", "auth_user_id": "auth", "email": "ca@firma.test", "role": "Partner"}
@@ -52,6 +52,7 @@ def _issue_invoice(db, inv_no="INV-1", taxable=100000, cgst=9000, sgst=9000, igs
         "supply_state_code": "27",
         "paid_paise": 0, "credited_paise": 0, "is_interstate": bool(igst),
     })
+    with_lines(db, "sales_invoice", inv)
     assert si.issue_invoice(inv["id"], CALLER)["success"] is True
     return inv["id"], total
 
@@ -130,6 +131,7 @@ def test_cannot_cancel_invoice_with_credit_note_applied(monkeypatch):
         "taxable_amount_paise": 40000, "cgst_paise": 3600, "sgst_paise": 3600, "igst_paise": 0,
         "total_paise": 47200, "is_interstate": False,
     })
+    with_lines(db, "credit_note", cnrow)
     assert cn.issue_credit_note(cnrow["id"], CALLER)["success"] is True
     assert _invoice(db, inv_id)["credited_paise"] == 47200
     with pytest.raises(HTTPException) as ex:
