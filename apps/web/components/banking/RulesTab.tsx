@@ -17,7 +17,7 @@
  * evaluation order, so what a CA reads top to bottom is what the queue does.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Pencil, Plus, ShieldCheck, X } from "lucide-react";
+import { Pencil, Plus, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -56,6 +56,11 @@ interface BankRule {
   is_trusted: boolean;
   trusted_by: string | null;
   trusted_at: string | null;
+  /** POST-A-339 — served on an active trusted rule whose person can no longer let it pass (left the client, suspended, or lost the
+   *  Banking approval). The rule is NOT passing anything, whatever `is_trusted` says. The server names no person and no status: the
+   *  reason is the same neutral sentence for every cause. */
+  trusted_waiting?: boolean;
+  trusted_waiting_reason?: string;
 }
 
 const BLANK_RULE = {
@@ -260,6 +265,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
   }
 
   const trustedCount = rules.filter((r) => r.is_trusted && r.is_active).length;
+  const waitingCount = rules.filter((r) => r.is_trusted && r.is_active && r.trusted_waiting).length;
 
   return (
     <div className="space-y-4 max-w-3xl mx-auto">
@@ -270,14 +276,17 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
           them — the proposal shows on the line in Entries, ready to pass. A rule marked{" "}
           <strong>trusted</strong> goes one step further: its lines are passed with no click, after each
           import and in the daily sweep, as journals created by whoever trusted it. Only a Manager or
-          Partner can trust a rule, and any of its entries can be undone. When two rules match, the{" "}
+          Partner can trust a rule, and any of its entries can be undone. A trusted rule passes only while
+          the person who trusted it can still let it: if they leave the client, are suspended or lose the
+          Banking approval the rule shows as <strong>waiting</strong>, its lines stay ready for someone to
+          pass, and a Manager or Partner can trust it again. When two rules match, the{" "}
           <strong>older one wins</strong>, so write the specific rules before the broad ones.
         </p>
       </div>
 
       <div className="flex items-center justify-between">
         <p className="text-xs text-ps-label">
-          {loading ? "Loading…" : `${rules.length} rule${rules.length === 1 ? "" : "s"}${trustedCount ? ` · ${trustedCount} trusted` : ""}`}
+          {loading ? "Loading…" : `${rules.length} rule${rules.length === 1 ? "" : "s"}${trustedCount ? ` · ${trustedCount} trusted${waitingCount ? ` (${waitingCount} waiting)` : ""}` : ""}`}
         </p>
         <button onClick={startNew} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark flex items-center gap-1.5">
           <Plus size={12} /> New rule
@@ -488,7 +497,13 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
                       priority {r.priority}
                     </span>
                   )}
-                  {r.is_trusted && (
+                  {r.is_trusted && r.trusted_waiting && (
+                    <span className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded-full bg-state-attention-surface text-state-attention border border-state-attention-border"
+                      title={r.trusted_waiting_reason ?? "Waiting for a Manager or Partner to trust it again"}>
+                      <ShieldAlert size={10} /> Trusted — waiting
+                    </span>
+                  )}
+                  {r.is_trusted && !r.trusted_waiting && (
                     <span className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded-full bg-state-ready-surface text-state-ready border border-state-ready-border"
                       title={r.trusted_at ? `Trusted on ${r.trusted_at.slice(0, 10)}` : "Trusted"}>
                       <ShieldCheck size={10} /> Trusted — passes without a click

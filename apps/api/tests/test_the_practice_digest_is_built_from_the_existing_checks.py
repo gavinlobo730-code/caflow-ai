@@ -45,11 +45,14 @@ PARTNER = {"id": "u-partner", "auth_user_id": "a-1", "firm_id": FIRM,
 MANAGER = {"id": "u-mgr", "auth_user_id": "a-2", "firm_id": FIRM,
            "email": "m@f.test", "role": "Manager"}
 
-TODAY = ist_today()
+def _today():
+    """The Indian day, taken when it is asked and not when this module is imported (POST-A-301): the engine under test reads the
+    Indian day when it runs, so a day taken at collection disagrees with it in the minutes either side of 00:00 IST."""
+    return ist_today()
 
 
 def _d(offset: int) -> str:
-    return (TODAY + timedelta(days=offset)).isoformat()
+    return (_today() + timedelta(days=offset)).isoformat()
 
 
 def _rec(client, offset, status="pending", ctype="GSTR-3B"):
@@ -141,7 +144,7 @@ def _items(out):
 
 
 async def _digest(user, allowed=None, **kw):
-    return await svc.todays_digest(user, allowed, today=TODAY, **kw)
+    return await svc.todays_digest(user, allowed, today=_today(), **kw)
 
 
 def run(coro):
@@ -498,7 +501,8 @@ def test_the_plain_sentence_is_a_complete_account_not_a_stub(world, model):
 def test_every_figure_in_the_plain_sentence_is_one_the_engines_produced(world, model):
     items = run(_digest(PARTNER))["items"]
     from domain.ai import narration
-    allowed = dg.allowed_figures(items, today_day=TODAY.day, today_year=TODAY.year)
+    today = _today()
+    allowed = dg.allowed_figures(items, today_day=today.day, today_year=today.year)
     assert narration.is_grounded(dg.plain_summary(items), allowed)
     for it in items:
         assert narration.is_grounded(it["headline"], allowed), it["headline"]

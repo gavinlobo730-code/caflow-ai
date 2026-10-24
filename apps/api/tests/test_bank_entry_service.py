@@ -164,6 +164,10 @@ def _db(strict: bool = False):
     db.store["bank_accounts"] = [{"id": "ba-1", "firm_id": FIRM, "client_id": CLIENT,
                                   "bank_name": "HDFC", "account_no": "1234567890"}]
     db.store["bank_matching_rules"] = []
+    # The member who trusts the rules in these tests. A trusted rule posts only while that person is a live member holding the
+    # Banking approval and access and reaching the client (POST-A-339), so the person is on the books like a real one.
+    db.store["users"] = [{"id": "mgr-1", "firm_id": FIRM, "role": "Manager", "is_active": True}]
+    db.store["user_permissions"] = []
     return db
 
 

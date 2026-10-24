@@ -70,6 +70,7 @@ from services.bank_transfer_service import bank_transfer_service
 from services.bank_batch_service import bank_batch_service
 from services.bank_candidate_search_service import bank_candidate_search_service
 from services.bank_entry_service import bank_entry_service, REDRAFT_CHUNK
+from services.trusted_rule_authority import WAITING_SENTENCE
 from domain.banking import file_hash, StatementParseError, PdfPasswordError
 from domain.banking.normalizer import parse_statement_detailed
 from domain.banking.tie_out import statement_check, totals_agreement
@@ -2229,11 +2230,14 @@ def pass_ready_entries(
     if not db:
         return api_response(True, {"passed": 0, "failed": 0, "skipped": 0, "remaining": 0,
                                    "results": []})
-    return api_response(True, bank_entry_service.pass_ready(
+    passed = bank_entry_service.pass_ready(
         db, current_user["firm_id"], data.client_id, limit=data.limit,
         only_trusted=data.only_trusted, bank_account_id=data.bank_account_id,
         txn_ids=data.transaction_ids,
-        actor_id=current_user.get("id"), actor_auth_id=current_user.get("auth_user_id")))
+        actor_id=current_user.get("id"), actor_auth_id=current_user.get("auth_user_id"))
+    if passed.get("rules_not_posting"):       # the reason names a colleague's status; the run summary keeps it, a caller gets this
+        passed["rules_not_posting"] = [{"rule_id": x["rule_id"], "reason": WAITING_SENTENCE} for x in passed["rules_not_posting"]]
+    return api_response(True, passed)
 
 
 @router.post("/transactions/{txn_id}/pass")
@@ -2688,7 +2692,13 @@ def list_rules(
     res = (db.table("bank_matching_rules").select("*")
            .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
            .order("priority").order("created_at").execute())
-    return api_response(True, res.data or [])
+    rules = res.data or []
+    # A trusted rule whose person can no longer let it post is NOT passing, and the screen must not say it is (POST-A-339). The
+    # specific reason names a colleague's status and goes to the run summary; the screen gets the neutral sentence.
+    waiting = bank_entry_service.waiting_rule_ids(db, current_user["firm_id"], client_id) if any(
+        x.get("is_trusted") for x in rules) else set()
+    return api_response(True, [({**x, "trusted_waiting": True, "trusted_waiting_reason": WAITING_SENTENCE}
+                                if x.get("id") in waiting else x) for x in rules])
 
 
 # Fields of MatchingRuleIn that mean "not stated" when None and whose column is
@@ -2758,8 +2768,8 @@ def update_rule(
     # needs no more than editing the rule, and clears the record.
     if "is_trusted" in fields:
         if fields["is_trusted"]:
-            from core.permissions import can
-            if not can(current_user.get("role") or "", "banking", "approve"):
+            from core.permissions import can_user
+            if not can_user(current_user, "banking", "approve"):      # the per-person grid, as the sweep asks it
                 raise HTTPException(
                     status_code=403,
                     detail="Only a Manager or Partner can let a rule pass entries by itself.")
@@ -2894,8 +2904,8 @@ def delete_rule(
         posted = 0
 
     if posted:
-        from core.permissions import can
-        if not can(current_user.get("role") or "", "banking", "approve"):
+        from core.permissions import can_user
+        if not can_user(current_user, "banking", "approve"):
             raise HTTPException(
                 status_code=403,
                 detail=(f"This rule posted {posted} bank line{'s' if posted != 1 else ''} by "

@@ -1032,6 +1032,12 @@ def _spoils_of(table: str) -> list[tuple[str, str]]:
         ("with the arguments in another order", _make(table, args_cols=list(reversed(cols)))),
         ("with another label", _make(table, label="document")),
         ("calling another function", _make(table, function="refuse_a_signed_in_edit_of_a_document_that_is_not_a_draft", args=False)),
+        # Everything else identical (name, events, columns, arguments, label): only the function the trigger calls differs. The case
+        # above is refused for its ARGUMENTS as well, so it does not prove the check compares the function itself (POST-A-340).
+        ("calling another function that takes the same arguments",
+         "CREATE OR REPLACE FUNCTION public.zz_a_trigger_function_that_does_nothing() RETURNS trigger LANGUAGE plpgsql "
+         "AS $zz$ BEGIN RETURN NEW; END $zz$; "
+         + _make(table, function="zz_a_trigger_function_that_does_nothing")),
     ]
 
 
