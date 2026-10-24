@@ -183,7 +183,7 @@ routers/compliance_records.py :: B904 :: update_compliance_record :: 2
 routers/compliance_records.py :: F401 :: <module> :: 1
 routers/cost_centres.py :: B904 :: create_cost_centre :: 1
 routers/cost_centres.py :: B904 :: update_cost_centre :: 1
-routers/credit_notes.py :: C901 :: issue_credit_note :: 23
+routers/credit_notes.py :: C901 :: issue_credit_note :: 22
 routers/credit_notes.py :: C901 :: update_credit_note :: 18
 routers/credit_notes.py :: F841 :: issue_credit_note :: 1
 routers/credit_notes.py :: PLR0915 :: issue_credit_note :: 92
@@ -196,7 +196,7 @@ routers/customers.py :: F401 :: <module> :: 1
 routers/customers.py :: PLR0915 :: bulk_create_customers :: 90
 routers/cwip.py :: B904 :: _a_date :: 1
 routers/cwip.py :: B904 :: get_schedules :: 1
-routers/debit_notes.py :: C901 :: issue_debit_note :: 28
+routers/debit_notes.py :: C901 :: issue_debit_note :: 27
 routers/debit_notes.py :: C901 :: update_debit_note :: 18
 routers/debit_notes.py :: PLR0915 :: issue_debit_note :: 98
 routers/document_intelligence.py :: F401 :: <module> :: 3
@@ -342,9 +342,9 @@ routers/post_dated_cheques.py :: B904 :: _a_date :: 1
 routers/price_lists.py :: F401 :: <module> :: 1
 routers/purchase_bills.py :: C901 :: bulk_create_purchase_bills :: 21
 routers/purchase_bills.py :: C901 :: cancel_purchase_bill :: 19
-routers/purchase_bills.py :: C901 :: update_purchase_bill :: 28
-routers/purchase_bills.py :: PLR0915 :: update_purchase_bill :: 89
-routers/purchase_credit_notes.py :: C901 :: issue_purchase_credit_note :: 26
+routers/purchase_bills.py :: C901 :: update_purchase_bill :: 26
+routers/purchase_bills.py :: PLR0915 :: update_purchase_bill :: 87
+routers/purchase_credit_notes.py :: C901 :: issue_purchase_credit_note :: 25
 routers/purchase_credit_notes.py :: C901 :: update_purchase_credit_note :: 18
 routers/purchase_credit_notes.py :: PLR0915 :: issue_purchase_credit_note :: 90
 routers/purchase_cycle.py :: F401 :: <module> :: 1
@@ -360,7 +360,7 @@ routers/relationships.py :: F401 :: <module> :: 1
 routers/relationships.py :: F841 :: review_cross_client_match :: 1
 routers/report_exports.py :: B904 :: export_report :: 1
 routers/sales_cycle.py :: B904 :: itc_04_statement :: 1
-routers/sales_debit_notes.py :: C901 :: issue_sales_debit_note :: 22
+routers/sales_debit_notes.py :: C901 :: issue_sales_debit_note :: 21
 routers/sales_debit_notes.py :: C901 :: update_sales_debit_note :: 18
 routers/sales_debit_notes.py :: F841 :: issue_sales_debit_note :: 1
 routers/sales_debit_notes.py :: PLR0915 :: issue_sales_debit_note :: 81
@@ -374,10 +374,10 @@ routers/sales_invoices.py :: B905 :: update_invoice :: 2
 routers/sales_invoices.py :: C901 :: _create_invoice_core :: 24
 routers/sales_invoices.py :: C901 :: bulk_create_invoices :: 18
 routers/sales_invoices.py :: C901 :: list_invoices :: 17
-routers/sales_invoices.py :: C901 :: update_invoice :: 31
+routers/sales_invoices.py :: C901 :: update_invoice :: 29
 routers/sales_invoices.py :: F401 :: _do_send_invoice :: 1
 routers/sales_invoices.py :: PLR0915 :: _create_invoice_core :: 145
-routers/sales_invoices.py :: PLR0915 :: update_invoice :: 144
+routers/sales_invoices.py :: PLR0915 :: update_invoice :: 142
 routers/search.py :: C901 :: global_search :: 39
 routers/search.py :: PLR0915 :: global_search :: 112
 routers/service_catalogue.py :: B007 :: bulk_create_services :: 1

@@ -26,7 +26,7 @@ import routers.purchase_credit_notes as pcn
 import routers.sales_debit_notes as sdn
 import routers.vendors as ve
 from models.invoices import InvoiceLineIn, PurchaseBillIn, PurchaseBillLineIn
-from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
+from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, with_lines
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "id": "u", "auth_user_id": "auth", "email": "ca@f.test", "role": "Partner"}
@@ -63,6 +63,7 @@ def _issued_invoice(db, client="CLI", no="INV-1"):
         "supply_state_code": "27",
         "paid_paise": 0, "credited_paise": 0, "debit_note_paise": 0, "is_interstate": False,
     })
+    with_lines(db, "sales_invoice", inv)
     assert si.issue_invoice(inv["id"], CALLER)["success"] is True
     return inv["id"]
 

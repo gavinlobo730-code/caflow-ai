@@ -33,7 +33,7 @@ from models.invoices import (
     PurchaseBillIn, PurchaseBillLineIn, PurchasePaymentIn, InvoiceLineIn,
 )
 from tests.e2e_harness import (
-    FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, trial_balance,
+    FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, trial_balance, with_lines,
 )
 
 FIRM = "FIRM-RC1"
@@ -98,6 +98,7 @@ def _issue_invoice(db, no, taxable, cgst, sgst, date="2025-06-05"):
         "total_paise": taxable + cgst + sgst, "paid_paise": 0, "credited_paise": 0,
         "is_interstate": False, "supply_state_code": "27",
     })
+    with_lines(db, "sales_invoice", inv)
     assert si.issue_invoice(inv["id"], CALLER)["success"] is True
     return inv["id"]
 
@@ -125,6 +126,7 @@ def test_rc1_full_business_cycle_reconciles(monkeypatch):
         "credit_note_no": "CN-1", "credit_note_date": "2025-06-12", "status": "draft",
         "taxable_amount_paise": 1_00000, "cgst_paise": 9000, "sgst_paise": 9000, "igst_paise": 0,
         "total_paise": 1_18000, "is_interstate": False})
+    with_lines(db, "credit_note", cnrow)
     assert cn.issue_credit_note(cnrow["id"], CALLER)["success"] is True
     _assert_tb_balanced(db); _assert_bs_identity(db)
 

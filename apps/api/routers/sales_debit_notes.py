@@ -41,6 +41,8 @@ from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.document_header_writer import update_header
+from domain.accounting import draft_integrity
+from services import draft_integrity_service
 from services.line_item_ownership import ItemOwner, check as check_items_are_the_clients
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
@@ -400,8 +402,7 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Debit note {sdn_id} not found")
         sdn = resp.data[0]
-        if sdn.get("status") != "draft":
-            raise HTTPException(status_code=422, detail="Only draft debit notes can be issued")
+        draft_integrity_service.assert_a_draft(sdn, not_a_draft="Only draft debit notes can be issued")
         if sdn.get("debit_note_date"):
             period_validation_service.validate_posting_date(firm_id or "", sdn["debit_note_date"])
             # Re-checked at ISSUE, not only at create: a draft raised in June
@@ -410,6 +411,9 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
             period_lock_service.assert_open(
                 db, firm_id or "", sdn.get("client_id"), sdn["debit_note_date"])
 
+        # POST-A-335: the stored figures are what the journal posts, and a draft is a row a member's own token can still change,
+        # so the draft is asked whether it adds up to its own lines (and is not flagged as carried over) before anything is posted.
+        draft_integrity_service.assert_draft_adds_up(db, draft_integrity.SALES_DEBIT_NOTE, sdn)
         client_id = sdn.get("client_id", "")
         sdn_total = int(sdn.get("total_paise") or 0)
         inv_id = sdn.get("sales_invoice_id")

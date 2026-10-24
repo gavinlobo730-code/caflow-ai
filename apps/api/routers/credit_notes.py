@@ -18,6 +18,8 @@ from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.document_header_writer import update_header
+from domain.accounting import draft_integrity
+from services import draft_integrity_service
 from services.line_item_ownership import ItemOwner, check as check_items_are_the_clients
 from domain.accounting import opening_documents as _opening
 from services.period_validation_service import period_validation_service
@@ -652,8 +654,7 @@ def issue_credit_note(
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
         cn = resp.data[0]
-        if cn.get("status") != "draft":
-            raise HTTPException(status_code=422, detail="Only draft credit notes can be issued")
+        draft_integrity_service.assert_a_draft(cn, not_a_draft="Only draft credit notes can be issued")
         # FY-lock: issuing posts a dated journal — block if the year was locked after
         # the draft was created (deferred-posting gap).
         if cn.get("credit_note_date"):
@@ -664,6 +665,9 @@ def issue_credit_note(
             period_lock_service.assert_open(
                 get_supabase(), firm_id or "", cn.get("client_id"), cn["credit_note_date"])
 
+        # POST-A-335: the stored figures are what the journal posts, and a draft is a row a member's own token can still change,
+        # so the draft is asked whether it adds up to its own lines (and is not flagged as carried over) before anything is posted.
+        draft_integrity_service.assert_draft_adds_up(db, draft_integrity.CREDIT_NOTE, cn)
         client_id = cn.get("client_id", "")
         cn_total  = int(cn.get("total_paise") or 0)
         inv_id    = cn.get("sales_invoice_id")

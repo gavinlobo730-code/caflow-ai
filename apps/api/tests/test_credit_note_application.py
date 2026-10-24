@@ -15,7 +15,7 @@ import routers.sales_invoices as si
 import routers.credit_notes as cn
 from models.invoices import InvoiceLineIn
 from services.customer_statement_service import customer_statement_service
-from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, trial_balance
+from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, trial_balance, with_lines
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "id": "u-int", "auth_user_id": "auth", "email": "ca@firma.test", "role": "Partner"}
@@ -49,6 +49,7 @@ def _issue_invoice(db, inv_no="INV-1", taxable=100000, cgst=9000, sgst=9000, igs
         "paid_paise": 0, "credited_paise": 0, "is_interstate": bool(igst),
     })
     if status == "draft":
+        with_lines(db, "sales_invoice", inv)
         assert si.issue_invoice(inv["id"], CALLER)["success"] is True
     return inv["id"], total
 
@@ -61,6 +62,7 @@ def _seed_cn(db, inv_id, taxable=100000, cgst=9000, sgst=9000, igst=0, cn_no="CN
         "taxable_amount_paise": taxable, "cgst_paise": cgst, "sgst_paise": sgst, "igst_paise": igst,
         "total_paise": total, "is_interstate": bool(igst),
     })
+    with_lines(db, "credit_note", row)
     return row["id"], total
 
 

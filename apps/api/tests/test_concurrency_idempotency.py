@@ -10,7 +10,7 @@ from fastapi import HTTPException
 import routers.sales_invoices as si
 import services.receipt_service as rsvc
 import services.phase2_journal_service as pjs
-from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance
+from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, coa_id, account_balance, with_lines
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "id": "u", "auth_user_id": "auth", "email": "ca@f.test", "role": "Partner"}
@@ -105,6 +105,7 @@ def _issue_invoice(db, total=100000):
         "supply_state_code": "27",
         "paid_paise": 0, "credited_paise": 0, "is_interstate": False,
     })
+    with_lines(db, "sales_invoice", inv)
     assert si.issue_invoice(inv["id"], CALLER)["success"] is True
     return inv["id"]
 

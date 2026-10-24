@@ -533,6 +533,37 @@ class FakeDB:
         return self._tables.setdefault(table, [])
 
 
+# The line table and the foreign key to the header, per kind of document (the issue routes read them: POST-A-335).
+_LINE_TABLE = {
+    "sales_invoice": ("client_sales_invoice_lines", "sales_invoice_id"),
+    "purchase_bill": ("purchase_bill_lines", "bill_id"),
+    "credit_note": ("credit_note_lines", "credit_note_id"),
+    "debit_note": ("debit_note_lines", "debit_note_id"),
+    "purchase_credit_note": ("purchase_credit_note_lines", "credit_note_id"),
+    "sales_debit_note": ("sales_debit_note_lines", "debit_note_id"),
+}
+
+
+def with_lines(db: "FakeDB", kind: str, header: dict) -> dict:
+    """Make a document seeded straight into its table the way the API leaves a draft: GST column set from the three heads, a
+    bill's net payable set from its total, and ONE line carrying the header's figures. An issue route asks a draft whether it adds
+    up to its lines before it posts it (POST-A-335), and a bare header is exactly what that question refuses. `header` is the dict
+    `db.seed` returned (the stored row), and it is returned again changed in place."""
+    heads = [int(header.get(k) or 0) for k in ("cgst_paise", "sgst_paise", "igst_paise")]
+    header.setdefault("total_gst_paise", sum(heads))
+    if kind == "purchase_bill":
+        header.setdefault("net_payable_paise", int(header.get("total_paise") or 0) - int(header.get("tds_paise") or 0))
+    table, fk = _LINE_TABLE[kind]
+    db.seed(table, {
+        fk: header["id"],
+        "taxable_amount_paise": int(header.get("taxable_amount_paise") or 0),
+        "cgst_paise": heads[0], "sgst_paise": heads[1], "igst_paise": heads[2],
+        "cess_paise": int(header.get("cess_paise") or 0), "discount_paise": int(header.get("discount_paise") or 0),
+        "itc_eligible": True,
+    })
+    return header
+
+
 # --------------------------------------------------------------------------- #
 #  RPC double — mirrors the SQL functions the kernel calls
 # --------------------------------------------------------------------------- #

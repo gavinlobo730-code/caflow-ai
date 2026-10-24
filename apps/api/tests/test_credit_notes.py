@@ -9,7 +9,7 @@ from fastapi import HTTPException
 import routers.sales_invoices as si
 import routers.credit_notes as cn
 from models.invoices import InvoiceLineIn
-from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
+from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, with_lines
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "id": "u", "auth_user_id": "auth", "email": "ca@f.test", "role": "Partner"}
@@ -42,6 +42,7 @@ def _issue_invoice(db, inv_no="INV-1", taxable=100000, cgst=9000, sgst=9000, igs
         "supply_state_code": "27",
         "paid_paise": 0, "credited_paise": 0, "debit_note_paise": 0, "is_interstate": bool(igst),
     })
+    with_lines(db, "sales_invoice", inv)
     assert si.issue_invoice(inv["id"], CALLER)["success"] is True
     return inv["id"], total
 
