@@ -18,6 +18,7 @@ from fastapi import HTTPException
 # Light imports only (policy + rate-type vocabulary); the ExchangeRateService and
 # providers are imported lazily in exchange_rate_service() to keep the hot path light.
 from core.ist_clock import month_end_date, ist_today
+from services.ledger_door import ledger_rpc
 from core.observability import capture_posting_failure
 from domain.currency.policy import BASE_CURRENCY, CurrencyPolicy
 from domain.accounting import journal_source as JS
@@ -2399,9 +2400,11 @@ class Phase2JournalService:
             # instead of an opaque 500, so a migrate-before-deploy mistake is
             # immediately obvious rather than presenting as "every posting is down."
             try:
-                result = db.rpc(
-                    "post_journal_atomic",
+                # POST-A-317: the privileged client, after the route's own checks (services/ledger_door.py says why and what stays asked).
+                result = ledger_rpc(
+                    db, "post_journal_atomic",
                     {"p_entry": entry_payload, "p_lines": line_payloads},
+                    firm_id=firm_id, client_id=client_id,
                 ).execute()
             except Exception as rpc_err:
                 # R2.12 adversarial-review fix: a bare substring check on the

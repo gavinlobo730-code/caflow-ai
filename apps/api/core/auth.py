@@ -15,6 +15,7 @@ _logger = logging.getLogger("caflow.auth")
 from jwt import PyJWKClient
 from core.env import env_or_default
 from core.supabase_client import get_service_supabase
+from core.request_actor import bind as bind_actor
 from core.request_context import bind_firm
 
 _jwks_client: Optional[PyJWKClient] = None
@@ -410,6 +411,8 @@ def get_current_user(
     # ops-11: say which firm this request is for, so the log line, the Sentry event and a 5xx can be found
     # by firm. The firm's UUID only; core/request_context.py says what may never be bound.
     bind_firm(user_data["firm_id"])
+    # POST-A-317: the verified person, for the ledger door to hand the database (core/request_actor.py says why it is not read off the token again).
+    bind_actor(auth_user_id)
 
     return {
         "auth_user_id": auth_user_id,
