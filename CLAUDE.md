@@ -155,11 +155,12 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A FOREIGN AMOUNT IS SHOWN WITH ITS CURRENCY'S OWN DECIMALS, TAKEN FROM THE MASTER AND NEVER GUESSED
 - A STORED FIGURE THE PRODUCT COMPUTED SAYS SO ON THE ROW, AND THE DOCUMENT OF RECORD OUTRANKS IT
 
-### `docs/design-record/banking.md` (3 entries): Bank data: Account Aggregator position, bank entries, credit cards, matching rules
+### `docs/design-record/banking.md` (4 entries): Bank data: Account Aggregator position, bank entries, credit cards, matching rules
 
 - Register as an FIU
 - WHAT A BANK TAUGHT THE IMPORTER IS LISTED BESIDE THE IMPORT, A FAILED READ IS NOT "NOTHING TAUGHT", AND A LAYOUT CAN BE FORGOTTEN
 - A LAYOUT FOUND ELSEWHERE IN THE PRACTICE IS OFFERED FOR READING AND NEVER OVERWRITTEN BY A SAVE
+- A TRUSTED RULE POSTS ONLY WHILE THE PERSON WHO TRUSTED IT COULD STILL POST, AND THE SCREEN'S NUMBER AND THE SWEEP BOTH ASK THE SAME QUESTION.
 
 ### `docs/design-record/deployment-and-operations.md` (7 entries): Deployment, monitoring, request ids, service levels, runbooks and security headers
 

@@ -3254,6 +3254,10 @@ export interface BankRuleInput {
    *  person who trusted it. Promotion needs a Manager or Partner; the server
    *  refuses anyone else and refuses a rule that names no ledger. */
   is_trusted?: boolean;
+  /** POST-A-339 — present on an active trusted rule whose person can no longer let it pass, which is then NOT passing. The reason is
+   *  the same neutral sentence whatever the cause; it names no person. */
+  trusted_waiting?: boolean;
+  trusted_waiting_reason?: string;
 }
 
 /** One state of a bank line — docs/architecture/09-bank-entries.md. Maintained

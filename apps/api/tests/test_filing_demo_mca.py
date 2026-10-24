@@ -19,10 +19,11 @@ What is particular to MCA and pinned here:
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 
+from core.ist_clock import ist_today
 import services.year_end_financial_service as ye
 from services.filing_demo import common, mca
 from tests.e2e_harness import FakeDB
@@ -31,7 +32,10 @@ FIRM = "FIRM-A"
 CLIENT = "CLI"
 CIN = "U74999MH2020PTC123456"
 
-_FUTURE_AGM = (date.today() + timedelta(days=1)).isoformat()
+def _future_agm() -> str:
+    """Tomorrow in India, taken when it is asked (POST-A-301): the server's `date.today()` is the UTC day, a day behind India from
+    18:30 UTC, and a day taken at import goes stale across midnight."""
+    return (ist_today() + timedelta(days=1)).isoformat()
 
 
 def _db(directors: bool = True, company: bool = True, **filing_overrides):
@@ -43,7 +47,7 @@ def _db(directors: bool = True, company: bool = True, **filing_overrides):
         # Due dates hang off the AGM; a future AGM keeps the baseline flows
         # inside their windows so the warning stage only appears where a
         # test puts it there.
-        "agm_date": _FUTURE_AGM,
+        "agm_date": _future_agm(),
     }
     filing.update(filing_overrides)
     db.seed("mca_filings", filing)
@@ -359,12 +363,13 @@ def test_no_warning_inside_the_window_or_without_an_agm_date():
 # ── The summary's figures are the records' own, in integer paise ────────────
 
 def test_summary_shows_cin_agm_date_and_capital():
-    out = mca.build(_db(), FIRM, CLIENT, {"filing_id": "F1"})
+    db = _db()
+    out = mca.build(db, FIRM, CLIENT, {"filing_id": "F1"})
     summary = out["stages"][0]
     text_by_label = {f["label"]: f.get("text") for f in summary["figures"]}
     paise_by_label = {f["label"]: f.get("paise") for f in summary["figures"]}
     assert text_by_label["CIN"] == CIN
-    assert text_by_label["AGM date"] == _FUTURE_AGM
+    assert text_by_label["AGM date"] == db.rows("mca_filings")[0]["agm_date"]       # the date the filing was seeded with
     assert paise_by_label["Authorised capital"] == 1_00_00_000_00
     assert paise_by_label["Paid-up capital"] == 50_00_000_00
 

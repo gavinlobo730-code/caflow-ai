@@ -44,6 +44,7 @@ from datetime import date, timedelta
 import pytest
 
 import routers.health as health
+from core.ist_clock import ist_today
 
 
 # The double and the real column lists live in tests/_schema_checked_db.py so
@@ -66,9 +67,11 @@ def _atp(fy: str, number: int, due: str, paid_paise: int | None) -> dict:
 
 # Derived from today rather than hardcoded: a fixed "past" date stops being
 # past, and the first draft of this test used 2026-09-15, which had not yet
-# arrived. Relative dates cannot rot that way.
-PAST_A = (date.today() - timedelta(days=120)).isoformat()
-PAST_B = (date.today() - timedelta(days=30)).isoformat()
+# arrived. Relative dates cannot rot that way. Taken from the INDIAN day and when
+# they are asked for, not at import (POST-A-301): the server's date.today() is the
+# UTC day, and a day taken at collection is stale by the time a long run gets here.
+def _past(days: int) -> str:
+    return (ist_today() - timedelta(days=days)).isoformat()
 
 
 # ── The queries must use real columns at all ─────────────────────────────────
@@ -77,7 +80,7 @@ def test_advance_tax_override_does_not_ask_for_phantom_columns():
     """Against the previous code this raises PhantomColumn on `paid` /
     `instalment_number` — which in production was swallowed by `except`."""
     db = SchemaCheckedDB({"advance_tax_payments": [
-        _atp("2026-27", 1, PAST_A, 0), _atp("2026-27", 2, PAST_B, 0)]})
+        _atp("2026-27", 1, _past(120), 0), _atp("2026-27", 2, _past(30), 0)]})
     assert health._detect_hard_override_db(db, CLIENT, FIRM) == "advance_tax_2_consecutive"
 
 
@@ -105,8 +108,8 @@ def test_only_unpaid_and_overdue_instalments_count_as_missed():
     """A paid instalment is not missed; a future one is not yet missable."""
     future = (date.today() + timedelta(days=90)).isoformat()
     db = SchemaCheckedDB({"advance_tax_payments": [
-        _atp("2026-27", 1, PAST_A, 5000000),   # paid
-        _atp("2026-27", 2, PAST_B, 0),         # missed
+        _atp("2026-27", 1, _past(120), 5000000),   # paid
+        _atp("2026-27", 2, _past(30), 0),         # missed
         _atp("2026-27", 3, future, 0),         # not due yet
     ]})
     assert health._detect_hard_override_db(db, CLIENT, FIRM) is None
@@ -118,23 +121,23 @@ def test_misses_in_two_different_years_are_not_consecutive():
     missed a single instalment in each of two separate years."""
     db = SchemaCheckedDB({"advance_tax_payments": [
         _atp("2025-26", 1, (date.today() - timedelta(days=400)).isoformat(), 0),
-        _atp("2026-27", 2, PAST_B, 0),
+        _atp("2026-27", 2, _past(30), 0),
     ]})
     assert health._detect_hard_override_db(db, CLIENT, FIRM) is None
 
 
 def test_two_consecutive_misses_within_one_year_do_fire():
     db = SchemaCheckedDB({"advance_tax_payments": [
-        _atp("2026-27", 2, PAST_A, 0),
-        _atp("2026-27", 3, PAST_B, None),   # NULL, not 0
+        _atp("2026-27", 2, _past(120), 0),
+        _atp("2026-27", 3, _past(30), None),   # NULL, not 0
     ]})
     assert health._detect_hard_override_db(db, CLIENT, FIRM) == "advance_tax_2_consecutive"
 
 
 def test_non_consecutive_misses_in_one_year_do_not_fire():
     db = SchemaCheckedDB({"advance_tax_payments": [
-        _atp("2026-27", 1, PAST_A, 0),
-        _atp("2026-27", 3, PAST_B, 0),
+        _atp("2026-27", 1, _past(120), 0),
+        _atp("2026-27", 3, _past(30), 0),
     ]})
     assert health._detect_hard_override_db(db, CLIENT, FIRM) is None
 

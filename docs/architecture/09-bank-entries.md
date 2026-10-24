@@ -195,6 +195,16 @@ So a rule can be **promoted to trusted**:
   `source = bank_trusted_rule`. "Passed by rule *Bank charges*, trusted by
   Priya on 3 Sep" is the sentence the register shows. There is no system
   user, because there is no such person to answer for it.
+- **It posts only while that person still answers for it** (POST-A-339): at
+  every read of the trusted set, `trusted_rule_authority` asks that the firm
+  is not suspended, that the person is a live member with a role, that they
+  still hold `banking.approve` and `banking.write` under the per-person grid
+  and that they reach the client. A rule that fails is *waiting*: the sweep
+  and the screen's trusted-pending number both skip it, its lines stay READY
+  for a person to pass, the Rules screen shows it as "Trusted - waiting"
+  (`trusted_waiting` on the rules list) and the run's summary names the rule
+  and the reason. Trusting it again, by a person who holds the approval, or
+  the person getting their access back, puts it back.
 - Un-trusting a rule stops it at once: the sweep reads `is_trusted` from the
   rule at pass time, not from the draft.
 

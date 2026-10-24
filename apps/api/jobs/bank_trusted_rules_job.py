@@ -15,6 +15,10 @@ WHY IT EXISTS WHEN THE SCREEN ALREADY DOES THIS
     when no one is clicking anything.
 
 WHAT IT NEVER DOES
+    Pass a line for a rule whose person no longer answers for it: the member who trusted a rule must still be a live member of
+    the firm, hold the Banking approval and access under the per-person grid and reach the client (POST-A-339,
+    `services/trusted_rule_authority.py`); a rule that fails is named in the client's summary as `rules_not_posting` and its
+    lines stay in the review queue.
     Pass a line a trusted rule did not draft. Pass a PROPOSED draft. Retry a
     line whose last pass failed (the refusal is on the row; a human or a
     redraft clears it). Post through anything but bank_posting_service.post.
@@ -78,15 +82,23 @@ def run_trusted_rules_for_firm(firm_id: str, db=None) -> dict:
         summary["redrafted"] = drafted
         # 2. Pass what the trusted rules drafted.
         passed = 0
+        not_posting: list = []
         while passed < MAX_PASSES_PER_CLIENT:
             r = bank_entry_service.pass_ready(db, firm_id, client_id, limit=PASS_CHUNK,
                                               only_trusted=True)
+            not_posting = r.get("rules_not_posting") or not_posting
             passed += r["passed"] + r["failed"] + r["skipped"]
             summary["passed"] += r["passed"]
             summary["failed"] += r["failed"]
             summary["remaining"] = r["remaining"]
             if r["remaining"] == 0 or (r["passed"] + r["failed"] + r["skipped"]) == 0:
                 break
+        if not_posting:
+            # POST-A-339: a trusted rule whose person no longer answers for it (unassigned, suspended, demoted, Banking blocked)
+            # is NOT swept; its lines stay in the review queue. The run says which rule and why, so a Partner can re-trust it.
+            summary["rules_not_posting"] = not_posting
+            logger.warning("trusted-rule sweep: %d rule(s) left alone for client %s — the person who trusted them no longer "
+                           "answers for them", len(not_posting), client_id)
         out["clients"][client_id] = summary
         out["passed"] += summary["passed"]
         out["failed"] += summary["failed"]

@@ -40,6 +40,7 @@ from domain.banking import posting_map as pmap
 from services.bank_matching_service import bank_matching_service
 from services.bank_payee_service import bank_payee_service
 from services.bank_transfer_service import bank_transfer_service
+from services import trusted_rule_authority
 from services.bank_posting_service import bank_posting_service
 from services.banking_service import banking_service
 
@@ -723,7 +724,7 @@ class BankEntryService:
             try:
                 from services.audit_service import log_event
                 log_event(firm_id, "bank_transaction", post_id, "status_change",
-                          actor_id=actor_id,
+                          actor_id=by_rule.get("trusted_by_auth_id"),     # the AUTH id: audit_log.actor_id is not users.id
                           new_data={"posted_journal_id": result.get("posted_journal_id"),
                                     "rule_id": by_rule.get("id"), "rule_name": by_rule.get("rule_name"),
                                     "trusted_by": by_rule.get("trusted_by")},
@@ -844,11 +845,37 @@ class BankEntryService:
             return primary, None, False
         raise HTTPException(status_code=422, detail=f"Unknown proposal source '{source}'.")
 
-    def _trusted_rules(self, db, firm_id, client_id) -> dict:
+    def _trusted_rules(self, db, firm_id, client_id, refused: Optional[list] = None) -> dict:
+        """The trusted rules whose person STILL answers for them (POST-A-339).
+
+        A rule posts credited to the person who trusted it, so it posts only while that person is a live member who holds the
+        Banking approval and access under the per-person grid and reaches the client (`trusted_rule_authority`). One verdict
+        per person per call. A rule that fails is left out, which is what both `counts()` and `pass_ready` read, so the screen's
+        "trusted pending" and the sweep agree and the lines stay READY for a person; `refused`, when given, is appended with the
+        rule's id and the reason so the caller can say so."""
         rows = (db.table("bank_matching_rules").select("*")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .eq("is_active", True).eq("is_trusted", True).execute().data or [])
-        return {r["id"]: r for r in rows}
+        verdicts: dict = {}
+        out: dict = {}
+        for rule in rows:
+            who = rule.get("trusted_by")
+            if who not in verdicts:
+                verdicts[who] = trusted_rule_authority.verdict(db, firm_id, client_id, who)
+            found = verdicts[who]
+            if found.gap is None:
+                # the AUTH id of the person, for the audit row (audit_log.actor_id takes it; the rule carries the internal one)
+                out[rule["id"]] = {**rule, "trusted_by_auth_id": found.auth_user_id}
+            elif refused is not None:
+                refused.append({"rule_id": rule["id"], "code": found.gap.code, "reason": found.gap.sentence})
+        return out
+
+    def waiting_rule_ids(self, db, firm_id: str, client_id: str) -> set:
+        """The active trusted rules that are NOT posting because the person who trusted them no longer answers for them, for the
+        Rules screen to say so."""
+        refused: list = []
+        self._trusted_rules(db, firm_id, client_id, refused)
+        return {r["rule_id"] for r in refused}
 
     def pass_ready(self, db, firm_id: str, client_id: str, *, limit: int = PASS_CHUNK,
                    only_trusted: bool = False, actor_id: Optional[str] = None,
@@ -865,9 +892,11 @@ class BankEntryService:
         not roll back for the fiftieth.
         """
         limit = max(1, min(int(limit), MAX_CHUNK))
-        trusted = self._trusted_rules(db, firm_id, client_id) if only_trusted else {}
+        refused: list = []
+        trusted = self._trusted_rules(db, firm_id, client_id, refused) if only_trusted else {}
         if only_trusted and not trusted:
-            return {"passed": 0, "failed": 0, "skipped": 0, "remaining": 0, "results": []}
+            return {"passed": 0, "failed": 0, "skipped": 0, "remaining": 0, "results": [],
+                    **({"rules_not_posting": refused} if refused else {})}
 
         def make(count: bool = False):
             q = (self._base(db, firm_id, client_id, bank_account_id, count=count)
@@ -889,7 +918,8 @@ class BankEntryService:
         remaining = self._count(make)
         summary = {s: sum(1 for r in results if r["status"] == s)
                    for s in ("passed", "failed", "skipped")}
-        return {**summary, "remaining": remaining, "results": results}
+        return {**summary, "remaining": remaining, "results": results,
+                **({"rules_not_posting": refused} if refused else {})}
 
 
 bank_entry_service = BankEntryService()
