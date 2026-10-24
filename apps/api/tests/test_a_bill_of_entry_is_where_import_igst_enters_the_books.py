@@ -403,7 +403,7 @@ def _lines_for(monkeypatch, row: dict):
     from services.period_validation_service import period_validation_service
     from services import period_lock_service
 
-    monkeypatch.setattr(svc, "get", lambda db, firm_id, be_id: row)
+    monkeypatch.setattr(svc, "get", lambda db, firm_id, be_id, **kw: row)
     monkeypatch.setattr(period_validation_service, "validate_posting_date",
                         lambda *a, **k: None)
     monkeypatch.setattr(period_lock_service, "assert_open", lambda *a, **k: None)
@@ -415,7 +415,7 @@ def _lines_for(monkeypatch, row: dict):
 
     monkeypatch.setattr(pjs, "_create_journal", _fake)
     with pytest.raises(_CapturedJournal) as e:
-        svc.post(object(), "F1", "BOE1")
+        svc.post(object(), "F1", "BOE1", client_id="C1")
     return e.value
 
 

@@ -23,7 +23,7 @@ import re
 from datetime import date, timedelta
 from typing import Optional
 
-from core.ist_clock import ist_today
+from core.ist_clock import ist_now, ist_today
 from domain.payroll import remittance_match
 from domain.payroll.statutory import esi_contribution_period
 
@@ -192,7 +192,7 @@ def unlinked(db, *, firm_id: str, client_id: str) -> list[dict]:
             if r.get("status") == PAID and not r.get("journal_entry_id")]
 
 
-def link_payment(db, *, firm_id: str, remittance_id: str,
+def link_payment(db, *, firm_id: str, client_id: str, remittance_id: str,
                  journal_entry_id: str) -> bool:
     """Tie a remittance to the journal entry that paid it.
 
@@ -204,14 +204,21 @@ def link_payment(db, *, firm_id: str, remittance_id: str,
     typed off the portal. `public.epfo_ecr_filings` carries no journal reference
     for the same reason.
     """
+    # The entry must be an entry of THIS client: the link is what the reconciliation reads to say a liability was paid, and an
+    # entry of another client of the firm would clear it. Read first, so a refusal changes nothing.
+    entry = (db.table("journal_entries").select("id")
+             .eq("id", journal_entry_id).eq("firm_id", firm_id).eq("client_id", client_id)
+             .is_("deleted_at", "null").limit(1).execute().data) or []
+    if not entry:
+        raise RemittanceError("That journal entry is not an entry of this client.")
     res = (db.table("statutory_remittances")
            .update({"journal_entry_id": journal_entry_id})
-           .eq("id", remittance_id).eq("firm_id", firm_id)
+           .eq("id", remittance_id).eq("firm_id", firm_id).eq("client_id", client_id)
            .is_("deleted_at", "null").execute().data)
     return bool(res)
 
 
-def retract(db, *, firm_id: str, remittance_id: str,
+def retract(db, *, firm_id: str, client_id: str, remittance_id: str,
             at_iso: Optional[str] = None) -> bool:
     """Soft-delete a remittance recorded in error.
 
@@ -220,8 +227,8 @@ def retract(db, *, firm_id: str, remittance_id: str,
     would leave no trace that a liability had ever been reported settled.
     """
     res = (db.table("statutory_remittances")
-           .update({"deleted_at": at_iso or ist_today().isoformat()})
-           .eq("id", remittance_id).eq("firm_id", firm_id)
+           .update({"deleted_at": at_iso or ist_now().isoformat()})
+           .eq("id", remittance_id).eq("firm_id", firm_id).eq("client_id", client_id)
            .is_("deleted_at", "null").execute().data)
     return bool(res)
 

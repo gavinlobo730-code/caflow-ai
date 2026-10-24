@@ -53,7 +53,13 @@ def _first(rows) -> Optional[dict]:
     return rows[0] if rows else None
 
 
-def get(db, firm_id: str, be_id: str) -> dict:
+def get(db, firm_id: str, be_id: str, *, client_id: str) -> dict:
+    """The Bill of Entry, or the 404 "Bill of Entry not found." unless it is THIS client's.
+
+    `client_id` has no default and is filtered on: the routes assert the caller's access to the client they NAMED and then act
+    through the privileged client, so a read by id and firm alone let a member assigned to one client edit, post (a journal in the
+    other client's books) or delete another client's Bill of Entry by naming their own client beside the other's id. A missing
+    Bill and one in another client answer with the same words."""
     row = _first(db.table("bills_of_entry").select(
         "id, firm_id, client_id, be_number, be_date, port_code, vendor_id, "
         "purchase_bill_id, assessable_value_paise, basic_customs_duty_paise, "
@@ -62,7 +68,8 @@ def get(db, firm_id: str, be_id: str) -> dict:
         "payment_account_id, duty_expense_account_id, status, "
         "journal_entry_id, notes, created_at, created_by, posted_at, "
         "posted_by, deleted_at")
-        .eq("id", be_id).eq("firm_id", firm_id).limit(1).execute().data)
+        .eq("id", be_id).eq("firm_id", firm_id).eq("client_id", client_id)
+        .limit(1).execute().data)
     if not row or row.get("deleted_at"):
         raise HTTPException(status_code=404, detail="Bill of Entry not found.")
     return row
@@ -122,13 +129,13 @@ def for_period(db, firm_id: str, client_id: str, start: str, end: str) -> list[d
             if r.get("status") == "posted"]
 
 
-def post(db, firm_id: str, be_id: str, *, actor_id: Optional[str] = None) -> dict:
+def post(db, firm_id: str, be_id: str, *, client_id: str, actor_id: Optional[str] = None) -> dict:
     """Post the assessment to the ledger.
 
     # CA REVIEW REQUIRED — the CA confirms the figures before this is called.
     # Nothing here transmits anything to any portal.
     """
-    row = get(db, firm_id, be_id)
+    row = get(db, firm_id, be_id, client_id=client_id)
     if row.get("status") == "posted":
         raise HTTPException(
             status_code=409,
@@ -140,7 +147,7 @@ def post(db, firm_id: str, be_id: str, *, actor_id: Optional[str] = None) -> dic
     if not ready.ok:
         raise HTTPException(status_code=422, detail=" ".join(ready.refusals))
 
-    client_id = row.get("client_id") or ""
+    # `client_id` is the keyword the caller named and the read above filtered on, so it IS the Bill's client.
     be_date = str(row.get("be_date"))
 
     # BOTH PERIOD QUESTIONS. `validate_posting_date` is the FIRM's financial-year
@@ -217,6 +224,6 @@ def post(db, firm_id: str, be_id: str, *, actor_id: Optional[str] = None) -> dic
                .update({"status": "posted", "journal_entry_id": journal_id,
                         "posted_at": datetime.now(timezone.utc).isoformat(),
                         "posted_by": actor_id})
-               .eq("id", be_id).eq("firm_id", firm_id).execute().data)
+               .eq("id", be_id).eq("firm_id", firm_id).eq("client_id", client_id).execute().data)
     return _first(updated) or {**row, "status": "posted",
                                "journal_entry_id": journal_id}

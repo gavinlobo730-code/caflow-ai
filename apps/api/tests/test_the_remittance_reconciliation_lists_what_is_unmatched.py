@@ -77,7 +77,7 @@ def test_a_remittance_already_linked_is_not_listed(monkeypatch):
     db = _setup(monkeypatch)
     row = _remit(db)
     _entry(db, "JE1", "2026-10-15", [(ESI_ACC, 10_500_00, 0), (BANK_ACC, 0, 10_500_00)])
-    assert svc.link_payment(db, firm_id=FIRM, remittance_id=row["id"],
+    assert svc.link_payment(db, firm_id=FIRM, client_id="CLI", remittance_id=row["id"],
                             journal_entry_id="JE1")
     assert _unmatched(db) == []
 

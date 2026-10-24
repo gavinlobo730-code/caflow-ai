@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from core.ist_clock import ist_today
+from core.ist_clock import ist_now, ist_today
 from domain.payroll import ecr_sequence as seq
 
 _logger = logging.getLogger("caflow.epfo_ecr")
@@ -237,7 +237,7 @@ def retract_filing(db, *, firm_id: str, filing_id: str,
     changed or who changed it.
     """
     res = (db.table("epfo_ecr_filings")
-           .update({"deleted_at": at_iso or ist_today().isoformat()})
+           .update({"deleted_at": at_iso or ist_now().isoformat()})
            .eq("id", filing_id).eq("firm_id", firm_id)
            .is_("deleted_at", "null").execute().data)
     return bool(res)

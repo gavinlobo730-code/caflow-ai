@@ -103,6 +103,7 @@ def quotation_lines(
     assert_client_access(current_user, client_id)
     if _mock():
         return api_response(True, [])
+    svc.row_of_client(_db(), "sales_quotations", current_user.get("firm_id"), quotation_id, client_id, "quotation")
     return api_response(True, svc.quotation_lines(
         _db(), current_user.get("firm_id"), quotation_id))
 
@@ -134,6 +135,7 @@ def update_quotation(
     assert_client_access(current_user, client_id)
     if _mock():
         return api_response(True, {"id": quotation_id})
+    svc.row_of_client(_db(), "sales_quotations", current_user.get("firm_id"), quotation_id, client_id, "quotation")
     return api_response(True, svc.update_quotation(
         _db(), current_user.get("firm_id"), quotation_id,
         payload.model_dump()))
@@ -166,6 +168,7 @@ def order_position(
         return api_response(True, {"order": None, "lines": [],
                                    "status_would_be": "confirmed",
                                    "gaps": [svc.INVOICED_QUANTITY_IS_NOT_LINKED]})
+    svc.row_of_client(_db(), "sales_orders", current_user.get("firm_id"), order_id, client_id, "sales order")
     return api_response(True, svc.order_open_position(
         _db(), current_user.get("firm_id"), order_id))
 
@@ -196,6 +199,7 @@ def update_order(
     assert_client_access(current_user, client_id)
     if _mock():
         return api_response(True, {"id": order_id})
+    svc.row_of_client(_db(), "sales_orders", current_user.get("firm_id"), order_id, client_id, "sales order")
     return api_response(True, svc.update_order(
         _db(), current_user.get("firm_id"), order_id, payload.model_dump()))
 
@@ -229,6 +233,7 @@ def challan_particulars(
                                    "copies": [], "clock": {},
                                    "ca_review_required": True})
     db = _db()
+    svc.row_of_client(db, "delivery_challans", current_user.get("firm_id"), challan_id, client_id, "delivery challan")
     # Rule 55(1)(ii)'s consigner is the CLIENT whose goods are moving — not the
     # CA firm. SALES-01 was exactly this mistake on the tax invoice: the PDF
     # named the practice as the supplier, with the practice's own GSTIN, on the
@@ -365,5 +370,6 @@ def update_challan(
         return api_response(True, {"id": challan_id,
                                    "received_back_on": payload.received_back_on,
                                    "status": payload.status or "draft"})
+    svc.row_of_client(_db(), "delivery_challans", current_user.get("firm_id"), challan_id, client_id, "delivery challan")
     return api_response(True, svc.update_challan(
         _db(), current_user.get("firm_id"), challan_id, payload.model_dump()))

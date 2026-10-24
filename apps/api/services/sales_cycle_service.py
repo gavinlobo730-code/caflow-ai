@@ -381,6 +381,20 @@ def _one(db, table: str, firm_id: str, row_id: str, what: str) -> dict:
     return rows[0]
 
 
+def row_of_client(db, table: str, firm_id: str, row_id: str, client_id: str, what: str) -> dict:
+    """The quotation, order or challan, or the 404 "That <what> was not found." unless it is THIS client's.
+
+    For a route that takes the client from the request and the document from the path. `assert_client_access` on the client the
+    caller named proves only that THEY may act on that client; these routes read and write through the privileged client by firm
+    and id, so a document of another client of the same firm was reached by naming one's own client beside the other's id (to read
+    its lines or position, amend it, or stop a challan's s.143 clock). A missing document and one of another client answer with the
+    same words. `client_id` has no default."""
+    row = _one(db, table, firm_id, row_id, what)
+    if str(row.get("client_id")).lower() != str(client_id).lower():
+        raise HTTPException(status_code=404, detail=f"That {what} was not found.")
+    return row
+
+
 def _refuse_duplicate(db, table: str, firm_id: str, client_id: str,
                       document_no: str, kind: Optional[str],
                       exclude_id: Optional[str]) -> None:

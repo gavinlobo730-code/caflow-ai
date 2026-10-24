@@ -981,7 +981,10 @@ def reverse_journal_entry(
         # billing.py/record_fee_receipt convention. Same fixed text
         # phase2_journal_service.reverse_entry already raises for a genuinely
         # missing/wrong-firm entry_id, so hidden vs. missing read identically.
-        if orig and not can_access_client(current_user, orig.get("client_id")):
+        # A MISSING entry is the same 404 and is refused here, before anything else is read: the guard used to be `if orig and not
+        # can_access_client(...)`, which passes when the read found nothing, so it protected the route only because the kernel's own
+        # read, made with the same client, found nothing too.
+        if not orig or not can_access_client(current_user, orig.get("client_id")):
             raise HTTPException(status_code=404, detail="Journal entry not found")
 
         # task #102: a Receipt/Payment journal must be reversed through its own
@@ -990,7 +993,7 @@ def reverse_journal_entry(
         # alone here would leave the receipt/payment row un-flagged and its
         # invoice/bill allocations un-rolled-back, exactly the gap those
         # endpoints exist to close.
-        if orig and orig.get("entry_type") in ("Receipt", "Payment"):
+        if orig.get("entry_type") in ("Receipt", "Payment"):
             kind = "receipt" if orig["entry_type"] == "Receipt" else "purchase payment"
             endpoint = "/api/receipts/{id}/reverse" if orig["entry_type"] == "Receipt" else "/api/purchase-payments/{id}/reverse"
             raise HTTPException(
@@ -1023,14 +1026,13 @@ def reverse_journal_entry(
             actor_email=current_user.get("email"),
             new_data={"reversal_of": entry_id},
         )
-        if orig:
-            timeline_service.log(
-                orig.get("client_id"), "accounting", "Journal Reversed",
-                f"Reversal of {orig.get('reference_no') or entry_id[:8]} posted",
-                "warning", firm_id=firm_id,
-                entity_type="journal_entry", entity_id=rev_id,
-                actor_id=current_user.get("auth_user_id"),
-            )
+        timeline_service.log(
+            orig.get("client_id"), "accounting", "Journal Reversed",
+            f"Reversal of {orig.get('reference_no') or entry_id[:8]} posted",
+            "warning", firm_id=firm_id,
+            entity_type="journal_entry", entity_id=rev_id,
+            actor_id=current_user.get("auth_user_id"),
+        )
     except Exception as exc:
         capture_soft_failure(exc, operation="accounting.reverse_journal_audit",
                              firm_id=firm_id, entry_id=entry_id, reversal_id=rev_id)

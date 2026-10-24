@@ -182,6 +182,23 @@ def _assert_employee_scope(db, current_user: dict, employee_id: str) -> Optional
     return rows[0].get("client_id")
 
 
+def _employee_of_client(db, current_user: dict, employee_id: str, client_id: str, columns: str = "id") -> dict:
+    """The employee row, or the 404 "Employee not found" unless the employee belongs to THIS client of this firm.
+
+    For a handler that takes the client from the request (a body field or a query parameter) and the employee from the path or
+    the body. `assert_client_access` on the client the caller named proves only that THEY may act on that client; it says nothing
+    about the employee, and these routes read and write with the privileged client, so an employee of another client of the
+    same firm was reached by naming one's own client beside the other's employee id (and the settlement route then posted into
+    the named client's books and resigned the other client's employee). The read is filtered by the firm AND the client, so a
+    missing employee and one in another client answer with the same words. The caller has already asserted the client."""
+    rows = (db.table("payroll_employees").select(columns)
+            .eq("id", employee_id).eq("firm_id", current_user["firm_id"])
+            .eq("client_id", client_id).limit(1).execute().data) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return rows[0]
+
+
 def _assert_slip_scope(db, current_user: dict, slip_id: str) -> Optional[str]:
     """A payslip has no tenant column of its own — resolve its run first.
 
@@ -6042,9 +6059,12 @@ def link_remittance_payment(
     if not db:
         return api_response(True, {"remittance_id": remittance_id, "linked": False})
     assert_client_access(current_user, client_id)
-    linked = remittances.link_payment(
-        db, firm_id=current_user["firm_id"], remittance_id=remittance_id,
-        journal_entry_id=body.journal_entry_id)
+    try:
+        linked = remittances.link_payment(
+            db, firm_id=current_user["firm_id"], client_id=client_id,
+            remittance_id=remittance_id, journal_entry_id=body.journal_entry_id)
+    except remittances.RemittanceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not linked:
         raise HTTPException(status_code=404, detail="Remittance not found")
     return api_response(True, {"remittance_id": remittance_id, "linked": True})
@@ -6067,7 +6087,7 @@ def retract_remittance(
         return api_response(True, {"remittance_id": remittance_id, "retracted": False})
     assert_client_access(current_user, client_id)
     if not remittances.retract(db, firm_id=current_user["firm_id"],
-                               remittance_id=remittance_id):
+                               client_id=client_id, remittance_id=remittance_id):
         raise HTTPException(status_code=404, detail="Remittance not found")
     return api_response(True, {"remittance_id": remittance_id, "retracted": True})
 
@@ -7073,6 +7093,7 @@ def upsert_declaration(
     if not db:
         return api_response(True, {"declaration": None, "problems": [],
                                    "notices": decl_domain.notices(candidate)})
+    _employee_of_client(db, current_user, body.employee_id, body.client_id)
 
     now = datetime.now(timezone.utc).isoformat()
     # Upserted on the (employee_id, fy) unique index from migration 296 rather
@@ -7240,6 +7261,7 @@ def verify_declaration(
 
     head = (db.table("payroll_it_declarations").select("*")
             .eq("id", declaration_id).eq("firm_id", current_user["firm_id"])
+            .eq("client_id", body.client_id)
             .maybe_single().execute().data)
     if not head:
         raise HTTPException(status_code=404, detail="Declaration not found")
@@ -7980,11 +8002,7 @@ def preview_settlement(
                                    "deductions": [], "totals": {}, "gaps": [],
                                    "problems": []})
 
-    emp = (db.table("payroll_employees").select("*")
-           .eq("id", employee_id).eq("firm_id", current_user["firm_id"])
-           .maybe_single().execute().data)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _employee_of_client(db, current_user, employee_id, body.client_id, "*")
 
     s, grat, _ = _compose_settlement(emp, body)
     payload = _settlement_payload(employee_id, emp, s, grat, body)
@@ -8056,11 +8074,7 @@ def record_settlement(
     if not db:
         return api_response(True, {"employee_id": employee_id, "recorded": False})
 
-    emp = (db.table("payroll_employees").select("*")
-           .eq("id", employee_id).eq("firm_id", current_user["firm_id"])
-           .maybe_single().execute().data)
-    if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _employee_of_client(db, current_user, employee_id, body.client_id, "*")
 
     s, grat, leaving = _compose_settlement(emp, body)
 
@@ -8443,6 +8457,7 @@ def record_perquisites(
     assert_payroll_enabled(db, current_user["firm_id"], body.client_id)
     if not db:
         return api_response(True, {"employee_id": employee_id, "recorded": 0})
+    _employee_of_client(db, current_user, employee_id, body.client_id)
 
     db.table("payroll_perquisites").delete() \
         .eq("firm_id", current_user["firm_id"]) \
@@ -8557,6 +8572,7 @@ def add_salary_revision(
     assert_payroll_enabled(db, current_user["firm_id"], body.client_id)
     if not db:
         return api_response(True, {"employee_id": employee_id, "recorded": False})
+    _employee_of_client(db, current_user, employee_id, body.client_id)
 
     row = (db.table("payroll_salary_revisions").insert({
         "firm_id": current_user["firm_id"],
@@ -8598,6 +8614,7 @@ def list_salary_revisions(
     db = _db()
     if not db:
         return api_response(True, {"revisions": []})
+    _employee_of_client(db, current_user, employee_id, client_id)
     rows = (db.table("payroll_salary_revisions").select("*")
             .eq("firm_id", current_user["firm_id"])
             .eq("employee_id", employee_id).execute().data) or []
@@ -8658,6 +8675,7 @@ def add_employee_loan(
         )
     if not db:
         return api_response(True, {"employee_id": employee_id, "notices": notices})
+    _employee_of_client(db, current_user, employee_id, body.client_id)
 
     row = (db.table("payroll_loans").insert({
         "firm_id": current_user["firm_id"],
@@ -8688,6 +8706,7 @@ def list_employee_loans(
     db = _db()
     if not db:
         return api_response(True, {"loans": []})
+    _employee_of_client(db, current_user, employee_id, client_id)
     rows = (db.table("payroll_loans").select("*")
             .eq("firm_id", current_user["firm_id"])
             .eq("employee_id", employee_id).execute().data) or []
@@ -8835,6 +8854,7 @@ def put_bonus_disqualification(
     if not db:
         return api_response(True, None)
     firm_id = current_user.get("firm_id") or ""
+    _employee_of_client(db, current_user, data.employee_id, data.client_id)
     existing = (
         db.table("bonus_disqualifications").select("id")
         .eq("firm_id", firm_id).eq("employee_id", data.employee_id)
@@ -8893,6 +8913,7 @@ def delete_bonus_disqualification(
     if not db:
         return api_response(True, None)
     firm_id = current_user.get("firm_id") or ""
+    _employee_of_client(db, current_user, employee_id, client_id)
     db.table("bonus_disqualifications").delete().eq("firm_id", firm_id).eq(
         "employee_id", employee_id).eq("accounting_year", accounting_year).execute()
     from services.audit_service import log_event
