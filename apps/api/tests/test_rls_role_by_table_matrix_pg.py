@@ -625,6 +625,18 @@ def _fresh_pk(table: str, m: dict) -> str | None:
     return None
 
 
+#: The six document headers carry, since migration 544, a trigger that refuses an INSERT from a signed-in role that names a settlement
+#: column other than at its default (a journal link, an issue, receipt or cancel stamp, a paid or applied amount). The insert probe
+#: copies a seeded row, and the seeding points every foreign key at its parent's same-labelled row, so the copy of an invoice named a
+#: journal entry and the trigger's refusal, which is not an access decision, made the cell inconclusive. The probe is about the table's
+#: own policy, so its copy is born at the column defaults, which is what every real insert by the API is (the API issues, receives and
+#: settles through the privileged client, after the draft is created).
+SETTLEMENT_STAMPS_BORN_EMPTY = {
+    t: ("journal_entry_id", "issued_at", "received_at", "cancelled_at")
+    for t in ("client_sales_invoices", "purchase_bills", "credit_notes", "debit_notes", "purchase_credit_notes", "sales_debit_notes")
+}
+
+
 def probe_sql(meta: dict, tables: list[str], index: list[tuple[str, str, str, str]]) -> tuple[str, list[tuple]]:
     """(the script that creates the copies, the probe rows).
 
@@ -655,6 +667,9 @@ def probe_sql(meta: dict, tables: list[str], index: list[tuple[str, str, str, st
         script.append(
             f"CREATE TABLE rlsm.src_{i} AS SELECT * FROM public.{qi(t)} "
             f"WHERE {_pk_expr(pk)} IN (SELECT pk FROM rlsm.seed_index WHERE tbl = {lit(t)});")
+        born_empty = [c["name"] for c in m["cols"] if c["name"] in SETTLEMENT_STAMPS_BORN_EMPTY.get(t, ())]
+        if born_empty:
+            script.append(f"UPDATE rlsm.src_{i} SET {', '.join(f'{qi(c)} = NULL' for c in born_empty)};")
         insertable = [c["name"] for c in m["cols"] if not c["generated"]]
         fresh = _fresh_pk(t, m)
         sel_list = ", ".join(fresh if (fresh and c == pk[0]) else qi(c) for c in insertable)

@@ -276,6 +276,11 @@ def seeded(pg_template):
         assert seed.returncode == 0, seed.stderr
         w = World(d)
         _seed(w)
+        # Migration 544 refuses a signed-in change of the settlement columns (status, the paid and applied amounts, the journal link),
+        # which several cases below change as a Manager to show what 541 leaves open. This file is about 541's rule alone, so the
+        # later trigger is switched off in the copy these cases run on; tests/test_544_..._pg.py holds that rule, and the two together.
+        for table in SPECS:
+            w.owner(f"ALTER TABLE {table} DISABLE TRIGGER a_documents_settlement_is_written_by_the_api_only")
         yield name, w.ids
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
@@ -725,8 +730,9 @@ def test_no_trigger_function_writes_the_six_tables_and_the_functions_that_do_are
     assert {"numbered_document_atomic__unguarded", "platform_purge_firm"} <= {f["n"] for f in functions}
     triggers = _rows(world.dsn, "SELECT tgrelid::regclass::text, tgname FROM pg_trigger WHERE NOT tgisinternal AND tgrelid::regclass::text = ANY(ARRAY["
                                 + ", ".join(f"'{t}'" for t in TABLES) + "]) ORDER BY 1, 2")
-    others = [(t, n) for t, n in triggers if n not in (TRIGGER, "trg_audit_capture")]
-    assert others == [], others                   # the audit trigger is AFTER ROW and writes audit_log only
+    # the audit trigger is AFTER ROW and writes audit_log only; migration 544's trigger reads OLD and NEW and writes nothing
+    others = [(t, n) for t, n in triggers if n not in (TRIGGER, "trg_audit_capture", "a_documents_settlement_is_written_by_the_api_only")]
+    assert others == [], others
 
 
 # ── WHAT IS NOT JUDGED ──────────────────────────────────────────────────────
@@ -802,7 +808,10 @@ def _hold(dsn: str, table: str, mode: str, seconds: int) -> subprocess.Popen:
     proc = subprocess.Popen(["psql", dsn, "-X", "-q", "-c", f"BEGIN; LOCK TABLE public.{table} IN {mode} MODE; SELECT pg_sleep({seconds}); COMMIT;"],
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     for _ in range(40):
+        # this database only: clones of one template share relation numbers, so a holder in another clone (migration 544's test holds
+        # purchase_bills too, on another worker under --dist loadfile) would otherwise satisfy this wait
         held = _rows(dsn, f"SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a USING (pid) WHERE l.relation = 'public.{table}'::regclass "
+                          f"AND l.database = (SELECT oid FROM pg_database WHERE datname = current_database()) "
                           f"AND l.mode = '{mode.title().replace(' ', '')}Lock' AND l.granted AND a.query LIKE 'BEGIN; LOCK TABLE%'")
         if held[0][0] != "0":
             return proc
