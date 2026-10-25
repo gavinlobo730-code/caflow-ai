@@ -7225,9 +7225,8 @@ def upsert_declaration(
     #
     # The payload is written out in full rather than assembled in a helper so
     # tests/test_backend_columns_exist_pg.py can read the column names and check
-    # them against the real schema — these tables are new, and the frontend will
-    # write them directly through PostgREST where nothing else would catch a
-    # misspelt column.
+    # them against the real schema — these tables are new, and a misspelt column
+    # in a payload assembled elsewhere would be caught by nothing.
     row = (db.table("payroll_it_declarations").upsert({
         "firm_id": current_user["firm_id"],
         "client_id": body.client_id,
@@ -7314,10 +7313,10 @@ def list_declarations(
     intimation that still needs Form 10-IEA, a claim the new regime disallows,
     proofs outstanding with the fourth quarter approaching.
 
-    Both are computed here rather than by the caller, and both matter for
-    portal-filed declarations especially: an employee writes these tables
-    directly through PostgREST and never passes through validate(), so this
-    list is the first place anyone sees what is wrong with what they filed.
+    Both are computed here rather than by the caller. A declaration an employee filed before 25-10-2026 was written straight
+    through PostgREST and never passed through validate(), so for those this list is the first place anyone sees what is wrong
+    with what they filed; since then the employee's own door (`PUT /api/portal/employee/tax-declaration`) applies the same
+    validation before anything is stored.
     """
     assert_client_access(current_user, client_id)
     db = _db()
@@ -7361,8 +7360,7 @@ def verify_declaration(
 
     A verified amount may be LESS than what was declared and never more; the
     domain layer refuses the reverse and migration 296 carries the same rule as
-    a CHECK constraint, because the frontend writes these tables directly
-    through PostgREST where no endpoint validation runs at all.
+    a CHECK constraint, because a table's own rules are the last line of defence for a write that reaches it by any door.
 
     `proofs_verified` is the switch that matters. Until it is set, the declared
     figures keep reducing tax for the first three quarters; from the fourth they

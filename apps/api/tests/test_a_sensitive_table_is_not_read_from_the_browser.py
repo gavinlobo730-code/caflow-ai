@@ -17,12 +17,12 @@ Three groups are moved behind the API and kept there:
     the browser (an upload, a signed URL, a delete), because the bucket is shared by
     three resources and its policies are not per person.
 
-THE RULE is that none of them is reached from `apps/web`. THE LIST below is what is
-still reached, and it can only SHRINK: a new reach fails here as "new", a line whose
-reach has been moved fails here as "stale" and must be deleted (so a reach that comes
-back cannot hide behind a line nobody removed), and when the last screen is moved the
-list is empty and stays empty. It is a source scan of the browser's own files, so it
-is the half of the rule that the database cannot see.
+THE RULE is that none of them is reached from `apps/web`, and since 25-10-2026 (the last step of POST-A-010: the employee
+portal and its tax-declaration tab) it is ABSOLUTE: THE LIST below is empty. The list was how the item was moved in steps. It
+could only SHRINK: a new reach failed as "new", a line whose reach had been moved failed as "stale" and had to be deleted (so a
+reach that comes back could not hide behind a line nobody removed). It is kept, empty, with its checks, because the day a screen
+reaches one of these tables again the person adding it must either move it behind the API or add a line here and say why. It is
+a source scan of the browser's own files, so it is the half of the rule that the database cannot see.
 
 WHAT IT SEES: a `.from("<table>")` with a literal name (spread over lines or not),
 a call of `deleteRowAndConfirm(client, "<table>", id)` (the one generic helper that
@@ -69,15 +69,7 @@ def is_sensitive(table: str) -> bool:
 
 #: (file relative to apps/web, table or "storage") -> how many reaches the file still makes.
 #: SHRINK-ONLY. Delete a line, or lower its number, in the commit that moves the reach.
-REMAINING: dict[tuple[str, str], int] = {
-    ("app/portal/employee/page.tsx", "leave_balances"): 1,
-    ("app/portal/employee/page.tsx", "payroll_employees"): 1,
-    ("app/portal/employee/page.tsx", "payroll_slips"): 1,
-    ("components/portal/TaxDeclarationTab.tsx", "payroll_employees"): 1,
-    ("components/portal/TaxDeclarationTab.tsx", "payroll_it_declaration_items"): 3,
-    ("components/portal/TaxDeclarationTab.tsx", "payroll_it_declarations"): 2,
-    ("lib/portal/employeeAccess.ts", "payroll_employees"): 1,
-}
+REMAINING: dict[tuple[str, str], int] = {}
 
 
 # ── the scanner ──────────────────────────────────────────────────────────────

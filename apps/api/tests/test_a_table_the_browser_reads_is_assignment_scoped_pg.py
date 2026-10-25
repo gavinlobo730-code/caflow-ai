@@ -75,12 +75,14 @@ _FROM = re.compile(r'\.from\(\s*["\']([a-z0-9_]+)["\']\s*\)')
 # migration 262 split payroll_employees/payroll_runs into per-command policies
 # instead of leaving 084's single FOR ALL one.
 #
-# Both are scoped another way and are covered by their own tests:
-# test_r3_0_client_portal_users_rls_pg.py and
-# test_297_employee_declaration_rls_pg.py.
+# The client portal's table is scoped another way and is covered by its own test:
+# test_r3_0_client_portal_users_rls_pg.py. The employee portal's declaration table
+# (`payroll_it_declarations`, scoped by `_own_employee`, test_297_employee_declaration_rls_pg.py)
+# was the second entry until 25-10-2026: POST-A-010 moved the employee portal behind the API,
+# so no screen reads it and this rule, which is about the tables the browser reads, no longer
+# has anything to except.
 _PORTAL_SIDE = {
     "client_portal_users": "portal login; scoped by _own_firm + _self (SELECT only)",
-    "payroll_it_declarations": "employee portal writes its own row (_own_employee)",
 }
 
 # Every `client_id` base table the `authenticated` role is granted, with the

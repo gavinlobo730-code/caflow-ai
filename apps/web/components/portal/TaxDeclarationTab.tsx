@@ -21,54 +21,27 @@
  *   landlord, a home loan asks for a lender. Those are boxes on the prescribed
  *   form, not computations.
  *
- * WRITES
- *   Straight to Supabase, under the policies migration 297 added — the same
- *   identity model the portal already uses to READ payslips and leave. An
- *   employee reaches their own declaration and no other's, may declare an
- *   amount but never verify it, and cannot touch it once the CA has been
- *   through the proofs.
+ * READS AND WRITES
+ *   Both go to the server (`/api/portal/employee/tax-declaration`, POST-A-010), which resolves the employee from the
+ *   session: nothing in a request names a person, a client or a firm. The server refuses what payroll cannot give effect
+ *   to (a landlord's PAN above the Rule 26C threshold, a lender's PAN, a section it does not compute) in the employee's
+ *   own words, shown here as the server wrote them; an employee may declare an amount but never verify it, and cannot
+ *   touch a declaration once the CA has been through the proofs.
  *
  * All monetary values are integer paise in the database.
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Loader2, Lock, Save } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
+import type { EmployeeDeclarationHead, EmployeeTaxDeclaration } from "@/lib/api";
+import { objectWithLists } from "@/lib/api/shape";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
 
-type Regime = "new" | "old";
 
-type Item = {
-  id?: string;
-  section: string;
-  label: string;
-  amount_declared_paise: number;
-  amount_verified_paise: number;
-  status: string;
-};
-
-type Declaration = {
-  id?: string;
-  firm_id: string;
-  client_id: string;
-  employee_id: string;
-  fy: string;
-  regime: Regime;
-  status: string;
-  rent_paid_declared_paise: number;
-  landlord_name: string;
-  landlord_address: string;
-  landlord_pan: string;
-  rent_is_metro: boolean;
-  lta_declared_paise: number;
-  home_loan_interest_declared_paise: number;
-  lender_name: string;
-  lender_pan: string;
-  other_income_declared_paise: number;
-  house_property_loss_declared_paise: number;
-  proofs_verified: boolean;
-};
+/** The declaration as the form holds it: the server's row without its id (the server owns the employee, client and firm). */
+type Declaration = Omit<EmployeeDeclarationHead, "id">;
 
 /** The Chapter VI-A heads payroll can give effect to. Anything else is claimed
  *  in the return instead — the backend refuses a section it does not compute,
@@ -117,8 +90,7 @@ const MONEY_FIELDS = [
 ] as const;
 type MoneyField = (typeof MONEY_FIELDS)[number];
 
-export function TaxDeclarationTab({ employeeId, onToast }: {
-  employeeId: string;
+export function TaxDeclarationTab({ onToast }: {
   onToast: (message: string) => void;
 }) {
   const fy = currentFy();
@@ -126,57 +98,33 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
   const [items, setItems] = useState<Record<string, string>>({});
   const [money, setMoney] = useState<Record<string, string>>({});
   const [moneyError, setMoneyError] = useState<string | null>(null);
+  // The server's own sentence when it refused the declaration (a missing landlord PAN, a locked declaration).
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
-  // How many saved lines were READ when the declaration loaded. The save replaces them, and a delete that row security
-  // hid answers no error and no rows, so this is what lets the save tell "nothing to remove" from "could not remove".
-  const savedLineCount = useRef(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadFailed(false);
     try {
-      const sb = getSupabaseClient();
-      const { data: emp, error: empErr } = await sb
-        .from("payroll_employees")
-        .select("id, firm_id, client_id")
-        .eq("id", employeeId)
-        .maybeSingle();
-      if (empErr) throw empErr;
+      // A failed read is a failed load: showing the boxes empty would invite a save that replaces lines the person never saw.
+      const res = await api.portalSelf.employeeTaxDeclaration(fy);
+      const body = res?.success ? objectWithLists<EmployeeTaxDeclaration>(res.data, "items") : null;
+      if (!body) throw new Error(res?.error ?? "The declaration came back in a shape this screen cannot read.");
 
-      const { data: existing, error } = await sb
-        .from("payroll_it_declarations")
-        .select("*")
-        .eq("employee_id", employeeId)
-        .eq("fy", fy)
-        .maybeSingle();
-      if (error) throw error;
-
-      if (existing) {
-        setDecl(existing as Declaration);
+      if (body.declaration) {
+        const existing: Declaration = body.declaration;
+        setDecl(existing);
         const seedMoney: Record<string, string> = {};
-        for (const f of MONEY_FIELDS) seedMoney[f] = paiseToRupees((existing as Declaration)[f] ?? 0);
+        for (const f of MONEY_FIELDS) seedMoney[f] = paiseToRupees(existing[f] ?? 0);
         setMoney(seedMoney);
-        const { data: rows, error: rowsErr } = await sb
-          .from("payroll_it_declaration_items")
-          .select("*")
-          .eq("declaration_id", existing.id);
-        // A failed read of the lines is a failed load: showing the boxes empty would invite a save that replaces lines
-        // the person never saw.
-        if (rowsErr) throw rowsErr;
-        savedLineCount.current = (rows ?? []).length;
         const seed: Record<string, string> = {};
-        for (const r of ((rows ?? []) as Item[])) {
-          seed[r.section] = paiseToRupees(r.amount_declared_paise);
-        }
+        for (const r of body.items) seed[r.section] = paiseToRupees(r.amount_declared_paise);
         setItems(seed);
       } else {
         setMoney({});
         setDecl({
-          firm_id: emp?.firm_id ?? "",
-          client_id: emp?.client_id ?? "",
-          employee_id: employeeId,
           fy,
           // §115BAC(1A) is the default regime, so an employee who has not
           // chosen sees the position they are already being withheld on.
@@ -193,7 +141,6 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
           proofs_verified: false,
         });
         setItems({});
-        savedLineCount.current = 0;
       }
     } catch (e) {
       console.error("load declaration:", e);
@@ -201,7 +148,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
     } finally {
       setLoading(false);
     }
-  }, [employeeId, fy]);
+  }, [fy]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -232,51 +179,33 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
       parsedItems.push({ section: sec.code, paise: p });
     }
     setMoneyError(null);
+    setSaveError(null);
     setSaving(true);
     try {
-      const sb = getSupabaseClient();
-      const payload = { ...decl, ...parsedMoney, status: "submitted" };
-      delete (payload as { id?: string }).id;
-      const { data: saved, error } = await sb
-        .from("payroll_it_declarations")
-        .upsert(payload, { onConflict: "employee_id,fy" })
-        .select("id")
-        .single();
-      if (error) throw error;
-
-      // Replaced wholesale, not merged: a declaration states the whole year's
-      // intent, and merging would leave a withdrawn investment in place.
-      //
-      // The delete is READ (POST-A-255): its error stops the save, and so does an answer of no rows for a declaration
-      // whose lines were loaded, because row security hides a delete it refuses without an error and the insert below
-      // would then put the new lines beside the old ones.
-      const { data: removed, error: delErr } = await sb.from("payroll_it_declaration_items")
-        .delete().eq("declaration_id", saved.id).select("id");
-      if (delErr) throw delErr;
-      if (savedLineCount.current > 0 && (removed ?? []).length === 0) {
-        throw new Error("The lines you declared before could not be replaced.");
-      }
-      const lines = parsedItems
-        .filter((l) => l.paise > 0)
-        .map((l) => ({
-          firm_id: decl.firm_id,
-          declaration_id: saved.id,
-          section: l.section,
-          label: "",
-          amount_declared_paise: l.paise,
-          amount_verified_paise: 0,
-          status: "declared",
-        }));
-      if (lines.length) {
-        const { error: itemErr } = await sb
-          .from("payroll_it_declaration_items").insert(lines);
-        if (itemErr) throw itemErr;
-      }
+      // The whole year's statement, sent once: the server validates it, replaces the earlier lines wholesale (a declaration
+      // states the whole year's intent, and merging would leave a withdrawn investment in place) and puts back what it
+      // replaced if a step fails. Nothing here names the employee, and nothing here can carry a verified amount.
+      await api.portalSelf.fileEmployeeTaxDeclaration({
+        fy,
+        regime: decl.regime,
+        rent_paid_declared_paise: parsedMoney.rent_paid_declared_paise ?? 0,
+        landlord_name: decl.landlord_name,
+        landlord_address: decl.landlord_address,
+        landlord_pan: decl.landlord_pan,
+        rent_is_metro: decl.rent_is_metro,
+        lta_declared_paise: parsedMoney.lta_declared_paise ?? 0,
+        home_loan_interest_declared_paise: parsedMoney.home_loan_interest_declared_paise ?? 0,
+        lender_name: decl.lender_name,
+        lender_pan: decl.lender_pan,
+        other_income_declared_paise: parsedMoney.other_income_declared_paise ?? 0,
+        house_property_loss_declared_paise: parsedMoney.house_property_loss_declared_paise ?? 0,
+        items: parsedItems.filter((l) => l.paise > 0).map((l) => ({ section: l.section, amount_declared_paise: l.paise })),
+      });
       onToast("Declaration submitted. Your firm will verify the proofs.");
       await load();
     } catch (e) {
       console.error("save declaration:", e);
-      onToast("Could not save your declaration. Please try again.");
+      setSaveError(e instanceof Error && e.message ? e.message : "Could not save your declaration. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -365,13 +294,13 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
             <Money label="Rent paid in the year" disabled={locked}
               value={money.rent_paid_declared_paise ?? ""}
               onChange={(v) => setMoney((m) => ({ ...m, rent_paid_declared_paise: v }))} />
-            <Text label="Landlord's name" disabled={locked}
+            <Text label="Landlord's name" disabled={locked} maxLength={200}
               value={decl.landlord_name}
               onChange={(v) => set("landlord_name", v)} />
-            <Text label="Landlord's address" disabled={locked}
+            <Text label="Landlord's address" disabled={locked} maxLength={500}
               value={decl.landlord_address}
               onChange={(v) => set("landlord_address", v)} />
-            <Text label="Landlord's PAN" disabled={locked}
+            <Text label="Landlord's PAN" disabled={locked} maxLength={10}
               hint="Form 12BB requires this once the year's rent passes ₹1,00,000 (Rule 26C)."
               value={decl.landlord_pan}
               onChange={(v) => set("landlord_pan", v.toUpperCase())} />
@@ -395,9 +324,9 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
             <Money label="Interest paid in the year" disabled={locked}
               value={money.home_loan_interest_declared_paise ?? ""}
               onChange={(v) => setMoney((m) => ({ ...m, home_loan_interest_declared_paise: v }))} />
-            <Text label="Lender's name" disabled={locked}
+            <Text label="Lender's name" disabled={locked} maxLength={200}
               value={decl.lender_name} onChange={(v) => set("lender_name", v)} />
-            <Text label="Lender's PAN" disabled={locked}
+            <Text label="Lender's PAN" disabled={locked} maxLength={10}
               value={decl.lender_pan} onChange={(v) => set("lender_pan", v.toUpperCase())} />
           </Section>
 
@@ -423,6 +352,7 @@ export function TaxDeclarationTab({ employeeId, onToast }: {
           </Section>
 
           {moneyError && <Callout tone="problem">{moneyError}</Callout>}
+          {saveError && <Callout tone="problem">{saveError}</Callout>}
 
           {!locked && (
             <div className="flex justify-end pt-1">
@@ -474,15 +404,17 @@ function Money({ label, hint, value, onChange, disabled }: {
   );
 }
 
-function Text({ label, hint, value, onChange, disabled }: {
+function Text({ label, hint, value, onChange, disabled, maxLength }: {
   label: string; hint?: string; value: string;
   onChange: (v: string) => void; disabled?: boolean;
+  /** The longest the server accepts for the box, so the box stops there instead of the filing being refused. */
+  maxLength?: number;
 }) {
   return (
     <label className="block">
       <span className="text-sm text-ps-body">{label}</span>
       {hint && <span className="block text-xs text-ps-hint">{hint}</span>}
-      <input value={value} disabled={disabled}
+      <input value={value} disabled={disabled} maxLength={maxLength}
         onChange={(e) => onChange(e.target.value)}
         className="mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm
                    outline-none focus:border-brand disabled:bg-ps-bg" />

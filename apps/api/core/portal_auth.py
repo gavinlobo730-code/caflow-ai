@@ -188,6 +188,9 @@ def get_current_portal_employee(jwt_user: dict = Depends(get_jwt_user)) -> dict:
         "name": emp.get("name"),
         "employee_code": emp.get("employee_code"),
         "email": jwt_user.get("email"),
+        # The Supabase sign-in id: what `audit_log.actor_id` takes, so a filing the employee makes is attributed to them
+        # (POST-A-010). It is the identity the principal was resolved FROM, not something to authorise on.
+        "auth_user_id": auth_user_id,
         # NOT an RBAC role. `core/permissions.PERMISSIONS` has no entry for it,
         # so `rbac()` would deny this principal everywhere — which is correct
         # and is why no endpoint on this dependency may also carry rbac().

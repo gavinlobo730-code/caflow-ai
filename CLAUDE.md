@@ -403,7 +403,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS SCREEN ASKS THE SERVER WHAT BECAME OF A DEDUCTION, AND A CARD SHOWS A DASH UNTIL IT HAS A FIGURE FOR THE CLIENT IT IS ABOUT
 - THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE ORDER BY EVERY READER, AND THE SECTIONS AND THEIR NAMES ARE THE SERVER'S
 
-### `docs/design-record/tenancy-and-security.md` (73 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (74 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -478,6 +478,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A POSTING THE SERVER MAKES FOR A PERSON IS STILL AUDITED AS THAT PERSON: THE TWO LEDGER FUNCTIONS CARRY THE PERSON'S AUTH ID FOR THE LENGTH OF THEIR OWN TRANSACTION, BOTH AUDIT TRIGGER FUNCTIONS READ IT ONLY WHEN NOBODY IS SIGNED IN, AND A ROW WRITTEN FOR A CARRIED PERSON SAYS SO.
 - THE POSTING KERNEL AND THE PLAIN RECEIPT CALL THE TWO LEDGER FUNCTIONS THROUGH THE PRIVILEGED CLIENT, FROM ONE PLACE, CARRYING THE PERSON WHO IS POSTING, AHEAD OF THE MIGRATION THAT TAKES THE SIGNED-IN GRANT AWAY.
 - THE TWO LEDGER FUNCTIONS ARE THE SERVER'S ALONE, AND A PRIVILEGED CALL MUST NAME A CLIENT OF ITS FIRM.
+- THE BROWSER REACHES NO PAYROLL, BANK OR DOCUMENT TABLE AND NO STORAGE, AND THE GUARD'S LIST OF WHAT IT STILL REACHES IS EMPTY
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
@@ -1254,6 +1255,11 @@ PostgREST. That is why:
   per-command ones so the EMPLOYEE PORTAL can read a payslip, and a portal principal —
   a portal user, an employee — has no `users` row, so `can_access_client` denies them
   their own record.
+- **Payroll, the bank tables, the document tables and all of Supabase Storage are NOT reached from the browser any more** (POST-A-010, 25-10-2026).
+  `tests/test_a_sensitive_table_is_not_read_from_the_browser.py` scans `apps/web` for them by RULE and its list of what is still reached is
+  EMPTY, so a new `.from("payroll_...")`, `bank_...`, document table or `.storage` fails and must be moved behind the API. What it does not do:
+  the signed-in role still holds the grants, so a hand-made PostgREST call reaches what the policies allow (POST-A-339 revokes them, API
+  readers first). The employee API has exactly one write, the employee's own declaration. Read the record before touching any of it.
 - **Renaming or dropping a column can break the frontend while backend CI stays green.**
   `tests/test_frontend_columns_exist_pg.py` parses those select lists and checks them
   against the real schema. Run it when you touch a migration.

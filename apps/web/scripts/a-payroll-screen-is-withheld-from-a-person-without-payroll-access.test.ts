@@ -11,8 +11,7 @@
 //
 // THE RULE, NOT A SPELLING
 //     A file that reads one of those tables from the browser must be under a gated route, or be one of the
-//     employee-portal files, which read the signed-in EMPLOYEE'S OWN rows as the employee principal and are not
-//     staff screens. A new payroll screen added anywhere else fails here and names the file.
+//     employee-portal files named in EMPLOYEE_PORTAL (none today). A new payroll screen added anywhere else fails here and names the file.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -24,8 +23,9 @@ const PAYROLL_TABLES = [
   "payroll_it_declarations", "payroll_it_declaration_items",
 ];
 const GATED_ROUTES = ["app/payroll/", "app/clients/[id]/payroll/"];
-// The employee reads their own rows as the employee principal (migrations 262/296/323), not as staff.
-const EMPLOYEE_PORTAL = ["app/portal/employee/", "components/portal/TaxDeclarationTab.tsx", "lib/portal/employeeAccess.ts"];
+// The employee portal asks the server for its own rows too (POST-A-010), so this list is empty; it stays so a future
+// employee-principal file that reads its own rows can be named here, with the reason, and not slipped under a staff gate.
+const EMPLOYEE_PORTAL: string[] = [];
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -45,11 +45,17 @@ const READERS = [
   ...walk(path.join(WEB, "app")), ...walk(path.join(WEB, "components")), ...walk(path.join(WEB, "lib")),
 ].filter((p) => FROM.test(code(read(p)))).map(rel);
 
-test("the scan finds the payroll readers at all", () => {
-  // 7 -> 3 on 25-10-2026 (POST-A-010): the staff screens (the client payroll dashboard, the attendance sheet and the payroll
-  // reports) ask the server now, and the three readers left are the employee portal's own files, listed below. They move in
-  // the next step and this scan then has nothing to find.
-  assert.ok(READERS.length >= 3, `only ${READERS.length} readers found: the scan stopped seeing them`);
+test("the scan finds a payroll reader when there is one, and only a payroll one", () => {
+  // 7 -> 3 -> 0 on 25-10-2026 (POST-A-010): the staff screens ask the server now, and so does the employee portal, so the
+  // browser reads no payroll table at all and `tests/test_a_sensitive_table_is_not_read_from_the_browser.py` makes that
+  // absolute. This file keeps its rule for the day that list is ever loosened, and proves on snippets that the scan would
+  // still see a reader (a scan that finds nothing would otherwise be indistinguishable from a tree with nothing to find).
+  // The snippets are assembled so that no `.from("<table>")` literal sits in this file for another scanner to count as a read.
+  const from = (name: string) => `.${"from"}("${name}")`;
+  assert.ok(FROM.test(`const r = await sb${from("payroll_employees")}.select("id")`));
+  assert.ok(FROM.test(`await supabase\n  ${from("attendance")}.select("*")`));
+  assert.ok(!FROM.test(`await sb${from("clients")}.select("id")`));
+  assert.deepEqual(READERS, [], `a browser file reads a payroll table: ${READERS.join(", ")}`);
 });
 
 test("every browser read of a payroll table is under a gated route or is the employee's own portal", () => {

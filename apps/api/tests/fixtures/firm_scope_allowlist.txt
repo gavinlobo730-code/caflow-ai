@@ -99,6 +99,7 @@ routers/identity.py | accept_invite | repo:user_repo.find_by_invite_token | read
 routers/invoices.py | generate_from_engagement | repo:invoice_repo.find_by_id | read | 1 | own-insert-id | gate=_assert_engagement_scope
 routers/onboarding.py | create_firm | users | read | 1 | principal-lookup
 routers/platform.py | _count | <dynamic> | read | 1 | platform-admin
+routers/portal_employee.py | employee_portal_access | call:get_current_portal_employee | read | 1 | principal-lookup
 routers/portal_self.py | portal_memberships | call:list_portal_memberships | read | 1 | principal-lookup
 routers/purchase_payments.py | create_purchase_payment | call:create_payment_core | read | 1 | gated-in-function | gate=assert_client_access
 routers/service_catalogue.py | _default_opening_balance_date | clients | read | 1 | helper-of-allowlisted-call

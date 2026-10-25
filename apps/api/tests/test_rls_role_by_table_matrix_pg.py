@@ -221,6 +221,12 @@ ALSO_COVERED = {
     "documents": "the firm's document register: the Documents page asks GET /api/documents since POST-A-010",
     "client_documents": "a client's stored files: the vault, the Documents tab and the portal page ask /api/client-documents since POST-A-010",
     "document_requests": "what the firm has asked a client for: the Client Portal page asks /api/portal/document-requests since POST-A-010",
+    "payroll_runs": "a client's payroll runs: the staff screens ask GET /api/payroll/runs and the employee portal's payslip list is the server's since POST-A-010",
+    "payroll_employees": "an employee's record: the employee portal asks GET /api/portal/employee/me since POST-A-010",
+    "payroll_slips": "an employee's payslips: the employee portal asks GET /api/portal/employee/payslips since POST-A-010",
+    "leave_balances": "an employee's leave entitlement: the employee portal asks GET /api/portal/employee/leave-balances since POST-A-010",
+    "payroll_it_declarations": "an employee's Form 12BB: the tax-declaration tab asks /api/portal/employee/tax-declaration since POST-A-010",
+    "payroll_it_declaration_items": "the Chapter VI-A lines of a declaration: the tab asks /api/portal/employee/tax-declaration since POST-A-010",
     "attendance": "a month's attendance: the payroll Attendance screen asks GET /api/payroll/attendance-board and /leave-ledger since POST-A-010",
     "payroll_salary_revisions": "payroll (490): salary history, read and written only by the payroll router",
     "salary_structures": "payroll (490): a client's salary template",
@@ -1293,7 +1299,10 @@ def _differences(expected, got) -> dict[tuple[str, str, str], tuple[str, str]]:
 def test_the_table_list_is_the_parsers_own_answer_and_the_file_covers_exactly_it():
     tables = matrix_tables()
     found = set(_browser_tables())
-    assert len(found) >= 75, f"only {len(found)} browser tables found: the parser stopped finding them"
+    # 75 -> 65 on 25-10-2026 (POST-A-010): the bank, document and payroll tables the browser no longer reads moved to ALSO_COVERED
+    # (they are still granted to a signed-in session, so the matrix still tries every actor against them), and the parser's own
+    # answer fell by the same number. 65 is still far above the handful a parser that had stopped finding them would report.
+    assert len(found) >= 65, f"only {len(found)} browser tables found: the parser stopped finding them"
     assert set(tables) == found | set(ALSO_COVERED) | set(STORAGE)
     expected = load_expected()
     in_file = {t for _a, t in expected}

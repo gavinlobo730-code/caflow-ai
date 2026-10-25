@@ -131,15 +131,31 @@ def test_no_employee_route_takes_an_identifying_parameter(route):
         f"principal.")
 
 
+#: The ONE write the employee API has: the employee's own Form 12BB declaration. It is not a new capability: migration 297 let the
+#: employee file it from the browser, with their own token, and POST-A-010 moved every browser write of a payroll table behind the
+#: API. What the route may and may not do (it carries no verified amount, resets what the CA had checked, refuses a verified
+#: declaration, and refuses what payroll cannot give effect to) is held by
+#: `test_an_employee_files_their_own_declaration_through_the_server.py`. A reimbursement claim, or any other write, is still a
+#: separate decision and still fails here.
+_THE_ONE_WRITE = {("PUT", "/api/portal/employee/tax-declaration")}
+
+
 @pytest.mark.parametrize("route", [r for r in portal_mod.router.routes
                                    if hasattr(r, "methods")],
-                         ids=lambda r: getattr(r, "path", "?"))
-def test_the_employee_api_is_read_only(route):
-    """Owner decision of 14-09-2026: read-only, self-scoped, narrow."""
-    assert set(route.methods) <= {"GET", "HEAD", "OPTIONS"}, (
+                         ids=lambda r: f"{sorted(r.methods)}{getattr(r, 'path', '?')}")
+def test_the_employee_api_is_read_only_but_for_the_one_declaration(route):
+    """Owner decision of 14-09-2026: read-only, self-scoped, narrow. The exception is named, singular and held elsewhere."""
+    writes = {(m, route.path) for m in route.methods if m not in {"GET", "HEAD", "OPTIONS"}}
+    assert writes <= _THE_ONE_WRITE, (
         f"{route.path} accepts {sorted(route.methods)}. An employee write path "
         f"is a separate decision — declarations and reimbursement claims have "
         f"their own consequences.")
+
+
+#: The one GET that answers a person who is not an employee instead of refusing them (POST-A-010): "is this identity an
+#: activated employee?" is asked of every signed-in person by the activation page and the client portal's dashboard, so
+#: "no" is its ordinary answer and a 403 there would put a refusal in the log for every client login.
+_ANSWERS_NO = {"/api/portal/employee/access"}
 
 
 def test_every_employee_route_resolves_the_principal(app_db):
@@ -154,6 +170,14 @@ def test_every_employee_route_resolves_the_principal(app_db):
         if "GET" not in getattr(route, "methods", set()):
             continue
         res = client.get(route.path + "?financial_year=" + FY)
+        if route.path in _ANSWERS_NO:
+            # Allowed to answer 200, and only with "no". Which of the refusals or the "no" this environment gives depends
+            # on APP_ENV (CI runs as development, where the sign-in layer lets a dev identity through and the answer is
+            # the "no"; elsewhere it is a 503), so both are accepted and a "yes" never is.
+            if res.status_code == 200:
+                assert res.json()["data"] == {"enabled": False}, (
+                    f"{route.path} said an identity with no employee behind it is an employee")
+                continue
         # 401 the JWT is missing or bad, 403 the identity is not an employee,
         # 503 the auth layer itself could not answer (core/auth raises that
         # deliberately rather than a 403, so a transient lookup failure is not
@@ -200,22 +224,26 @@ def test_a_malformed_financial_year_is_refused_by_the_type(app_db):
     ).status_code == 422
 
 
-def test_there_is_no_second_way_to_ask_who_the_caller_is(app_db):
-    """No /me, deliberately.
+def test_the_employee_api_is_exactly_these_doors(app_db):
+    """The doors the employee has, listed, so a new one is a decision somebody writes down here.
 
-    The portal already reads its own payroll_employees row over PostgREST under
-    migration 262's policy. A second door onto the same fact is the pattern this
-    repository keeps undoing, and the reachability ratchet named it on the first
-    run: an endpoint no screen calls cannot be used by anybody.
-    """
-    client, _ = app_db
-    assert client.get("/api/portal/employee/me").status_code == 404
-    # The second route is the employee's own payslip PDF (payroll-01). It names a
-    # DOCUMENT, never a person: `slip_id` is resolved only within the principal's
-    # own released slips (see test_an_employee_can_download_their_own_payslip).
-    assert [getattr(r, "path", "") for r in portal_mod.router.routes] == [
-        "/api/portal/employee/tds-projection",
-        "/api/portal/employee/payslips/{slip_id}/pdf"]
+    This used to say there was no /me, deliberately: the portal read its own row over PostgREST under migration 262's policy, and
+    a second door onto the same fact was the pattern this repository keeps undoing. POST-A-010 closed the browser's reach into the
+    payroll tables, so the portal's own record, payslip list, leave balance and declaration are routes, each on THIS principal and
+    none taking a person (the signature test above): `/access` is the one question two pages ask to decide where to send somebody,
+    and `/me` is the record. The payslip PDF names a DOCUMENT, never a person: `slip_id` is resolved only within the principal's
+    own released slips (see test_an_employee_can_download_their_own_payslip)."""
+    assert sorted((sorted(m for m in r.methods if m != "HEAD")[0], r.path) for r in portal_mod.router.routes
+                  if hasattr(r, "methods")) == [
+        ("GET", "/api/portal/employee/access"),
+        ("GET", "/api/portal/employee/leave-balances"),
+        ("GET", "/api/portal/employee/me"),
+        ("GET", "/api/portal/employee/payslips"),
+        ("GET", "/api/portal/employee/payslips/{slip_id}/pdf"),
+        ("GET", "/api/portal/employee/tax-declaration"),
+        ("GET", "/api/portal/employee/tds-projection"),
+        ("PUT", "/api/portal/employee/tax-declaration"),
+    ]
 
 
 # ── the principal itself ────────────────────────────────────────────────────
