@@ -17,6 +17,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 import { postingAccountNotice } from "@/lib/accounting/postingAccountNotice";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
 import { bpsFromPercentInput, paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
@@ -3784,6 +3785,7 @@ function ReceiptForm({
   // which of the client's accounts actually took the money.
   const [bankAccountId, setBankAccountId] = useState("");
   const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
+  const [bankAccountsUnreadable, setBankAccountsUnreadable] = useState(false);
   // GSTR-1 TABLE 11A (migration 286). CGST s.13(2) charges tax on an advance
   // for SERVICES when it is received; Notification 66/2017-Central Tax removed
   // the charge for goods. So these fields are asked for only where the client
@@ -3803,18 +3805,17 @@ function ReceiptForm({
     if (!clientId) return;
     (async () => {
       const sb = getSupabaseClient();
-      const [{ data }, { data: cli }] = await Promise.all([
-        sb.from("bank_accounts")
-          .select("id, bank_name, account_no")
-          .eq("client_id", clientId)
-          .eq("is_active", true)
-          .order("bank_name"),
+      const [accounts, { data: cli }] = await Promise.all([
+        // Asked of the server (POST-A-010), which asks the caller's Banking
+        // permission; a refusal leaves the picker empty and says so.
+        fetchActiveBankAccounts(clientId).catch(() => null),
         sb.from("clients")
           .select("gst_advance_tax_applicable, state_code")
           .eq("id", clientId)
           .maybeSingle(),
       ]);
-      setBankAccounts((data as { id: string; bank_name: string; account_no: string }[]) ?? []);
+      setBankAccounts(accounts ?? []);
+      setBankAccountsUnreadable(accounts === null);
       const c = cli as { gst_advance_tax_applicable?: boolean | null; state_code?: string | null } | null;
       setAdvanceTaxApplicable(Boolean(c?.gst_advance_tax_applicable));
       setClientStateCode(c?.state_code ?? "");
@@ -4117,6 +4118,7 @@ function ReceiptForm({
           label="Deposited Into"
           paymentMode={paymentMode}
           accounts={bankAccounts}
+          accountsUnreadable={bankAccountsUnreadable}
         />
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Reference No.</label>

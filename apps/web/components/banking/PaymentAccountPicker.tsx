@@ -27,7 +27,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
 
 export interface BankAccountOption {
   id: string;
@@ -45,6 +45,10 @@ export interface PaymentAccountPickerProps {
   paymentMode?: string;
   /** Supply the rows where the parent already fetched them in one round trip. */
   accounts?: BankAccountOption[];
+  /** The parent asked for the rows and the server would not give them (a
+   *  blocked Banking permission, or a failed read). Said under the choice,
+   *  because an empty list otherwise reads as a client with no accounts. */
+  accountsUnreadable?: boolean;
   className?: string;
 }
 
@@ -54,22 +58,25 @@ export interface PaymentAccountPickerProps {
 const CASH_MODES = new Set(["cash", "petty_cash"]);
 
 export function PaymentAccountPicker({
-  clientId, value, onChange, label, paymentMode, accounts, className,
+  clientId, value, onChange, label, paymentMode, accounts, accountsUnreadable, className,
 }: PaymentAccountPickerProps) {
   const [fetched, setFetched] = useState<BankAccountOption[]>([]);
+  // A list that could not be read is not a client with no bank accounts: the
+  // server refuses a person whose Banking access is blocked, and the empty
+  // option below promises a posting, so the picker says it could not look.
+  const [unreadable, setUnreadable] = useState(false);
   const supplied = accounts !== undefined;
 
   useEffect(() => {
     if (supplied || !clientId) return;
     let cancelled = false;
     (async () => {
-      const { data } = await getSupabaseClient()
-        .from("bank_accounts")
-        .select("id, bank_name, account_no")
-        .eq("client_id", clientId)
-        .eq("is_active", true)
-        .order("bank_name");
-      if (!cancelled) setFetched((data as BankAccountOption[]) ?? []);
+      try {
+        const rows = await fetchActiveBankAccounts(clientId);
+        if (!cancelled) { setFetched(rows); setUnreadable(false); }
+      } catch {
+        if (!cancelled) { setFetched([]); setUnreadable(true); }
+      }
     })();
     return () => { cancelled = true; };
   }, [clientId, supplied]);
@@ -92,6 +99,11 @@ export function PaymentAccountPicker({
           </option>
         ))}
       </select>
+      {(supplied ? accountsUnreadable : unreadable) && (
+        <p className="mt-1 text-2xs text-state-attention">
+          This client&apos;s bank accounts could not be read, so none is listed. Nothing was chosen.
+        </p>
+      )}
     </div>
   );
 }
