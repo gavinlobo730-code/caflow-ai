@@ -3,12 +3,15 @@
 /**
  * Employee Self-Service Portal — PracticeSync AI
  * Allows employees of CA firm clients to view their own payroll info.
- * Detects employee record by matching auth_user_id on payroll_employees.
+ * The employee, their payslips, their leave and their tax declaration are all asked of the server, which resolves the
+ * employee from the session (POST-A-010): the page names nobody, so there is nothing in a request to change.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import type { EmployeePortalLeaveBalances, EmployeePortalPayslips } from "@/lib/api";
+import { objectWithLists } from "@/lib/api/shape";
 import { User, FileText, Calendar, Download, Loader2, Receipt, TrendingUp } from "lucide-react";
 import { TaxDeclarationTab } from "@/components/portal/TaxDeclarationTab";
 import { TdsProjectionTab } from "@/components/portal/TdsProjectionTab";
@@ -140,23 +143,24 @@ export default function EmployeePortalPage() {
       setLoading(true);
       setError(null);
       try {
-        const supabase = getSupabaseClient();
-        const { data: { session } } = await supabase.auth.getSession();
+        // Signed out (or the stored session is gone) is said in words before anything is asked, instead of showing the
+        // server's "Missing or invalid Authorization header". The session is the auth client's; no table is read here.
+        const { data: { session } } = await getSupabaseClient().auth.getSession();
         if (!session) {
           setError("Not logged in. Please sign in to access your portal.");
           return;
         }
-        const { data, error: err } = await supabase
-          .from("payroll_employees")
-          .select("id, name, designation, department, pan, bank_account_no, bank_name, bank_ifsc")
-          .eq("auth_user_id", session.user.id)
-          .eq("portal_enabled", true)
-          .maybeSingle();
-        if (err) throw new Error(err.message);
-        if (!data) {
+        // Asked of the server, which resolves the employee from the session. "Not an employee, or access withdrawn" is one
+        // answer (`enabled: false`), the same sentence as when the database returned no row; any other failure is a failure.
+        const access = await api.portalSelf.employeeAccess();
+        if (!access?.success) throw new Error(access?.error ?? "Failed to load employee record");
+        if (!access.data?.enabled) {
           setError("No employee record found for your account. Please contact your employer.");
           return;
         }
+        const res = await api.portalSelf.employeeMe();
+        const data = res?.success ? res.data?.employee : null;
+        if (!data) throw new Error(res?.error ?? "Failed to load employee record");
         setEmployee(data);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load employee record");
@@ -172,34 +176,14 @@ export default function EmployeePortalPage() {
     setPayslipsLoading(true);
     setPayslipsError(false);
     try {
-      const supabase = getSupabaseClient();
-      // Reads payroll_slips directly rather than the salary_slips view
-      // (migration 072), which also exists and exposes the same rows. Either
-      // works; this one names the base table the amounts actually live on.
-      //
-      // The period lives on the parent run (payroll_runs.month), not on the
-      // slip, and the amounts are gross_paise / net_paise. Ordered by
-      // created_at because PostgREST cannot sort parent rows by an embedded
-      // column, and slips are created per run in period order anyway.
-      //
-      // The payroll_runs!inner(month) embed needs the RUN to be visible under
-      // RLS, not just the slip — an inner join drops the row otherwise.
-      // Migration 262 grants both, scoped to the employee's own records.
-      const { data, error: err } = await supabase
-        .from("payroll_slips")
-        .select("id, gross_paise, net_paise, created_at, payroll_runs!inner(month)")
-        .eq("employee_id", employee.id)
-        .order("created_at", { ascending: false });
-      if (err) throw new Error(err.message);
-
-      type SlipRow = {
-        id: string; gross_paise: number | null; net_paise: number | null;
-        created_at: string; payroll_runs: { month: string } | null;
-      };
-      setPayslips(((data ?? []) as unknown as SlipRow[]).map((r) => {
-        // payroll_runs.month is text. It is empty in this database, so both the
-        // "YYYY-MM" and bare-month encodings are handled rather than guessed at.
-        const raw = r.payroll_runs?.month ?? "";
+      // The employee's own payslips in released runs, newest first, from the server (POST-A-010). The period is the run's
+      // month as stored; it is text, and it is empty in this database, so both the "YYYY-MM" and bare-month encodings are
+      // handled rather than guessed at.
+      const res = await api.portalSelf.employeePayslips();
+      const body = res?.success ? objectWithLists<EmployeePortalPayslips>(res.data, "payslips") : null;
+      if (!body) throw new Error(res?.error ?? "The payslip list came back in a shape this screen cannot read.");
+      setPayslips(body.payslips.map((r) => {
+        const raw = r.month ?? "";
         const [ys, ms] = raw.includes("-") ? raw.split("-") : ["", raw];
         return {
           id: r.id,
@@ -226,17 +210,12 @@ export default function EmployeePortalPage() {
     setLeaveLoading(true);
     setLeaveError(false);
     try {
-      const supabase = getSupabaseClient();
-      // Indian FY: April 1 to March 31
-      const now = new Date();
-      const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-      const { data, error: err } = await supabase
-        .from("leave_balances")
-        .select("id, year, casual_leave_balance, sick_leave_balance, earned_leave_balance")
-        .eq("employee_id", employee.id)
-        .eq("year", currentYear);
-      if (err) throw new Error(err.message);
-      setLeaveBalances(data ?? []);
+      // The entitlement recorded for the current calendar year (IST), from the server: the year is the server's to choose,
+      // as the staff side keeps leave under a calendar year, so the browser's clock decides nothing here (POST-A-010).
+      const res = await api.portalSelf.employeeLeaveBalances();
+      const body = res?.success ? objectWithLists<EmployeePortalLeaveBalances>(res.data, "balances") : null;
+      if (!body) throw new Error(res?.error ?? "The leave balances came back in a shape this screen cannot read.");
+      setLeaveBalances(body.balances);
     } catch (e) {
       // A failed fetch must NOT fall through to the empty "No leave records"
       // state — flag it so the UI shows a retryable error instead, mirroring
@@ -454,7 +433,7 @@ export default function EmployeePortalPage() {
 
         {/* Tax declaration — the employee's own Form 12BB (Rule 26C). */}
         {activeTab === "declaration" && (
-          <TaxDeclarationTab employeeId={employee.id} onToast={setToast} />
+          <TaxDeclarationTab onToast={setToast} />
         )}
 
         {/* The employee's own §192 working. NO employee id is passed: the

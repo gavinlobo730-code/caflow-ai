@@ -275,11 +275,12 @@ def test_the_employee_portal_columns_are_right(schema):
         assert gone not in schema, (
             f"{gone} now exists — the portal fix assumed it did not; recheck it")
 
+    # Since POST-A-010 (25-10-2026) the page selects nothing itself: its record, payslips and leave come from the server, whose
+    # own selects `test_backend_columns_exist_pg.py` reads against this schema. A select back on the page is a browser read of a
+    # payroll table, which `test_a_sensitive_table_is_not_read_from_the_browser.py` refuses; this says it from the columns' side.
     found, _ = scan(WEB)
     portal = {(rel, col) for path, rel, col in found if path == "app/portal/employee/page.tsx"}
-    assert portal, "no selects parsed from the employee portal page"
-    for rel, col in sorted(portal):
-        assert f"{rel}.{col}" in schema, f"employee portal still selects {rel}.{col}"
+    assert not portal, f"the employee portal page selects {sorted(portal)} from the browser again"
 
 
 @_NEEDS_PG

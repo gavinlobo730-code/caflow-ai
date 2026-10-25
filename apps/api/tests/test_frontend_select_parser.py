@@ -260,13 +260,15 @@ def test_browser_tables_names_a_write_only_table_and_an_embedded_one(tmp_path):
 
 
 def test_browser_tables_finds_the_real_frontend():
-    """Not vacuous: the real apps/web yields the ~83 tables CLAUDE.md quotes,
-    `journal_lines` among them only because it is embedded."""
+    """Not vacuous: the real apps/web yields most of the ~83 tables CLAUDE.md quotes (70 on 25-10-2026, after POST-A-010 moved
+    the payroll, bank, document and Storage reach behind the API), `journal_lines` among them only because it is embedded."""
     from _frontend_select_parser import browser_tables
     web = Path(__file__).resolve().parents[2] / "web"
     if not web.is_dir():
         import pytest
         pytest.skip("needs apps/web")
     found = browser_tables(web)
-    assert 75 <= len(found) <= 120, len(found)
-    assert {"clients", "payroll_slips", "journal_lines", "tasks"} <= set(found)
+    assert 60 <= len(found) <= 120, len(found)
+    # `payroll_slips` was the sentinel until POST-A-010 took the employee portal's payslip list to the server; `clients` and
+    # `tasks` are read directly by many screens and `journal_lines` only through an embed, which is what this proves it finds.
+    assert {"clients", "journal_lines", "tasks"} <= set(found)

@@ -171,10 +171,10 @@ CLAIMS: tuple[Claim, ...] = (
     Claim(
         id="portal-principals-separate",
         status=PROVEN,
-        fact="A client and an employee are separate principals from staff: the employee API is read-only and takes no identifying parameter, and neither principal holds an RBAC role.",
+        fact="A client and an employee are separate principals from staff: the employee API is read-only apart from the employee's own tax declaration and takes no identifying parameter, and neither principal holds an RBAC role.",
         proofs=(
             "tests/test_an_employee_can_see_their_own_withholding.py::test_no_employee_route_takes_an_identifying_parameter",
-            "tests/test_an_employee_can_see_their_own_withholding.py::test_the_employee_api_is_read_only",
+            "tests/test_an_employee_can_see_their_own_withholding.py::test_the_employee_api_is_read_only_but_for_the_one_declaration",
             "tests/test_an_employee_can_see_their_own_withholding.py::test_every_employee_route_resolves_the_principal",
         ),
         says=(
@@ -189,6 +189,7 @@ CLAIMS: tuple[Claim, ...] = (
             "tests/test_an_employee_can_download_their_own_payslip.py::test_an_employee_downloads_their_own_released_payslip",
             "tests/test_262_employee_portal_rls_pg.py::test_employee_sees_own_leave_balance",
             "tests/test_297_employee_declaration_rls_pg.py::test_employee_can_file_their_own_declaration",
+            "tests/test_an_employee_files_their_own_declaration_through_the_server.py::test_a_filing_writes_the_callers_row_with_the_principals_ids_and_nothing_verified",
             "tests/test_an_employee_can_see_their_own_withholding.py::test_the_employee_sees_exactly_what_the_CA_sees",
             "tests/test_employee_portal_provisioning.py::test_invite_then_activate_grants_access",
         ),

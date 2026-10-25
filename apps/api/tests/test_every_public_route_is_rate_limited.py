@@ -268,6 +268,10 @@ OWN_HANDLING = {
     ("GET", "/api/portal/memberships"): (
         "routers.portal_self", "get_jwt_user",
         "a login but no account yet, and a read of the caller's OWN memberships: no token, no body, no write"),
+    ("GET", "/api/portal/employee/access"): (
+        "routers.portal_employee", "get_jwt_user",
+        "a login but no account yet, and a question about the caller's OWN identity (is this an activated employee): "
+        "no parameter, no body, no write, one lookup of the caller's own row (POST-A-010)"),
 }
 
 

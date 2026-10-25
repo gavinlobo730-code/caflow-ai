@@ -55,8 +55,15 @@ ROLLBACK = MIGRATIONS / f"{_STEM}_rollback.sql"
 _ADMIN = os.environ.get("HARNESS_PG")
 
 #: What the browser writes among the payroll tables. Add to it only with a decision about who may write the table and
-#: why it cannot go through the API.
-WRITTEN_BY_THE_BROWSER = {"payroll_it_declarations", "payroll_it_declaration_items"}
+#: why it cannot go through the API. EMPTY since 25-10-2026 (POST-A-010): the employee portal's tax-declaration tab was the
+#: last writer and now files through `PUT /api/portal/employee/tax-declaration`.
+WRITTEN_BY_THE_BROWSER: set[str] = set()
+
+#: The payroll tables a signed-in role still holds a write privilege on. It is the two declaration tables, left granted by
+#: migration 499 because the browser wrote them, and NO SCREEN USES IT NOW: the privilege and the employee-own-record policies
+#: behind it are revoked by POST-A-339, which is a migration this change does not make. Until then a hand-made PostgREST call
+#: with an employee's own token can still write their own declaration, exactly as before, and these tests keep saying so.
+STILL_GRANTED_TO_A_SIGNED_IN_ROLE = {"payroll_it_declarations", "payroll_it_declaration_items"}
 
 #: The payroll family: every `payroll_*` table, plus the ones named for their job and not their prefix.
 _FAMILY = re.compile(r"^(payroll_.+|attendance|leave_balances|bonus_declarations|bonus_disqualifications|"
@@ -83,7 +90,7 @@ def test_the_family_pattern_names_the_tables_the_migration_revokes():
     revoked = set(re.findall(r"'([a-z_]+)'", sql.split("tables text[] := ARRAY[", 1)[1].split("]", 1)[0]))
     assert len(revoked) == 17, revoked
     assert all(_FAMILY.match(t) for t in revoked), sorted(t for t in revoked if not _FAMILY.match(t))
-    assert not revoked & WRITTEN_BY_THE_BROWSER
+    assert not revoked & STILL_GRANTED_TO_A_SIGNED_IN_ROLE
 
 
 # ── the database ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -152,9 +159,9 @@ def _writable_by_a_signed_in_role(dsn: str) -> set[str]:
 @_NEEDS_PG
 def test_a_signed_in_role_writes_exactly_the_payroll_tables_the_browser_writes(db):
     got = _writable_by_a_signed_in_role(db)
-    assert got == WRITTEN_BY_THE_BROWSER, (
-        f"signed-in roles hold a write privilege on {sorted(got - WRITTEN_BY_THE_BROWSER)} and lack it on "
-        f"{sorted(WRITTEN_BY_THE_BROWSER - got)}. A payroll table the browser does not write must not be writable "
+    assert got == STILL_GRANTED_TO_A_SIGNED_IN_ROLE, (
+        f"signed-in roles hold a write privilege on {sorted(got - STILL_GRANTED_TO_A_SIGNED_IN_ROLE)} and lack it on "
+        f"{sorted(STILL_GRANTED_TO_A_SIGNED_IN_ROLE - got)}. A payroll table the browser does not write must not be writable "
         "from a signed-in session: REVOKE it (migration 499 is the pattern), or declare the browser write.")
 
 
@@ -226,7 +233,7 @@ def test_the_tables_the_browser_does_write_are_still_writable_by_a_manager(db):
 def test_the_tables_the_browser_writes_still_hold_insert_and_update_for_a_signed_in_role(db):
     """The revoke did not overreach: an employee's own declaration needs INSERT and UPDATE on the declaration and its
     items. (`leave_balances` is no longer one of them: migration 515, proved in its own test file.)"""
-    for t in sorted(WRITTEN_BY_THE_BROWSER):
+    for t in sorted(STILL_GRANTED_TO_A_SIGNED_IN_ROLE):
         for verb in ("INSERT", "UPDATE"):
             assert _ok(db, f"SELECT has_table_privilege('authenticated', 'public.{t}', '{verb}');") == "t", (t, verb)
 
@@ -243,11 +250,11 @@ def test_499_removes_what_the_hosting_platform_grants_and_what_reaches_a_role_an
         GRANT INSERT ON public.payroll_slips TO PUBLIC;
         GRANT UPDATE (net_paise) ON public.payroll_slips TO authenticated;
     """)
-    before = _writable_by_a_signed_in_role(db) - WRITTEN_BY_THE_BROWSER
+    before = _writable_by_a_signed_in_role(db) - STILL_GRANTED_TO_A_SIGNED_IN_ROLE
     assert {"payroll_runs", "attendance", "epfo_ecr_filings", "payroll_loans", "payroll_slips"} <= before, before
     r = _psql(db, MIGRATION.read_text(encoding="utf-8"), tuples=False)
     assert r.returncode == 0, r.stderr
-    assert _writable_by_a_signed_in_role(db) == WRITTEN_BY_THE_BROWSER
+    assert _writable_by_a_signed_in_role(db) == STILL_GRANTED_TO_A_SIGNED_IN_ROLE
     # what is not a write is left alone
     assert _ok(db, "SELECT has_table_privilege('anon', 'public.payroll_runs', 'REFERENCES');") == "t"
 
@@ -278,7 +285,7 @@ def test_499_is_idempotent(db):
     for _ in range(2):
         r = _psql(db, MIGRATION.read_text(encoding="utf-8"), tuples=False)
         assert r.returncode == 0, r.stderr
-    assert _writable_by_a_signed_in_role(db) == WRITTEN_BY_THE_BROWSER
+    assert _writable_by_a_signed_in_role(db) == STILL_GRANTED_TO_A_SIGNED_IN_ROLE
 
 
 @_NEEDS_PG
@@ -286,7 +293,7 @@ def test_its_own_rollback_puts_the_holes_back(db):
     """The negative control: without the revoke the statements refused above go through."""
     r = _psql(db, ROLLBACK.read_text(encoding="utf-8"), tuples=False)
     assert r.returncode == 0, r.stderr
-    reopened = _writable_by_a_signed_in_role(db) - WRITTEN_BY_THE_BROWSER
+    reopened = _writable_by_a_signed_in_role(db) - STILL_GRANTED_TO_A_SIGNED_IN_ROLE
     assert len(reopened) == 17, sorted(reopened)
     # EVERY probe goes through once the privilege is back, so each refusal above is the privilege and not a statement
     # that was malformed or stopped by a policy on the way

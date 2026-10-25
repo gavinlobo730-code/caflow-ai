@@ -78,6 +78,97 @@ export interface PayrollAttendanceBoard {
   }[];
 }
 
+/** `GET /api/portal/employee/me`: the signed-in employee's own record. */
+export interface EmployeePortalRecord {
+  id: string;
+  name: string;
+  designation: string | null;
+  department: string | null;
+  pan: string | null;
+  bank_account_no: string | null;
+  bank_name: string | null;
+  bank_ifsc: string | null;
+}
+
+/** `GET /api/portal/employee/payslips`: the employee's own payslips in released runs, newest first. */
+export interface EmployeePortalPayslips {
+  payslips: {
+    id: string;
+    /** The run's period as stored: "YYYY-MM", or a bare month number in older rows. */
+    month: string;
+    gross_paise: number | null;
+    net_paise: number | null;
+    created_at: string;
+  }[];
+}
+
+/** `GET /api/portal/employee/leave-balances`: the entitlement recorded for the current calendar year (IST), if any. */
+export interface EmployeePortalLeaveBalances {
+  year: number;
+  balances: {
+    id: string;
+    year: number;
+    casual_leave_balance: number | null;
+    sick_leave_balance: number | null;
+    earned_leave_balance: number | null;
+  }[];
+}
+
+/** One Chapter VI-A line of the employee's declaration, as the server serves it. */
+export interface EmployeeDeclarationLine {
+  id: string;
+  section: string;
+  label: string | null;
+  amount_declared_paise: number;
+  amount_verified_paise: number;
+  status: string;
+}
+
+/** The employee's declaration for a year, as the form shows it (the server owns the employee, client and firm). */
+export interface EmployeeDeclarationHead {
+  id: string;
+  fy: string;
+  regime: "new" | "old";
+  status: string;
+  rent_paid_declared_paise: number;
+  landlord_name: string;
+  landlord_address: string;
+  landlord_pan: string;
+  rent_is_metro: boolean;
+  lta_declared_paise: number;
+  home_loan_interest_declared_paise: number;
+  lender_name: string;
+  lender_pan: string;
+  other_income_declared_paise: number;
+  house_property_loss_declared_paise: number;
+  proofs_verified: boolean;
+}
+
+/** `GET/PUT /api/portal/employee/tax-declaration`: `declaration` is null when none is filed for the year. */
+export interface EmployeeTaxDeclaration {
+  fy: string;
+  declaration: EmployeeDeclarationHead | null;
+  items: EmployeeDeclarationLine[];
+}
+
+/** The body of `PUT /api/portal/employee/tax-declaration`: what the employee states, and nothing the CA verifies. */
+export interface EmployeeTaxDeclarationBody {
+  fy: string;
+  regime: "new" | "old";
+  rent_paid_declared_paise: number;
+  landlord_name: string;
+  landlord_address: string;
+  landlord_pan: string;
+  rent_is_metro: boolean;
+  lta_declared_paise: number;
+  home_loan_interest_declared_paise: number;
+  lender_name: string;
+  lender_pan: string;
+  other_income_declared_paise: number;
+  house_property_loss_declared_paise: number;
+  items: { section: string; amount_declared_paise: number }[];
+}
+
 /** `GET /api/payroll/leave-ledger`. */
 export interface PayrollLeaveLedger {
   year: number;
@@ -6424,6 +6515,21 @@ export const api = {
     employeePayslipPdf: (slipId: string, fallbackFilename = `payslip-${slipId}.pdf`) =>
       downloadFile(`/api/portal/employee/payslips/${encodeURIComponent(slipId)}/pdf`,
                    fallbackFilename),
+    // The employee's own record, payslip list, leave balance and tax declaration (POST-A-010). They were read, and the
+    // declaration written, straight from the browser under the database's row security. Nothing about WHO is in any of
+    // these requests: the server resolves the employee from the session, so there is no parameter to tamper with.
+    /** Is this identity an activated employee? Never an error for someone who is not one: `{enabled: false}`. */
+    employeeAccess: () => request<ApiResp<{ enabled: boolean }>>("/api/portal/employee/access"),
+    employeeMe: () => request<ApiResp<{ employee: EmployeePortalRecord }>>("/api/portal/employee/me"),
+    employeePayslips: () => request<ApiResp<EmployeePortalPayslips>>("/api/portal/employee/payslips"),
+    employeeLeaveBalances: () => request<ApiResp<EmployeePortalLeaveBalances>>("/api/portal/employee/leave-balances"),
+    employeeTaxDeclaration: (financialYear: string) =>
+      request<ApiResp<EmployeeTaxDeclaration>>(
+        `/api/portal/employee/tax-declaration?financial_year=${encodeURIComponent(financialYear)}`),
+    /** File (or replace) the declaration. Throws the server's sentence when it is refused, locked or invalid. */
+    fileEmployeeTaxDeclaration: (body: EmployeeTaxDeclarationBody) =>
+      request<ApiResp<EmployeeTaxDeclaration>>(
+        "/api/portal/employee/tax-declaration", { method: "PUT", body: JSON.stringify(body) }),
     // me/dashboard select the active client explicitly via X-Portal-Client-Id when
     // the identity belongs to more than one client (no implicit switching).
     me: (clientId?: string) =>

@@ -5,6 +5,7 @@ IT Act §192: TDS on salary (new regime slabs + 4% cess).
 All monetary amounts in integer paise.
 """
 from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic_core import PydanticCustomError
 from typing import Optional
 import re
 
@@ -629,12 +630,79 @@ class DeclarationIn(BaseModel):
     @field_validator("landlord_pan", "lender_pan")
     @classmethod
     def _pan_shape(cls, v):
-        if not v:
-            return ""
-        s = str(v).strip().upper()
-        if not re.match(r"^[A-Z]{5}[0-9]{4}[A-Z]$", s):
-            raise ValueError("PAN must be in the form AAAAA9999A")
-        return s
+        return _declaration_pan(v)
+
+
+def _declaration_pan(v):
+    """A PAN typed on a declaration: blank stays blank, anything else is upper-cased and must have the shape of one."""
+    if not v:
+        return ""
+    s = str(v).strip().upper()
+    if not re.match(r"^[A-Z]{5}[0-9]{4}[A-Z]$", s):
+        raise ValueError("PAN must be in the form AAAAA9999A")
+    return s
+
+
+class EmployeeDeclarationItemIn(BaseModel):
+    """One Chapter VI-A line as the EMPLOYEE states it: a head and an amount, nothing else.
+
+    No verified amount, no status and no proof: only a verifier sets those (`DeclarationItemIn` is the staff door's), so
+    this model has nowhere to put one and an employee's request cannot carry one in."""
+    section: str = Field(max_length=40)
+    amount_declared_paise: int = Field(ge=0)
+
+
+#: The longest a name or an address on Form 12BB may be here. The tab states them as `maxLength` on its boxes.
+_NAME_MAX, _ADDRESS_MAX = 200, 500
+
+
+class EmployeeDeclarationIn(BaseModel):
+    """What an employee sends to file their own §192 declaration (Form 12BB, Rule 26C) for a financial year.
+
+    There is no employee, client or firm here: they come from the signed-in principal. The verified columns and the
+    verification flag are not here either, so an employee can declare an amount and cannot verify it.
+
+    A refusal names the box it is about ("Landlord's PAN must be ..."): the tab shows the sentences as they come, and a
+    bare "PAN must be in the form AAAAA9999A" does not say which of two PANs, or "at most 200 characters" which name."""
+    fy: FYLabel
+    regime: str = Field(default="new", max_length=10)
+
+    rent_paid_declared_paise: int = Field(default=0, ge=0)
+    landlord_name: Optional[str] = ""
+    landlord_address: Optional[str] = ""
+    landlord_pan: Optional[str] = ""
+    rent_is_metro: bool = False
+
+    lta_declared_paise: int = Field(default=0, ge=0)
+
+    home_loan_interest_declared_paise: int = Field(default=0, ge=0)
+    lender_name: Optional[str] = ""
+    lender_pan: Optional[str] = ""
+
+    other_income_declared_paise: int = Field(default=0, ge=0)
+    house_property_loss_declared_paise: int = Field(default=0, ge=0)
+
+    items: list[EmployeeDeclarationItemIn] = Field(default_factory=list, max_length=20)
+
+    @field_validator("landlord_pan", "lender_pan")
+    @classmethod
+    def _pan_shape(cls, v, info):
+        try:
+            return _declaration_pan(v)
+        except ValueError:
+            label = "Landlord's PAN" if info.field_name == "landlord_pan" else "Lender's PAN"
+            raise PydanticCustomError("declaration_pan", "{label} must be in the form AAAAA9999A.", {"label": label}) from None
+
+    @field_validator("landlord_name", "lender_name", "landlord_address")
+    @classmethod
+    def _text_length(cls, v, info):
+        limit = _ADDRESS_MAX if info.field_name == "landlord_address" else _NAME_MAX
+        if v is not None and len(v) > limit:
+            label = {"landlord_name": "The landlord's name", "lender_name": "The lender's name",
+                     "landlord_address": "The landlord's address"}[info.field_name]
+            raise PydanticCustomError("declaration_text_length", "{label} must be at most {limit} characters.",
+                                      {"label": label, "limit": limit})
+        return v
 
 
 class DeclarationVerifyIn(BaseModel):

@@ -144,14 +144,16 @@ test("negative control: the scan fails a delete that reads nothing, and one that
   assert.equal(unreadDeletes(`// await sb${from("t")}.delete().eq("id", id);`), 0);
 });
 
-// POST-A-255. The employee's declaration save deletes the saved lines and inserts the new ones. The delete's result was
-// not read, so a refusal let the insert run and the declared amounts sat twice. It is read now: its error stops the save,
-// and an answer of no rows for a declaration whose lines were loaded stops it too (row security hides a refused delete
-// without an error), and a failed read of the lines is a failed load rather than an empty form.
-test("the declaration save reads its delete and does not show empty boxes for lines it could not read", () => {
+// POST-A-255, then POST-A-010. The employee's declaration save used to delete the saved lines and insert the new ones from the
+// browser; the delete's result was not read, so a refusal let the insert run and the declared amounts sat twice. The save is the
+// server's now (`PUT /api/portal/employee/tax-declaration`), which reads its own delete and puts back what it replaced
+// (`tests/test_an_employee_files_their_own_declaration_through_the_server.py` holds that), so the tab must hold NO delete of its
+// own and no database client at all: a delete back in the browser would be this defect again, unread.
+test("the declaration tab deletes nothing and talks to no database from the browser", () => {
   const code = stripComments(readFileSync(join(WEB, "components/portal/TaxDeclarationTab.tsx"), "utf8"));
-  assert.match(code, /\.delete\(\)\s*\.eq\("declaration_id", saved\.id\)\s*\.select\("id"\)/);
-  assert.match(code, /if \(delErr\) throw delErr;/);
-  assert.match(code, /savedLineCount\.current > 0 && \(removed \?\? \[\]\)\.length === 0/);
-  assert.match(code, /if \(rowsErr\) throw rowsErr;/);
+  assert.doesNotMatch(code, /\.delete\(/);
+  assert.doesNotMatch(code, /\.from\(\s*["'`]/);
+  assert.doesNotMatch(code, /getSupabaseClient|supabase/i);
+  assert.match(code, /api\.portalSelf\.fileEmployeeTaxDeclaration\(/);
+  assert.match(code, /api\.portalSelf\.employeeTaxDeclaration\(/);
 });

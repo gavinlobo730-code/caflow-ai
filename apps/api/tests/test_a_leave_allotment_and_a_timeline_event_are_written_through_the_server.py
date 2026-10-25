@@ -379,7 +379,11 @@ def test_the_team_screens_sentence_says_the_database_refuses_a_leave_write():
     text = " ".join(notice.split())
     assert "any write to employees, runs, payslips, attendance, leave balances" in text
     assert "Leave balances and tax declarations can still be saved" not in text
-    assert "An employee's own tax declaration can still be saved from the browser" in text
+    # POST-A-010: the employee portal saves the declaration through the server, so the sentence no longer says the BROWSER does;
+    # what stays true, and is what the sentence now says, is that the database still lets that employee write it with their own sign-in.
+    assert "An employee's own tax declaration can still be saved from the browser" not in text
+    assert ("An employee's own tax declaration is the one payroll record the database still lets that employee write with their "
+            "own sign-in (the employee portal saves it through the PracticeSync server)") in text
 
 
 def test_the_team_screens_sentence_says_a_blocked_staff_member_is_refused_a_declaration_too():
