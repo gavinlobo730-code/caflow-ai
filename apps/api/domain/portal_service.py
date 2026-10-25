@@ -79,6 +79,13 @@ def complete_document_request(request_id: str) -> dict | None:
     return None
 
 
+def delete_document_request(request_id: str) -> bool:
+    """Remove a document request. True when one was there to remove."""
+    before = len(_MOCK_DOC_REQUESTS)
+    _MOCK_DOC_REQUESTS[:] = [r for r in _MOCK_DOC_REQUESTS if r["id"] != request_id]
+    return len(_MOCK_DOC_REQUESTS) < before
+
+
 # ── Messages ──────────────────────────────────────────────────────────────────
 
 def send_message(

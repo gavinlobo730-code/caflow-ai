@@ -261,8 +261,6 @@ _SURFACES = {
                    {"attendance", "leave_balances", "payroll_employees"}),
     "reports": ("app/payroll/reports/",
                 {"payroll_employees", "payroll_runs", "payroll_slips"}),
-    "documents": (("app/documents/", "app/clients/documents/", "app/clients/[id]/documents/"),
-                  {"documents", "client_documents"}),
 }
 
 
@@ -288,14 +286,16 @@ def test_every_screen_the_notice_names_still_reads_a_table_directly():
 
 
 def test_the_notice_names_no_directly_read_surface_that_this_module_cannot_check():
-    """The parenthesis "(documents among them)" is a claim about the browser. Every name in it must be a surface above, so
-    that a name added to the sentence (or left in it after the screen moved behind the API, as the bank-account pickers
-    did in POST-A-010) is measured against a read, and an unknown one fails here."""
+    """If the sentence says which screens read directly, as "(documents among them)" once did, every name in it must be
+    a surface above, so that a name added to the sentence (or left in it after the screen moved behind the API, as the
+    bank-account pickers and the document screens did in POST-A-010) is measured against a read, and an unknown one
+    fails here. A sentence that names none has nothing to hold."""
     text = " ".join(DENIAL_REACH_NOTICE.split())
+    assert "read tables directly from the browser" in text, "the notice no longer says that screens read directly"
     found = re.search(r"read tables directly from the browser \(([^)]*?) among them\)", text)
-    assert found, "the notice no longer says which screens read directly; this test has nothing to hold"
+    if not found:
+        return
     names = [n.strip() for n in re.split(r",| and ", found.group(1)) if n.strip()]
-    assert names, "the parenthesis names nothing"
     unknown = [n for n in names if n not in _SURFACES]
     assert not unknown, f"the notice names {unknown} as read directly, and no surface here measures it"
 

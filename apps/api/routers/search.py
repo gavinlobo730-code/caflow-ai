@@ -211,7 +211,9 @@ def global_search(
     try:
         from repositories.document_repository import document_repo
         count = 0
-        for d in document_repo.find_all(firm_id=firm_id):
+        # Three columns, not `*`: this read returns every document of the firm and runs on each search, and `*` carries the
+        # extracted text of every one of them.
+        for d in document_repo.find_all(firm_id=firm_id, columns="id, client_id, file_name, document_type"):
             if not _in_scope(eff, d.get("client_id")):
                 continue
             hay = " ".join(str(d.get(k, "")) for k in ("file_name", "document_type")).lower()

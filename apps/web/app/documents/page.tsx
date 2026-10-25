@@ -9,9 +9,8 @@ import {
   X,
   Loader2,
 } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
-import { selectAll } from "@/lib/supabase/selectAll";
+import { api } from "@/lib/api";
+import { objectWithLists } from "@/lib/api/shape";
 import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
@@ -82,33 +81,7 @@ const FILTER_TYPES = [
 const FINANCIAL_YEARS = financialYearChoicesAround(null);
 type FinancialYear = (typeof FINANCIAL_YEARS)[number];
 
-const STORAGE_BUCKET = "Documents";
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-async function apiFetch(path: string, opts?: RequestInit) {
-  const { data: { session } } = await getSupabaseClient().auth.getSession();
-  const token = session?.access_token ?? "";
-  const res = await fetch(`${API}${path}`, {
-    ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(opts?.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const body = await res.json() as { error?: string; detail?: string };
-      detail = body.error ?? body.detail ?? detail;
-    } catch { /* not JSON */ }
-    throw new Error(detail);
-  }
-  return res.json();
-}
-
 
 function formatBytes(bytes: number | null): string {
   if (bytes === null || bytes === undefined) return "—";
@@ -168,55 +141,15 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
     setError(null);
 
     try {
-      const firmId = await getFirmId();
-      const sb = getSupabaseClient();
-
-      // Sanitise filename to avoid path issues
-      const safeName = file.name.replace(/[^a-zA-Z0-9._\-]/g, "_");
-      const storagePath = `${firmId}/${clientId}/${docType}/${safeName}`;
-
-      // Upload to Supabase Storage
-      const { error: storageErr } = await sb.storage
-        .from(STORAGE_BUCKET)
-        .upload(storagePath, file, { upsert: true });
-
-      if (storageErr) {
-        if (
-          storageErr.message.toLowerCase().includes("bucket") ||
-          storageErr.message.toLowerCase().includes("not found")
-        ) {
-          throw new Error(
-            "Storage not configured. Please create a 'Documents' bucket in Supabase Storage."
-          );
-        }
-        throw new Error(storageErr.message);
-      }
-
-      // Insert document record
-      const { error: dbErr } = await sb.from("documents").insert({
-        firm_id: firmId,
-        client_id: clientId,
-        document_type: docType,
-        file_name: file.name,
-        // `file_path` is the NOT NULL column (migration 001) and `storage_path`
-        // the one migration 005 added beside it; routers/documents.py writes
-        // the same value to both. Omitting file_path made every upload fail
-        // with 23502 AFTER the file had been stored, orphaning the blob.
-        file_path: storagePath,
-        storage_path: storagePath,
-        storage_bucket: STORAGE_BUCKET,
-        mime_type: file.type || null,
-        file_size_bytes: file.size,   // the column is file_size_bytes
-        financial_year: financialYear,
-      });
-
-      if (dbErr) {
-        // The storage upload above already succeeded — a failed insert here
-        // must not leave an orphaned, untracked blob in storage with no DB
-        // row behind it (sweep-reports-documents-02).
-        await sb.storage.from(STORAGE_BUCKET).remove([storagePath]);
-        throw new Error(dbErr.message);
-      }
+      // The server stores the file under the firm and client, names it itself, bounds its size, checks its type
+      // against its bytes, and writes the record; if the record cannot be written it removes the file again
+      // (routers/documents.py). The browser neither holds the bucket nor writes the table.
+      const form = new FormData();
+      form.append("file", file);
+      form.append("client_id", clientId);
+      form.append("document_type", docType);
+      form.append("financial_year", financialYear);
+      await api.documents.upload(form);
 
       onUploaded();
       onClose();
@@ -371,6 +304,8 @@ export default function DocumentsPage() {
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // The document whose link is being fetched: one at a time, so a second click does not open a second tab.
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   const { toast } = useToast();
 
@@ -378,26 +313,19 @@ export default function DocumentsPage() {
     setLoading(true);
     setPageError(null);
     try {
-      const [clientList, firmId] = await Promise.all([
+      const [clientList, listed] = await Promise.all([
         getClients(),
-        getFirmId(),
+        api.documents.list() as Promise<{ success?: boolean; data?: unknown; error?: string | null }>,
       ]);
       setClients(clientList);
 
-      const sb = getSupabaseClient();
-      // Paged: this is every document the firm holds, newest first, so PostgREST's silent ~1000-row
-      // cut would drop the OLDEST ones from the only list they can be found in. `.order("id")` is the
-      // unique tiebreaker the OFFSET paging needs, since created_at is not unique.
-      const { data, error } = await selectAll<Document>(() => sb
-        .from("documents")
-        .select("*")
-        .eq("firm_id", firmId)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .order("id"));
-
-      if (error) throw new Error(error.message);
-      setDocuments(data);
+      // Every document the caller may see, newest first: the server reads them in pages of its own (a response is cut
+      // at about a thousand rows without a word) and narrows them to the clients the caller is assigned to. A refusal
+      // or an unreadable body is an error on this screen, never an empty list of documents.
+      if (!listed?.success) throw new Error(listed?.error ?? "Failed to load documents");
+      const body = objectWithLists<{ documents: Document[] }>(listed.data, "documents");
+      if (!body) throw new Error("The list of documents came back in a shape this screen cannot read.");
+      setDocuments(body.documents);
     } catch (err) {
       setPageError(err instanceof Error ? err.message : "Failed to load documents");
     } finally {
@@ -413,7 +341,7 @@ export default function DocumentsPage() {
     if (!(await confirmDialog({ message: `Delete "${doc.file_name}"?`, danger: true, confirmLabel: "Delete" }))) return;
     setDeleting(doc.id);
     try {
-      await apiFetch(`/api/documents/${doc.id}`, { method: "DELETE" });
+      await api.documents.remove(doc.id);
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
     } catch (err) {
       toast({ title: err instanceof Error ? err.message : "Delete failed", variant: "destructive" });
@@ -428,7 +356,7 @@ export default function DocumentsPage() {
   const handleBulkDelete = useCallback(async (rows: Document[]) => {
     const results = await Promise.all(
       rows.map((doc) =>
-        apiFetch(`/api/documents/${doc.id}`, { method: "DELETE" })
+        api.documents.remove(doc.id)
           .then(() => true)
           .catch(() => false)
       )
@@ -453,15 +381,17 @@ export default function DocumentsPage() {
   }, [toast]);
 
   async function handleDownload(doc: Document) {
+    setDownloading(doc.id);
     try {
-      const sb = getSupabaseClient();
-      const { data, error } = await sb.storage
-        .from(doc.storage_bucket)
-        .createSignedUrl(doc.storage_path, 60);
-      if (error) throw new Error(error.message);
-      window.open(data.signedUrl, "_blank");
+      // A link minted now by the server, after it has checked the document is in the caller's firm and clients.
+      const res = (await api.documents.downloadUrl(doc.id)) as { success?: boolean; data?: { download_url?: string | null }; error?: string | null };
+      const url = res?.data?.download_url;
+      if (!res?.success || !url) throw new Error(res?.error ?? "This document has no file to open.");
+      window.open(url, "_blank");
     } catch (err) {
       toast({ title: err instanceof Error ? err.message : "Download failed", variant: "destructive" });
+    } finally {
+      setDownloading(null);
     }
   }
 
@@ -595,8 +525,9 @@ export default function DocumentsPage() {
           <div className="flex items-center justify-end gap-1">
             <button
               onClick={() => handleDownload(doc)}
+              disabled={downloading !== null}
               title="Download"
-              className="rounded p-1.5 text-ps-hint hover:bg-ps-muted hover:text-blue-600"
+              className="rounded p-1.5 text-ps-hint hover:bg-ps-muted hover:text-blue-600 disabled:opacity-50"
             >
               <Download size={15} />
             </button>

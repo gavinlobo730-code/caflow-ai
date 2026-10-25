@@ -3,6 +3,7 @@ from typing import Optional
 from repositories.base import BaseRepository
 from core.exceptions import NotFoundError
 from core import db_provider
+from core.db_paging import fetch_all
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -27,7 +28,13 @@ class DocumentRepository(BaseRepository[dict]):
         client_id: Optional[str] = None,
         document_type: Optional[str] = None,
         review_status: Optional[str] = None,
+        columns: str = "*",
     ) -> list[dict]:
+        """Every matching document, newest first.
+
+        `columns` narrows the projection for a caller that needs a few (the global search reads three), because `*` carries
+        the extracted text of every document and this read now returns ALL of them, not the first thousand. It must name
+        `id`: the pager's cursor is read off the last row."""
         if _USE_MOCK:
             docs = list(MOCK_DOCUMENTS)
             docs = [d for d in docs if not d.get("deleted_at")]
@@ -39,17 +46,25 @@ class DocumentRepository(BaseRepository[dict]):
                 docs = [d for d in docs if d["review_status"] == review_status]
             return docs
 
-        query = _get_db().table("documents").select("*").is_("deleted_at", None)
-        if firm_id:
-            query = query.eq("firm_id", firm_id)
-        if client_id:
-            query = query.eq("client_id", client_id)
-        if document_type:
-            query = query.eq("document_type", document_type)
-        if review_status:
-            query = query.eq("review_status", review_status)
-        result = query.order("created_at", desc=True).execute()
-        return result.data or []
+        # EVERY matching row, in keyset pages: PostgREST cuts a response at about a thousand rows and says nothing,
+        # so a firm with more documents than that was shown the first thousand as though they were all of them
+        # (core/db_paging.py). The newest-first order is applied after the read, because the pager's key is the id.
+        def _query():
+            query = _get_db().table("documents").select(columns).is_("deleted_at", None)
+            if firm_id:
+                query = query.eq("firm_id", firm_id)
+            if client_id:
+                query = query.eq("client_id", client_id)
+            if document_type:
+                query = query.eq("document_type", document_type)
+            if review_status:
+                query = query.eq("review_status", review_status)
+            return query
+
+        rows = fetch_all(_query, "id", label="documents")
+        rows.sort(key=lambda d: str(d.get("id") or ""))
+        rows.sort(key=lambda d: str(d.get("created_at") or ""), reverse=True)
+        return rows
 
     def get_or_raise(self, id: str) -> dict:
         doc = self.find_by_id(id)

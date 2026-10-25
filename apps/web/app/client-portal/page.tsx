@@ -11,13 +11,11 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getClients } from "@/lib/data/clients";
 import { getComplianceCalendar } from "@/lib/data/compliance";
 import { getFirmId } from "@/lib/data/getFirmId";
-import { selectAll } from "@/lib/supabase/selectAll";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
-import { deleteStoredDocument } from "@/lib/documents/deleteStoredDocument";
+import { deleteRowAndConfirm, ROW_NOT_DELETED } from "@/lib/data/deleteRowAndConfirm";
 import { api } from "@/lib/api";
-import type { ClientNotice, PortalUnreadSummary } from "@/lib/api";
-import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
+import type { ClientDocumentList, ClientNotice, PortalUnreadSummary } from "@/lib/api";
+import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate } from "@/lib/services/formatting";
@@ -177,6 +175,10 @@ export default function ClientPortalPage() {
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
   const [newRequest, setNewRequest] = useState<NewRequestForm>({ title: "", description: "", is_urgent: false, due_date: "" });
   const [savingRequest, setSavingRequest] = useState(false);
+  // A delete is in flight: one at a time, so a second click cannot withdraw the same request twice.
+  const [deletingRequest, setDeletingRequest] = useState(false);
+  // A shared file is being deleted or opened: one at a time, for the same reason.
+  const [docBusy, setDocBusy] = useState(false);
 
   // Shared documents state
   const [sharedDocs, setSharedDocs] = useState<SharedDocument[]>([]);
@@ -198,7 +200,7 @@ export default function ClientPortalPage() {
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
-  const actionInFlight = savingRequest || sendingMessage;
+  const actionInFlight = savingRequest || sendingMessage || deletingRequest || docBusy;
 
   // practice_management-02: the firm-wide count of client messages nobody at the
   // firm has opened, and what the server said about telling the CLIENT. Both are
@@ -287,14 +289,11 @@ export default function ClientPortalPage() {
   async function loadDocRequests(clientId: string) {
     setRequestsLoading(true);
     try {
-      const sb = getSupabaseClient();
-      const { data, error } = await sb
-        .from("document_requests")
-        .select("id, title, description, is_urgent, status, fulfilled_at, created_at, due_date")
-        .eq("client_id", clientId)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      setDocRequests(data ?? []);
+      // Asked of the server (POST-A-010), which asks the caller's Portal permission and client assignment.
+      const firmId = await getFirmId();
+      const res = await api.portal.getDocumentRequests(firmId, clientId) as { success?: boolean; data?: unknown };
+      if (!res?.success) throw new Error("Failed to load document requests");
+      setDocRequests(arrayOrEmpty<DocumentRequest>(res.data));
       setRequestsFailed(false);
     } catch {
       setDocRequests([]);
@@ -314,24 +313,21 @@ export default function ClientPortalPage() {
       // unconditionally, discarding a good fetch whenever shared_reports
       // alone failed).
       //
-      // The documents are PAGED: newest first, so PostgREST's silent ~1000-row cut would drop the
-      // OLDEST ones from the list of what is shared. `.order("id")` is the unique tiebreaker the
-      // OFFSET paging needs.
+      // The documents come from the server (POST-A-010), which reads every one of the client's, newest first, in pages
+      // of its own, after the Documents permission and the client assignment; the shared reports are a separate read.
       const [docsRes, reportsRes] = await Promise.all([
-        selectAll<SharedDocument>(() => sb.from("client_documents")
-          .select("id, file_name, description, file_path, file_size, created_at")
-          .eq("client_id", clientId)
-          .order("created_at", { ascending: false })
-          .order("id")),
+        api.clientDocuments.list(clientId).then(
+          (r) => ({ data: r?.success ? objectWithLists<ClientDocumentList>(r.data, "documents") : null, error: !r?.success }),
+          () => ({ data: null, error: true })),
         sb.from("shared_reports")
           .select("id, report_label, report_type, financial_year, storage_path, file_name, file_size_bytes, created_at")
           .eq("client_id", clientId)
           .order("created_at", { ascending: false }),
       ]);
-      if (docsRes.error || reportsRes.error) {
+      if (docsRes.error || !docsRes.data || reportsRes.error) {
         setSharedFailed(true);
       } else {
-        setSharedDocs(docsRes.data ?? []);
+        setSharedDocs(arrayOrEmpty<SharedDocument>(docsRes.data.documents));
         setSharedReports(reportsRes.data ?? []);
         setSharedFailed(false);
       }
@@ -455,9 +451,18 @@ export default function ClientPortalPage() {
 
   async function handleDeleteRequest(id: string) {
     if (!(await confirmDialog({ message: "Delete this document request?", danger: true, confirmLabel: "Delete" }))) return;
-    const out = await deleteRowAndConfirm(getSupabaseClient(), "document_requests", id);
-    if (!out.deleted) { toast({ title: out.message, variant: "destructive" }); return; }
-    setDocRequests((prev) => prev.filter((r) => r.id !== id));
+    // The line leaves the page only when the server says a row went: the route answers success false for a request
+    // that is not the caller's or is already gone, and the browser never deletes the row itself (POST-A-010).
+    setDeletingRequest(true);
+    try {
+      const res = await api.portal.deleteDocumentRequest(id);
+      if (!res?.success) { toast({ title: ROW_NOT_DELETED, variant: "destructive" }); return; }
+      setDocRequests((prev) => prev.filter((r) => r.id !== id));
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : ROW_NOT_DELETED, variant: "destructive" });
+    } finally {
+      setDeletingRequest(false);
+    }
   }
 
   async function handleSharedDocUpload(file: File) {
@@ -465,42 +470,14 @@ export default function ClientPortalPage() {
     const label = uploadLabel.trim() || file.name;
     setUploadingDoc(true);
     try {
-      const firmId = await getFirmId();
-      const sb = getSupabaseClient();
-      const uuid = crypto.randomUUID();
-      const storagePath = `${firmId}/${selectedClientId}/${uuid}-${file.name}`;
-
-      const { error: uploadErr } = await sb.storage
-        .from("Documents")
-        .upload(storagePath, file, { contentType: file.type || "application/octet-stream" });
-      if (uploadErr) throw new Error(uploadErr.message);
-
-      // uploaded_by is deliberately NOT set. It is a foreign key to
-      // public.users(id) — the internal id of a FIRM user — and the value
-      // available here is the Supabase AUTH id, which is never equal to it
-      // (production: 0 of 2 users have id = auth_user_id). Writing it made
-      // every portal upload fail the foreign key. A portal uploader is the
-      // CLIENT, who has no public.users row at all, so there is no correct
-      // value to put here; client_id already carries the attribution, and the
-      // CA-side upload page omits the column for the same reason.
-      const { error: insertErr } = await sb.from("client_documents").insert({
-        firm_id: firmId,
-        client_id: selectedClientId,
-        file_name: file.name,
-        description: label,
-        file_path: storagePath,
-        file_size: file.size,
-        mime_type: file.type || null,
-      });
-      if (insertErr) {
-        // The blob is already in Storage — leaving it there orphans it with no
-        // client_documents row ever pointing back to it, and the CA sees a
-        // silent success. Remove it and surface the real error, mirroring
-        // every other document-upload handler in this codebase (e.g.
-        // app/clients/[id]/documents/page.tsx).
-        await sb.storage.from("Documents").remove([storagePath]);
-        throw new Error(insertErr.message);
-      }
+      // The server bounds the file, checks its bytes against its type, names and stores it under the firm and client
+      // and writes the record with the signed-in person as the uploader; if the record cannot be written it removes
+      // the file again (POST-A-010). The browser neither holds the bucket nor writes the table.
+      const form = new FormData();
+      form.append("file", file);
+      form.append("client_id", selectedClientId);
+      form.append("description", label);
+      await api.clientDocuments.upload(form);
 
       setUploadLabel("");
       await loadSharedDocs(selectedClientId);
@@ -513,27 +490,30 @@ export default function ClientPortalPage() {
 
   async function handleDeleteSharedDoc(doc: SharedDocument) {
     if (!(await confirmDialog({ message: `Delete "${doc.description ?? doc.file_name}"?`, danger: true, confirmLabel: "Delete" }))) return;
-    const sb = getSupabaseClient();
-    // The line leaves the page only when the server says the record is gone: a delete the database refuses (only a
-    // Partner may delete a document) comes back with no error and no row, and used to look like success.
-    const out = await deleteStoredDocument(sb, doc, "Documents");
-    if (!out.deleted) {
-      toast({ title: out.message, variant: "destructive" });
-      return;
+    // The server removes the file and then the record (Partner only) and refuses, with the reason, when something still
+    // points at the record; the line leaves the page only after it has said the record is gone (POST-A-010).
+    setDocBusy(true);
+    try {
+      await api.clientDocuments.remove(doc.id);
+      setSharedDocs((prev) => prev.filter((d) => d.id !== doc.id));
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "This document was not deleted.", variant: "destructive" });
+    } finally {
+      setDocBusy(false);
     }
-    setSharedDocs((prev) => prev.filter((d) => d.id !== doc.id));
   }
 
   async function handleDownloadSharedDoc(doc: SharedDocument) {
-    const sb = getSupabaseClient();
-    const { data, error: err } = await sb.storage
-      .from("Documents")
-      .createSignedUrl(doc.file_path, 3600);
-    if (err || !data) {
-      toast({ title: "Could not generate download link.", variant: "destructive" });
-      return;
+    setDocBusy(true);
+    try {
+      const res = await api.clientDocuments.downloadUrl(doc.id);
+      if (!res?.data?.download_url) throw new Error("Could not generate download link.");
+      window.open(res.data.download_url, "_blank");
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Could not generate download link.", variant: "destructive" });
+    } finally {
+      setDocBusy(false);
     }
-    window.open(data.signedUrl, "_blank");
   }
 
   async function handleCopyPortalLink() {
@@ -732,7 +712,7 @@ export default function ClientPortalPage() {
                     ) : requestsFailed ? (
                       <div className="text-center py-10 space-y-2">
                         <p className="text-sm text-red-600 font-medium">Couldn&apos;t load document requests.</p>
-                        <button onClick={() => loadDocRequests(selectedClientId)} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
+                        <button onClick={() => loadDocRequests(selectedClientId)} disabled={requestsLoading} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body disabled:opacity-50">Retry</button>
                       </div>
                     ) : docRequests.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
@@ -778,7 +758,8 @@ export default function ClientPortalPage() {
                               </Badge>
                               <button
                                 onClick={() => handleDeleteRequest(req.id)}
-                                className="p-1.5 text-ps-hint hover:text-state-problem hover:bg-state-problem-hover rounded transition-colors"
+                                disabled={actionInFlight}
+                                className="p-1.5 text-ps-hint hover:text-state-problem hover:bg-state-problem-hover rounded transition-colors disabled:opacity-50"
                                 title="Delete request"
                               >
                                 <Trash2 size={13} />
@@ -834,7 +815,7 @@ export default function ClientPortalPage() {
                     ) : sharedFailed ? (
                       <div className="text-center py-10 space-y-2">
                         <p className="text-sm text-red-600 font-medium">Couldn&apos;t load shared documents.</p>
-                        <button onClick={() => loadSharedDocs(selectedClientId)} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
+                        <button onClick={() => loadSharedDocs(selectedClientId)} disabled={sharedLoading} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body disabled:opacity-50">Retry</button>
                       </div>
                     ) : sharedDocs.length === 0 ? (
                       <div className="text-center py-10 space-y-2">
@@ -866,14 +847,16 @@ export default function ClientPortalPage() {
                             <div className="flex items-center gap-1.5 shrink-0">
                               <button
                                 onClick={() => handleDownloadSharedDoc(doc)}
-                                className="p-1.5 text-ps-hint hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                disabled={actionInFlight}
+                                className="p-1.5 text-ps-hint hover:text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-50"
                                 title="Download"
                               >
                                 <Download size={13} />
                               </button>
                               <button
                                 onClick={() => handleDeleteSharedDoc(doc)}
-                                className="p-1.5 text-ps-hint hover:text-state-problem hover:bg-state-problem-hover rounded transition-colors"
+                                disabled={actionInFlight}
+                                className="p-1.5 text-ps-hint hover:text-state-problem hover:bg-state-problem-hover rounded transition-colors disabled:opacity-50"
                                 title="Delete"
                               >
                                 <Trash2 size={13} />
@@ -917,10 +900,18 @@ export default function ClientPortalPage() {
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               <button
+                                disabled={actionInFlight}
                                 onClick={async () => {
-                                  const sb = getSupabaseClient();
-                                  const { data } = await sb.storage.from("Documents").createSignedUrl(r.storage_path, 3600);
-                                  if (data) window.open(data.signedUrl, "_blank");
+                                  setDocBusy(true);
+                                  try {
+                                    const res = await api.accounting.sharedReportUrl(r.id);
+                                    if (!res?.data?.download_url) throw new Error("Could not generate download link.");
+                                    window.open(res.data.download_url, "_blank");
+                                  } catch (e) {
+                                    toast({ title: e instanceof Error ? e.message : "Could not generate download link.", variant: "destructive" });
+                                  } finally {
+                                    setDocBusy(false);
+                                  }
                                 }}
                                 className="flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100"
                               >

@@ -339,6 +339,10 @@ _MFA_GUARD = [Depends(mfa_guard)]
 app.include_router(clients.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance.router, dependencies=_CLIENT_GUARD)
 app.include_router(documents.router, dependencies=_CLIENT_GUARD)
+from routers import client_documents  # POST-A-010 — the vault, a client's Documents tab and the files shared to its portal
+app.include_router(client_documents.router, dependencies=_CLIENT_GUARD)
+from routers import it_notice_attachments  # POST-A-010 — a tax notice's own document and the reply to it
+app.include_router(it_notice_attachments.router, dependencies=_CLIENT_GUARD)
 # ⚠️ GUARDED FROM 25-09-2026, AND THE ORDER MATTERED. `routers/assistant`
 # was a pure Groq passthrough that loaded no client data, and its own
 # model recorded why it must not grow a `client_id` before this line

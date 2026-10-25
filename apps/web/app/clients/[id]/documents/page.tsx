@@ -5,10 +5,9 @@ import { Upload, Download, Trash2, FolderOpen, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { deleteStoredDocument } from "@/lib/documents/deleteStoredDocument";
-import { getFirmId } from "@/lib/data/getFirmId";
-import { selectAll } from "@/lib/supabase/selectAll";
+import { api } from "@/lib/api";
+import { objectWithLists } from "@/lib/api/shape";
+import type { ClientDocumentList } from "@/lib/api";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -68,7 +67,9 @@ export default function DocumentsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  // The server's bound on a file, as it served it with the list; the form states it only once it is known.
+  const [maxUploadMb, setMaxUploadMb] = useState<number | null>(null);
   const [versionPromptDoc, setVersionPromptDoc] = useState<ClientDocument | null>(null);
   const [showVersionHistory, setShowVersionHistory] = useState<string | null>(null);
   const [versionHistory, setVersionHistory] = useState<ClientDocument[]>([]);
@@ -87,17 +88,15 @@ export default function DocumentsPage() {
     if (!clientId) return;
     setLoading(true);
     try {
-      const supabase = getSupabaseClient();
-      // Paged: newest first, so PostgREST's silent ~1000-row cut would drop the OLDEST documents (and
-      // the earlier versions of one) from the only list they can be found in. `.order("id")` is the
-      // unique tiebreaker the OFFSET paging needs.
-      const { data, error } = await selectAll<ClientDocument>(() => supabase
-        .from("client_documents")
-        .select("id, file_name, description, file_path, file_size, mime_type, created_at, version, parent_document_id")
-        .eq("client_id", clientId)
-        .order("created_at", { ascending: false })
-        .order("id"));
-      if (error) throw error;
+      // Asked of the server (POST-A-010): it reads every document of the client, newest first, in pages of its own
+      // (a response is cut at about a thousand rows without a word), after the Documents permission and the client
+      // assignment. A refusal or an unreadable body is an error here, never an empty list of documents.
+      const res = await api.clientDocuments.list(clientId);
+      if (!res?.success) throw new Error(res?.error ?? "Couldn't load documents.");
+      const body = objectWithLists<ClientDocumentList>(res.data, "documents");
+      if (!body) throw new Error("The list of documents came back in a shape this screen cannot read.");
+      const data = body.documents as ClientDocument[];
+      setMaxUploadMb(typeof body.max_upload_bytes === "number" ? Math.floor(body.max_upload_bytes / (1024 * 1024)) : null);
       setDocuments(data);
       setLoadError(null);
     } catch (e) {
@@ -116,7 +115,6 @@ export default function DocumentsPage() {
 
   async function handleUploadDocument(asNewVersion = false, parentDoc: ClientDocument | null = null) {
     if (!uploadFile || !uploadLabel.trim() || !clientId) return;
-    if (uploadFile.size > 50 * 1024 * 1024) { setUploadError("File must be under 50 MB"); return; }
 
     if (!asNewVersion && !parentDoc) {
       const existing = documents.find(
@@ -128,33 +126,14 @@ export default function DocumentsPage() {
     setUploading(true);
     setUploadError(null);
     try {
-      const supabase = getSupabaseClient();
-      const firmId = await getFirmId();
-      const sanitized = uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const uuid = crypto.randomUUID();
-      const storagePath = `${firmId}/${clientId}/${uuid}-${sanitized}`;
-
-      const { error: storageErr } = await supabase.storage
-        .from("Documents")
-        .upload(storagePath, uploadFile, { contentType: uploadFile.type, upsert: false });
-      if (storageErr) throw new Error(storageErr.message);
-
-      const versionNum = parentDoc ? (parentDoc.version ?? 1) + 1 : 1;
-      const { error: dbErr } = await supabase.from("client_documents").insert({
-        firm_id: firmId,
-        client_id: clientId,
-        file_name: uploadFile.name,
-        description: uploadLabel.trim(),
-        file_path: storagePath,
-        file_size: uploadFile.size,
-        mime_type: uploadFile.type || null,
-        version: versionNum,
-        parent_document_id: parentDoc?.id ?? null,
-      });
-      if (dbErr) {
-        await supabase.storage.from("Documents").remove([storagePath]);
-        throw new Error(dbErr.message);
-      }
+      // The server bounds the file, checks its bytes against its type, names it, stores it under the firm and client and
+      // writes the record (or removes the file again); a new version names its parent and the server numbers it.
+      const form = new FormData();
+      form.append("file", uploadFile);
+      form.append("client_id", clientId);
+      form.append("description", uploadLabel.trim());
+      if (parentDoc) form.append("parent_document_id", parentDoc.id);
+      await api.clientDocuments.upload(form);
 
       setShowUploadModal(false);
       setUploadFile(null);
@@ -185,25 +164,24 @@ export default function DocumentsPage() {
   async function handleDownloadDocument(doc: ClientDocument) {
     setRowBusy(true);
     try {
-    const supabase = getSupabaseClient();
-    const { data } = await supabase.storage.from("Documents").createSignedUrl(doc.file_path, 60);
-    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
-  } finally { setRowBusy(false); }
+      // A link minted now by the server, after it has checked the document is in the caller's firm and clients.
+      const res = await api.clientDocuments.downloadUrl(doc.id);
+      if (res?.data?.download_url) window.open(res.data.download_url, "_blank");
+      else setActionError(res?.error ?? "The link to this document could not be made.");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "The link to this document could not be made.");
+    } finally { setRowBusy(false); }
   }
 
   async function handleDeleteDocument(doc: ClientDocument) {
     if (!(await confirmDialog({ message: `Delete "${docLabel(doc)}"? This cannot be undone.`, danger: true, confirmLabel: "Delete" }))) return;
     setDeletingDocId(doc.id);
-    setDeleteError(null);
+    setActionError(null);
     try {
-      const supabase = getSupabaseClient();
-      // The line leaves the page, and the timeline records the deletion, only when the server says the record is gone:
-      // a delete the database refuses (only a Partner may delete a document) comes back with no error and no row.
-      const out = await deleteStoredDocument(supabase, doc, "Documents");
-      if (!out.deleted) {
-        setDeleteError(out.message);
-        return;
-      }
+      // Asked of the server (POST-A-010): it removes the file and then the record (Partner only) and refuses, with the
+      // reason, when something still points at the record. The line leaves the page, and the timeline records the
+      // deletion, only after the server has said the record is gone; every refusal arrives as the server's own sentence.
+      await api.clientDocuments.remove(doc.id);
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
 
       // Emit timeline event
@@ -217,6 +195,8 @@ export default function DocumentsPage() {
           title: `Document deleted: ${docLabel(doc)}`,
         });
       } catch { /* timeline is non-blocking */ }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "This document was not deleted.");
     } finally {
       setDeletingDocId(null);
     }
@@ -242,7 +222,7 @@ export default function DocumentsPage() {
         </button>
       </div>
 
-      {deleteError && <Callout tone="problem">{deleteError}</Callout>}
+      {actionError && <Callout tone="problem">{actionError}</Callout>}
 
       {loading ? (
         <TableSkeleton cols={5} rows={5} />
@@ -361,7 +341,7 @@ export default function DocumentsPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-ps-body mb-1">File * (max 50 MB)</label>
+                <label className="block text-xs font-medium text-ps-body mb-1">File *{maxUploadMb ? ` (max ${maxUploadMb} MB)` : ""}</label>
                 <input
                   ref={fileInputRef}
                   type="file"

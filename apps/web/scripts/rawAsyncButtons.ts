@@ -293,10 +293,8 @@ function directWrite(call: ts.CallExpression, sf: ts.SourceFile): string | null 
   if (chain && clientCallWrites(chain)) return chain;
   // apiCall(url, "POST", body) / fetch(url, { method: "POST" })
   const name = tail(callee);
-  // The one shared door for deleting a stored client document: the write sits in lib/documents/deleteStoredDocument.ts,
-  // out of this file's sight, so the call is named here (POST-A-151). Without this the three delete buttons dropped out
-  // of the frozen table on the strength of a move, not of being guarded.
-  if (name === "deleteStoredDocument") return "deleteStoredDocument(…)";
+  // (The stored-document delete used to be named here, because its write sat in a helper out of this file's sight. It is
+  // an API call now, `api.clientDocuments.remove`, and the chain above classifies it; POST-A-010.)
   // The same for a plain row (POST-A-247): the write sits in lib/data/deleteRowAndConfirm.ts, so the call is named here.
   if (name === "deleteRowAndConfirm") return "deleteRowAndConfirm(…)";
   if (name && FETCHERS.has(name)) {

@@ -22,6 +22,7 @@ import domain.portal_service as portal_svc
 from services import portal_data_service  # Phase 4.5.2: canonical AR (retires `transactions` dues)
 from services import portal_notice_service  # practice_management-02: tell both sides
 from core import db_provider
+from core.db_paging import fetch_all
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
 
@@ -87,8 +88,10 @@ def list_document_requests(
         rows = portal_svc.list_document_requests(firm_id, client_id)
         return api_response(True, rows)
 
-    res = (
-        db.table("document_requests")
+    # EVERY request, in the server's own pages: one response is cut at about a thousand rows without a word, and this is the
+    # only list a request can be found in. Newest first, ties on the id, applied after the read.
+    rows = fetch_all(
+        lambda: db.table("document_requests")
         # `due_date` was NOT a column here for the whole life of this endpoint —
         # PostgREST rejects the whole select at parse time, so it returned 500 on
         # every call — and it was dropped from this read rather than invented to
@@ -98,11 +101,11 @@ def list_document_requests(
         .select("id, firm_id, client_id, title, description, is_urgent, status, "
                 "fulfilled_at, created_at, due_date")
         .eq("firm_id", firm_id)
-        .eq("client_id", client_id)
-        .order("created_at", desc=True)
-        .execute()
-    )
-    return api_response(True, res.data or [])
+        .eq("client_id", client_id),
+        "id", label="document_requests")
+    rows.sort(key=lambda r: str(r.get("id") or ""))
+    rows.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    return api_response(True, rows)
 
 
 @router.post("/document-requests")
@@ -177,6 +180,37 @@ def complete_document_request(
         .execute()
     )
     return api_response(True, res.data[0] if res.data else {"id": request_id, "status": "fulfilled"})
+
+
+@router.delete("/document-requests/{request_id}")
+def delete_document_request(
+    request_id: str,
+    current_user: dict = Depends(rbac("portal", "write")),
+):
+    """Withdraw a document request. The Client Portal screen used to delete the row straight from the browser.
+
+    The same tier the database's own policy asks (migration 261: Executive and above) and the same scope as the
+    complete route above: a request that is not in the caller's firm and clients answers exactly as a missing one.
+    The delete runs as the caller (`_db()`), so row security is still the second lock and the audit trigger names the
+    person. The answer says whether a row went: a delete the database hid from the caller removes nothing and is
+    reported as not found, never as done."""
+    if _assert_doc_request_scope(current_user, request_id) is None:
+        return api_response(False, None, "Document request not found")
+
+    db = _db()
+    if db is None:
+        removed = portal_svc.delete_document_request(request_id)
+        return api_response(True, {"deleted": True}) if removed else api_response(
+            False, None, "Document request not found")
+
+    res = (
+        db.table("document_requests").delete()
+        .eq("id", request_id).eq("firm_id", current_user["firm_id"])
+        .execute()
+    )
+    if not (res.data or []):
+        return api_response(False, None, "Document request not found")
+    return api_response(True, {"deleted": True})
 
 
 # ── Messages ──────────────────────────────────────────────────────────────────

@@ -70,19 +70,8 @@ def is_sensitive(table: str) -> bool:
 #: (file relative to apps/web, table or "storage") -> how many reaches the file still makes.
 #: SHRINK-ONLY. Delete a line, or lower its number, in the commit that moves the reach.
 REMAINING: dict[tuple[str, str], int] = {
-    ("app/client-portal/page.tsx", "client_documents"): 2,
-    ("app/client-portal/page.tsx", "document_requests"): 2,
-    ("app/client-portal/page.tsx", "storage"): 4,
-    ("app/clients/[id]/accounting/page.tsx", "storage"): 1,
-    ("app/clients/[id]/documents/page.tsx", "client_documents"): 2,
-    ("app/clients/[id]/documents/page.tsx", "storage"): 3,
     ("app/clients/[id]/payroll/page.tsx", "payroll_employees"): 1,
     ("app/clients/[id]/payroll/page.tsx", "payroll_runs"): 1,
-    ("app/clients/documents/page.tsx", "client_documents"): 2,
-    ("app/clients/documents/page.tsx", "storage"): 2,
-    ("app/documents/page.tsx", "documents"): 2,
-    ("app/documents/page.tsx", "storage"): 3,
-    ("app/income-tax/notices/page.tsx", "storage"): 2,
     ("app/payroll/attendance/page.tsx", "attendance"): 2,
     ("app/payroll/attendance/page.tsx", "leave_balances"): 1,
     ("app/payroll/attendance/page.tsx", "payroll_employees"): 1,
@@ -94,10 +83,7 @@ REMAINING: dict[tuple[str, str], int] = {
     ("components/portal/TaxDeclarationTab.tsx", "payroll_employees"): 1,
     ("components/portal/TaxDeclarationTab.tsx", "payroll_it_declaration_items"): 3,
     ("components/portal/TaxDeclarationTab.tsx", "payroll_it_declarations"): 2,
-    ("lib/documents/deleteStoredDocument.ts", "client_documents"): 1,
-    ("lib/documents/deleteStoredDocument.ts", "storage"): 1,
     ("lib/portal/employeeAccess.ts", "payroll_employees"): 1,
-    ("lib/supabase/client.ts", "storage"): 1,
 }
 
 
@@ -166,6 +152,16 @@ def test_the_browser_reaches_no_more_of_the_sensitive_tables_than_the_list_says(
         "straight from the browser (POST-A-010). Ask the API for it: the route applies the role, "
         "the per-person grid and the client assignment once. NEW (file, name): count:\n  "
         + "\n  ".join(f"{k}: {n}" for k, n in sorted(new.items())))
+
+
+def test_the_browser_makes_no_use_of_storage_at_all():
+    """Every Storage call of the browser is a route now (POST-A-010): an upload, a signed link and a delete each ask the
+    server, which asks the Documents, Income-tax or Report permission and the client assignment first. Unlike the tables,
+    this part of the rule is finished, so it is absolute and the list may not hold a Storage line."""
+    found, _ = _scan()
+    assert not [k for k in found if k[1] == STORAGE], (
+        "apps/web uses Supabase Storage again: " + ", ".join(sorted(f for f, n in found if n == STORAGE)))
+    assert not [k for k in REMAINING if k[1] == STORAGE], "REMAINING lists a Storage use; the list may not"
 
 
 def test_the_list_holds_nothing_that_has_been_moved():

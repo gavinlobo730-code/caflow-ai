@@ -171,16 +171,20 @@ def test_the_browser_holds_neither_privileged_write():
 
 def test_the_probe_still_finds_the_calls_it_is_about():
     """A scan that matches nothing passes for ever. Both halves of the rule are
-    about calls that ARE still in this file — a read of the table and a signed
-    URL off the bucket — so their absence means the probe went blind, not that
-    the screen got safer."""
+    about calls that ARE still in this file — a read of the table and the
+    server's signed link (`api.accounting.sharedReportUrl`, which replaced the
+    browser's own signing in POST-A-010) — so their absence means the probe went
+    blind, not that the screen got safer."""
     body = SCREEN.read_text()
     assert re.search(r'from\(\s*"shared_reports"\s*\)', body), (
         "the probe no longer finds shared_reports on the accounting screen; a "
         "moved read means this guard is asserting nothing"
     )
-    assert re.search(r"\.storage\s*\.?\s*from\(", body), (
-        "the probe no longer finds a storage call on the accounting screen"
+    assert re.search(r"api\.accounting\.sharedReportUrl\(", body), (
+        "the probe no longer finds the server's signed link on the accounting screen"
+    )
+    assert not re.search(r"\.storage\b", body), (
+        "the accounting screen reaches Storage from the browser again"
     )
 
 

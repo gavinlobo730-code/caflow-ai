@@ -142,9 +142,16 @@ def test_the_scan_reads_real_frontend_writes():
     # to the API, where rbac, the state machine and the period lock run (POST-A-224, POST-A-225).
     # 20 -> 19 on 18-10-2026: app/payroll/attendance/page.tsx 1 -> 0, the only page that moved. The leave allotment went to
     # PUT /api/payroll/leave-balance (POST-A-235). The timeline writes were never in this tally: they are in `.ts` files.
-    assert len(seen) > 18, (
+    # 19 -> 14 on 25-10-2026 (POST-A-010), and the per-file tally moved on exactly five pages: app/documents/page.tsx,
+    # app/clients/documents/page.tsx, app/clients/[id]/documents/page.tsx and app/client-portal/page.tsx 1 -> 0 each (the
+    # document and client-document inserts went to the API, where the server stores the file and writes the record with the
+    # signed-in person as the uploader), and app/income-tax/notices/page.tsx 3 -> 2 (the path written onto a notice after
+    # an upload). 19 - 5 = 14 exactly.
+    assert len(seen) > 13, (
         f"only {len(seen)} frontend write payloads found — the scan is not "
         "reading the code it claims to")
-    assert "client_documents" in seen, (
-        "the client-portal upload this test was built around is no longer "
-        "matched by the scan")
+    assert "it_notices" in seen, (
+        "the notice create this test now stands on is no longer matched by the scan")
+    assert "client_documents" not in seen, (
+        "a screen writes client_documents from the browser again: the server does that (POST-A-010), and sets "
+        "uploaded_by to the internal user itself")

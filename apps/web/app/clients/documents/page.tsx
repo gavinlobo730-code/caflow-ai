@@ -2,16 +2,16 @@
 
 /**
  * Client Document Vault — Organized per-client document storage
- * Files uploaded to Supabase storage: documents/{firm_id}/{client_id}/{filename}
+ * The server stores each file under {firm_id}/{client_id}/ in the private `Documents` bucket, writes its record and signs
+ * its links (/api/client-documents); this page holds neither the bucket nor the table (POST-A-010).
  * Expiry alerts for certificates expiring within 60 days
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Upload, Download, Trash2, AlertTriangle, X, RefreshCw } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { deleteStoredDocument } from "@/lib/documents/deleteStoredDocument";
-import { getFirmId, getUserProfile } from "@/lib/data/getFirmId";
-import { selectAll } from "@/lib/supabase/selectAll";
+import { api } from "@/lib/api";
+import { objectWithLists } from "@/lib/api/shape";
+import type { ClientDocumentList } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { CardGridSkeleton } from "@/components/ui/skeleton";
@@ -41,7 +41,6 @@ const CATEGORY_DESC: Record<DocCategory, string> = {
 // category in `doc_type`.
 interface ClientDocument {
   id: string;
-  firm_id: string;
   client_id: string;
   file_name: string;
   description: string | null;
@@ -73,20 +72,9 @@ interface UploadModalProps {
   onClose: () => void;
   onUploaded: () => void;
   clientId: string;
-  firmId: string;
 }
 
-// The firm's document store is the private `Documents` bucket (migration 005),
-// and its policies admit an object only when its FIRST folder is the caller's
-// own firm. This page used a bucket called lowercase `documents` — which does
-// not exist; bucket ids are case-sensitive — under a `documents/...` prefix the
-// policy would refuse anyway, and then built PUBLIC urls for a PRIVATE bucket.
-// So nothing uploaded here could be stored, listed or downloaded, and the
-// client portal (which reads client_documents and signs the same file_path
-// in `Documents`) could never offer one.
-const VAULT_BUCKET = "Documents";
-
-function UploadModal({ onClose, onUploaded, clientId, firmId }: UploadModalProps) {
+function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
   const [docName, setDocName] = useState("");
   const [category, setCategory] = useState<DocCategory>("Identity");
   const [expiryDate, setExpiryDate] = useState("");
@@ -99,37 +87,15 @@ function UploadModal({ onClose, onUploaded, clientId, firmId }: UploadModalProps
     if (!file || !docName) { setError("Enter document name and select a file"); return; }
     setUploading(true);
     try {
-      const sb = getSupabaseClient();
-
-      // uploaded_by FKs public.users(id) — the INTERNAL id, never the auth
-      // session's user.id (the two are never equal; see
-      // tests/test_frontend_never_writes_an_auth_id_into_a_users_fk_pg.py).
-      const { userId } = await getUserProfile();
-
-      const safeName = file.name.replace(/[^a-zA-Z0-9._\-]/g, "_");
-      const filePath = `${firmId}/${clientId}/vault/${Date.now()}_${safeName}`;
-
-      const { error: uploadErr } = await sb.storage
-        .from(VAULT_BUCKET)
-        .upload(filePath, file, { upsert: false });
-
-      if (uploadErr) throw new Error(uploadErr.message);
-
-      const { error: insertErr } = await sb.from("client_documents").insert({
-        firm_id: firmId,
-        client_id: clientId,
-        // file_name is NOT NULL and was never set — this insert could not have
-        // succeeded regardless of the renamed columns.
-        file_name: file.name,
-        description: docName,
-        doc_type: category,
-        file_path: filePath,
-        file_size: file.size,
-        expiry_date: expiryDate || null,
-        uploaded_by: userId,
-      });
-
-      if (insertErr) throw new Error(insertErr.message);
+      // The server bounds the file, checks its bytes against its type, names and stores it under the firm and client,
+      // and writes the record with the signed-in person as the uploader (their internal id, never the sign-in id).
+      const form = new FormData();
+      form.append("file", file);
+      form.append("client_id", clientId);
+      form.append("description", docName);
+      form.append("doc_type", category);
+      if (expiryDate) form.append("expiry_date", expiryDate);
+      await api.clientDocuments.upload(form);
       onUploaded();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -203,72 +169,58 @@ export default function ClientDocumentsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
-  const [firmId, setFirmId] = useState("");
+  // A delete is in flight: one at a time, so a second click cannot send the same delete twice.
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     getClients().then(c => { setClients(c); if (c.length > 0) setClientId(c[0].id); }).catch(() => {});
-    getFirmId().then(setFirmId).catch(() => {});
   }, []);
 
   const load = useCallback(async () => {
-    if (!clientId || !firmId) return;
+    if (!clientId) return;
     setLoading(true);
     setError(null);
     try {
-      const sb = getSupabaseClient();
-      // Paged: newest first, so PostgREST's silent ~1000-row cut would drop the OLDEST documents of a
-      // client who has uploaded for years. `.order("id")` is the unique tiebreaker the OFFSET paging needs.
-      const { data, error: err } = await selectAll<ClientDocument>(() => sb.from("client_documents")
-        .select("*")
-        .eq("firm_id", firmId)
-        .eq("client_id", clientId)
-        .order("created_at", { ascending: false })
-        .order("id"));
-
-      if (err) {
-        if (err.message.includes("does not exist") || err.message.includes("relation")) {
-          setError("Document vault not yet set up. Please run database migrations.");
-          setDocuments([]);
-          return;
-        }
-        throw new Error(err.message);
-      }
-
-      // Signed links, one request for the page: the bucket is private, so a
-      // "public" url is a link that 400s.
-      const rows: ClientDocument[] = data ?? [];
-      const paths = rows.map(d => d.file_path).filter(Boolean);
-      const signed = new Map<string, string>();
-      if (paths.length > 0) {
-        const { data: urls } = await sb.storage.from(VAULT_BUCKET).createSignedUrls(paths, 3600);
-        for (const u of urls ?? []) {
-          if (u.path && u.signedUrl) signed.set(u.path, u.signedUrl);
-        }
-      }
-      const docs: ClientDocument[] = rows.map(d => ({ ...d, download_url: signed.get(d.file_path) }));
-
+      // Asked of the server (POST-A-010): every document of the client, newest first, read in pages of its own (a
+      // response is cut at about a thousand rows without a word), with a signed link for each in one request (the
+      // bucket is private, so a "public" url is a link that 400s). A refusal or an unreadable body is an error here.
+      const res = await api.clientDocuments.list(clientId, true);
+      if (!res?.success) throw new Error(res?.error ?? "Failed to load");
+      const body = objectWithLists<ClientDocumentList>(res.data, "documents");
+      if (!body) throw new Error("The list of documents came back in a shape this screen cannot read.");
+      const docs: ClientDocument[] = body.documents.map(d => ({
+        ...d,
+        doc_type: d.doc_type as DocCategory,
+        file_size: d.file_size ?? 0,
+        download_url: d.download_url ?? undefined,
+      }));
       setDocuments(docs);
+      // A document whose link could not be made would show a working-looking button that goes nowhere: say so.
+      if (body.without_link > 0) {
+        setError(`${body.without_link} of ${body.returned} documents could not be given a link to open; reload to try again.`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
-  }, [clientId, firmId]);
+  }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
 
   async function handleDelete(doc: ClientDocument) {
     if (!(await confirmDialog({ message: `Delete "${doc.description ?? doc.file_name}"?`, danger: true, confirmLabel: "Delete" }))) return;
+    setDeleting(true);
     try {
-      const sb = getSupabaseClient();
-      // Storage first, then the row (a row whose file failed to delete can be retried, a file whose row is gone is
-      // orphaned with nothing left referencing it) — and the line leaves the page only when the server returned the
-      // deleted row: a delete the database refuses (only a Partner may delete a document) answers with no error.
-      const out = await deleteStoredDocument(sb, doc, VAULT_BUCKET);
-      if (!out.deleted) throw new Error(out.message);
+      // Asked of the server (POST-A-010): it removes the file and then the record (Partner only) and refuses, with the
+      // reason, when something still points at the record; the line leaves the page only after it has said the
+      // record is gone.
+      await api.clientDocuments.remove(doc.id);
       setDocuments(prev => prev.filter(d => d.id !== doc.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -391,8 +343,8 @@ export default function ClientDocumentsPage() {
                     <Download size={12} /> Download
                   </a>
                 )}
-                <button onClick={() => handleDelete(doc)}
-                  className="flex items-center justify-center gap-1 px-3 py-1.5 border border-red-100 rounded-lg text-xs text-red-600 hover:bg-state-problem-hover">
+                <button onClick={() => handleDelete(doc)} disabled={deleting}
+                  className="flex items-center justify-center gap-1 px-3 py-1.5 border border-red-100 rounded-lg text-xs text-red-600 hover:bg-state-problem-hover disabled:opacity-50">
                   <Trash2 size={12} /> Delete
                 </button>
               </div>
@@ -401,10 +353,9 @@ export default function ClientDocumentsPage() {
         })}
       </div>
 
-      {showUpload && firmId && clientId && (
+      {showUpload && clientId && (
         <UploadModal
           clientId={clientId}
-          firmId={firmId}
           onClose={() => setShowUpload(false)}
           onUploaded={() => { setShowUpload(false); load(); }}
         />
