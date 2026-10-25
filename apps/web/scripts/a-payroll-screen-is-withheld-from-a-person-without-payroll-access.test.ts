@@ -46,7 +46,10 @@ const READERS = [
 ].filter((p) => FROM.test(code(read(p)))).map(rel);
 
 test("the scan finds the payroll readers at all", () => {
-  assert.ok(READERS.length >= 5, `only ${READERS.length} readers found: the scan stopped seeing them`);
+  // 7 -> 3 on 25-10-2026 (POST-A-010): the staff screens (the client payroll dashboard, the attendance sheet and the payroll
+  // reports) ask the server now, and the three readers left are the employee portal's own files, listed below. They move in
+  // the next step and this scan then has nothing to find.
+  assert.ok(READERS.length >= 3, `only ${READERS.length} readers found: the scan stopped seeing them`);
 });
 
 test("every browser read of a payroll table is under a gated route or is the employee's own portal", () => {

@@ -70,13 +70,6 @@ def is_sensitive(table: str) -> bool:
 #: (file relative to apps/web, table or "storage") -> how many reaches the file still makes.
 #: SHRINK-ONLY. Delete a line, or lower its number, in the commit that moves the reach.
 REMAINING: dict[tuple[str, str], int] = {
-    ("app/clients/[id]/payroll/page.tsx", "payroll_employees"): 1,
-    ("app/clients/[id]/payroll/page.tsx", "payroll_runs"): 1,
-    ("app/payroll/attendance/page.tsx", "attendance"): 2,
-    ("app/payroll/attendance/page.tsx", "leave_balances"): 1,
-    ("app/payroll/attendance/page.tsx", "payroll_employees"): 1,
-    ("app/payroll/reports/page.tsx", "payroll_employees"): 1,
-    ("app/payroll/reports/page.tsx", "payroll_runs"): 1,
     ("app/portal/employee/page.tsx", "leave_balances"): 1,
     ("app/portal/employee/page.tsx", "payroll_employees"): 1,
     ("app/portal/employee/page.tsx", "payroll_slips"): 1,

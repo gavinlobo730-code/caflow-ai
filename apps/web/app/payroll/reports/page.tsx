@@ -39,7 +39,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { MonthlyReview } from "@/components/payroll/MonthlyReview";
 import { toLocalISO, dueDateUrgency, fromLocalISO } from "@/lib/dateMath";
 import { formatDate, formatMonthYear } from "@/lib/dates/format";
-import { api, type PayrollDepositDueDates_FY, type PayrollTdsProjection } from "@/lib/api";
+import { api, type ApiResp, type PayrollDepositDueDates_FY, type PayrollTdsProjection } from "@/lib/api";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
 
@@ -1387,26 +1387,19 @@ export default function PayrollReportsPage() {
     try {
       const firmId = await getFirmId();
       const sb = getSupabaseClient();
-      // PAGED, because what these feed is an EXPORT. PostgREST caps a response
-      // at ~1000 rows and says nothing when it does, so an unpaged firm-wide
-      // roster silently truncates and the CSV goes out short with no error
-      // anywhere. `.order("id")` is not cosmetic: selectAll pages by OFFSET, so
-      // without a stable TOTAL ordering a row can land either side of a page
-      // boundary and be duplicated or skipped. See lib/supabase/selectAll.
-      //
-      // `payroll_runs` is the one that passes 1000 first: it is a row per client
-      // per month, so a fifty-client practice crosses it inside two years. The
-      // month ordering is applied to the rows that come BACK, because fetch_all
-      // imposes its own key ordering inside the paged query.
+      // The roster (leavers included) and the runs come from the server (POST-A-010), which reads every row in pages of
+      // its own and narrows them to the clients the caller is assigned to. What these feed is an EXPORT, and PostgREST
+      // caps a response at ~1000 rows and says nothing when it does, so an unpaged firm-wide roster would truncate and
+      // the CSV would go out short with no error anywhere. `payroll_runs` is the one that passes 1000 first: it is a row
+      // per client per month, so a fifty-client practice crosses it inside two years. The server answers runs newest
+      // month first.
       const [empRes, runsRes, clientsRes] = await Promise.all([
-        selectAll(() => sb.from("payroll_employees").select("*").eq("firm_id", firmId).order("id")),
-        selectAll(() => sb.from("payroll_runs").select("*").eq("firm_id", firmId).order("id")),
+        api.payroll.listEmployees(undefined, true) as Promise<ApiResp<Employee[]>>,
+        api.payroll.listRuns() as Promise<ApiResp<PayrollRun[]>>,
         selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", firmId).eq("is_internal", false).order("id")),
       ]);
-      runsRes.data.sort((a: { month: string }, b: { month: string }) =>
-        String(b.month).localeCompare(String(a.month)));
-      if (empRes.error) throw new Error(empRes.error.message);
-      if (runsRes.error) throw new Error(runsRes.error.message);
+      if (!empRes?.success || !Array.isArray(empRes.data)) throw new Error(empRes?.error ?? "Could not load the employees.");
+      if (!runsRes?.success || !Array.isArray(runsRes.data)) throw new Error(runsRes?.error ?? "Could not load the payroll runs.");
       // A missing client name is not worth failing the page for — the run is
       // still selectable, it just reads "Client — August 2026".
       setClientNames(Object.fromEntries(
@@ -1414,8 +1407,8 @@ export default function PayrollReportsPage() {
           .map(c => [c.id, c.client_name]),
       ));
 
-      const empList: Employee[] = empRes.data ?? [];
-      const runList: PayrollRun[] = runsRes.data ?? [];
+      const empList: Employee[] = empRes.data;
+      const runList: PayrollRun[] = runsRes.data;
       setEmployees(empList);
       setRuns(runList);
       // The year picker's options come off the RUNS — one row per client-month

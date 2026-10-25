@@ -68,6 +68,26 @@ export type FirmProfile = {
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+/** `GET /api/payroll/attendance-board`. */
+export interface PayrollAttendanceBoard {
+  month: string;
+  employees: { id: string; name: string; designation: string; client_id: string }[];
+  attendance: {
+    id: string; employee_id: string; working_days: number; days_present: number;
+    casual_leaves: number; sick_leaves: number; earned_leaves: number;
+  }[];
+}
+
+/** `GET /api/payroll/leave-ledger`. */
+export interface PayrollLeaveLedger {
+  year: number;
+  rows: {
+    id: string | null; employee_id: string; year: number;
+    casual_leave_balance: number | null; sick_leave_balance: number | null; earned_leave_balance: number | null;
+    casual_used: number; sick_used: number; earned_used: number;
+  }[];
+}
+
 /** One row of `GET /api/client-documents`: `client_documents` as the server serves it (no `firm_id`). */
 export interface ClientDocumentRow {
   id: string;
@@ -5640,6 +5660,14 @@ export const api = {
     // Save asserted a full month for people nobody had looked at and
     // payroll_slips.attendance_entered (migration 324) then read true for all
     // of them. See domain/payroll/attendance.py.
+    /** The firm-wide attendance sheet for one month ("2026-08"): every employee the caller may see (four columns, leavers
+     *  included) and the rows entered. The server reads them in pages of its own and narrows them to the caller's clients. */
+    attendanceBoard: (month: string) =>
+      request<ApiResp<PayrollAttendanceBoard>>(`/api/payroll/attendance-board?month=${encodeURIComponent(month)}`),
+    /** One line per employee the caller may see: the entitlement recorded for a calendar year (null when none) and the leave
+     *  taken in it, added up by the server. */
+    leaveLedger: (year: number) =>
+      request<ApiResp<PayrollLeaveLedger>>(`/api/payroll/leave-ledger?year=${year}`),
     getAttendance: (clientId: string, month: string) =>
       request(`/api/payroll/attendance?client_id=${encodeURIComponent(clientId)}&month=${encodeURIComponent(month)}`),
     // `rows` must carry ONLY the employees the CA actually touched. lop_days is

@@ -225,6 +225,10 @@ EXEMPT = {
     "payroll_employee_exceptions": "reads the firm's employees and narrows the result to the caller's clients at the end",
     "tds_projection": "`compute_tds_projection` reads the employee by firm, client AND id",
     "statutory_position": "employees are read by firm and client; the employee id is only a key into those rows",
+    "attendance_board": "takes no employee id from the request: it reads the firm's employees and narrows them, and the rows that "
+                        "hang from them, to the caller's clients (`filter_by_client` over `_firm_employees`)",
+    "leave_ledger": "takes no employee id from the request: it reads the firm's employees and narrows them, and the rows that "
+                    "hang from them, to the caller's clients (`filter_by_client` over `_firm_employees`)",
     "arrears_relief": "computes from the figures in the body and reads no row",
     "value_perquisites": "computes from the figures in the body and reads no row",
 }

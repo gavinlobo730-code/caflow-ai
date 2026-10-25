@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
-import { supabase, getSupabaseClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import CsvImportModal from "@/components/LazyCsvImportModal";
@@ -19,7 +19,7 @@ import { EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { api } from "@/lib/api";
-import type { AnnexureIIResponse } from "@/lib/api";
+import type { AnnexureIIResponse, ApiResp } from "@/lib/api";
 import { financialYearOfMonth } from "@/lib/dates/periods";
 import { DisburseModal } from "@/components/payroll/DisburseModal";
 import EmployeeDrawer from "@/components/payroll/EmployeeDrawer";
@@ -229,22 +229,19 @@ function DashboardTab({ clientId }: { clientId: string }) {
   const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
-    const db = getSupabaseClient();
     setLoading(true);
     setLoadFailed(false);
-    // Direct Supabase reads (not api/payroll/runs + api/payroll/employees) —
-    // these are plain client-scoped selects with no server-side computation,
-    // so routing them through the FastAPI backend only adds a cold-start hit.
-    // Mirrors routers/payroll.py's list_runs (order by month desc) and
-    // list_employees (eq status=active, order by name).
+    // Asked of the server (POST-A-010): the client's runs (newest month first) and its active employees (by name), read in
+    // pages of its own and after the Payroll permission and the client assignment. They were direct reads to spare a
+    // cold-start hit; the rest of this workspace calls the API on the same page, and the control belongs in one place.
     try {
       const [r, e] = await Promise.all([
-        db.from("payroll_runs").select("*").eq("client_id", clientId).order("month", { ascending: false }),
-        db.from("payroll_employees").select("*").eq("client_id", clientId).eq("status", "active").order("name"),
+        api.payroll.listRuns(clientId) as Promise<ApiResp<PayrollRun[]>>,
+        api.payroll.listEmployees(clientId) as Promise<ApiResp<Employee[]>>,
       ]);
-      if (r.error || e.error) { setLoadFailed(true); return; }
-      setRuns((r.data as PayrollRun[]) ?? []);
-      setEmployees((e.data as Employee[]) ?? []);
+      if (!r?.success || !Array.isArray(r.data) || !e?.success || !Array.isArray(e.data)) { setLoadFailed(true); return; }
+      setRuns(arrayOrEmpty<PayrollRun>(r.data));
+      setEmployees(arrayOrEmpty<Employee>(e.data));
     } catch {
       setLoadFailed(true);
     } finally {
