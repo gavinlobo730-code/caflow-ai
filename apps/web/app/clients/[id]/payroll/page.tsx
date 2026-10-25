@@ -227,10 +227,13 @@ function DashboardTab({ clientId }: { clientId: string }) {
   // "No payroll runs yet" — that is indistinguishable from a client that
   // genuinely has no payroll. Track the failure and surface a retry instead.
   const [loadFailed, setLoadFailed] = useState(false);
+  // WHY it failed, in the server's own words (a refusal for a person blocked from payroll, for instance).
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadFailed(false);
+    setLoadError(null);
     // Asked of the server (POST-A-010): the client's runs (newest month first) and its active employees (by name), read in
     // pages of its own and after the Payroll permission and the client assignment. They were direct reads to spare a
     // cold-start hit; the rest of this workspace calls the API on the same page, and the control belongs in one place.
@@ -239,11 +242,16 @@ function DashboardTab({ clientId }: { clientId: string }) {
         api.payroll.listRuns(clientId) as Promise<ApiResp<PayrollRun[]>>,
         api.payroll.listEmployees(clientId) as Promise<ApiResp<Employee[]>>,
       ]);
-      if (!r?.success || !Array.isArray(r.data) || !e?.success || !Array.isArray(e.data)) { setLoadFailed(true); return; }
+      if (!r?.success || !Array.isArray(r.data) || !e?.success || !Array.isArray(e.data)) {
+        setLoadFailed(true);
+        setLoadError((!r?.success ? r?.error : null) ?? (!e?.success ? e?.error : null) ?? null);
+        return;
+      }
       setRuns(arrayOrEmpty<PayrollRun>(r.data));
       setEmployees(arrayOrEmpty<Employee>(e.data));
-    } catch {
+    } catch (err) {
       setLoadFailed(true);
+      setLoadError(err instanceof Error && err.message ? err.message : null);
     } finally {
       setLoading(false);
     }
@@ -264,7 +272,7 @@ function DashboardTab({ clientId }: { clientId: string }) {
   if (loadFailed) return (
     <div className="p-5">
       <div className="bg-white rounded-xl border border-ps-border p-8 text-center">
-        <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the payroll dashboard — the request failed or timed out.</p>
+        <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the payroll dashboard — {loadError ?? "the request failed or timed out."}</p>
         <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
       </div>
     </div>

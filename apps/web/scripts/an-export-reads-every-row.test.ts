@@ -291,7 +291,7 @@ const PAGED_READS_THAT_FEED_A_FIGURE: Record<string, string[]> = {
   "app/gst/page.tsx": ["compliance_calendar"],
   "app/income-tax/page.tsx": ["compliance_calendar"],
   // app/payroll/attendance/page.tsx is not here any more (POST-A-010): the attendance sheet and the leave ledger come from
-  // GET /api/payroll/attendance-board and /leave-ledger, whose reads page every row and are held by tests/test_a_leave_ledger_and_an_attendance_board_are_the_servers.py.
+  // GET /api/payroll/attendance-board and /leave-ledger, whose reads page every row and are held by tests/test_the_payroll_staff_screens_ask_the_server_for_their_lists.py.
   // app/tds/page.tsx is not here any more: it reads the client's deductions through the API, which cuts and counts them
   // (POST-A-276), and a screen with no direct read of the table has no pager to hold.
   // The firm's own fee invoices and receipts: revenue, outstanding, overdue, issued and draft are added up in the

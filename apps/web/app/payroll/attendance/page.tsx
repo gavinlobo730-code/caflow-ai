@@ -185,6 +185,9 @@ export default function AttendancePage() {
   // leave-balance loader further fabricated default 12/12/15 allocations as if
   // real on a failed query. Track both failures and offer a retry instead.
   const [loadFailed, setLoadFailed] = useState(false);
+  // WHY it failed, in the server's own words (a refusal for a person blocked from payroll, a month it will not read). Null when
+  // there is nothing better to say than that the request did not get an answer.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [leaveLoadFailed, setLeaveLoadFailed] = useState(false);
 
   // Attendance tab state
@@ -257,7 +260,8 @@ export default function AttendancePage() {
     if (client) setAttClient(client);
     const month = p.get("month");
     const m = /^(\d{4})-(\d{2})$/.exec(month || "");
-    if (m) {
+    // A month outside 1-12 is not a month: the pickers cannot show it and the server refuses it, so the URL's is ignored.
+    if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12) {
       setAttYear(Number(m[1]));
       setAttMonth(Number(m[2]));
     }
@@ -266,6 +270,7 @@ export default function AttendancePage() {
   const load = useCallback(async () => {
     setLoading(true);
     setLoadFailed(false);
+    setLoadError(null);
     try {
       const fid = await getFirmId();
       setFirmId(fid);
@@ -320,8 +325,9 @@ export default function AttendancePage() {
       setAttendance(attMap);
       setEntered(have);
       setTouched(new Set());
-    } catch {
+    } catch (e) {
       setLoadFailed(true);
+      setLoadError(e instanceof Error && e.message ? e.message : null);
     } finally {
       setLoading(false);
     }
@@ -706,7 +712,7 @@ export default function AttendancePage() {
     return (
       <div className="min-h-screen bg-ps-bg flex items-center justify-center">
         <div className="text-center">
-          <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load attendance data — the request failed or timed out.</p>
+          <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load attendance data — {loadError ?? "the request failed or timed out."}</p>
           <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       </div>
