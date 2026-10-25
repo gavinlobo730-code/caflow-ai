@@ -151,9 +151,12 @@ def test_the_frontend_scan_finds_the_tables_it_is_supposed_to():
     """An empty set would make the assertion below pass against any schema."""
     found = _browser_tables()
     assert len(found) > 40, f"only found {len(found)}: {sorted(found)}"
-    # The six migration 370 closes, named so a rename shows up here rather than
-    # silently emptying the check.
-    for t in ("bank_accounts", "debit_notes", "purchase_credit_notes",
+    # The five of migration 370's six that the browser still reads, named so a
+    # rename shows up here rather than silently emptying the check.
+    # `bank_accounts` is the sixth and was taken off this list when its four
+    # readers moved behind GET /api/banking/accounts (POST-A-010); it stays
+    # scoped in the database, which the test below keeps asserting.
+    for t in ("debit_notes", "purchase_credit_notes",
               "sales_debit_notes", "gstr2b_reconciliations",
               "tds_lower_deduction_certificates"):
         assert t in found, f"{t} is no longer read from the browser — if that "\

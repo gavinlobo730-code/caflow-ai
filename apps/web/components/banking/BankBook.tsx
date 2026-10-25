@@ -9,8 +9,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { RefreshCw, Download, Landmark } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { selectAll } from "@/lib/supabase/selectAll";
+import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
 import { api } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { fmt, BankAccount } from "@/components/banking/shared";
@@ -114,14 +113,10 @@ export function BankRegister({ clientId }: { clientId: string }) {
     if (!clientId || clientId === "_placeholder") return;
     (async () => {
       try {
-        const supabase = getSupabaseClient();
-        const { data: rows } = await selectAll(() => supabase
-          .from("bank_accounts")
-          .select("id, bank_name, account_no, ifsc, account_type, opening_balance_paise, opening_balance_date, coa_account_id, currency, is_active")
-          .eq("client_id", clientId)
-          .order("bank_name")
-          .order("id"));
-        const list = ((rows as BankAccount[]) ?? []).filter((a) => a.is_active);
+        // Asked of the server (POST-A-010): the list is the client's ACTIVE
+        // accounts, which is what the picker offers; the register below is
+        // what carries each account's own figures.
+        const list = await fetchActiveBankAccounts<BankAccount>(clientId);
         setAccounts(list);
         setBankAccountId((prev) => prev || (list[0]?.id ?? ""));
       } catch {

@@ -11,6 +11,7 @@ import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNav
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
 import { todayLocalISO } from "@/lib/dateMath";
@@ -752,6 +753,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   });
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
+  const [bankAccountsUnreadable, setBankAccountsUnreadable] = useState(false);
   const [vendorBills, setVendorBills] = useState<{ id: string; bill_no: string | null; our_reference: string | null; bill_date: string | null }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -815,9 +817,11 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
 
   useEffect(() => { loadCategories(); }, [loadCategories]);
 
-  // The counterparties the acquisition can name. Read straight from PostgREST
-  // like every other picker on this screen; RLS is the access control on that
-  // path (CLAUDE.md, "The frontend's second data path").
+  // The counterparties the acquisition can name. The vendors are read straight
+  // from PostgREST like every other picker on this screen, and RLS is the access
+  // control on that path (CLAUDE.md, "The frontend's second data path"); the
+  // bank accounts are asked of the server (POST-A-010), which asks the caller's
+  // Banking permission.
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;
     (async () => {
@@ -825,11 +829,11 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
       const [v, b] = await Promise.all([
         sb.from("vendors").select("id, name")
           .eq("client_id", clientId).eq("is_active", true).order("name"),
-        sb.from("bank_accounts").select("id, bank_name, account_no")
-          .eq("client_id", clientId).eq("is_active", true).order("bank_name"),
+        fetchActiveBankAccounts(clientId).catch(() => null),
       ]);
       setVendors((v.data as { id: string; name: string }[]) ?? []);
-      setBankAccounts((b.data as { id: string; bank_name: string; account_no: string }[]) ?? []);
+      setBankAccounts(b ?? []);
+      setBankAccountsUnreadable(b === null);
     })();
   }, [clientId]);
 
@@ -1100,6 +1104,11 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                         <option key={b.id} value={b.id}>{b.bank_name} · {b.account_no}</option>
                       ))}
                     </select>
+                    {bankAccountsUnreadable && (
+                      <p className="mt-1 text-2xs text-state-attention">
+                        This client&apos;s bank accounts could not be read, so none is listed. Nothing was chosen.
+                      </p>
+                    )}
                   </Field>
                 )}
               </div>

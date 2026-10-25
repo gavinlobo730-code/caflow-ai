@@ -109,14 +109,16 @@ def test_the_notice_names_each_family_whose_read_the_database_enforces_and_what_
     """Payroll since 485/490, billing since 495 and a client's bank lines since 524 are read through the grid, and the
     sentence says so: a Partner who unticks Banking reads "enforced by the PracticeSync server" and nothing about the
     database unless it is told. The real-Postgres sibling holds the list of tables; this holds that the SENTENCE still
-    names each family, and that the bank sentence says what it does not cover (the bank account master, which the
-    payment pickers read)."""
+    names each family, and that the bank sentence says what it does not cover (the bank account master, which the database
+    does not ask the grid about; the pickers that show it ask the server, which does, since POST-A-010)."""
     text = " ".join(DENIAL_REACH_NOTICE.lower().split())
     for family in ("payroll", "billing", "banking"):
         assert family in text, f"the notice no longer names {family}"
     assert "bank transactions" in text and "reconciliations" in text
-    assert "list of bank accounts is not covered" in text, (
-        "the bank sentence must say that the bank account list is not covered")
+    assert "list of bank accounts is not covered by the database" in text, (
+        "the bank sentence must say that the DATABASE does not cover the bank account list")
+    assert "ask the practicesync server, which does check it" in text, (
+        "the bank sentence must say where the grid IS asked for the bank account list")
 
 
 # ── What it says about THIS repository is measured from it ───────────────────
@@ -261,8 +263,6 @@ _SURFACES = {
                 {"payroll_employees", "payroll_runs", "payroll_slips"}),
     "documents": (("app/documents/", "app/clients/documents/", "app/clients/[id]/documents/"),
                   {"documents", "client_documents"}),
-    "bank accounts": (("components/banking/", "app/clients/"),
-                      {"bank_accounts", "bank_transactions", "bank_statements"}),
 }
 
 
@@ -285,6 +285,19 @@ def test_every_screen_the_notice_names_still_reads_a_table_directly():
             f"the notice names '{surface}' as read directly from the browser, "
             f"and nothing under {prefixes} reads {sorted(family)} any more. If "
             "that read moved behind the API, the sentence should stop saying so.")
+
+
+def test_the_notice_names_no_directly_read_surface_that_this_module_cannot_check():
+    """The parenthesis "(documents among them)" is a claim about the browser. Every name in it must be a surface above, so
+    that a name added to the sentence (or left in it after the screen moved behind the API, as the bank-account pickers
+    did in POST-A-010) is measured against a read, and an unknown one fails here."""
+    text = " ".join(DENIAL_REACH_NOTICE.split())
+    found = re.search(r"read tables directly from the browser \(([^)]*?) among them\)", text)
+    assert found, "the notice no longer says which screens read directly; this test has nothing to hold"
+    names = [n.strip() for n in re.split(r",| and ", found.group(1)) if n.strip()]
+    assert names, "the parenthesis names nothing"
+    unknown = [n for n in names if n not in _SURFACES]
+    assert not unknown, f"the notice names {unknown} as read directly, and no surface here measures it"
 
 
 # ── The browser renders it and holds no copy ─────────────────────────────────
