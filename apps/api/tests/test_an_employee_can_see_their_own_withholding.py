@@ -152,6 +152,12 @@ def test_the_employee_api_is_read_only_but_for_the_one_declaration(route):
         f"their own consequences.")
 
 
+#: The one GET that answers a person who is not an employee instead of refusing them (POST-A-010): "is this identity an
+#: activated employee?" is asked of every signed-in person by the activation page and the client portal's dashboard, so
+#: "no" is its ordinary answer and a 403 there would put a refusal in the log for every client login.
+_ANSWERS_NO = {"/api/portal/employee/access"}
+
+
 def test_every_employee_route_resolves_the_principal(app_db):
     """A route on this router with no principal is an open door.
 
@@ -164,6 +170,14 @@ def test_every_employee_route_resolves_the_principal(app_db):
         if "GET" not in getattr(route, "methods", set()):
             continue
         res = client.get(route.path + "?financial_year=" + FY)
+        if route.path in _ANSWERS_NO:
+            # Allowed to answer 200, and only with "no". Which of the refusals or the "no" this environment gives depends
+            # on APP_ENV (CI runs as development, where the sign-in layer lets a dev identity through and the answer is
+            # the "no"; elsewhere it is a 503), so both are accepted and a "yes" never is.
+            if res.status_code == 200:
+                assert res.json()["data"] == {"enabled": False}, (
+                    f"{route.path} said an identity with no employee behind it is an employee")
+                continue
         # 401 the JWT is missing or bad, 403 the identity is not an employee,
         # 503 the auth layer itself could not answer (core/auth raises that
         # deliberately rather than a 403, so a transient lookup failure is not
