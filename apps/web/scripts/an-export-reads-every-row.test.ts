@@ -290,7 +290,8 @@ test("BOTH pagers stop on a short page, never on a count", () => {
 const PAGED_READS_THAT_FEED_A_FIGURE: Record<string, string[]> = {
   "app/gst/page.tsx": ["compliance_calendar"],
   "app/income-tax/page.tsx": ["compliance_calendar"],
-  "app/payroll/attendance/page.tsx": ["attendance", "leave_balances"],
+  // app/payroll/attendance/page.tsx is not here any more (POST-A-010): the attendance sheet and the leave ledger come from
+  // GET /api/payroll/attendance-board and /leave-ledger, whose reads page every row and are held by tests/test_the_payroll_staff_screens_ask_the_server_for_their_lists.py.
   // app/tds/page.tsx is not here any more: it reads the client's deductions through the API, which cuts and counts them
   // (POST-A-276), and a screen with no direct read of the table has no pager to hold.
   // The firm's own fee invoices and receipts: revenue, outstanding, overdue, issued and draft are added up in the
@@ -368,8 +369,10 @@ function assertPaged(list: Record<string, string[]>, listName: string, why: stri
 test("every read that feeds a figure goes through a pager and has a unique ordering", () => {
   const reads = assertPaged(PAGED_READS_THAT_FEED_A_FIGURE, "PAGED_READS_THAT_FEED_A_FIGURE", "feeds a figure");
   // Nine until the TDS screen stopped reading `tds_deductions` itself (its two reads, the load and the one after an import, went to
-  // the API in POST-A-276); seven are the screens still listed above.
-  assert.ok(reads >= 7, `only ${reads} reads were examined: the scan has stopped seeing them`);
+  // the API in POST-A-276); seven were the screens still listed above, and the attendance sheet's three reads went to the API in
+  // POST-A-010. One read at least for every listed (screen, table): the floor is the list, not a number to edit on each move.
+  const listed = Object.values(PAGED_READS_THAT_FEED_A_FIGURE).flat().length;
+  assert.ok(reads >= listed, `only ${reads} reads were examined for ${listed} listed: the scan has stopped seeing them`);
 });
 
 test("every read that is the only way to find or check a record goes through a pager and has a unique ordering", () => {

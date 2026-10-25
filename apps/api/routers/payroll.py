@@ -25,6 +25,7 @@ from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, Pay
                            OneTimeEarningsIn, PayrollEnablementIn,
                            ReleaseIn, ApplyStructureIn, EmployeeImportIn)
 from core.authz import assert_client_access, filter_by_client
+from core.db_paging import fetch_all
 from core.ist_clock import ist_today, month_end_date, ist_fy_label
 from core.permissions import rbac
 from services import payroll_report_service
@@ -1992,13 +1993,21 @@ def list_employees(
     db = _db()
     if not db:
         return api_response(True, [])
-    q = db.table("payroll_employees").select("*").eq("firm_id", current_user["firm_id"])
-    if not include_inactive:
-        q = q.eq("status", "active")
-    if client_id:
-        q = q.eq("client_id", client_id)
-    res = q.order("name").execute()
-    rows = res.data or []
+    firm_id = current_user["firm_id"]
+
+    def _query():
+        q = db.table("payroll_employees").select("*").eq("firm_id", firm_id)
+        if not include_inactive:
+            q = q.eq("status", "active")
+        if client_id:
+            q = q.eq("client_id", client_id)
+        return q
+
+    # EVERY row, in the server's own pages: PostgREST cuts a response at about a thousand rows without a word, and a
+    # firm-wide roster (the payroll reports page asks for it with the leavers) passes that at a hundred clients of ten
+    # employees. The name order is applied after the read, because the pager's key is the id.
+    rows = fetch_all(_query, "id", label="payroll_employees")
+    rows.sort(key=lambda r: (str(r.get("name") or "").casefold(), str(r.get("id") or "")))
     if not client_id:
         rows = filter_by_client(current_user, rows)
     return api_response(True, [_with_full_month_gross(r) for r in rows])
@@ -2516,11 +2525,19 @@ def list_runs(
     db = _db()
     if not db:
         return api_response(True, [])
-    q = db.table("payroll_runs").select("*").eq("firm_id", current_user["firm_id"])
-    if client_id:
-        q = q.eq("client_id", client_id)
-    res = q.order("month", desc=True).execute()
-    rows = res.data or []
+    firm_id = current_user["firm_id"]
+
+    def _query():
+        q = db.table("payroll_runs").select("*").eq("firm_id", firm_id)
+        if client_id:
+            q = q.eq("client_id", client_id)
+        return q
+
+    # EVERY row, in the server's own pages: a run is a row per client per month, so a fifty-client practice passes the
+    # thousand-row cut inside two years. Newest month first, ties on the id, applied after the read.
+    rows = fetch_all(_query, "id", label="payroll_runs")
+    rows.sort(key=lambda r: str(r.get("id") or ""))
+    rows.sort(key=lambda r: str(r.get("month") or ""), reverse=True)
     if not client_id:
         rows = filter_by_client(current_user, rows)
     return api_response(True, rows)
@@ -4844,6 +4861,107 @@ def get_attendance(
         "payroll_enabled": bool(settings.get("payroll_enabled")),
         "payroll_enabled_on": settings.get("payroll_enabled_on"),
     })
+
+
+def _firm_employees(db, firm_id: str) -> list[dict]:
+    """Every employee of the firm, leavers included: id, name, designation, client and nothing else. The CALLER narrows them to
+    the clients the user is assigned to (`filter_by_client`), in the handler, where the client-scope audit can see it.
+
+    The attendance and leave screens need a name beside a row and the client the row belongs to; they do not need a PAN,
+    a salary or a bank account, and a read that served them would be handing those to a screen that never shows them. The
+    columns are named here, in the query, so the column-existence guard reads them."""
+    rows = fetch_all(
+        lambda: db.table("payroll_employees").select("id, name, designation, client_id")
+        .eq("firm_id", firm_id),
+        "id", label="payroll_employees")
+    rows.sort(key=lambda r: str(r.get("id") or ""))
+    return rows
+
+
+@router.get("/attendance-board")
+def attendance_board(
+    month: str = Query(..., description='Payroll month, e.g. "2026-08"'),
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """The firm-wide attendance sheet for one month: every employee the caller may see, and the attendance rows entered.
+
+    The Attendance screen used to read `payroll_employees` and `attendance` straight from PostgREST (POST-A-010). This is
+    exactly what it loaded: the employees (leavers included, four columns) and the month's rows, both in the server's own
+    pages and both narrowed to the clients the caller is assigned to. A row is an entered month; an employee with no row
+    has none entered, and the screen says so (the per-client `GET /attendance` is the one that reports `entered`)."""
+    try:
+        year, mon = attendance_domain.parse_month(month)
+    except attendance_domain.AttendanceError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    db = _db()
+    if not db:
+        return api_response(True, {"month": month, "employees": [], "attendance": []})
+    firm_id = current_user["firm_id"]
+    employees = filter_by_client(current_user, _firm_employees(db, firm_id))
+    reach = {str(e["id"]) for e in employees}
+    rows = fetch_all(
+        lambda: db.table("attendance").select(
+            "id, employee_id, working_days, days_present, casual_leaves, sick_leaves, earned_leaves")
+        .eq("firm_id", firm_id).eq("month", mon).eq("year", year),
+        "id", label="attendance")
+    return api_response(True, {
+        "month": month,
+        "employees": employees,
+        "attendance": [r for r in rows if str(r.get("employee_id")) in reach],
+    })
+
+
+@router.get("/leave-ledger")
+def leave_ledger(
+    year: int = Query(..., ge=2000, le=2100, description="The calendar year the rows are kept under, e.g. 2026"),
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """One line per employee the caller may see: the leave entitlement recorded for the year, and the leave taken in it.
+
+    The Attendance screen's Leave tab used to read `leave_balances` and a year of `attendance` straight from PostgREST
+    and add the days taken up in the browser (POST-A-010). The sum is the server's now, over every attendance row of the
+    year in its own pages (an unpaged read stopped at a thousand rows and the total came out SHORT, which overstates the
+    balance left to everybody past the cut). An entitlement nobody recorded is `null`, never a default: nothing in this
+    product accrues leave, so there is no figure to derive."""
+    db = _db()
+    if not db:
+        return api_response(True, {"year": year, "rows": []})
+    firm_id = current_user["firm_id"]
+    employees = filter_by_client(current_user, _firm_employees(db, firm_id))
+    # The lines are built from the employees in reach, so a balance or an attendance row of anyone else is never looked up.
+    balances = {
+        str(b.get("employee_id")): b
+        for b in fetch_all(
+            lambda: db.table("leave_balances").select(
+                "id, employee_id, casual_leave_balance, sick_leave_balance, earned_leave_balance")
+            .eq("firm_id", firm_id).eq("year", year),
+            "id", label="leave_balances")}
+    used: dict[str, dict[str, int]] = {}
+    for a in fetch_all(
+            lambda: db.table("attendance").select("id, employee_id, casual_leaves, sick_leaves, earned_leaves")
+            .eq("firm_id", firm_id).eq("year", year),
+            "id", label="attendance"):
+        taken = used.setdefault(str(a.get("employee_id")), {"casual": 0, "sick": 0, "earned": 0})
+        taken["casual"] += a.get("casual_leaves") or 0
+        taken["sick"] += a.get("sick_leaves") or 0
+        taken["earned"] += a.get("earned_leaves") or 0
+    rows = []
+    for e in employees:
+        key = str(e["id"])
+        recorded = balances.get(key) or {}
+        taken = used.get(key) or {"casual": 0, "sick": 0, "earned": 0}
+        rows.append({
+            "id": recorded.get("id"),
+            "employee_id": e["id"],
+            "year": year,
+            "casual_leave_balance": recorded.get("casual_leave_balance"),
+            "sick_leave_balance": recorded.get("sick_leave_balance"),
+            "earned_leave_balance": recorded.get("earned_leave_balance"),
+            "casual_used": taken["casual"],
+            "sick_used": taken["sick"],
+            "earned_used": taken["earned"],
+        })
+    return api_response(True, {"year": year, "rows": rows})
 
 
 def _attendance_is_locked(db, firm_id: str, client_id: str, month: str) -> Optional[str]:

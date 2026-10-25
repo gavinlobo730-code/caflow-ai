@@ -4,8 +4,8 @@ THE FAULT THIS ANSWERS
     The per-person grid (migration 403) is enforced by `rbac()` on every staff
     route and by the write policies of a few tables (415, 470, 478). No table's
     READ policy asks it, and several screens read tables straight from the
-    browser over PostgREST (payroll attendance and reports, the documents pages,
-    the bank-account pickers). So a Partner who unticks Payroll for a Manager
+    browser over PostgREST (when this was written: payroll attendance and reports, the
+    documents pages, the bank-account pickers; POST-A-010 moved each behind the API). So a Partner who unticks Payroll for a Manager
     stops the server answering that Manager's payroll requests and leaves the
     Manager able to select the same data with their own sign-in — and the Team
     screen said nothing about it, which is the localStorage grid's mistake with
@@ -252,52 +252,76 @@ def test_rbac_asks_the_per_person_resolver_and_not_the_role_alone():
         "stop nothing at the server either")
 
 
-# The surfaces the notice may name, each with where in the browser it reads and
-# which tables count. A surface the notice NAMES must still read a table
-# directly, or the sentence promises an exposure that is gone (or, worse, that
-# moved behind the API without anybody updating what a Partner is told).
-_SURFACES = {
-    "attendance": ("app/payroll/attendance/",
-                   {"attendance", "leave_balances", "payroll_employees"}),
-    "reports": ("app/payroll/reports/",
-                {"payroll_employees", "payroll_runs", "payroll_slips"}),
-}
+# The surfaces the notice may name as read directly, each with where in the browser it reads and which tables count. A
+# surface the notice NAMES must still read a table directly, or the sentence promises an exposure that is gone (or, worse,
+# that moved behind the API without anybody updating what a Partner is told).
+#
+# NONE TODAY. The sentence used to name the payroll attendance and reports screens, then the bank-account pickers and the
+# documents pages; POST-A-010 moved each behind the API in turn and the last two payroll screens went with the staff
+# payroll step, so the notice now says "several screens read tables directly" and names none. An entry goes back in here
+# the day the sentence names a screen again.
+_SURFACES: dict[str, tuple[str, set[str]]] = {}
 
 
-def test_every_screen_the_notice_names_still_reads_a_table_directly():
-    named = [s for s in _SURFACES if s in DENIAL_REACH_NOTICE.lower()]
-    assert named, "the notice names no surface this test knows — it checks nothing"
+def _names_read_directly(notice: str) -> list[str]:
+    """The screens a notice names as read directly: the `(… among them)` it may put after "read tables directly from the
+    browser". A notice that names none returns an empty list, and that is a sentence with nothing to hold."""
+    text = " ".join(notice.split())
+    found = re.search(r"read tables directly from the browser \(([^)]*?) among them\)", text)
+    if not found:
+        return []
+    return [n.strip() for n in re.split(r",| and ", found.group(1)) if n.strip()]
 
+
+def _problems_with_the_names(names: list[str], surfaces: dict, reads: dict[str, set[str]]) -> list[str]:
+    """Every name the notice gives that this module cannot measure, or that nothing in the browser reads any more."""
+    problems = []
+    for name in names:
+        if name not in surfaces:
+            problems.append(f"'{name}' is named as read directly, and no surface here measures it")
+            continue
+        prefixes, family = surfaces[name]
+        prefixes = (prefixes,) if isinstance(prefixes, str) else prefixes
+        if not [rel for rel, tables in reads.items() if rel.startswith(prefixes) and tables & family]:
+            problems.append(f"'{name}' is named as read directly from the browser, and nothing under {prefixes} reads "
+                            f"{sorted(family)} any more; if that read moved behind the API the sentence should stop saying so")
+    return problems
+
+
+def _direct_reads() -> dict[str, set[str]]:
     reads: dict[str, set[str]] = {}
     for rel, text in _browser_sources().items():
         tables = set(re.findall(r'\.from\(\s*"([a-z_0-9]+)"\s*\)', text))
         if tables:
             reads[rel] = tables
+    return reads
 
-    for surface in named:
-        prefixes, family = _SURFACES[surface]
-        prefixes = (prefixes,) if isinstance(prefixes, str) else prefixes
-        hit = [rel for rel, tables in reads.items()
-               if rel.startswith(prefixes) and tables & family]
-        assert hit, (
-            f"the notice names '{surface}' as read directly from the browser, "
-            f"and nothing under {prefixes} reads {sorted(family)} any more. If "
-            "that read moved behind the API, the sentence should stop saying so.")
+
+def test_every_screen_the_notice_names_still_reads_a_table_directly():
+    text = " ".join(DENIAL_REACH_NOTICE.split())
+    assert "read tables directly from the browser" in text, "the notice no longer says that screens read directly"
+    assert _direct_reads(), "the scan of the browser found no direct read at all — it checks nothing"
+    problems = _problems_with_the_names(_names_read_directly(DENIAL_REACH_NOTICE), _SURFACES, _direct_reads())
+    assert not problems, problems
 
 
 def test_the_notice_names_no_directly_read_surface_that_this_module_cannot_check():
-    """If the sentence says which screens read directly, as "(documents among them)" once did, every name in it must be
-    a surface above, so that a name added to the sentence (or left in it after the screen moved behind the API, as the
-    bank-account pickers and the document screens did in POST-A-010) is measured against a read, and an unknown one
-    fails here. A sentence that names none has nothing to hold."""
-    text = " ".join(DENIAL_REACH_NOTICE.split())
-    assert "read tables directly from the browser" in text, "the notice no longer says that screens read directly"
-    found = re.search(r"read tables directly from the browser \(([^)]*?) among them\)", text)
-    if not found:
-        return
-    names = [n.strip() for n in re.split(r",| and ", found.group(1)) if n.strip()]
-    unknown = [n for n in names if n not in _SURFACES]
+    """If the sentence says which screens read directly, every name in it must be a surface above, so that a name added to
+    the sentence (or left in it after the screen moved behind the API, as the bank-account pickers, the document screens and
+    the payroll screens did in POST-A-010) is measured against a read, and an unknown one fails here."""
+    unknown = [n for n in _names_read_directly(DENIAL_REACH_NOTICE) if n not in _SURFACES]
     assert not unknown, f"the notice names {unknown} as read directly, and no surface here measures it"
+
+
+def test_negative_control_a_named_screen_with_no_read_left_is_caught_and_a_screen_that_still_reads_is_not():
+    """The two checks above are vacuous while the notice names nothing; this is what they would catch."""
+    surfaces = {"attendance": ("app/payroll/attendance/", {"attendance", "payroll_employees"})}
+    notice = "several screens read tables directly from the browser (attendance among them): there only the firm decides."
+    assert _names_read_directly(notice) == ["attendance"]
+    assert _problems_with_the_names(["attendance"], surfaces, {"app/payroll/attendance/page.tsx": {"clients"}})
+    assert not _problems_with_the_names(["attendance"], surfaces, {"app/payroll/attendance/page.tsx": {"attendance"}})
+    assert _problems_with_the_names(["documents"], surfaces, {}) , "a name this module cannot measure is a problem"
+    assert _names_read_directly("several screens read tables directly from the browser: there only the firm decides.") == []
 
 
 # ── The browser renders it and holds no copy ─────────────────────────────────

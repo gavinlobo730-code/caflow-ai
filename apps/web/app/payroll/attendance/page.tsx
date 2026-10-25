@@ -30,6 +30,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { api } from "@/lib/api";
+import type { PayrollAttendanceBoard, PayrollLeaveLedger } from "@/lib/api";
+import { objectWithLists } from "@/lib/api/shape";
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow } from "@/components/CsvImportModal";
 import { downloadCsv } from "@/components/ui/data-table";
@@ -183,6 +185,9 @@ export default function AttendancePage() {
   // leave-balance loader further fabricated default 12/12/15 allocations as if
   // real on a failed query. Track both failures and offer a retry instead.
   const [loadFailed, setLoadFailed] = useState(false);
+  // WHY it failed, in the server's own words (a refusal for a person blocked from payroll, a month it will not read). Null when
+  // there is nothing better to say than that the request did not get an answer.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [leaveLoadFailed, setLeaveLoadFailed] = useState(false);
 
   // Attendance tab state
@@ -255,7 +260,8 @@ export default function AttendancePage() {
     if (client) setAttClient(client);
     const month = p.get("month");
     const m = /^(\d{4})-(\d{2})$/.exec(month || "");
-    if (m) {
+    // A month outside 1-12 is not a month: the pickers cannot show it and the server refuses it, so the URL's is ignored.
+    if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12) {
       setAttYear(Number(m[1]));
       setAttMonth(Number(m[2]));
     }
@@ -264,39 +270,30 @@ export default function AttendancePage() {
   const load = useCallback(async () => {
     setLoading(true);
     setLoadFailed(false);
+    setLoadError(null);
     try {
       const fid = await getFirmId();
       setFirmId(fid);
       const sb = getSupabaseClient();
 
-      // Load employees from payroll_employees table
-      // PAGED, because what these feed is an EXPORT. PostgREST caps a response
-      // at ~1000 rows and says nothing when it does, so an unpaged firm-wide
-      // roster silently truncates and the CSV goes out short with no error
-      // anywhere. `.order("id")` is not cosmetic: selectAll pages by OFFSET, so
-      // without a stable TOTAL ordering a row can land either side of a page
-      // boundary and be duplicated or skipped. See lib/supabase/selectAll.
-      const empRes = await selectAll(() => sb.from("payroll_employees")
-        .select("id, name, designation, client_id").eq("firm_id", fid).order("id"));
-      if (empRes.error) throw empRes.error;
-      const emps: Employee[] = empRes.data ?? [];
+      // The employees and the month's attendance come from the server (POST-A-010): it reads them in pages of its own (a
+      // response is cut at about a thousand rows without a word, and what these feed is an EXPORT) and narrows them to the
+      // clients the caller is assigned to. An unreadable answer is a failed load, never an empty roster.
+      const monthKey = `${attYear}-${String(attMonth).padStart(2, "0")}`;
+      const [boardRes, cliRes] = await Promise.all([
+        api.payroll.attendanceBoard(monthKey),
+        // Names for the clients this firm actually runs payroll for. Firm-scoped like every other read on this page.
+        selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("id")),
+      ]);
+      if (!boardRes?.success) throw new Error(boardRes?.error ?? "Could not load the attendance sheet.");
+      const board = objectWithLists<PayrollAttendanceBoard>(boardRes.data, "employees", "attendance");
+      if (!board) throw new Error("The attendance sheet came back in a shape this screen cannot read.");
+      const emps: Employee[] = board.employees;
       setEmployees(emps);
-
-      // Names for the clients this firm actually runs payroll for. Firm-scoped
-      // like every other read on this page — RLS is the control here, but the
-      // filter is the primary one and omitting it is what CLAUDE.md forbids.
-      const cliRes = await selectAll(() => sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("id"));
       setClientNames(Object.fromEntries(
         (cliRes.data ?? []).map((c: { id: string; client_name: string }) =>
           [c.id, c.client_name])));
-
-      // Load attendance for selected month/year
-      const attRes = await selectAll(() => sb.from("attendance").select("*")
-        .eq("firm_id", fid)
-        .eq("month", attMonth)
-        .eq("year", attYear)
-        .order("id"));
-      if (attRes.error) throw attRes.error;
+      const attRes = { data: board.attendance };
 
       const attMap: Record<string, AttendanceRow> = {};
       // The editor still seeds a default so the inputs have something to show.
@@ -328,66 +325,45 @@ export default function AttendancePage() {
       setAttendance(attMap);
       setEntered(have);
       setTouched(new Set());
-    } catch {
+    } catch (e) {
       setLoadFailed(true);
+      setLoadError(e instanceof Error && e.message ? e.message : null);
     } finally {
       setLoading(false);
     }
   }, [attMonth, attYear]);
 
   const loadLeaveBalances = useCallback(async () => {
-    if (!firmId) return;
     setLeaveLoadFailed(false);
-    const sb = getSupabaseClient();
-
-    // One attendance row per employee per month, so the year's leaves-used total below is a sum over employees x 12 rows:
-    // ninety employees pass 1,000. An unpaged read stopped there without a word and the total came out SHORT, which
-    // overstates the balance left to every employee whose rows fell past the cut.
-    const [lbRes, attRes] = await Promise.all([
-      selectAll(() => sb.from("leave_balances").select("*").eq("firm_id", firmId).eq("year", leaveYear).order("id")),
-      selectAll(() => sb.from("attendance").select("employee_id, casual_leaves, sick_leaves, earned_leaves")
-        .eq("firm_id", firmId)
-        .eq("year", leaveYear)
-        .order("id")),
-    ]);
-
-    // A failed query must NOT fall through to the employees.map below, which
-    // would fabricate default 12/12/15 allocations as if they were real records.
-    if (lbRes.error || attRes.error) { setLeaveLoadFailed(true); setLeaveBalances([]); return; }
-
-    // Aggregate used leaves per employee across all months
-    const usedMap: Record<string, { casual: number; sick: number; earned: number }> = {};
-    for (const row of attRes.data ?? []) {
-      if (!usedMap[row.employee_id]) usedMap[row.employee_id] = { casual: 0, sick: 0, earned: 0 };
-      usedMap[row.employee_id].casual += row.casual_leaves ?? 0;
-      usedMap[row.employee_id].sick += row.sick_leaves ?? 0;
-      usedMap[row.employee_id].earned += row.earned_leaves ?? 0;
+    // The entitlement recorded for the year and the leave taken in it come from the server (POST-A-010), which reads
+    // every attendance row of the year in pages of its own and adds the days up: the browser used to, from a read that
+    // stopped at a thousand rows without a word, and the total came out SHORT, which overstates the balance left.
+    //
+    // A failed read must NOT fall through to a table of default allocations as if they were real records, and an
+    // entitlement nobody recorded arrives as null: nothing in this product accrues leave, so there is no figure to derive.
+    try {
+      const res = await api.payroll.leaveLedger(leaveYear);
+      const ledger = res?.success ? objectWithLists<PayrollLeaveLedger>(res.data, "rows") : null;
+      if (!ledger) { setLeaveLoadFailed(true); setLeaveBalances([]); return; }
+      setLeaveBalances(ledger.rows.map((r) => ({
+        id: r.id ?? undefined,
+        employee_id: r.employee_id,
+        year: r.year,
+        casual_leave_balance: r.casual_leave_balance,
+        sick_leave_balance: r.sick_leave_balance,
+        earned_leave_balance: r.earned_leave_balance,
+        casual_used: r.casual_used,
+        sick_used: r.sick_used,
+        earned_used: r.earned_used,
+      })));
+    } catch {
+      setLeaveLoadFailed(true);
+      setLeaveBalances([]);
     }
-
-    const balances: LeaveBalance[] = employees.map(emp => {
-      const existing = (lbRes.data ?? []).find((lb: { employee_id: string }) => lb.employee_id === emp.id);
-      const used = usedMap[emp.id] ?? { casual: 0, sick: 0, earned: 0 };
-      return {
-        id: existing?.id,
-        employee_id: emp.id,
-        year: leaveYear,
-        // ?? null, NOT ?? 12. See the type above: an unrecorded entitlement
-        // is reported as unrecorded. Nothing in this product accrues leave or
-        // carries a balance forward, so there is no figure to derive either —
-        // the CA records what the employment contract says.
-        casual_leave_balance: existing?.casual_leave_balance ?? null,
-        sick_leave_balance: existing?.sick_leave_balance ?? null,
-        earned_leave_balance: existing?.earned_leave_balance ?? null,
-        casual_used: used.casual,
-        sick_used: used.sick,
-        earned_used: used.earned,
-      };
-    });
-    setLeaveBalances(balances);
-  }, [firmId, leaveYear, employees]);
+  }, [leaveYear]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { if (firmId && employees.length > 0) loadLeaveBalances(); }, [loadLeaveBalances, firmId, employees]);
+  useEffect(() => { if (employees.length > 0) loadLeaveBalances(); }, [loadLeaveBalances, employees]);
 
   // ── One-time and variable earnings ──────────────────────────────────────
 
@@ -736,7 +712,7 @@ export default function AttendancePage() {
     return (
       <div className="min-h-screen bg-ps-bg flex items-center justify-center">
         <div className="text-center">
-          <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load attendance data — the request failed or timed out.</p>
+          <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load attendance data — {loadError ?? "the request failed or timed out."}</p>
           <button onClick={() => load()} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       </div>

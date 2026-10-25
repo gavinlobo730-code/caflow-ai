@@ -82,9 +82,11 @@ class PermissionWriteRefused(ValueError):
 # speak for the firm's slabs, which keep their own grants.
 # Outside the payroll tables (485, 490), the fee tables (495) and the six tables
 # that hold a client's bank lines (524), no table's SELECT policy reads it, so a
-# screen that reads any other table straight from the browser over PostgREST — the
-# documents pages, the bank-account pickers — is governed there by the person's
-# firm, their client assignments and, on a few tables, their role. A Partner who unticked Documents
+# screen that reads any other table straight from the browser over PostgREST (the
+# clients list and the task board, say; the documents pages, the bank-account pickers
+# and the staff payroll screens stopped in POST-A-010 and ask the server) is governed
+# there by the person's firm, their client assignments and, on a few tables, their
+# role. A Partner who unticked a permission
 # for a Manager and believed the data was out of that Manager's reach would be
 # the localStorage grid's mistake again, so the sentence is served from here,
 # beside the guard that keeps it true, and the drawer renders what it is given

@@ -116,9 +116,12 @@ test("an unrecorded leave entitlement is not filled in with 12/12/15", () => {
   assert.doesNotMatch(ui, /casual_leave_balance \?\? 12/);
   assert.doesNotMatch(ui, /sick_leave_balance \?\? 12/);
   assert.doesNotMatch(ui, /earned_leave_balance \?\? 15/);
+  // The rows are the server's since POST-A-010 (GET /api/payroll/leave-ledger), which answers null for an entitlement
+  // nobody recorded (tests/test_the_payroll_staff_screens_ask_the_server_for_their_lists.py holds that side); the screen
+  // takes each figure as it comes and invents none.
   for (const k of ["casual", "sick", "earned"]) {
-    assert.match(ui, new RegExp(`existing\\?\\.${k}_leave_balance \\?\\? null`),
-      `${k} leave must come back null where no row exists`);
+    assert.match(ui, new RegExp(`${k}_leave_balance: r\\.${k}_leave_balance,`),
+      `${k} leave must be taken from the server's row as it is, null where no row exists`);
   }
 });
 
