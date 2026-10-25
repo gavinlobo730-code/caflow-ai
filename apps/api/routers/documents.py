@@ -1,15 +1,20 @@
 import os
 import uuid
 from datetime import datetime, timezone
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from models.common import api_response
 from repositories.document_repository import document_repo
 from services.activity_service import log_activity
 from services.audit_service import log_event
+from core.exceptions import NotFoundError
 from core.permissions import rbac
+from core.observability import capture_soft_failure
 from core.uploads import accept_upload, safe_path_segment
 from core.authz import assert_client_access, can_access_client, filter_by_client
+from models.fy import OptionalFYLabel
 from services.internal_client_service import assert_partner_for_internal_id
 
 
@@ -21,6 +26,21 @@ def _scope_client(client_id, current_user):
         assert_client_access(current_user, client_id)
 
 
+def _take_out_again(storage_path: str) -> None:
+    """Remove a file this request stored and whose record could not be written. Through the SERVER's client, kept in a
+    function of its own so the one upload above stays the caller's: migration 469 lets only a Partner delete from the bucket,
+    and Storage answers a denied removal with an empty list and no error, so a clean-up through the caller's own token would
+    leave an Executive's file in place without a word. The key was built by this module, under the caller's own firm and
+    client, a moment ago. Reports, and does not raise, if it cannot: the caller is already failing with the real reason."""
+    from core.supabase_client import get_service_supabase
+    try:
+        gone = get_service_supabase().storage.from_(BUCKET).remove([storage_path])
+        if not gone:
+            raise RuntimeError(f"the file {storage_path} was not removed")
+    except Exception as cleanup_failure:  # noqa: BLE001 - the original failure is the one to report
+        capture_soft_failure(cleanup_failure, operation="documents.upload_cleanup")
+
+
 def _assert_document_scope(doc_id: str, current_user: dict) -> dict:
     """Resolve doc_id to its row inside the caller's firm AND assigned book.
 
@@ -30,7 +50,13 @@ def _assert_document_scope(doc_id: str, current_user: dict) -> dict:
     another staff member's client. ONE fixed message covers missing,
     wrong-firm and unassigned alike, so the response is not an existence
     oracle."""
-    doc = document_repo.get_or_raise(doc_id)
+    try:
+        doc = document_repo.get_or_raise(doc_id)
+    except NotFoundError as exc:
+        # A missing, already-deleted or hidden id is the same fixed 404 as the other two refusals below. It used to escape as
+        # an unhandled NotFoundError, which the global handler answers as a 500 with a logged traceback: a second tab pressing
+        # Download on a document the first tab deleted, and an answer that told a missing id from another firm's.
+        raise HTTPException(status_code=404, detail="Document not found") from exc
     # Hard reject: missing firm_id is also a denial — do not allow NULL bypass
     if doc.get("firm_id") != current_user["firm_id"]:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -86,6 +112,10 @@ def upload_document(
     file: UploadFile = File(...),
     document_type: str = Form(...),
     client_id: str = Form(...),
+    # The financial year the document belongs to, which the Documents page asks for and lists. Written
+    # `Annotated[..., Form()] = None` and not `= Form(None)`: the label is validated and canonicalised by the type
+    # (models/fy.py), and a Form() in the default position would drop that validator.
+    financial_year: Annotated[OptionalFYLabel, Form()] = None,
     current_user: dict = Depends(rbac("document", "write")),
 ):
     """
@@ -116,9 +146,11 @@ def upload_document(
             "file_name": safe_name,
             "file_path": storage_path,
             "storage_path": storage_path,
+            "mime_type": accepted.content_type,
             "file_size_bytes": len(content),
             "review_status": "pending_review",
             "uploaded_by": current_user.get("id"),
+            **({"financial_year": financial_year} if financial_year else {}),
         })
         # H10: immutable audit_log record for the upload (mock path).
         try:
@@ -146,21 +178,36 @@ def upload_document(
     if hasattr(upload_result, "error") and upload_result.error:
         raise HTTPException(status_code=500, detail=f"Storage upload failed: {upload_result.error}")
 
-    doc = document_repo.create({
-        "client_id": client_id,
-        "firm_id": firm_id,
-        "document_type": document_type,
-        "file_name": safe_name,
-        "file_path": storage_path,
-        "storage_path": storage_path,
-        "storage_bucket": BUCKET,
-        "file_size_bytes": len(content),
-        "review_status": "pending_review",
-        "uploaded_by": current_user.get("id"),
-    })
+    try:
+        doc = document_repo.create({
+            "client_id": client_id,
+            "firm_id": firm_id,
+            "document_type": document_type,
+            "file_name": safe_name,
+            "file_path": storage_path,
+            "storage_path": storage_path,
+            "storage_bucket": BUCKET,
+            "mime_type": accepted.content_type,
+            "file_size_bytes": len(content),
+            "review_status": "pending_review",
+            "uploaded_by": current_user.get("id"),
+            **({"financial_year": financial_year} if financial_year else {}),
+        })
+    except Exception:
+        # The file is already stored. A record that could not be written must not leave it behind with nothing
+        # pointing at it (the browser handler this replaced removed it for the same reason), and the failure still
+        # reaches the caller as the failure it is.
+        _take_out_again(storage_path)
+        raise
 
-    signed = sb.storage.from_(BUCKET).create_signed_url(storage_path, expires_in=3600)
-    download_url = signed.get("signedURL") if isinstance(signed, dict) else None
+    # The link is a courtesy in the answer (the Documents page opens a file by asking for one when it is pressed). The
+    # upload has succeeded by now, so a failure to sign must not turn it into a 500 and invite a second upload.
+    try:
+        signed = sb.storage.from_(BUCKET).create_signed_url(storage_path, expires_in=3600)
+        download_url = signed.get("signedURL") if isinstance(signed, dict) else None
+    except Exception as sign_failure:  # noqa: BLE001
+        capture_soft_failure(sign_failure, operation="documents.upload_link")
+        download_url = None
 
     log_activity(
         action="document_uploaded",

@@ -4004,6 +4004,8 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
   const [loadingShared, setLoadingShared] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
   const [sharing, setSharing] = useState<string | null>(null);
+  // A report's link is being fetched: one at a time, so a second click does not open a second tab.
+  const [openingReport, setOpeningReport] = useState(false);
   const [shareSuccess, setShareSuccess] = useState<string | null>(null);
 
   const loadShared = useCallback(async () => {
@@ -4342,12 +4344,21 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                   <td className="px-4 py-2.5 text-ps-hint">{formatDate(r.created_at)}</td>
                   <td className="px-3 py-2.5">
                     <button
+                      disabled={openingReport}
                       onClick={async () => {
-                        const supabase = getSupabaseClient();
-                        const { data } = await supabase.storage.from("Documents").createSignedUrl(r.storage_path, 3600);
-                        if (data) window.open(data.signedUrl, "_blank");
+                        // A link minted now by the server, after it has checked the report is in the caller's firm and clients.
+                        setOpeningReport(true);
+                        try {
+                          const res = await api.accounting.sharedReportUrl(r.id);
+                          if (!res?.data?.download_url) throw new Error("Could not generate download link.");
+                          window.open(res.data.download_url, "_blank");
+                        } catch (e) {
+                          toast({ title: e instanceof Error ? e.message : "Could not generate download link.", variant: "destructive" });
+                        } finally {
+                          setOpeningReport(false);
+                        }
                       }}
-                      className="text-3xs text-blue-600 hover:underline flex items-center gap-1"
+                      className="text-3xs text-blue-600 hover:underline flex items-center gap-1 disabled:opacity-50"
                     >
                       <Download size={10} /> Download
                     </button>

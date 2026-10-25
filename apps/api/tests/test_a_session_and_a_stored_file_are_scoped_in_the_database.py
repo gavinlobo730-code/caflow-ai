@@ -217,7 +217,15 @@ def _web_upload_paths() -> list[tuple[str, str]]:
 
 def test_every_browser_upload_path_is_firm_then_client_then_the_rest():
     paths = _web_upload_paths()
-    assert len(paths) >= 5, f"the scan saw {len(paths)} browser uploads; the five known doors moved?"
+    # The floor is what the POST-A-010 list says the browser still uploads from, not a number written here: that item
+    # moves the doors behind the API one at a time (the server's own uploads are held by the test above), so a fixed
+    # count would fail on each move, and a scan gone blind would pass on a lowered one. When the list holds no upload
+    # the browser makes none and there is nothing left to scan.
+    from tests.test_a_sensitive_table_is_not_read_from_the_browser import REMAINING, WEB as _WEB
+    uploading = {rel for (rel, name) in REMAINING
+                 if name == "storage" and rel.startswith("app/") and ".upload(" in (_WEB / rel).read_text(encoding="utf-8")}
+    missed = uploading - {site for site, _ in paths}
+    assert not missed, f"the scan no longer sees the browser upload in {sorted(missed)}"
     for site, tmpl in paths:
         assert re.match(r"\$\{\w*[fF]irm\w*\}/\$\{\w*[cC]lient\w*\}/", tmpl), (
             f"{site} uploads to '{tmpl}'. Migration 469 reads the second folder as the "

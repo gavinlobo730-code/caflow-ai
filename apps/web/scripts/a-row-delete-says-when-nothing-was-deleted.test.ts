@@ -90,9 +90,8 @@ test("no browser delete drops its result", () => {
     "delete through lib/data/deleteRowAndConfirm so a hidden delete is not shown as done (or add the file with a reason)");
 });
 
-test("the four screens go through the helper", () => {
+test("the three screens that still delete in the browser go through the helper", () => {
   for (const [rel, table] of [
-    ["app/client-portal/page.tsx", "document_requests"],
     ["app/client-portal/page.tsx", "shared_reports"],
     ["app/income-tax/notices/page.tsx", "it_notices"],
     ["app/settings/scheduled-reports/page.tsx", "scheduled_reports"],
@@ -102,9 +101,23 @@ test("the four screens go through the helper", () => {
   }
 });
 
+test("a document request is withdrawn through the server, and the line leaves only when the server says a row went", () => {
+  // POST-A-010: the request is no longer deleted from the browser. The route answers success false when no row went.
+  const src = readFileSync(join(WEB, "app/client-portal/page.tsx"), "utf8");
+  const from = src.indexOf("async function handleDeleteRequest(");
+  assert.ok(from >= 0, "handleDeleteRequest has moved");
+  const body = stripComments(src.slice(from, from + 1200));
+  const call = body.indexOf("api.portal.deleteDocumentRequest(");
+  const guard = body.indexOf("if (!res?.success)");
+  const drop = body.indexOf("setDocRequests(");
+  assert.ok(call >= 0 && guard > call, "the answer is not checked right after the call");
+  assert.ok(/if \(!res\?\.success\)\s*\{[\s\S]{0,200}?\breturn;/.test(body.slice(guard)), "the not-deleted branch does not leave");
+  assert.ok(drop > guard, "the line is dropped before the answer is checked");
+  assert.ok(!/deleteRowAndConfirm\([^)]*"document_requests"/.test(stripComments(src)), "the browser deletes document_requests again");
+});
+
 test("each handler returns before it drops the line, or reloads, when the delete was not confirmed", () => {
   for (const [rel, start] of [
-    ["app/client-portal/page.tsx", "async function handleDeleteRequest("],
     ["app/income-tax/notices/page.tsx", "async function deleteNotice("],
   ] as const) {
     const src = readFileSync(join(WEB, rel), "utf8");

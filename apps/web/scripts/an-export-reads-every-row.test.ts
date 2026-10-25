@@ -308,11 +308,10 @@ const PAGED_READS_THAT_ARE_THE_ONLY_WAY_TO_FIND_OR_CHECK_A_RECORD: Record<string
   "app/accounting/account-groups/page.tsx": ["chart_of_accounts"],
   // The accounts a client's dues can be marked on: marking puts the balance into a statutory disclosure.
   "app/clients/[id]/reports/ageing/page.tsx": ["chart_of_accounts"],
-  // Document lists, newest first, so the cut takes the OLDEST documents from the only list they can be opened from.
-  "app/documents/page.tsx": ["documents"],
-  "app/clients/documents/page.tsx": ["client_documents"],
-  "app/clients/[id]/documents/page.tsx": ["client_documents"],
-  "app/client-portal/page.tsx": ["client_documents"],
+  // The document lists are not here any more (POST-A-010): the Documents page asks GET /api/documents, whose read pages every
+  // row (repositories/document_repository.find_all), and the vault, a client's Documents tab and the portal page ask
+  // GET /api/client-documents (routers/client_documents.py); both are held by tests that serve more rows than PostgREST
+  // returns. A screen with no direct read of the table has no pager to hold.
 };
 
 interface Read { paged: boolean; ordered: boolean }
@@ -379,7 +378,10 @@ test("every read that is the only way to find or check a record goes through a p
     "PAGED_READS_THAT_ARE_THE_ONLY_WAY_TO_FIND_OR_CHECK_A_RECORD",
     "is the only way to find, or the check before writing, a record",
   );
-  assert.ok(reads >= 8, `only ${reads} reads were examined: the scan has stopped seeing them`);
+  // One read at least for every listed (screen, table): the list shrinks as POST-A-010 moves screens behind the API, and a
+  // floor written as a number would have to be edited on each move, or would pass a scan that had gone blind after one.
+  const listed = Object.values(PAGED_READS_THAT_ARE_THE_ONLY_WAY_TO_FIND_OR_CHECK_A_RECORD).flat().length;
+  assert.ok(reads >= listed, `only ${reads} reads were examined for ${listed} listed: the scan has stopped seeing them`);
 });
 
 test("the two lists name different screens, so a screen is never held to one claim by accident", () => {

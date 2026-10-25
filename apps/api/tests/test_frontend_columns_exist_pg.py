@@ -250,13 +250,15 @@ def test_both_client_documents_pages_use_the_real_columns(schema):
                 "client_documents.file_size"):
         assert col in schema
 
+    # POST-A-010: the vault, the Documents tab and the Client Portal page ask GET /api/client-documents now, and the server's
+    # own selects are read against the schema by test_backend_columns_exist_pg. What is pinned here is that NO page reads the
+    # table from the browser again; if one does, its columns are still held to the schema below.
     found, _ = scan(WEB)
-    pages = {"app/client-portal/page.tsx", "app/clients/[id]/documents/page.tsx"}
-    for page in pages:
-        cols = {c for f, rel, c in found if f == page and rel == "client_documents"}
-        assert cols, f"{page} no longer selects client_documents — update this test"
-        for c in cols:
-            assert f"client_documents.{c}" in schema, f"{page} selects bogus {c}"
+    pages = {f for f, rel, _c in found if rel == "client_documents"}
+    assert not pages, f"{sorted(pages)} read client_documents from the browser again (POST-A-010)"
+    for f, rel, c in found:
+        if rel == "client_documents":
+            assert f"client_documents.{c}" in schema, f"{f} selects bogus {c}"
 
 
 @_NEEDS_PG
@@ -415,7 +417,20 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     #   lib/data/tasks.ts: 6 -> 0   (status, updated_at, due_date, firm_id, created_at, updated_at)
     #
     # 194 - 6 = 188 exactly, and the per-file tally against the previous commit moved on that one file and nothing else.
-    assert len(scan_writes(WEB)) >= 188, "write scan found too little — parser likely broke"
+    #
+    # 189 -> 154 on 25-10-2026 (POST-A-010), diagnosed the same way. Four screens stopped writing `documents`,
+    # `client_documents` and `document_requests` straight over PostgREST and send each to the API (the Documents permission
+    # and the client assignment run there, and the server builds the storage key and names the file):
+    #
+    #   app/documents/page.tsx:                 10 -> 0
+    #   app/clients/documents/page.tsx:          9 -> 0
+    #   app/clients/[id]/documents/page.tsx:     9 -> 0
+    #   app/client-portal/page.tsx:              7 -> 0
+    #
+    # 10 + 9 + 9 + 7 = 35 columns, and 189 - 35 = 154 exactly (the floor stood at 188 with the count one above it). The
+    # per-file tally against the previous commit moved on these four files and nothing else. The floor is the count: it
+    # exists to catch a parser that stopped finding writes, and this value is what the parser finds today.
+    assert len(scan_writes(WEB)) >= 154, "write scan found too little — parser likely broke"
 
 
 @_NEEDS_PG

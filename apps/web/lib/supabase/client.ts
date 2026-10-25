@@ -25,7 +25,4 @@ export const supabase = {
       getSupabaseClient().auth.signInWithPassword(creds),
     signOut: () => getSupabaseClient().auth.signOut(),
   },
-  storage: {
-    from: (bucket: string) => getSupabaseClient().storage.from(bucket),
-  },
 };

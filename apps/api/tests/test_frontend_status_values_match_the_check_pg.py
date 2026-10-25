@@ -220,6 +220,11 @@ API_NAMESPACE_TABLES: dict[str, set[str]] = {
     # measuring the dashboard against the tables it still reads in the browser
     # and reported `complete`, a correct value, as one no table allows.
     "yearEndApi.checklist": {"year_end_checklist_items"},
+    # routers/portal.py's staff side. The Client Portal page asked for a client's document requests (and withdrew one)
+    # with `.from("document_requests")` until POST-A-010 moved both to /api/portal/document-requests; without this entry
+    # the page's `fulfilled` (document_requests.status: pending | fulfilled, migration 024) was measured against nothing.
+    # The namespace's other routes read portal_messages and the dues, neither of which a screen compares a status of.
+    "portal": {"document_requests"},
 }
 #: `api.<ns>.` is the shared client; a module that exports its own
 #: `<name>Api` object (lib/api/yearEnd.ts's `yearEndApi`) is keyed

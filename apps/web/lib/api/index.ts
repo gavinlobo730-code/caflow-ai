@@ -68,6 +68,36 @@ export type FirmProfile = {
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+/** One row of `GET /api/client-documents`: `client_documents` as the server serves it (no `firm_id`). */
+export interface ClientDocumentRow {
+  id: string;
+  client_id: string;
+  file_name: string;
+  description: string | null;
+  doc_type: string;
+  file_path: string;
+  file_size: number | null;
+  mime_type: string | null;
+  expiry_date: string | null;
+  financial_year: string | null;
+  uploaded_by: string | null;
+  version: number | null;
+  parent_document_id: string | null;
+  created_at: string;
+  /** Present only when the list was asked `withLinks`; null when that one link could not be made. */
+  download_url?: string | null;
+}
+
+export interface ClientDocumentList {
+  documents: ClientDocumentRow[];
+  returned: number;
+  /** With `withLinks`: how many documents have no link (their button must not look like a working one). */
+  without_link: number;
+  categories: string[];
+  /** The largest file the server accepts, served so a screen states the real bound. */
+  max_upload_bytes: number;
+}
+
 /** What a write-down to a net realisable value would do right now
  *  (`POST /api/inventory/items/{id}/writedown-preview`). Every figure is the server's, from the arithmetic that posts it:
  *  `write_down_paise` is 0 and `needed` false when NRV x quantity is not below the carrying value. */
@@ -4351,6 +4381,26 @@ export const api = {
         `/api/compliance/tax-audit-due-dates?financial_year=${encodeURIComponent(financialYear)}`),
   },
   incomeTax: {
+    /** File the notice's own document (`slot` "notice") or the reply to it ("response") against a tax notice. The server
+     *  stores the file, names it and writes the path onto the notice; multipart, so the browser sets the boundary. */
+    attachToNotice: async (noticeId: string, slot: "notice" | "response", file: File) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const form = new FormData();
+      form.append("file", file);
+      form.append("slot", slot);
+      const res = await fetch(`${BASE_URL}/api/income-tax/notices/${noticeId}/attachment`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) throw new Error(await errorMessage(res));
+      return res.json() as Promise<ApiResp<{ slot: string; storage_path: string }>>;
+    },
+    /** A signed link to a notice's document or its reply, minted now. */
+    noticeAttachmentUrl: (noticeId: string, slot: "notice" | "response") =>
+      request<ApiResp<{ download_url: string; expires_in_seconds: number }>>(
+        `/api/income-tax/notices/${noticeId}/attachment-url?slot=${slot}`),
     /** Does §44AB require an audit? Asked, never decided here — the browser
      *  copy of the thresholds (lib/income-tax/taxAuditThresholds.ts) is
      *  deleted, and with it the rule that read the nature of the activity off
@@ -4478,6 +4528,8 @@ export const api = {
      *  one: an attachment holds the document's id and asks for a link at the
      *  moment somebody opens it. */
     downloadUrl: (docId: string) => request(`/api/documents/${docId}/download-url`),
+    /** Remove a document from the lists (a soft delete: the row is kept). */
+    remove: (docId: string) => request(`/api/documents/${docId}`, { method: "DELETE" }),
     /** Same shape as upload above, and for the same reason: multipart, so the
      *  browser sets the boundary and Content-Type is not ours to send — which
      *  is why this cannot go through `request`.
@@ -4498,6 +4550,32 @@ export const api = {
       if (!res.ok) throw new Error(await errorMessage(res));
       return res.json();
     },
+  },
+  /** A client's documents: the vault, the Documents tab and the files shared to the portal (`/api/client-documents`).
+   *  The server stores the file, names it, bounds it and writes the record; the browser holds neither the bucket nor the table. */
+  clientDocuments: {
+    /** Newest first. `withLinks` signs a link for every document in one request (the vault shows them all). */
+    list: (clientId: string, withLinks = false) =>
+      request<ApiResp<ClientDocumentList>>(
+        `/api/client-documents?client_id=${encodeURIComponent(clientId)}${withLinks ? "&with_links=true" : ""}`),
+    /** Multipart, so the browser sets the boundary and Content-Type is not ours to send. Throws the server's sentence. */
+    upload: async (form: FormData) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch(`${BASE_URL}/api/client-documents/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) throw new Error(await errorMessage(res));
+      return res.json() as Promise<ApiResp<{ document: ClientDocumentRow }>>;
+    },
+    /** A signed link, minted now. */
+    downloadUrl: (docId: string) =>
+      request<ApiResp<{ download_url: string; expires_in_seconds: number }>>(`/api/client-documents/${docId}/download-url`),
+    /** Delete the file and then the record (Partner only). Throws the server's sentence when nothing was deleted. */
+    remove: (docId: string) =>
+      request<ApiResp<{ deleted: boolean }>>(`/api/client-documents/${docId}`, { method: "DELETE" }),
   },
   assistant: {
     ask: (body: { question: string; conversation_history?: unknown[]; client_id?: string }) =>
@@ -4708,6 +4786,10 @@ export const api = {
      * browser cannot post a value the CHECK refuses — which is exactly what
      * made the Trial Balance button fail for as long as it existed.
      */
+    /** A signed link to a report shared to a client's portal, minted now (the browser no longer signs it). */
+    sharedReportUrl: (sharedReportId: string) =>
+      request<ApiResp<{ download_url: string; expires_in_seconds: number }>>(
+        `/api/accounting/shared-reports/${sharedReportId}/download-url`),
     shareReport: async (form: FormData) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
@@ -6246,6 +6328,9 @@ export const api = {
       request("/api/portal/document-requests", { method: "POST", body: JSON.stringify(data) }),
     completeDocumentRequest: (id: string) =>
       request(`/api/portal/document-requests/${id}/complete`, { method: "PUT" }),
+    /** Withdraw a request. `success: false` means no row went (not the caller's, or already gone). */
+    deleteDocumentRequest: (id: string) =>
+      request<ApiResp<{ deleted: boolean } | null>>(`/api/portal/document-requests/${id}`, { method: "DELETE" }),
     getMessages: (firmId: string, clientId: string) =>
       request(`/api/portal/messages?firm_id=${firmId}&client_id=${clientId}`),
     /** Firm-wide: how many client messages nobody at the firm has opened. */

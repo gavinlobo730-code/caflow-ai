@@ -175,3 +175,44 @@ def share_report_to_portal(
         new_data=row,
     )
     return api_response(True, {"shared_report": (saved or [row])[0]})
+
+
+#: How long a shared report's link lives: minted when somebody presses Download and opened at once.
+LINK_SECONDS = 300
+
+
+@router.get("/shared-reports/{shared_report_id}/download-url")
+def shared_report_link(
+    shared_report_id: str,
+    current_user: dict = Depends(rbac("report", "read")),
+):
+    """A signed link to one report shared to a client's portal, minted now (POST-A-010).
+
+    The two screens that list shared reports signed the link in the browser from the row's `storage_path`. The row is
+    read as the caller (row security is the second lock), must be in the caller's firm and the caller must be assigned
+    to its client; one fixed 404 covers a missing id, another firm's and an unassigned client's, so the answer is not an
+    existence oracle. A link that could not be made is an error and not an empty answer."""
+    if _USE_MOCK:
+        return api_response(True, {"download_url": None})
+    from core.supabase_client import get_service_supabase, get_supabase
+
+    found = (get_supabase().table("shared_reports").select("id, client_id, firm_id, storage_path")
+             .eq("id", shared_report_id).eq("firm_id", current_user["firm_id"]).execute().data or [])
+    row = found[0] if found else None
+    if not row or not can_access_client(current_user, row.get("client_id")):
+        raise HTTPException(status_code=404, detail="Report not found")
+    path = row.get("storage_path")
+    # A shared report is stored at `shared_reports/{client_id}/{name}` by the server's own client (the share route), outside
+    # the `{firm}/{client}/` folders the caller's token is allowed to open, so the link is signed by the server's client
+    # too, after the checks above, and only for a key under this client's own shared-reports folder.
+    if not (isinstance(path, str) and ".." not in path and path.startswith(f"shared_reports/{row['client_id']}/")):
+        raise HTTPException(status_code=502, detail="The link to this report could not be made. Please try again.")
+    try:
+        signed = get_service_supabase().storage.from_(BUCKET).create_signed_url(path, expires_in=LINK_SECONDS)
+    except Exception as exc:  # noqa: BLE001 - said to the caller as one sentence
+        capture_soft_failure(exc, operation="shared_report.sign", firm_id=current_user["firm_id"])
+        signed = None
+    url = signed.get("signedURL") if isinstance(signed, dict) else None
+    if not url:
+        raise HTTPException(status_code=502, detail="The link to this report could not be made. Please try again.")
+    return api_response(True, {"download_url": url, "expires_in_seconds": LINK_SECONDS})

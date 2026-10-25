@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
@@ -56,8 +57,6 @@ const STATUS_OPTIONS: NoticeStatus[] = ["pending", "responded", "closed", "appea
 // FROM THE CLOCK, NOT A LITERAL — the same rule as the financial-year list,
 // derived from it so the two cannot disagree about which year is current
 // (IT Act §2(9): the AY is the FY plus one).
-const STORAGE_BUCKET = "Documents";
-
 function statusBadge(status: NoticeStatus) {
   switch (status) {
     case "pending": return { cls: "text-state-problem bg-state-problem-surface", icon: AlertTriangle, label: "Pending" };
@@ -227,31 +226,27 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
 
 // ─── Upload Document Button ───────────────────────────────────────────────────
 
-function UploadDocButton({ noticeId, firmId, clientId, field, label, currentPath, onUploaded }: {
+function UploadDocButton({ noticeId, field, label, currentPath, onUploaded }: {
   noticeId: string;
-  firmId: string;
-  clientId: string;
   field: "notice_storage_path" | "response_storage_path";
   label: string;
   currentPath: string | null;
   onUploaded: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [opening, setOpening] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const sb = getSupabaseClient();
+  // Which slot of the notice this fills; the server names the column, so the browser never chooses one.
+  const slot = field === "notice_storage_path" ? "notice" : "response";
 
   async function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._\-]/g, "_");
-      // Storage path: {firm_id}/{client_id}/notices/{notice_id}/{filename}
-      const path = `${firmId}/${clientId}/notices/${noticeId}/${safeName}`;
-      const { error: upErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: true });
-      if (upErr) throw new Error(upErr.message);
-      const { error: dbErr } = await sb.from("it_notices").update({ [field]: path }).eq("id", noticeId);
-      if (dbErr) throw new Error(dbErr.message);
+      // The server bounds the file, checks its bytes against its type, names and stores it under the firm, client and
+      // notice, and writes the path onto the notice, or removes the file again (POST-A-010).
+      await api.incomeTax.attachToNotice(noticeId, slot, file);
       onUploaded();
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Upload failed", variant: "destructive" });
@@ -263,15 +258,22 @@ function UploadDocButton({ noticeId, firmId, clientId, field, label, currentPath
 
   async function handleDownload() {
     if (!currentPath) return;
-    const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(currentPath, 60);
-    if (error) { toast({ title: error.message, variant: "destructive" }); return; }
-    window.open(data.signedUrl, "_blank");
+    setOpening(true);
+    try {
+      const res = await api.incomeTax.noticeAttachmentUrl(noticeId, slot);
+      if (!res?.data?.download_url) throw new Error("The link to this document could not be made.");
+      window.open(res.data.download_url, "_blank");
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "The link to this document could not be made.", variant: "destructive" });
+    } finally {
+      setOpening(false);
+    }
   }
 
   return (
     <div className="flex items-center gap-1">
       {currentPath ? (
-        <button onClick={handleDownload} className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+        <button onClick={handleDownload} disabled={opening} className="flex items-center gap-1 text-xs text-blue-600 hover:underline disabled:opacity-50">
           <Download size={11} /> {label}
         </button>
       ) : (
@@ -293,7 +295,6 @@ function UploadDocButton({ noticeId, firmId, clientId, field, label, currentPath
 export default function ITNoticesPage() {
   const [notices, setNotices] = useState<ITNotice[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [firmId, setFirmIdState] = useState("");
   const [clientFilter, setClientFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<NoticeStatus | "all">("all");
   const [loading, setLoading] = useState(true);
@@ -315,7 +316,6 @@ export default function ITNoticesPage() {
     try {
       const [cls, fid] = await Promise.all([getClients(), getFirmId()]);
       setClients(cls);
-      setFirmIdState(fid);
       const sb = getSupabaseClient();
       const { data, error: err } = await sb
         .from("it_notices")
@@ -466,12 +466,12 @@ export default function ITNoticesPage() {
                       <td className="px-3 py-3">
                         <div className="flex flex-col gap-1">
                           <UploadDocButton
-                            noticeId={n.id} firmId={firmId} clientId={n.client_id}
+                            noticeId={n.id}
                             field="notice_storage_path" label="Notice doc"
                             currentPath={n.notice_storage_path} onUploaded={loadData}
                           />
                           <UploadDocButton
-                            noticeId={n.id} firmId={firmId} clientId={n.client_id}
+                            noticeId={n.id}
                             field="response_storage_path" label="Response doc"
                             currentPath={n.response_storage_path} onUploaded={loadData}
                           />

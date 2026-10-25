@@ -9,8 +9,9 @@ WHY IT IS NOT JUST THE PER-ROUTE CAP
     of one that declares none (a chunked body) so it cannot simply omit the header.
 
 WHAT THE LIMIT IS
-    `MAX_REQUEST_BODY_BYTES` — 32 MB. The largest file any route accepts is 10 MB
-    (statements, invoices, attachments, documents), multipart framing adds a few
+    `MAX_REQUEST_BODY_BYTES` — 32 MB. The largest file any route accepts is 25 MB
+    (a client's documents, `routers/client_documents.py`; statements, invoices,
+    attachments and the other documents are 10 MB), multipart framing adds a few
     hundred bytes, and the biggest JSON bodies are bulk imports parsed in the
     browser. It is deliberately roomy: the job here is to stop a stranger, and the
     per-route caps are what enforce the real numbers.

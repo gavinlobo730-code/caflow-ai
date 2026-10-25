@@ -122,7 +122,7 @@ DENIAL_REACH_NOTICE = (
     "PracticeSync server, which does check it. Nothing else is checked against "
     "this grid "
     "when a table is read, and several screens read tables directly from the "
-    "browser (documents among them): there only the person's "
+    "browser: there only the person's "
     "firm, client assignments and, on a few tables, role decide. Direct writes "
     "are checked against this grid on some tables only. The one other read it "
     "reaches is a stored year-end export file."

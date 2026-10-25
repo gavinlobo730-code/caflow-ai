@@ -218,6 +218,9 @@ ALSO_COVERED = {
     # still granted to a signed-in session, so a hand-made PostgREST call reaches it exactly as before, and the matrix
     # keeps trying every actor against it until a migration revokes the grant.
     "bank_accounts": "a client's bank accounts: the four pickers ask GET /api/banking/accounts since POST-A-010",
+    "documents": "the firm's document register: the Documents page asks GET /api/documents since POST-A-010",
+    "client_documents": "a client's stored files: the vault, the Documents tab and the portal page ask /api/client-documents since POST-A-010",
+    "document_requests": "what the firm has asked a client for: the Client Portal page asks /api/portal/document-requests since POST-A-010",
     "payroll_salary_revisions": "payroll (490): salary history, read and written only by the payroll router",
     "salary_structures": "payroll (490): a client's salary template",
     "payroll_perquisites": "payroll (490): an employee's perquisites",
