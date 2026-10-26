@@ -26,6 +26,7 @@ from typing import Optional
 from core.ist_clock import ist_now, ist_today
 from domain.payroll import remittance_match
 from domain.payroll.statutory import esi_contribution_period
+from core.db_provider import privileged_for
 
 ESIC = "esic"
 PROFESSIONAL_TAX = "professional_tax"
@@ -144,18 +145,18 @@ def record(
     same = [e for e in _read_states(db, client_id, scheme, wage_month)
             if (e.get("state") or None) == state]
     if same:
-        db.table("statutory_remittances").update(row).eq("id", same[0]["id"]).execute()
+        privileged_for(db).table("statutory_remittances").update(row).eq("id", same[0]["id"]).execute()
         row["id"] = same[0]["id"]
         return row
 
-    inserted = (db.table("statutory_remittances").insert(row).execute().data) or []
+    inserted = (privileged_for(db).table("statutory_remittances").insert(row).execute().data) or []
     if inserted and inserted[0].get("id"):
         row["id"] = inserted[0]["id"]
     return row
 
 
 def _read_states(db, client_id: str, scheme: str, wage_month: str) -> list[dict]:
-    return (db.table("statutory_remittances").select("id, state")
+    return (privileged_for(db).table("statutory_remittances").select("id, state")
             .eq("client_id", client_id).eq("scheme", scheme)
             .eq("wage_month", wage_month)
             .is_("deleted_at", "null").execute().data) or []
@@ -164,7 +165,7 @@ def _read_states(db, client_id: str, scheme: str, wage_month: str) -> list[dict]
 def read(db, *, firm_id: str, client_id: str,
          wage_month: Optional[str] = None) -> list[dict]:
     """Every live remittance for a client, newest wage month first."""
-    q = (db.table("statutory_remittances")
+    q = (privileged_for(db).table("statutory_remittances")
          .select("id, firm_id, client_id, scheme, run_id, wage_month, state, "
                  "contribution_period, challan_number, challan_date, "
                  "amount_paise, status, submitted_on, paid_on, "
@@ -211,7 +212,7 @@ def link_payment(db, *, firm_id: str, client_id: str, remittance_id: str,
              .is_("deleted_at", "null").limit(1).execute().data) or []
     if not entry:
         raise RemittanceError("That journal entry is not an entry of this client.")
-    res = (db.table("statutory_remittances")
+    res = (privileged_for(db).table("statutory_remittances")
            .update({"journal_entry_id": journal_entry_id})
            .eq("id", remittance_id).eq("firm_id", firm_id).eq("client_id", client_id)
            .is_("deleted_at", "null").execute().data)
@@ -226,7 +227,7 @@ def retract(db, *, firm_id: str, client_id: str, remittance_id: str,
     actually left the bank exist nowhere else, and a row that simply vanished
     would leave no trace that a liability had ever been reported settled.
     """
-    res = (db.table("statutory_remittances")
+    res = (privileged_for(db).table("statutory_remittances")
            .update({"deleted_at": at_iso or ist_now().isoformat()})
            .eq("id", remittance_id).eq("firm_id", firm_id).eq("client_id", client_id)
            .is_("deleted_at", "null").execute().data)

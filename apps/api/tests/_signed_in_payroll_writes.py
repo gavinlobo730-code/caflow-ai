@@ -57,3 +57,19 @@ def give_the_client_payroll_writes_back(dsn: str) -> None:
     done = subprocess.run(["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-f", "-"],
                           input=text[text.index(_PART_2):], capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
+
+
+_ROLLBACK_549 = (Path(__file__).resolve().parents[1] / "migrations" /
+                 "549_a_signed_in_session_reads_and_writes_none_of_the_payroll_tables_rollback.sql")
+
+
+def give_the_signed_in_payroll_access_back(dsn: str) -> None:
+    """The same, for migration 549 (POST-A-339): the signed-in roles lost EVERY privilege on the twenty-three payroll tables
+    and the `salary_slips` view, SELECT included. A module that measures a row policy or a trigger of those tables by acting as a
+    signed-in role calls this once its rows are seeded; the privilege itself is measured by `test_549_*_pg.py`, and the access
+    matrix keeps a control that puts it back. The rollback file is the source, so this cannot drift from what the migration took
+    away. It restores the SELECT and the three declaration writes 549 took and nothing 499 or 515 took: a module that needs
+    those calls the helper above for them."""
+    done = subprocess.run(["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-f", "-"],
+                          input=_ROLLBACK_549.read_text(encoding="utf-8"), capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr

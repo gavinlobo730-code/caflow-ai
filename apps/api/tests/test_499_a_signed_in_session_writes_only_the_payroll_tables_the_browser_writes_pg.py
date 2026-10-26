@@ -2,28 +2,28 @@
 
 THE RULE, NOT A LIST OF TODAY'S TABLES (ledger POST-A-234)
     A payroll table is written from a signed-in session only if a screen in `apps/web` writes it. Today that is
-    exactly two: an employee's own tax declaration with its items (the portal's declaration tab). It was three until
-    migration 515 (POST-A-235): the attendance screen's leave-allotment upsert went behind `PUT /api/payroll/leave-balance`
-    and `leave_balances` lost its signed-in write in that migration, which this file's database half now proves with the
-    rest. Every other payroll table is read from the browser and written by the payroll router with the privileged
-    client. Migration 499 revokes the write privileges on sixteen of them; before it, an assigned Manager could write a
+    none: the employee's own tax declaration with its items (the portal's declaration tab) was the last, and it files
+    through the API since POST-A-010. It was three until migration 515 (POST-A-235): the attendance screen's
+    leave-allotment upsert went behind `PUT /api/payroll/leave-balance` and `leave_balances` lost its signed-in write in
+    that migration, and migration 549 (POST-A-339) took the declaration tables' write, and the reading of every payroll
+    table, with it. Every payroll table is written by the payroll router with the privileged client. Migration 499 revokes the write privileges on sixteen of them; before it, an assigned Manager could write a
     draft run and its payslips directly, and the finalise journal is built from the run's totals.
 
 WHAT IS HELD
     * (no database) the browser's direct writes to payroll tables are exactly the two, so a new screen that writes a
       fourth fails here and has to decide, in the open, instead of finding the privilege already gone or already there;
     * (database) the payroll tables on which a signed-in role EFFECTIVELY holds a write privilege (table level, column
-      level, or reaching the role through PUBLIC) are exactly those two, so a payroll table whose own migration grants
+      level, or reaching the role through PUBLIC) are none, so a payroll table whose own migration grants
       a write to a signed-in role fails this, naming itself. It cannot see the privilege a hosting platform's default
       privileges would give a table created in production (the migration-built database carries none), so a new payroll
       table needs its own REVOKE in its migration;
     * (database) `service_role`, which the API uses, keeps INSERT, UPDATE and DELETE on every payroll table, and INSERT on
       the append-only release log;
     * (database) an assigned Manager is refused a direct write by the PRIVILEGE ("permission denied for table <the
-      table>"), and reads are unaffected; the explicit-grid-grant variant of this is in
-      test_the_per_person_grid_reaches_the_database_pg.py;
-    * (database) the two tables the browser writes still hold INSERT and UPDATE for a signed-in role, and a Manager can
-      still insert into the declaration table;
+      table>"), and reads are unaffected BY 499 (the reading privilege is 549's, so these tests give it back first); the
+      explicit-grid-grant variant of this is in test_the_per_person_grid_reaches_the_database_pg.py;
+    * (database) the two declaration tables 499 left alone still hold INSERT and UPDATE for a signed-in role once 549's
+      revoke is undone, and a Manager can insert into the declaration table;
     * (database) the migration is idempotent, REMOVES what the hosting platform's defaults give (TRUNCATE for
       `authenticated` and `anon`, and a write reaching a role through PUBLIC or through a column grant), and its own
       rollback puts the holes back (the negative control).
@@ -45,6 +45,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))      # a sibling test module, imported by name as others do
 from test_direct_write_tables_are_role_guarded import _direct_write_tables  # noqa: E402
+from tests._signed_in_payroll_writes import give_the_signed_in_payroll_access_back  # noqa: E402
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -59,11 +60,14 @@ _ADMIN = os.environ.get("HARNESS_PG")
 #: last writer and now files through `PUT /api/portal/employee/tax-declaration`.
 WRITTEN_BY_THE_BROWSER: set[str] = set()
 
-#: The payroll tables a signed-in role still holds a write privilege on. It is the two declaration tables, left granted by
-#: migration 499 because the browser wrote them, and NO SCREEN USES IT NOW: the privilege and the employee-own-record policies
-#: behind it are revoked by POST-A-339, which is a migration this change does not make. Until then a hand-made PostgREST call
-#: with an employee's own token can still write their own declaration, exactly as before, and these tests keep saying so.
-STILL_GRANTED_TO_A_SIGNED_IN_ROLE = {"payroll_it_declarations", "payroll_it_declaration_items"}
+#: The two declaration tables migration 499 left granted because the browser wrote them. Migration 549 (POST-A-339) took
+#: their write privilege, and every other privilege, from a signed-in role, so no payroll table is writable from a signed-in
+#: session now and the set below is empty. These two are kept as a name because they are what 499 itself did not touch:
+#: the tests that prove 499 does not overreach give the 549 privilege back first and show they were still granted.
+LEFT_GRANTED_BY_499 = {"payroll_it_declarations", "payroll_it_declaration_items"}
+
+#: The payroll tables a signed-in role still holds a write privilege on: none (migration 549 closed the last two).
+STILL_GRANTED_TO_A_SIGNED_IN_ROLE: set[str] = set()
 
 #: The payroll family: every `payroll_*` table, plus the ones named for their job and not their prefix.
 _FAMILY = re.compile(r"^(payroll_.+|attendance|leave_balances|bonus_declarations|bonus_disqualifications|"
@@ -90,7 +94,7 @@ def test_the_family_pattern_names_the_tables_the_migration_revokes():
     revoked = set(re.findall(r"'([a-z_]+)'", sql.split("tables text[] := ARRAY[", 1)[1].split("]", 1)[0]))
     assert len(revoked) == 17, revoked
     assert all(_FAMILY.match(t) for t in revoked), sorted(t for t in revoked if not _FAMILY.match(t))
-    assert not revoked & STILL_GRANTED_TO_A_SIGNED_IN_ROLE
+    assert not revoked & LEFT_GRANTED_BY_499
 
 
 # ── the database ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -207,6 +211,9 @@ PROBES = {
 @_NEEDS_PG
 @pytest.mark.parametrize("table", sorted(PROBES))
 def test_a_manager_inside_the_tier_is_refused_by_the_privilege(db, table):
+    # Migration 549 took the reading privilege too; it is given back here so that the refusal below can only be the WRITE
+    # privilege this migration revokes (a probe that selects from another payroll table would otherwise be refused for that).
+    give_the_signed_in_payroll_access_back(db)
     # the run is seeded as the admin, so every probe is ONE statement and reaches the table it names
     _ok(db, f"INSERT INTO payroll_runs (id, firm_id, client_id, month) VALUES "
             f"('dddddddd-0000-0000-0000-000000000499', '{FIRM}', '{CLIENT}', '2026-04');")
@@ -217,23 +224,29 @@ def test_a_manager_inside_the_tier_is_refused_by_the_privilege(db, table):
 
 @_NEEDS_PG
 def test_reading_is_unaffected(db):
+    """Migration 499 revoked writes only. Migration 549 took the reading privilege afterwards (its own file proves that), so it
+    is given back here and the row policies, which 499 never touched, still show the assigned Manager their employee."""
+    give_the_signed_in_payroll_access_back(db)
     r = _as_manager(db, "SELECT count(*) FROM payroll_employees;")
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip().splitlines()[-1] == "1"
 
 
 @_NEEDS_PG
-def test_the_tables_the_browser_does_write_are_still_writable_by_a_manager(db):
+def test_the_tables_migration_499_left_alone_are_still_writable_by_a_manager_once_549_is_undone(db):
+    give_the_signed_in_payroll_access_back(db)
     decl = _as_manager(db, f"INSERT INTO payroll_it_declarations (firm_id, client_id, employee_id, fy) "
                            f"SELECT '{FIRM}', '{CLIENT}', id, '2026-27' FROM payroll_employees;")
     assert decl.returncode == 0, decl.stderr
 
 
 @_NEEDS_PG
-def test_the_tables_the_browser_writes_still_hold_insert_and_update_for_a_signed_in_role(db):
-    """The revoke did not overreach: an employee's own declaration needs INSERT and UPDATE on the declaration and its
-    items. (`leave_balances` is no longer one of them: migration 515, proved in its own test file.)"""
-    for t in sorted(STILL_GRANTED_TO_A_SIGNED_IN_ROLE):
+def test_the_tables_499_left_granted_hold_insert_and_update_once_549_is_undone(db):
+    """The revoke did not overreach: an employee's own declaration needed INSERT and UPDATE on the declaration and its
+    items, and 499 left them. (`leave_balances` is not one of them: migration 515, proved in its own test file. Migration 549
+    took these two afterwards; this test gives that back first, so what it measures is what 499 left.)"""
+    give_the_signed_in_payroll_access_back(db)
+    for t in sorted(LEFT_GRANTED_BY_499):
         for verb in ("INSERT", "UPDATE"):
             assert _ok(db, f"SELECT has_table_privilege('authenticated', 'public.{t}', '{verb}');") == "t", (t, verb)
 
@@ -295,6 +308,9 @@ def test_its_own_rollback_puts_the_holes_back(db):
     assert r.returncode == 0, r.stderr
     reopened = _writable_by_a_signed_in_role(db) - STILL_GRANTED_TO_A_SIGNED_IN_ROLE
     assert len(reopened) == 17, sorted(reopened)
+    # Migration 549 took the reading privilege as well, and several probes read another payroll table on the way; it is given
+    # back so that each statement below is refused or allowed by the WRITE privilege 499 revokes and nothing else.
+    give_the_signed_in_payroll_access_back(db)
     # EVERY probe goes through once the privilege is back, so each refusal above is the privilege and not a statement
     # that was malformed or stopped by a policy on the way
     _ok(db, f"INSERT INTO payroll_runs (id, firm_id, client_id, month) VALUES "

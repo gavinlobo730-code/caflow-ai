@@ -59,7 +59,7 @@ def _ident(name: str) -> str:
 
 
 class SignedInDb:
-    """`role='authenticated'` with a token whose `sub` is `auth_user_id`, or `role='service_role'` (no token)."""
+    """`role='authenticated'` with a token whose `sub` is `auth_user_id`, or `role='service_role'` or `role='anon'` (no token)."""
 
     def __init__(self, dsn: str, *, role: str = "authenticated", auth_user_id: Optional[str] = None):
         self.dsn = dsn
@@ -77,6 +77,8 @@ class SignedInDb:
     def _prefix(self) -> str:
         if self.role == "service_role":
             return "SET ROLE service_role; "
+        if self.role == "anon":
+            return "SET ROLE anon; "
         claims = json.dumps({"sub": self.auth_user_id, "role": "authenticated"})
         return f"SET request.jwt.claims = '{claims}'; SET ROLE authenticated; "
 

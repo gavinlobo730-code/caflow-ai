@@ -105,20 +105,63 @@ def test_the_notice_states_no_count_because_a_count_goes_stale():
     assert not re.search(r"\d", DENIAL_REACH_NOTICE), DENIAL_REACH_NOTICE
 
 
-def test_the_notice_names_each_family_whose_read_the_database_enforces_and_what_it_leaves_out():
-    """Payroll since 485/490, billing since 495 and a client's bank lines since 524 are read through the grid, and the
-    sentence says so: a Partner who unticks Banking reads "enforced by the PracticeSync server" and nothing about the
-    database unless it is told. The real-Postgres sibling holds the list of tables; this holds that the SENTENCE still
-    names each family, and that the bank sentence says what it does not cover (the bank account master, which the database
-    does not ask the grid about; the pickers that show it ask the server, which does, since POST-A-010)."""
+def test_the_notice_names_payroll_and_banking_as_reached_only_through_the_server_and_billing_as_read_through_the_grid():
+    """Payroll and the bank tables are not the browser's at all since migrations 549 and 550 (POST-A-339): a signed-in session
+    holds no privilege on them and may not run the two bank reports or read the foreign bank balances, so the sentence says that and no longer says what the
+    database CHECKS on them (a block on reading, a block on writing, the employee's own declaration, the bank account list the
+    database did not cover). Billing is still read through the grid (495) and keeps its sentence. The real-Postgres siblings
+    hold that the claims are true (`test_549_*_pg.py`, `test_550_*_pg.py`, `test_the_per_person_grid_reaches_the_database_pg.py`);
+    this holds that the SENTENCE still names each family and says the thing, and has stopped saying the things that went false."""
     text = " ".join(DENIAL_REACH_NOTICE.lower().split())
     for family in ("payroll", "billing", "banking"):
         assert family in text, f"the notice no longer names {family}"
-    assert "bank transactions" in text and "reconciliations" in text
-    assert "list of bank accounts is not covered by the database" in text, (
-        "the bank sentence must say that the DATABASE does not cover the bank account list")
-    assert "ask the practicesync server, which does check it" in text, (
-        "the bank sentence must say where the grid IS asked for the bank account list")
+    assert "reached only through that server" in text
+    assert "no signed-in browser session read or write the payroll records" in text
+    assert "or the bank records" in text and "reconciliations" in text and "the two bank reports and the foreign-currency bank balances are closed to it" in text
+    assert "a block on payroll or on banking is applied in one place" in text
+    # the sentences that were true until 549 and 550 and are false now
+    for stale in ("one payroll record the database still lets", "list of bank accounts is not covered by the database",
+                  "the database also refuses a tax declaration and its items to a person blocked from writing payroll",
+                  "a block on writing payroll is applied by the practicesync server, where the payroll records are written"):
+        assert stale not in text, f"the notice still says: {stale}"
+
+
+def _array_of(migration: str) -> set[str]:
+    sql = re.sub(r"--[^\n]*", "", (Path(__file__).resolve().parents[1] / "migrations" / migration).read_text())
+    body = re.search(r"tables text\[\] := ARRAY\[(.*?)\]", sql, re.S).group(1)
+    return set(re.findall(r"'([a-z_]+)'", body))
+
+
+def test_what_the_notice_lists_as_payroll_and_bank_records_is_what_the_two_migrations_close():
+    """The sentence lists the records in words; the migrations list them as tables. Each word the sentence uses must be a
+    family one of the tables belongs to, and each family a table belongs to must be named, so a payroll or bank table added to
+    a migration (a new record kind) is a sentence that needs a word, and a word with no table behind it fails."""
+    text = " ".join(DENIAL_REACH_NOTICE.lower().split())
+    payroll = _array_of("549_a_signed_in_session_reads_and_writes_none_of_the_payroll_tables.sql")
+    bank = _array_of("550_a_signed_in_session_reads_and_writes_none_of_the_bank_tables_and_runs_neither_bank_report.sql")
+    # (the word the sentence uses, a table of the migration it stands for)
+    words_for_payroll = {"employees": "payroll_employees", "runs": "payroll_runs", "payslips": "payroll_slips",
+                         "attendance": "attendance", "leave balances": "leave_balances",
+                         "tax declarations": "payroll_it_declarations", "salary history": "payroll_salary_revisions",
+                         "salary structures": "salary_structures", "loans": "payroll_loans",
+                         "settlements": "payroll_settlements", "bonus records": "bonus_declarations",
+                         "remittances": "statutory_remittances", "ecr filings": "epfo_ecr_filings",
+                         "payroll settings": "client_payroll_settings"}
+    words_for_bank = {"accounts": "bank_accounts", "statements": "bank_statements", "transactions": "bank_transactions",
+                      "splits": "bank_transaction_splits", "reconciliations": "bank_reconciliations",
+                      "matching rules": "bank_matching_rules", "saved statement layouts": "bank_statement_column_mappings"}
+    for word, table in words_for_payroll.items():
+        assert word in text and table in payroll, (word, table)
+    for word, table in words_for_bank.items():
+        assert word in text and table in bank, (word, table)
+    # every table the migrations close is one the sentence has a word for (a table with no word is a record kind nobody was told)
+    covered = set(words_for_payroll.values()) | set(words_for_bank.values())
+    # the match rows, the tax-declaration lines, the pt settings, the ECR/loan helpers and the like ride with their parent's word
+    rides_with_a_parent = {"payroll_run_transitions", "payroll_perquisites", "payroll_one_time_earnings", "bonus_disqualifications",
+                           "payroll_loan_recoveries", "payroll_settlement_components", "payroll_it_declaration_items",
+                           "client_pt_registrations", "firm_pt_slabs", "bank_reconciliation_matches"}
+    unnamed = (payroll | bank) - covered - rides_with_a_parent
+    assert not unnamed, f"the migrations close tables the notice has no word for and that are not listed as riding with one: {sorted(unnamed)}"
 
 
 # ── What it says about THIS repository is measured from it ───────────────────

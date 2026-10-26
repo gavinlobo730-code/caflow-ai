@@ -25,6 +25,8 @@ import uuid
 
 import pytest
 
+from tests._signed_in_bank_access import give_the_signed_in_bank_access_back
+
 from domain.accounting.trial_balance import TrialBalanceError, TrialBalanceRow
 from domain.banking.normalizer import header_fingerprint
 from services import bank_column_mapping_service as mappings
@@ -92,6 +94,7 @@ def world(pg_template):
         w.dsn = dsn
         w.service_db = SignedInDb(dsn, role="service_role")
         w.partner_db = SignedInDb(dsn, auth_user_id=PARTNER["auth_user_id"])
+        give_the_signed_in_bank_access_back(w.dsn)
         yield w
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')

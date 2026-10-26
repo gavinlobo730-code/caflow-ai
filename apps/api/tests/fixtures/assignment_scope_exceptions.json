@@ -6,11 +6,6 @@
       "via": "clients",
       "why": "its only policy asks client_id IN (SELECT id FROM clients), and clients carries the assignment scope, so a balance is as visible as its client"
     },
-    "bank_statement_column_mappings": {
-      "kind": "own",
-      "policy": "bank_statement_column_mappings_role_update",
-      "why": "a saved column layout is the practice's memory of how a bank formats its export: the firm-wide second look of find_mapping (BANK-26) reuses a layout drawn for one account on another account of the firm, so reads are firm-wide on purpose and a scope would end that for everyone but a Partner; it holds column headings and positions, not a client's figures; writes carry a role tier (Executive and above); find_mapping's habit of updating ANOTHER account's layout is POST-A-300"
-    },
     "client_instructions": {
       "kind": "own",
       "policy": "client_instructions_assignment",
@@ -25,41 +20,6 @@
       "kind": "own",
       "policy": "notifications_recipient_scope",
       "why": "a notification is its recipient's (user_id) and a Partner reads all; it is about a person, not about the client it names"
-    },
-    "payroll_it_declarations": {
-      "kind": "parent",
-      "via": "payroll_employees",
-      "why": "its rows follow their employee: the RESTRICTIVE payroll_it_declarations_employee_in_reach policy (migration 485) asks the employee row, and payroll_employees carries the assignment scope (262)"
-    },
-    "payroll_loan_recoveries": {
-      "kind": "parent",
-      "via": "payroll_employees",
-      "why": "its rows follow their employee: the RESTRICTIVE payroll_loan_recoveries_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
-    },
-    "payroll_loans": {
-      "kind": "parent",
-      "via": "payroll_employees",
-      "why": "its rows follow their employee: the RESTRICTIVE payroll_loans_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
-    },
-    "payroll_one_time_earnings": {
-      "kind": "parent",
-      "via": "payroll_employees",
-      "why": "its rows follow their employee: the RESTRICTIVE payroll_one_time_earnings_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
-    },
-    "payroll_perquisites": {
-      "kind": "parent",
-      "via": "payroll_employees",
-      "why": "its rows follow their employee: the RESTRICTIVE payroll_perquisites_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
-    },
-    "payroll_salary_revisions": {
-      "kind": "parent",
-      "via": "payroll_employees",
-      "why": "its rows follow their employee: the RESTRICTIVE payroll_salary_revisions_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
-    },
-    "payroll_settlements": {
-      "kind": "parent",
-      "via": "payroll_employees",
-      "why": "its rows follow their employee: the RESTRICTIVE payroll_settlements_employee_in_reach policy (migration 490) asks the employee row, and payroll_employees carries the assignment scope (262)"
     },
     "reconciliation_findings": {
       "kind": "own",

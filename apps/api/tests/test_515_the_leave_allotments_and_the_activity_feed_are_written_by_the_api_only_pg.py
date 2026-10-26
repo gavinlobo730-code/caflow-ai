@@ -2,7 +2,8 @@
 
 WHAT IS HELD (ledger POST-A-235 and POST-A-228)
     * a signed-in role EFFECTIVELY holds no INSERT, UPDATE, DELETE or TRUNCATE on `leave_balances`, and no INSERT or TRUNCATE
-      on `client_timeline_events`, at table level, at column level or through PUBLIC; reading both is unaffected, and the
+      on `client_timeline_events`, at table level, at column level or through PUBLIC; reading both is unaffected by THIS
+      migration (migration 549 took the reading of `leave_balances` afterwards, so those tests give it back first), and the
       feed's pin button (a column-level UPDATE on `is_pinned`, migration 494) is still there;
     * `service_role`, which the API uses, keeps its writes;
     * an assigned Manager is refused a direct write by the PRIVILEGE ("permission denied for table ..."), not by a policy;
@@ -22,6 +23,8 @@ import uuid
 from pathlib import Path
 
 import pytest
+
+from tests._signed_in_payroll_writes import give_the_signed_in_payroll_access_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -116,7 +119,9 @@ def test_a_signed_in_role_cannot_insert_into_the_feed(db, role):
 @_NEEDS_PG
 def test_the_pin_button_and_reading_are_unaffected(db):
     """The revoke did not overreach: the feed's pin is a column-level UPDATE on is_pinned (migration 494) and both tables are
-    still read by a signed-in session."""
+    still read by a signed-in session. (`leave_balances` stopped being readable in migration 549, which this module does not
+    measure: the reading privilege is given back first, so what is proved is that 515 left it.)"""
+    give_the_signed_in_payroll_access_back(db)
     assert _ok(db, "SELECT has_column_privilege('authenticated','public.client_timeline_events','is_pinned','UPDATE');") == "t"
     assert not _holds(db, "authenticated", "client_timeline_events", "UPDATE")
     pinned = _as_manager(db, f"UPDATE client_timeline_events SET is_pinned = true WHERE id = '{EVENT}';")
@@ -148,6 +153,7 @@ PROBES = {
 @_NEEDS_PG
 @pytest.mark.parametrize("probe", sorted(PROBES))
 def test_an_assigned_manager_is_refused_by_the_privilege(db, probe):
+    give_the_signed_in_payroll_access_back(db)     # reading came back, so the refusal below is the write privilege alone
     table = probe.split(" ")[0]
     r = _as_manager(db, PROBES[probe])
     assert r.returncode != 0 and f"permission denied for table {table}" in r.stderr, (probe, r.stderr or "it succeeded")
@@ -221,6 +227,7 @@ def test_its_own_rollback_puts_the_grants_back(db):
     privilege and not a statement that was malformed or stopped by a policy."""
     r = _psql(db, ROLLBACK.read_text(encoding="utf-8"), tuples=False)
     assert r.returncode == 0, r.stderr
+    give_the_signed_in_payroll_access_back(db)
     leave = _as_manager(db, PROBES["leave_balances"])
     assert leave.returncode == 0, leave.stderr
     feed = _as_manager(db, PROBES["client_timeline_events"])

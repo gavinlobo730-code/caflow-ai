@@ -142,8 +142,9 @@ class FXReportingService:
         holds base paise only, with no txn_ amounts and no currency split."""
         if client_id and hasattr(db, "rpc"):
             try:
-                res = db.rpc("fx_foreign_bank_balances",
-                             {"p_firm": firm_id, "p_client": client_id}).execute()
+                # The server's client (migration 550 took EXECUTE from a signed-in session: the function returns account numbers)
+                res = privileged_for(db).rpc("fx_foreign_bank_balances",
+                                             {"p_firm": firm_id, "p_client": client_id}).execute()
                 rows = getattr(res, "data", None)
                 if not isinstance(rows, list):
                     raise ValueError(

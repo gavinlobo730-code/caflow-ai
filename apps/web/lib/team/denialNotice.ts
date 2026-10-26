@@ -4,9 +4,8 @@
  *
  * `GET /api/identity/permission-vocabulary` serves a `notice`: one sentence
  * saying that a per-person block is enforced by the PracticeSync server and is
- * consulted by the database only for the records the sentence names (payroll,
- * billing and a client's bank lines), not when a screen reads any other table
- * straight from the database. It is a
+ * consulted by the database only for the records the sentence names, not when
+ * a screen reads any other table straight from the database. It is a
  * claim about the database's policies, so the words live beside the real-Postgres
  * guard that keeps them true and this app holds none of them.
  *

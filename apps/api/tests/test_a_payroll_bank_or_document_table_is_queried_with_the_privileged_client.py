@@ -386,7 +386,12 @@ def test_the_two_bank_report_functions_are_called_with_the_privileged_client():
 
 def test_a_table_that_is_not_sensitive_is_left_alone():
     assert not _flagged('def f(db):\n    return db.table("journal_entries").select("*")\n')
-    assert not _flagged('def f(db):\n    return db.table("bonus_disqualifications").select("*")\n')
+    assert not _flagged('def f(db):\n    return db.table("fx_rates").select("*")\n')
+    # The payroll tables the prefix does not name are held too (POST-A-339): the bonus register, the statutory registrations and
+    # slabs, the remittances and the ECR are payroll, and a signed-in session loses its grant on them with the rest.
+    for table in ("bonus_declarations", "bonus_disqualifications", "client_payroll_settings", "client_pt_registrations",
+                  "epfo_ecr_filings", "firm_pt_slabs", "statutory_remittances"):
+        assert _flagged(f'def f(db):\n    return db.table("{table}").select("*")\n'), table
 
 
 def test_the_shape_check_names_each_way_a_wholly_privileged_module_could_stop_being_one():

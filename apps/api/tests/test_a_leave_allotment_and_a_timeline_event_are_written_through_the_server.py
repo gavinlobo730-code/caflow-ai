@@ -375,21 +375,26 @@ def test_nothing_else_in_the_api_inserts_into_the_feed():
 # ── the Team screen's sentence ───────────────────────────────────────────────────────────────────────────────────────
 
 def test_the_team_screens_sentence_says_the_database_refuses_a_leave_write():
+    """Leave balances are a payroll record, and since migration 549 (POST-A-339) the database lets no signed-in session read
+    OR write one; the sentence names them in the list of payroll records it says that of, and says the employee's own tax
+    declaration goes the same way (the employee portal saves it through the server)."""
     from services.user_permission_service import DENIAL_REACH_NOTICE as notice
     text = " ".join(notice.split())
-    assert "any write to employees, runs, payslips, attendance, leave balances" in text
+    assert "the database lets no signed-in browser session read or write the payroll records (employees, runs, payslips, attendance, leave balances" in text
     assert "Leave balances and tax declarations can still be saved" not in text
-    # POST-A-010: the employee portal saves the declaration through the server, so the sentence no longer says the BROWSER does;
-    # what stays true, and is what the sentence now says, is that the database still lets that employee write it with their own sign-in.
+    # POST-A-010 moved the employee portal's declaration behind the server, and 549 took the last write privilege with it: the
+    # sentence no longer says the database lets that employee write it with their own sign-in.
     assert "An employee's own tax declaration can still be saved from the browser" not in text
-    assert ("An employee's own tax declaration is the one payroll record the database still lets that employee write with their "
-            "own sign-in (the employee portal saves it through the PracticeSync server)") in text
+    assert "is the one payroll record the database still lets that employee write" not in text
+    assert ("an employee filing their own tax declaration included (the employee portal saves it through the PracticeSync "
+            "server)") in text
 
 
-def test_the_team_screens_sentence_says_a_blocked_staff_member_is_refused_a_declaration_too():
-    """Migration 519 put the grid on the two declaration tables for STAFF; the sentence used to say the database judged the
-    person's role and not the block there, which was true until then (an independent review found it stale)."""
+def test_the_team_screens_sentence_no_longer_distinguishes_a_blocked_staff_member_on_a_declaration():
+    """Migration 519 put the grid on the two declaration tables for STAFF, and the sentence said so; migration 549 took every
+    signed-in privilege on them, so there is no staff-versus-employee difference left for the database to make, and a sentence
+    that still described one would be a claim about a check that cannot run."""
     from services.user_permission_service import DENIAL_REACH_NOTICE as notice
     text = " ".join(notice.split())
     assert "judges the person's role and not this block" not in text
-    assert "for a member of the firm's staff the database also refuses a tax declaration and its items to a person blocked from writing payroll" in text
+    assert "for a member of the firm's staff the database also refuses a tax declaration" not in text

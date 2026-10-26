@@ -31,6 +31,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._signed_in_payroll_writes import give_the_signed_in_payroll_access_back
+
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
 MIGRATION = API_ROOT / "migrations" / "264_employee_portal_invites.sql"
@@ -74,6 +76,7 @@ def seeded(pg_template):
                      ('{EMP_B}','{FIRM}','{CLIENT}','Bala',false);
         """)
         assert r.returncode == 0, r.stderr
+        give_the_signed_in_payroll_access_back(dsn)
         yield dsn
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{dbname}" WITH (FORCE);')

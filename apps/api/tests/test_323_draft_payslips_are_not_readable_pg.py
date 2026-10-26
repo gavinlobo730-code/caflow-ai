@@ -50,6 +50,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._signed_in_payroll_writes import give_the_signed_in_payroll_access_back
+
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
 _ADMIN = os.environ.get("HARNESS_PG")
@@ -109,6 +111,7 @@ def seeded(pg_template):
               (gen_random_uuid(),'{FINAL_RUN}','{EMP}',{FINAL_GROSS},2000000);
         """)
         assert seed.returncode == 0, seed.stderr
+        give_the_signed_in_payroll_access_back(dsn)
         yield dsn
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{dbname}" WITH (FORCE);')

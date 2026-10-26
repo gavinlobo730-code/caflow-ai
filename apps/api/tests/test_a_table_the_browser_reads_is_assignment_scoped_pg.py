@@ -196,21 +196,41 @@ def test_every_client_table_the_browser_reads_is_assignment_scoped(client_tables
 
 
 @_NEEDS_PG
-def test_the_six_that_migration_370_closes_are_closed(client_tables):
+def test_the_six_that_migration_370_closes_are_closed(client_tables, pg_template):
     """Named, because the rule above passes if the frontend stops reading them
-    — and a table dropping off a screen is not the same as being scoped."""
+    — and a table dropping off a screen is not the same as being scoped.
+
+    `bank_accounts` is asked of the catalogue and not of `client_tables`: migration 550 (POST-A-339) took every signed-in
+    privilege from it, so it is no longer granted to `authenticated` and that list does not carry it. Its policy stays as the
+    second lock, and a regrant would put it back to work, which is why it is still held."""
     by_tbl = {r["tbl"]: r["assignment_policies"] for r in client_tables}
-    for t in ("bank_accounts", "debit_notes", "purchase_credit_notes",
+    for t in ("debit_notes", "purchase_credit_notes",
               "sales_debit_notes", "gstr2b_reconciliations",
               "tds_lower_deduction_certificates"):
         assert by_tbl.get(t), f"{t} has no RESTRICTIVE assignment policy"
+    out = subprocess.run(
+        ["psql", f"{_HARNESS_PG.strip()} dbname={pg_template.name}", "-v", "ON_ERROR_STOP=1", "-X", "-tA", "-c",
+         "SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'bank_accounts' "
+         "AND policyname LIKE '%assignment%' AND permissive = 'RESTRICTIVE';"],
+        capture_output=True, text=True, check=True)
+    assert int(out.stdout.strip()) >= 1, "bank_accounts has no RESTRICTIVE assignment policy"
 
 
 @_NEEDS_PG
-def test_migration_370_did_not_disturb_the_payroll_portal_policies(client_tables):
+def test_migration_370_did_not_disturb_the_payroll_portal_policies(pg_template):
     """262's per-command split is what a re-run of 084's loop would destroy.
-    Four policies each, not one FOR ALL."""
-    by_tbl = {r["tbl"]: r["assignment_policies"] for r in client_tables}
+    Four policies each, not one FOR ALL.
+
+    The policies are asked of the catalogue and not of `client_tables`: migration 549 (POST-A-339) took every signed-in
+    privilege from the two tables, so they are no longer granted to `authenticated` and that list does not carry them. The
+    policies stay as the second lock and a regrant would put them back to work, which is why they are still held."""
+    out = subprocess.run(
+        ["psql", f"{_HARNESS_PG.strip()} dbname={pg_template.name}", "-v", "ON_ERROR_STOP=1", "-X", "-tA", "-F", "|", "-c",
+         "SELECT tablename, string_agg(policyname, ',' ORDER BY policyname) FROM pg_policies "
+         "WHERE schemaname = 'public' AND tablename IN ('payroll_employees', 'payroll_runs') "
+         "AND policyname LIKE '%assignment%' AND permissive = 'RESTRICTIVE' GROUP BY tablename;"],
+        capture_output=True, text=True, check=True)
+    by_tbl = dict(line.split("|", 1) for line in out.stdout.strip().splitlines())
     for t in ("payroll_employees", "payroll_runs"):
         names = (by_tbl.get(t) or "").split(",")
         for cmd in ("select", "insert", "update", "delete"):
