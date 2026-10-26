@@ -23,6 +23,7 @@ from models.invoices import InvoiceLineIn
 from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
+from core.storage_door import StoragePathRefused, storage_folder
 from core.uploads import accept_upload, safe_path_segment
 from services.audit_service import log_event
 from services.document_header_writer import update_header
@@ -403,13 +404,10 @@ def upload_debit_note_document(
         if _USE_MOCK:
             return api_response(True, {"document_url": f"mock/{firm_id}/{safe_client}/debit_note/{uuid.uuid4()}"})
 
-        from core.supabase_client import get_supabase
-        db = get_supabase()
+        # The server's client, bound to this firm's and client's folder (POST-A-339): `assert_client_access` above has proved the
+        # client is the caller's, and the door will not store a key outside `{firm}/{client}/`.
         storage_path = f"{firm_id}/{safe_client}/debit_note/{uuid.uuid4()}_{accepted.storage_name}"
-        db.storage.from_(_BUCKET).upload(
-            path=storage_path, file=content,
-            file_options={"content-type": accepted.content_type},
-        )
+        storage_folder(_BUCKET, firm_id, safe_client).upload(storage_path, content, accepted.content_type)
         return api_response(True, {"document_url": storage_path})
     except Exception as e:
         _logger.error("upload_debit_note_document: %s", e)
@@ -433,13 +431,18 @@ def get_debit_note_document_url(dn_id: str, current_user: dict = Depends(rbac("a
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("debit_notes").select("document_url").eq("id", dn_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        resp = db.table("debit_notes").select("document_url, client_id").eq("id", dn_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Debit note {dn_id} not found")
         path = resp.data[0].get("document_url")
         if not path:
             raise HTTPException(status_code=404, detail="No document attached to this debit note")
-        signed = db.storage.from_(_BUCKET).create_signed_url(path, expires_in=3600)
+        # Signed by the server, and only for a key under this note's own firm and client folder: the column is writable over
+        # PostgREST by an Executive, so a row can be made to name somebody else's object, and that one is a fixed 404.
+        try:
+            signed = storage_folder(_BUCKET, current_user.get("firm_id"), resp.data[0].get("client_id")).create_signed_url(path, 3600)
+        except StoragePathRefused as refused:
+            raise HTTPException(status_code=404, detail="No document attached to this debit note") from refused
         url = signed.get("signedURL") if isinstance(signed, dict) else None
         if not url:
             raise HTTPException(status_code=502, detail="Unable to generate a download link. Please try again.")

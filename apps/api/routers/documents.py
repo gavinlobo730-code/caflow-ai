@@ -12,6 +12,7 @@ from services.audit_service import log_event
 from core.exceptions import NotFoundError
 from core.permissions import rbac
 from core.observability import capture_soft_failure
+from core.storage_door import StoragePathRefused, storage_folder
 from core.uploads import accept_upload, safe_path_segment
 from core.authz import assert_client_access, can_access_client, effective_client_ids, filter_by_client
 from models.fy import OptionalFYLabel
@@ -26,15 +27,15 @@ def _scope_client(client_id, current_user):
         assert_client_access(current_user, client_id)
 
 
-def _take_out_again(storage_path: str) -> None:
-    """Remove a file this request stored and whose record could not be written. Through the SERVER's client, kept in a
-    function of its own so the one upload above stays the caller's: migration 469 lets only a Partner delete from the bucket,
-    and Storage answers a denied removal with an empty list and no error, so a clean-up through the caller's own token would
-    leave an Executive's file in place without a word. The key was built by this module, under the caller's own firm and
-    client, a moment ago. Reports, and does not raise, if it cannot: the caller is already failing with the real reason."""
-    from core.supabase_client import get_service_supabase
+def _take_out_again(firm_id: str, client_id: str, storage_path: str) -> None:
+    """Remove a file this request stored and whose record could not be written. Through the door to the caller's own firm and
+    client folder (`core/storage_door`: the server's client, bound to a folder), which is the only way Storage is reached now:
+    migration 469's policy let only a Partner delete from the bucket and Storage answers a denied removal with an empty list
+    and no error, so a clean-up through the caller's own token would have left an Executive's file in place without a word.
+    The key was built by this module, under the caller's own firm and client, a moment ago. Reports, and does not raise, if it
+    cannot: the caller is already failing with the real reason."""
     try:
-        gone = get_service_supabase().storage.from_(BUCKET).remove([storage_path])
+        gone = storage_folder(BUCKET, firm_id, client_id).remove([storage_path])
         if not gone:
             raise RuntimeError(f"the file {storage_path} was not removed")
     except Exception as cleanup_failure:  # noqa: BLE001 - the original failure is the one to report
@@ -166,14 +167,16 @@ def upload_document(
             pass
         return api_response(True, {"document": doc, "download_url": None})
 
-    from core.supabase_client import get_supabase
-    sb = get_supabase()
+    # The server's client, bound to this firm's and this client's folder (POST-A-339): the route has asked who the caller is and
+    # whether they may touch this client (`rbac()`, `_scope_client`), and the door will not store, sign or remove a key outside
+    # `{firm}/{client}/`. Nothing here is the caller's own token any more.
+    store = storage_folder(BUCKET, firm_id, client_id)
 
-    upload_result = sb.storage.from_(BUCKET).upload(
-        path=storage_path,
-        file=content,
+    upload_result = store.upload(
+        storage_path,
+        content,
         # OUR content type, from the validated extension — never the caller's header.
-        file_options={"content-type": accepted.content_type},
+        accepted.content_type,
     )
 
     if hasattr(upload_result, "error") and upload_result.error:
@@ -198,13 +201,13 @@ def upload_document(
         # The file is already stored. A record that could not be written must not leave it behind with nothing
         # pointing at it (the browser handler this replaced removed it for the same reason), and the failure still
         # reaches the caller as the failure it is.
-        _take_out_again(storage_path)
+        _take_out_again(firm_id, client_id, storage_path)
         raise
 
     # The link is a courtesy in the answer (the Documents page opens a file by asking for one when it is pressed). The
     # upload has succeeded by now, so a failure to sign must not turn it into a 500 and invite a second upload.
     try:
-        signed = sb.storage.from_(BUCKET).create_signed_url(storage_path, expires_in=3600)
+        signed = store.create_signed_url(storage_path, 3600)
         download_url = signed.get("signedURL") if isinstance(signed, dict) else None
     except Exception as sign_failure:  # noqa: BLE001
         capture_soft_failure(sign_failure, operation="documents.upload_link")
@@ -242,9 +245,13 @@ def get_download_url(
     if _USE_MOCK or not doc.get("storage_path"):
         return api_response(True, {"download_url": None})
 
-    from core.supabase_client import get_supabase
-    sb = get_supabase()
-    signed = sb.storage.from_(BUCKET).create_signed_url(doc["storage_path"], expires_in=3600)
+    # The key is a column of the row, and the column is writable over PostgREST by an Executive, so it is signed only if it sits
+    # under the row's own firm and client (`_assert_document_scope` has just proved both are the caller's): a row that names
+    # somebody else's object gets the same fixed 404 as a missing one.
+    try:
+        signed = storage_folder(BUCKET, doc["firm_id"], doc["client_id"]).create_signed_url(doc["storage_path"], 3600)
+    except StoragePathRefused as refused:
+        raise HTTPException(status_code=404, detail="Document not found") from refused
     download_url = signed.get("signedURL") if isinstance(signed, dict) else None
     return api_response(True, {"download_url": download_url})
 

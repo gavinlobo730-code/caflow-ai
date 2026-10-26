@@ -26,6 +26,7 @@ from core import db_provider
 from core.authz import assert_client_access, can_access_client
 from core.observability import capture_soft_failure
 from core.permissions import rbac
+from core.storage_door import storage_folder
 from core.uploads import accept_upload, safe_path_segment
 from models.common import api_response
 from services.audit_service import log_event
@@ -49,23 +50,25 @@ Slot = Literal["notice", "response"]
 _MOCK_NOTICES: dict[str, dict] = {}
 
 
-def _storage():
-    from core.supabase_client import get_supabase
-    return get_supabase().storage.from_(BUCKET)
+def _storage(firm_id: str, client_id: str, notice_id: str):
+    """The bucket as the SERVER, bound to THIS notice's own folder, `{firm}/{client}/notices/{notice}/` (`core/storage_door`,
+    POST-A-339): the route has asked who the caller is and whether they may touch the client, and the door will not store, sign
+    or remove a key outside the notice's folder. The key columns are writable over PostgREST, so a row can be made to name
+    somebody else's object, and that one is never signed."""
+    return storage_folder(BUCKET, firm_id, client_id, "notices", notice_id)
 
 
 def _db():
     return None if _USE_MOCK else db_provider.request_db()
 
 
-def _take_out_again(path: str, firm_id: str) -> None:
-    """Remove a file this request stored and whose notice could not be updated. Through the SERVER's client, because
-    migration 469 lets only a Partner delete from the bucket and Storage answers a denied removal with an empty list and no
-    error: a clean-up through the caller's own client would leave an Executive's file in place without a word. Reports, and
-    does not raise, if it cannot: the caller is already failing with the real reason."""
-    from core.supabase_client import get_service_supabase
+def _take_out_again(path: str, firm_id: str, client_id: str, notice_id: str) -> None:
+    """Remove a file this request stored and whose notice could not be updated. Through the same door (the server's client,
+    bound to the notice's folder): migration 469's policy let only a Partner delete from the bucket and Storage answers a denied
+    removal with an empty list and no error, so a clean-up through the caller's own client would have left an Executive's file
+    in place without a word. Reports, and does not raise, if it cannot: the caller is already failing with the real reason."""
     try:
-        gone = get_service_supabase().storage.from_(BUCKET).remove([path])
+        gone = _storage(firm_id, client_id, notice_id).remove([path])
     except Exception as exc:  # noqa: BLE001 - the original failure is the one to report
         capture_soft_failure(exc, operation="it_notice.attach_cleanup", firm_id=firm_id)
         return
@@ -110,8 +113,8 @@ def attach_to_notice(
         _MOCK_NOTICES[notice_id][column] = path
         return api_response(True, {"slot": slot, "storage_path": path})
 
-    store = _storage()
-    stored = store.upload(path=path, file=accepted.content, file_options={"content-type": accepted.content_type})
+    store = _storage(current_user["firm_id"], notice["client_id"], notice_id)
+    stored = store.upload(path, accepted.content, accepted.content_type)
     if getattr(stored, "error", None):
         raise HTTPException(status_code=500, detail=f"Storage upload failed: {stored.error}")
     try:
@@ -129,7 +132,7 @@ def attach_to_notice(
             raise HTTPException(status_code=409, detail=f"This notice already has its {slot} document.")
     except Exception:
         # The file is stored and the notice does not point at it: take it out again, and let the failure reach the caller.
-        _take_out_again(path, current_user["firm_id"])
+        _take_out_again(path, current_user["firm_id"], notice["client_id"], notice_id)
         raise
     log_event(current_user["firm_id"], "it_notice", notice_id, "attach",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
@@ -156,7 +159,7 @@ def notice_attachment_link(
             and path.startswith(f"{current_user['firm_id']}/{notice['client_id']}/notices/{notice_id}/")):
         raise HTTPException(status_code=502, detail="The link to this document could not be made. Please try again.")
     try:
-        signed = _storage().create_signed_url(path, expires_in=LINK_SECONDS)
+        signed = _storage(current_user["firm_id"], notice["client_id"], notice_id).create_signed_url(path, LINK_SECONDS)
     except Exception as exc:  # noqa: BLE001 - said to the caller as one sentence
         capture_soft_failure(exc, operation="it_notice.sign", firm_id=current_user["firm_id"])
         signed = None

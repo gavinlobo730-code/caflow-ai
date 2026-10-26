@@ -123,7 +123,8 @@ class _Storage:
             raise RuntimeError(self.remove_error)
         return self.removed_result
 
-    def create_signed_urls(self, paths, seconds):
+    def create_signed_urls(self, paths, expires_in=60):
+        seconds = expires_in
         self.calls.append(("sign", list(paths), seconds))
         if self.sign_fail:
             raise RuntimeError("storage down")
@@ -150,19 +151,24 @@ def _row(i, *, firm=FIRM, client=CLIENT, **over):
 def world(monkeypatch):
     timeline: list[tuple] = []
     db = _DB(timeline, client_documents=[])
-    storage = _Storage("caller", timeline)
-    server_storage = _Storage("server", timeline)
+    # ONE storage, the server's: every verb on a file goes through `core/storage_door` (POST-A-339), bound to the folder the route
+    # names. `server_storage` stays as a second name for the same object so the clean-up tests read as they always did.
+    storage = server_storage = _Storage("server", timeline)
     events: list[tuple] = []
     monkeypatch.setattr(cd, "_USE_MOCK", False)
     monkeypatch.setattr(cd, "_db", lambda: db)
-    monkeypatch.setattr(cd, "_storage", lambda: storage)
-    monkeypatch.setattr(cd, "_server_storage", lambda: server_storage)
+    # The REAL door runs (`core/storage_door`), over a server client whose bucket is the recorder below: so the folder rule is
+    # exercised by every test here and not stubbed out.
+    import core.supabase_client as sc
+    buckets: list[str] = []
+    server = type("S", (), {"storage": type("St", (), {"from_": staticmethod(lambda b: (buckets.append(b), storage)[1])})})()
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: server)
     monkeypatch.setattr(cd, "assert_client_access", lambda *a, **k: None)
     monkeypatch.setattr(cd, "assert_partner_for_internal_id", lambda *a, **k: None)
     monkeypatch.setattr(cd, "can_access_client", lambda user, client: client != "unassigned")
     monkeypatch.setattr(cd, "log_event", lambda *a, **k: events.append((a, k)))
     return type("W", (), {"db": db, "storage": storage, "server_storage": server_storage, "events": events,
-                          "timeline": timeline})
+                          "timeline": timeline, "buckets": buckets})
 
 
 def _file(name="pan.pdf", data=PDF):
@@ -319,10 +325,14 @@ def test_a_record_that_cannot_be_written_removes_the_file_and_the_failure_still_
     with pytest.raises(RuntimeError, match="insert refused"):
         _upload()
     [up] = [c for c in world.storage.calls if c[0] == "upload"]
-    # taken out through the SERVER's client: only a Partner may delete from the bucket (migration 469) and a denied removal
-    # answers an empty list and no error, so the caller's own client would leave an Executive's file in place
+    # taken out through the SERVER's client (the only one there is): the old policy let only a Partner delete from the bucket and
+    # a denied removal answered an empty list and no error, so the caller's own client would have left an Executive's file in place
     assert ("remove", [up[1]]) in world.server_storage.calls
-    assert [c[0] for c in world.storage.calls] == ["upload"]
+    assert [c[0] for c in world.storage.calls] == ["upload", "remove"]
+    # and both calls were made on the Documents bucket, for a key under THIS firm's and THIS client's folder
+    assert set(world.buckets) == {"Documents"}
+    assert all(c[1].startswith(f"{FIRM}/{CLIENT}/") if c[0] == "upload" else all(p.startswith(f"{FIRM}/{CLIENT}/") for p in c[1])
+               for c in world.storage.calls)
     assert world.events == []
 
 
@@ -386,7 +396,7 @@ def test_a_delete_removes_the_file_first_and_the_record_second_and_logs_it(world
     assert kinds.index("delete") > max(i for i, e in enumerate(world.db.log) if e[0] == "select")
     # ONE log for the database and the bucket: the file goes before the record, and the reference checks come before both
     order = world.timeline
-    removed_at = order.index(("caller", "remove", [f"{FIRM}/{CLIENT}/f1.pdf"]))
+    removed_at = order.index(("server", "remove", [f"{FIRM}/{CLIENT}/f1.pdf"]))
     deleted_at = order.index(("db", "delete", "client_documents"))
     last_check = max(i for i, e in enumerate(order) if e[:2] == ("db", "select"))
     assert last_check < removed_at < deleted_at

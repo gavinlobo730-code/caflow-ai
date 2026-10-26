@@ -72,6 +72,38 @@ def _force_http1(client: Client) -> Client:
     return client
 
 
+def _force_http1_storage(client: Client) -> Client:
+    """The same fix for Storage, which `_force_http1` does not reach.
+
+    WHY
+        storage3 0.9 builds its own httpx session with http2=True, and supabase-py keeps ONE `SyncStorageClient` per client,
+        created the first time `client.storage` is read. The shared service-role client is driven by the whole threadpool, and
+        since POST-A-339 every file the API stores, signs or removes goes through it (`core/storage_door`; before that, under
+        USE_USER_JWT, each request built its own client and its own Storage session). That is the situation `_force_http1`
+        records for PostgREST: many threads on one HTTP/2 connection, and `LocalProtocolError: Received pseudo-header in
+        trailer` under load. The library keeps the session in two attributes (`session`, and `_client` which `from_` hands to
+        each bucket), so both are replaced.
+    """
+    try:
+        from storage3.utils import SyncClient
+        storage = client.storage
+        session = storage.session
+        replacement = SyncClient(
+            base_url=session.base_url,
+            headers=session.headers,
+            timeout=session.timeout,
+            follow_redirects=True,
+            http2=False,
+        )
+        storage.session = replacement
+        storage._client = replacement
+        session.close()
+    except Exception:
+        # A Storage session on HTTP/2 still works; it just carries the concurrency bug.
+        _logger.exception("Could not disable HTTP/2 on the Supabase Storage session; continuing.")
+    return client
+
+
 def _maybe_single_execute(self):
     """`.maybe_single().execute()` as every caller in this codebase reads it.
 
@@ -168,7 +200,7 @@ def _service_client() -> Client:
             url,
             key[:12],
         )
-        _client = _force_http1(create_client(url, key))
+        _client = _force_http1_storage(_force_http1(create_client(url, key)))
     return _client
 
 

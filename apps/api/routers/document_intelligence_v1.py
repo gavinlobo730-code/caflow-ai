@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from models.common import api_response
 from core.permissions import rbac
 from middleware.rate_limit import ai_limit
+from core.storage_door import storage_folder
 from core.uploads import read_limited
 from core.authz import assert_client_access
 from services.internal_client_service import assert_partner_for_internal_id
@@ -165,14 +166,15 @@ def _upload_bill_document(
     if not os.environ.get("SUPABASE_URL") or not firm_id:
         return None
     try:
-        from core.supabase_client import get_supabase
-        sb = get_supabase()
-        safe_name = (filename or "upload").replace("/", "_")
+        # The server's client, bound to this firm's and client's folder (POST-A-339): `extract_invoice` has asked whether the
+        # caller may touch this client, and the door will not store a key outside `{firm}/{client}/`. The name in the key is the
+        # one `core/uploads` makes (ASCII, no separator, no `..`), not the caller's own filename with its slashes replaced: a name
+        # such as `a..b.pdf` or one with a backslash or a control character would have been a key the door refuses.
+        from core.uploads import split_extension, storage_name
+        safe_name = storage_name(filename or "upload", split_extension(filename or "upload")[1])
         storage_path = f"{firm_id}/{client_id}/purchase_bill/{uuid.uuid4()}_{safe_name}"
-        sb.storage.from_(_BUCKET).upload(
-            path=storage_path, file=content,
-            file_options={"content-type": content_type or "application/octet-stream"},
-        )
+        storage_folder(_BUCKET, firm_id, client_id).upload(
+            storage_path, content, content_type or "application/octet-stream")
         return storage_path
     except Exception as e:
         _logger.warning("Purchase-bill invoice attachment upload failed (non-fatal): %s", e)

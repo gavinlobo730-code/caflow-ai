@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from core.permissions import rbac
 from core.uploads import read_limited
+from core.storage_door import storage_folder
 from domain.branding import image_source
 from models.common import api_response
 from repositories.branding_repository import branding_repo
@@ -199,15 +200,11 @@ def upload_logo(
     content = read_limited(file, 5 * 1024 * 1024, message="Logo file must be smaller than 5 MB.")
 
     try:
-        from core.supabase_client import get_service_supabase
-        svc = get_service_supabase()
+        # The server's client bound to this firm's own logo folder, `logos/{firm}/` (core/storage_door, POST-A-339).
+        store = storage_folder(_LOGO_BUCKET, "logos", firm_id)
         path = f"logos/{firm_id}/logo.{ext}"
-        svc.storage.from_(_LOGO_BUCKET).upload(
-            path,
-            content,
-            file_options={"content-type": file.content_type, "upsert": "true"},
-        )
-        logo_url = svc.storage.from_(_LOGO_BUCKET).get_public_url(path)
+        store.upload(path, content, file.content_type or "application/octet-stream", upsert=True)
+        logo_url = store.get_public_url(path)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Logo upload failed: {exc}") from exc
 

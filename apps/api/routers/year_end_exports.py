@@ -28,6 +28,7 @@ from services.audit_service import log_event
 # rather than a sixth copy of the same check.
 from routers.year_end import _assert_engagement_scope
 from core.ist_clock import ist_now
+from core.storage_door import StoragePathRefused, storage_folder
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -167,13 +168,11 @@ def _upload_and_record(
 
     path = _storage_path(firm_id, client_id, financial_year, filename)
 
-    # Upload to Supabase Storage
+    # Upload to Supabase Storage, through the server's client bound to this engagement's own folder
+    # `{firm}/{client}/{financial year}/` (core/storage_door, POST-A-339): the route has asked whether the caller may touch the
+    # engagement, and the door will not store a key outside it.
     try:
-        db.storage.from_(_STORAGE_BUCKET).upload(
-            path=path,
-            file=pdf_bytes,
-            file_options={"content-type": "application/pdf"},
-        )
+        storage_folder(_STORAGE_BUCKET, firm_id, client_id, financial_year).upload(path, pdf_bytes, "application/pdf")
     except Exception as e:
         # Storage upload is non-critical in dev mode — log and continue
         if os.environ.get("APP_ENV") == "development":
@@ -397,7 +396,7 @@ def get_download_url(
     # M2 audit finding: never resolved the engagement at all — a signed,
     # live download URL to another client's export PDF was reachable by
     # any same-firm caller, not just those assigned to that client.
-    _assert_engagement_scope(current_user, engagement_id)
+    eng = _assert_engagement_scope(current_user, engagement_id)
 
     if _USE_MOCK:
         exports = _MOCK_EXPORTS.get(engagement_id, [])
@@ -434,13 +433,15 @@ def get_download_url(
     if not export:
         raise HTTPException(status_code=404, detail="Export not found")
 
-    # Generate signed URL with 1-hour (3600 seconds) expiry
+    # Generate signed URL with 1-hour (3600 seconds) expiry. The key is a column of the row, so it is signed only if it sits under
+    # the ENGAGEMENT's own firm, client and year folder, the one the scope check above proved the caller may touch and not what
+    # the export row says about itself: a row that names somebody else's object is the same fixed 404 as a missing one.
     try:
-        signed = db.storage.from_(_STORAGE_BUCKET).create_signed_url(
-            path=export["storage_path"],
-            expires_in=3600,
-        )
+        signed = storage_folder(_STORAGE_BUCKET, current_user["firm_id"], eng["client_id"],
+                                eng["financial_year"]).create_signed_url(export["storage_path"], 3600)
         download_url = signed.get("signedURL") or signed.get("signed_url") or ""
+    except StoragePathRefused as refused:
+        raise HTTPException(status_code=404, detail="Export not found") from refused
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not generate signed URL: {e}")
 

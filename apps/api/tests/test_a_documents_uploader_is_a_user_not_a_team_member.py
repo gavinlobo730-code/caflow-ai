@@ -59,7 +59,8 @@ def _route(monkeypatch, *, mock: bool):
     import core.supabase_client as sc
     import routers.documents as docs
 
-    monkeypatch.setattr(sc, "get_supabase", lambda: _Supabase())
+    # Storage is reached through the door (`core/storage_door`), which is the SERVER's client (POST-A-339).
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: _Supabase())
     monkeypatch.setattr(docs, "_USE_MOCK", mock)
     monkeypatch.setattr(docs, "assert_partner_for_internal_id", lambda *a, **k: None)
     monkeypatch.setattr(docs, "assert_client_access", lambda *a, **k: None)

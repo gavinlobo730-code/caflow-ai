@@ -143,3 +143,42 @@ def test_the_per_user_client_still_carries_the_callers_token(_fake_supabase_env)
     client = sc.get_user_supabase("eyJfake.user.token")
 
     assert "eyJfake.user.token" in client.postgrest.session.headers.get("Authorization", "")
+
+
+# ── Storage has its own httpx session, and it is the shared service client's (POST-A-339) ─────────────────────────────────────────
+# storage3 0.9 builds `http2=True` itself and supabase-py keeps one SyncStorageClient per client. Every file the API stores, signs
+# or removes goes through the shared service-role client since `core/storage_door`, so the situation above applies to Storage too.
+
+def test_the_shared_service_clients_storage_session_is_built_without_http2(_fake_supabase_env):
+    storage = sc.get_service_supabase().storage
+    assert storage.session._transport._pool._http2 is False, "Storage is on one shared HTTP/2 connection again"
+    assert storage.session._transport._pool._http1 is True
+
+
+def test_a_bucket_proxy_uses_the_rebuilt_session_and_keeps_the_connection_settings(_fake_supabase_env):
+    """The library keeps the session twice (`session`, and `_client`, which `from_` hands to each bucket): replacing only the
+    first would leave every upload and every signed link on the old HTTP/2 session."""
+    storage = sc.get_service_supabase().storage
+    assert storage._client is storage.session
+    bucket = storage.from_("Documents")
+    assert bucket._client is storage.session and bucket._client._transport._pool._http2 is False
+    assert str(storage.session.base_url).startswith("https://example.supabase.co/storage/v1")
+    assert storage.session.headers.get("apikey") == "eyJfake.service.key"
+    assert sc.get_service_supabase().storage is storage, "the Storage client was rebuilt on every read"
+
+
+def test_a_client_without_a_storage_client_is_left_alone():
+    class _Shapeless:
+        @property
+        def storage(self):
+            raise RuntimeError("the shape changed")
+
+    assert sc._force_http1_storage(_Shapeless()) is not None
+
+
+def test_storage3_still_defaults_to_http2_so_the_storage_fix_is_still_needed():
+    import inspect
+    from storage3._sync.client import SyncStorageClient
+
+    assert "http2=True" in inspect.getsource(SyncStorageClient._create_session), (
+        "storage3 no longer forces HTTP/2 — re-check whether core.supabase_client._force_http1_storage is still doing anything")

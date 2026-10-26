@@ -122,67 +122,35 @@ _DOCUMENT_BUCKETS = {"Documents", "year-end-exports"}
 
 
 def _python_upload_paths() -> list[tuple[str, str]]:
-    """(file:line, rendered template) for every `.upload(` onto a bucket these
-    policies govern. The template is rendered with `{…}` for an interpolation so
-    the shape reads off directly."""
+    """(file:line, rendered folder) for every door the API opens onto a bucket these policies governed.
+
+    Since POST-A-339 (the Storage step) no route uploads with the caller's own client: every file goes through
+    `core/storage_door.storage_folder(bucket, folder, folder, ...)`, the server's client bound to the folders named. So what 469
+    asked of a path (the firm first and the client second) is read off the DOOR'S folders, which is where the route now says it:
+    the template is the folders joined by `/`, `{…}` standing for a value."""
     found: list[tuple[str, str]] = []
     for path in sorted((API_ROOT / "routers").glob("*.py")):
         src = path.read_text(encoding="utf-8")
-        if ".upload(" not in src or "storage" not in src:
+        if "storage_folder(" not in src:
             continue
         tree = ast.parse(src)
-        module_funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
-        for fn in ast.walk(tree):
-            if not isinstance(fn, ast.FunctionDef):
+        constants = {t.id: n.value.value for n in tree.body if isinstance(n, ast.Assign) and isinstance(n.value, ast.Constant)
+                     for t in n.targets if isinstance(t, ast.Name)}
+        for call in ast.walk(tree):
+            if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "storage_folder"):
                 continue
-            # An upload under the SERVICE key matches the service-role policy and
-            # never reaches the firm-folder one (shared_reports writes
-            # `shared_reports/{client}/…` that way, on purpose).
-            if "get_service_supabase" in ast.unparse(fn):
-                continue
-            for call in ast.walk(fn):
-                if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
-                        and call.func.attr == "upload"):
-                    continue
-                if "storage" not in ast.unparse(call.func):
-                    continue
-                bucket_src = ast.unparse(call.func.value)
-                if not any(b in bucket_src for b in ("BUCKET", "Documents")) \
-                        or "LOGO" in bucket_src or "firm-assets" in bucket_src:
-                    # shared_reports and branding write other buckets, as the
-                    # service role, and have their own policies.
-                    if "_STORAGE_BUCKET" not in bucket_src:
-                        continue
-                arg = next((k.value for k in call.keywords if k.arg == "path"), None) \
-                    or (call.args[0] if call.args else None)
-                tmpl = _render(arg, fn, module_funcs)
-                found.append((f"{path.name}:{call.lineno}", tmpl))
+            bucket = call.args[0]
+            name = constants.get(bucket.id) if isinstance(bucket, ast.Name) else getattr(bucket, "value", None)
+            if name not in _DOCUMENT_BUCKETS:
+                continue          # `shared-reports` and `firm-assets` have their own layouts and never had these policies
+            folders = [a.value if isinstance(a, ast.Constant) else "{" + ast.unparse(a) + "}" for a in call.args[1:]]
+            found.append((f"{path.name}:{call.lineno}", "/".join(folders)))
     return found
-
-
-def _render(node, fn: ast.FunctionDef, module_funcs: dict) -> str:
-    if isinstance(node, ast.JoinedStr):
-        out = ""
-        for v in node.values:
-            out += v.value if isinstance(v, ast.Constant) else "{" + ast.unparse(v.value) + "}"
-        return out
-    if isinstance(node, ast.Name):
-        for stmt in ast.walk(fn):
-            if isinstance(stmt, ast.Assign) and any(
-                    isinstance(t, ast.Name) and t.id == node.id for t in stmt.targets):
-                return _render(stmt.value, fn, module_funcs)
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
-            and node.func.id in module_funcs:
-        target = module_funcs[node.func.id]
-        for stmt in ast.walk(target):
-            if isinstance(stmt, ast.Return) and stmt.value is not None:
-                return _render(stmt.value, target, module_funcs)
-    return ast.unparse(node) if node is not None else ""
 
 
 def _the_second_folder_is_the_client(template: str) -> bool:
     folders = template.split("/")
-    if len(folders) < 3:
+    if len(folders) < 2:
         return False
     return "firm" in folders[0].lower() and "client" in folders[1].lower()
 
@@ -190,14 +158,14 @@ def _the_second_folder_is_the_client(template: str) -> bool:
 def test_every_api_upload_path_is_firm_then_client_then_the_rest():
     paths = _python_upload_paths()
     sites = {site.split(":")[0] for site, _ in paths}
-    # Not vacuous: the five known uploaders are all seen.
-    assert {"documents.py", "debit_notes.py", "purchase_credit_notes.py",
-            "document_intelligence_v1.py", "year_end_exports.py"} <= sites, sorted(sites)
+    # Not vacuous: the known doors onto these two buckets are all seen.
+    assert {"documents.py", "debit_notes.py", "purchase_credit_notes.py", "purchase_bills.py", "document_intelligence_v1.py",
+            "year_end_exports.py", "client_documents.py", "it_notice_attachments.py", "portal_data.py"} <= sites, sorted(sites)
     for site, tmpl in paths:
         assert _the_second_folder_is_the_client(tmpl), (
-            f"{site} writes '{tmpl}'. Migration 469 reads the SECOND folder as the client "
-            f"and asks can_access_client about it, so this upload is refused for every "
-            f"member but a Partner. Write {{firm_id}}/{{client_id}}/…")
+            f"{site} opens the folder '{tmpl}'. Every file of these buckets sits under {{firm_id}}/{{client_id}}/…: the firm "
+            f"first and the client second, which is what the door's bound folder (and the policies of migration 469 while they "
+            f"stood) read.")
 
 
 def _web_upload_paths() -> list[tuple[str, str]]:

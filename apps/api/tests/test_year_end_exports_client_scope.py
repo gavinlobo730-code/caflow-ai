@@ -205,14 +205,76 @@ class _FakeStorage:
 
 def test_live_get_download_url_allows_an_own_clients_engagement(deny, monkeypatch):
     db = _e2e_setup(monkeypatch)
+    # Storage is the SERVER's client through the door bound to the row's own firm, client and year folder (POST-A-339).
     monkeypatch.setattr(db, "storage", _FakeStorage(), raising=False)
-    db.seed("year_end_engagements", {"id": "E-MINE", "firm_id": FIRM,
+    import core.supabase_client as sc
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: db)
+    db.seed("year_end_engagements", {"id": "E-MINE", "firm_id": FIRM, "financial_year": "2024-25",
                                      "client_id": MINE, "status": "approved"})
-    export = db.seed("year_end_exports", {"engagement_id": "E-MINE", "firm_id": FIRM,
-                                          "storage_path": "F1/C-MINE/2024-25/pack.pdf"})
+    export = db.seed("year_end_exports", {"engagement_id": "E-MINE", "firm_id": FIRM, "client_id": MINE,
+                                          "financial_year": "2024-25", "storage_path": f"{FIRM}/{MINE}/2024-25/pack.pdf"})
     resp = yee.get_download_url("E-MINE", export["id"], current_user=EXEC_USER)
     assert resp["data"]["export_id"] == export["id"]
     assert "fake-storage.test" in resp["data"]["download_url"]
+
+
+def test_live_get_download_url_never_signs_a_key_outside_the_rows_own_folder(deny, monkeypatch):
+    """The `storage_path` column is writable over PostgREST, so a row of MY client's engagement can be made to name another
+    client's pack. The door is bound to the row's own `{firm}/{client}/{year}/` folder and refuses it: the same 404 as a
+    missing export, and nothing is signed."""
+    db = _e2e_setup(monkeypatch)
+    calls: list = []
+
+    class _Bucket(_FakeStorageBucket):
+        def create_signed_url(self, path, expires_in):
+            calls.append(path)
+            return super().create_signed_url(path, expires_in)
+
+    monkeypatch.setattr(db, "storage", type("St", (), {"from_": lambda self, b: _Bucket()})(), raising=False)
+    import core.supabase_client as sc
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: db)
+    db.seed("year_end_engagements", {"id": "E-MINE", "firm_id": FIRM, "financial_year": "2024-25",
+                                     "client_id": MINE, "status": "approved"})
+    for bad in (f"{FIRM}/{THEIRS}/2024-25/pack.pdf", f"{FIRM}/{MINE}/2024-25/../../{THEIRS}/2024-25/pack.pdf",
+                f"other-firm/{MINE}/2024-25/pack.pdf", f"{FIRM}/{MINE}/2023-24/pack.pdf"):
+        export = db.seed("year_end_exports", {"engagement_id": "E-MINE", "firm_id": FIRM, "client_id": MINE,
+                                              "financial_year": "2024-25", "storage_path": bad})
+        with pytest.raises(HTTPException) as exc:
+            yee.get_download_url("E-MINE", export["id"], current_user=EXEC_USER)
+        assert exc.value.status_code == 404 and exc.value.detail == "Export not found", bad
+    assert calls == []
+
+
+@pytest.mark.parametrize("row_client, row_year", [
+    (THEIRS, "2024-25"),     # the row claims another client
+    (MINE, "2019-20"),       # the row claims another year of the same client
+    (THEIRS, "2019-20"),     # both
+], ids=["another client", "another year", "both"])
+def test_live_get_download_url_is_bound_to_the_engagement_and_not_to_what_the_export_row_says_about_itself(
+        deny, monkeypatch, row_client, row_year):
+    """The export row's own `client_id` and `financial_year` are columns of a row an Executive can rewrite over PostgREST. The
+    door is bound to the folder of the ENGAGEMENT the scope check proved the caller may touch, so a row that claims another
+    client or year, and a key under that claim, is the same 404 as a missing export and signs nothing."""
+    db = _e2e_setup(monkeypatch)
+    calls: list = []
+
+    class _Bucket(_FakeStorageBucket):
+        def create_signed_url(self, path, expires_in):
+            calls.append(path)
+            return super().create_signed_url(path, expires_in)
+
+    monkeypatch.setattr(db, "storage", type("St", (), {"from_": lambda self, b: _Bucket()})(), raising=False)
+    import core.supabase_client as sc
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: db)
+    db.seed("year_end_engagements", {"id": "E-MINE", "firm_id": FIRM, "financial_year": "2024-25",
+                                     "client_id": MINE, "status": "approved"})
+    export = db.seed("year_end_exports", {"engagement_id": "E-MINE", "firm_id": FIRM, "client_id": row_client,
+                                          "financial_year": row_year,
+                                          "storage_path": f"{FIRM}/{row_client}/{row_year}/pack.pdf"})
+    with pytest.raises(HTTPException) as exc:
+        yee.get_download_url("E-MINE", export["id"], current_user=EXEC_USER)
+    assert exc.value.status_code == 404 and exc.value.detail == "Export not found"
+    assert calls == []
 
 
 def test_live_get_download_url_missing_export_id_is_404_not_500(deny, monkeypatch):

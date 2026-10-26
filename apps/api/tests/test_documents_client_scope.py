@@ -161,6 +161,44 @@ def test_downloading_your_own_document_still_works(deny, monkeypatch):
     assert out["success"] is True
 
 
+def _signing_world(monkeypatch):
+    """The REAL door (`core/storage_door`) over a recording server client: what was asked to be signed, and nothing else."""
+    signed: list = []
+    bucket = type("B", (), {"create_signed_url": lambda self, path, expires_in=60: (
+        signed.append(path) or {"signedURL": f"https://signed.example/{path}"})})()
+    server = type("S", (), {"storage": type("St", (), {"from_": lambda self, name: bucket})()})()
+    import core.supabase_client as sc
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: server)
+    monkeypatch.setattr(dc, "_USE_MOCK", False)
+    return signed
+
+
+def test_a_documents_link_is_signed_under_the_rows_own_firm_and_client(deny, monkeypatch):
+    """The key is a column of the row, and the door is bound to the row's own `{firm}/{client}/`: a key under it is signed
+    (so a door bound to any other folder would refuse the document's own file)."""
+    signed = _signing_world(monkeypatch)
+    key = f"{FIRM}/{MINE}/GST_INVOICE/abc_x.pdf"
+    _seed(monkeypatch, {"id": "D1", "firm_id": FIRM, "client_id": MINE, "storage_path": key})
+    out = dc.get_download_url("D1", current_user=USER)
+    assert out["data"]["download_url"] == f"https://signed.example/{key}"
+    assert signed == [key]
+
+
+@pytest.mark.parametrize("key", [
+    f"{FIRM}/{THEIRS}/GST_INVOICE/abc_x.pdf",      # another client of the same firm
+    f"other-firm/{MINE}/GST_INVOICE/abc_x.pdf",    # another firm
+    f"{FIRM}/{MINE}/../{THEIRS}/x.pdf",            # a climb out
+])
+def test_a_row_that_names_somebody_elses_object_is_a_404_and_signs_nothing(deny, monkeypatch, key):
+    """`storage_path` is writable over PostgREST by an Executive, so the row can be made to name any object."""
+    signed = _signing_world(monkeypatch)
+    _seed(monkeypatch, {"id": "D1", "firm_id": FIRM, "client_id": MINE, "storage_path": key})
+    with pytest.raises(HTTPException) as e:
+        dc.get_download_url("D1", current_user=USER)
+    assert e.value.status_code == 404 and e.value.detail == "Document not found"
+    assert signed == []
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # delete_document
 # ══════════════════════════════════════════════════════════════════════════════
