@@ -123,7 +123,7 @@ def _header(dsn: str, employee: str = EMPLOYEE) -> dict:
         return {}
     names = ("id", "regime", "status", "rent", "rent_v", "lta", "lta_v", "loan", "loan_v", "landlord_pan", "verified", "verified_at",
              "verified_by", "other")
-    return dict(zip(names, rows[0]))
+    return dict(zip(names, rows[0], strict=True))
 
 
 def _lines(dsn: str, declaration_id: str) -> list[tuple]:
