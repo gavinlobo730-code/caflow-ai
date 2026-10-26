@@ -23,7 +23,9 @@ SENSITIVE_TABLES = frozenset({
 #: `SECURITY DEFINER` and read a bank table as whoever calls them (called with a signed-in session's client they fail the day that
 #: session loses its grant), and `replace_bank_transaction_splits`, a definer executable by the SERVICE ROLE ALONE (migration 256;
 #: production's ACL read on 26-10-2026) that was being called on the caller's own sign-in and so refused by the database.
-SENSITIVE_RPCS = frozenset({"bank_register", "bank_reconciling_items", "replace_bank_transaction_splits"})
+#: `file_it_declaration` (migration 548) writes the payroll tax-declaration tables and is executable by the service role alone, so it is
+#: called through `privileged_for` too (POST-A-340).
+SENSITIVE_RPCS = frozenset({"bank_register", "bank_reconciling_items", "replace_bank_transaction_splits", "file_it_declaration"})
 
 
 def is_sensitive(table: str) -> bool:

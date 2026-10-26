@@ -379,6 +379,9 @@ def test_the_two_bank_report_functions_are_called_with_the_privileged_client():
     assert _flagged('def f(db):\n    return db.rpc("bank_reconciling_items", {}).execute()\n')
     assert not _flagged(_HEAD + 'def f(db):\n    return privileged_for(db).rpc("bank_register", {}).execute()\n')
     assert not _flagged('def f(db):\n    return db.rpc("some_definer_function", {}).execute()\n')
+    # and the one that files a tax declaration (migration 548, executable by the service role alone)
+    assert _flagged('def f(db):\n    return db.rpc("file_it_declaration", {}).execute()\n')
+    assert not _flagged(_HEAD + 'def f(db):\n    return privileged_for(db).rpc("file_it_declaration", {}).execute()\n')
 
 
 def test_a_table_that_is_not_sensitive_is_left_alone():

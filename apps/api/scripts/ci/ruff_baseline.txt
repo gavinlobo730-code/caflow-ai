@@ -558,7 +558,6 @@ services/year_end_financial_service.py :: C901 :: generate_financial_statements 
 services/year_end_financial_service.py :: PLR0915 :: generate_financial_statements :: 101
 services/year_end_pdf_service.py :: F401 :: <module> :: 1
 services/year_end_pdf_service.py :: F541 :: _cover_page :: 3
-tests/e2e_harness.py :: F401 :: <module> :: 1
 tests/generate_gst_parity_vectors.py :: B905 :: build :: 2
 tests/test_234a_234b_interest.py :: F401 :: <module> :: 1
 tests/test_27q_routing.py :: F401 :: _refusal :: 1

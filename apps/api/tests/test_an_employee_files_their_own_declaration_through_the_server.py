@@ -15,8 +15,12 @@ WHAT THE DOOR DOES, each pinned here:
     declaration the CA has finished verifying is read-only (409);
   * THE STAFF DOOR'S VALIDATION applies, in the employee's own words (a 422 whose sentence the tab shows), and a refused
     declaration writes nothing;
-  * THE LINES ARE REPLACED WHOLESALE, new before old, and a failure part-way puts back what it replaced: the earlier lines stay,
-    the header goes back to what it was, a declaration that did not exist is removed again, and the caller still gets the failure;
+  * THE LINES ARE REPLACED WHOLESALE, and the filing is ONE database call (`file_it_declaration`, migration 548, POST-A-340): the
+    route holds no read-back and no put-back, because the function does the header, the lines and the removal in one transaction
+    under a row lock and a failure inside it leaves everything as it was (proved against real Postgres, with two concurrent callers,
+    by `test_548_..._pg.py`; the harness's twin of the function is held to the same refusals here). The route turns the function's
+    three refusals into words: a verified declaration is a 409 that says it is read-only, a filing that could not take the row is a
+    409 that says the declaration changed, an employee that is not the principal's is a 403;
   * ONLY the caller's own declaration is ever read or returned.
 """
 from __future__ import annotations
@@ -54,6 +58,9 @@ def world(monkeypatch):
     app.include_router(portal_mod.router)
     app.dependency_overrides[get_current_portal_employee] = lambda: dict(ME_CTX)
     db.audit = audit
+    # The principal's employee exists in production, and the function refuses an employee that is not that firm's and that client's.
+    db.seed("payroll_employees", {"id": ME, "firm_id": FIRM, "client_id": CLIENT, "name": "Me"})
+    db.seed("payroll_employees", {"id": COLLEAGUE, "firm_id": FIRM, "client_id": CLIENT, "name": "Colleague"})
     return TestClient(app, raise_server_exceptions=False), db
 
 
@@ -228,131 +235,91 @@ def test_a_pan_is_upper_cased_and_a_blank_one_stays_blank(world):
     assert _heads(db)[0]["landlord_pan"] == "ABCDE1234F"
 
 
-# ── a failure part-way puts back what it replaced ────────────────────────────────────────────────────────────────────
+# ── the filing is one call, and its refusals are turned into words ─────────────────────────────────────────────────────
 
-class _Fail:
-    """Make the n-th matching write on a table raise or come back short, on top of the harness's own double."""
+def _watch_the_function(monkeypatch):
+    """Record the arguments the route hands `file_it_declaration`, and still run the harness's twin of it."""
+    seen: list = []
+    real = harness._Rpc.execute
 
-    def __init__(self, monkeypatch, table, op, *, nth=1, short=False):
-        self.table, self.op, self.nth, self.short, self.seen = table, op, nth, short, 0
-        real = harness._Query.execute
-        me = self
+    def execute(rpc):
+        if rpc.fn == "file_it_declaration":
+            seen.append(rpc.params)
+        return real(rpc)
 
-        def execute(q):
-            if q.table == me.table and q._op == me.op:
-                me.seen += 1
-                if me.seen == me.nth:
-                    if me.short:
-                        return harness._Result([])
-                    raise RuntimeError("write refused")
-            return real(q)
-
-        monkeypatch.setattr(harness._Query, "execute", execute)
+    monkeypatch.setattr(harness._Rpc, "execute", execute)
+    return seen
 
 
-def test_a_line_that_cannot_be_written_leaves_the_earlier_lines_and_puts_the_header_back(world, monkeypatch):
+def test_the_route_files_with_one_call_that_refuses_a_verified_declaration_and_leaves_out_a_head_declared_at_nothing(world, monkeypatch):
+    client, _ = world
+    seen = _watch_the_function(monkeypatch)
+    r = _put(client, items=[{"section": "80C", "amount_declared_paise": 15_000_000}, {"section": "80TTA", "amount_declared_paise": 0}])
+    assert r.status_code == 200, r.text
+    [params] = seen
+    assert params["p_refuse_verified"] is True, "the employee's door must refuse a verified declaration"
+    assert [i["section"] for i in params["p_items"]] == ["80C"]
+    assert (params["p_declaration"]["firm_id"], params["p_declaration"]["client_id"], params["p_declaration"]["employee_id"]) == (FIRM, CLIENT, ME)
+
+
+def test_every_figure_the_employee_typed_reaches_the_function_under_its_own_key_and_the_audit_row_counts_the_lines(world, monkeypatch):
+    """Every box carries its own non-zero value (the others of this file use nothing), so a figure under another box's key, a negated
+    flag or a dropped name is a different payload. The audit row says how many lines were filed, and a head at nothing is not one."""
     client, db = world
-    head = _seed_declaration(db, rent_verified=4_000_000, lines=(("80C", 5_000_000), ("80D-parents", 1_000_000)))
-    before_head = dict(head)
-    before_lines = _lines(db)
-    _Fail(monkeypatch, "payroll_it_declaration_items", "insert", nth=2)
-    r = _put(client, regime="new", rent_paid_declared_paise=0,
-             items=[{"section": "80CCD(1B)", "amount_declared_paise": 1}, {"section": "80D-self", "amount_declared_paise": 2}])
-    assert r.status_code == 500
-    assert _lines(db) == before_lines, "the earlier lines stay and the line that did go in came out again"
-    [after] = _heads(db)
-    assert {k: after[k] for k in before_head if k != "updated_at"} == {k: v for k, v in before_head.items() if k != "updated_at"}
-    assert db.audit == []
+    seen = _watch_the_function(monkeypatch)
+    r = _put(client, regime="old", rent_paid_declared_paise=1_200_000, landlord_name="Landlord", landlord_address="12 Rose Street",
+             landlord_pan="ABCDE1234F", rent_is_metro=True, lta_declared_paise=2_300_000, home_loan_interest_declared_paise=3_400_000,
+             lender_name="Bank", lender_pan="ABCDE1234G", other_income_declared_paise=4_500_000,
+             house_property_loss_declared_paise=5_600_000,
+             items=[{"section": "80C", "amount_declared_paise": 6_700_000}, {"section": "80D-self", "amount_declared_paise": 800_000},
+                    {"section": "80TTA", "amount_declared_paise": 0}])
+    assert r.status_code == 200, r.text
+    [params] = seen
+    assert params["p_declaration"] == {
+        "firm_id": FIRM, "client_id": CLIENT, "employee_id": ME, "fy": FY, "regime": "old",
+        "rent_paid_declared_paise": 1_200_000, "landlord_name": "Landlord", "landlord_address": "12 Rose Street",
+        "landlord_pan": "ABCDE1234F", "rent_is_metro": True,
+        "lta_declared_paise": 2_300_000,
+        "home_loan_interest_declared_paise": 3_400_000, "lender_name": "Bank", "lender_pan": "ABCDE1234G",
+        "other_income_declared_paise": 4_500_000,
+        "house_property_loss_declared_paise": 5_600_000,
+    }
+    assert params["p_items"] == [
+        {"section": "80C", "label": "", "amount_declared_paise": 6_700_000, "proof_reference": "", "proof_attachments": []},
+        {"section": "80D-self", "label": "", "amount_declared_paise": 800_000, "proof_reference": "", "proof_attachments": []},
+    ]
+    [(_, kwargs)] = db.audit
+    assert kwargs["new_data"] == {"fy": FY, "regime": "old", "lines": 2}
+    assert kwargs["metadata"] == {"employee_id": ME, "principal": "PortalEmployee"}
 
 
-def test_a_delete_that_removed_fewer_lines_than_were_there_stops_the_filing_and_puts_back(world, monkeypatch):
-    """A refusal that came back as an empty answer is the defect POST-A-255 found in the browser's version of this save."""
+def test_the_employee_door_files_with_the_server_client_and_never_the_requests(world, monkeypatch):
+    """The function is executable by the service role alone: the door builds the server's client itself, and the request's own client
+    is wired to raise."""
     client, db = world
-    head = _seed_declaration(db, lines=(("80C", 5_000_000),))
-    before_lines = _lines(db)
-    _Fail(monkeypatch, "payroll_it_declaration_items", "delete", nth=1, short=True)
-    r = _put(client, items=[{"section": "80D-self", "amount_declared_paise": 7}])
-    assert r.status_code == 500
-    assert _lines(db) == before_lines and _heads(db)[0]["regime"] == head["regime"]
-    assert db.audit == []
+    import core.supabase_client as sc
+    called = []
+    monkeypatch.setattr(sc, "get_supabase", lambda *a, **k: (_ for _ in ()).throw(AssertionError("the request's own client was used")))
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: (called.append(1), db)[1])
+    r = _put(client)
+    assert r.status_code == 200, r.text
+    assert called, "the door never asked for the server's client"
 
 
-def test_a_first_filing_that_fails_part_way_leaves_no_declaration_at_all(world, monkeypatch):
-    client, db = world
-    _Fail(monkeypatch, "payroll_it_declaration_items", "insert", nth=2)
-    r = _put(client, items=[{"section": "80C", "amount_declared_paise": 1}, {"section": "80D-self", "amount_declared_paise": 2}])
-    assert r.status_code == 500
-    assert db.rows("payroll_it_declarations") == [] and db.rows("payroll_it_declaration_items") == []
-
-
-def test_the_new_lines_go_in_before_the_old_ones_come_out(world, monkeypatch):
-    client, db = world
-    _seed_declaration(db, lines=(("80C", 5_000_000),))
-    order: list = []
-    real = harness._Query.execute
-
-    def execute(q):
-        if q.table == "payroll_it_declaration_items" and q._op in ("insert", "delete"):
-            order.append(q._op)
-        return real(q)
-
-    monkeypatch.setattr(harness._Query, "execute", execute)
-    assert _put(client, items=[{"section": "80D-self", "amount_declared_paise": 7}]).status_code == 200
-    assert order == ["insert", "delete"]
-
-
-def test_a_put_back_that_itself_fails_is_reported_and_the_real_failure_still_reaches_the_caller(world, monkeypatch):
-    client, db = world
-    _seed_declaration(db, lines=(("80C", 5_000_000),))
-    reported: list = []
-    monkeypatch.setattr(portal_mod, "capture_soft_failure", lambda exc, **kw: reported.append((str(exc), kw["operation"])))
-    real = harness._Query.execute
-    header_updates = {"n": 0}
-
-    def execute(q):
-        if q.table == "payroll_it_declaration_items" and q._op == "insert":
-            raise RuntimeError("insert refused")
-        if q.table == "payroll_it_declarations" and q._op == "update":
-            header_updates["n"] += 1
-            if header_updates["n"] == 2:   # the first is the filing's own write; the second is the put-back
-                raise RuntimeError("restore refused")
-        return real(q)
-
-    monkeypatch.setattr(harness._Query, "execute", execute)
-    r = _put(client, items=[{"section": "80D-self", "amount_declared_paise": 7}])
-    assert r.status_code == 500
-    assert ("restore refused", "employee_declaration.put_back_header") in reported
-
-
-# ── the lock is decided in the write, the put-back never undoes a verification, nothing is lost to a delete that raised ──
-
-def _after_first(monkeypatch, table, op, hook):
-    """Run `hook(query)` once, right after the first matching request has been answered."""
-    real = harness._Query.execute
-    state = {"done": False}
-
-    def execute(q):
-        res = real(q)
-        if not state["done"] and q.table == table and q._op == op:
-            state["done"] = True
-            hook(q)
-        return res
-
-    monkeypatch.setattr(harness._Query, "execute", execute)
-
-
-def test_a_ca_who_finishes_verifying_between_the_read_and_the_write_is_not_overwritten(world, monkeypatch):
-    """The 409 is not only a read: migration 297's update policy asked `proofs_verified IS FALSE` of the statement itself, and the
-    update here carries the same condition, so a verification that lands after the read wins and the filing changes nothing."""
+def test_a_ca_who_finishes_verifying_before_the_function_takes_the_row_wins(world, monkeypatch):
+    """The refusal is decided INSIDE the function, in the transaction that would have changed the declaration, so a verification
+    that lands between this request's start and its write stands and the filing changes nothing."""
     client, db = world
     head = _seed_declaration(db, lines=(("80C", 5_000_000),))
     before = ([dict(r) for r in db.rows("payroll_it_declaration_items")], dict(head))
+    real = harness._Rpc.execute
 
-    def verify(q):
-        row = db.rows("payroll_it_declarations")[0]
-        row.update(proofs_verified=True, rent_paid_verified_paise=4_000_000, verified_by="u1")
+    def verify_first(rpc):
+        if rpc.fn == "file_it_declaration":
+            db.rows("payroll_it_declarations")[0].update(proofs_verified=True, rent_paid_verified_paise=4_000_000, verified_by="u1")
+        return real(rpc)
 
-    _after_first(monkeypatch, "payroll_it_declarations", "select", verify)
+    monkeypatch.setattr(harness._Rpc, "execute", verify_first)
     r = _put(client, items=[{"section": "80D-self", "amount_declared_paise": 7}])
     assert r.status_code == 409 and "read-only" in r.json()["detail"]
     row = db.rows("payroll_it_declarations")[0]
@@ -362,94 +329,70 @@ def test_a_ca_who_finishes_verifying_between_the_read_and_the_write_is_not_overw
     assert db.audit == []
 
 
-def test_a_put_back_never_undoes_a_verification_that_landed_meanwhile(world, monkeypatch):
+def _function_raises(monkeypatch, code, message):
+    from postgrest.exceptions import APIError
+
+    def boom(rpc):
+        raise APIError({"message": message, "code": code, "hint": None, "details": None})
+
+    monkeypatch.setattr(harness._Rpc, "_fn_file_it_declaration", boom)
+
+
+def test_a_filing_that_could_not_take_the_row_is_a_409_in_words_and_writes_nothing(world, monkeypatch):
     client, db = world
-    _seed_declaration(db, lines=(("80C", 5_000_000),))
-    real = harness._Query.execute
-
-    def execute(q):
-        if q.table == "payroll_it_declaration_items" and q._op == "insert":
-            # the CA finishes verifying, and then this line cannot be written
-            db.rows("payroll_it_declarations")[0].update(proofs_verified=True, rent_paid_verified_paise=777)
-            raise RuntimeError("insert refused")
-        return real(q)
-
-    monkeypatch.setattr(harness._Query, "execute", execute)
-    assert _put(client, items=[{"section": "80D-self", "amount_declared_paise": 7}]).status_code == 500
-    row = db.rows("payroll_it_declarations")[0]
-    assert row["proofs_verified"] is True and row["rent_paid_verified_paise"] == 777
-
-
-def test_a_delete_that_was_applied_and_then_raised_leaves_the_old_lines_exactly_as_they_were(world, monkeypatch):
-    """The old lines' own ids and figures (including what a verifier had put on them) are written back, not just their sections."""
-    client, db = world
-    _seed_declaration(db, lines=(("80C", 5_000_000), ("80D-parents", 1_000_000)))
-    snapshot = sorted((r["id"], r["section"], r["amount_declared_paise"], r["amount_verified_paise"], r["status"])
-                      for r in db.rows("payroll_it_declaration_items"))
-    real = harness._Query.execute
-    seen = {"n": 0}
-
-    def execute(q):
-        if q.table == "payroll_it_declaration_items" and q._op == "delete":
-            seen["n"] += 1
-            if seen["n"] == 1:
-                real(q)                                   # the database applied it ...
-                raise RuntimeError("connection reset")    # ... and the answer never arrived
-        return real(q)
-
-    monkeypatch.setattr(harness._Query, "execute", execute)
-    assert _put(client, items=[{"section": "80CCD(1B)", "amount_declared_paise": 9}]).status_code == 500
-    assert sorted((r["id"], r["section"], r["amount_declared_paise"], r["amount_verified_paise"], r["status"])
-                  for r in db.rows("payroll_it_declaration_items")) == snapshot
-    assert _heads(db)[0]["regime"] == "new" and _heads(db)[0]["landlord_name"] == "Old landlord"
-
-
-def test_a_line_a_concurrent_filing_added_is_not_left_beside_the_new_ones(world, monkeypatch):
-    client, db = world
-    head = _seed_declaration(db, lines=(("80C", 5_000_000),))
-
-    def another_filer(q):
-        db.seed("payroll_it_declaration_items", {"firm_id": FIRM, "declaration_id": head["id"], "section": "80TTA", "label": "",
-                                                 "amount_declared_paise": 99, "amount_verified_paise": 0, "status": "declared",
-                                                 "proof_reference": "", "proof_attachments": []})
-
-    _after_first(monkeypatch, "payroll_it_declaration_items", "insert", another_filer)
-    r = _put(client, items=[{"section": "80D-self", "amount_declared_paise": 7}])
-    assert r.status_code == 200, r.text
-    assert _lines(db) == [("80D-self", 7)], "exactly the lines filed: neither the old ones nor the stranger's"
-
-
-def test_a_first_filing_made_from_another_window_at_the_same_instant_is_a_409_in_words(world, monkeypatch):
-    client, db = world
-    real = harness._Query.execute
-
-    class _Dup(Exception):
-        code = "23505"
-
-    def execute(q):
-        if q.table == "payroll_it_declarations" and q._op == "insert":
-            raise _Dup('duplicate key value violates unique constraint "payroll_it_declarations_employee_fy_key"')
-        return real(q)
-
-    monkeypatch.setattr(harness._Query, "execute", execute)
+    _function_raises(monkeypatch, "40001", "file_it_declaration: could not take the declaration for employee x and year 2026-27")
     r = _put(client)
     assert r.status_code == 409 and "changed while you were saving" in r.json()["detail"]
-    assert db.rows("payroll_it_declaration_items") == [] and db.audit == []
+    assert db.rows("payroll_it_declarations") == [] and db.rows("payroll_it_declaration_items") == [] and db.audit == []
 
 
-def test_the_two_payload_literals_do_not_drift():
-    """The header is written out in full for a declaration that exists (an update) and for one that does not (an insert), so the
-    column guard reads every name; they must carry the same columns or one door writes what the other forgets."""
-    import ast
-    import inspect
-    import textwrap
-    tree = ast.parse(textwrap.dedent(inspect.getsource(portal_mod.file_employee_tax_declaration)))
-    literals = [n for n in ast.walk(tree) if isinstance(n, ast.Dict)
-                and any(isinstance(k, ast.Constant) and k.value == "proofs_verified" for k in n.keys)]
-    assert len(literals) == 2, "the route must hold exactly the update payload and the insert payload"
-    keys = [{k.value for k in lit.keys if isinstance(k, ast.Constant)} for lit in literals]
-    assert keys[0] == keys[1]
-    assert {"firm_id", "client_id", "employee_id", "fy", "rent_paid_verified_paise", "proofs_verified", "verified_by"} <= keys[0]
+def test_an_employee_that_is_not_the_principals_is_a_403_and_writes_nothing(world, monkeypatch):
+    client, db = world
+    db._tables["payroll_employees"] = []           # the function proves the employee is this firm's and this client's
+    r = _put(client)
+    assert r.status_code == 403
+    assert db.rows("payroll_it_declarations") == [] and db.rows("payroll_it_declaration_items") == [] and db.audit == []
+
+
+def test_any_other_failure_of_the_function_reaches_the_caller_as_a_failure_and_is_not_audited(world, monkeypatch):
+    client, db = world
+    _function_raises(monkeypatch, "XX000", "something the database did not expect")
+    r = _put(client)
+    assert r.status_code == 500
+    assert db.rows("payroll_it_declarations") == [] and db.audit == []
+
+
+def test_the_twin_refuses_what_the_function_refuses_and_writes_nothing_when_it_does():
+    """The harness's twin is what every door test runs against, so it is held to the function's own refusals: a twin that was
+    kinder than the database would pass a door test the database fails."""
+    from postgrest.exceptions import APIError
+    db = FakeDB()
+    db.seed("payroll_employees", {"id": ME, "firm_id": FIRM, "client_id": CLIENT})
+
+    def call(decl, items, refuse=False):
+        return db.rpc("file_it_declaration", {"p_declaration": decl, "p_items": items, "p_refuse_verified": refuse}).execute().data
+
+    good = {"firm_id": FIRM, "client_id": CLIENT, "employee_id": ME, "fy": FY, "regime": "new"}
+    for bad, code in (({**good, "fy": None}, "22023"), ({**good, "employee_id": "E-other"}, "42501"),
+                      ({**good, "client_id": OTHER_CLIENT}, "42501"), ({**good, "firm_id": OTHER_FIRM}, "42501")):
+        with pytest.raises(APIError) as e:
+            call(bad, [])
+        assert e.value.code == code
+    with pytest.raises(APIError) as e:
+        call(good, "not a list")
+    assert e.value.code == "22023"
+    with pytest.raises(APIError) as e:
+        call(good, [{"section": "80C", "amount_declared_paise": 1}, {"label": "no section"}])
+    assert e.value.code == "23502"
+    assert db.rows("payroll_it_declarations") == [] and db.rows("payroll_it_declaration_items") == [], "a refusal leaves nothing behind"
+    declaration_id = call(good, [{"section": "80C", "amount_declared_paise": 100}])
+    db.rows("payroll_it_declarations")[0].update(proofs_verified=True)
+    with pytest.raises(APIError) as e:
+        call(good, [{"section": "80C", "amount_declared_paise": 1}], refuse=True)
+    assert e.value.code == "P0001" and e.value.message.startswith("declaration_verified:")
+    assert call(good, [{"section": "80D-self", "amount_declared_paise": 2}], refuse=False) == declaration_id, "the staff door replaces it"
+    assert db.rows("payroll_it_declarations")[0]["proofs_verified"] is False
+    assert [(r["section"], r["amount_declared_paise"]) for r in db.rows("payroll_it_declaration_items")] == [("80D-self", 2)]
 
 
 # ── a refusal names the box ──────────────────────────────────────────────────────────────────────────────────────────

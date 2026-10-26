@@ -24,7 +24,7 @@ from __future__ import annotations
 import contextlib
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from services.numbering import NUMBER_SERIES as _NUMBER_SERIES
@@ -806,6 +806,73 @@ class _Rpc:
             "receipt": dict(receipt),
             "allocations": alloc_results,
         }
+
+    def _fn_file_it_declaration(self):
+        """Mirror migration 548 `file_it_declaration`: ONE filing of an employee's Form 12BB, returning the declaration's id.
+
+        The SQL runs in one transaction under a row lock; in memory that is trivially true, EXCEPT that a refusal must leave
+        nothing behind, so every check is made before anything is written. The refusals carry the SQLSTATE and the message the
+        database sends, as the client's `APIError` shape (`message`, `code`), because the service maps them by those two."""
+        from postgrest.exceptions import APIError
+
+        def refuse(code, message):
+            raise APIError({"message": message, "code": code, "hint": None, "details": None})
+
+        decl = dict(self.params.get("p_declaration") or {})
+        items = self.params.get("p_items")
+        items = [] if items is None else items
+        refuse_verified = bool(self.params.get("p_refuse_verified"))
+        firm, client = decl.get("firm_id") or None, decl.get("client_id") or None
+        employee, fy = decl.get("employee_id") or None, decl.get("fy") or None
+        if not (firm and client and employee and fy):
+            refuse("22023", "file_it_declaration: a declaration names its firm, client, employee and year")
+        if not isinstance(items, list):
+            refuse("22023", "file_it_declaration: the lines must be a JSON array")
+        if not any(str(e.get("id")) == str(employee) and str(e.get("firm_id")) == str(firm) and str(e.get("client_id")) == str(client)
+                   for e in self.db.rows("payroll_employees")):
+            refuse("42501", f"file_it_declaration: employee {employee} is not an employee of client {client} of firm {firm}")
+        for it in items:
+            if not it.get("section"):
+                refuse("23502", 'null value in column "section" of relation "payroll_it_declaration_items" violates not-null constraint')
+
+        now = datetime.now(timezone.utc).isoformat()
+        heads = self.db.rows("payroll_it_declarations")
+        head = next((h for h in heads if str(h.get("employee_id")) == str(employee) and h.get("fy") == fy
+                     and str(h.get("firm_id")) == str(firm)), None)
+        if head is not None and head.get("proofs_verified") and refuse_verified:
+            refuse("P0001", f"declaration_verified: the declaration for {fy} is verified and is not the employee's to change")
+
+        fields = {
+            "regime": decl.get("regime") or "new", "status": "submitted",
+            "rent_paid_declared_paise": int(decl.get("rent_paid_declared_paise") or 0), "rent_paid_verified_paise": 0,
+            "landlord_name": decl.get("landlord_name") or "", "landlord_address": decl.get("landlord_address") or "",
+            "landlord_pan": decl.get("landlord_pan") or "", "rent_is_metro": bool(decl.get("rent_is_metro")),
+            "lta_declared_paise": int(decl.get("lta_declared_paise") or 0), "lta_verified_paise": 0,
+            "home_loan_interest_declared_paise": int(decl.get("home_loan_interest_declared_paise") or 0),
+            "home_loan_interest_verified_paise": 0,
+            "lender_name": decl.get("lender_name") or "", "lender_pan": decl.get("lender_pan") or "",
+            "other_income_declared_paise": int(decl.get("other_income_declared_paise") or 0),
+            "house_property_loss_declared_paise": int(decl.get("house_property_loss_declared_paise") or 0),
+            "proofs_verified": False, "verified_at": None, "verified_by": None, "submitted_at": now, "updated_at": now,
+        }
+        if head is None:
+            head = self.db.seed("payroll_it_declarations", {"firm_id": firm, "client_id": client, "employee_id": employee,
+                                                           "fy": fy, **fields})
+        else:
+            head.update(fields)
+        declaration_id = head["id"]
+
+        # The lines are replaced wholesale: whatever the declaration held is gone, the lines given are all it holds.
+        self.db._tables["payroll_it_declaration_items"] = [
+            r for r in self.db.rows("payroll_it_declaration_items")
+            if not (str(r.get("declaration_id")) == str(declaration_id) and str(r.get("firm_id")) == str(firm))]
+        for it in items:
+            self.db.seed("payroll_it_declaration_items", {
+                "firm_id": firm, "declaration_id": declaration_id, "section": it["section"], "label": it.get("label") or "",
+                "amount_declared_paise": int(it.get("amount_declared_paise") or 0), "amount_verified_paise": 0,
+                "status": "declared", "proof_reference": it.get("proof_reference") or "",
+                "proof_attachments": it.get("proof_attachments") or []})
+        return declaration_id
 
 
 # --------------------------------------------------------------------------- #
