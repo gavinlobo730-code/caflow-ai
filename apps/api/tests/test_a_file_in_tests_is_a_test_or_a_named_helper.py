@@ -109,6 +109,11 @@ HELPERS = {
     # helper, which applies 550's rollback file and so cannot drift from what the migration took away. (The payroll side of 549 is
     # `give_the_signed_in_payroll_access_back` in the helper above.)
     "_signed_in_bank_access.py",
+    # POST-A-339, migration 551. The same device for the five document tables and the object policies on `storage.objects`: 551
+    # takes every signed-in privilege on the tables and drops the policies a signed-in session was let into Storage by, and the
+    # modules that measure the table policies, or the Storage policies as 551's rollback restores them, give both back in their own
+    # throwaway database through this one helper, which applies 551's rollback file and so cannot drift from what it took away.
+    "_signed_in_document_access.py",
     # POST-A-248, migration 509. The same device for the workflow tables: migration 509 takes INSERT, UPDATE and DELETE from the
     # signed-in roles on the eleven `workflow_*` tables, and the migration 503 test measures their row policies by writing as a
     # signed-in member, so it gives the privilege back in its throwaway database through this one helper, which applies 509's

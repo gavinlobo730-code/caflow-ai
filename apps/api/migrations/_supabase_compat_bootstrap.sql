@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS storage.objects (
   name text,
   owner uuid
 );
+-- Hosted Supabase has row security ON for storage.objects (the policies are the lock). Migration 551 refuses to run where it is off.
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 -- Supabase JWT/session helpers. On real Supabase these read the request JWT
 -- via current_setting('request.jwt.claims'). The stubs below reproduce that

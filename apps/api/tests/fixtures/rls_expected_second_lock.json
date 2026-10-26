@@ -1,5 +1,5 @@
 {
-  "_what": "What each actor may select, insert, update and delete in the payroll tables the signed-in roles lost privileges on (migration 499: the seventeen it took INSERT, UPDATE and DELETE from; 515: leave_balances; 549: SELECT and the rest from the twenty payroll tables the matrix observes, the tax declaration and its lines among them), WITH THAT PRIVILEGE GIVEN BACK (each migration's own rollback applied): i.e. what the row policies of migrations 262, 296, 297, 485 and 490 and the triggers of 498 decide, the SECOND LOCK. Same vocabulary as rls_expected_access.json. These are the cells that file held before 499 (before 515 for leave_balances, before 549 for the tax declaration and its lines), unchanged; test_rls_role_by_table_matrix_pg.py::test_the_second_lock_decides_when_the_first_is_lifted fails the day a policy moves one, and the controls payroll-tier-485-reopened and payroll-tier-490-reopened are measured against it.",
+  "_what": "What each actor may select, insert, update and delete in the tables the signed-in roles lost privileges on, WITH THAT PRIVILEGE GIVEN BACK (each migration's own rollback applied): i.e. what the row policies decide, the SECOND LOCK. Payroll: migration 499 took INSERT, UPDATE and DELETE from seventeen tables, 515 from leave_balances, and 549 SELECT and the rest from the twenty payroll tables the matrix observes (the tax declaration and its lines among them); the policies of migrations 262, 296, 297, 485 and 490 and the triggers of 498 decide. Bank: 550 took every privilege from bank_accounts and bank_transactions, the two of its eight tables the matrix observes; the policies of 093, 261, 370, 487, 524, 527 and 530 decide. Documents: 551 took every privilege from documents, client_documents and document_requests, the three of its five tables the matrix observes, and DROPPED the object policies of 005, 426 and 469 on storage.objects, which were the only lock on the two stored-file buckets (the rows storage/Documents and storage/year-end-exports): for those the cells are what the policies decided before 551, restored by its rollback, so the rollback is held to leave a database whose files open for the people the policies name. Same vocabulary as rls_expected_access.json. These are the cells that file held before each migration, unchanged; test_rls_role_by_table_matrix_pg.py::test_the_second_lock_decides_when_the_first_is_lifted fails the day a policy moves one, and the controls payroll-tier-485-reopened, payroll-tier-490-reopened and storage-second-folder-dropped are measured against it.",
   "actors": ["partner", "manager", "exec_assigned", "exec_unassigned", "reviewer", "portal_client", "employee", "other_firm_partner", "suspended_partner", "anon"],
   "ops": ["select", "insert", "update", "delete"],
   "tables": {
@@ -57,6 +57,42 @@
       "exec_assigned": ["-", "-", "-", "-"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "client_documents": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "-"],
+      "exec_assigned": ["A", "A", "A", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["A", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "document_requests": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["A", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "documents": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "-"],
+      "exec_assigned": ["A", "A", "A", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["A", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
       "employee": ["-", "-", "-", "-"],
       "other_firm_partner": ["X", "X", "X", "X"],
@@ -266,6 +302,30 @@
       "other_firm_partner": ["X", "X", "X", "x"],
       "suspended_partner": ["-", "-", "-", "x"],
       "anon": ["x", "x", "x", "x"]
+    },
+    "storage/Documents": {
+      "partner": ["A,B", "A,B", "-", "A,B"],
+      "manager": ["A", "A", "-", "-"],
+      "exec_assigned": ["A", "A", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["A", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "-", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["-", "-", "-", "-"]
+    },
+    "storage/year-end-exports": {
+      "partner": ["A,B", "A,B", "-", "-"],
+      "manager": ["A", "A", "-", "-"],
+      "exec_assigned": ["A", "A", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "-", "-"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["-", "-", "-", "-"]
     }
   }
 }

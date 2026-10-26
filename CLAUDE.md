@@ -404,7 +404,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS SCREEN ASKS THE SERVER WHAT BECAME OF A DEDUCTION, AND A CARD SHOWS A DASH UNTIL IT HAS A FIGURE FOR THE CLIENT IT IS ABOUT
 - THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE ORDER BY EVERY READER, AND THE SECTIONS AND THEIR NAMES ARE THE SERVER'S
 
-### `docs/design-record/tenancy-and-security.md` (78 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (79 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -484,6 +484,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE API READS AND WRITES THE PAYROLL, BANK AND DOCUMENT TABLES WITH ITS PRIVILEGED CLIENT, NAMING THE FIRM, AHEAD OF THE MIGRATIONS THAT TAKE THE SIGNED-IN ROLE'S GRANTS OFF THEM, AND EVERY STATEMENT IT MAKES FOR A PERSON NAMES THAT PERSON
 - EVERY FILE THE API STORES, SIGNS OR REMOVES GOES THROUGH ONE DOOR, THE SERVER'S CLIENT BOUND TO THE FOLDER THE ROUTE ASKED ABOUT, AHEAD OF THE MIGRATION THAT DROPS THE STORAGE POLICIES
 - A SIGNED-IN SESSION READS AND WRITES NONE OF THE PAYROLL TABLES OR THE BANK TABLES, RUNS NEITHER BANK REPORT AND READS NO FOREIGN BANK BALANCE, AND THE ROW POLICIES STAY AS THE SECOND LOCK
+- A SIGNED-IN SESSION READS AND WRITES NONE OF THE DOCUMENT TABLES AND OPENS NO STORED FILE, AND THE TABLE POLICIES STAY AS THE SECOND LOCK WHILE THE OBJECT POLICIES WERE THE ONLY LOCK
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
@@ -1264,7 +1265,8 @@ PostgREST. That is why:
   `tests/test_a_sensitive_table_is_not_read_from_the_browser.py` scans `apps/web` for them by RULE and its list of what is still reached is
   EMPTY, so a new `.from("payroll_...")`, `bank_...`, document table or `.storage` fails and must be moved behind the API. What it does not do:
   the signed-in role held the grants, so a hand-made PostgREST call reached what the policies allowed: POST-A-339 revoked them for the payroll
-  tables (migration 549) and the bank tables and both bank reports (550), API readers first, and the document tables and Storage follow. The employee API has exactly one write, the employee's own declaration. Read the record before touching any of it.
+  tables (migration 549), the bank tables, both bank reports and the foreign bank balances (550) and the document tables, with the object policies on
+  Storage dropped (551), API readers first. A signed-in session now holds no privilege on any of them. The employee API has exactly one write, the employee's own declaration. Read the record before touching any of it.
 - **Renaming or dropping a column can break the frontend while backend CI stays green.**
   `tests/test_frontend_columns_exist_pg.py` parses those select lists and checks them
   against the real schema. Run it when you touch a migration.

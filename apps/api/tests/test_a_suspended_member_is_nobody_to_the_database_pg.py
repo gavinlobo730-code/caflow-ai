@@ -53,6 +53,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._signed_in_document_access import give_the_signed_in_document_access_back
+
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
 _ADMIN = os.environ.get("HARNESS_PG")
@@ -145,6 +147,12 @@ def db(pg_template):
               ('year-end-exports', '{FIRM}/{CLIENT_B}/2025-26/pack-b.pdf');
         """)
         assert seed.returncode == 0, seed.stderr
+        # Migration 551 (POST-A-339) drops the object policies of 005, 426 and 469 that a signed-in session was let into Storage by
+        # (and takes the privileges on the document tables). What the Storage tests below measure is therefore those policies as
+        # 551's ROLLBACK restores them, in this throwaway database: the rollback has to leave a database whose files open for the
+        # people the policies name. The live state, where a signed-in session finds no object and stores none, is measured by
+        # test_551_*_pg.py and by the access matrix.
+        give_the_signed_in_document_access_back(dsn)
         yield dsn
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{dbname}" WITH (FORCE);')
