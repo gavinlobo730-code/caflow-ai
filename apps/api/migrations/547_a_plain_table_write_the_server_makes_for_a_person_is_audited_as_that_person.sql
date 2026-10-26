@@ -23,9 +23,16 @@
 --     the request that called it: the role it runs as and the value of the `x-acting-auth-user` header. The API calls it once, with
 --     a label of its own, and `/health` reports whether the label arrived (`audit_actor`: carried / not_seen), so the claim that the
 --     hosted API passes the header through to the database is a thing the deployment can SAY about itself and not a thing assumed.
---   * Nothing else changes. `audit_capture` and `audit_capture_journal_line` already read this function when `auth.uid()` is NULL and
---     already mark a row written for a carried person (`metadata.actor_source = 'carried'`), so the bank, document and payroll
---     tables' triggers, and every other trigger that calls it, start recording the person with no change of their own.
+--   * Nothing else changes, with one case that is decided here and not left to chance. `audit_capture` and `audit_capture_journal_line`
+--     already read this function when `auth.uid()` is NULL and already mark a row written for a carried person
+--     (`metadata.actor_source = 'carried'`), so the bank, document and payroll tables' triggers, and every other trigger that calls
+--     it, start recording the person with no change of their own. The case: 545's carrier (`carry_audit_actor`, run inside the two
+--     ledger functions) writes the EMPTY string into `app.audit_actor` when it decides a posting has no actor, and an empty setting
+--     cannot be told from the empty string a pooled connection leaves behind after any earlier transaction. So an empty setting is
+--     read as "no setting", and on the server's own request the header is then read. That is intended: the header is the person
+--     the API verified for the request, and a ledger posting made on that request is exactly what that person did, so the row
+--     names them instead of nobody. A NON-empty setting that is not a uuid is still no actor, and the header is not a fallback
+--     for it (545's rule for an unreadable value, kept); a readable setting still wins over the header.
 --
 -- WHY IT SHIPS ALONE AND FIRST
 --   Nothing sends the header yet, so this changes nothing the moment it applies: a request without it behaves as before. The Python
@@ -33,9 +40,19 @@
 --   unaudited as it is today), and the revokes that force every write onto the privileged client come after that.
 --
 -- WHAT IT DOES NOT DO
---   It does not check that the person belongs to the row's firm: the reader cannot see the row, and the header is set only by the
---   server, from the person its own authentication verified, for a request whose routes already keep that person inside their firm.
---   It does not touch a write the server makes for nobody (a job): no header, no actor, no row, as today.
+--   It does not check that the person belongs to the row's firm, or is still active: the reader cannot see the row, and the header
+--   is set only by the server, from the person its own authentication verified, for a request whose routes already keep that person
+--   inside their firm. (545's carrier does check the firm, because it is handed the entry's firm. Here a person of another firm, or
+--   a deactivated one, is accepted and their email is written into the audit row; a test pins that, so a later hardening, which
+--   would have to live in the two trigger functions where the row's firm is known, flips it knowingly. The only way to reach it is
+--   a request that wrote another firm's row, which is a worse defect than the label.)
+--   It does not touch a write the server makes for nobody (a job): no header, no actor, no row, as today. Nor does it reach the
+--   `firms` table, whose own audit trigger function does not read the carried actor: the server's writes to `firms` stay unaudited.
+--   The gate is the database role. A signed-in session cannot become `service_role`, because nothing the API or PostgREST exposes
+--   runs a caller's SQL. On a real Supabase connection the authenticator role is a member of every API role, so
+--   `SET ROLE authenticated; SET ROLE service_role` succeeds there (checked on a throwaway database); a future function that ran
+--   caller-supplied SQL would therefore turn this header into impersonation, and must be refused on that ground as well.
+--   Volume: with the header every row the server writes for a person writes one audit row, as a signed-in write already does.
 --
 -- Derived from migration 545, the last to define public.carried_audit_actor (found by number); the test asserts the new body is
 -- 545's plus exactly the added lines. Reversible: 547_..._rollback.sql restores 545's definition.
@@ -116,10 +133,21 @@ DO $$
 DECLARE
     v_src  text;
     v_def  boolean;
+    v_vol  "char";
+    v_cfg  text[];
 BEGIN
-    SELECT p.prosrc, p.prosecdef INTO v_src, v_def FROM pg_proc p WHERE p.oid = 'public.carried_audit_actor()'::regprocedure;
+    SELECT p.prosrc, p.prosecdef, p.provolatile, p.proconfig INTO v_src, v_def, v_vol, v_cfg
+      FROM pg_proc p WHERE p.oid = 'public.carried_audit_actor()'::regprocedure;
     IF v_def THEN
         RAISE EXCEPTION 'migration 547: carried_audit_actor must be SECURITY INVOKER';
+    END IF;
+    IF v_vol <> 's' OR NOT ('search_path=pg_catalog' = ANY (coalesce(v_cfg, ARRAY[]::text[]))) THEN
+        RAISE EXCEPTION 'migration 547: carried_audit_actor must be STABLE with its search path pinned to pg_catalog';
+    END IF;
+    SELECT p.prosecdef, p.provolatile, p.proconfig INTO v_def, v_vol, v_cfg
+      FROM pg_proc p WHERE p.oid = 'public.audit_actor_probe()'::regprocedure;
+    IF v_def OR v_vol <> 's' OR NOT ('search_path=pg_catalog' = ANY (coalesce(v_cfg, ARRAY[]::text[]))) THEN
+        RAISE EXCEPTION 'migration 547: audit_actor_probe must be a STABLE SECURITY INVOKER function with its search path pinned';
     END IF;
     IF v_src NOT LIKE '%x-acting-auth-user%' OR v_src NOT LIKE '%app.audit_actor%' OR v_src NOT LIKE '%service_role%' THEN
         RAISE EXCEPTION 'migration 547: carried_audit_actor does not read both the setting and the server header';
