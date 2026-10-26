@@ -43,6 +43,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._signed_in_document_access import give_the_signed_in_document_access_back
+
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
 MIGRATIONS = API_ROOT / "migrations"
@@ -348,6 +350,9 @@ def seeded(pg_template):
         assert seed.returncode == 0, seed.stderr
         w = World(d)
         _seed(w)
+        # Migration 551 (POST-A-339) is the FIRST lock on `document_extractions` (no signed-in privilege at all); this module
+        # measures the SECOND (the parent scope in the policy), so the privilege it took is given back in this throwaway database.
+        give_the_signed_in_document_access_back(d)
         yield name, w.ids
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')

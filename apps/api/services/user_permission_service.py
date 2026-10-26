@@ -93,7 +93,10 @@ class PermissionWriteRefused(ValueError):
 # `tests/test_a_denial_says_what_it_reaches.py` for the payroll and bank claims.
 # Whoever makes either change rewrites this sentence in the same commit.
 # Deliberately says nothing about counts (tables, screens) because those go
-# stale, and nothing about Storage, which is files and not a table.
+# stale. Since migration 551 (POST-A-339) it also says that stored files are opened
+# only through the server: the object policies of 005, 426 and 469 were the only
+# thing a signed-in session could open a file through, and 551 dropped them
+# (`tests/test_551_*_pg.py` holds that no signed-in session opens or stores one).
 DENIAL_REACH_NOTICE = (
     "A block here is enforced by the PracticeSync server, which refuses that "
     "person's requests for that permission. Payroll and banking are reached "
@@ -114,8 +117,11 @@ DENIAL_REACH_NOTICE = (
     "table is read, and several screens read tables directly from the "
     "browser: there only the person's firm, client assignments and, on a few "
     "tables, role decide. Direct writes are checked against this grid on some "
-    "tables only. The one other read it reaches is a stored year-end export "
-    "file."
+    "tables only. The files a practice stores for its clients (documents, "
+    "attachments, reports shared to the portal and year-end exports) are "
+    "opened only through that server too: the database lets no signed-in "
+    "browser session open or store one. The firm's logo, which sits in a "
+    "public bucket, is read by its address."
 )
 
 

@@ -140,6 +140,12 @@ NOT_FOR_THE_API = {
     # them, lost EXECUTE in the same migration; this list holds tables.)
     "bank_accounts", "bank_statements", "bank_transactions", "bank_transaction_splits",
     "bank_reconciliation_matches", "bank_matching_rules", "bank_reconciliations", "bank_statement_column_mappings",
+    # Migration 551 (POST-A-339): the five document tables, on the same reasoning. `apps/web` has read none of them since
+    # POST-A-010 (the Documents page, the vault, the portal page and the bank entry's attachment ask the API), every query
+    # `apps/api` makes on them is made with the privileged client naming the firm (the document repository and the three document
+    # routers), and 551 took every privilege away from `authenticated`, `anon` and PUBLIC; their row policies stay as the second
+    # lock. (`entity_documents` lost its privileges in 538.)
+    "documents", "client_documents", "document_requests", "document_extractions", "document_risks",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.

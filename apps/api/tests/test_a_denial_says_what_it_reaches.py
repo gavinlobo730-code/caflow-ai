@@ -126,6 +126,18 @@ def test_the_notice_names_payroll_and_banking_as_reached_only_through_the_server
         assert stale not in text, f"the notice still says: {stale}"
 
 
+def test_the_notice_says_stored_files_are_opened_only_through_the_server_and_no_longer_names_the_year_end_export_read():
+    """Migration 551 (POST-A-339) dropped the object policies a signed-in session was let into Storage by, among them the one
+    that asked the grid for a stored year-end export. The notice used to name that read as the one the grid reaches in Storage;
+    it is false now, and the sentence says the true thing instead. `test_551_*_pg.py` holds that no signed-in session opens or
+    stores a file."""
+    text = " ".join(DENIAL_REACH_NOTICE.lower().split())
+    assert "the one other read it reaches is a stored year-end export file" not in text
+    assert "the files a practice stores for its clients" in text and "are opened only through that server too" in text
+    assert "no signed-in browser session open or store one" in text
+    assert "the firm's logo, which sits in a public bucket, is read by its address" in text
+
+
 def _array_of(migration: str) -> set[str]:
     sql = re.sub(r"--[^\n]*", "", (Path(__file__).resolve().parents[1] / "migrations" / migration).read_text())
     body = re.search(r"tables text\[\] := ARRAY\[(.*?)\]", sql, re.S).group(1)

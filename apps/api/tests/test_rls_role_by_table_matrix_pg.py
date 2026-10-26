@@ -151,6 +151,13 @@ _M549_ROLLBACK = _M549.replace(".sql", "_rollback.sql")
 #: the main file and their policies are measured with the privilege given back, as the payroll tables' are.
 _M550 = "550_a_signed_in_session_reads_and_writes_none_of_the_bank_tables_and_runs_neither_bank_report.sql"
 _M550_ROLLBACK = _M550.replace(".sql", "_rollback.sql")
+#: Migration 551 (POST-A-339) did the same to the document tables, and DROPPED the object policies of 005, 426 and 469 on
+#: `storage.objects`, which were the only lock on the two stored-file buckets. `documents`, `client_documents` and `document_requests`
+#: are the three of its five tables the matrix observes (`document_extractions` and `document_risks` are held by their own test files);
+#: they read "no privilege" in every cell of the main file, and the two storage rows read "nothing" for every signed-in actor. The
+#: policies they had are measured, as the payroll and bank ones are, with its rollback applied (the second-lock file).
+_M551 = "551_a_signed_in_session_reads_and_writes_none_of_the_document_tables_and_opens_no_stored_file.sql"
+_M551_ROLLBACK = _M551.replace(".sql", "_rollback.sql")
 _ADMIN = os.environ.get("HARNESS_PG")
 
 _NEEDS_PG = pytest.mark.skipif(
@@ -226,9 +233,9 @@ ALSO_COVERED = {
     "fee_engagements": "the practice's engagements and their fees, read by the API under billing:read (495)",
     # POST-A-010 moved the sensitive tables behind the API one group at a time. A table the browser no longer reads was
     # still granted to a signed-in session, so a hand-made PostgREST call reached it exactly as before, and the matrix
-    # kept trying every actor against it until a migration revoked the grant. Migration 549 revoked the payroll group's and 550
-    # the bank group's (every cell reads "no privilege" now, the policies are measured as the second lock); the document group
-    # follows, and the tables stay in this list so that a regrant turns their cells red.
+    # kept trying every actor against it until a migration revoked the grant. Migration 549 revoked the payroll group's, 550
+    # the bank group's and 551 the document group's (every cell reads "no privilege" now, the policies are measured as the second
+    # lock), and the tables stay in this list so that a regrant turns their cells red.
     "bank_accounts": "a client's bank accounts: the four pickers ask GET /api/banking/accounts since POST-A-010",
     "documents": "the firm's document register: the Documents page asks GET /api/documents since POST-A-010",
     "client_documents": "a client's stored files: the vault, the Documents tab and the portal page ask /api/client-documents since POST-A-010",
@@ -905,7 +912,9 @@ def dump_expected(table_cells: dict[str, dict[str, list[str]]]) -> str:
         '  "_what": "What each actor may select, insert, update and delete in each table, as the PRODUCT INTENDS it. '
         'A value is the seeded rows reached (A and B are clients of firm 1, X the client of firm 2, F1/F2 firms, G a '
         'global row), - nothing, x no privilege. Generated from observation by RLS_MATRIX_REGENERATE=1 and then '
-        'reviewed cell by cell; the cells that observation disagrees with are NOT here, they are KNOWN_DEVIATIONS in '
+        'reviewed cell by cell; the tables migrations 549, 550 and 551 closed entirely read x in every cell, and the two '
+        'stored-file rows read - for every signed-in actor (their policies are the second lock, in '
+        'rls_expected_second_lock.json); the cells that observation disagrees with are NOT here, they are KNOWN_DEVIATIONS in '
         'test_rls_role_by_table_matrix_pg.py, which holds their observed value, the intended one and why.",',
         f'  "actors": {json.dumps(list(ACTORS))},',
         f'  "ops": {json.dumps(list(OPS))},',
@@ -1107,7 +1116,8 @@ def _migration_sql(name: str) -> str:
 #: The controls that apply migration 499's (and 515's) rollback before the rollback they are about; see the use below.
 _AGAINST_THE_SECOND_LOCK = {"payroll-tier-485-reopened", "payroll-tier-490-reopened",
                             "liveness-dropped-from-every-helper", "payroll-write-tier-dropped",
-                            "reviewer-writes-slice-1-487-reopened", "banking-read-tier-524-reopened"}
+                            "reviewer-writes-slice-1-487-reopened", "banking-read-tier-524-reopened",
+                            "storage-second-folder-dropped"}
 
 #: (id, what is re-introduced, SQL, tables observed, cells that must turn red)
 #: A cell is (actor, table, op). Each control is a hole this repository already
@@ -1118,7 +1128,8 @@ CONTROLS = (
      "my_permission stop asking whether the session is live",
      # 515 took the signed-in write from leave_balances, so its privilege comes back first and the liveness rollback is
      # what the control measures on that table.
-     lambda: _migration_sql(_M549_ROLLBACK) + "\n"
+     lambda: _migration_sql(_M551_ROLLBACK) + "\n"
+     + _migration_sql(_M549_ROLLBACK) + "\n"
      + _migration_sql(_M515_ROLLBACK) + "\n"
      + _migration_sql("468_a_suspended_or_signed_out_member_is_nobody_to_the_database_rollback.sql"),
      ("clients", "tasks", "leave_balances", "storage/Documents"),
@@ -1142,7 +1153,9 @@ CONTROLS = (
       ("portal_client", "fx_rates", "insert")}),
     ("storage-second-folder-dropped",
      "migration 469 rolled back: the Documents and year-end policies ask only the FIRM folder again",
-     lambda: _migration_sql("469_a_stored_file_opens_only_for_the_staff_assigned_to_its_client_rollback.sql"),
+     # 551 DROPPED the object policies, so they come back first (its rollback) and the control measures 469's own rollback on them
+     lambda: _migration_sql(_M551_ROLLBACK) + "\n"
+     + _migration_sql("469_a_stored_file_opens_only_for_the_staff_assigned_to_its_client_rollback.sql"),
      ("storage/Documents", "storage/year-end-exports"),
      {("exec_unassigned", "storage/Documents", "select"), ("exec_unassigned", "storage/Documents", "insert"),
       ("reviewer", "storage/Documents", "delete")}),
@@ -1499,7 +1512,7 @@ def test_no_cell_differs_from_the_expectation_except_the_known_deviations(world,
                       for (a, t, op), (w, h) in sorted(unexplained.items())))
 
 
-def test_the_second_lock_file_covers_exactly_the_tables_migrations_499_515_549_and_550_revoke():
+def test_the_second_lock_file_covers_exactly_the_tables_migrations_499_515_549_550_and_551_revoke():
     """No database: the file measuring the policies and the list the migration revokes are one set, so a table added to
     the revoke without a second-lock row (its policies would then be measured by nothing) fails here."""
     sql = (_MIGRATIONS / "499_a_signed_in_session_writes_none_of_the_payroll_tables_the_browser_never_writes.sql").read_text()
@@ -1524,16 +1537,30 @@ def test_the_second_lock_file_covers_exactly_the_tables_migrations_499_515_549_a
     observed_550 = revoked_550 & set(matrix_tables())
     assert observed_550 == {"bank_accounts", "bank_transactions"}, sorted(observed_550)
     revoked |= observed_550
-    observed_closed = observed_549 | observed_550
+    # and the document tables migration 551 took EVERY privilege from; two of its five are not tables the matrix observes (their
+    # own test file holds them), and the three it does observe are the ones that must be in the second-lock file, with the two
+    # storage rows whose object policies it dropped (their only lock)
+    sql_551 = (_MIGRATIONS / _M551).read_text()
+    revoked_551 = set(re.findall(r"'([a-z_]+)'", sql_551.split("tables text[] := ARRAY[", 1)[1].split("]", 1)[0]))
+    observed_551 = revoked_551 & set(matrix_tables())
+    assert observed_551 == {"documents", "client_documents", "document_requests"}, sorted(observed_551)
+    revoked |= observed_551 | set(STORAGE)
+    observed_closed = observed_549 | observed_550 | observed_551
     second = load_second_lock()
     assert {t for _a, t in second} == revoked, (
-        f"rls_expected_second_lock.json covers a different set of tables than migrations 499, 515, 549 and 550 revoke: "
+        f"rls_expected_second_lock.json covers a different set of tables than migrations 499, 515, 549, 550 and 551 revoke: "
         f"missing {sorted(revoked - {t for _a, t in second})}, extra {sorted({t for _a, t in second} - revoked)}")
     assert len(second) == len(revoked) * len(ACTORS)
     # and the main expectation reads "no privilege" in every cell of the tables 549 and 550 closed entirely, and in every WRITE
     # cell of the others, which is what 499 does
     main = load_expected()
     for (actor, table), per in second.items():
+        if table in STORAGE:
+            # no policy is left on the object table for a signed-in role, so no cell reaches an object (an `anon` cell may read
+            # "no privilege", a signed-in one "nothing"): the second-lock row is what the dropped policies decided
+            for op in OPS:
+                assert main[(actor, table)][op] in ("-", "x"), (actor, table, op, main[(actor, table)][op])
+            continue
         if table in observed_closed:
             for op in OPS:
                 assert main[(actor, table)][op] == "x", (actor, table, op, main[(actor, table)][op])
@@ -1547,12 +1574,14 @@ def test_the_second_lock_file_covers_exactly_the_tables_migrations_499_515_549_a
 def test_the_second_lock_decides_when_the_first_is_lifted(world):
     """Migration 499 took the write privilege from every signed-in role on seventeen payroll tables (515 from leave_balances, and
     549 every privilege from the payroll group), so the main matrix reads "no privilege" in their cells and can no longer see a
-    row policy move. (550 did the same to `bank_accounts` and `bank_transactions`.) This gives the privilege back
+    row policy move. (550 did the same to `bank_accounts` and `bank_transactions`, and 551 to the document tables and, by dropping
+    the object policies, to the two stored-file buckets.) This gives the privilege and the policies back
     in a copy of the world (the migration's own rollback) and asks every actor again: the policies of 485 and 490 and the
     triggers of 498 must still decide each cell exactly as they did before 499, and the bank tables' policies (487, 524, 527)
     exactly as they did before 550."""
     copy = clone_world(_ADMIN, world)
     try:
+        _ok(copy.dsn, _migration_sql(_M551_ROLLBACK))
         _ok(copy.dsn, _migration_sql(_M549_ROLLBACK))
         _ok(copy.dsn, _migration_sql(_M550_ROLLBACK))
         _ok(copy.dsn, _migration_sql(_M499_ROLLBACK))

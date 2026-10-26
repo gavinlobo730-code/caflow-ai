@@ -56,6 +56,7 @@ from pathlib import Path
 import pytest
 
 from tests._signed_in_bank_access import give_the_signed_in_bank_access_back
+from tests._signed_in_document_access import give_the_signed_in_document_access_back
 from tests._signed_in_payroll_writes import give_the_signed_in_payroll_access_back, give_the_signed_in_writes_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
@@ -128,6 +129,8 @@ def dsn(pg_template):
         give_the_signed_in_payroll_access_back(d)
         # and migration 550's, for the bank tables this module's read-tier tests ask.
         give_the_signed_in_bank_access_back(d)
+        # and migration 551's, for the document tables this module's direct-read tests ask.
+        give_the_signed_in_document_access_back(d)
         yield d
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
@@ -289,9 +292,11 @@ def test_a_grant_is_a_module_not_a_scope(dsn):
 # policy on a public table calls the grid — `my_permission` itself or any
 # function that calls it, found through `pg_proc` to a fixed point, so a wrapper
 # a later migration writes is as visible as the function it wraps. Storage is a
-# different surface (files, not a table) and is outside the sentence: the one
-# Storage SELECT that asks the grid, `year_end_exports_storage_select` (469), is
-# deliberately not in scope here, and the notice names it as the one read the grid reaches.
+# different surface (files, not a table) and is outside this scan: the one
+# Storage SELECT that asked the grid, `year_end_exports_storage_select` (469), was
+# dropped with the other object policies by migration 551 (POST-A-339), and the
+# notice now says stored files are opened only through the server; that is held by
+# `test_551_*_pg.py`, which asks every actor.
 
 _NOTICE = "services.user_permission_service.DENIAL_REACH_NOTICE"
 
