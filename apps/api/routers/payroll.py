@@ -31,6 +31,7 @@ from core.permissions import rbac
 from services import payroll_report_service
 from services.timeline_service import timeline_service
 from services import employee_portal_service
+from services import it_declaration_service
 from services.internal_client_service import assert_not_internal_for_payroll
 import calendar
 
@@ -7213,74 +7214,35 @@ def upsert_declaration(
                                    "notices": decl_domain.notices(candidate)})
     _employee_of_client(db, current_user, body.employee_id, body.client_id)
 
-    now = datetime.now(timezone.utc).isoformat()
-    # Upserted on the (employee_id, fy) unique index from migration 296 rather
-    # than select-then-branch: one declaration per employee per year is the
-    # invariant, and a check-then-act would let two concurrent submissions each
-    # pass the check and both insert.
-    #
-    # Re-declaring RESETS the verification. The figures the CA checked are no
-    # longer the figures being claimed, and carrying the old verdict forward
-    # would let a raised claim inherit the proof for a smaller one.
-    #
-    # The payload is written out in full rather than assembled in a helper so
-    # tests/test_backend_columns_exist_pg.py can read the column names and check
-    # them against the real schema — these tables are new, and a misspelt column
-    # in a payload assembled elsewhere would be caught by nothing.
-    row = (db.table("payroll_it_declarations").upsert({
-        "firm_id": current_user["firm_id"],
-        "client_id": body.client_id,
-        "employee_id": body.employee_id,
-        "fy": body.fy,
-        "regime": body.regime,
-        "status": decl_domain.STATUS_SUBMITTED,
-        "rent_paid_declared_paise": max(0, body.rent_paid_declared_paise),
-        "rent_paid_verified_paise": 0,
-        "landlord_name": body.landlord_name or "",
-        "landlord_address": body.landlord_address or "",
-        "landlord_pan": (body.landlord_pan or "").upper(),
-        "rent_is_metro": bool(body.rent_is_metro),
-        "lta_declared_paise": max(0, body.lta_declared_paise),
-        "lta_verified_paise": 0,
-        "home_loan_interest_declared_paise": max(0, body.home_loan_interest_declared_paise),
-        "home_loan_interest_verified_paise": 0,
-        "lender_name": body.lender_name or "",
-        "lender_pan": (body.lender_pan or "").upper(),
-        "other_income_declared_paise": max(0, body.other_income_declared_paise),
-        "house_property_loss_declared_paise": max(0, body.house_property_loss_declared_paise),
-        "proofs_verified": False,
-        "verified_at": None,
-        "verified_by": None,
-        "submitted_at": now,
-        "updated_at": now,
-    }, on_conflict="employee_id,fy").execute().data or [{}])[0]
-    decl_id = row.get("id")
-
-    # Chapter VI-A lines are replaced wholesale: a declaration states the whole
-    # year's intent, and merging would leave a withdrawn investment in place.
-    if decl_id:
-        db.table("payroll_it_declaration_items").delete().eq("declaration_id", decl_id).execute()
-
-    for i in candidate.items:
-        if not decl_id:
-            break
-        # One literal insert per line rather than a comprehension, for the same
-        # reason the header payload is spelled out: a comprehension is opaque to
-        # the column check, and these columns have nothing else guarding them.
-        db.table("payroll_it_declaration_items").insert({
-            "firm_id": current_user["firm_id"],
-            "declaration_id": decl_id,
-            "section": i.section,
-            "label": i.label,
-            "amount_declared_paise": i.amount_declared_paise,
-            "amount_verified_paise": 0,
-            "status": decl_domain.ITEM_DECLARED,
-            "proof_reference": i.proof_reference,
-            # Already parsed and normalised by DeclarationItemIn — what is
-            # stored is the shape `domain/attachments` produced, never what
-            # the caller sent.
-            "proof_attachments": i.proof_attachments or [],
-        }).execute()
+    # ONE TRANSACTION (migration 548, POST-A-340): the header is written, every verified column is RESET, the lines are replaced
+    # wholesale and the declaration's row is locked meanwhile, all inside `file_it_declaration`. It used to be an upsert on the
+    # (employee_id, fy) index, a delete of the old lines and an insert per line, with no put-back at all, so two filings at the
+    # same instant could leave the header of one beside the lines of the other. The staff door replaces a VERIFIED declaration as it
+    # always has (`refuse_verified=False`): re-declaring means the figures claimed are no longer the figures the CA checked, and
+    # carrying the old verdict forward would let a raised claim inherit the proof for a smaller one.
+    try:
+        decl_id = it_declaration_service.file_declaration(
+            db, firm_id=current_user["firm_id"], client_id=body.client_id, employee_id=body.employee_id, fy=body.fy,
+            regime=body.regime,
+            rent_paid_declared_paise=max(0, body.rent_paid_declared_paise),
+            landlord_name=body.landlord_name or "", landlord_address=body.landlord_address or "",
+            landlord_pan=(body.landlord_pan or "").upper(), rent_is_metro=bool(body.rent_is_metro),
+            lta_declared_paise=max(0, body.lta_declared_paise),
+            home_loan_interest_declared_paise=max(0, body.home_loan_interest_declared_paise),
+            lender_name=body.lender_name or "", lender_pan=(body.lender_pan or "").upper(),
+            other_income_declared_paise=max(0, body.other_income_declared_paise),
+            house_property_loss_declared_paise=max(0, body.house_property_loss_declared_paise),
+            # Already parsed and normalised by DeclarationItemIn: what is stored is the shape `domain/attachments` produced,
+            # never what the caller sent.
+            items=[{"section": i.section, "label": i.label, "amount_declared_paise": i.amount_declared_paise,
+                    "proof_reference": i.proof_reference, "proof_attachments": i.proof_attachments or []}
+                   for i in candidate.items],
+            refuse_verified=False)
+    except it_declaration_service.DeclarationBusy as exc:
+        raise HTTPException(status_code=409, detail="This declaration was being changed at the same moment. Reload it and "
+                                                    "record it again.") from exc
+    except it_declaration_service.DeclarationOutOfScope as exc:
+        raise HTTPException(status_code=404, detail="Employee not found.") from exc
 
     timeline_service.log(
         body.client_id, "work", "IT Declaration Recorded",

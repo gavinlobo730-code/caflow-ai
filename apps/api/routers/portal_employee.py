@@ -54,7 +54,6 @@ NOTHING HERE COMPUTES
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -62,13 +61,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from core.auth import get_jwt_user
 from core.db_paging import fetch_all
 from core.ist_clock import ist_today
-from core.observability import capture_soft_failure
 from core.portal_auth import get_current_portal_employee
 from domain.payroll import declarations as decl_domain
 from domain.payroll.run_status import PAYROLL_RELEASED
 from models.common import api_response
 from models.fy import FYLabel
 from models.payroll import EmployeeDeclarationIn
+from services import it_declaration_service
 from services.audit_service import log_event
 from core.db_provider import privileged_for
 
@@ -309,10 +308,6 @@ _LOCKED = ("Your proofs have been verified, so this declaration is read-only. As
 _CHANGED = "Your declaration was changed while you were saving it. Reload it to see what is there now, then try again."
 
 
-def _is_unique_violation(exc: Exception) -> bool:
-    return getattr(exc, "code", None) == "23505" or "duplicate key" in str(exc).lower()
-
-
 def _validated_candidate(body: EmployeeDeclarationIn, employee_id: str) -> "decl_domain.Declaration":
     """The declaration the body states, as the domain module's own type, or a 422 in words. The staff door's validation
     (`decl_domain.validate`) is the authority on what payroll can give effect to; a head declared twice is refused here."""
@@ -352,23 +347,21 @@ def file_employee_tax_declaration(
     the old verdict forward would let a raised claim inherit the proof for a smaller one: the staff door does the same).
 
     WHO AND WHAT come from the principal: the employee, their client and their firm are never in the request. A
-    declaration the CA has finished verifying is read-only to the employee (409), and that is decided IN THE WRITE: an
-    existing declaration is changed by an update that carries `proofs_verified = false`, as migration 297's update policy
-    carried it, so a CA who finishes verifying between this request's read and its write is not overwritten. The same
+    declaration the CA has finished verifying is read-only to the employee (409), and that is decided IN THE WRITE: the
+    database function locks the declaration's row and refuses a verified one in the same transaction that would have
+    changed it, so a CA who finishes verifying between this request's start and its write is not overwritten. The same
     validation the staff door applies refuses what payroll cannot give effect to (a landlord's name against rent, a
     landlord's PAN above the Rule 26C threshold, a lender's PAN against §24(b) interest, a section it does not compute),
     in the employee's own terms, naming the box.
 
+    ONE TRANSACTION (migration 548, POST-A-340): the header, the new lines and the removal of the old lines are made by
+    `file_it_declaration` in one database transaction under a row lock, so a failure at any step leaves the declaration as
+    it was and two filings by one employee at the same instant run one after the other. The read-back and the put-back
+    this route used to carry are gone with the thing they stood in for.
+
     Written with the SERVER's client: ownership is proved above, the verified columns belong to whoever checks them
     (migration 297 raises on an employee changing one, and this write must be able to reset them), and the browser is no
     longer a writer of these tables.
-
-    NOT ONE TRANSACTION (no migration): the header, the new lines and the removal of the old lines are three kinds of
-    request. The new lines go in before anything is removed, what is removed is whatever else the declaration holds, the
-    result is read back and must be exactly the new lines, and a failure at any step puts back what it replaced: the new
-    lines come out, the old lines that are gone are written again with their own ids and figures, and the header returns to
-    what it was (only while it is still unverified, so a verification that landed meanwhile is never undone). Two filings by
-    one employee at the same instant can still interleave; making the filing a single database function is a ledger item.
 
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
@@ -380,180 +373,31 @@ def file_employee_tax_declaration(
     if not client_id:
         raise HTTPException(status_code=403, detail=_DENIED)
     svc = get_service_supabase()
-    found = (svc.table("payroll_it_declarations")
-             .select("id, firm_id, client_id, regime, status, rent_paid_declared_paise, rent_paid_verified_paise, "
-                     "landlord_name, landlord_address, landlord_pan, rent_is_metro, lta_declared_paise, lta_verified_paise, "
-                     "home_loan_interest_declared_paise, home_loan_interest_verified_paise, lender_name, lender_pan, "
-                     "other_income_declared_paise, house_property_loss_declared_paise, proofs_verified, verified_at, "
-                     "verified_by, submitted_at, updated_at")
-             .eq("employee_id", employee_id).eq("firm_id", firm_id).eq("fy", body.fy).limit(1).execute().data) or []
-    before = found[0] if found else None
-
-    now = datetime.now(timezone.utc).isoformat()
-    # The payload is written out in full, once for a declaration that exists and once for one that does not, so
-    # tests/test_backend_columns_exist_pg.py reads every column name (a payload assembled elsewhere is invisible to it) and
-    # `test_the_two_payload_literals_do_not_drift` holds the two in step.
-    if before:
-        decl_id = before["id"]
-        head = (svc.table("payroll_it_declarations").update({
-            "firm_id": firm_id,
-            "client_id": client_id,
-            "employee_id": employee_id,
-            "fy": body.fy,
-            "regime": body.regime,
-            "status": decl_domain.STATUS_SUBMITTED,
-            "rent_paid_declared_paise": body.rent_paid_declared_paise,
-            "rent_paid_verified_paise": 0,
-            "landlord_name": body.landlord_name or "",
-            "landlord_address": body.landlord_address or "",
-            "landlord_pan": body.landlord_pan or "",
-            "rent_is_metro": body.rent_is_metro,
-            "lta_declared_paise": body.lta_declared_paise,
-            "lta_verified_paise": 0,
-            "home_loan_interest_declared_paise": body.home_loan_interest_declared_paise,
-            "home_loan_interest_verified_paise": 0,
-            "lender_name": body.lender_name or "",
-            "lender_pan": body.lender_pan or "",
-            "other_income_declared_paise": body.other_income_declared_paise,
-            "house_property_loss_declared_paise": body.house_property_loss_declared_paise,
-            "proofs_verified": False,
-            "verified_at": None,
-            "verified_by": None,
-            "submitted_at": now,
-            "updated_at": now,
-        }).eq("id", decl_id).eq("firm_id", firm_id).eq("employee_id", employee_id)
-            .eq("proofs_verified", False).execute().data or [])
-        if not head:
-            # The declaration is verified (the CA finished before the read above, or between it and this write): the update
-            # matched nothing and nothing was changed.
-            raise HTTPException(status_code=409, detail=_LOCKED)
-    else:
-        try:
-            made = (svc.table("payroll_it_declarations").insert({
-                "firm_id": firm_id,
-                "client_id": client_id,
-                "employee_id": employee_id,
-                "fy": body.fy,
-                "regime": body.regime,
-                "status": decl_domain.STATUS_SUBMITTED,
-                "rent_paid_declared_paise": body.rent_paid_declared_paise,
-                "rent_paid_verified_paise": 0,
-                "landlord_name": body.landlord_name or "",
-                "landlord_address": body.landlord_address or "",
-                "landlord_pan": body.landlord_pan or "",
-                "rent_is_metro": body.rent_is_metro,
-                "lta_declared_paise": body.lta_declared_paise,
-                "lta_verified_paise": 0,
-                "home_loan_interest_declared_paise": body.home_loan_interest_declared_paise,
-                "home_loan_interest_verified_paise": 0,
-                "lender_name": body.lender_name or "",
-                "lender_pan": body.lender_pan or "",
-                "other_income_declared_paise": body.other_income_declared_paise,
-                "house_property_loss_declared_paise": body.house_property_loss_declared_paise,
-                "proofs_verified": False,
-                "verified_at": None,
-                "verified_by": None,
-                "submitted_at": now,
-                "updated_at": now,
-            }).execute().data or [{}])[0]
-        except Exception as exc:  # noqa: BLE001 - a second filing of the first declaration, from another window
-            if _is_unique_violation(exc):
-                raise HTTPException(status_code=409, detail=_CHANGED) from exc
-            raise
-        decl_id = made.get("id")
-        if not decl_id:
-            raise HTTPException(status_code=500, detail="Your declaration could not be saved. Please try again.")
-
-    old_lines: list[dict] = []
-    new_ids: list[str] = []
+    # A head declared at nothing is not a line.
+    lines = [{"section": i.section, "label": "", "amount_declared_paise": i.amount_declared_paise,
+              "proof_reference": "", "proof_attachments": []}
+             for i in candidate.items if i.amount_declared_paise > 0]
     try:
-        # What the declaration held, in full, so a failure can write it back (a delete that was applied and then raised
-        # leaves nothing to restore from unless the figures were kept).
-        old_lines = (svc.table("payroll_it_declaration_items")
-                     .select("id, section, label, amount_declared_paise, amount_verified_paise, status, proof_reference, "
-                             "proof_attachments")
-                     .eq("declaration_id", decl_id).eq("firm_id", firm_id).execute().data or [])
-        # The new lines go in BEFORE the old ones come out, so a failure leaves the earlier lines in place.
-        for i in candidate.items:
-            if i.amount_declared_paise <= 0:
-                continue
-            made_line = (svc.table("payroll_it_declaration_items").insert({
-                "firm_id": firm_id,
-                "declaration_id": decl_id,
-                "section": i.section,
-                "label": "",
-                "amount_declared_paise": i.amount_declared_paise,
-                "amount_verified_paise": 0,
-                "status": decl_domain.ITEM_DECLARED,
-                "proof_reference": "",
-                "proof_attachments": [],
-            }).execute().data or [{}])[0]
-            new_ids.append(made_line["id"])
-        # Whatever else the declaration holds now goes: the old lines, and any a concurrent filing added.
-        held = [r["id"] for r in (svc.table("payroll_it_declaration_items").select("id")
-                                  .eq("declaration_id", decl_id).eq("firm_id", firm_id).execute().data or [])]
-        stale = [i for i in held if i not in set(new_ids)]
-        if stale:
-            svc.table("payroll_it_declaration_items").delete().eq("declaration_id", decl_id).eq("firm_id", firm_id) \
-                .in_("id", stale).execute()
-        # READ BACK. A delete that row security or a constraint refused comes back as an empty answer and no error (the
-        # defect POST-A-255 found in the browser's version of this save), so the only proof is what is there now.
-        left = {r["id"] for r in (svc.table("payroll_it_declaration_items").select("id")
-                                  .eq("declaration_id", decl_id).eq("firm_id", firm_id).execute().data or [])}
-        if left != set(new_ids):
-            raise RuntimeError("the lines on the declaration are not the lines that were filed")
-    except Exception:
-        _put_back(svc, firm_id, decl_id, new_ids, old_lines, before)
-        raise
+        decl_id = it_declaration_service.file_declaration(
+            svc, firm_id=firm_id, client_id=client_id, employee_id=employee_id, fy=body.fy, regime=body.regime,
+            rent_paid_declared_paise=body.rent_paid_declared_paise,
+            landlord_name=body.landlord_name or "", landlord_address=body.landlord_address or "",
+            landlord_pan=body.landlord_pan or "", rent_is_metro=body.rent_is_metro,
+            lta_declared_paise=body.lta_declared_paise,
+            home_loan_interest_declared_paise=body.home_loan_interest_declared_paise,
+            lender_name=body.lender_name or "", lender_pan=body.lender_pan or "",
+            other_income_declared_paise=body.other_income_declared_paise,
+            house_property_loss_declared_paise=body.house_property_loss_declared_paise,
+            items=lines, refuse_verified=True)
+    except it_declaration_service.DeclarationVerified as exc:
+        raise HTTPException(status_code=409, detail=_LOCKED) from exc
+    except it_declaration_service.DeclarationBusy as exc:
+        raise HTTPException(status_code=409, detail=_CHANGED) from exc
+    except it_declaration_service.DeclarationOutOfScope as exc:
+        raise HTTPException(status_code=403, detail=_DENIED) from exc
 
     log_event(firm_id, "payroll_it_declaration", decl_id, "employee_declare", actor_id=employee.get("auth_user_id"),
               actor_email=employee.get("email"),
-              new_data={"fy": body.fy, "regime": body.regime, "lines": len(new_ids)},
+              new_data={"fy": body.fy, "regime": body.regime, "lines": len(lines)},
               metadata={"employee_id": employee_id, "principal": "PortalEmployee"})
     return api_response(True, _declaration_view(svc, employee, body.fy))
-
-
-def _put_back(svc, firm_id: str, decl_id: str, new_ids: list[str], old_lines: list[dict], before: dict | None) -> None:
-    """Undo a declaration write that failed part-way: the lines it inserted come out, the lines it replaced that are gone are
-    written again (same ids, same figures), and the header goes back to what it was, or goes if there was none. A header
-    that was verified in the meantime is NOT overwritten. Each step reports and does not raise, because the caller is already
-    failing with the real reason."""
-    def _remove_new():
-        if new_ids:
-            privileged_for(svc).table("payroll_it_declaration_items").delete().eq("firm_id", firm_id).in_("id", new_ids).execute()
-
-    def _write_old_back():
-        if not old_lines:
-            return
-        present = {r["id"] for r in (privileged_for(svc).table("payroll_it_declaration_items").select("id")
-                                     .eq("declaration_id", decl_id).eq("firm_id", firm_id)
-                                     .in_("id", [ln["id"] for ln in old_lines]).execute().data or [])}
-        for ln in old_lines:
-            if ln["id"] in present:
-                continue
-            privileged_for(svc).table("payroll_it_declaration_items").insert({
-                "id": ln["id"],
-                "firm_id": firm_id,
-                "declaration_id": decl_id,
-                "section": ln.get("section"),
-                "label": ln.get("label") or "",
-                "amount_declared_paise": ln.get("amount_declared_paise") or 0,
-                "amount_verified_paise": ln.get("amount_verified_paise") or 0,
-                "status": ln.get("status"),
-                "proof_reference": ln.get("proof_reference") or "",
-                "proof_attachments": ln.get("proof_attachments") or [],
-            }).execute()
-
-    def _header():
-        if before:
-            restore = {k: v for k, v in before.items() if k != "id"}
-            privileged_for(svc).table("payroll_it_declarations").update(restore).eq("id", decl_id).eq("firm_id", firm_id) \
-                .eq("proofs_verified", False).execute()
-        else:
-            privileged_for(svc).table("payroll_it_declarations").delete().eq("id", decl_id).eq("firm_id", firm_id).execute()
-
-    for what, step in (("new_lines", _remove_new), ("old_lines", _write_old_back), ("header", _header)):
-        try:
-            step()
-        except Exception as exc:  # noqa: BLE001 - the original failure is the one to report
-            capture_soft_failure(exc, operation=f"employee_declaration.put_back_{what}", firm_id=firm_id)
