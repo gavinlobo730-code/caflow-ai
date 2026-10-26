@@ -102,7 +102,7 @@ def read_filings(db, *, firm_id: str, client_id: str) -> list[seq.RecordedFiling
     """Every live filing recorded for a client, as the domain's own type."""
     if not db or not client_id:
         return []
-    rows = (db.table("epfo_ecr_filings")
+    rows = (privileged_for(db).table("epfo_ecr_filings")
             .select("wage_month, return_type, status, members")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .is_("deleted_at", "null")
@@ -213,17 +213,17 @@ def record_filing(
         row["recorded_by"] = recorded_by
 
     if return_type == seq.REGULAR:
-        existing = (db.table("epfo_ecr_filings").select("id")
+        existing = (privileged_for(db).table("epfo_ecr_filings").select("id")
                     .eq("client_id", client_id).eq("wage_month", wage_month)
                     .eq("return_type", seq.REGULAR)
                     .is_("deleted_at", "null")
                     .limit(1).execute().data) or []
         if existing:
-            db.table("epfo_ecr_filings").update(row).eq("id", existing[0]["id"]).execute()
+            privileged_for(db).table("epfo_ecr_filings").update(row).eq("id", existing[0]["id"]).execute()
             row["id"] = existing[0]["id"]
             return row
 
-    inserted = (db.table("epfo_ecr_filings").insert(row).execute().data) or []
+    inserted = (privileged_for(db).table("epfo_ecr_filings").insert(row).execute().data) or []
     if inserted and inserted[0].get("id"):
         row["id"] = inserted[0]["id"]
     return row
@@ -237,7 +237,7 @@ def retract_filing(db, *, firm_id: str, filing_id: str,
     a row that simply vanished would leave no record that the sequence had
     changed or who changed it.
     """
-    res = (db.table("epfo_ecr_filings")
+    res = (privileged_for(db).table("epfo_ecr_filings")
            .update({"deleted_at": at_iso or ist_now().isoformat()})
            .eq("id", filing_id).eq("firm_id", firm_id)
            .is_("deleted_at", "null").execute().data)

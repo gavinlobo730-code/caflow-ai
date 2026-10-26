@@ -40,6 +40,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._signed_in_bank_access import give_the_signed_in_bank_access_back
+
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
 MIGRATIONS = API_ROOT / "migrations"
@@ -153,6 +155,7 @@ def dsn(pg_template):
         assert seed.returncode == 0, seed.stderr
         for client, tag in ((CLIENT_A, "A"), (CLIENT_B, "B"), (INTERNAL, "I")):
             _seed_client(d, client, tag)
+        give_the_signed_in_bank_access_back(d)
         yield d
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')

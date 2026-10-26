@@ -120,7 +120,7 @@ def read_register(db, *, firm_id: str, client_id: str,
 def _declaration(db, *, firm_id: str, client_id: str,
                  accounting_year: str) -> Optional[dict]:
     rows = (
-        db.table("bonus_declarations")
+        privileged_for(db).table("bonus_declarations")
         .select("id, accounting_year, rate_bps, allocable_surplus_paise, "
                 "minimum_wage_monthly_paise, scheduled_employment, notes")
         .eq("firm_id", firm_id).eq("client_id", client_id)
@@ -206,7 +206,7 @@ def _working_days(db, *, firm_id: str, accounting_year: str,
 def _disqualifications(db, *, firm_id: str, client_id: str,
                        accounting_year: str) -> dict:
     rows = fetch_all(
-        lambda: db.table("bonus_disqualifications")
+        lambda: privileged_for(db).table("bonus_disqualifications")
         .select("id, employee_id, ground, dismissed_on")
         .eq("firm_id", firm_id).eq("client_id", client_id)
         .eq("accounting_year", accounting_year),
@@ -238,7 +238,7 @@ def save_declaration(db, *, firm_id: str, client_id: str, accounting_year: str,
         # than passed as `payload`, so the column ratchet
         # (tests/test_backend_columns_exist_pg.py) can read which ones this
         # touches — a variable is invisible to it.
-        (db.table("bonus_declarations").update({
+        (privileged_for(db).table("bonus_declarations").update({
             "rate_bps": payload["rate_bps"],
             "allocable_surplus_paise": payload["allocable_surplus_paise"],
             "minimum_wage_monthly_paise": payload["minimum_wage_monthly_paise"],
@@ -247,7 +247,7 @@ def save_declaration(db, *, firm_id: str, client_id: str, accounting_year: str,
             "updated_at": payload["updated_at"],
          }).eq("firm_id", firm_id).eq("id", existing["id"]).execute())
         return {**existing, **payload}
-    inserted = db.table("bonus_declarations").insert({
+    inserted = privileged_for(db).table("bonus_declarations").insert({
         "firm_id": firm_id, "client_id": client_id,
         "accounting_year": accounting_year, "created_by": actor_id,
         "rate_bps": payload["rate_bps"],

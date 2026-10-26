@@ -447,7 +447,7 @@ def test_every_listed_child_is_verified_for_the_reason_it_gives(children, listed
 
 # The lists are SHRINK-ONLY. The ceilings are the sizes on the day the rule was last lowered: a new gap cannot join a list
 # without raising a constant in a diff somebody reads, and closing one lowers the constant in the same commit.
-MAX_LISTED_TABLES = 15
+MAX_LISTED_TABLES = 7
 MAX_LISTED_CHILDREN = 0
 
 

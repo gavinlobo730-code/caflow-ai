@@ -121,6 +121,25 @@ NOT_FOR_THE_API = {
     "activity_logs",
     "ai_evidence",
     "ai_signals",
+    # Migration 549 (POST-A-339): the twenty-three payroll tables. `apps/web` reads and writes none of them since POST-A-010, and
+    # every query `apps/api` makes on them is made with the privileged client, naming the firm (POST-A-339 step 1, merged and
+    # running before 549); 549 took every privilege away from `authenticated`, `anon` and PUBLIC, and their row policies stay as
+    # the second lock. They are not the user-JWT path's to read, which is what this list says. The deny-list test below proves the
+    # denial is real for each name. (`salary_slips` is a view over them and is closed with them; this list holds base tables.)
+    "payroll_employees", "payroll_runs", "payroll_slips", "payroll_run_transitions",
+    "salary_structures", "payroll_salary_revisions", "payroll_loans", "payroll_perquisites",
+    "payroll_one_time_earnings", "attendance", "leave_balances", "bonus_declarations", "bonus_disqualifications",
+    "payroll_loan_recoveries", "payroll_settlements", "payroll_settlement_components",
+    "statutory_remittances", "epfo_ecr_filings",
+    "payroll_it_declarations", "payroll_it_declaration_items",
+    "client_payroll_settings", "client_pt_registrations", "firm_pt_slabs",
+    # Migration 550 (POST-A-339): the eight bank tables, on the same reasoning as the payroll group above. `apps/web` has read
+    # none of them since POST-A-010; every query `apps/api` makes on them is made with the privileged client, naming the firm and
+    # the client the caller's role would have been limited to; 550 took every privilege away from `authenticated`, `anon` and
+    # PUBLIC, and their row policies stay as the second lock. (`bank_register` and `bank_reconciling_items`, the two reports over
+    # them, lost EXECUTE in the same migration; this list holds tables.)
+    "bank_accounts", "bank_statements", "bank_transactions", "bank_transaction_splits",
+    "bank_reconciliation_matches", "bank_matching_rules", "bank_reconciliations", "bank_statement_column_mappings",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.

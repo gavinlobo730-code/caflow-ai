@@ -1,5 +1,5 @@
 {
-  "_what": "What each actor may select, insert, update and delete in the seventeen payroll tables migration 499 revokes the signed-in write privilege on, and in leave_balances, which migration 515 took the same privilege from, WITH THAT PRIVILEGE GIVEN BACK (each migration's own rollback applied): i.e. what the row policies of migrations 485 and 490 and the triggers of 498 decide, the SECOND LOCK. Same vocabulary as rls_expected_access.json. These are the cells that file held before 499 (before 515 for leave_balances), unchanged; test_rls_role_by_table_matrix_pg.py::test_the_second_lock_decides_when_the_first_is_lifted fails the day a policy moves one, and the controls payroll-tier-485-reopened and payroll-tier-490-reopened are measured against it.",
+  "_what": "What each actor may select, insert, update and delete in the payroll tables the signed-in roles lost privileges on (migration 499: the seventeen it took INSERT, UPDATE and DELETE from; 515: leave_balances; 549: SELECT and the rest from the twenty payroll tables the matrix observes, the tax declaration and its lines among them), WITH THAT PRIVILEGE GIVEN BACK (each migration's own rollback applied): i.e. what the row policies of migrations 262, 296, 297, 485 and 490 and the triggers of 498 decide, the SECOND LOCK. Same vocabulary as rls_expected_access.json. These are the cells that file held before 499 (before 515 for leave_balances, before 549 for the tax declaration and its lines), unchanged; test_rls_role_by_table_matrix_pg.py::test_the_second_lock_decides_when_the_first_is_lifted fails the day a policy moves one, and the controls payroll-tier-485-reopened and payroll-tier-490-reopened are measured against it.",
   "actors": ["partner", "manager", "exec_assigned", "exec_unassigned", "reviewer", "portal_client", "employee", "other_firm_partner", "suspended_partner", "anon"],
   "ops": ["select", "insert", "update", "delete"],
   "tables": {
@@ -7,6 +7,30 @@
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
       "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "bank_accounts": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "A", "A"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["A", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "bank_transactions": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "A", "A"],
       "exec_unassigned": ["-", "-", "-", "-"],
       "reviewer": ["-", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
@@ -71,6 +95,30 @@
       "reviewer": ["-", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
       "employee": ["A", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "payroll_it_declaration_items": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "-"],
+      "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["A", "A", "A", "A"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "payroll_it_declarations": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "-"],
+      "exec_assigned": ["-", "-", "-", "-"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["-", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["A", "A", "A", "-"],
       "other_firm_partner": ["X", "X", "X", "X"],
       "suspended_partner": ["-", "-", "-", "-"],
       "anon": ["x", "x", "x", "x"]

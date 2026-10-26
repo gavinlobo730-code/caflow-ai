@@ -59,77 +59,63 @@ class PermissionWriteRefused(ValueError):
 # WHAT A BLOCK ON THE TEAM SCREEN REACHES, in the words the screen shows beside
 # the grid (POST-A-005). The grid is read by `rbac()`, which every staff route
 # goes through, by the write policies of a few tables (migrations 415, 470,
-# 478), by the READ policies of the fee tables (495) and of the six tables that
-# hold a client's bank lines (524) and, since migrations 485 and 490, by the READ
-# policies of the payroll tables (employees, runs, payslips and salary structures, remittances and ECR
-# filings name the grid; attendance, leave, tax declarations, salary history,
-# loans, perquisites, settlements, one-off earnings, bonus records and the run
-# history are scoped through the employee, settlement or run, so they follow).
-# Since migration 499, and 515 for leave balances, the database refuses a
-# signed-in session ANY write to the payroll records the sentence lists, except
-# the employee's own tax declaration, which the browser still saves (the
-# employee has no staff principal to go through the API with). Since migration
-# 519 a member of the STAFF is held to this grid on the two declaration tables as
-# well: a person blocked from writing payroll is refused a declaration and its
-# items by the database, and a delete asks payroll:finalize, which is Partner-only
-# by default, so a write grant does not carry a delete. The privilege is the
-# first lock and the write policies of 485 and 490 are the second, so the sentence
-# says the server is where a write to those records happens. Migration 519 also
-# took every signed-in write away from a client's payroll switch and day attendance
-# is due, its statutory identity (TAN, EPF, ESIC, LIN) and its professional-tax
-# registrations, so those too are written by the server alone; the notice does
-# not list them (they are not payroll records in the sentence's sense) and does not
-# speak for the firm's slabs, which keep their own grants.
-# Outside the payroll tables (485, 490), the fee tables (495) and the six tables
-# that hold a client's bank lines (524), no table's SELECT policy reads it, so a
-# screen that reads any other table straight from the browser over PostgREST (the
-# clients list and the task board, say; the documents pages, the bank-account pickers
-# and the staff payroll screens stopped in POST-A-010 and ask the server) is governed
-# there by the person's firm, their client assignments and, on a few tables, their
-# role. A Partner who unticked a permission
-# for a Manager and believed the data was out of that Manager's reach would be
-# the localStorage grid's mistake again, so the sentence is served from here,
-# beside the guard that keeps it true, and the drawer renders what it is given
-# (it holds no copy).
+# 478), by the READ policies of the fee tables (495) and, as the second lock,
+# by the policies of the payroll tables (485, 490, 519) and of the six tables
+# that hold a client's bank lines (524).
+#
+# SINCE MIGRATIONS 549 AND 550 (POST-A-339) the payroll and bank tables are not
+# the browser's at all: a signed-in session holds no privilege on any of them,
+# SELECT included, nor may it run the two bank reports. So the sentence no
+# longer says WHAT the database checks on them (a block on reading, a block on
+# writing, the employee's own declaration, the bank account list the database
+# did not cover): there is nothing left to check, because there is nothing to
+# reach, and a block on payroll or on banking is applied in one place, the
+# server, for everyone. It says so in a sentence, and the families and what it
+# names are held by `tests/test_a_denial_says_what_it_reaches.py` against the
+# migrations' own lists of tables. The row policies that ask the grid stay in
+# the database as the second lock and are still measured
+# (`tests/test_the_per_person_grid_reaches_the_database_pg.py`, with the privilege
+# given back in a throwaway database); a regrant would put them back to work.
+#
+# Outside the payroll and bank tables and the fee tables (495), no table's SELECT
+# policy reads the grid, so a screen that reads any other table straight from the
+# browser over PostgREST (the clients list and the task board, say) is governed
+# there by the person's firm, their client assignments and, on a few tables,
+# their role. A Partner who unticked a permission for a Manager and believed the
+# data was out of that Manager's reach would be the localStorage grid's mistake
+# again, so the sentence is served from here, beside the guard that keeps it
+# true, and the drawer renders what it is given (it holds no copy).
 #
 # KEPT TRUE BY `tests/test_the_per_person_grid_reaches_the_database_pg.py`,
 # which reads `pg_policies` on a migrated database and fails the day a public
 # table's SELECT or ALL policy outside the payroll, fee and bank-line tables
-# asks the grid — or the day no write policy does. Whoever makes either happen rewrites this
-# sentence in the same commit.
+# asks the grid, or the day no write policy does, and by
+# `tests/test_a_denial_says_what_it_reaches.py` for the payroll and bank claims.
+# Whoever makes either change rewrites this sentence in the same commit.
 # Deliberately says nothing about counts (tables, screens) because those go
 # stale, and nothing about Storage, which is files and not a table.
 DENIAL_REACH_NOTICE = (
     "A block here is enforced by the PracticeSync server, which refuses that "
-    "person's requests for that permission. For payroll the database enforces "
-    "a block on reading as well: a person blocked from reading payroll cannot "
-    "read employees, runs, payslips, attendance, leave, tax declarations, "
-    "salary history, salary structures, loans, settlements, bonus records, "
-    "remittances or ECR filings from the browser either. A block on writing "
-    "payroll is applied by the PracticeSync server, where the payroll records "
-    "are written: the database refuses a signed-in browser session any write "
-    "to employees, runs, payslips, attendance, leave balances, salary "
-    "history, salary structures, loans, settlements, bonus records, "
-    "remittances or ECR filings. An employee's own tax declaration is the "
-    "one payroll record the database still lets that employee write with "
-    "their own sign-in (the employee portal saves it through the "
-    "PracticeSync server); for a member of the "
-    "firm's staff the database also refuses a tax declaration and its items "
-    "to a person blocked from writing payroll. Billing works the same way for reading: a "
-    "person blocked from reading "
-    "billing cannot read the practice's fee engagements, fee invoices or "
-    "fee receipts from the browser either. Banking works the same way for "
-    "reading a client's bank lines: a person blocked from reading banking "
-    "cannot read bank transactions, statements, splits, reconciliations or "
-    "matching rules from the browser either, but the list of bank accounts is "
-    "not covered by the database; the screens that show it ask the "
-    "PracticeSync server, which does check it. Nothing else is checked against "
-    "this grid "
-    "when a table is read, and several screens read tables directly from the "
-    "browser: there only the person's "
-    "firm, client assignments and, on a few tables, role decide. Direct writes "
-    "are checked against this grid on some tables only. The one other read it "
-    "reaches is a stored year-end export file."
+    "person's requests for that permission. Payroll and banking are reached "
+    "only through that server: the database lets no signed-in browser session "
+    "read or write the payroll records (employees, runs, payslips, attendance, "
+    "leave balances, tax declarations, salary history, salary structures, "
+    "loans, settlements, bonus records, remittances, ECR filings and the "
+    "payroll settings) or the bank records (accounts, statements, "
+    "transactions, splits, reconciliations, matching rules and saved "
+    "statement layouts), and the two bank reports and the foreign-currency "
+    "bank balances are closed to it the same way, so a block on payroll or "
+    "on banking is applied in one place, for everyone, an employee filing "
+    "their own tax declaration included (the employee portal saves it "
+    "through the PracticeSync server). Billing works "
+    "the same way for reading: a person blocked from reading billing cannot "
+    "read the practice's fee engagements, fee invoices or fee receipts from "
+    "the browser either. Nothing else is checked against this grid when a "
+    "table is read, and several screens read tables directly from the "
+    "browser: there only the person's firm, client assignments and, on a few "
+    "tables, role decide. Direct writes are checked against this grid on some "
+    "tables only. The one other read it reaches is a stored year-end export "
+    "file."
 )
 
 
