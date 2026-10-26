@@ -557,7 +557,7 @@ def test_the_rollback_restores_the_previous_definitions_and_the_actor_is_lost_an
     ok, jid = _post(dsn, "service", "RB-1", created_by=PEOPLE["manager_a"][0])
     assert ok and _audit(dsn, f"entity_id = '{jid}'") == [], "after the rollback a privileged caller is audited by nobody"
     assert _psql_file(dsn, MIGRATION).returncode == 0
-    for later in sorted(MIGRATIONS.glob("546_*.sql")):          # 545 over a database that carries 546 gives back 545 alone
+    for later in sorted(MIGRATIONS.glob("54[67]_*.sql")):       # 545 over a database that carries 546 and 547 gives back 545 alone (547 redefines the reader)
         if not later.name.endswith("_rollback.sql"):
             assert _psql_file(dsn, later).returncode == 0
     ok, jid = _post(dsn, "service", "RB-2", created_by=PEOPLE["manager_a"][0])
@@ -571,7 +571,7 @@ def test_applying_it_twice_changes_nothing(dsn):
     once = _sources(dsn)                                # over a database that carries 546, 545 gives back its own two wrappers
     assert _psql_file(dsn, MIGRATION).returncode == 0
     assert _sources(dsn) == once, "applying 545 a second time changed something"
-    for later in sorted(MIGRATIONS.glob("546_*.sql")):
+    for later in sorted(MIGRATIONS.glob("54[67]_*.sql")):      # 547 redefines the reader again: the chain's definition is 545 then 546 then 547
         if not later.name.endswith("_rollback.sql"):
             assert _psql_file(dsn, later).returncode == 0
-    assert _sources(dsn) == before, "545 then 546 must give back the chain's definitions"
+    assert _sources(dsn) == before, "545 then 546 then 547 must give back the chain's definitions"

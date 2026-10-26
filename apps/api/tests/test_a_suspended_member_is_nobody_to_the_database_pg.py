@@ -320,6 +320,10 @@ USERS_READERS_THAT_DO_NOT_AUTHORISE = {
     # runs only when nobody is signed in (it returns at once for a signed-in caller), is closed to every signed-in role, and decides
     # nothing about what anyone may do.
     "carry_audit_actor",
+    # Checks that the label a SERVER request carries in the `x-acting-auth-user` header (migration 547) names a person who exists, so a
+    # junk label is no actor. It is believed only on a request that runs as service_role, is closed to every signed-in role, and decides
+    # nothing about what anyone may do: it labels an audit row.
+    "carried_audit_actor",
     # Asks whether an id the CALLER NAMES (a member a grant of access is written for) belongs to the caller's firm.
     # The caller is still resolved by get_my_firm_id(), which is NULL for a suspended or signed-out member, so a
     # suspension reaches it (the comparison with NULL is never true); `users` is read for the TARGET, not for the caller.
