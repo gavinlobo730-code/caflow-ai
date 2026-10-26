@@ -13,7 +13,7 @@ from core.exceptions import NotFoundError
 from core.permissions import rbac
 from core.observability import capture_soft_failure
 from core.uploads import accept_upload, safe_path_segment
-from core.authz import assert_client_access, can_access_client, filter_by_client
+from core.authz import assert_client_access, can_access_client, effective_client_ids, filter_by_client
 from models.fy import OptionalFYLabel
 from services.internal_client_service import assert_partner_for_internal_id
 
@@ -51,7 +51,7 @@ def _assert_document_scope(doc_id: str, current_user: dict) -> dict:
     wrong-firm and unassigned alike, so the response is not an existence
     oracle."""
     try:
-        doc = document_repo.get_or_raise(doc_id)
+        doc = document_repo.get_or_raise(doc_id, firm_id=current_user["firm_id"])
     except NotFoundError as exc:
         # A missing, already-deleted or hidden id is the same fixed 404 as the other two refusals below. It used to escape as
         # an unhandled NotFoundError, which the global handler answers as a 500 with a logged traceback: a second tab pressing
@@ -102,7 +102,8 @@ def list_documents(
     # named case without relying on the mount-level guard.
     if client_id:
         assert_client_access(current_user, client_id)
-    docs = document_repo.find_all(firm_id=current_user["firm_id"], client_id=client_id)
+    docs = document_repo.find_all(firm_id=current_user["firm_id"], client_id=client_id,
+                                  allowed_client_ids=None if client_id else effective_client_ids(current_user))
     docs = filter_by_client(current_user, docs)
     return api_response(True, {"documents": docs, "total": len(docs)})
 
@@ -257,7 +258,7 @@ def delete_document(
     kept for audit purposes — no hard deletes on document records."""
     doc = _assert_document_scope(doc_id, current_user)
 
-    document_repo.soft_delete(doc_id, deleted_by=current_user.get("auth_user_id"))
+    document_repo.soft_delete(doc_id, deleted_by=current_user.get("auth_user_id"), firm_id=current_user["firm_id"])
 
     log_activity(
         action="document_deleted",

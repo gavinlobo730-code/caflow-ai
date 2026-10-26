@@ -33,6 +33,7 @@ from domain.currency.fx_writer import fx_writer
 from services.period_validation_service import period_validation_service
 from services.phase2_journal_service import phase2_journal_service as K
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 
 _BASE = "INR"
 
@@ -92,7 +93,7 @@ class FXRevaluationService:
         derived purely from posted data (no historical recompute). No-op until
         bank_accounts.currency exists (probed)."""
         try:
-            banks = (db.table("bank_accounts")
+            banks = (privileged_for(db).table("bank_accounts")
                      .select("id, currency, coa_account_id")
                      .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []
         except Exception:  # noqa: BLE001 — column/table absent ⇒ no foreign bank data

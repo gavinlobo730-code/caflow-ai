@@ -643,6 +643,23 @@ def _apply_schema_drift(result: dict) -> None:
     """
     global _SCHEMA_DRIFT
     _SCHEMA_DRIFT = result
+    # A deploy that booted before its migration landed has not asked the database whether the acting header arrives (the probe is a
+    # function migration 547 creates). The moment the verdict turns healthy is when it can be asked.
+    _probe_audit_actor()
+
+
+def _probe_audit_actor() -> None:
+    """POST-A-339: ask the database whether the header the API labels its privileged statements with reaches it (migration 547's
+    probe), so /health can SAY so. Only when the schema is in order, because the probe is a function that migration creates, and not
+    again once the answer is `carried`. Never raises: a probe that cannot run is a word on /health, not a failed boot."""
+    try:
+        if not (_SCHEMA_DRIFT.get("checked") and not _SCHEMA_DRIFT.get("missing")):
+            return
+        from core import audit_actor_probe
+        if audit_actor_probe.words() != "carried":
+            audit_actor_probe.run()
+    except Exception:
+        _logger.exception("audit actor probe failed to run")
 
 
 def _watch_schema_drift(initial: dict) -> None:
@@ -682,6 +699,9 @@ def _boot_background() -> None:
     # daemon thread and returns, so it delays nothing, and it starts nothing at
     # all when the first check found the schema in order.
     _watch_schema_drift(_SCHEMA_DRIFT)
+
+    # POST-A-339: the audit-header probe, now (and again by the watcher if the schema only turns healthy later).
+    _probe_audit_actor()
 
     try:
         start_scheduler()
@@ -728,6 +748,7 @@ def root():
 def healthcheck():
     from fastapi.responses import JSONResponse
     from models.common import api_response
+    from core import audit_actor_probe
     from services import ai_status_service, ledger_door
     from core import schema_guard
 
@@ -786,6 +807,10 @@ def healthcheck():
         # plain receipt go through services/ledger_door on the privileged client. Migration 546 revokes the signed-in grant, so it is
         # not merged until a deployment answers `server` here.
         "ledger_door": ledger_door.door_words(),
+        # Whether the header the API puts on its privileged statements reaches the database, so the edit log can name the person who made
+        # a payroll, bank or document write (POST-A-339, migration 547): `carried` once the boot-time probe has seen it arrive. Anything
+        # else (`not_seen`, `wrong_role`, `failed`, `unchecked`) is said in docs/design-record/tenancy-and-security.md. Memory only.
+        "audit_actor": audit_actor_probe.words(),
     })
 
 

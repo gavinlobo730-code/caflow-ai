@@ -29,6 +29,7 @@ from domain.banking.history import (
 )
 from domain.banking.narration import parse_narration, party_matches
 from core.observability import capture_soft_failure
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.bank_payee")
 
@@ -48,7 +49,7 @@ def _now() -> str:
 class BankPayeeService:
 
     def _get_txn(self, db, firm_id: str, txn_id: str) -> dict:
-        rows = (db.table("bank_transactions").select("*")
+        rows = (privileged_for(db).table("bank_transactions").select("*")
                 .eq("id", txn_id).eq("firm_id", firm_id).limit(1).execute().data) or []
         if not rows:
             raise HTTPException(status_code=404, detail="Bank transaction not found.")
@@ -88,7 +89,7 @@ class BankPayeeService:
             update = {"payee_name": name, "payee_type": ptype, "payee_id": payee_id or None}
 
         update["updated_at"] = _now()
-        (db.table("bank_transactions").update(update)
+        (privileged_for(db).table("bank_transactions").update(update)
          .eq("id", txn_id).eq("firm_id", firm_id).execute())
 
         try:
@@ -218,7 +219,7 @@ class BankPayeeService:
         it is the only place that knows which row is being annotated.
         """
         try:
-            rows = (db.table("bank_transactions")
+            rows = (privileged_for(db).table("bank_transactions")
                     .select("id, description, payee_id, payee_name, account_id, category, "
                             "posted_at, transaction_date, posted_journal_id")
                     .eq("firm_id", firm_id).eq("client_id", client_id)

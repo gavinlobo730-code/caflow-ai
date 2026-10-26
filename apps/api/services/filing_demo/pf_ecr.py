@@ -35,6 +35,7 @@ HONESTY ABOUT THE SPLIT
 from __future__ import annotations
 
 from services.filing_demo import common
+from core.db_provider import privileged_for
 
 # Statuses from which the real ECR is prepared. A draft or in-review run's
 # figures are still moving; the portal upload happens after payroll is
@@ -65,7 +66,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     if not run_id:
         raise ValueError("pf demo needs ref.run_id")
 
-    rows = (db.table("payroll_runs").select("*")
+    rows = (privileged_for(db).table("payroll_runs").select("*")
             .eq("id", run_id).eq("firm_id", firm_id)
             .eq("client_id", client_id).limit(1).execute().data) or []
     if not rows:
@@ -93,7 +94,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     # and scoping the slips by it is the firm+client scope, one hop removed.
     # Columns are narrowed to the PF legs: what we need is WHICH members the
     # ECR would list, which is headcount-sized, not ledger-sized.
-    slips = (db.table("payroll_slips")
+    slips = (privileged_for(db).table("payroll_slips")
              .select("employee_id,pf_employee_paise,pf_employer_paise")
              .eq("run_id", run_id).execute().data) or []
     member_ids = sorted({
@@ -109,7 +110,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     # surfaces exactly who would block the real filing.
     missing_uan: list[str] = []
     if member_ids:
-        employees = (db.table("payroll_employees").select("id,name,uan")
+        employees = (privileged_for(db).table("payroll_employees").select("id,name,uan")
                      .eq("firm_id", firm_id).eq("client_id", client_id)
                      .in_("id", member_ids).execute().data) or []
         missing_uan = sorted(

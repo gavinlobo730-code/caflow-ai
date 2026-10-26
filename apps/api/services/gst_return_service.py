@@ -47,6 +47,7 @@ import domain.gst.return_period as return_period
 import domain.gst.iff as iff
 from domain.gst.classifier import classify_transaction, TransactionForClassification
 from domain.gst.validator import GSTValidator, InvoiceToValidate
+from core.db_provider import privileged_for
 
 # One instance; GSTValidator holds no state.
 _validator = GSTValidator()
@@ -534,7 +535,7 @@ def _bank_lines_declaring_gst(db, firm_id, client_id, start, end) -> list[dict]:
     party, are not in this read (it asks `posted_journal_id` not null).
     """
     db = _service_db() or db
-    return fetch_all(lambda: db.table("bank_transactions")
+    return fetch_all(lambda: privileged_for(db).table("bank_transactions")
             # Spelled out rather than pulled from a constant so
             # test_backend_columns_exist_pg can read every name and check it
             # against the real schema — a projection built in Python is

@@ -203,6 +203,27 @@ def within_client_scope(rows: list[dict], allowed_client_ids: Optional[set[str]]
     return [r for r in rows if not r.get(key) or str(r.get(key)) in allowed_client_ids]
 
 
+#: A client id that no client has. `scope_query_to_clients` names it for a caller who has NO clients, so the statement answers no rows.
+_NO_CLIENT = "00000000-0000-0000-0000-000000000000"
+
+
+def scope_query_to_clients(query, allowed_client_ids: Optional[set[str]], column: str = "client_id"):
+    """Narrow a PostgREST query to the clients a caller may see, IN the statement.
+
+    The API reads the practice's tables with its privileged client (no row security), so a scoped caller's list used to be cut
+    to their clients by the database and is now cut by the application. Cutting AFTER the read (`filter_by_client`) is correct
+    and still done as the second line, but it lets the window or cap the statement carries (PostgREST's thousand rows, a
+    `limit`) apply to the whole firm first: a scoped caller's own rows can be crowded out by rows they may not see. Narrowing in
+    the statement gives them their own book, windowed as it used to be.
+
+    `None` is "no restriction" (a Partner, or mock mode) and returns the query unchanged. An EMPTY set is "no clients" and must
+    never mean "no filter": it names a client id nobody has. A caller who has already named ONE client (`.eq("client_id", ...)`
+    after `assert_client_access`) does not call this."""
+    if allowed_client_ids is None:
+        return query
+    return query.in_(column, sorted(allowed_client_ids) or [_NO_CLIENT])
+
+
 def filter_by_client(user: dict, rows: list[dict], key: str = "client_id") -> list[dict]:
     """Drop rows whose client is outside the user's effective client set.
     Rows with no client id (firm-level) are kept."""

@@ -70,6 +70,7 @@ from models.common import api_response
 from models.fy import FYLabel
 from models.payroll import EmployeeDeclarationIn
 from services.audit_service import log_event
+from core.db_provider import privileged_for
 
 router = APIRouter(prefix="/api/portal/employee", tags=["portal_employee"])
 
@@ -221,7 +222,7 @@ def employee_me(employee: dict = Depends(get_current_portal_employee)):
     """The caller's OWN employee record: what the Profile tab and the page header show. No parameters; who is asking comes
     from the principal."""
     db = _employee_db()
-    rows = (db.table("payroll_employees")
+    rows = (privileged_for(db).table("payroll_employees")
             .select("id, name, designation, department, pan, bank_account_no, bank_name, bank_ifsc")
             .eq("id", employee["employee_id"]).eq("firm_id", employee["firm_id"]).limit(1).execute().data) or []
     if not rows:
@@ -240,13 +241,13 @@ def employee_payslips(employee: dict = Depends(get_current_portal_employee)):
     period is the run's `month` as stored; a slip's amounts are the payroll module's, forwarded and never recomputed."""
     db = _employee_db()
     slips = fetch_all(
-        lambda: db.table("payroll_slips").select("id, run_id, gross_paise, net_paise, created_at")
+        lambda: privileged_for(db).table("payroll_slips").select("id, run_id, gross_paise, net_paise, created_at")
         .eq("employee_id", employee["employee_id"]),
         "id", label="payroll_slips")
     run_ids = sorted({str(s["run_id"]) for s in slips if s.get("run_id")})
     months: dict[str, str] = {}
     for start in range(0, len(run_ids), 50):
-        for run in (db.table("payroll_runs").select("id, month, status")
+        for run in (privileged_for(db).table("payroll_runs").select("id, month, status")
                     .eq("firm_id", employee["firm_id"]).eq("client_id", employee["client_id"])
                     .in_("id", run_ids[start:start + 50]).execute().data or []):
             if run.get("status") in PAYROLL_RELEASED:
@@ -269,7 +270,7 @@ def employee_leave_balances(employee: dict = Depends(get_current_portal_employee
     had recorded this year's. An entitlement nobody recorded is an empty list, never a default."""
     db = _employee_db()
     year = ist_today().year
-    rows = (db.table("leave_balances")
+    rows = (privileged_for(db).table("leave_balances")
             .select("id, year, casual_leave_balance, sick_leave_balance, earned_leave_balance")
             .eq("employee_id", employee["employee_id"]).eq("firm_id", employee["firm_id"])
             .eq("year", year).execute().data) or []
@@ -279,7 +280,7 @@ def employee_leave_balances(employee: dict = Depends(get_current_portal_employee
 def _declaration_view(db, employee: dict, fy: str) -> dict:
     """The caller's declaration for a year and its Chapter VI-A lines, in the columns the form shows (no firm, client or
     employee id: the form never needed them and the server owns them)."""
-    heads = (db.table("payroll_it_declarations")
+    heads = (privileged_for(db).table("payroll_it_declarations")
              .select("id, fy, regime, status, rent_paid_declared_paise, landlord_name, landlord_address, landlord_pan, "
                      "rent_is_metro, lta_declared_paise, home_loan_interest_declared_paise, lender_name, lender_pan, "
                      "other_income_declared_paise, house_property_loss_declared_paise, proofs_verified")
@@ -287,7 +288,7 @@ def _declaration_view(db, employee: dict, fy: str) -> dict:
              .eq("fy", fy).limit(1).execute().data) or []
     if not heads:
         return {"fy": fy, "declaration": None, "items": []}
-    items = (db.table("payroll_it_declaration_items")
+    items = (privileged_for(db).table("payroll_it_declaration_items")
              .select("id, section, label, amount_declared_paise, amount_verified_paise, status")
              .eq("declaration_id", heads[0]["id"]).eq("firm_id", employee["firm_id"]).execute().data) or []
     items.sort(key=lambda i: str(i.get("section") or ""))
@@ -519,18 +520,18 @@ def _put_back(svc, firm_id: str, decl_id: str, new_ids: list[str], old_lines: li
     failing with the real reason."""
     def _remove_new():
         if new_ids:
-            svc.table("payroll_it_declaration_items").delete().eq("firm_id", firm_id).in_("id", new_ids).execute()
+            privileged_for(svc).table("payroll_it_declaration_items").delete().eq("firm_id", firm_id).in_("id", new_ids).execute()
 
     def _write_old_back():
         if not old_lines:
             return
-        present = {r["id"] for r in (svc.table("payroll_it_declaration_items").select("id")
+        present = {r["id"] for r in (privileged_for(svc).table("payroll_it_declaration_items").select("id")
                                      .eq("declaration_id", decl_id).eq("firm_id", firm_id)
                                      .in_("id", [ln["id"] for ln in old_lines]).execute().data or [])}
         for ln in old_lines:
             if ln["id"] in present:
                 continue
-            svc.table("payroll_it_declaration_items").insert({
+            privileged_for(svc).table("payroll_it_declaration_items").insert({
                 "id": ln["id"],
                 "firm_id": firm_id,
                 "declaration_id": decl_id,
@@ -546,10 +547,10 @@ def _put_back(svc, firm_id: str, decl_id: str, new_ids: list[str], old_lines: li
     def _header():
         if before:
             restore = {k: v for k, v in before.items() if k != "id"}
-            svc.table("payroll_it_declarations").update(restore).eq("id", decl_id).eq("firm_id", firm_id) \
+            privileged_for(svc).table("payroll_it_declarations").update(restore).eq("id", decl_id).eq("firm_id", firm_id) \
                 .eq("proofs_verified", False).execute()
         else:
-            svc.table("payroll_it_declarations").delete().eq("id", decl_id).eq("firm_id", firm_id).execute()
+            privileged_for(svc).table("payroll_it_declarations").delete().eq("id", decl_id).eq("firm_id", firm_id).execute()
 
     for what, step in (("new_lines", _remove_new), ("old_lines", _write_old_back), ("header", _header)):
         try:

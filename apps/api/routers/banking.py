@@ -21,10 +21,11 @@ from typing import Annotated, Optional
 from models.common import api_response
 from services import bank_erasure
 from services.audit_service import log_event
-from core.authz import assert_client_access, filter_by_client
+from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from core.observability import capture_soft_failure, capture_posting_failure
 from core.list_window import MAX_LIST_LIMIT, split
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.banking")
 
@@ -97,11 +98,13 @@ _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 _EMPTY_BRS_BUCKET = {"items": [], "total_paise": 0, "count": 0, "listed": 0}
 
 # EVERY banking route also asks `banking:read`, and asks it FIRST (a router-level dependency runs before a route's own). Migration 524 makes
-# the database answer ZERO ROWS to a person whose Banking read a Partner has blocked, and the services below read under the caller's own
-# sign-in, so a person left with `banking:write` or `banking:approve` and no read passed their route's guard and then met a 404, a "0 changed"
-# that read as success, or (on an insert, which asks for the new row back and so meets the read policy too) a database refusal worded as a
-# server fault. Refusing at the door says what is wrong, in the words every other refusal uses (POST-A-219's finalise-tier rule for payroll
-# is the precedent). `tests/test_a_banking_route_also_asks_for_banking_read.py` holds it over the route table.
+# the database answer ZERO ROWS to a person whose Banking read a Partner has blocked; the services below read with the API's privileged
+# client since POST-A-339 (no row security, so the door is now the ONLY place this tier is asked: this dependency and each route's own).
+# Before that they read under the caller's own sign-in, and a person left with `banking:write` or `banking:approve` and no read passed
+# their route's guard and then met a 404, a "0 changed" that read as success, or (on an insert, which asks for the new row back and so
+# meets the read policy too) a database refusal worded as a server fault. Refusing at the door says what is wrong, in the words every
+# other refusal uses (POST-A-219's finalise-tier rule for payroll is the precedent).
+# `tests/test_a_banking_route_also_asks_for_banking_read.py` holds it over the route table.
 router = APIRouter(prefix="/api/banking", tags=["banking"], dependencies=[Depends(rbac("banking", "read"))])
 
 
@@ -146,7 +149,7 @@ def _assert_row_scope(db, current_user: dict, table: str, row_id: str, label: st
 
     Returns the row's client_id so a caller that needs it does not re-read.
     """
-    rows = (db.table(table).select("client_id")
+    rows = (privileged_for(db).table(table).select("client_id")
             .eq("id", row_id).eq("firm_id", current_user["firm_id"])
             .limit(1).execute().data) or []
     if not rows:
@@ -183,7 +186,7 @@ def _assert_txn_batch_scope(db, current_user: dict, txn_ids: list) -> None:
     ids = [i for i in (txn_ids or []) if i]
     if not ids:
         return
-    rows = (db.table("bank_transactions").select("client_id")
+    rows = (privileged_for(db).table("bank_transactions").select("client_id")
             .in_("id", ids).eq("firm_id", current_user["firm_id"])
             .execute().data) or []
     for client_id in sorted({r.get("client_id") for r in rows if r.get("client_id")}):
@@ -217,7 +220,7 @@ def _bank_ledger_conflict(db, firm_id: str, client_id: str, coa_account_id: str,
     Reconcile."""
     if not coa_account_id:
         return None
-    q = (db.table("bank_accounts").select("id, bank_name, account_no")
+    q = (privileged_for(db).table("bank_accounts").select("id, bank_name, account_no")
          .eq("firm_id", firm_id).eq("client_id", client_id)
          .eq("coa_account_id", coa_account_id))
     for row in (q.execute().data or []):
@@ -265,7 +268,7 @@ def _bank_account_type(db, firm_id: str, bank_account_id: Optional[str]) -> Opti
     if not db or not bank_account_id:
         return None
     try:
-        row = (db.table("bank_accounts").select("id, account_type")
+        row = (privileged_for(db).table("bank_accounts").select("id, account_type")
                .eq("id", bank_account_id).eq("firm_id", firm_id)
                .limit(1).execute().data or [None])[0]
     except Exception:  # noqa: BLE001 — an unreadable account must not stop the parse
@@ -368,7 +371,7 @@ def _delete_blockers(db, firm_id: str, client_id: str,
             return []
         try:
             select = f"{col}, {extra}" if extra else col
-            return (db.table(table).select(select).in_(col, values).execute().data or [])
+            return (privileged_for(db).table(table).select(select).in_(col, values).execute().data or [])
         except Exception as e:  # noqa: BLE001 — an unreadable table blocks the delete
             _logger.error("delete-check on %s failed: %s", table, e)
             # Unreadable means BLOCKED, not clear. The date stays None, so the
@@ -437,13 +440,13 @@ def _ledger_is_disposable(db, firm_id: str, coa_account_id: str,
                        ("ledger_balances", "account_id"),
                        ("chart_of_accounts", "parent_id")):
         try:
-            if (db.table(table).select(col).eq(col, coa_account_id)
+            if (privileged_for(db).table(table).select(col).eq(col, coa_account_id)
                   .limit(1).execute().data or []):
                 return False
         except Exception as e:  # noqa: BLE001 — cannot prove it is unused ⇒ keep it
             _logger.warning("ledger-disposability check on %s failed: %s", table, e)
             return False
-    others = (db.table("bank_accounts").select("id")
+    others = (privileged_for(db).table("bank_accounts").select("id")
               .eq("firm_id", firm_id).eq("coa_account_id", coa_account_id)
               .execute().data or [])
     return all(o.get("id") == bank_account_id for o in others)
@@ -537,7 +540,7 @@ def list_bank_accounts(
     db = _db()
     if not db:
         return api_response(True, [])
-    q = (db.table("bank_accounts").select("*")
+    q = (privileged_for(db).table("bank_accounts").select("*")
          .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id))
     if not include_inactive:
         q = q.eq("is_active", True)
@@ -590,7 +593,7 @@ def create_bank_account(
             db, firm_id, payload["client_id"], payload["bank_name"],
             payload["account_no"], payload.get("account_type"))
 
-    row = db.table("bank_accounts").insert(payload).execute()
+    row = privileged_for(db).table("bank_accounts").insert(payload).execute()
     account = (row.data or [{}])[0]
     account = dict(account)
     account["opening_balance_paise"] = account_kind.to_statement_sign(
@@ -601,7 +604,7 @@ def create_bank_account(
                                       current_user.get("id")):
             try:
                 if account.get("id"):
-                    db.table("bank_accounts").delete().eq("id", account["id"]).eq("firm_id", current_user["firm_id"]).execute()
+                    privileged_for(db).table("bank_accounts").delete().eq("id", account["id"]).eq("firm_id", current_user["firm_id"]).execute()
             except Exception as swallowed:
                 capture_posting_failure(swallowed, operation="bank_account.create_rollback", firm_id=current_user['firm_id'], account_id=account.get('id'))
             return api_response(False, None, "Unable to save bank account. Please try again.")
@@ -619,7 +622,7 @@ def update_bank_account(
     if not db:
         return api_response(True, update)
     firm_id = current_user["firm_id"]
-    prior = (db.table("bank_accounts").select("*")
+    prior = (privileged_for(db).table("bank_accounts").select("*")
              .eq("id", account_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
     # A MISSING account (or one the caller's row security hides) is the same 404 as one in a client they may not reach. The guard
     # used to read `or [{}]` and then assert access to the client of an empty row, which is None and passes, so a PATCH of an
@@ -662,7 +665,7 @@ def update_bank_account(
     if opening_balance_gap(update.get("opening_balance_paise", prior.get("opening_balance_paise")),
                            update.get("opening_balance_date") or prior.get("opening_balance_date")):
         raise HTTPException(status_code=422, detail=OPENING_DATE_REQUIRED)
-    row = (db.table("bank_accounts").update(update)
+    row = (privileged_for(db).table("bank_accounts").update(update)
            .eq("id", account_id).eq("firm_id", firm_id).execute())
     account = (row.data or [{}])[0]
     # Auto-sync opening balances only when the opening balance actually changed.
@@ -670,7 +673,7 @@ def update_bank_account(
         client_id = account.get("client_id") or prior.get("client_id")
         if client_id and not _sync_opening_balances(db, firm_id, client_id, current_user.get("id")):
             try:
-                db.table("bank_accounts").update({k: prior.get(k) for k in update.keys()}).eq("id", account_id).eq("firm_id", firm_id).execute()
+                privileged_for(db).table("bank_accounts").update({k: prior.get(k) for k in update.keys()}).eq("id", account_id).eq("firm_id", firm_id).execute()
             except Exception as swallowed:
                 capture_posting_failure(swallowed, operation="bank_account.update_rollback", firm_id=firm_id, account_id=account_id)
             return api_response(False, None, "Unable to save bank account. Please try again.")
@@ -696,7 +699,7 @@ def bank_accounts_deletable(
     if not db:
         return api_response(True, {})
     firm_id = current_user["firm_id"]
-    accounts = (db.table("bank_accounts").select("id, coa_account_id")
+    accounts = (privileged_for(db).table("bank_accounts").select("id, coa_account_id")
                 .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
     blockers, latest = _delete_blockers(db, firm_id, client_id, accounts)
     # `reason` is the SAME sentence the DELETE would refuse with. The panel used
@@ -747,7 +750,7 @@ def delete_bank_account(
     if not db:
         return api_response(True, {"deleted": True, "mock": True})
     firm_id = current_user["firm_id"]
-    account = (db.table("bank_accounts").select("*")
+    account = (privileged_for(db).table("bank_accounts").select("*")
                .eq("id", account_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
     if not account:
         raise HTTPException(status_code=404, detail="Bank account not found.")
@@ -765,7 +768,7 @@ def delete_bank_account(
 
     coa_id = account.get("coa_account_id")
     drop_ledger = _ledger_is_disposable(db, firm_id, coa_id, account_id)
-    db.table("bank_accounts").delete().eq("id", account_id).eq("firm_id", firm_id).execute()
+    privileged_for(db).table("bank_accounts").delete().eq("id", account_id).eq("firm_id", firm_id).execute()
     ledger_removed = False
     if drop_ledger:
         try:
@@ -795,7 +798,7 @@ def bank_account_balance(
         return api_response(True, {"account_id": account_id, "currency": "INR",
                                    "base_balance_paise": 0, "foreign_balance_minor": None})
     firm_id = current_user["firm_id"]
-    acct = (db.table("bank_accounts").select("id, currency, coa_account_id, bank_name, account_no")
+    acct = (privileged_for(db).table("bank_accounts").select("id, currency, coa_account_id, bank_name, account_no")
             .eq("id", account_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .limit(1).execute().data or [None])[0]
     if not acct:
@@ -1383,7 +1386,8 @@ def list_column_mappings(
     rows = column_mappings.list_mappings(db, current_user["firm_id"],
                                          client_id=client_id,
                                          bank_account_id=bank_account_id,
-                                         limit=limit)
+                                         limit=limit,
+                                         allowed_client_ids=effective_client_ids(current_user))
     window, has_more = split(rows, limit)
     mappings = _scope_rows(current_user, client_id, window)
     return api_response(True, {
@@ -1410,7 +1414,7 @@ def delete_column_mapping(
     db = _db()
     if not db:
         return api_response(True, {"deleted": True})
-    rows = (db.table("bank_statement_column_mappings").select("id, client_id")
+    rows = (privileged_for(db).table("bank_statement_column_mappings").select("id, client_id")
             .eq("firm_id", current_user["firm_id"]).eq("id", mapping_id)
             .limit(1).execute().data) or []
     if not rows:
@@ -1429,7 +1433,8 @@ def list_statements(
     db = _db()
     if not db:
         return api_response(True, [])
-    rows = banking_service.list_statements(db, current_user["firm_id"], client_id)
+    rows = banking_service.list_statements(db, current_user["firm_id"], client_id,
+                                           allowed_client_ids=effective_client_ids(current_user))
     return api_response(True, _scope_rows(current_user, client_id, rows))
 
 
@@ -1468,13 +1473,16 @@ def delete_statement(
     # Row-addressed with no client_id in the request, so the mount guard never
     # fires — the same helper every other row-addressed endpoint here uses.
     _assert_statement_scope(db, current_user, statement_id)
-    statement = (db.table("bank_statements").select("*")
+    statement = (privileged_for(db).table("bank_statements").select("*")
                  .eq("firm_id", current_user["firm_id"]).eq("id", statement_id)
                  .limit(1).execute().data)[0]
 
-    txns = (db.table("bank_transactions").select("*")
-            .eq("firm_id", current_user["firm_id"])
-            .eq("statement_id", statement_id).execute().data) or []
+    # EVERY line, in keyset pages: this read is the only thing that decides whether the statement can still go, and PostgREST cuts a
+    # response at about a thousand rows without saying so, so a posted line past the thousandth was not seen and the statement and
+    # all its lines, the posted one included, were deleted.
+    txns = fetch_all(lambda: (privileged_for(db).table("bank_transactions").select("*")
+                              .eq("firm_id", current_user["firm_id"]).eq("statement_id", statement_id)),
+                     key="id", label="statement lines")
 
     posted = [t for t in txns if t.get("match_status") == "posted" or t.get("posted_journal_id")]
     decided = [t for t in txns if t.get("match_status") in ("matched", "ignored")]
@@ -1508,9 +1516,9 @@ def delete_statement(
     # bank_transactions FK to bank_statements ON DELETE CASCADE (migration 006),
     # so the lines go with the header; deleted explicitly first so a database
     # without the cascade cannot leave them orphaned and still matchable.
-    db.table("bank_transactions").delete().eq(
+    privileged_for(db).table("bank_transactions").delete().eq(
         "firm_id", current_user["firm_id"]).eq("statement_id", statement_id).execute()
-    db.table("bank_statements").delete().eq(
+    privileged_for(db).table("bank_statements").delete().eq(
         "firm_id", current_user["firm_id"]).eq("id", statement_id).execute()
 
     return api_response(True, {
@@ -1542,6 +1550,7 @@ def list_transactions(
         client_id=client_id, match_status=match_status,
         date_from=date_from, date_to=date_to,
         min_amount_paise=min_amount_paise, max_amount_paise=max_amount_paise,
+        allowed_client_ids=effective_client_ids(current_user),
     )
     return api_response(True, _scope_rows(current_user, client_id, rows))
 
@@ -1634,6 +1643,10 @@ def bank_register(
             "view_opening_balance_paise": 0, "filtered_count": 0, "total_count": 0,
             "limit": limit, "offset": offset, "sort": sort, "desc": desc,
         })
+    # The account is the thing asked for, and `client_id` is optional, so the account's OWN client is what is checked. Until the
+    # API read with the privileged client the assignment policy on the bank tables answered an unassigned caller with a 404 here;
+    # naming an account of someone else's client and naming no client of one's own must not read it now.
+    _assert_row_scope(db, current_user, "bank_accounts", bank_account_id, "Bank account")
     return api_response(True, bank_register_service.register(
         db, current_user["firm_id"], bank_account_id, client_id=client_id,
         date_from=date_from, date_to=date_to, status=status, q=q,
@@ -2333,7 +2346,8 @@ def list_reconciliations(
     db = _db()
     if not db:
         return api_response(True, [])
-    rows = bank_reconciliation_service.list_sessions(db, current_user["firm_id"], client_id, bank_account_id)
+    rows = bank_reconciliation_service.list_sessions(db, current_user["firm_id"], client_id, bank_account_id,
+                                                     allowed_client_ids=effective_client_ids(current_user))
     return api_response(True, _scope_rows(current_user, client_id, rows))
 
 
@@ -2666,7 +2680,7 @@ def reconciliation_report_csv(
 def _rule_or_404(db, firm_id: str, rule_id: str) -> dict:
     """Fetch a rule scoped to the caller's firm. 404 rather than 403 for a rule
     belonging to another firm — the caller learns nothing about its existence."""
-    res = (db.table("bank_matching_rules").select("*")
+    res = (privileged_for(db).table("bank_matching_rules").select("*")
            .eq("id", rule_id).eq("firm_id", firm_id).execute())
     rows = res.data or []
     if not rows:
@@ -2689,7 +2703,7 @@ def list_rules(
     db = _db()
     if not db:
         return api_response(True, [])
-    res = (db.table("bank_matching_rules").select("*")
+    res = (privileged_for(db).table("bank_matching_rules").select("*")
            .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
            .order("priority").order("created_at").execute())
     rules = res.data or []
@@ -2736,7 +2750,7 @@ def create_rule(
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
-    row = db.table("bank_matching_rules").insert(
+    row = privileged_for(db).table("bank_matching_rules").insert(
         {"firm_id": current_user["firm_id"], **_rule_fields(data)}
     ).execute()
     # A new rule may cover lines already drafted from history or nothing.
@@ -2802,7 +2816,7 @@ def update_rule(
             detail=("A GST rate needs a ledger to code the amount to — "
                     "the split books the ex-tax amount there."))
     _refuse_an_unresolvable_party(merged)
-    row = (db.table("bank_matching_rules").update(fields)
+    row = (privileged_for(db).table("bank_matching_rules").update(fields)
            .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())
     # What the rule proposes may have changed; what it is trusted to do has not
     # changed which lines it covers, so only a payload edit re-proposes.
@@ -2892,7 +2906,7 @@ def delete_rule(
     # rather than shipping the rows to count them here.
     posted = 0
     try:
-        resp = (db.table("bank_transactions").select("id", count="exact")
+        resp = (privileged_for(db).table("bank_transactions").select("id", count="exact")
                 .eq("firm_id", current_user["firm_id"])
                 .eq("posted_by_rule_id", rule_id).limit(1).execute())
         posted = int(getattr(resp, "count", None) or 0)
@@ -2912,7 +2926,7 @@ def delete_rule(
                         f"itself, and deleting it erases the record of why they posted. "
                         f"Only a Manager or Partner can delete it — or deactivate it instead."))
 
-    (db.table("bank_matching_rules").delete()
+    (privileged_for(db).table("bank_matching_rules").delete()
      .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())
     # AFTER the delete, because there is nothing left to read afterwards: the
     # whole rule goes into the audit entry, not merely its id.

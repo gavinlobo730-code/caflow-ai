@@ -30,6 +30,7 @@ from typing import Optional
 from core.db_paging import fetch_all
 from core.ist_clock import fy_bounds
 from domain.payroll import bonus_register
+from core.db_provider import privileged_for
 
 #: `payroll_runs.status` values that mean somebody was actually paid. The same
 #: pair `routers/payroll.py::_PAYROLL_RELEASED` uses and migration 323 made RLS
@@ -69,7 +70,7 @@ def read_register(db, *, firm_id: str, client_id: str,
                               accounting_year=accounting_year)
 
     employees = fetch_all(
-        lambda: db.table("payroll_employees")
+        lambda: privileged_for(db).table("payroll_employees")
         .select("id, name, basic_paise, da_percent, is_active")
         .eq("firm_id", firm_id).eq("client_id", client_id),
         key="id", label="bonus.employees")
@@ -141,7 +142,7 @@ def _months_worked(db, *, firm_id: str, client_id: str,
     # MMYYYY periods `gstr9_service` has to name one by one.
     first, last = (str(x)[:7] for x in fy_bounds(accounting_year))
     runs = fetch_all(
-        lambda: db.table("payroll_runs").select("id, month, status")
+        lambda: privileged_for(db).table("payroll_runs").select("id, month, status")
         .eq("firm_id", firm_id).eq("client_id", client_id)
         .in_("status", list(RELEASED_RUN_STATUSES))
         .gte("month", first).lte("month", last),
@@ -150,7 +151,7 @@ def _months_worked(db, *, firm_id: str, client_id: str,
     if not run_ids:
         return {}
     slips = fetch_all(
-        lambda: db.table("payroll_slips").select("id, run_id, employee_id")
+        lambda: privileged_for(db).table("payroll_slips").select("id, run_id, employee_id")
         .in_("run_id", run_ids),
         key="id", label="bonus.slips")
     counted: dict = {}
@@ -182,7 +183,7 @@ def _working_days(db, *, firm_id: str, accounting_year: str,
     months = _fy_months(accounting_year)
     years = sorted({y for y, _ in months})
     rows = fetch_all(
-        lambda: db.table("attendance")
+        lambda: privileged_for(db).table("attendance")
         .select("id, employee_id, month, year, days_present")
         .eq("firm_id", firm_id).in_("year", years),
         key="id", label="bonus.attendance")

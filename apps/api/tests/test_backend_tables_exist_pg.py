@@ -111,7 +111,12 @@ EXEMPT_FUNCTIONS: dict[str, str] = {}
 # period_lock_reason — and which one is the caller's question. Writing it as a
 # literal would mean two near-identical call sites, which is how the two
 # definitions drift apart.
-MAX_UNREADABLE_RPC = 1
+#
+# TWO (POST-A-339, 26-10-2026): core/acting_client.ActingClient.rpc passes the name its caller gave straight through to the
+# wrapped client, only labelling the request with the person it acts for. It is a pass-through, not a choice between functions; the
+# calls that reach it (the probe's `audit_actor_probe` is the one the API makes through it today) name their function as a literal
+# and are read at their own call site.
+MAX_UNREADABLE_RPC = 2
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

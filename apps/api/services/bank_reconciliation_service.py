@@ -25,6 +25,8 @@ from domain.banking import brs as brs_domain
 from domain.banking import entry as E
 from services.timeline_service import timeline_service
 from core.observability import capture_soft_failure
+from core.authz import scope_query_to_clients
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.bank_reconciliation")
 
@@ -44,7 +46,7 @@ class BankReconciliationService:
 
     # ── session fetch / scoping ────────────────────────────────────────────────
     def _get_session(self, db, firm_id: str, recon_id: str) -> dict:
-        res = (db.table("bank_reconciliations").select("*")
+        res = (privileged_for(db).table("bank_reconciliations").select("*")
                .eq("id", recon_id).eq("firm_id", firm_id).maybe_single().execute())
         if not res.data:
             raise HTTPException(status_code=404, detail="Reconciliation not found.")
@@ -109,7 +111,7 @@ class BankReconciliationService:
                     "move the balance its signed statement was certified against."))
 
     def _account_statement_ids(self, db, firm_id: str, bank_account_id: str) -> list[str]:
-        res = (db.table("bank_statements").select("id")
+        res = (privileged_for(db).table("bank_statements").select("id")
                .eq("firm_id", firm_id).eq("bank_account_id", bank_account_id).execute())
         return [r["id"] for r in (res.data or [])]
 
@@ -133,7 +135,7 @@ class BankReconciliationService:
         # PAGED: a reconciliation that only saw the first 1000 lines would tie
         # out against part of the statement and call the rest a difference.
         return fetch_all(
-            lambda: (db.table("bank_transactions").select("*")
+            lambda: (privileged_for(db).table("bank_transactions").select("*")
                      .eq("firm_id", firm_id).in_("statement_id", stmt_ids)),
             label="reconciliation._account_txns")
 
@@ -183,13 +185,13 @@ class BankReconciliationService:
         # first 1000 lines would tie out against part of the statement and call
         # the rest a difference. `select("*")` carries the cursor column.
         in_period = fetch_all(
-            lambda: (db.table("bank_transactions").select("*")
+            lambda: (privileged_for(db).table("bank_transactions").select("*")
                      .eq("firm_id", firm_id).in_("statement_id", stmt_ids)
                      .gte("transaction_date", session["period_start"])
                      .lte("transaction_date", session["period_end"])),
             label="reconciliation._session_txns.period")
         ours = fetch_all(
-            lambda: (db.table("bank_transactions").select("*")
+            lambda: (privileged_for(db).table("bank_transactions").select("*")
                      .eq("firm_id", firm_id).in_("statement_id", stmt_ids)
                      .eq("reconciliation_id", session["id"])),
             label="reconciliation._session_txns.claimed")
@@ -212,7 +214,7 @@ class BankReconciliationService:
                 if t.get("posted_journal_id")]
 
     def _validate_bank_account(self, db, firm_id: str, client_id: str, bank_account_id: str) -> dict:
-        res = (db.table("bank_accounts").select("*")
+        res = (privileged_for(db).table("bank_accounts").select("*")
                .eq("id", bank_account_id).eq("firm_id", firm_id).limit(1).execute())
         ba = (res.data or [None])[0]
         if not ba:
@@ -347,7 +349,7 @@ class BankReconciliationService:
         ba = self._validate_bank_account(db, firm_id, client_id, bank_account_id)
         account_opening = int(ba.get("opening_balance_paise") or 0)
 
-        sessions = (db.table("bank_reconciliations").select("*")
+        sessions = (privileged_for(db).table("bank_reconciliations").select("*")
                     .eq("firm_id", firm_id).eq("bank_account_id", bank_account_id)
                     .eq("status", "completed").execute().data or [])
         # Chronological, so "the last one" is unambiguous and the accumulation
@@ -419,7 +421,7 @@ class BankReconciliationService:
         suggestion = self.opening_suggestion(db, firm_id, client_id, bank_account_id)
         if opening_balance_paise is None:
             opening_balance_paise = suggestion["suggested_opening_paise"]
-        row = (db.table("bank_reconciliations").insert({
+        row = (privileged_for(db).table("bank_reconciliations").insert({
             "firm_id": firm_id, "client_id": client_id, "bank_account_id": bank_account_id,
             "account_no": ba.get("account_no"),
             "period_start": statement_start_date, "period_end": statement_end_date,
@@ -446,10 +448,13 @@ class BankReconciliationService:
         return view
 
     def list_sessions(self, db, firm_id, client_id: Optional[str],
-                      bank_account_id: Optional[str] = None) -> list[dict]:
-        q = db.table("bank_reconciliations").select("*").eq("firm_id", firm_id)
+                      bank_account_id: Optional[str] = None,
+                      allowed_client_ids: Optional[set] = None) -> list[dict]:
+        q = privileged_for(db).table("bank_reconciliations").select("*").eq("firm_id", firm_id)
         if client_id:
             q = q.eq("client_id", client_id)
+        else:
+            q = scope_query_to_clients(q, allowed_client_ids)
         if bank_account_id:
             q = q.eq("bank_account_id", bank_account_id)
         rows = q.order("period_end", desc=True).execute().data or []
@@ -503,7 +508,7 @@ class BankReconciliationService:
         if not update:
             return self.get_session(db, firm_id, recon_id)
         update["updated_at"] = _now()
-        db.table("bank_reconciliations").update(update).eq("id", recon_id).eq("firm_id", firm_id).execute()
+        privileged_for(db).table("bank_reconciliations").update(update).eq("id", recon_id).eq("firm_id", firm_id).execute()
         return self.get_session(db, firm_id, recon_id)
 
     #: The same floor a reopen reason has to clear (migration 253). "ok" in an
@@ -565,7 +570,7 @@ class BankReconciliationService:
         before = int(session.get("adjustments_paise") or 0)
         before_reason = session.get("adjustments_reason")
         now = _now()
-        db.table("bank_reconciliations").update({
+        privileged_for(db).table("bank_reconciliations").update({
             "adjustments_paise": amount,
             "adjustments_reason": clean or None,
             # public.users.id — the INTERNAL id, because the column FKs
@@ -617,7 +622,7 @@ class BankReconciliationService:
         if not hasattr(db, "rpc"):
             return None
         try:
-            res = db.rpc("bank_reconciling_items", params).execute()
+            res = privileged_for(db).rpc("bank_reconciling_items", params).execute()
             out = getattr(res, "data", None)
             if isinstance(out, dict) and "unpresented_cheques" in out:
                 return out
@@ -641,7 +646,7 @@ class BankReconciliationService:
         bank: list[dict] = []
         if stmt_ids:
             rows = fetch_all(
-                lambda: (db.table("bank_transactions").select("*")
+                lambda: (privileged_for(db).table("bank_transactions").select("*")
                          .eq("firm_id", firm_id).in_("statement_id", stmt_ids)),
                 label="brs._brs_rows.bank")
             bank = [{
@@ -771,7 +776,7 @@ class BankReconciliationService:
         stmt_ids = self._account_statement_ids(db, firm_id, session["bank_account_id"])
         if not stmt_ids:
             return {}
-        res = (db.table("bank_transactions").select("*")
+        res = (privileged_for(db).table("bank_transactions").select("*")
                .eq("firm_id", firm_id).in_("statement_id", stmt_ids)
                .in_("id", ids).execute())
         return {t["id"]: t for t in (res.data or []) if t.get("posted_journal_id")}
@@ -805,7 +810,7 @@ class BankReconciliationService:
             # silently end up claimed by whichever write lands last, with no
             # error surfaced to the loser. Guarding the write on the exact
             # reconciliation_id this call read closes that gap.
-            q = db.table("bank_transactions").update({
+            q = privileged_for(db).table("bank_transactions").update({
                 "reconciliation_id": recon_id, "reconciled": True, "reconciled_at": _now(),
                 "reconciled_journal_id": t.get("posted_journal_id"), "updated_at": _now(),
             }).eq("id", tid).eq("firm_id", firm_id)
@@ -832,7 +837,7 @@ class BankReconciliationService:
             # exact reconciliation_id this call read, so a concurrent request
             # that already moved this transaction (re-reconciled it elsewhere,
             # or unreconciled it first) can't be silently overwritten.
-            claim = db.table("bank_transactions").update({
+            claim = privileged_for(db).table("bank_transactions").update({
                 "reconciliation_id": None, "reconciled": False, "reconciled_at": None,
                 "reconciled_journal_id": None, "updated_at": _now(),
             }).eq("id", tid).eq("firm_id", firm_id).eq("reconciliation_id", recon_id).execute()
@@ -844,7 +849,7 @@ class BankReconciliationService:
 
     def _advance_to_in_progress(self, db, firm_id, session) -> None:
         if session.get("status") == "open":
-            db.table("bank_reconciliations").update({"status": "in_progress", "updated_at": _now()}) \
+            privileged_for(db).table("bank_reconciliations").update({"status": "in_progress", "updated_at": _now()}) \
                 .eq("id", session["id"]).eq("firm_id", firm_id).execute()
 
     # ── B.4.3 completion (tie-out enforced; immutable thereafter) ───────────────
@@ -906,7 +911,7 @@ class BankReconciliationService:
             capture_soft_failure(e, operation="bank_reconciliation_brs_snapshot",
                                  reconciliation_id=recon_id, firm_id=firm_id)
         snapshot["reconciliation"].update({"status": "completed", "completed_at": now, "completed_by": actor_id})
-        db.table("bank_reconciliations").update({
+        privileged_for(db).table("bank_reconciliations").update({
             "status": "completed", "completed_at": now, "completed_by": actor_id,
             "snapshot": snapshot, "updated_at": now,
         }).eq("id", recon_id).eq("firm_id", firm_id).execute()
@@ -1075,7 +1080,7 @@ class BankReconciliationService:
             "snapshot": session.get("snapshot"),
         }]
 
-        db.table("bank_reconciliations").update({
+        privileged_for(db).table("bank_reconciliations").update({
             "status": "in_progress",
             "completed_at": None, "completed_by": None,
             "reopened_at": now, "reopened_by": actor_id, "reopen_reason": clean,

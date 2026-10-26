@@ -27,6 +27,7 @@ from domain.payroll.run_status import PAYROLL_RELEASED
 from domain.reporting.amount_words import amount_in_words
 from domain.reporting.pdf_money import rupees_paise
 from services.pdf_page_furniture import numbered
+from core.db_provider import privileged_for
 
 logger = logging.getLogger("caflow.services")
 
@@ -568,14 +569,16 @@ def get_payslip_pdf(slip_id: str, firm_id: Optional[str], *, employer_db=None) -
     Enforces firm-scoping: the slip's run must belong to `firm_id`.
 
     `employer_db` is the client the EMPLOYER block alone is read through. Left out, it is the
-    caller's own sign-in like every other read here, which is right for the staff route. The
-    EMPLOYEE's route passes the privileged client, and only AFTER
+    caller's own sign-in, which is right for the staff route (the `clients` table keeps its row
+    security). The EMPLOYEE's route passes the privileged client, and only AFTER
     `employee_payslip_service.own_released_slip` has proved the slip is theirs and released: an
     employee principal has no `users` row, so row security hides the `clients` row (and the
     registrations beside it) that the letterhead is read from, and the download ownership had
     already approved would answer 409 for every employee (POST-A-220). The slip, the run and the
-    year-to-date figures stay on the employee's own sign-in, so the database still decides which of
-    those rows they may see.
+    year-to-date figures are read with the privileged client since POST-A-339 (the payroll tables
+    are losing the signed-in role's grants), and so are NOT filtered by row security: both routes
+    prove the slip is the caller's to read before this is called, and the run is read under the
+    firm named here.
 
     Returns:
         (pdf_bytes, suggested_filename)
@@ -584,7 +587,7 @@ def get_payslip_pdf(slip_id: str, firm_id: Optional[str], *, employer_db=None) -
     db = get_supabase()
 
     slip_res = (
-        db.table("payroll_slips")
+        privileged_for(db).table("payroll_slips")
         .select("*, payroll_employees(name, pan, designation, department, "
                 "uan, esi_number, bank_account_no, bank_ifsc), "
                 # `status` is read here now (apex-payroll-yearend-08) — without
@@ -654,7 +657,7 @@ def build_run_payslip_zip(run_id: str, firm_id: Optional[str]) -> tuple[bytes, s
     from core.supabase_client import get_supabase
     db = get_supabase()
 
-    run = (db.table("payroll_runs")
+    run = (privileged_for(db).table("payroll_runs")
            .select("id, firm_id, client_id, month, status")
            .eq("id", run_id).maybe_single().execute().data)
     if not run:
@@ -663,7 +666,7 @@ def build_run_payslip_zip(run_id: str, firm_id: Optional[str]) -> tuple[bytes, s
     if not firm_id or run.get("firm_id") != firm_id:
         raise PermissionError("Access denied")
 
-    slips = (db.table("payroll_slips")
+    slips = (privileged_for(db).table("payroll_slips")
              .select("*, payroll_employees(name, pan, designation, department, "
                      "uan, esi_number, bank_account_no, bank_ifsc)")
              .eq("run_id", run_id).execute().data) or []
@@ -766,7 +769,7 @@ def load_ytd(firm_id: Optional[str], client_id: Optional[str],
     from core.supabase_client import get_supabase
     db = get_supabase()
     try:
-        runs = (db.table("payroll_runs")
+        runs = (privileged_for(db).table("payroll_runs")
                 .select("id, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .in_("month", months).execute().data) or []
@@ -775,7 +778,7 @@ def load_ytd(firm_id: Optional[str], client_id: Optional[str],
                    if r.get("id") and (r.get("status") in PAYROLL_RELEASED or r.get("id") in own)]
         if not run_ids:
             return {}
-        rows = (db.table("payroll_slips")
+        rows = (privileged_for(db).table("payroll_slips")
                 .select("employee_id, gross_paise, net_paise, "
                         "pf_employee_paise, esi_employee_paise, pt_paise, "
                         "tds_paise, loan_recovery_paise")

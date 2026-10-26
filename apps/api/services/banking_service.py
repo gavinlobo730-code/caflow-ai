@@ -37,6 +37,8 @@ from domain.banking.entry import kind_for
 from domain.banking.posting_map import AUTO_COUNTER
 from domain.banking import posting_map as pmap
 from core.observability import capture_soft_failure
+from core.authz import scope_query_to_clients
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.banking")
 
@@ -174,7 +176,7 @@ def assert_bank_account_is_inr(db, firm_id: str, bank_account_id: Optional[str],
     """
     if not bank_account_id:
         return
-    q = (db.table("bank_accounts").select("id, currency, bank_name")
+    q = (privileged_for(db).table("bank_accounts").select("id, currency, bank_name")
          .eq("id", bank_account_id).eq("firm_id", firm_id))
     if client_id:
         q = q.eq("client_id", client_id)
@@ -247,7 +249,7 @@ class BankingService:
         """Hashes already stored for this client (chunked IN lookup)."""
         found: set = set()
         for i in range(0, len(hashes), 200):
-            res = (db.table("bank_transactions").select("import_hash")
+            res = (privileged_for(db).table("bank_transactions").select("import_hash")
                    .eq("firm_id", firm_id).eq("client_id", client_id)
                    .in_("import_hash", hashes[i:i + 200]).execute())
             for row in (res.data or []):
@@ -269,7 +271,7 @@ class BankingService:
         # Mirrors bank_reconciliation_service._validate_bank_account, the
         # established pattern for this exact lookup elsewhere in this subsystem.
         if bank_account_id:
-            _owned = (db.table("bank_accounts").select("id")
+            _owned = (privileged_for(db).table("bank_accounts").select("id")
                       .eq("id", bank_account_id).eq("firm_id", firm_id).eq("client_id", client_id)
                       .limit(1).execute().data or [])
             if not _owned:
@@ -378,7 +380,7 @@ class BankingService:
             stmt_payload["totals_mismatch_acknowledged_by"] = totals_acknowledgement.get("by")
             stmt_payload["totals_mismatch_acknowledged_at"] = _now()
 
-        stmt = db.table("bank_statements").insert(stmt_payload).execute().data
+        stmt = privileged_for(db).table("bank_statements").insert(stmt_payload).execute().data
         if not stmt:
             raise HTTPException(status_code=500, detail="Failed to create bank statement.")
         statement_id = stmt[0]["id"]
@@ -390,7 +392,7 @@ class BankingService:
         # than raising. Rows are already deduped, so in the normal path this is a
         # plain insert (no conflicts).
         for i in range(0, len(new_rows), _IMPORT_BATCH):
-            db.table("bank_transactions").upsert([{
+            privileged_for(db).table("bank_transactions").upsert([{
                 "statement_id": statement_id, "firm_id": firm_id, "client_id": client_id,
                 "transaction_date": r["transaction_date"], "description": r["description"],
                 "debit_paise": r["debit_paise"], "credit_paise": r["credit_paise"],
@@ -482,7 +484,7 @@ class BankingService:
         read.
         """
         try:
-            rows = (db.table("bank_accounts").select("id, coa_account_id")
+            rows = (privileged_for(db).table("bank_accounts").select("id, coa_account_id")
                     .eq("firm_id", firm_id).eq("client_id", client_id)
                     .eq("coa_account_id", coa_account_id).limit(1).execute().data) or []
         except Exception:  # noqa: BLE001
@@ -553,7 +555,7 @@ class BankingService:
                     detail=("A journal has already been created for this transaction — its "
                             "category cannot be changed until that draft is approved."))
             update["category"] = self._confirmed_category(db, firm_id, txn, account)
-        db.table("bank_transactions").update(update).eq("id", txn_id).eq("firm_id", firm_id).execute()
+        privileged_for(db).table("bank_transactions").update(update).eq("id", txn_id).eq("firm_id", firm_id).execute()
         category = update.get("category", txn.get("category"))
         # gst_allowed comes back WITH the row so the screen can patch that one
         # line instead of refetching the page. Picking a ledger is exactly what
@@ -595,7 +597,7 @@ class BankingService:
         if txn.get("posted_journal_id"):
             raise HTTPException(status_code=409,
                 detail="A journal has already been created for this transaction — it cannot be ignored until that draft is approved.")
-        db.table("bank_transactions").update({
+        privileged_for(db).table("bank_transactions").update({
             "match_status": "ignored", "updated_at": _now(),
         }).eq("id", txn_id).eq("firm_id", firm_id).execute()
         return {"id": txn_id, "match_status": "ignored"}
@@ -615,7 +617,7 @@ class BankingService:
         if txn["match_status"] != "ignored":
             raise HTTPException(status_code=409, detail="Transaction is not ignored.")
         restored = "matched" if txn.get("matched_entity_id") else "unmatched"
-        db.table("bank_transactions").update({
+        privileged_for(db).table("bank_transactions").update({
             "match_status": restored, "updated_at": _now(),
         }).eq("id", txn_id).eq("firm_id", firm_id).execute()
         return {"id": txn_id, "match_status": restored}
@@ -642,7 +644,7 @@ class BankingService:
 
         # Posting records the journal link only; reconciliation (B.4) is a separate
         # human step that owns the `reconciled` / `reconciled_at` columns.
-        db.table("bank_transactions").update({
+        privileged_for(db).table("bank_transactions").update({
             "account_id": account_id,
             "match_status": "posted",
             "posted_journal_id": journal_entry_id,
@@ -658,10 +660,15 @@ class BankingService:
         return {"id": txn_id, "match_status": "posted", "journal_entry_id": journal_entry_id}
 
     # ── Reads ─────────────────────────────────────────────────────────────────
-    def list_statements(self, db, firm_id: str, client_id: Optional[str] = None) -> list:
-        q = db.table("bank_statements").select("*").eq("firm_id", firm_id)
+    def list_statements(self, db, firm_id: str, client_id: Optional[str] = None,
+                        allowed_client_ids: Optional[set] = None) -> list:
+        """`allowed_client_ids` is the caller's own clients when no single client is named (`core.authz.effective_client_ids`;
+        None is every client): it narrows the statement itself, so the row cap applies to the caller's book."""
+        q = privileged_for(db).table("bank_statements").select("*").eq("firm_id", firm_id)
         if client_id:
             q = q.eq("client_id", client_id)
+        else:
+            q = scope_query_to_clients(q, allowed_client_ids)
         return q.order("created_at", desc=True).execute().data or []
 
     def list_transactions(
@@ -669,12 +676,15 @@ class BankingService:
         client_id: Optional[str] = None, match_status: Optional[str] = None,
         date_from: Optional[str] = None, date_to: Optional[str] = None,
         min_amount_paise: Optional[int] = None, max_amount_paise: Optional[int] = None,
+        allowed_client_ids: Optional[set] = None,
     ) -> list:
-        q = db.table("bank_transactions").select("*").eq("firm_id", firm_id)
+        q = privileged_for(db).table("bank_transactions").select("*").eq("firm_id", firm_id)
         if statement_id:
             q = q.eq("statement_id", statement_id)
         if client_id:
             q = q.eq("client_id", client_id)
+        else:
+            q = scope_query_to_clients(q, allowed_client_ids)
         if match_status:
             q = q.eq("match_status", match_status)
         if date_from:
@@ -693,7 +703,7 @@ class BankingService:
 
     # ── internal ──────────────────────────────────────────────────────────────
     def _get_txn(self, db, firm_id: str, txn_id: str) -> dict:
-        res = (db.table("bank_transactions").select("*")
+        res = (privileged_for(db).table("bank_transactions").select("*")
                .eq("id", txn_id).eq("firm_id", firm_id).maybe_single().execute())
         if not res.data:
             raise HTTPException(status_code=404, detail="Bank transaction not found.")

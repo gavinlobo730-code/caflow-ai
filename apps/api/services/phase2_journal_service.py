@@ -23,6 +23,7 @@ from core.observability import capture_posting_failure
 from domain.currency.policy import BASE_CURRENCY, CurrencyPolicy
 from domain.accounting import journal_source as JS
 from domain.currency.rate_types import DEFAULT_RATE_TYPE, is_valid_rate_type
+from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.phase2_journal")
@@ -1021,7 +1022,7 @@ class Phase2JournalService:
             return 0
         from core.db_paging import fetch_all
         rows = fetch_all(
-            lambda: db.table("payroll_slips")
+            lambda: privileged_for(db).table("payroll_slips")
                       .select("id, pf_employer_paise, esi_employer_paise")
                       .eq("run_id", run_id),
             label="payroll_slips.employer_contribution",

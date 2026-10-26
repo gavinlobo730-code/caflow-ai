@@ -22,8 +22,9 @@ WHAT EACH ROUTE ASKS
     points at the record (a later version, a tax claim's evidence, a Form 26AS upload), because the browser learned
     that only after the file was gone and was left with an entry that would not open.
 
-THE ROWS ARE THE CALLER'S. They are read and written through the caller's own database client, so row security is the
-second lock and the audit trigger names the person. Storage is touched through the request's client
+THE ROWS ARE READ AND WRITTEN WITH THE API'S PRIVILEGED CLIENT (POST-A-339), the firm and the client having been proved above
+and being on every statement, and every statement carries the person (`privileged_for`), so the audit trigger names them; row
+security is not a second lock on them. Storage is still touched through the request's client
 (`core.supabase_client.get_supabase`), as every other upload route does (`routers/documents.py`): under `USE_USER_JWT`
 that is the caller's own token, so migration 469's Storage policies (the client's assignment, the write permission and
 Partner-only delete) are asked of the file as well as the checks above.
@@ -49,6 +50,7 @@ from models.common import api_response
 from models.fy import OptionalFYLabel
 from services.audit_service import log_event
 from services.internal_client_service import assert_partner_for_internal_id
+from core.db_provider import privileged_for
 
 router = APIRouter(prefix="/api/client-documents", tags=["documents"])
 _logger = logging.getLogger("caflow.client_documents")
@@ -75,7 +77,7 @@ def _references(db, firm_id: str, doc_id: str):
     points at cannot be deleted (a foreign key refuses it), and the browser found that out after the file was gone.
     Each query is written out, with the firm on it, so the firm-scope guard can read every one of them."""
     return (
-        ("a later version of it", db.table("client_documents").select("id")
+        ("a later version of it", privileged_for(db).table("client_documents").select("id")
          .eq("firm_id", firm_id).eq("parent_document_id", doc_id).limit(1)),
         ("a Form 26AS upload", db.table("form_26as_uploads").select("id")
          .eq("firm_id", firm_id).eq("document_id", doc_id).limit(1)),
@@ -137,7 +139,7 @@ def _own_row(current_user: dict, doc_id: str) -> dict:
     else:
         # The columns a screen is given, plus the firm to check. They are spelled out in each query and not held in a
         # constant, so the column-existence guard can read every one of them against the real schema.
-        res = (db.table("client_documents").select(
+        res = (privileged_for(db).table("client_documents").select(
             "id, client_id, firm_id, file_name, description, doc_type, file_path, file_size, mime_type, expiry_date, "
             "financial_year, uploaded_by, version, parent_document_id, created_at")
             .eq("id", doc_id).eq("firm_id", current_user["firm_id"]).execute())
@@ -208,7 +210,7 @@ def list_client_documents(
     else:
         firm_id = current_user["firm_id"]
         rows = fetch_all(
-            lambda: db.table("client_documents").select(
+            lambda: privileged_for(db).table("client_documents").select(
                 "id, client_id, file_name, description, doc_type, file_path, file_size, mime_type, expiry_date, "
                 "financial_year, uploaded_by, version, parent_document_id, created_at")
             .eq("firm_id", firm_id).eq("client_id", client_id),
@@ -293,7 +295,7 @@ def upload_client_document(
     if getattr(stored, "error", None):
         raise HTTPException(status_code=500, detail=f"Storage upload failed: {stored.error}")
     try:
-        written = db.table("client_documents").insert({
+        written = privileged_for(db).table("client_documents").insert({
             "firm_id": firm_id,
             "client_id": client_id,
             "file_name": accepted.display_name,
@@ -384,7 +386,7 @@ def delete_client_document(
             detail="This document was not deleted because its file could not be removed. Please try again.") from exc
     file_went = bool(removed)
     try:
-        gone = db.table("client_documents").delete().eq("id", doc_id).eq("firm_id", current_user["firm_id"]).execute()
+        gone = privileged_for(db).table("client_documents").delete().eq("id", doc_id).eq("firm_id", current_user["firm_id"]).execute()
     except Exception as exc:  # noqa: BLE001 - say what happened to the file, in our own words; the database's go to the log
         capture_soft_failure(exc, operation="client_documents.delete_record")
         raise HTTPException(

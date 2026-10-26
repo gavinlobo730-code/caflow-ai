@@ -433,11 +433,20 @@ def test_attaching_another_firms_document_is_a_404():
     whatever is stored, so the tenant check belongs where the id ENTERS."""
     db = _db()
     _txn(db, "t1")
-    db.store["documents"] = [{"id": DOC, "firm_id": "another-firm"}]
+    db.store["documents"] = [{"id": DOC, "firm_id": "another-firm", "client_id": CLIENT}]
     with pytest.raises(HTTPException) as e:
         bank_batch_service.add_attachment(db, FIRM, "t1", "bill.pdf", document_id=DOC)
     assert e.value.status_code == 404
 
-    db.store["documents"] = [{"id": DOC, "firm_id": FIRM}]
+    # POST-A-339: the same firm's document of ANOTHER client is the same 404, in the same words, as a document that does not exist.
+    # The documents table used to hide it from a caller not assigned to its client by the row policy; the API reads it with the
+    # privileged client now, so the client is asked where the id enters.
+    db.store["documents"] = [{"id": DOC, "firm_id": FIRM, "client_id": "client-2"}]
+    with pytest.raises(HTTPException) as e:
+        bank_batch_service.add_attachment(db, FIRM, "t1", "bill.pdf", document_id=DOC)
+    assert e.value.status_code == 404
+    assert e.value.detail == "Document not found for this firm."
+
+    db.store["documents"] = [{"id": DOC, "firm_id": FIRM, "client_id": CLIENT}]
     out = bank_batch_service.add_attachment(db, FIRM, "t1", "bill.pdf", document_id=DOC)
     assert out["attachments"] == [{"name": "bill.pdf", "document_id": DOC}]

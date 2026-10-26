@@ -32,6 +32,7 @@ from services.banking_service import assert_bank_account_is_inr
 from core.ist_clock import ist_today
 from core.observability import capture_soft_failure
 from services.document_header_writer import update_header
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.bank_posting")
 
@@ -51,7 +52,7 @@ def _amount(txn: dict) -> tuple[int, bool]:
 class BankPostingService:
 
     def _get_txn(self, db, firm_id: str, txn_id: str) -> dict:
-        res = (db.table("bank_transactions").select("*")
+        res = (privileged_for(db).table("bank_transactions").select("*")
                .eq("id", txn_id).eq("firm_id", firm_id).maybe_single().execute())
         if not res.data:
             raise HTTPException(status_code=404, detail="Bank transaction not found.")
@@ -87,7 +88,7 @@ class BankPostingService:
         stmt_id = txn.get("statement_id")
         if not stmt_id:
             return
-        stmt = (db.table("bank_statements").select("bank_account_id")
+        stmt = (privileged_for(db).table("bank_statements").select("bank_account_id")
                 .eq("id", stmt_id).eq("firm_id", firm_id)
                 .eq("client_id", txn["client_id"])
                 .limit(1).execute().data or [None])[0] or {}
@@ -130,7 +131,7 @@ class BankPostingService:
         # an unscoped read-by-id in a money path, and this read decides which
         # sub-ledger real money lands in.
         try:
-            stmt = (db.table("bank_statements").select("bank_account_id")
+            stmt = (privileged_for(db).table("bank_statements").select("bank_account_id")
                     .eq("id", stmt_id).eq("firm_id", firm_id)
                     .eq("client_id", txn["client_id"])
                     .single().execute().data) or {}
@@ -159,7 +160,7 @@ class BankPostingService:
         ba_id = self.bank_account_id_for(db, firm_id, txn)
         if ba_id:
             try:
-                ba = (db.table("bank_accounts").select("coa_account_id")
+                ba = (privileged_for(db).table("bank_accounts").select("coa_account_id")
                       .eq("id", ba_id).eq("firm_id", firm_id).eq("client_id", client_id)
                       .single().execute().data) or {}
                 if ba.get("coa_account_id"):
@@ -731,13 +732,13 @@ class BankPostingService:
         # test_backend_columns_exist_pg, which checks every column name here
         # against the real schema.
         if gst_rate_bps is None:
-            claim = db.table("bank_transactions").update({
+            claim = privileged_for(db).table("bank_transactions").update({
                 "match_status": "posted", "posted_at": _now(), "posted_by": actor_id,
                 "posted_journal_id": journal_id, "updated_at": _now(),
             }).eq("id", txn_id).eq("firm_id", firm_id).eq(
                 "match_status", prior_status).execute()
         else:
-            claim = db.table("bank_transactions").update({
+            claim = privileged_for(db).table("bank_transactions").update({
                 "match_status": "posted", "posted_at": _now(), "posted_by": actor_id,
                 "posted_journal_id": journal_id, "updated_at": _now(),
                 "gst_rate_bps": int(gst_rate_bps),
@@ -779,7 +780,7 @@ class BankPostingService:
         # matched_entity_id belonging to another client (even within the firm)
         # cannot be settled / have its accounting state altered. Mirrors the
         # preview-path scoping (H4). maybe_single ⇒ no row → no settlement.
-        _rows = (db.table(table).select(f"id, {label_col}, paid_paise, status, {extra_cols}")
+        _rows = (privileged_for(db).table(table).select(f"id, {label_col}, paid_paise, status, {extra_cols}")
                  .eq("id", doc_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or []
         doc = _rows[0] if _rows else None
         if not doc:
@@ -952,7 +953,7 @@ class BankPostingService:
         # mistake, and making them find it again is a second job they did not ask
         # for. Undo takes back the posting, not the matching.
         back_to = "matched" if txn.get("matched_entity_id") else "unmatched"
-        db.table("bank_transactions").update({
+        privileged_for(db).table("bank_transactions").update({
             "match_status": back_to, "posted_at": None, "posted_by": None,
             "posted_journal_id": None, "updated_at": _now(),
             # The declared split goes with the posting it described. Leaving it
@@ -1144,7 +1145,7 @@ class BankPostingService:
             party_col, doc_table, alloc_key = "vendor_id", "purchase_bills", "purchase_bill_id"
 
         doc_ids = [a["entity_id"] for a in allocations]
-        docs = (db.table(doc_table).select(f"id, {party_col}")
+        docs = (privileged_for(db).table(doc_table).select(f"id, {party_col}")
                 .in_("id", doc_ids).eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
         found = {d["id"] for d in docs}
         missing = [d for d in doc_ids if d not in found]
@@ -1169,7 +1170,7 @@ class BankPostingService:
         # uses for a linked-but-not-yet-posted transaction — no schema change.
         # A concurrent loser's CAS finds match_status already changed and gets
         # zero rows back.
-        claim = (db.table("bank_transactions").update({
+        claim = (privileged_for(db).table("bank_transactions").update({
             "match_status": "matched", "updated_at": _now(),
         }).eq("id", txn_id).eq("firm_id", firm_id)
           .eq("match_status", raw_match_status)
@@ -1239,13 +1240,13 @@ class BankPostingService:
             # Release the claim so a failed settlement (e.g. a 422 business-rule
             # rejection) doesn't leave the transaction permanently stuck
             # "matched" with no receipt/payment behind it — the CA can retry.
-            db.table("bank_transactions").update({
+            privileged_for(db).table("bank_transactions").update({
                 "match_status": raw_match_status, "updated_at": _now(),
             }).eq("id", txn_id).eq("firm_id", firm_id).eq("match_status", "matched").execute()
             raise
 
         journal_id = result.get("journal_entry_id")
-        db.table("bank_transactions").update({
+        privileged_for(db).table("bank_transactions").update({
             "matched_entity_type": new_entity_type, "matched_entity_id": result["id"],
             "matched_by": (actor or {}).get("id"), "matched_at": _now(),
             "match_status": "posted", "posted_at": _now(), "posted_by": (actor or {}).get("id"),

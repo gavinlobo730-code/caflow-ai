@@ -51,6 +51,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import Optional
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.payment_account")
 
@@ -202,7 +203,7 @@ def resolve_payment_account(
     # 1 — an account the CA actually named.
     if bank_account_id:
         try:
-            row = (db.table("bank_accounts")
+            row = (privileged_for(db).table("bank_accounts")
                    .select("id, coa_account_id, bank_name, account_type")
                    .eq("id", bank_account_id).eq("firm_id", firm_id)
                    .limit(1).execute().data or [{}])[0]

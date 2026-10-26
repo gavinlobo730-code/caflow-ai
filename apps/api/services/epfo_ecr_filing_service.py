@@ -33,6 +33,7 @@ from typing import Optional
 
 from core.ist_clock import ist_now, ist_today
 from domain.payroll import ecr_sequence as seq
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.epfo_ecr")
 
@@ -123,7 +124,7 @@ def finalised_months(db, *, firm_id: str, client_id: str) -> list[str]:
     """
     if not db or not client_id:
         return []
-    rows = (db.table("payroll_runs").select("month, status")
+    rows = (privileged_for(db).table("payroll_runs").select("month, status")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(FINALISED_RUN_STATUSES))
             .execute().data) or []
@@ -145,7 +146,7 @@ def latest_unreleased_month(db, *, firm_id: str, client_id: str) -> Optional[str
     """
     if not db or not client_id:
         return None
-    rows = (db.table("payroll_runs").select("month, status")
+    rows = (privileged_for(db).table("payroll_runs").select("month, status")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .not_.in_("status", list(FINALISED_RUN_STATUSES))
             .execute().data) or []

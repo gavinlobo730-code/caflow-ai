@@ -34,6 +34,7 @@ from domain.accounting import journal_source, ledger_anomalies
 from domain.money_text import rupees_paise
 from domain.reporting.sources import SupabaseLedgerSource
 from core.db_paging import fetch_all, fetch_all_in
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.reconciliation")
 
@@ -371,7 +372,7 @@ def check_bank_reconciliation_discrepancies(db, firm_id: str, client_id: str, en
     manufacture findings for a period someone is already fixing.
     """
     sessions = fetch_all(lambda: (
-        db.table("bank_reconciliations")
+        privileged_for(db).table("bank_reconciliations")
         .select("id, account_no, period_start, period_end, status, snapshot, completed_at")
         .eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "completed")
     ))
@@ -384,7 +385,7 @@ def check_bank_reconciliation_discrepancies(db, firm_id: str, client_id: str, en
     # above are — so the same defect class applies here too.
     session_ids = [s["id"] for s in sessions]
     live_txns = fetch_all_in(
-        lambda: (db.table("bank_transactions")
+        lambda: (privileged_for(db).table("bank_transactions")
                  .select("id, reconciliation_id, debit_paise, credit_paise, posted_journal_id")
                  .eq("firm_id", firm_id)),
         "reconciliation_id", session_ids,

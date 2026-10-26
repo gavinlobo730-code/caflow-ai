@@ -83,7 +83,16 @@ def test_listing_your_own_clients_documents_still_works(deny, monkeypatch):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _seed(monkeypatch, row):
-    monkeypatch.setattr(dc.document_repo, "get_or_raise", lambda did: row)
+    monkeypatch.setattr(dc.document_repo, "get_or_raise", lambda did, **kw: row)
+
+
+def test_the_repository_is_asked_under_the_callers_own_firm(deny, monkeypatch):
+    """POST-A-339: the repository reads with the API's privileged client, which carries no row security, so the firm that row
+    security used to apply is named by the router on every call. A read that names no firm reads nothing."""
+    asked = {}
+    monkeypatch.setattr(dc.document_repo, "get_or_raise", lambda did, **kw: asked.update(kw) or {"id": did, "firm_id": FIRM, "client_id": MINE})
+    dc._assert_document_scope("D1", USER)
+    assert asked == {"firm_id": FIRM}
 
 
 def test_document_scope_refuses_another_clients_row(deny, monkeypatch):

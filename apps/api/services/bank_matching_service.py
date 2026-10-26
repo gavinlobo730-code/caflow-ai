@@ -26,6 +26,7 @@ from domain.banking import posting_map as pmap
 from services.bank_payee_service import bank_payee_service
 from services.timeline_service import timeline_service
 from core.observability import capture_soft_failure
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.bank_matching")
 
@@ -95,7 +96,7 @@ def _txn_amount(txn: dict) -> tuple[int, bool]:
 class BankMatchingService:
 
     def _get_txn(self, db, firm_id: str, txn_id: str) -> dict:
-        res = (db.table("bank_transactions").select("*")
+        res = (privileged_for(db).table("bank_transactions").select("*")
                .eq("id", txn_id).eq("firm_id", firm_id).maybe_single().execute())
         if not res.data:
             raise HTTPException(status_code=404, detail="Bank transaction not found.")
@@ -576,8 +577,8 @@ class BankMatchingService:
     def _queue_query(self, db, firm_id: str, client_id: Optional[str], status: str,
                      cols: str = "*", count: Optional[str] = None,
                      q_text: Optional[str] = None):
-        q = db.table("bank_transactions").select(cols, count=count) if count \
-            else db.table("bank_transactions").select(cols)
+        q = privileged_for(db).table("bank_transactions").select(cols, count=count) if count \
+            else privileged_for(db).table("bank_transactions").select(cols)
         q = q.eq("firm_id", firm_id)
         if client_id:
             q = q.eq("client_id", client_id)
@@ -642,7 +643,7 @@ class BankMatchingService:
         # unordered fetch made "first" depend on whatever order Postgres
         # happened to return. by_precedence re-sorts anyway, so this is the
         # belt to that braces rather than the only guarantee.
-        rules = (db.table("bank_matching_rules").select("*")
+        rules = (privileged_for(db).table("bank_matching_rules").select("*")
                  .eq("firm_id", firm_id).eq("is_active", True)
                  .order("priority").order("created_at").execute().data or [])
         rules_by_client: dict = {}
@@ -773,7 +774,7 @@ class BankMatchingService:
         for i in range(0, len(ids), 200):
             chunk = ids[i:i + 200]
             try:
-                rows = (db.table("bank_transaction_splits")
+                rows = (privileged_for(db).table("bank_transaction_splits")
                         .select("bank_transaction_id, account_id, amount_paise, narration, sequence_no")
                         .eq("firm_id", firm_id).in_("bank_transaction_id", chunk)
                         .order("sequence_no").execute().data) or []
@@ -810,7 +811,7 @@ class BankMatchingService:
         if txn.get("posted_journal_id"):
             raise HTTPException(status_code=409,
                 detail="A journal has already been created for this transaction — it cannot be recategorized until that draft is approved.")
-        db.table("bank_transactions").update({
+        privileged_for(db).table("bank_transactions").update({
             "category": category, "updated_at": _now(),
         }).eq("id", txn_id).eq("firm_id", firm_id).execute()
         return {"id": txn_id, "category": category}
@@ -843,7 +844,7 @@ class BankMatchingService:
         # (mirrors bank_posting_service.match_and_settle_multi's doc lookup).
         table = _MATCH_ENTITY_TABLES.get(entity_type)
         if table is not None:
-            owned = (db.table(table).select("id").eq("id", entity_id)
+            owned = (privileged_for(db).table(table).select("id").eq("id", entity_id)
                      .eq("firm_id", firm_id).eq("client_id", txn["client_id"])
                      .execute().data or [])
             if not owned:
@@ -855,7 +856,7 @@ class BankMatchingService:
         }
         if category is not None:
             update["category"] = category
-        db.table("bank_transactions").update(update).eq("id", txn_id).eq("firm_id", firm_id).execute()
+        privileged_for(db).table("bank_transactions").update(update).eq("id", txn_id).eq("firm_id", firm_id).execute()
         try:
             from services.audit_service import log_event
             log_event(firm_id, "bank_transaction", txn_id, "update", actor_id=actor_id,
@@ -887,7 +888,7 @@ class BankMatchingService:
         if txn.get("posted_journal_id"):
             raise HTTPException(status_code=409,
                 detail="A journal has already been created for this transaction — it cannot be unmatched until that draft is approved.")
-        db.table("bank_transactions").update({
+        privileged_for(db).table("bank_transactions").update({
             "matched_entity_type": None, "matched_entity_id": None,
             "matched_by": None, "matched_at": None,
             "match_status": "unmatched", "updated_at": _now(),
