@@ -15,6 +15,7 @@ import { errorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 import { Callout } from "@/components/ui/callout";
+import { BooksSchedulesPanel, type BooksSchedules } from "@/components/tax/BooksSchedulesPanel";
 import { obligationNote } from "@/lib/compliance/obligationNote";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -200,6 +201,14 @@ export default function ITRFilingPage() {
   const [sheet, setSheet] = useState<KeyingSheet | null>(null);
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [sheetLoading, setSheetLoading] = useState(false);
+  // POST-A-070 — Part A of ITR-3/5/6 laid out from the books, fetched on demand like the keying sheet beside it.
+  const [booksSchedules, setBooksSchedules] = useState<BooksSchedules | null>(null);
+  const [booksError, setBooksError] = useState<string | null>(null);
+  const [booksLoading, setBooksLoading] = useState(false);
+  // Both printable sheets are built for ONE filing, and a sheet shown under another filing's header is a sheet the CA may key from.
+  // `sheetFor` is the filing they belong to: choosing another (or closing) clears them, and a response that lands after the CA has
+  // moved on is dropped and not shown.
+  const sheetFor = useRef<string | null>(null);
 
   // Create form
   // `financialYearChoicesAround` sorts DESCENDING, so [0] is the CURRENTLY
@@ -249,7 +258,18 @@ export default function ITRFilingPage() {
   // sheet reports it. One flag over all four, which is what
   // scripts/concurrent-actions.test.ts asserts rather than a list of
   // which pairs may overlap.
-  const actionInFlight = creating || savingAck || transitioning || sheetLoading;
+  const actionInFlight = creating || savingAck || transitioning || sheetLoading || booksLoading;
+  function chooseFiling(f: Filing | null) {
+    if ((f?.id ?? null) !== sheetFor.current) {
+      sheetFor.current = f?.id ?? null;
+      setSheet(null);
+      setSheetError(null);
+      setBooksSchedules(null);
+      setBooksError(null);
+    }
+    setSelectedFiling(f);
+  }
+
 
   const load = useCallback(async () => {
     // Clearing loading matters: this returns while the id is still unresolved,
@@ -388,7 +408,7 @@ export default function ITRFilingPage() {
         body: JSON.stringify({ new_status: newStatus }),
       });
       if (!res.success) throw new Error(res.error ?? "Failed");
-      setSelectedFiling(res.data);
+      chooseFiling(res.data);
       await load();
     } catch (err) {
       setTransitionError(err instanceof Error ? err.message : "Invalid transition");
@@ -408,7 +428,7 @@ export default function ITRFilingPage() {
       if (!res.success) throw new Error(res.error ?? "Failed");
       setCalendarNote(obligationNote(res.data));
       setShowAck(false);
-      setSelectedFiling(null);
+      chooseFiling(null);
       await load();
     } catch (err) {
       toast({ title: err instanceof Error ? err.message : "Failed", variant: "destructive" });
@@ -423,8 +443,12 @@ export default function ITRFilingPage() {
     setSheetLoading(true);
     setSheetError(null);
     setSheet(null);
+    // One printable sheet at a time: both are marked as the region Print carries, so two open at once would print both.
+    setBooksSchedules(null);
+    setBooksError(null);
     try {
       const res = await apiFetch(`/api/itr/filings/${filing.id}/keying-sheet`);
+      if (sheetFor.current !== filing.id) return;
       // The router answers a filing with no pinned snapshot as HTTP 200 with
       // success:false and the sentence saying what to do, so an unchecked call
       // would render an empty sheet — which reads as "nothing to key".
@@ -434,6 +458,27 @@ export default function ITRFilingPage() {
       setSheetError(err instanceof Error ? err.message : "Could not build the sheet");
     } finally {
       setSheetLoading(false);
+    }
+  }
+
+  // POST-A-070. The books laid out as Part A of the return. The router answers a form with no balance sheet, and books that do not
+  // balance, as HTTP 200 with success:false and the sentence saying why, so the call is checked: an unchecked one would render an
+  // empty layout, which reads as "nothing to key".
+  async function loadBooksSchedules(filing: Filing) {
+    setBooksLoading(true);
+    setBooksError(null);
+    setBooksSchedules(null);
+    setSheet(null);
+    setSheetError(null);
+    try {
+      const res = await apiFetch(`/api/itr/filings/${filing.id}/books-schedules`);
+      if (sheetFor.current !== filing.id) return;
+      if (!res.success) { setBooksError(res.error ?? "Could not lay out the books"); return; }
+      setBooksSchedules(objectWithLists<BooksSchedules>(res.data, "gaps"));
+    } catch (err) {
+      setBooksError(err instanceof Error ? err.message : "Could not lay out the books");
+    } finally {
+      setBooksLoading(false);
     }
   }
 
@@ -621,7 +666,7 @@ export default function ITRFilingPage() {
           {filings.map(f => (
             <button
               key={f.id}
-              onClick={() => { setSelectedFiling(f); setSheet(null); setSheetError(null); }}
+              onClick={() => chooseFiling(f)}
               className={`w-full bg-white rounded-xl border px-4 py-3 flex items-center gap-3 hover:bg-ps-bg text-left ${
                 selectedFiling?.id === f.id ? "border-blue-200 bg-blue-50/30" : "border-ps-border"
               }`}
@@ -661,7 +706,7 @@ export default function ITRFilingPage() {
             <p className="text-xs font-semibold text-ps-body">
               {selectedFiling.itr_form} — FY {selectedFiling.financial_year}
             </p>
-            <button onClick={() => { setSelectedFiling(null); setSheet(null); setSheetError(null); }} className="text-3xs text-ps-hint hover:text-ps-label">Close</button>
+            <button onClick={() => chooseFiling(null)} className="text-3xs text-ps-hint hover:text-ps-label">Close</button>
           </div>
 
           {/* Workflow Progress */}
@@ -733,6 +778,17 @@ export default function ITRFilingPage() {
               {sheetLoading && <Loader2 size={10} className="animate-spin" />}
               Keying sheet
             </button>
+            {/* POST-A-070. Part A of the return from the books: the balance sheet, the profit and loss account and the depreciation
+                schedules. Offered at every status for the reason the keying sheet is, and for every form: the server refuses a
+                form that carries no balance sheet in a sentence, which is more use to a CA than a button that is not there. */}
+            <button
+              onClick={() => loadBooksSchedules(selectedFiling)}
+              disabled={actionInFlight}
+              className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-hover disabled:opacity-50 flex items-center gap-1"
+            >
+              {booksLoading && <Loader2 size={10} className="animate-spin" />}
+              Part A from the books
+            </button>
           </div>
 
           {sheetError && (
@@ -742,6 +798,14 @@ export default function ITRFilingPage() {
           )}
 
           {sheet && <KeyingSheetPanel sheet={sheet} filing={selectedFiling} />}
+
+          {booksError && (
+            <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg p-3">
+              {booksError}
+            </p>
+          )}
+
+          {booksSchedules && <BooksSchedulesPanel sheet={booksSchedules} />}
 
           {showAck && (
             <div className="border border-ps-border rounded-xl p-4 space-y-3">

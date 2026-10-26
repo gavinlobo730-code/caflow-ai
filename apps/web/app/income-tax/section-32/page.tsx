@@ -40,7 +40,7 @@ import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, GapList, StatutoryNotes } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
-import { objectWithLists } from "@/lib/api/shape";
+import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { PageHeader } from "@/components/ui/page-header";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
@@ -67,8 +67,15 @@ interface BlockRow {
   closing_wdv_paise: number;
   /** §50: positive is a short-term capital GAIN, negative a LOSS. */
   short_term_capital_gain_paise: number;
+  /** POST-A-070. The row of the return's Schedule DPM / DOA this block is declared on (the Department's own key), and its words.
+   *  Null until a CA says: the block's name and rate do not give its nature, and Part A of the return needs it. */
+  itr_schedule_row: string | null;
+  itr_schedule_row_caption: string | null;
   gaps: string[];
 }
+
+/** A row of the return's depreciation schedules, as the server offers it. The screen holds no list and no rate of its own. */
+interface ItrRow { key: string; schedule: string; caption: string; rate_percent: number | null }
 
 interface Section32Answer {
   financial_year: string;
@@ -111,6 +118,18 @@ export default function Section32Page() {
   // IT-09 — recording whether the client is within §32(1)(iia). One write per
   // client, not per year: the section's opening words are about the business.
   const [savingBusiness, setSavingBusiness] = useState(false);
+  // POST-A-070 — the rows of the return a block can be declared on, served by the server, and the block whose row is being saved.
+  const [itrRows, setItrRows] = useState<ItrRow[]>([]);
+  const [savingRow, setSavingRow] = useState<string | null>(null);
+  // One write at a time: the §32(1)(iia) buttons and the row selects wait for whichever is running, so two requests never change the
+  // same answer together.
+  const busy = savingBusiness || savingRow !== null;
+
+  useEffect(() => {
+    request<ApiEnvelope<{ rows: ItrRow[] }>>("/api/income-tax/section-32/itr-rows")
+      .then(j => setItrRows(arrayOrEmpty<ItrRow>(j.success ? j.data?.rows : [])))
+      .catch(() => setItrRows([]));
+  }, []);
 
   useEffect(() => {
     getClients().then(c => {
@@ -161,6 +180,26 @@ export default function Section32Page() {
       setError(e instanceof Error ? e.message : "Could not record it.");
     } finally {
       setSavingBusiness(false);
+    }
+  }
+
+  /** POST-A-070. Records which row of the return a block is declared on — that one column, through its own door, because the block's
+   *  own save replaces the whole row and this screen does not hold the facts it would put back (assets remaining, notes). The server
+   *  checks the row against the block's recorded rate and says so in a sentence; nothing is decided here. */
+  async function recordRow(blockKey: string, row: string | null) {
+    if (!clientId) return;
+    setSavingRow(blockKey); setError(null);
+    try {
+      const j = await request<ApiEnvelope>("/api/income-tax/section-32/blocks/row", {
+        method: "PUT",
+        body: JSON.stringify({ client_id: clientId, financial_year: fy, block_key: blockKey, itr_schedule_row: row }),
+      });
+      if (!j.success) throw new Error(j.error ?? "Could not record the row.");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not record the row.");
+    } finally {
+      setSavingRow(null);
     }
   }
 
@@ -228,11 +267,11 @@ export default function Section32Page() {
                 </p>
               </div>
               <div className="flex gap-2 flex-shrink-0">
-                <Button size="sm" variant="outline" disabled={savingBusiness}
+                <Button size="sm" variant="outline" disabled={busy}
                         onClick={() => recordBusiness(true)}>
                   This client is
                 </Button>
-                <Button size="sm" variant="outline" disabled={savingBusiness}
+                <Button size="sm" variant="outline" disabled={busy}
                         onClick={() => recordBusiness(false)}>
                   This client is not
                 </Button>
@@ -312,6 +351,31 @@ export default function Section32Page() {
                           {formatPaise(Math.abs(b.short_term_capital_gain_paise))} — no depreciation this year.
                         </p>
                       )}
+                      {/* POST-A-070. Part A of ITR-3, ITR-5 and ITR-6 (Schedules DPM, DOA and DEP) places a block on a ROW of the
+                          return, a nature at a rate, and the block's name and rate do not say which nature. The rows are the
+                          server's, read from the Department's schema. A recorded row the form no longer has is kept as an option so
+                          the screen never silently drops what a CA recorded. */}
+                      <label className="block mt-1.5 text-3xs text-ps-label">
+                        Row on the return
+                        <select
+                          className="block mt-0.5 max-w-[16rem] px-2 py-1 text-3xs border border-ps-border rounded-md bg-white"
+                          aria-label={`Row on the return for ${b.block_key}`}
+                          value={b.itr_schedule_row ?? ""}
+                          disabled={busy}
+                          onChange={e => recordRow(b.block_key, e.target.value || null)}
+                        >
+                          <option value="">Not recorded</option>
+                          {b.itr_schedule_row && !itrRows.some(r => r.key === b.itr_schedule_row) && (
+                            <option value={b.itr_schedule_row}>{b.itr_schedule_row_caption ?? b.itr_schedule_row}</option>
+                          )}
+                          {itrRows.map(r => <option key={r.key} value={r.key}>{r.caption}</option>)}
+                        </select>
+                      </label>
+                      {!b.itr_schedule_row && (
+                        <p className="text-3xs text-state-attention mt-0.5">
+                          Part A of the return cannot place this block until a row is recorded, though its depreciation is in the allowance.
+                        </p>
+                      )}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums">{b.rate_percent}%</td>
                     <td className="px-3 py-3 text-right tabular-nums">{formatPaise(b.opening_wdv_paise)}</td>
@@ -366,7 +430,7 @@ export default function Section32Page() {
       ) : null}
 
       {showAdd && (
-        <AddBlockDialog clientId={clientId} fy={fy}
+        <AddBlockDialog clientId={clientId} fy={fy} itrRows={itrRows}
                         onClose={() => setShowAdd(false)}
                         onSaved={() => { setShowAdd(false); load(); }} />
       )}
@@ -376,14 +440,17 @@ export default function Section32Page() {
 
 /** The facts only a CA holds. Everything else about a block — its additions and
  *  its deletions — is derived from the fixed-asset register. */
-function AddBlockDialog({ clientId, fy, onClose, onSaved }: {
-  clientId: string; fy: string; onClose: () => void; onSaved: () => void;
+function AddBlockDialog({ clientId, fy, itrRows, onClose, onSaved }: {
+  clientId: string; fy: string; itrRows: ItrRow[]; onClose: () => void; onSaved: () => void;
 }) {
   const [blockKey, setBlockKey] = useState("");
   const [rate, setRate] = useState("15");
   const [openingRs, setOpeningRs] = useState("");
   const [assetsRemain, setAssetsRemain] = useState<"yes" | "no" | "unknown">("yes");
   const [notes, setNotes] = useState("");
+  // POST-A-070. Optional: left unchosen, the field is NOT sent, so adding a block again under a name already recorded keeps the row
+  // somebody chose for it.
+  const [itrRow, setItrRow] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -408,6 +475,7 @@ function AddBlockDialog({ clientId, fy, onClose, onSaved }: {
           rate_percent: ratePercent, opening_wdv_paise: opening,
           assets_remain: assetsRemain === "unknown" ? null : assetsRemain === "yes",
           notes: notes.trim() || null,
+          ...(itrRow ? { itr_schedule_row: itrRow } : {}),
         }),
       });
       if (!j.success) throw new Error(j.error ?? "Could not save the block.");
@@ -469,6 +537,18 @@ function AddBlockDialog({ clientId, fy, onClose, onSaved }: {
           <span className="block text-3xs text-ps-hint mt-1">
             §50 turns an emptied block into a short-term capital loss and allows no
             depreciation on it. A positive written-down value does not settle it.
+          </span>
+        </label>
+
+        <label className="block text-xs font-medium text-ps-label">
+          Row on the return (optional)
+          <select className={input} value={itrRow} onChange={e => setItrRow(e.target.value)}>
+            <option value="">Not yet</option>
+            {itrRows.map(r => <option key={r.key} value={r.key}>{r.caption}</option>)}
+          </select>
+          <span className="block text-3xs text-ps-hint mt-1">
+            Part A of ITR-3, ITR-5 and ITR-6 places a block on a row of Schedule DPM or DOA, a nature at a rate. The row&apos;s rate must be
+            this block&apos;s.
           </span>
         </label>
 

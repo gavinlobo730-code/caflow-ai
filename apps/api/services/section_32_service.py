@@ -41,6 +41,7 @@ from typing import Optional
 
 from core.db_paging import fetch_all
 from domain.income_tax import additional_depreciation as addl
+from domain.income_tax import itr_depreciation_rows as itr_rows
 from domain.income_tax.section_32 import (
     Addition, Block, Deletion, Section32Result, compute,
 )
@@ -59,6 +60,42 @@ def fy_window(financial_year: str) -> tuple[date, date]:
     """(1 April, 31 March) for a 'YYYY-YY' label. April to March (CLAUDE.md)."""
     start_year = int(str(financial_year)[:4])
     return date(start_year, 4, 1), date(start_year + 1, 3, 31)
+
+
+def block_to_dict(b, itr_schedule_row: Optional[str] = None) -> dict:
+    """One block's result as the service serves it. A function of its own so the Part A schedules' tests build their input with the
+    SAME dict the screen is served, and cannot drift from it."""
+    return {
+        "block_key": b.key, "rate_percent": b.rate_percent,
+        "opening_wdv_paise": b.opening_wdv_paise,
+        "additions_full_rate_paise": b.additions_full_rate_paise,
+        "additions_half_rate_paise": b.additions_half_rate_paise,
+        "additions_not_put_to_use_paise": b.additions_not_put_to_use_paise,
+        "deletions_paise": b.deletions_paise,
+        "wdv_before_depreciation_paise": b.wdv_before_depreciation_paise,
+        "depreciation_paise": b.depreciation_paise,
+        "additional_depreciation_paise": b.additional_depreciation_paise,
+        "closing_wdv_paise": b.closing_wdv_paise,
+        "short_term_capital_gain_paise": b.short_term_capital_gain_paise,
+        # The working behind the allowance, which the return's Schedule DPM and DOA print column by column
+        # (domain/income_tax/books_schedules), and the row of the return the CA recorded for the block (migration 552; None until
+        # somebody records it, and read with `.get` so a database that has not applied the migration yet reads as "none recorded"
+        # and not as a fault).
+        "realization_against_full_paise": b.realization_against_full_paise,
+        "realization_against_half_paise": b.realization_against_half_paise,
+        "depreciation_base_full_paise": b.depreciation_base_full_paise,
+        "depreciation_base_half_paise": b.depreciation_base_half_paise,
+        "depreciation_at_full_rate_paise": b.depreciation_at_full_rate_paise,
+        "depreciation_at_half_rate_paise": b.depreciation_at_half_rate_paise,
+        "additional_on_full_rate_additions_paise": b.additional_on_full_rate_additions_paise,
+        "additional_on_half_rate_additions_paise": b.additional_on_half_rate_additions_paise,
+        "itr_schedule_row": itr_schedule_row,
+        # The words for the key, so the screen shows a caption and holds no list of rows of its own. A key the form no longer has reads
+        # as the key itself, which is what a CA needs to see to record another.
+        "itr_schedule_row_caption": (None if not itr_schedule_row else
+                                     (lambda r: r.caption if r else itr_schedule_row)(itr_rows.row_by_key("ITR-3", itr_schedule_row))),
+        "gaps": list(b.gaps),
+    }
 
 
 class Section32Service:
@@ -199,23 +236,7 @@ class Section32Service:
             "financial_year": financial_year,
             "period_start": fy_start.isoformat(),
             "period_end": fy_end.isoformat(),
-            "blocks": [
-                {
-                    "block_key": b.key, "rate_percent": b.rate_percent,
-                    "opening_wdv_paise": b.opening_wdv_paise,
-                    "additions_full_rate_paise": b.additions_full_rate_paise,
-                    "additions_half_rate_paise": b.additions_half_rate_paise,
-                    "additions_not_put_to_use_paise": b.additions_not_put_to_use_paise,
-                    "deletions_paise": b.deletions_paise,
-                    "wdv_before_depreciation_paise": b.wdv_before_depreciation_paise,
-                    "depreciation_paise": b.depreciation_paise,
-                    "additional_depreciation_paise": b.additional_depreciation_paise,
-                    "closing_wdv_paise": b.closing_wdv_paise,
-                    "short_term_capital_gain_paise": b.short_term_capital_gain_paise,
-                    "gaps": list(b.gaps),
-                }
-                for b in result.blocks
-            ],
+            "blocks": [block_to_dict(b, (by_key.get(b.key) or {}).get("itr_schedule_row")) for b in result.blocks],
             "depreciation_paise": result.depreciation_paise,
             "additional_depreciation_paise": result.additional_depreciation_paise,
             # What the book-to-tax bridge deducts.

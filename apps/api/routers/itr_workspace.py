@@ -635,6 +635,46 @@ def filing_keying_sheet(
     return api_response(True, sheet)
 
 
+@router.get("/filings/{filing_id}/books-schedules")
+def filing_books_schedules(
+    filing_id: str,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """The books laid out the way ITR-3, ITR-5 and ITR-6 ask for them: Part A-BS, Part A-P&L and the depreciation schedules (POST-A-070).
+
+    BUILT OVER THE FILING, NOT A REQUEST BODY, for the reason the keying sheet is: the form and the year are the return that is being
+    furnished, and a caller cannot ask for a different year's books under this filing's name. A filing whose form carries no balance
+    sheet is refused in a sentence.
+
+    It reads the year-end statements, the §32 working and the fixed-asset register as they stand and DERIVES NOTHING of its own: a
+    figure is placed in a box only where the books settle the box, the rest is shown whole with what would split it, and the `tie_out`
+    says that every line of the statements is accounted for. `mapping_confirmed` is false on every answer: the line-to-box table has not
+    been read against the form's instructions (docs/open-items), so it is a keying aid and not a return.
+
+    THE BOOKS ARE READ UNDER TWO PERMISSIONS, not one. `income_tax` compute is who prepares a return; `year_end` read is who may see the
+    financial statements, and this sheet is those statements re-laid, so a person the Partner has kept from the one is kept from the
+    other. Reads and writes nothing, and produces no file (`itr_json.generate_itr_json` is deliberately not reachable from here).
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+    """
+    from services import itr_books_schedules_service as books
+
+    filing = _assert_filing_scope(current_user, filing_id)
+    if not can_user(current_user, "year_end", "read"):
+        raise HTTPException(
+            status_code=403,
+            detail="This sheet is the year-end financial statements laid out as the return asks for them, and you do not have "
+                   "access to the financial statements.")
+    try:
+        sheet = books.for_filing(db_provider.service_db_or_none(), firm_id=current_user["firm_id"], filing=filing)
+    except books.NotAssembled as exc:
+        return api_response(False, None, str(exc))
+    sheet["filing_id"] = filing_id
+    sheet["return_type"] = filing.get("return_type")
+    sheet["status"] = filing.get("status")
+    return api_response(True, sheet)
+
+
 @router.post("/filings/{filing_id}/transition")
 def transition_filing(
     filing_id: str,

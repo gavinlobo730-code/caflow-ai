@@ -159,6 +159,21 @@ class BlockResult:
     #: §50. Positive is a short-term capital GAIN, negative a short-term LOSS.
     short_term_capital_gain_paise: int
     gaps: tuple[str, ...] = ()
+    # THE WORKING BEHIND THE ALLOWANCE (POST-A-070). The block's schedule on the return (Schedule DPM and DOA) shows the base each
+    # rate was applied to and the moneys payable taken out of each, and the engine already computed all of it on its way to
+    # `depreciation_paise`; it is carried out rather than recomputed by the caller, because a second copy of the order in which
+    # the moneys payable bite is how the schedule and the allowance come to disagree. Nil where no depreciation was allowed
+    # (§50 closed the block), since no base was depreciated.
+    realization_against_full_paise: int = 0
+    realization_against_half_paise: int = 0
+    depreciation_base_full_paise: int = 0
+    depreciation_base_half_paise: int = 0
+    #: None where the split cannot be stated: the allowance was held down to what the block still had (a block cannot go below
+    #: nil), so the two rates' shares of it are not what the rate arithmetic gives and apportioning them would be invented.
+    depreciation_at_full_rate_paise: Optional[int] = 0
+    depreciation_at_half_rate_paise: Optional[int] = 0
+    additional_on_full_rate_additions_paise: Optional[int] = 0
+    additional_on_half_rate_additions_paise: Optional[int] = 0
 
     @property
     def total_allowance_paise(self) -> int:
@@ -188,6 +203,7 @@ def compute_block(block: Block, *, fy_end: date) -> BlockResult:
 
     full, half, not_yet = 0, 0, 0
     additional = 0
+    additional_full, additional_half = 0, 0
     for a in block.additions:
         if a.put_to_use_date is None:
             # Not assumed either way. Half the rate would under-allow and the
@@ -221,8 +237,10 @@ def compute_block(block: Block, *, fy_end: date) -> BlockResult:
             # does not carry forward for the caller.
             if a.put_to_use_date <= cutoff:
                 additional += _pct(a.cost_paise, 20)
+                additional_full += _pct(a.cost_paise, 20)
             else:
                 additional += _pct(a.cost_paise, 20, half=True)
+                additional_half += _pct(a.cost_paise, 20, half=True)
                 gaps.append(
                     f"{a.label}: half of the §32(1)(iia) additional depreciation "
                     f"is allowed in the FOLLOWING previous year under the third "
@@ -243,11 +261,19 @@ def compute_block(block: Block, *, fy_end: date) -> BlockResult:
     remaining_deduction -= (half - base_half)
 
     wdv_before = block.opening_wdv_paise + full + half - deletions
+    realization_full = take
+    realization_half = half - base_half
 
     # §50. Two limbs, and they are different questions.
     stcg = 0
     depreciation = 0
     block_survives = True
+    # What the rates were applied to, and what each gave. Left at nil where §50 closed the block: nothing was depreciated.
+    dep_base_full, dep_base_half = 0, 0
+    dep_full: Optional[int] = 0
+    dep_half: Optional[int] = 0
+    addl_full: Optional[int] = 0
+    addl_half: Optional[int] = 0
     if wdv_before < 0:
         # The moneys payable exceeded the block. The excess is a short-term
         # capital gain and the block closes at nil; no depreciation is allowed.
@@ -268,11 +294,18 @@ def compute_block(block: Block, *, fy_end: date) -> BlockResult:
                 "loss and allows no depreciation on it, and a positive written-"
                 "down value does not settle the question. Depreciation below "
                 "assumes the block still exists.")
-        depreciation = _pct(base_full, block.rate_percent) + \
-            _pct(base_half, block.rate_percent, half=True)
+        dep_base_full, dep_base_half = base_full, base_half
+        dep_full = _pct(base_full, block.rate_percent)
+        dep_half = _pct(base_half, block.rate_percent, half=True)
+        depreciation = dep_full + dep_half
         # A block cannot be depreciated below nil.
         depreciation = min(depreciation, max(0, wdv_before))
+        if depreciation != dep_full + dep_half:
+            dep_full = dep_half = None
+        addl_full, addl_half = additional_full, additional_half
         additional = min(additional, max(0, wdv_before - depreciation))
+        if additional != addl_full + addl_half:
+            addl_full = addl_half = None
 
     # Where §50 has applied, the block is GONE — the whole balance has become a
     # short-term capital gain or loss and there is nothing left to carry into
@@ -295,6 +328,14 @@ def compute_block(block: Block, *, fy_end: date) -> BlockResult:
         closing_wdv_paise=closing,
         short_term_capital_gain_paise=stcg,
         gaps=tuple(gaps),
+        realization_against_full_paise=realization_full,
+        realization_against_half_paise=realization_half,
+        depreciation_base_full_paise=dep_base_full,
+        depreciation_base_half_paise=dep_base_half,
+        depreciation_at_full_rate_paise=dep_full,
+        depreciation_at_half_rate_paise=dep_half,
+        additional_on_full_rate_additions_paise=addl_full,
+        additional_on_half_rate_additions_paise=addl_half,
     )
 
 
