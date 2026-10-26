@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.portal_auth import get_current_portal_client
+from core.storage_door import storage_folder
 from services import portal_data_service
 from services.payments import availability as online_payment
 
@@ -224,9 +225,10 @@ def portal_document_download(document_id: str,
     # principal has no `users` row, so get_my_firm_id() is NULL for it and
     # migration 005's firm-folder policy refuses it — the download could
     # never be signed. Ownership was decided above, by document_in_scope.
-    from core.supabase_client import get_service_supabase
+    # Through the door (the server's client, core/storage_door, POST-A-339) bound to THIS portal user's own firm and client folder,
+    # so a row whose key names somebody else's object is never signed.
     try:
-        signed = get_service_supabase().storage.from_("Documents").create_signed_url(
+        signed = storage_folder("Documents", portal["firm_id"], portal["client_id"]).create_signed_url(
             doc["file_path"], 60)
     except Exception as e:
         _logger.error("portal_document_download %s: %s", document_id, e)

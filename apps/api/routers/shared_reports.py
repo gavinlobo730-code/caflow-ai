@@ -29,6 +29,7 @@ from core.authz import can_access_client
 from core.observability import capture_soft_failure
 from core.permissions import rbac
 from core.uploads import looks_like, read_limited
+from core.storage_door import storage_folder
 from domain.reporting.shared_report import BUCKET, MAX_BYTES, ShareRefused, plan_share
 from models.common import api_response
 from models.fy import FYLabel
@@ -116,12 +117,10 @@ def share_report_to_portal(
     from core.supabase_client import get_service_supabase
 
     svc = get_service_supabase()
+    # The server's client bound to this client's shared-reports folder (core/storage_door, POST-A-339): `shared_reports/{client}/`.
+    store = storage_folder(BUCKET, "shared_reports", client_id)
     try:
-        svc.storage.from_(BUCKET).upload(
-            plan.storage_path,
-            content,
-            file_options={"content-type": plan.content_type, "upsert": "true"},
-        )
+        store.upload(plan.storage_path, content, plan.content_type, upsert=True)
     except Exception as exc:  # noqa: BLE001 - surfaced to the CA as one message
         raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
 
@@ -155,7 +154,7 @@ def share_report_to_portal(
         }).execute().data
     except Exception as exc:  # noqa: BLE001
         try:
-            svc.storage.from_(BUCKET).remove([plan.storage_path])
+            store.remove([plan.storage_path])
         except Exception as cleanup:  # noqa: BLE001
             # The insert failure is what the CA is told about; a cleanup that
             # ALSO fails leaves a file in the bucket that nothing points at and
@@ -194,7 +193,7 @@ def shared_report_link(
     existence oracle. A link that could not be made is an error and not an empty answer."""
     if _USE_MOCK:
         return api_response(True, {"download_url": None})
-    from core.supabase_client import get_service_supabase, get_supabase
+    from core.supabase_client import get_supabase
 
     found = (get_supabase().table("shared_reports").select("id, client_id, firm_id, storage_path")
              .eq("id", shared_report_id).eq("firm_id", current_user["firm_id"]).execute().data or [])
@@ -208,7 +207,7 @@ def shared_report_link(
     if not (isinstance(path, str) and ".." not in path and path.startswith(f"shared_reports/{row['client_id']}/")):
         raise HTTPException(status_code=502, detail="The link to this report could not be made. Please try again.")
     try:
-        signed = get_service_supabase().storage.from_(BUCKET).create_signed_url(path, expires_in=LINK_SECONDS)
+        signed = storage_folder(BUCKET, "shared_reports", row["client_id"]).create_signed_url(path, LINK_SECONDS)
     except Exception as exc:  # noqa: BLE001 - said to the caller as one sentence
         capture_soft_failure(exc, operation="shared_report.sign", firm_id=current_user["firm_id"])
         signed = None

@@ -114,6 +114,8 @@ def _upload(monkeypatch, dsn: str, user: dict) -> _InsertingRepo:
 
     repo = _InsertingRepo(dsn)
     monkeypatch.setattr(sc, "get_supabase", lambda: _Supabase())
+    # The file goes through `core/storage_door`, which uses the SERVER's client (POST-A-339, the Storage step).
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: _Supabase())
     monkeypatch.setattr(docs, "_USE_MOCK", False)
     monkeypatch.setattr(docs, "assert_partner_for_internal_id", lambda *a, **k: None)
     monkeypatch.setattr(docs, "assert_client_access", lambda *a, **k: None)

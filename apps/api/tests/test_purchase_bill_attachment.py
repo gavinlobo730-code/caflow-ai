@@ -56,7 +56,7 @@ class TestUploadBillDocument:
         fake_bucket = MagicMock()
         fake_sb = MagicMock()
         fake_sb.storage.from_.return_value = fake_bucket
-        monkeypatch.setattr("core.supabase_client.get_supabase", lambda: fake_sb)
+        monkeypatch.setattr("core.supabase_client.get_service_supabase", lambda: fake_sb)
 
         path = mod._upload_bill_document(b"bytes", "application/pdf", "invoice.pdf", "firm-1", "client-1")
 
@@ -66,6 +66,25 @@ class TestUploadBillDocument:
         fake_sb.storage.from_.assert_called_once_with("Documents")
         fake_bucket.upload.assert_called_once()
 
+    @pytest.mark.parametrize("name", ["a..b.pdf", "Invoice (final) #4.pdf", "x\\y.pdf", "../../etc/passwd.pdf", "बिल.pdf"])
+    def test_the_key_carries_the_name_core_uploads_makes_and_the_door_accepts_it(self, monkeypatch, name):
+        """The caller's own filename is not put in the key: `..`, a backslash or a control character in it would be a key the
+        storage door refuses, and a refused key is a lost attachment (best-effort returns None)."""
+        import routers.document_intelligence_v1 as mod
+        monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
+        fake_bucket = MagicMock()
+        fake_sb = MagicMock()
+        fake_sb.storage.from_.return_value = fake_bucket
+        monkeypatch.setattr("core.supabase_client.get_service_supabase", lambda: fake_sb)
+
+        path = mod._upload_bill_document(b"bytes", "application/pdf", name, "firm-1", "client-1")
+
+        assert path is not None, "the door refused the key built from this filename"
+        tail = path[len("firm-1/client-1/purchase_bill/"):]
+        assert path.startswith("firm-1/client-1/purchase_bill/") and ".." not in tail and "\\" not in tail and "/" not in tail
+        assert tail.isascii() and " " not in tail
+        fake_bucket.upload.assert_called_once()
+
     def test_storage_failure_is_non_fatal(self, monkeypatch):
         """A broken bucket/network must never surface as a 500 from
         extract-invoice — attachment is best-effort."""
@@ -73,7 +92,7 @@ class TestUploadBillDocument:
         monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
         fake_sb = MagicMock()
         fake_sb.storage.from_.side_effect = RuntimeError("bucket unreachable")
-        monkeypatch.setattr("core.supabase_client.get_supabase", lambda: fake_sb)
+        monkeypatch.setattr("core.supabase_client.get_service_supabase", lambda: fake_sb)
 
         path = mod._upload_bill_document(b"bytes", "application/pdf", "x.pdf", "firm-1", "client-1")
         assert path is None

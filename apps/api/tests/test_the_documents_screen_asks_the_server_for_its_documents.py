@@ -160,16 +160,20 @@ class _Bucket:
 
 
 def _storage_world(monkeypatch, docs, *, sign_fail=False, server_remove=None):
-    """The caller's Storage client and the server's, as two objects sharing ONE event log."""
+    """The server's Storage client (the only one the route may reach, through `core/storage_door`, POST-A-339), recording to one
+    event log; the caller's own client is replaced by one that fails the test if its Storage is ever touched."""
     log: list = []
+    bucket = _Bucket("server", log, sign_fail=sign_fail, remove_result=server_remove)
+    server = type("S", (), {"storage": type("St", (), {"from_": staticmethod(lambda _b: bucket)})})()
 
-    def client(who, **kw):
-        bucket = _Bucket(who, log, **kw)
-        return type("S", (), {"storage": type("St", (), {"from_": staticmethod(lambda _b: bucket)})})()
+    class _Callers:
+        @property
+        def storage(self):
+            raise AssertionError("Storage was reached on the caller's own token: it is the server's, through the door")
 
     import core.supabase_client as sc
-    monkeypatch.setattr(sc, "get_supabase", lambda: client("caller", sign_fail=sign_fail))
-    monkeypatch.setattr(sc, "get_service_supabase", lambda: client("server", remove_result=server_remove))
+    monkeypatch.setattr(sc, "get_supabase", lambda: _Callers())
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: server)
     monkeypatch.setattr(docs, "_USE_MOCK", False)
     return log
 

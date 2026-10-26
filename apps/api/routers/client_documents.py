@@ -45,6 +45,7 @@ from core.db_paging import fetch_all
 from core.ist_clock import ist_now
 from core.observability import capture_soft_failure
 from core.permissions import rbac
+from core.storage_door import storage_folder
 from core.uploads import MB, accept_upload, safe_path_segment
 from models.common import api_response
 from models.fy import OptionalFYLabel
@@ -94,26 +95,19 @@ def _db():
     return None if _USE_MOCK else db_provider.request_db()
 
 
-def _storage():
-    from core.supabase_client import get_supabase
-    return get_supabase().storage.from_(BUCKET)
+def _storage(firm_id: str, client_id: str):
+    """The bucket as the SERVER, bound to this firm's and this client's folder (`core/storage_door`, POST-A-339). Every verb on
+    a file goes through it: the route has asked who the caller is and whether they may touch the client, and the door will not
+    store, sign or remove a key outside `{firm}/{client}/`. It is also what removes a file this request just stored when its
+    record could not be written, which migration 469's policy let only a Partner do from the caller's own token."""
+    return storage_folder(BUCKET, firm_id, client_id)
 
 
-def _server_storage():
-    """The bucket as the SERVER, for the one thing the caller's own token cannot do: take away a file this request just
-    stored. Migration 469 lets only a Partner delete from the bucket, and Storage answers a denied removal with an empty
-    list and no error, so a clean-up through the caller's client would leave an Executive's orphaned file in place without
-    a word. The key was built by the server under the caller's own firm and client a moment ago, so removing it is not an
-    escalation."""
-    from core.supabase_client import get_service_supabase
-    return get_service_supabase().storage.from_(BUCKET)
-
-
-def _take_out_again(path: str, *, operation: str) -> None:
+def _take_out_again(firm_id: str, client_id: str, path: str, *, operation: str) -> None:
     """Remove a file this request stored and whose record could not be written. Reports, and does not raise, if it
     cannot: the caller is already failing with the real reason."""
     try:
-        gone = _server_storage().remove([path])
+        gone = _storage(firm_id, client_id).remove([path])
     except Exception as exc:  # noqa: BLE001 - the original failure is the one to report
         capture_soft_failure(exc, operation=operation)
         return
@@ -154,11 +148,11 @@ def _own_row(current_user: dict, doc_id: str) -> dict:
 SIGN_BATCH = 200
 
 
-def _sign_many(paths: list[str], seconds: int) -> dict[str, str]:
+def _sign_many(firm_id: str, client_id: str, paths: list[str], seconds: int) -> dict[str, str]:
     """path -> signed link, in batches. A path that could not be signed is simply absent."""
     if not paths or _USE_MOCK:
         return {}
-    store = _storage()
+    store = _storage(firm_id, client_id)
     links: dict[str, str] = {}
     for start in range(0, len(paths), SIGN_BATCH):
         batch = paths[start:start + SIGN_BATCH]
@@ -221,7 +215,7 @@ def list_client_documents(
     unlinked = 0
     if with_links:
         firm = current_user["firm_id"]
-        links = _sign_many([r["file_path"] for r in rows if _owns_path(firm, client_id, r.get("file_path"))],
+        links = _sign_many(firm, client_id, [r["file_path"] for r in rows if _owns_path(firm, client_id, r.get("file_path"))],
                            LIST_LINK_SECONDS)
         for r in rows:
             r["download_url"] = links.get(r.get("file_path"))
@@ -287,11 +281,11 @@ def upload_client_document(
         _MOCK_ROWS.append(row)
         return api_response(True, {"document": _public(row)})
 
-    store = _storage()
+    store = _storage(firm_id, client_id)
     stored = store.upload(
-        path=storage_path, file=accepted.content,
+        storage_path, accepted.content,
         # OUR content type, from the validated extension: never the caller's header.
-        file_options={"content-type": accepted.content_type})
+        accepted.content_type)
     if getattr(stored, "error", None):
         raise HTTPException(status_code=500, detail=f"Storage upload failed: {stored.error}")
     try:
@@ -314,7 +308,7 @@ def upload_client_document(
     except Exception:
         # The file is stored and the record is not: take the file out again, so nothing is left in the bucket that
         # nothing points at, and let the failure reach the caller as the failure it is.
-        _take_out_again(storage_path, operation="client_documents.upload_cleanup")
+        _take_out_again(firm_id, client_id, storage_path, operation="client_documents.upload_cleanup")
         raise
     row = (written.data or [{}])[0]
     _audit(current_user, row.get("id"), "upload", new={"file_name": accepted.display_name, "client_id": client_id,
@@ -333,7 +327,7 @@ def client_document_link(
         return api_response(True, {"download_url": None})
     if not _owns_path(current_user["firm_id"], row["client_id"], row.get("file_path")):
         raise HTTPException(status_code=502, detail="The link to this document could not be made. Please try again.")
-    links = _sign_many([row["file_path"]], LINK_SECONDS)
+    links = _sign_many(current_user["firm_id"], row["client_id"], [row["file_path"]], LINK_SECONDS)
     url = links.get(row["file_path"])
     if not url:
         raise HTTPException(status_code=502, detail="The link to this document could not be made. Please try again.")
@@ -378,7 +372,7 @@ def delete_client_document(
                    "Ask support to look at it.")
 
     try:
-        removed = _storage().remove([row["file_path"]])
+        removed = _storage(current_user["firm_id"], row["client_id"]).remove([row["file_path"]])
     except Exception as exc:  # noqa: BLE001 - nothing was deleted, and the record is still there to try again
         capture_soft_failure(exc, operation="client_documents.delete_file")
         raise HTTPException(

@@ -52,6 +52,49 @@ def test_the_trial_balance_share_reaches_the_table_with_the_value_it_accepts():
     assert row["file_size_bytes"] == len(b"PK\x03\x04payload")
 
 
+def test_a_second_share_of_the_same_report_replaces_the_stored_file(monkeypatch):
+    """The key is `shared_reports/{client}/{name}`, so sharing the same report again writes the same key: without `upsert`
+    Storage refuses it as a duplicate and the CA could never refresh a shared report. The upload goes through the door, which
+    sends the option only when asked."""
+    sent: list = []
+
+    def upload(path=None, file=None, file_options=None, **kw):
+        sent.append((path, dict(file_options or {})))
+        raise RuntimeError("stop here: the upload is what is under test")
+
+    server = type("S", (), {"storage": type("St", (), {"from_": lambda self, b: type("B", (), {"upload": staticmethod(upload)})()})()})()
+    import core.supabase_client as sc
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: server)
+    monkeypatch.setattr(sr, "_USE_MOCK", False)
+    monkeypatch.setattr(sr, "can_access_client", lambda user, client_id: True)
+    with pytest.raises(HTTPException) as exc:
+        _call()
+    assert exc.value.status_code == 500
+    [(path, options)] = sent
+    assert path == f"shared_reports/{CLIENT}/trial.xlsx"
+    assert options == {"content-type": _XLSX, "upsert": "true"}
+
+
+def test_a_workbook_with_two_dots_in_its_name_is_shared_and_not_refused_as_a_climb(monkeypatch):
+    """`a..b.xlsx` is a name; only `..` as a whole path component climbs. The door must not turn a harmless file name into a 500."""
+    sent: list = []
+
+    def upload(path=None, file=None, file_options=None, **kw):
+        sent.append(path)
+        raise RuntimeError("stop here: the key is what is under test")
+
+    server = type("S", (), {"storage": type("St", (), {"from_": lambda self, b: type("B", (), {"upload": staticmethod(upload)})()})()})()
+    import core.supabase_client as sc
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: server)
+    monkeypatch.setattr(sr, "_USE_MOCK", False)
+    monkeypatch.setattr(sr, "can_access_client", lambda user, client_id: True)
+    with pytest.raises(HTTPException) as exc:
+        _call(file=_upload("Q1..Q2 summary.xlsx"))
+    assert "not under this folder" not in str(exc.value.detail), exc.value.detail
+    [path] = sent
+    assert path.startswith(f"shared_reports/{CLIENT}/") and path.endswith(".xlsx") and "/../" not in path
+
+
 def test_a_client_the_caller_cannot_reach_is_not_found():
     """Assignment scope, not just tenancy — an Executive who cannot see this
     client must not publish that client's balance sheet. The message is the

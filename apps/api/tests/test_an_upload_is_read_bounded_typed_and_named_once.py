@@ -247,7 +247,8 @@ def stored(monkeypatch):
     """Route the live (non-mock) storage path at a recorder."""
     sink: list[dict] = []
     import core.supabase_client as sc
-    monkeypatch.setattr(sc, "get_supabase", lambda: _Supabase(sink))
+    # The door to Storage is the SERVER's client (POST-A-339), bound to the caller's firm and client folder.
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: _Supabase(sink))
     return sink
 
 

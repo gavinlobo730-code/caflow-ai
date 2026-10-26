@@ -173,9 +173,12 @@ def notices(monkeypatch):
     ])
     monkeypatch.setattr(na, "_USE_MOCK", False)
     monkeypatch.setattr(na, "_db", lambda: db)
-    monkeypatch.setattr(na, "_storage", lambda: db.storage)
+    # The REAL door runs (`core/storage_door`, POST-A-339) over the server's client, whose bucket is the one recorder below. The
+    # caller's own Storage client is not reachable any more: `service_storage` is a second name for the same recorder, so the
+    # clean-up tests still read "the server removed it".
     import core.supabase_client as sc
-    monkeypatch.setattr(sc, "get_service_supabase", lambda: type("S", (), {"storage": db.service_storage})())
+    db.service_storage = db.storage
+    monkeypatch.setattr(sc, "get_service_supabase", lambda: type("S", (), {"storage": db.storage})())
     monkeypatch.setattr(na, "assert_client_access", lambda *a, **k: None)
     monkeypatch.setattr(na, "can_access_client", lambda user, client: client != "unassigned")
     events: list = []
@@ -253,13 +256,12 @@ def test_a_notice_that_cannot_be_updated_removes_the_file_and_the_failure_still_
 
 
 def test_the_clean_up_is_the_servers_because_only_a_partner_may_delete_from_the_bucket(notices):
-    """Migration 469: a delete from the bucket is Partner-only and a denied removal answers an empty list and no error.
-    The file an Executive just stored is therefore removed through the server's client, never the caller's."""
+    """Migration 469's policy let only a Partner delete from the bucket and a denied removal answers an empty list and no error.
+    The file an Executive just stored is therefore removed through the server's client, which is now the only one there is."""
     notices.fail_update = True
     with pytest.raises(RuntimeError):
         _attach(user={**USER, "role": "Executive"})
-    assert [c[0] for c in notices.storage.calls] == ["upload"]
-    assert [c[0] for c in notices.service_storage.calls] == ["remove"]
+    assert [c[0] for c in notices.storage.calls] == ["upload", "remove"]
 
 
 def test_a_clean_up_that_removed_nothing_is_reported_and_does_not_hide_the_real_failure(notices, monkeypatch):
@@ -313,6 +315,14 @@ def test_a_link_is_minted_for_the_slot_asked_and_a_slot_with_no_file_is_a_404(no
         assert _refused(404, na.notice_attachment_link, notice_id, slot="notice", current_user=USER) == "Notice not found"
     notices.storage.sign_fail = True
     _refused(502, na.notice_attachment_link, "n4", slot="notice", current_user=USER)
+
+
+def test_a_notices_door_is_bound_to_that_notices_own_folder():
+    """The route also compares the stored path with the folder before it signs; the door is the second check, and it is the
+    only one on the paths the server builds itself (store, take out again)."""
+    assert na._storage(FIRM, CLIENT, "n1").folder == f"{FIRM}/{CLIENT}/notices/n1/"
+    assert not na._storage(FIRM, CLIENT, "n1").owns(f"{FIRM}/{CLIENT}/notices/n2/x.pdf")
+    assert not na._storage(FIRM, CLIENT, "n1").owns(f"{FIRM}/{CLIENT}/x.pdf")
 
 
 @pytest.mark.parametrize("path", [

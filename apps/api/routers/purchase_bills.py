@@ -25,6 +25,7 @@ from core.authz import assert_client_access
 from core.observability import capture_soft_failure
 from core.exceptions import document_failure_detail
 from core.permissions import rbac
+from core.storage_door import StoragePathRefused, storage_folder
 from services.audit_service import log_event
 from services.document_header_writer import update_header
 from domain.accounting import draft_integrity
@@ -1381,13 +1382,18 @@ def get_purchase_bill_document_url(
 
         from core.supabase_client import get_supabase
         db = get_supabase()
-        resp = db.table("purchase_bills").select("document_url").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
+        resp = db.table("purchase_bills").select("document_url, client_id").eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
         path = resp.data[0].get("document_url")
         if not path:
             raise HTTPException(status_code=404, detail="No document attached to this bill")
-        signed = db.storage.from_("Documents").create_signed_url(path, expires_in=3600)
+        # Signed by the server, and only for a key under this bill's own firm and client folder: the column is writable over
+        # PostgREST by an Executive, so a row can be made to name somebody else's object, and that one is a fixed 404.
+        try:
+            signed = storage_folder("Documents", current_user.get("firm_id"), resp.data[0].get("client_id")).create_signed_url(path, 3600)
+        except StoragePathRefused as refused:
+            raise HTTPException(status_code=404, detail="No document attached to this bill") from refused
         url = signed.get("signedURL") if isinstance(signed, dict) else None
         if not url:
             raise HTTPException(status_code=502, detail="Unable to generate a download link. Please try again.")
