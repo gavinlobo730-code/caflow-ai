@@ -164,9 +164,12 @@ def movement_from_rows(rows: Iterable[dict], fy_end: Optional[str]) -> Movement:
         charge = 0
         if a.get("depreciation_fy") and fy_label and a["depreciation_fy"] == fy_label:
             charge = accum - int(a.get("depreciation_fy_start_accum_paise") or 0)
-        elif accum:
+        elif accum and (held_at_open or added or removed):
             # It has been depreciated, but not in the year this covers — so how
-            # much of that belongs to this year is not on the row.
+            # much of that belongs to this year is not on the row. An asset that
+            # was sold before the year began (or bought after it) enters none
+            # of this year's figures, so what it was depreciated in does not
+            # make this year's split unknown.
             split_known = False
 
         if held_at_open:

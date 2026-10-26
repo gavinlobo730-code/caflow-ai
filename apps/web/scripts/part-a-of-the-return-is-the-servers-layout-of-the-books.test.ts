@@ -82,6 +82,14 @@ test("a total whose parts the books do not hold is not offered as a figure to ke
   assert.match(src, /not written into a box/);
 });
 
+test("a single box that carries parts beside it says where each part is keyed", () => {
+  // ITR-6's net block of tangible assets is one box with a gross block and a depreciation beside it (POST-A-344): without the path the
+  // register's figures are shown with nowhere to key them, because only a group's parts have a parent the line above names.
+  const src = read(PANEL);
+  assert.match(src, /\{s\.role === "box" && \(/);
+  assert.match(src, /shortPath\(p\.json_path\)/);
+});
+
 test("the filing screen checks the layout on arrival and counts it as an action in flight", () => {
   const src = code(FILING);
   const fn = src.slice(src.indexOf("async function loadBooksSchedules"), src.indexOf("async function loadBooksSchedules") + 1100);

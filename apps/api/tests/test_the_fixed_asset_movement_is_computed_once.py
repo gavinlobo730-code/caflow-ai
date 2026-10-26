@@ -189,6 +189,32 @@ def test_an_asset_last_depreciated_in_another_year_makes_the_split_unknown():
     assert "different financial year" in " ".join(fam.movement_gaps(m, None))
 
 
+def test_an_asset_that_enters_none_of_this_years_figures_does_not_make_its_split_unknown():
+    """A vehicle sold before the year began keeps its accumulated depreciation on the row, last depreciated in the year it was sold. It is
+    in no figure of this year (it is not held at the start, added or removed), so what it was depreciated in says nothing about how
+    much of anything belongs to this year; flagging it withheld the register from every return of a client who had ever sold an asset
+    (POST-A-344). The same asset sold DURING the year, or one still held, is another matter and still makes the split unknown."""
+    live = _asset(depreciation_fy=FY, accumulated_depreciation_paise=30_000_00, depreciation_fy_start_accum_paise=10_000_00)
+    gone = _asset(asset_category="Vehicles", purchase_date="2022-05-01", is_disposed=True, disposal_date="2024-01-10",
+                  depreciation_fy="2023-24", accumulated_depreciation_paise=40_000_00)
+    m = fam.movement_from_rows([live, gone], FY_END)
+    assert m.split_known is True
+    vehicles = next(c for c in m.classes if c["asset_class"] == "Vehicles")
+    assert vehicles["closing_gross_paise"] == 0 and vehicles["closing_accum_paise"] == 0 and vehicles["closing_net_paise"] == 0
+    assert m.totals["closing_accum_paise"] == 30_000_00
+    during = {**gone, "disposal_date": "2025-09-01"}                                 # sold in this year, last depreciated in an earlier one
+    assert fam.movement_from_rows([live, during], FY_END).split_known is False
+    held = {**gone, "is_disposed": False, "disposal_date": None}                      # still held
+    assert fam.movement_from_rows([live, held], FY_END).split_known is False
+    bought_later = {**live, "purchase_date": "2026-06-01", "depreciation_fy": "2026-27"}  # bought after this year ends: in none of it
+    assert fam.movement_from_rows([live, bought_later], FY_END).split_known is True
+    # An asset that DOES enter the year, in any of the three ways, and was last depreciated in another year, makes the split unknown.
+    added = {**live, "purchase_date": "2025-08-01", "depreciation_fy": "2026-27"}      # bought this year, depreciated in a later one
+    assert fam.movement_from_rows([added], FY_END).split_known is False
+    removed_undated = {**gone, "purchase_date": None, "disposal_date": "2025-09-01"}   # sold this year, no purchase date on the row
+    assert fam.movement_from_rows([removed_undated], FY_END).split_known is False
+
+
 def test_a_ledger_that_disagrees_with_the_register_is_STATED():
     m = fam.movement_from_rows([
         _asset(accumulated_depreciation_paise=30_000_00,
