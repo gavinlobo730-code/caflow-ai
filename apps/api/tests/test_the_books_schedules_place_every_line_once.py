@@ -287,12 +287,16 @@ def test_no_register_read_is_said_and_gives_no_gross_block():
     assert any("register was not read" in g for g in out["gaps"])
 
 
-def test_the_company_form_says_its_gross_block_is_left_for_the_ca_whether_or_not_the_register_ties():
-    for reg in (None, _register()):
+def test_the_company_form_says_why_its_gross_block_is_left_for_the_ca_when_the_register_cannot_fill_it():
+    """POST-A-344 split the register between tangible and intangible assets for ITR-6 (the file for it holds the split itself). What is
+    held here is that a register that cannot be split, or was not read, is said in a sentence and never filled."""
+    for reg, why in ((None, "register was not read"),
+                     (_register(), "was not split between tangible and intangible assets")):
         out = _assemble("ITR-6", register=reg)
-        gaps = [g for g in out["gaps"] if "gross block" in g]
-        assert len(gaps) == 1 and "tangible and of intangible" in gaps[0], gaps
-        assert not any("register was not read" in g for g in out["gaps"])
+        gaps = [g for g in out["gaps"] if "the gross block and the depreciation" in g]
+        assert len(gaps) == 1 and why in gaps[0] and "left for the CA to key" in gaps[0], gaps
+        parts = {p["label"]: p for key in ("tangible_assets", "intangible_assets") for p in _slot(out, key)["parts"]}
+        assert parts["Gross block"]["amount_paise"] is None and parts["Amortisation"]["amount_paise"] is None
 
 
 def test_a_register_that_disagrees_is_reported_in_the_tie_out_without_failing_it():

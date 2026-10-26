@@ -147,6 +147,8 @@ REVIEWED_NOT_POSTING: dict[str, str] = {
     "gst": "GST return preparation; posts nothing",
     "gst_workspace": "GST return preparation and the filing record; posts nothing",
     "gstr4_annual": "the composition annual return; prepares only",
+    "itr_workspace": "return preparation and the keying sheets; Part A reads the chart account an asset category is booked to, by the "
+                     "posting kernel's own lookup so that it is the same account, and posts nothing",
     "portal": "portal-contact invitations",
     "portal_data": "the client's own view; the online payment is posted by the gateway's webhook as the backend, with no JWT",
     "report_exports": "reads",

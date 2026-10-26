@@ -184,7 +184,14 @@ function SlotRows({ slots }: { slots: BooksSlot[] }) {
             )}
             {s.parts.map(p => (
               <p key={p.json_path} className="text-3xs text-ps-body mt-0.5">
-                {p.label}:{" "}
+                {p.label}
+                {/* A single box can carry parts beside it (ITR-6's net block has a gross block and a depreciation): say where each is keyed. */}
+                {s.role === "box" && (
+                  <>
+                    {" "}(<span className="font-mono">{shortPath(p.json_path)}</span>)
+                  </>
+                )}
+                :{" "}
                 {p.state === "placed" ? (
                   <>
                     <span className="tabular-nums"><Rupees value={p.amount_rupees} /></span>{" "}

@@ -195,7 +195,9 @@ def test_the_service_makes_no_second_read_of_the_ledger():
     tables = {n.args[0].value for n in ast.walk(tree)
               if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "table" and n.args
               and isinstance(n.args[0], ast.Constant)}
-    assert tables == {"fixed_assets"}, tables
+    # The register's rows, and (POST-A-344) the chart account each asset category is booked to, read only for the line it is on. A table
+    # that holds the LEDGER (the journals and the monthly balances) is never read here: the statements are the one answer to a balance.
+    assert tables == {"fixed_assets", "chart_of_accounts"}, tables
 
 
 # ── the service, with a database ──────────────────────────────────────────────────────────────────────────────────────────────

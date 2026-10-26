@@ -42,6 +42,17 @@ THE DEPRECIATION SCHEDULES (Schedule DPM, DOA, DEP)
     (`itr_depreciation_rows`). A block with no row recorded is listed with its figures and left off the schedules: its depreciation is still in
     the allowance, so the tie-out names the difference instead of the schedules quietly summing to less than the allowance.
 
+THE FIXED-ASSET REGISTER FILLS A GROSS BLOCK ONLY WHERE IT TIES TO THE LEDGER (POST-A-344)
+
+    ITR-3 and ITR-5 take the gross block and the depreciation to date of tangible and intangible assets together, and the register's
+    totals fill them where its net block equals the ledger's two lines to the paisa. ITR-6 takes each kind apart, and the register's
+    movement is by asset CATEGORY, so the split needs the Schedule III line of the ledger each category is booked to (the caller reads
+    it: `domain/fixed_assets/asset_ledger` says which ledger books a category and `year_end_lines.schedule_line_for_account` says which
+    line that ledger is on). A figure is placed only where the register's net block of each line equals the ledger's line to the paisa.
+    THAT IS A REAL CONDITION AND NOT A FORMALITY: the standard chart books the depreciation of every category in ONE Accumulated
+    Depreciation account, so the ledger's tangible line carries the amortisation of intangible assets and the two lines cannot match the
+    register's unless no intangible asset has been amortised. Where they do not, the split is withheld with the difference in words.
+
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to the Income Tax Portal
 """
 from __future__ import annotations
@@ -67,6 +78,10 @@ LAYOUT_SCHEDULE_III = "schedule_iii"
 
 #: How the books are said to be kept. Division I is what the statements are.
 FRAMEWORK = "AS (Schedule III, Division I)"
+
+#: The two lines of Schedule III the fixed-asset register is split between for ITR-6, whose balance sheet takes the gross block, the
+#: depreciation (the amortisation, for an intangible asset) and the net block of each apart.
+REGISTER_LINES = ("tangible_assets", "intangible_assets")
 
 # ── the statements' own vocabulary ─────────────────────────────────────────────────────────────────────────────────────────────
 LINE_LABELS: dict[str, str] = {
@@ -117,7 +132,8 @@ class Slot:
     label: str                      # the form's own caption
     path: str                       # form-root-relative path of the box that carries the figure (a total, or a leaf box)
     lines: tuple[str, ...]          # the statement lines that make it up
-    #: The object under which the form's parts of this figure are keyed (None where `path` is a single box with no parts).
+    #: The object under which the form's parts of this figure are keyed (None where `path` is a single box, which may still carry
+    #: `parts`: boxes BESIDE it that the register fills, as ITR-6's net block of tangible assets has a gross block and a depreciation).
     group: Optional[str] = None
     parts: tuple[Part, ...] = ()
     #: Why the books cannot split the figure into the form's parts. Required wherever `group` is set.
@@ -257,8 +273,12 @@ def _schedule_iii_slots() -> tuple[tuple[Slot, ...], tuple[Slot, ...]]:
           "short_term_provisions"),
     )
     assets = (
-        Slot("tangible_assets", "Tangible assets (net block)", nca + ".FixedAsset.Tangible.NetBlock", ("tangible_assets",)),
-        Slot("intangible_assets", "Intangible assets (net block)", nca + ".FixedAsset.InTangible.NetBlock", ("intangible_assets",)),
+        Slot("tangible_assets", "Tangible assets (net block)", nca + ".FixedAsset.Tangible.NetBlock", ("tangible_assets",),
+             parts=(Part(nca + ".FixedAsset.Tangible.GrossBlock", "Gross block", register="gross_tangible_assets"),
+                    Part(nca + ".FixedAsset.Tangible.Depreciation", "Depreciation", register="accumulated_tangible_assets"))),
+        Slot("intangible_assets", "Intangible assets (net block)", nca + ".FixedAsset.InTangible.NetBlock", ("intangible_assets",),
+             parts=(Part(nca + ".FixedAsset.InTangible.GrossBlock", "Gross block", register="gross_intangible_assets"),
+                    Part(nca + ".FixedAsset.InTangible.Amortization", "Amortisation", register="accumulated_intangible_assets"))),
         Slot("capital_wip", "Capital work-in-progress", nca + ".FixedAsset.CapWrkProg", ("capital_wip",)),
         g("long_term_investments", "Non-current investments", nca + ".NonCurrInvstmnts", "TotNonCurrInvstmnts",
           "long_term_investments", _NOT_SPLIT_INVESTMENTS),
@@ -782,6 +802,91 @@ def usable_register(register: Optional[dict], statements: dict) -> tuple[Optiona
     return {"gross": int(register["gross"]), "accumulated": int(register["accumulated"])}, None, row
 
 
+def splits_fixed_assets(form: str) -> bool:
+    """Whether the form takes the gross block and the depreciation of tangible and of intangible assets apart (ITR-6), which is the
+    only form whose split needs the ledger line each asset category is booked to."""
+    return plan_for(form)["layout"] == LAYOUT_SCHEDULE_III
+
+
+def _has_a_figure(category: dict) -> bool:
+    """Whether the category holds a cost or a depreciation at the year end (its net block is the difference, so it needs no test of its own)."""
+    return any(int(category.get(k) or 0) for k in ("closing_gross_paise", "closing_accum_paise"))
+
+
+def register_categories_to_place(classes: Any) -> list[str]:
+    """The asset categories that hold a figure at the year end, which are the ones whose ledger line has to be known. A category the
+    register holds only at nil (every asset of it sold, or none costed) is no figure on either line, so no line is asked of it."""
+    return [str(c["asset_class"]) for c in classes or () if _has_a_figure(c)]
+
+
+def _line_label(line: Any) -> str:
+    return LINE_LABELS.get(line, str(line))
+
+
+def register_by_line(register: Optional[dict], statements: dict) -> tuple[Optional[dict], Optional[str], list[dict]]:
+    """(the register's gross block and depreciation per line, a sentence if they were withheld, the per-line tie-out rows).
+
+    `register["classes"]` is the movement of each asset category and `register["ledger_lines"]` the Schedule III line of the ledger each
+    category is booked to (None where it could not be read). A category that holds a figure and is not on tangible or on intangible assets
+    withholds the split, because its figure belongs to neither box and a gross block that leaves it out is not the register's. The split is
+    used only where the register's net block of EACH line equals the ledger's line to the paisa; a difference is reported on the row and
+    in the sentence and is never absorbed into either line.
+    """
+    left = "the gross block and the depreciation to date of each are left for the CA to key"
+    if not register or register.get("classes") is None or register.get("ledger_lines") is None:
+        return None, ("The fixed-asset register was not split between tangible and intangible assets, so " + left + ". The net block of "
+                      "each is the ledger's."), []
+    ledger_lines = register["ledger_lines"]
+    per_line = {line: {"gross": 0, "accumulated": 0, "net": 0} for line in REGISTER_LINES}
+    unreadable: list[str] = []
+    for category in register["classes"]:
+        if not _has_a_figure(category):
+            continue
+        name = str(category["asset_class"])
+        line = ledger_lines.get(name)
+        if line not in REGISTER_LINES:
+            unreadable.append(f"no ledger account could be found for the category {name!r}" if line is None else
+                              f"the category {name!r} is booked to a ledger that Schedule III places under {_line_label(line)}")
+            continue
+        per_line[line]["gross"] += int(category.get("closing_gross_paise") or 0)
+        per_line[line]["accumulated"] += int(category.get("closing_accum_paise") or 0)
+        per_line[line]["net"] += int(category.get("closing_net_paise") or 0)
+    if unreadable:
+        return None, ("The fixed-asset register could not be split between tangible and intangible assets: " + "; ".join(unreadable)
+                      + ". So " + left + ". The net block of each is the ledger's."), []
+    # The two kinds must add to the register's own totals: a split of categories that does not is not the register's figure.
+    if (sum(v["gross"] for v in per_line.values()) != int(register["gross"])
+            or sum(v["accumulated"] for v in per_line.values()) != int(register["accumulated"])):
+        return None, ("The fixed-asset register's categories do not add to its totals, so " + left + ". The net block of each is the "
+                      "ledger's."), []
+
+    assets = statements["balance_sheet"]["assets"]
+    rows_out: list[dict] = []
+    for line in REGISTER_LINES:
+        ledger = int(assets.get(line, 0) or 0)
+        rows_out.append({"name": f"register_{line.split('_')[0]}_net_block_vs_ledger",
+                         "label": f"The fixed-asset register's net block of {line.split('_')[0]} assets equals the ledger's",
+                         "expected_paise": ledger, "actual_paise": per_line[line]["net"],
+                         "difference_paise": per_line[line]["net"] - ledger})
+    if any(r["difference_paise"] for r in rows_out):
+        tangible, intangible = rows_out[0]["difference_paise"], rows_out[1]["difference_paise"]
+        opening = (f"The fixed-asset register's net block differs from the ledger's by {tangible} paise for tangible assets and "
+                   f"{intangible} paise for intangible assets, so " + left + ". ")
+        if tangible > 0 and tangible == -intangible:
+            # The ledger's tangible line is lower than the register's by exactly what the intangible line is higher: the shape of an
+            # amortised intangible asset whose amortisation sits in the shared account on the tangible line.
+            return None, (opening + "That is what an amortised intangible asset does: the standard chart books the depreciation of every "
+                          "category in one Accumulated Depreciation account, which sits on one of the two lines, so the ledger's lines "
+                          "cannot match the register's category by category."), rows_out
+        return None, (opening + "The register and the ledger disagree by an amount that moves between the two lines in no pattern the "
+                      "books explain, and need reconciling."), rows_out
+    flat = {}
+    for line in REGISTER_LINES:
+        flat[f"gross_{line}"] = per_line[line]["gross"]
+        flat[f"accumulated_{line}"] = per_line[line]["accumulated"]
+    return flat, None, rows_out
+
+
 # ── the whole assembly ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 def _each_once(plan_lines: tuple[str, ...], placed: list[str]) -> int:
     """How many of the statement's lines are not placed exactly once (0 when every line is accounted for)."""
@@ -798,6 +903,13 @@ def assemble(*, form: str, assessment_year: str, financial_year: str, statements
     if form not in FORMS:
         raise ValueError(f"{form} is not one of {', '.join(FORMS)}; Part A schedules are assembled for those.")
     usable, register_gap, register_check = usable_register(register, statements)
+    split_gap: Optional[str] = None
+    split_rows: list[dict] = []
+    splits = splits_fixed_assets(form)
+    by_line: Optional[dict] = None
+    if usable is not None and splits:
+        by_line, split_gap, split_rows = register_by_line(register, statements)
+        usable = {**usable, **(by_line or {})}
     bs = balance_sheet(form, statements, usable)
     pl = profit_loss(form, statements)
     dep = depreciation(form, section_32) if section_32 is not None else None
@@ -839,6 +951,8 @@ def assemble(*, form: str, assessment_year: str, financial_year: str, statements
     if register_check:
         checks.append(check(register_check["name"], "The fixed-asset register's net block equals the ledger's",
                             register_check["expected_paise"], register_check["actual_paise"], informational=True))
+    for r in split_rows:
+        checks.append(check(r["name"], r["label"], r["expected_paise"], r["actual_paise"], informational=True))
     if dep is not None:
         checks.append(check("depreciation_rows_and_unplaced_blocks", "The depreciation rows and the blocks left off them add to the §32 allowance",
                             dep["reconciliation"]["section_32_allowance_paise"],
@@ -850,13 +964,19 @@ def assemble(*, form: str, assessment_year: str, financial_year: str, statements
                                   if _dep_summary_path(rows.row_by_key(form, r["row_key"])) is None)))
 
     gaps = list(bs["gaps"])
+    if register_gap or split_gap:
+        gaps.append(register_gap or split_gap)
+    if usable is not None and (by_line or not splits):
+        # The register's cost and depreciation are placed, and what ties them to the ledger is the net block alone: the statements hold
+        # no gross cost to compare, and this module reads no ledger.
+        gaps.append("The gross block and the depreciation to date are the fixed-asset register's. What ties them to the ledger is the net "
+                    "block only, and a register and a ledger that agree on the net block can still differ on the cost and on the "
+                    "depreciation (an asset entered at its written-down value, say), so check them against the fixed assets note "
+                    "before keying.")
     if bs["layout"] == LAYOUT_SCHEDULE_III:
-        # ITR-6 takes the gross block, the depreciation and the net block of tangible and of intangible assets apart. The register's
-        # movement is by asset category and nothing says which categories are intangible (POST-A-344), so only the net block is filled.
-        gaps.append("The gross block and the depreciation to date of tangible and of intangible assets are left for the CA to key; the "
-                    "net block of each is the ledger's. The fixed-asset register is not yet split between the two.")
-    elif register_gap:
-        gaps.append(register_gap)
+        # ITR-6 also takes the impairment losses of each kind of asset, and the register has no column for one.
+        gaps.append("The form also takes the impairment losses of tangible and of intangible assets. The fixed-asset register does not "
+                    "record them, so they are left for the CA to key.")
     gaps.append(f"The statements are {FRAMEWORK}. The product records no accounting framework, so whether this company or firm files "
                 f"the Ind AS parts of the form instead is the CA's to confirm.")
     gaps.append("The line-to-box table has not been read against the form's instructions (they are not reachable from this "
