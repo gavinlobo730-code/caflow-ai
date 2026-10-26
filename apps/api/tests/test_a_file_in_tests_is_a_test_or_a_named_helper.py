@@ -175,6 +175,11 @@ HELPERS = {
     # the guard so the guard's negative controls, and the reader's own tests, can run it over a
     # synthetic source and over a real file with one line removed.
     "_firm_scope_scan.py",
+    # POST-A-070. A small set of books as the year-end statements serve them, every figure hand-chosen and balanced, so the tests of the
+    # Part A schedules write their expected values out instead of deriving them from the function under test. Imported by
+    # `test_the_books_schedules_place_every_line_once.py`, `test_the_depreciation_schedules_come_from_the_blocks.py` and
+    # `test_the_books_schedules_route_asks_who_may_see_the_books.py`.
+    "_books_statements.py",
 }
 
 _EXITS = {"exit", "quit", "_exit"}

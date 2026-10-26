@@ -1513,6 +1513,10 @@ EXEMPT: dict[str, str] = {
         "reference data, identical for every firm and client, no stored data "
         "read and no client named. Served so the screen holds no second copy "
         "of the vocabulary.",
+    "/api/income-tax/section-32/itr-rows":
+        "the rows of Schedule DPM and DOA of the return a section 32 block can be declared on, read out of the Department's committed ITR "
+        "schemas by domain/income_tax/itr_depreciation_rows — reference data, identical for every firm and client, no stored data read and "
+        "no client named. Served so the section 32 screen holds no list of rows or rates of its own (POST-A-070).",
     "/api/income-tax/capital-gains/compute":
         "ComputeCapitalGainsRequest has no client_id — a stateless "
         "estimator, does not persist anything (unlike POST /capital-gains, "

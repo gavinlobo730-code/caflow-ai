@@ -361,7 +361,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A RETURN RECORDED AS FILED IN THE WORKSPACE CLOSES ITS COMPLIANCE OBLIGATION THROUGH THE ONE DOOR THAT CLOSES ONE, ONLY WHEN IT CAN TELL WHICH OBLIGATION AND WHETHER THEY ARE ALL FILED, AND NEVER FAILS THE FILING
 - A GST RETURN PERIOD IS A TYPE, AND A STRING THAT IS NOT A MONTH IS A 422 AT THE DOOR
 
-### `docs/design-record/tax-income-tax.md` (16 entries): Income tax: ITR kinds and engines, capital gains, tax audit and 3CD, losses, entity reliefs, section 43B(h)
+### `docs/design-record/tax-income-tax.md` (17 entries): Income tax: ITR kinds and engines, capital gains, tax audit and 3CD, losses, entity reliefs, section 43B(h)
 
 - §115BAC DISAPPLIES CHAPTER XII-BA, and the AMT surcharge ladder is the ASSESSEE's own
 - THE FOUR REINVESTMENT SECTIONS ARE NOT ONE RULE WITH FOUR NAMES
@@ -379,6 +379,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ITR RETURN BECOMES FILED BY RECORDING ITS ACKNOWLEDGEMENT, AND RECORDING IT CLOSES THE CALENDAR'S OBLIGATION
 - THE DEMO'S INCOME-TAX FACTS ARE FACTS, AND EVERY FIGURE THAT IS TAX COMES BACK FROM THE ENGINE
 - A CLIENT WITH NO FIXED ASSETS AND NO DEPRECIATION IN THE LEDGER HAS A NIL CHARGE, NOT AN UNREADABLE ONE
+- THE BOOKS ARE LAID OUT AS PART A OF ITR-3, ITR-5 AND ITR-6 WITHOUT APPORTIONING A RUPEE, AND A COLUMN THE FORM'S NAMES DO NOT SETTLE IS NEVER FILLED BY NAME
 
 ### `docs/design-record/tax-tds.md` (21 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 

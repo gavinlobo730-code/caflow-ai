@@ -335,6 +335,8 @@ const PRINT_SITES: Record<string, { count: number; how: How; reason: string }> =
     reason: "the statements are the page; a print-only heading names the client and the year" },
   "app/clients/[id]/tax/filing/page.tsx": { count: 1, how: "region",
     reason: "prints the keying sheet only (data-print-scope), under the client's name" },
+  "components/tax/BooksSchedulesPanel.tsx": { count: 1, how: "region",
+    reason: "prints Part A from the books only (data-print-scope), under the client's name; the filing screen opens it or the keying sheet, never both" },
   "app/clients/[id]/accounting/page.tsx": { count: 3, how: "statement",
     reason: "P&L, Balance Sheet and Cash Flow each print their own statement; the sub-tab bar and the controls are print:hidden" },
   "app/payroll/page.tsx": { count: 1, how: "unreachable",

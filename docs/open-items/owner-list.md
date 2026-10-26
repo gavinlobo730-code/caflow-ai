@@ -169,6 +169,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** Any rule that treats minor head 400 differently from 200. Today every reader counts a challan of either minor head as a deposit of the quarter's deductions, which can understate a default; the deposit position carries a warning saying so and the Challans tab shows each challan's minor head, so a demand payment can be told apart.
 - **Ledger:** POST-C-210
 
+### S14. ITR-3, ITR-5 and ITR-6 Part A: which box each line of the books answers
+
+- **Question:** For each line of the year-end statements (the Schedule III balance sheet and profit and loss account), which box of Part A of ITR-3, ITR-5 and ITR-6 does it belong in? In particular: where a debit balance in reserves goes in the funds-sourced-and-applied form (ITR-3 and ITR-5); which group other long-term liabilities, long-term provisions and other non-current assets belong in on those two forms; whether finance costs as Schedule III defines them belong wholly in the interest box; and which column of Schedule DPM each of the three additional-depreciation columns is, because ITR-5 and ITR-6 name them differently from ITR-3 and in a different order.
+- **Needed:** The instructions to ITR-3, ITR-5 and ITR-6 for AY 2026-27, and the printed Schedules DPM, DOA and DEP.
+- **Who can supply it:** A practising CA.
+- **Stays unbuilt meanwhile:** The flag that says the table is confirmed (every answer says it is not); any use of Part A by the ITR JSON writer; the heads of the profit and loss account and the trading account (POST-A-343). Part A is offered as a keying aid, with the split of every group the books keep whole left to the CA, and the figures for the three renamed columns shown on the row and written into no box.
+- **Ledger:** POST-C-211, POST-A-343, POST-B-342
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.

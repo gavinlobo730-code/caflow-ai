@@ -5,9 +5,9 @@ IT Act 1961 — Section 80C, 80D, 80G, 87A, 111A, 112A, 234B/C etc.
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
 """
 from __future__ import annotations
-from datetime import date
+from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Annotated, Optional
 from models.common import api_response
 from core.authz import assert_client_access, can_access_client
@@ -2252,6 +2252,95 @@ class Section32BlockIn(BaseModel):
     #: §50's second limb. None = nobody has said, and the computation says so.
     assets_remain: Optional[bool] = None
     notes: Optional[str] = None
+    #: Which row of Schedule DPM / DOA the block is declared on (migration 552): the nature half of §2(11)'s "nature and rate", which
+    #: the register's name and rate do not say. Left OUT of a request it leaves a recorded row as it is (the upsert below writes it
+    #: only when it was sent), so a screen that predates the field cannot clear it. A key that is not a row of the return, or a row
+    #: whose rate disagrees with `rate_percent`, is refused here, in a sentence.
+    itr_schedule_row: Optional[str] = Field(default=None, max_length=60)
+
+    @model_validator(mode="after")
+    def _the_row_is_a_row_of_the_return_and_its_rate_is_the_blocks(self):
+        if self.itr_schedule_row is None:
+            return self
+        from domain.income_tax import itr_depreciation_rows as _rows
+        row = _rows.row_by_key("ITR-3", self.itr_schedule_row)
+        if row is None:
+            raise ValueError(
+                f"{self.itr_schedule_row!r} is not a row of the depreciation schedules of the return. "
+                f"Choose one of: {', '.join(_rows.keys_for('ITR-3'))}.")
+        clash = _rows.disagreement(row, self.rate_percent)
+        if clash:
+            raise ValueError(clash)
+        return self
+
+
+class Section32BlockRowIn(BaseModel):
+    """Which row of the return one recorded block is declared on, and nothing else about it."""
+    client_id: str
+    financial_year: FYLabel
+    block_key: str = Field(min_length=1, max_length=120)
+    #: A row of Schedule DPM / DOA, or null to take the recorded row back.
+    itr_schedule_row: Optional[str] = Field(default=None, max_length=60)
+
+
+@router.put("/section-32/blocks/row")
+def set_section_32_block_row(
+    req: Section32BlockRowIn,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Record, or take back, the row of the return a block is declared on (migration 552, POST-A-070).
+
+    A SEPARATE DOOR FROM THE BLOCK'S OWN, because the block's upsert replaces the row it names: the screen does not hold the block's
+    `assets_remain` or `notes`, so changing the row through it would put those back to nothing. This writes the one column.
+
+    The row is checked against the block AS RECORDED: a block is a nature at one rate (§2(11)), so a row whose rate is not the block's
+    is refused here with the sentence saying which two disagree. A block that does not exist is a 404, not an insert.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+    """
+    from domain.income_tax import itr_depreciation_rows as _rows
+    assert_client_access(current_user, req.client_id)
+    firm_id = current_user["firm_id"]
+    chosen = None
+    if req.itr_schedule_row is not None:
+        chosen = _rows.row_by_key("ITR-3", req.itr_schedule_row)
+        if chosen is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{req.itr_schedule_row!r} is not a row of the depreciation schedules of the return. "
+                       f"Choose one of: {', '.join(_rows.keys_for('ITR-3'))}.")
+    db = _db()
+    if not db:
+        return api_response(True, {"block_key": req.block_key, "financial_year": req.financial_year,
+                                   "itr_schedule_row": req.itr_schedule_row})
+    found = (db.table("income_tax_asset_blocks").select("id, rate_percent")
+             .eq("firm_id", firm_id).eq("client_id", req.client_id)
+             .eq("financial_year", req.financial_year).eq("block_key", req.block_key)
+             .execute().data or [])
+    if not found:
+        raise HTTPException(status_code=404, detail="No such block is recorded for this client and year.")
+    if chosen is not None:
+        clash = _rows.disagreement(chosen, int(found[0]["rate_percent"]))
+        if clash:
+            raise HTTPException(status_code=422, detail=clash)
+    out = (db.table("income_tax_asset_blocks")
+           .update({"itr_schedule_row": req.itr_schedule_row, "updated_at": datetime.now(timezone.utc).isoformat()})
+           .eq("id", found[0]["id"]).eq("firm_id", firm_id).eq("client_id", req.client_id)
+           .execute())
+    return api_response(True, (out.data or [{"block_key": req.block_key, "itr_schedule_row": req.itr_schedule_row}])[0])
+
+
+@router.get("/section-32/itr-rows")
+def section_32_itr_rows(
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """The rows of the return's depreciation schedules a block can be declared on, and the rate each implies.
+
+    Read from the Department's own committed schemas (domain/income_tax/itr_depreciation_rows), so the screen holds no list of its own
+    and no rate: the rows are identical across ITR-3, ITR-5 and ITR-6 (pinned by a test), which is why one form answers for all.
+    """
+    from domain.income_tax import itr_depreciation_rows as _rows
+    return api_response(True, {"rows": _rows.vocabulary("ITR-3")})
 
 
 @router.get("/msme-43bh")
@@ -2392,6 +2481,10 @@ def upsert_section_32_block(
         # (CLAUDE.md).
         "created_by": current_user.get("id"),
     }
+    if "itr_schedule_row" in req.model_fields_set:
+        # Written only when it was SENT, so a request that predates the field does not null a row somebody recorded, and so the
+        # upsert names no column the database may not have yet (migration 552) for a caller that never meant to touch it.
+        row["itr_schedule_row"] = req.itr_schedule_row
     if not db:
         return api_response(True, row)
     out = (db.table("income_tax_asset_blocks")
