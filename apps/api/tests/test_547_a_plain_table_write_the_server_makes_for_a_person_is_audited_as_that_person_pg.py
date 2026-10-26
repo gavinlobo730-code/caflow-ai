@@ -19,7 +19,16 @@ WHAT THIS HOLDS (real Postgres, as each role)
       and the row is not marked carried; a role that is not `service_role` (the owner connection, `authenticated`) is not believed.
       (A signed-in session cannot become `service_role` to make it count: PostgREST sets the role from the verified key and offers a
       caller no way to issue `SET ROLE`; this harness connects as the superuser, which can, so that is not asserted here.)
-    * THE TRANSACTION-LOCAL SETTING OF 545 STILL WINS OVER THE HEADER, and the ledger path of 545 is untouched.
+    * THE TRANSACTION-LOCAL SETTING OF 545 STILL WINS OVER THE HEADER, and the ledger path of 545 is untouched. An EMPTY setting (what
+      545's carrier writes for "no actor", and what a pooled connection leaves behind) is read as no setting, so the header is read:
+      that is decided in the migration's header and held here, with a real ledger posting made on a header-carrying request.
+    * ONLY THE SERVICE ROLE IS BELIEVED, for every other role: `anon`, `authenticated` with no subject, `authenticated` whose token
+      merely CLAIMS role service_role, and the owner connection. Each negative case also asserts the UPDATE touched the row, so an
+      empty audit log is a finding and not an update that never happened.
+    * WHAT THE LABEL MAY LOOK LIKE: an upper-case, hyphen-less or braced uuid is read as the uuid it is; one wrapped in spaces, and
+      request headers that are an array, a scalar, null, a string or empty, are no actor and break nothing.
+    * A PERSON OF ANOTHER FIRM, OR A DEACTIVATED ONE, IS ACCEPTED TODAY. That is a known and written-down limit (the reader cannot see
+      the row's firm; the migration's header says why), pinned so a later hardening flips it knowingly.
     * THE PROBE SAYS WHAT THE DATABASE SAW: `audit_actor_probe()` returns the role of the request and the header's value (null when there
       is none or the headers are not JSON), is closed to every signed-in role and open to the service role alone, so `/health` can say
       whether the hosted API really passes the header through.
@@ -63,6 +72,9 @@ PEOPLE = {            # name: (users.id, auth id, role)
     "manager_a": ("54700000-0000-0000-0000-00000000000b", "54700000-1111-0000-0000-000000000002", "Manager"),
 }
 NOBODY = "54700000-1111-0000-0000-0000000000ee"       # an auth id no users row holds
+OTHER_FIRM = "54700000-0000-0000-0000-000000000002"
+STRANGER = ("54700000-0000-0000-0000-000000000010", "54700000-1111-0000-0000-000000000009")    # a deactivated user of another firm
+BANK_A, AR_A = "54700000-0000-0000-0000-0000000000a5", "54700000-0000-0000-0000-0000000000a6"
 MIGRATION = next(p for p in MIGRATIONS.glob("547_a_plain_table_write_the_server_makes_for_a_person*.sql")
                  if not p.name.endswith("_rollback.sql"))
 ROLLBACK = next(MIGRATIONS.glob("547_a_plain_table_write_the_server_makes_for_a_person*_rollback.sql"))
@@ -105,11 +117,21 @@ def _headers(value) -> str:
 
 def _prefix(who: str, header=None) -> str:
     """`service`: the server's own request (role service_role, no sub). `backend`: the owner connection, no role switch.
+    `anon`, `authenticated_no_subject`, `authenticated_claiming_service`, `service_with_subject`: the other shapes a request can have.
     A person: a signed-in session with that person's `sub`."""
     if who == "backend":
         return _headers(header)
     if who == "service":
         return _headers(header) + "SET ROLE service_role; "
+    if who == "anon":
+        return _headers(header) + "SET ROLE anon; "
+    if who == "authenticated_no_subject":
+        return _headers(header) + "SET ROLE authenticated; "
+    if who == "authenticated_claiming_service":     # a token that SAYS role service_role, running as the database role authenticated
+        return _headers(header) + "SET request.jwt.claims = '{\"role\": \"service_role\"}'; SET ROLE authenticated; "
+    if who == "service_with_subject":                # the service role, on a request that also carries a signed-in subject
+        return (_headers(header) + f"SET request.jwt.claims = '{{\"sub\": \"{PEOPLE['manager_a'][1]}\", \"role\": \"service_role\"}}'; "
+                "SET ROLE service_role; ")
     sub = PEOPLE[who][1]
     return (_headers(header) + f"SET request.jwt.claims = '{{\"sub\": \"{sub}\", \"role\": \"authenticated\"}}'; SET ROLE authenticated; ")
 
@@ -131,6 +153,20 @@ def _audit(dsn: str, where: str) -> list[list[str]]:
 RENAME = f"UPDATE customers SET name = 'renamed-' || substr(md5(random()::text), 1, 6) WHERE id = '{CUSTOMER_A}'"
 
 
+def _changed(dsn: str) -> None:
+    """The UPDATE under test really touched the row (an empty audit log proves nothing if it did not), then the name is put back."""
+    name = _one(dsn, f"SELECT name FROM customers WHERE id = '{CUSTOMER_A}'")
+    assert name.startswith("renamed-"), f"the UPDATE touched no row, so an empty audit log proves nothing (name is {name!r})"
+    assert _psql(dsn, f"UPDATE customers SET name = 'Cust' WHERE id = '{CUSTOMER_A}'").returncode == 0
+
+
+def _open_customers_to_every_role(dsn: str) -> None:
+    """Row security and grants out of the way for `customers`, so that a role under test reaches the audit trigger at all: what is
+    under test here is the trigger's reader, not the table's policies."""
+    r = _psql(dsn, "ALTER TABLE customers DISABLE ROW LEVEL SECURITY; GRANT SELECT, UPDATE ON customers TO anon, authenticated;")
+    assert r.returncode == 0, r.stderr
+
+
 @pytest.fixture()
 def dsn(pg_template):
     admin = _ADMIN.strip()
@@ -150,6 +186,9 @@ def dsn(pg_template):
             INSERT INTO user_client_assignments (firm_id, user_id, client_id)
                  VALUES ('{FIRM}', '{PEOPLE["manager_a"][0]}', '{CLIENT_A}');
             INSERT INTO customers (id, firm_id, client_id, name) VALUES ('{CUSTOMER_A}', '{FIRM}', '{CLIENT_A}', 'Cust');
+            INSERT INTO chart_of_accounts (id, firm_id, client_id, account_code, account_name, account_type) VALUES
+                ('{BANK_A}', '{FIRM}', '{CLIENT_A}', 'BANK-1', 'Bank Account', 'Asset'),
+                ('{AR_A}', '{FIRM}', '{CLIENT_A}', 'AR-1', 'Trade Receivables', 'Asset');
             DELETE FROM audit_log;
         """)
         assert seed.returncode == 0, seed.stderr
@@ -184,6 +223,7 @@ def test_without_the_header_the_server_write_is_audited_by_nobody_as_before(dsn)
     ok, out = _call(dsn, "service", RENAME)
     assert ok, out
     assert _audit(dsn, "entity_type = 'customer'") == []
+    _changed(dsn)
 
 
 @pytest.mark.parametrize("label,value", [
@@ -197,12 +237,58 @@ def test_a_label_that_is_not_a_person_is_no_actor_and_the_write_still_succeeds(d
     ok, out = _call(dsn, "service", RENAME, header=value)
     assert ok, (label, out)
     assert _audit(dsn, "entity_type = 'customer'") == [], label
+    _changed(dsn)
 
 
-def test_a_header_that_is_not_json_at_all_breaks_nothing(dsn):
-    ok, out = _call(dsn, "service", "SELECT set_config('request.headers', 'not json', false); " + RENAME)
+@pytest.mark.parametrize("label,headers", [
+    ("not json at all", "not json"),
+    ("a json array", "[1, 2]"),
+    ("a json number", "5"),
+    ("a json string", '"x-acting-auth-user"'),
+    ("json null", "null"),
+    ("empty", ""),
+])
+def test_request_headers_of_any_other_shape_are_no_actor_and_break_nothing(dsn, label, headers):
+    ok, out = _call(dsn, "service", f"SELECT set_config('request.headers', '{headers}', false); " + RENAME)
+    assert ok, (label, out)
+    assert _audit(dsn, "entity_type = 'customer'") == [], label
+    _changed(dsn)
+
+
+@pytest.mark.parametrize("label,form", [
+    ("upper-case", lambda a: a.upper()),
+    ("without hyphens", lambda a: a.replace("-", "")),
+    ("in braces", lambda a: "{" + a + "}"),
+])
+def test_a_uuid_written_another_way_is_read_as_the_uuid_it_is(dsn, label, form):
+    ok, out = _call(dsn, "service", RENAME, header=form(PEOPLE["manager_a"][1]))
+    assert ok, (label, out)
+    rows = _audit(dsn, "entity_type = 'customer'")
+    assert rows == [["customer", "update", PEOPLE["manager_a"][1], "manager_a@t.in", "carried"]], (label, rows)
+    _changed(dsn)
+
+
+def test_a_uuid_wrapped_in_spaces_is_no_actor_which_fails_closed(dsn):
+    ok, out = _call(dsn, "service", RENAME, header=" " + PEOPLE["manager_a"][1] + " ")
     assert ok, out
     assert _audit(dsn, "entity_type = 'customer'") == []
+    _changed(dsn)
+
+
+def test_a_person_of_another_firm_or_a_deactivated_one_is_accepted_today_and_that_is_the_pinned_limit(dsn):
+    """The reader cannot see the row's firm, so it cannot ask whether the person belongs to it (the migration's header says why this
+    is accepted and what it would take to change). Pinned so that the day a hardening lands this test flips on purpose."""
+    stranger_id, stranger_auth = STRANGER
+    seeded = _psql(dsn, f"""
+        INSERT INTO auth.users (id, email) VALUES ('{stranger_auth}', 'stranger@t.in');
+        INSERT INTO firms (id, name, email) VALUES ('{OTHER_FIRM}', 'G', 'g@t.in');
+        INSERT INTO users (id, firm_id, auth_user_id, email, full_name, role, is_active)
+             VALUES ('{stranger_id}', '{OTHER_FIRM}', '{stranger_auth}', 'stranger@t.in', 'stranger', 'Partner', false);""")
+    assert seeded.returncode == 0, seeded.stderr
+    ok, out = _call(dsn, "service", RENAME, header=stranger_auth)
+    assert ok, out
+    assert _audit(dsn, "entity_type = 'customer'") == [["customer", "update", stranger_auth, "stranger@t.in", "carried"]]
+    _changed(dsn)
 
 
 # ── a signed-in person is never replaced or impersonated ─────────────────────────────────────────────────────────────
@@ -211,13 +297,28 @@ def test_a_signed_in_manager_who_sends_the_header_is_audited_as_themselves_and_n
     assert ok, out
     rows = _audit(dsn, "entity_type = 'customer' AND action = 'update'")
     assert rows == [["customer", "update", PEOPLE["manager_a"][1], "manager_a@t.in", "-"]], rows
+    _changed(dsn)
 
 
-def test_a_request_that_does_not_run_as_the_service_role_is_not_believed(dsn):
-    """The owner connection (no role switch) is not the server's request: PostgREST sets the role from the verified key."""
-    ok, out = _call(dsn, "backend", RENAME, header=PEOPLE["partner"][1])
+@pytest.mark.parametrize("who", ["backend", "anon", "authenticated_no_subject", "authenticated_claiming_service"])
+def test_no_request_that_is_not_the_service_role_is_believed_and_its_write_still_happens(dsn, who):
+    """The owner connection is not the server's request, and neither is `anon`, `authenticated` without a subject (auth.uid() is
+    NULL there, so only the role stands between the header and a row), or `authenticated` with a token that merely CLAIMS role
+    service_role (PostgREST sets the database role from the verified key; the claim is not it). Each case proves the UPDATE touched
+    the row, so the empty log is the reader's answer and not a write that never happened."""
+    _open_customers_to_every_role(dsn)
+    ok, out = _call(dsn, who, RENAME, header=PEOPLE["partner"][1])
+    assert ok, (who, out)
+    assert _audit(dsn, "entity_type = 'customer'") == [], who
+    _changed(dsn)
+
+
+def test_a_service_request_that_also_carries_a_signed_in_subject_is_audited_as_that_subject_and_not_the_header(dsn):
+    ok, out = _call(dsn, "service_with_subject", RENAME, header=PEOPLE["partner"][1])
     assert ok, out
-    assert _audit(dsn, "entity_type = 'customer'") == []
+    rows = _audit(dsn, "entity_type = 'customer'")
+    assert rows == [["customer", "update", PEOPLE["manager_a"][1], "manager_a@t.in", "-"]], rows
+    _changed(dsn)
 
 
 # ── the setting of migration 545 still wins ──────────────────────────────────────────────────────────────────────────
@@ -230,6 +331,7 @@ def test_the_transaction_local_setting_wins_over_the_header(dsn):
     assert ok, out
     rows = _audit(dsn, "entity_type = 'customer'")
     assert [r[2] for r in rows] == [PEOPLE["partner"][1]], rows
+    _changed(dsn)
 
 
 def test_a_garbage_setting_is_no_actor_and_the_header_is_not_a_fallback_for_it(dsn):
@@ -241,6 +343,52 @@ def test_a_garbage_setting_is_no_actor_and_the_header_is_not_a_fallback_for_it(d
         COMMIT;""", header=PEOPLE["manager_a"][1])
     assert ok, out
     assert _audit(dsn, "entity_type = 'customer'") == []
+    _changed(dsn)
+
+
+def test_an_empty_setting_is_read_as_no_setting_so_the_servers_header_is_read(dsn):
+    """DECIDED in the migration's header: 545's carrier writes the empty string for "no actor", and so does a pooled connection after
+    any earlier transaction, so the two cannot be told apart. On the server's own request the header is the verified person."""
+    ok, out = _call(dsn, "service", f"""
+        BEGIN;
+        SELECT set_config('app.audit_actor', '', true);
+        {RENAME};
+        COMMIT;""", header=PEOPLE["manager_a"][1])
+    assert ok, out
+    rows = _audit(dsn, "entity_type = 'customer'")
+    assert rows == [["customer", "update", PEOPLE["manager_a"][1], "manager_a@t.in", "carried"]], rows
+    _changed(dsn)
+
+
+def test_every_statement_of_one_transaction_is_audited_as_the_person(dsn):
+    ok, out = _call(dsn, "service", f"BEGIN; {RENAME}; {RENAME}; COMMIT;", header=PEOPLE["partner"][1])
+    assert ok, out
+    rows = _audit(dsn, "entity_type = 'customer'")
+    assert [(r[1], r[2], r[4]) for r in rows] == [("update", PEOPLE["partner"][1], "carried")] * 2, rows
+    _changed(dsn)
+
+
+def _ledger_entry(ref: str) -> str:
+    entry = {"firm_id": FIRM, "client_id": CLIENT_A, "entry_date": "2025-09-30", "reference_no": ref, "narration": "t",
+             "entry_type": "Journal", "is_posted": True, "status": "posted"}
+    lines = [{"account_id": BANK_A, "debit_paise": 10000, "credit_paise": 0, "narration": "d"},
+             {"account_id": AR_A, "debit_paise": 0, "credit_paise": 10000, "narration": "c"}]
+    esc = lambda x: json.dumps(x).replace("'", "''")      # noqa: E731
+    return f"SELECT public.post_journal_atomic('{esc(entry)}'::jsonb, '{esc(lines)}'::jsonb);"
+
+
+def test_a_ledger_posting_made_on_the_servers_request_names_the_header_person_on_the_entry_and_its_lines(dsn):
+    """545's carrier runs inside the posting, decides there is no actor (the payload names nobody) and leaves the empty setting; the
+    request's header then names the person, on the entry and on both lines, exactly as it does for a plain table."""
+    ok, jid = _call(dsn, "service", _ledger_entry("H-1"), header=PEOPLE["partner"][1])
+    assert ok, jid
+    rows = _audit(dsn, f"entity_id = '{jid}'")
+    assert rows == [["journal_entry", "create", PEOPLE["partner"][1], "partner@t.in", "carried"],
+                    ["journal_line", "create", PEOPLE["partner"][1], "partner@t.in", "carried"],
+                    ["journal_line", "create", PEOPLE["partner"][1], "partner@t.in", "carried"]], rows
+    ok, other = _call(dsn, "service", _ledger_entry("H-2"))
+    assert ok, other
+    assert _audit(dsn, f"entity_id = '{other}'") == [], "without the header the same posting is audited as before: by nobody"
 
 
 # ── the trigger still covers every table the signed-in role is losing ────────────────────────────────────────────────
@@ -255,6 +403,11 @@ def test_the_audit_trigger_covers_the_seventeen_sensitive_tables_it_covered_befo
     have = {r[0] for r in _rows(dsn, "SELECT c.relname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid "
                                      "WHERE NOT t.tgisinternal AND t.tgname = 'trg_audit_capture'")}
     assert AUDITED <= have, f"a table the audit trigger covered has lost it: {sorted(AUDITED - have)}"
+    # not merely present: switched on, and for all three events (tgtype bits 4 = INSERT, 8 = DELETE, 16 = UPDATE)
+    weak = [r[0] for r in _rows(dsn, "SELECT c.relname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid "
+                                     "WHERE NOT t.tgisinternal AND t.tgname = 'trg_audit_capture' "
+                                     "AND (t.tgenabled <> 'O' OR (t.tgtype & 28) <> 28)")]
+    assert not (set(weak) & AUDITED), f"an audit trigger is disabled or misses an event: {sorted(set(weak) & AUDITED)}"
 
 
 # ── the probe ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -370,6 +523,11 @@ SPOILS = [
     ("the probe executable by a signed-in user", f"GRANT EXECUTE ON FUNCTION {PROBE} TO authenticated;"),
     ("the probe executable by anon", f"GRANT EXECUTE ON FUNCTION {PROBE} TO anon;"),
     ("the probe closed to the service role", f"REVOKE EXECUTE ON FUNCTION {PROBE} FROM service_role;"),
+    ("the reader volatile", f"ALTER FUNCTION {READER} VOLATILE;"),
+    ("the reader's search path unpinned", f"ALTER FUNCTION {READER} RESET search_path;"),
+    ("the probe a definer", f"ALTER FUNCTION {PROBE} SECURITY DEFINER;"),
+    ("the probe volatile", f"ALTER FUNCTION {PROBE} VOLATILE;"),
+    ("the probe's search path unpinned", f"ALTER FUNCTION {PROBE} RESET search_path;"),
 ]
 
 
@@ -394,12 +552,14 @@ def test_the_rollback_restores_545s_definition_and_the_header_is_ignored_and_a_r
     ok, out = _call(dsn, "service", RENAME, header=PEOPLE["manager_a"][1])
     assert ok, out
     assert _audit(dsn, "entity_type = 'customer'") == [], "after the rollback the header is not read"
+    _changed(dsn)
     acl = _acl(dsn, READER)
     assert acl["anon"] is False and acl["authenticated"] is False
     assert _psql_file(dsn, MIGRATION).returncode == 0
     ok, out = _call(dsn, "service", RENAME, header=PEOPLE["manager_a"][1])
     assert ok, out
     assert [r[2] for r in _audit(dsn, "entity_type = 'customer'")] == [PEOPLE["manager_a"][1]]
+    _changed(dsn)
     assert _text(dsn, f"SELECT prosrc FROM pg_proc WHERE oid = '{READER}'::regprocedure") == before
 
 
