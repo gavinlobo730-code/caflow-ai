@@ -50,6 +50,7 @@ from domain.banking.register import (
     opening_balance_gap,
     CLEARED_NONE, CLEARED_PENDING, CLEARED_RECONCILED,
 )
+from core.db_provider import privileged_for
 
 # What the caller may sort by. A closed list — an arbitrary column name here
 # would be a PostgREST injection point, and most columns make no sense to sort a
@@ -99,7 +100,7 @@ class BankRegisterService:
 
     # ── data assembly ────────────────────────────────────────────────────────
     def _account(self, db, firm_id: str, client_id: Optional[str], bank_account_id: str) -> dict:
-        rows = (db.table("bank_accounts").select("*")
+        rows = (privileged_for(db).table("bank_accounts").select("*")
                 .eq("id", bank_account_id).eq("firm_id", firm_id).limit(1).execute().data) or []
         ba = rows[0] if rows else None
         if not ba:
@@ -126,14 +127,14 @@ class BankRegisterService:
         every figure in the register wrong, and wrong quietly, on any client
         with more than about two years of statement lines.
         """
-        stmts = (db.table("bank_statements").select("id")
+        stmts = (privileged_for(db).table("bank_statements").select("id")
                  .eq("firm_id", firm_id).eq("bank_account_id", bank_account_id)
                  .execute().data) or []
         stmt_ids = [s["id"] for s in stmts]
         if not stmt_ids:
             return []
         return fetch_all(
-            lambda: (db.table("bank_transactions").select("*")
+            lambda: (privileged_for(db).table("bank_transactions").select("*")
                      .eq("firm_id", firm_id).in_("statement_id", stmt_ids)),
             label="register._txns",
         )
@@ -147,7 +148,7 @@ class BankRegisterService:
         ids = {t.get("reconciliation_id") for t in txns if t.get("reconciliation_id")}
         if not ids:
             return {}
-        rows = (db.table("bank_reconciliations").select("id, status")
+        rows = (privileged_for(db).table("bank_reconciliations").select("id, status")
                 .eq("firm_id", firm_id).in_("id", list(ids)).execute().data) or []
         return {r["id"]: r.get("status") for r in rows}
 
@@ -298,7 +299,7 @@ class BankRegisterService:
         if not hasattr(db, "rpc"):
             return None
         try:
-            res = db.rpc("bank_register", {
+            res = privileged_for(db).rpc("bank_register", {
                 "p_firm": firm_id,
                 "p_account": bank_account_id,
                 "p_date_from": kw.get("date_from"),

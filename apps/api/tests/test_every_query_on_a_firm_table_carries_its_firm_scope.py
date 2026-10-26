@@ -192,9 +192,12 @@ REPORTED_EXPOSURES: tuple = ()
 #: 40 -> 37 on 24-10-2026 (POST-A-331, fourth slice): the bank settlement of an invoice or bill, its undo and the application of a
 #: party's credit named their table in a variable; they write through `services/document_header_writer`, whose six statements are
 #: literal chains the reader can read.
+#: 37 -> 38 and 8 -> 9 on 26-10-2026 (POST-A-339): `core/acting_client.ActingClient.table(name)` hands the name its caller gave to the
+#: wrapped client and only labels the request with the person it acts for; it is a pass-through, and the calls that reach it name
+#: their table (and carry their firm) as literal chains the reader reads at their own call site.
 UNREADABLE_BUDGET = {
-    "table_named_by_a_variable": 37,
-    "handed_on_without_a_visible_firm_filter": 8,
+    "table_named_by_a_variable": 38,
+    "handed_on_without_a_visible_firm_filter": 9,
     "same_name_calls_not_provably_the_helper": 5,
 }
 
@@ -665,7 +668,9 @@ def test_the_chains_the_reader_cannot_read_are_budgeted_exactly():
 def test_the_scan_covers_what_it_claims_to_and_no_evidence_kind_went_vacuous():
     census = S.census(scan()[0], set(firm_tables()))
     assert census["judged"] >= 2200, census
-    assert census["calls_judged_as_queries"] >= 450, census
+    # 450 -> 440 on 26-10-2026 (POST-A-339): the four unscoped DocumentRepository methods took the firm in their own filter and left
+    # the frozen list, so the fourteen call sites that had to be judged as queries on their account no longer are (462 -> 448).
+    assert census["calls_judged_as_queries"] >= 440, census
     for kind in ("filter", "payload", "gate", "flow", "parent-read", "callers", "pass-through",
                  "principal", "post-fetch"):
         assert census["by_evidence"].get(kind, 0) > 0, (

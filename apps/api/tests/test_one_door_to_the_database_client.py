@@ -8,7 +8,7 @@ WHAT WAS WRONG
     branch, and four routers that answer 503 instead), so how a client is obtained, which is the thing the
     USE_USER_JWT cutover changed, was a hundred places to read and a hundred and first to get wrong.
 
-    `core/db_provider.py` is the one place now, five functions each named for what it answers. Every module that
+    `core/db_provider.py` is the one place now, six functions each named for what it answers. Every module that
     had a shim binds the name it always had to one of them (`_db = db_provider.request_db`), so the hundred
     tests that patch `module._db` are untouched, and the four modules with a `_USE_MOCK` or a 503 branch keep a
     two-line function that calls the provider.
@@ -140,6 +140,16 @@ def test_the_or_none_forms_answer_none_without_a_database_and_the_client_with_on
     assert db_provider.request_db_or_none() is None and db_provider.service_db_or_none() is None
     monkeypatch.setenv("SUPABASE_URL", "https://x.supabase.test")
     assert db_provider.request_db_or_none() == "REQUEST" and db_provider.service_db_or_none() == "SERVICE"
+
+
+def test_the_privileged_form_hands_back_the_privileged_client_with_a_database_and_the_callers_without_one(getters, monkeypatch):
+    """`privileged_for(db)` is the statement a service makes at a query on a payroll, bank or document table (POST-A-339)."""
+    handed_in = object()
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    assert db_provider.privileged_for(handed_in) is handed_in
+    monkeypatch.setenv("SUPABASE_URL", "https://x.supabase.test")
+    assert db_provider.privileged_for(handed_in) == "SERVICE"
+    assert db_provider.privileged_for(None) == "SERVICE"
 
 
 def test_the_503_form_says_why_and_never_hands_back_none(getters, monkeypatch):

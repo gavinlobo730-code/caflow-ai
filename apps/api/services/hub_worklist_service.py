@@ -49,6 +49,7 @@ from domain.hub import worklist as worklist_rules
 from domain.hub.tiles import Unit
 from services.hub_service import _DEAD_DOCUMENT
 from core import db_provider
+from core.db_provider import privileged_for
 
 logger = logging.getLogger("caflow.hub.worklist")
 
@@ -200,7 +201,7 @@ def _python_twin(db, firm_id: str, tile_id: str,
         #
         # `id` is the keyset cursor, so it has to be in every projection.
         if tile_id == "banking":
-            q = db.table("bank_transactions").select("id,client_id,entry_state")
+            q = privileged_for(db).table("bank_transactions").select("id,client_id,entry_state")
         elif tile_id == "sales":
             q = db.table("client_sales_invoices").select("id,client_id,outstanding_paise")
         elif tile_id == "purchases":

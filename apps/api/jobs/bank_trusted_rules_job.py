@@ -37,6 +37,7 @@ import os
 
 from core.db_paging import fetch_all
 from core import db_provider
+from core.db_provider import privileged_for
 
 logger = logging.getLogger("caflow.bank_trusted_rules")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -56,7 +57,7 @@ def _clients_with_trusted_rules(db, firm_id: str) -> list[str]:
     # from a sweep that posts journals unattended — silently, since the cap
     # reports nothing. `id` is in the projection because it is the cursor.
     rows = fetch_all(
-        lambda: db.table("bank_matching_rules").select("id, client_id")
+        lambda: privileged_for(db).table("bank_matching_rules").select("id, client_id")
         .eq("firm_id", firm_id).eq("is_active", True).eq("is_trusted", True),
         label="trusted_rules.clients")
     return sorted({r["client_id"] for r in rows if r.get("client_id")})

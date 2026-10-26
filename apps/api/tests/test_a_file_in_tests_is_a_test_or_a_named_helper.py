@@ -113,6 +113,11 @@ HELPERS = {
     # Python, which is how the year lock's table could refuse every signed-in write and no test notice. Imported by
     # `test_a_year_end_is_finalised_and_reopened_under_a_request_sign_in_pg.py`.
     "_signed_in_postgrest.py",
+    # POST-A-339. The one list of the payroll, bank and document tables that the signed-in role loses its grants on, and the one rule for
+    # spotting a reference to one in source text: `test_a_sensitive_table_is_not_read_from_the_browser.py` (the browser) and
+    # `test_a_payroll_bank_or_document_table_is_queried_with_the_privileged_client.py` (the API) both import it so the two guards can
+    # never disagree about which tables are meant.
+    "_sensitive_tables.py",
     # POST-A-319 / POST-A-299. ONE scanner for "who writes this table": the AST of every module of the API, `scripts/` included, reports
     # each place a table's name is used as a value or written in SQL text. The guards that hold `filings`, the two party-credit tables
     # and the stock ledger to their one writer each carried a copy and the copies drifted (one could not see a table name held in a

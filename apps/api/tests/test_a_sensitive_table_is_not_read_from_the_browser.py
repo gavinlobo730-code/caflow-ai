@@ -40,20 +40,11 @@ from pathlib import Path
 
 import pytest
 
+# The set of tables is one definition, shared with the guard that holds the API to the privileged client (POST-A-339).
+from tests._sensitive_tables import SENSITIVE_PREFIXES, SENSITIVE_TABLES, is_sensitive  # noqa: F401
+
 WEB = Path(__file__).resolve().parents[3] / "apps" / "web"
 _API = Path(__file__).resolve().parents[1]
-
-#: Whole-name prefixes: a table created next month under one of them is covered with no edit.
-SENSITIVE_PREFIXES = ("payroll_", "bank_")
-
-#: Exact names the prefixes do not cover.
-SENSITIVE_TABLES = frozenset({
-    # payroll: hangs from an employee
-    "leave_balances", "attendance", "salary_structures", "salary_slips",
-    # documents
-    "client_documents", "documents", "document_requests",
-    "document_extractions", "document_risks", "entity_documents",
-})
 
 #: Not a table: Supabase Storage, every use of it.
 STORAGE = "storage"
@@ -61,10 +52,6 @@ STORAGE = "storage"
 #: The directories of `apps/web` whose files are the product. `scripts` holds the web's
 #: own guards, which quote these names inside strings.
 _SKIP_DIRS = {"node_modules", ".next", "out", ".vercel", "scripts", "public"}
-
-
-def is_sensitive(table: str) -> bool:
-    return table in SENSITIVE_TABLES or table.startswith(SENSITIVE_PREFIXES)
 
 
 #: (file relative to apps/web, table or "storage") -> how many reaches the file still makes.

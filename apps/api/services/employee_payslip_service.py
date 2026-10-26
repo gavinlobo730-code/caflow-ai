@@ -47,6 +47,7 @@ from __future__ import annotations
 from typing import Optional
 
 from domain.payroll.run_status import PAYROLL_RELEASED
+from core.db_provider import privileged_for
 
 
 class PayslipNotFound(LookupError):
@@ -66,14 +67,14 @@ def own_released_slip(db, employee: dict, slip_id: str) -> dict:
     if not (employee_id and firm_id and client_id and slip_id):
         raise PayslipNotFound(slip_id)
 
-    slips = (db.table("payroll_slips").select("id, run_id, employee_id")
+    slips = (privileged_for(db).table("payroll_slips").select("id, run_id, employee_id")
              .eq("id", slip_id).eq("employee_id", employee_id)
              .limit(1).execute().data) or []
     if not slips:
         raise PayslipNotFound(slip_id)
 
     run: Optional[dict] = next(iter(
-        (db.table("payroll_runs").select("id, firm_id, client_id, status")
+        (privileged_for(db).table("payroll_runs").select("id, firm_id, client_id, status")
          .eq("id", slips[0]["run_id"]).eq("firm_id", firm_id)
          .eq("client_id", client_id).limit(1).execute().data) or []), None)
     if run is None or run.get("status") not in PAYROLL_RELEASED:

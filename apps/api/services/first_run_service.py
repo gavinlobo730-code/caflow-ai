@@ -27,6 +27,7 @@ from typing import Callable, Optional
 
 from domain.onboarding import first_run as rule
 from core import db_provider
+from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _log = logging.getLogger("caflow.onboarding")
@@ -59,7 +60,7 @@ def _invoice_fact(db, firm_id: str) -> rule.Fact:
 
 
 def _statement_fact(db, firm_id: str) -> rule.Fact:
-    rows = (db.table("bank_statements").select("id, created_at")
+    rows = (privileged_for(db).table("bank_statements").select("id, created_at")
             .eq("firm_id", firm_id).order("created_at").limit(1).execute().data) or []
     return rule.Fact(True, rows[0].get("created_at")) if rows else rule.Fact(False)
 

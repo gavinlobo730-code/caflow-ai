@@ -23,6 +23,7 @@ from services import portal_data_service  # Phase 4.5.2: canonical AR (retires `
 from services import portal_notice_service  # practice_management-02: tell both sides
 from core import db_provider
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
 
@@ -65,7 +66,7 @@ def _assert_doc_request_scope(current_user: dict, request_id: str):
     if db is None:
         row = portal_svc.get_document_request(request_id)
     else:
-        res = db.table("document_requests").select("*").eq("id", request_id).execute()
+        res = privileged_for(db).table("document_requests").select("*").eq("id", request_id).execute()
         row = res.data[0] if res.data else None
     if not row or row.get("firm_id") != firm_id or not can_access_client(current_user, row.get("client_id")):
         return None
@@ -91,7 +92,7 @@ def list_document_requests(
     # EVERY request, in the server's own pages: one response is cut at about a thousand rows without a word, and this is the
     # only list a request can be found in. Newest first, ties on the id, applied after the read.
     rows = fetch_all(
-        lambda: db.table("document_requests")
+        lambda: privileged_for(db).table("document_requests")
         # `due_date` was NOT a column here for the whole life of this endpoint —
         # PostgREST rejects the whole select at parse time, so it returned 500 on
         # every call — and it was dropped from this read rather than invented to
@@ -145,7 +146,7 @@ def create_document_request(
         "created_at": now,
     }
 
-    res = db.table("document_requests").insert(record).execute()
+    res = privileged_for(db).table("document_requests").insert(record).execute()
     written = res.data[0] if res.data else record
     # practice_management-02: tell the client's portal contacts. The request is
     # already saved, so this can never fail it, and the answer says whether the
@@ -174,7 +175,7 @@ def complete_document_request(
         return api_response(True, updated)
 
     res = (
-        db.table("document_requests")
+        privileged_for(db).table("document_requests")
         .update({"status": "fulfilled", "fulfilled_at": now})
         .eq("id", request_id)
         .execute()
@@ -191,9 +192,10 @@ def delete_document_request(
 
     The same tier the database's own policy asks (migration 261: Executive and above) and the same scope as the
     complete route above: a request that is not in the caller's firm and clients answers exactly as a missing one.
-    The delete runs as the caller (`_db()`), so row security is still the second lock and the audit trigger names the
-    person. The answer says whether a row went: a delete the database hid from the caller removes nothing and is
-    reported as not found, never as done."""
+    The delete runs with the API's privileged client (POST-A-339), so row security is NOT a second lock: the firm and
+    the client were proved above and are on the statement, and the statement carries the person (`privileged_for`), so
+    the audit trigger still names them. The answer says whether a row went: a delete that matched nothing removes
+    nothing and is reported as not found, never as done."""
     if _assert_doc_request_scope(current_user, request_id) is None:
         return api_response(False, None, "Document request not found")
 
@@ -204,7 +206,7 @@ def delete_document_request(
             False, None, "Document request not found")
 
     res = (
-        db.table("document_requests").delete()
+        privileged_for(db).table("document_requests").delete()
         .eq("id", request_id).eq("firm_id", current_user["firm_id"])
         .execute()
     )

@@ -77,6 +77,7 @@ from core.observability import capture_soft_failure
 from domain.banking import exceptions as rules
 from domain.banking.matcher import bill_open_paise, invoice_open_paise
 from core.ist_clock import ist_today
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger(__name__)
 
@@ -134,7 +135,7 @@ def _period_rows(db, firm_id: str, client_id: str, *, from_date: str, to_date: s
         # the table the chain STARTED on, and a builder passed in as a
         # parameter breaks that trail. firm_id explicitly, not RLS alone —
         # CLAUDE.md: the app-layer filter is the primary isolation control.
-        q = (db.table("bank_transactions")
+        q = (privileged_for(db).table("bank_transactions")
              .select("id, transaction_date, description, payee_name, debit_paise, "
                      "credit_paise, account_id, category, match_status, "
                      "matched_entity_type, matched_entity_id")
@@ -151,7 +152,7 @@ def _statement_ids(db, firm_id: str, bank_account_id: str) -> list[str]:
     """`bank_transactions` carries no bank_account_id — only `statement_id`, so
     the account is one hop away (CLAUDE.md, BankPostingService.bank_account_id_for).
     Bounded by how many statements the account has, which is months, not lines."""
-    rows = fetch_all(lambda: db.table("bank_statements").select("id")
+    rows = fetch_all(lambda: privileged_for(db).table("bank_statements").select("id")
                      .eq("firm_id", firm_id).eq("bank_account_id", bank_account_id))
     return [str(r["id"]) for r in rows]
 
@@ -173,7 +174,7 @@ def _seen_before(db, firm_id: str, client_id: str, *, column: str, wanted: set[s
         # The two questions are spelled out rather than interpolated, for the
         # reason at the top of this module: `f"id, {column}"` is a projection
         # the column guard cannot read.
-        base = db.table("bank_transactions")
+        base = privileged_for(db).table("bank_transactions")
         q = (base.select("id, payee_name") if column == "payee_name"
              else base.select("id, account_id"))
         q = (q.eq("firm_id", firm_id).eq("client_id", client_id)
@@ -206,7 +207,7 @@ def _any_earlier_line(db, firm_id: str, client_id: str, *, before: str,
     second as the first would tell a partner to go and widen a search that has
     nothing to find.
     """
-    q = (db.table("bank_transactions").select("id")
+    q = (privileged_for(db).table("bank_transactions").select("id")
          .eq("firm_id", firm_id).eq("client_id", client_id)
          .lt("transaction_date", before).limit(1))
     if bank_account_id:

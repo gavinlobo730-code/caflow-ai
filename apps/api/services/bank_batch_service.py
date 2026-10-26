@@ -34,6 +34,7 @@ from fastapi import HTTPException
 
 from domain.banking import attachments as att
 from core.observability import capture_soft_failure
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.bank_batch")
 
@@ -49,7 +50,7 @@ def _now() -> str:
 class BankBatchService:
 
     def _fetch(self, db, firm_id: str, txn_ids: list[str]) -> dict:
-        rows = (db.table("bank_transactions").select("*")
+        rows = (privileged_for(db).table("bank_transactions").select("*")
                 .eq("firm_id", firm_id).in_("id", txn_ids).execute().data) or []
         return {r["id"]: r for r in rows}
 
@@ -89,7 +90,7 @@ class BankBatchService:
                     txn_id, "skipped",
                     "Already excluded." if excluded else "Already included."))
                 continue
-            (db.table("bank_transactions")
+            (privileged_for(db).table("bank_transactions")
              .update({"match_status": "ignored" if excluded else "unmatched",
                       "updated_at": _now()})
              .eq("id", txn_id).eq("firm_id", firm_id).execute())
@@ -105,7 +106,7 @@ class BankBatchService:
                        actor_id: Optional[str] = None) -> dict:
         txn = self._one(db, firm_id, txn_id)
         if document_id:
-            self._assert_document_in_firm(db, firm_id, document_id)
+            self._assert_document_in_firm(db, firm_id, document_id, client_id=txn.get("client_id"))
         try:
             updated = att.add(txn.get("attachments"), name, url, document_id)
         except att.AttachmentError as e:
@@ -134,29 +135,37 @@ class BankBatchService:
         return {"transaction_id": txn_id, "attachments": items, "invalid": invalid}
 
     @staticmethod
-    def _assert_document_in_firm(db, firm_id: str, document_id: str) -> None:
-        """The document must belong to THIS firm.
+    def _assert_document_in_firm(db, firm_id: str, document_id: str, client_id: Optional[str] = None) -> None:
+        """The document must belong to THIS firm, and to the bank line's own client.
 
         A document id arrives from the browser, and the attachment is later
         opened by minting a signed url for whatever id is stored. Without this
         check, attaching another firm's document id would be enough to read
         their file — the tenant filter is the control (CLAUDE.md), and it has
         to be applied where the id enters, not where it is used.
+
+        The CLIENT as well (POST-A-339): the documents table used to be hidden from a caller who was not assigned to the document's
+        client by its row policy; the API now reads it with the privileged client, so a document of an unassigned client of the same
+        firm would be attached, or its existence told by the difference between a 404 and a 200. A document belongs to exactly one
+        client (`documents.client_id` is NOT NULL), and a bank line's attachment is that client's.
         """
-        rows = (db.table("documents").select("id")
-                .eq("id", document_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+        q = (privileged_for(db).table("documents").select("id")
+             .eq("id", document_id).eq("firm_id", firm_id))
+        if client_id:
+            q = q.eq("client_id", client_id)
+        rows = q.limit(1).execute().data or []
         if not rows:
             raise HTTPException(status_code=404, detail="Document not found for this firm.")
 
     def _one(self, db, firm_id: str, txn_id: str) -> dict:
-        rows = (db.table("bank_transactions").select("*")
+        rows = (privileged_for(db).table("bank_transactions").select("*")
                 .eq("id", txn_id).eq("firm_id", firm_id).limit(1).execute().data) or []
         if not rows:
             raise HTTPException(status_code=404, detail="Bank transaction not found.")
         return rows[0]
 
     def _save_attachments(self, db, firm_id, txn_id, items, actor_id) -> dict:
-        (db.table("bank_transactions")
+        (privileged_for(db).table("bank_transactions")
          .update({"attachments": items, "updated_at": _now()})
          .eq("id", txn_id).eq("firm_id", firm_id).execute())
         try:

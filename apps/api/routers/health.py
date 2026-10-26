@@ -50,6 +50,7 @@ from core.ist_clock import ist_today
 from domain.health.scoring import DIMENSION_WEIGHTS_BP, DIMENSIONS, grade, is_at_risk, is_critical, weighted_score
 from domain.health.overrides import apply_overrides, as_payload
 from core import db_provider
+from core.db_provider import privileged_for
 
 router = APIRouter(prefix="/api/health", tags=["health"])
 
@@ -95,7 +96,7 @@ def _has_anything_to_score_db(db, client_id: str, firm_id: str) -> bool:
         ("compliance_records", lambda: db.table("compliance_records").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
         ("government_notices", lambda: db.table("government_notices").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
         ("tasks", lambda: db.table("tasks").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
-        ("document_requests", lambda: db.table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
+        ("document_requests", lambda: privileged_for(db).table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
         ("ai_insights", lambda: db.table("ai_insights").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
         ("bank_transactions", lambda: _bank_db(db).table("bank_transactions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
         ("client_portal_sessions", lambda: db.table("client_portal_sessions").select("id").eq("firm_id", firm_id).eq("client_id", client_id).limit(1)),
@@ -456,7 +457,7 @@ def _dim_document_health_db(db, client_id: str, firm_id: str) -> int:
     score = 100
 
     try:
-        outstanding = db.table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").execute().data or []
+        outstanding = privileged_for(db).table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").execute().data or []
         score -= len(outstanding) * 15
     except Exception as exc:
         capture_soft_failure(exc, operation="health.dim_document_health_db", firm_id=firm_id, client_id=client_id)
@@ -548,7 +549,7 @@ def _dim_client_responsiveness_db(db, client_id: str, firm_id: str) -> int:
 
     try:
         stale_cutoff = (today - timedelta(days=7)).isoformat()
-        stale_requests = db.table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").lt("created_at", stale_cutoff).execute().data or []
+        stale_requests = privileged_for(db).table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").lt("created_at", stale_cutoff).execute().data or []
         score -= len(stale_requests) * 10
     except Exception as exc:
         capture_soft_failure(exc, operation="health.dim_client_responsiveness_db.2", firm_id=firm_id, client_id=client_id)
@@ -822,7 +823,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
             # one is `title` — and the status filter was "Pending" while the
             # CHECK constraint only permits lowercase ('pending','fulfilled'),
             # so even with the column fixed this matched nothing.
-            outstanding = db.table("document_requests").select("id, title, created_at").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "pending").execute().data or []
+            outstanding = privileged_for(db).table("document_requests").select("id, title, created_at").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "pending").execute().data or []
             for d in outstanding[:5]:
                 factors.append({
                     "label": f"Outstanding request: {d.get('title', 'Document')}",
@@ -906,7 +907,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
             # "Pending" matched nothing even once the name was right. Fixed
             # there and missed here because a one-off sweep found one and
             # stopped — which is why the check now runs in CI.
-            stale = db.table("document_requests").select("id, title").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "pending").lt("created_at", stale_cutoff).execute().data or []
+            stale = privileged_for(db).table("document_requests").select("id, title").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "pending").lt("created_at", stale_cutoff).execute().data or []
             for d in stale[:5]:
                 factors.append({
                     "label": f"Document pending > 7 days: {d.get('title', 'Document')}",

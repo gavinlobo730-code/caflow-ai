@@ -24,6 +24,7 @@ from domain.banking.splits import (
     parse_splits, validate_splits, unallocated_paise, SplitError,
 )
 from core.observability import capture_soft_failure
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.bank_splits")
 
@@ -37,7 +38,7 @@ def _amount(txn: dict) -> tuple[int, bool]:
 class BankSplitService:
 
     def _get_txn(self, db, firm_id: str, txn_id: str) -> dict:
-        res = (db.table("bank_transactions").select("*")
+        res = (privileged_for(db).table("bank_transactions").select("*")
                .eq("id", txn_id).eq("firm_id", firm_id).limit(1).execute())
         rows = res.data or []
         if not rows:
@@ -79,7 +80,7 @@ class BankSplitService:
 
     # ── read ────────────────────────────────────────────────────────────────
     def list_splits(self, db, firm_id: str, txn_id: str) -> list[dict]:
-        return (db.table("bank_transaction_splits").select("*")
+        return (privileged_for(db).table("bank_transaction_splits").select("*")
                 .eq("firm_id", firm_id).eq("bank_transaction_id", txn_id)
                 .order("sequence_no").execute().data) or []
 
@@ -140,7 +141,11 @@ class BankSplitService:
                         "narration": s.narration} for s in parsed]
 
         try:
-            db.rpc("replace_bank_transaction_splits", {
+            # The privileged client, and not the caller's own: the function is SECURITY DEFINER and executable by the service
+            # role ALONE (migration 256; checked against production on 26-10-2026: `authenticated` cannot execute it), so on the
+            # caller's own sign-in this call is refused by the database whoever asks. The route has already tied the transaction
+            # to the caller's client (`_assert_txn_scope`) and the function re-checks the firm and the amount itself.
+            privileged_for(db).rpc("replace_bank_transaction_splits", {
                 "p_firm_id": firm_id, "p_txn_id": txn_id,
                 "p_splits": payload, "p_actor_id": actor_id,
             }).execute()

@@ -46,6 +46,7 @@ from core.db_paging import fetch_all
 from core.ist_clock import fy_bounds, ist_fy_label
 from domain.practice import client_metrics as rule
 from domain.payroll.department_cost import EMPLOYER_COST_FIELDS
+from core.db_provider import privileged_for
 
 logger = logging.getLogger("caflow.client_metrics")
 
@@ -290,7 +291,7 @@ def _payroll(db, client_id: str, fy: str, into: _Collector) -> None:
     """
     start, end = fy_bounds(fy)
     runs = fetch_all(
-        lambda: db.table("payroll_runs").select("id, status, month")
+        lambda: privileged_for(db).table("payroll_runs").select("id, status, month")
         .eq("client_id", client_id)
         .gte("month", start[:7]).lte("month", end[:7]),
         label="client_metrics.payroll_runs",
@@ -311,7 +312,7 @@ def _payroll(db, client_id: str, fy: str, into: _Collector) -> None:
     # employer fields named here ARE `EMPLOYER_COST_FIELDS`, so the two cannot
     # drift and PAY-25 stays the authority for which they are.
     slips = fetch_all(
-        lambda: db.table("payroll_slips").select(
+        lambda: privileged_for(db).table("payroll_slips").select(
             "id, run_id, employee_id, gross_paise, pf_employer_paise, "
             "esi_employer_paise, edli_paise, pf_admin_paise"
         ).in_("run_id", released),

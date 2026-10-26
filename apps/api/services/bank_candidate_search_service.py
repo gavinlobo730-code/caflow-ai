@@ -37,6 +37,7 @@ from domain.banking.candidate_search import (
     search as search_candidates, describe, allowed_types, CandidateHit, MAX_RESULTS,
 )
 from core.ist_clock import ist_today
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.bank_candidate_search")
 
@@ -57,7 +58,7 @@ def _iso(d: date) -> str:
 class BankCandidateSearchService:
 
     def _get_txn(self, db, firm_id: str, txn_id: str) -> dict:
-        rows = (db.table("bank_transactions").select("*")
+        rows = (privileged_for(db).table("bank_transactions").select("*")
                 .eq("id", txn_id).eq("firm_id", firm_id).limit(1).execute().data) or []
         if not rows:
             raise HTTPException(status_code=404, detail="Bank transaction not found.")

@@ -9,6 +9,10 @@ from typing import Optional
 from core.ist_clock import ist_today
 from core.authz import within_client_scope
 from domain.practice.compliance_overdue import is_overdue
+from core.db_provider import privileged_for
+
+#: A firm id that no firm has: what a query on the privileged client names when its caller named no firm, so it reads nothing.
+_NO_FIRM = "00000000-0000-0000-0000-000000000000"
 
 # THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. `ist_today()` at
 # module level is evaluated ONCE, at import, so on the long-lived uvicorn
@@ -215,10 +219,10 @@ def get_all_risks(
     # Start with static engine risks (mock or real document risks)
     if os.environ.get("SUPABASE_URL"):
         # In real mode: query document_risks table
+        # The privileged client carries no row security (POST-A-339), so the firm is not optional here: a call that names none
+        # reads no document risk at all, where the caller's own session used to be narrowed to its firm by the policy.
         db = __import__("core.supabase_client", fromlist=["get_supabase"]).get_supabase()
-        q = db.table("document_risks").select("*")
-        if firm_id:
-            q = q.eq("firm_id", firm_id)
+        q = privileged_for(db).table("document_risks").select("*").eq("firm_id", firm_id or _NO_FIRM)
         if client_id:
             q = q.eq("client_id", client_id)
         result = q.execute()
@@ -312,9 +316,7 @@ def get_risk(risk_id: str, firm_id: Optional[str] = None) -> dict | None:
     import os
     if os.environ.get("SUPABASE_URL"):
         db = __import__("core.supabase_client", fromlist=["get_supabase"]).get_supabase()
-        q = db.table("document_risks").select("*").eq("id", risk_id)
-        if firm_id:
-            q = q.eq("firm_id", firm_id)
+        q = privileged_for(db).table("document_risks").select("*").eq("id", risk_id).eq("firm_id", firm_id or _NO_FIRM)
         result = q.limit(1).execute()
         return result.data[0] if result.data else None
 
@@ -337,9 +339,7 @@ def update_risk(risk_id: str, resolution_status: str, firm_id: Optional[str] = N
         update = {"resolution_status": resolution_status}
         if resolution_status == "resolved":
             update["resolved_at"] = now
-        q = db.table("document_risks").update(update).eq("id", risk_id)
-        if firm_id:
-            q = q.eq("firm_id", firm_id)
+        q = privileged_for(db).table("document_risks").update(update).eq("id", risk_id).eq("firm_id", firm_id or _NO_FIRM)
         result = q.execute()
         return result.data[0] if result.data else None
 

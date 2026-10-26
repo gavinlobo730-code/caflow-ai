@@ -61,6 +61,7 @@ from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from core import db_provider
 from core.ist_clock import ist_today
+from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.opening_balance")
@@ -106,7 +107,7 @@ def _fetch_masters(db, firm_id: str, client_id: str):
                  .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
     vendors = (db.table("vendors").select("opening_balance_paise, opening_balance_date")
                .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
-    banks = (db.table("bank_accounts")
+    banks = (privileged_for(db).table("bank_accounts")
              .select("opening_balance_paise, opening_balance_date, coa_account_id")
              .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
     return customers, vendors, banks

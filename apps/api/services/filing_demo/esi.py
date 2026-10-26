@@ -31,6 +31,7 @@ HONESTY ABOUT THE SPLIT
 from __future__ import annotations
 
 from services.filing_demo import common
+from core.db_provider import privileged_for
 
 # Statuses from which the real contribution is filed. A draft or in-review
 # run's figures are still moving; the portal filing happens after payroll is
@@ -62,7 +63,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     if not run_id:
         raise ValueError("esi demo needs ref.run_id")
 
-    rows = (db.table("payroll_runs").select("*")
+    rows = (privileged_for(db).table("payroll_runs").select("*")
             .eq("id", run_id).eq("firm_id", firm_id)
             .eq("client_id", client_id).limit(1).execute().data) or []
     if not rows:
@@ -91,7 +92,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     # and scoping the slips by it is the firm+client scope, one hop removed.
     # Columns are narrowed to the ESI legs: what we need is WHICH employees
     # the filing would cover, which is headcount-sized, not ledger-sized.
-    slips = (db.table("payroll_slips")
+    slips = (privileged_for(db).table("payroll_slips")
              .select("employee_id,esi_employee_paise,esi_employer_paise")
              .eq("run_id", run_id).execute().data) or []
     covered_ids = sorted({
@@ -108,7 +109,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     # demo surfaces exactly who would block the real filing.
     missing_ip: list[str] = []
     if covered_ids:
-        employees = (db.table("payroll_employees").select("id,name,esi_number")
+        employees = (privileged_for(db).table("payroll_employees").select("id,name,esi_number")
                      .eq("firm_id", firm_id).eq("client_id", client_id)
                      .in_("id", covered_ids).execute().data) or []
         missing_ip = sorted(

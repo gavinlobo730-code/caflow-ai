@@ -22,6 +22,7 @@ from core.ist_clock import ist_today
 import logging
 from typing import Optional
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.fx_reporting")
 
@@ -159,7 +160,7 @@ class FXReportingService:
         Σ(txn_debit − txn_credit) over the account's posted journal lines; base
         carrying = Σ(debit − credit) in paise."""
         try:
-            banks = (db.table("bank_accounts")
+            banks = (privileged_for(db).table("bank_accounts")
                      .select("id, bank_name, account_no, currency, coa_account_id")
                      .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []
         except Exception:  # noqa: BLE001 — column/table absent ⇒ no foreign bank data yet

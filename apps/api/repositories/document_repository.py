@@ -4,6 +4,8 @@ from repositories.base import BaseRepository
 from core.exceptions import NotFoundError
 from core import db_provider
 from core.db_paging import fetch_all
+from core.authz import scope_query_to_clients
+from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -13,13 +15,18 @@ if _USE_MOCK:
 
 _get_db = db_provider.request_db
 
+#: A firm id that no firm has. The queries below are made with the privileged client (POST-A-339), which carries no row security,
+#: so a call that names no firm must read and change nothing; it used to be narrowed to the caller's firm by the policy.
+_NO_FIRM = "00000000-0000-0000-0000-000000000000"
+
 
 class DocumentRepository(BaseRepository[dict]):
 
-    def find_by_id(self, id: str) -> Optional[dict]:
+    def find_by_id(self, id: str, firm_id: Optional[str] = None) -> Optional[dict]:
         if _USE_MOCK:
             return next((d for d in MOCK_DOCUMENTS if d["id"] == id and not d.get("deleted_at")), None)
-        result = _get_db().table("documents").select("*").eq("id", id).is_("deleted_at", None).maybe_single().execute()
+        result = (privileged_for(_get_db()).table("documents").select("*").eq("id", id).eq("firm_id", firm_id or _NO_FIRM)
+                  .is_("deleted_at", None).maybe_single().execute())
         return result.data
 
     def find_all(
@@ -29,8 +36,12 @@ class DocumentRepository(BaseRepository[dict]):
         document_type: Optional[str] = None,
         review_status: Optional[str] = None,
         columns: str = "*",
+        allowed_client_ids: Optional[set] = None,
     ) -> list[dict]:
         """Every matching document, newest first.
+
+        `allowed_client_ids` (the caller's own clients when no single client is named; None is every client) narrows the statement
+        itself, so a scoped caller does not read the whole firm's documents, extracted text included, to keep a few.
 
         `columns` narrows the projection for a caller that needs a few (the global search reads three), because `*` carries
         the extracted text of every document and this read now returns ALL of them, not the first thousand. It must name
@@ -50,11 +61,12 @@ class DocumentRepository(BaseRepository[dict]):
         # so a firm with more documents than that was shown the first thousand as though they were all of them
         # (core/db_paging.py). The newest-first order is applied after the read, because the pager's key is the id.
         def _query():
-            query = _get_db().table("documents").select(columns).is_("deleted_at", None)
-            if firm_id:
-                query = query.eq("firm_id", firm_id)
+            query = (privileged_for(_get_db()).table("documents").select(columns).is_("deleted_at", None)
+                     .eq("firm_id", firm_id or _NO_FIRM))
             if client_id:
                 query = query.eq("client_id", client_id)
+            else:
+                query = scope_query_to_clients(query, allowed_client_ids)
             if document_type:
                 query = query.eq("document_type", document_type)
             if review_status:
@@ -66,8 +78,8 @@ class DocumentRepository(BaseRepository[dict]):
         rows.sort(key=lambda d: str(d.get("created_at") or ""), reverse=True)
         return rows
 
-    def get_or_raise(self, id: str) -> dict:
-        doc = self.find_by_id(id)
+    def get_or_raise(self, id: str, firm_id: Optional[str] = None) -> dict:
+        doc = self.find_by_id(id, firm_id=firm_id)
         if not doc:
             raise NotFoundError("Document", id)
         return doc
@@ -81,10 +93,11 @@ class DocumentRepository(BaseRepository[dict]):
             record = {"id": str(uuid.uuid4()), **data, "created_at": self.now_iso()}
             MOCK_DOCUMENTS.append(record)
             return record
-        result = _get_db().table("documents").insert({**data, "created_at": self.now_iso()}).execute()
+        result = privileged_for(_get_db()).table("documents").insert({**data, "created_at": self.now_iso()}).execute()
         return result.data[0]
 
-    def update_review_status(self, id: str, status: str, reviewer_id: Optional[str] = None) -> Optional[dict]:
+    def update_review_status(self, id: str, status: str, reviewer_id: Optional[str] = None,
+                             firm_id: Optional[str] = None) -> Optional[dict]:
         if _USE_MOCK:
             doc = self.find_by_id(id)
             if not doc:
@@ -96,10 +109,11 @@ class DocumentRepository(BaseRepository[dict]):
         update_data: dict = {"review_status": status, "reviewed_at": self.now_iso()}
         if reviewer_id:
             update_data["reviewed_by"] = reviewer_id
-        result = _get_db().table("documents").update(update_data).eq("id", id).execute()
+        result = (privileged_for(_get_db()).table("documents").update(update_data).eq("id", id)
+                  .eq("firm_id", firm_id or _NO_FIRM).execute())
         return result.data[0] if result.data else None
 
-    def soft_delete(self, id: str, deleted_by: Optional[str] = None) -> bool:
+    def soft_delete(self, id: str, deleted_by: Optional[str] = None, firm_id: Optional[str] = None) -> bool:
         if _USE_MOCK:
             doc = self.find_by_id(id)
             if not doc:
@@ -107,20 +121,21 @@ class DocumentRepository(BaseRepository[dict]):
             doc["deleted_at"] = self.now_iso()
             doc["deleted_by"] = deleted_by
             return True
-        result = _get_db().table("documents").update({
+        result = privileged_for(_get_db()).table("documents").update({
             "deleted_at": self.now_iso(),
             "deleted_by": deleted_by,
-        }).eq("id", id).execute()
+        }).eq("id", id).eq("firm_id", firm_id or _NO_FIRM).execute()
         return bool(result.data)
 
-    def update_storage_path(self, id: str, storage_path: str) -> Optional[dict]:
+    def update_storage_path(self, id: str, storage_path: str, firm_id: Optional[str] = None) -> Optional[dict]:
         """Persist Supabase Storage path after a successful upload."""
         if _USE_MOCK:
             doc = self.find_by_id(id)
             if doc:
                 doc["storage_path"] = storage_path
             return doc
-        result = _get_db().table("documents").update({"storage_path": storage_path, "updated_at": self.now_iso()}).eq("id", id).execute()
+        result = (privileged_for(_get_db()).table("documents").update({"storage_path": storage_path, "updated_at": self.now_iso()})
+                  .eq("id", id).eq("firm_id", firm_id or _NO_FIRM).execute())
         return result.data[0] if result.data else None
 
 

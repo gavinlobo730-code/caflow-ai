@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import re
 from typing import Optional
+from core.db_provider import privileged_for
 
 _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
@@ -96,7 +97,7 @@ def run_summaries(db, firm_id: str, run_ids: list[str]) -> dict[str, dict]:
     """
     if not run_ids:
         return {}
-    rows = (db.table("payroll_slips")
+    rows = (privileged_for(db).table("payroll_slips")
             .select("run_id, gross_paise, net_paise, tds_paise, "
                     "pf_employee_paise, pf_employer_paise, "
                     "esi_employee_paise, esi_employer_paise")
@@ -144,7 +145,7 @@ def employee_year_totals(db, firm_id: str, financial_year: str,
     months = months_of_fy(financial_year)
     if not months:
         return []
-    runs = (db.table("payroll_runs")
+    runs = (privileged_for(db).table("payroll_runs")
             .select("id, client_id, month")
             .eq("firm_id", firm_id).in_("month", months))
     if client_id:
@@ -153,7 +154,7 @@ def employee_year_totals(db, firm_id: str, financial_year: str,
     if not run_rows:
         return []
 
-    rows = (db.table("payroll_slips")
+    rows = (privileged_for(db).table("payroll_slips")
             .select("employee_id, gross_paise, net_paise, tds_paise, pt_paise, "
                     "pf_employee_paise, esi_employee_paise, "
                     "payroll_employees(name, pan, designation, department)")
@@ -183,7 +184,7 @@ def financial_years(db, firm_id: str) -> list[str]:
     payslips — the year picker used to derive its options from every payslip
     the firm had ever produced.
     """
-    rows = (db.table("payroll_runs").select("month")
+    rows = (privileged_for(db).table("payroll_runs").select("month")
             .eq("firm_id", firm_id).execute().data) or []
     years = {fy for fy in (fy_of_month(str(r.get("month") or "")) for r in rows) if fy}
     return sorted(years, reverse=True)

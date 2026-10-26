@@ -43,6 +43,7 @@ from services.bank_transfer_service import bank_transfer_service
 from services import trusted_rule_authority
 from services.bank_posting_service import bank_posting_service
 from services.banking_service import banking_service
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.bank_entries")
 
@@ -98,7 +99,7 @@ class BankEntryService:
     # ── reads ────────────────────────────────────────────────────────────────
 
     def _get_txn(self, db, firm_id: str, txn_id: str) -> dict:
-        rows = (db.table("bank_transactions").select("*")
+        rows = (privileged_for(db).table("bank_transactions").select("*")
                 .eq("id", txn_id).eq("firm_id", firm_id).limit(1).execute().data or [])
         if not rows:
             raise HTTPException(status_code=404, detail="Bank transaction not found.")
@@ -108,7 +109,7 @@ class BankEntryService:
     def _statement_ids(db, firm_id: str, client_id: str, bank_account_id: str) -> list[str]:
         """The statements of one account. A bank line knows its statement, not
         its account, so an account filter is a statement filter."""
-        rows = (db.table("bank_statements").select("id")
+        rows = (privileged_for(db).table("bank_statements").select("id")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .eq("bank_account_id", bank_account_id).execute().data or [])
         return [r["id"] for r in rows]
@@ -122,8 +123,8 @@ class BankEntryService:
         #395 was exactly that (a 500 on every Entries read). The fake the tests
         use accepted it, which is why tests/test_bank_entry_service.py now also
         runs against a fake that refuses it the way postgrest does."""
-        q = (db.table("bank_transactions").select("id", count="exact") if count
-             else db.table("bank_transactions").select("*"))
+        q = (privileged_for(db).table("bank_transactions").select("id", count="exact") if count
+             else privileged_for(db).table("bank_transactions").select("*"))
         q = q.eq("firm_id", firm_id).eq("client_id", client_id)
         if bank_account_id:
             ids = self._statement_ids(db, firm_id, client_id, bank_account_id)
@@ -335,7 +336,7 @@ class BankEntryService:
         # gets checked against the real schema. It found this on the first
         # real-Postgres run, which is the guard doing its job.
         at = _now()
-        (db.table("bank_transactions")
+        (privileged_for(db).table("bank_transactions")
            .update({"tds_decision_resolved_at": at, "tds_decision_resolved_by": actor_id})
            .eq("id", txn_id).eq("firm_id", firm_id).execute())
         return {"transaction_id": str(txn_id), "already_resolved": False,
@@ -447,7 +448,7 @@ class BankEntryService:
         redraft. Writes drafted_at = NULL rather than recomputing here, so a
         rule edit costs one UPDATE and the redraft happens in chunks, with
         progress, when the screen next asks."""
-        rows = (db.table("bank_transactions").update({"drafted_at": None})
+        rows = (privileged_for(db).table("bank_transactions").update({"drafted_at": None})
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .in_("entry_state", list(E.OPEN_STATES)).execute().data or [])
         return len(rows)
@@ -504,7 +505,7 @@ class BankEntryService:
                                       stale_before=stale_before, txn_ids=txn_ids)
         changed = 0
         if rows:
-            rules = (db.table("bank_matching_rules").select("*")
+            rules = (privileged_for(db).table("bank_matching_rules").select("*")
                      .eq("firm_id", firm_id).eq("client_id", client_id).eq("is_active", True)
                      .order("priority").order("created_at").execute().data or [])
             index = bank_payee_service.history_index(db, firm_id, client_id)
@@ -546,7 +547,7 @@ class BankEntryService:
                 if E.draft_changed(t, draft):
                     c = draft.as_columns() if draft else E.EMPTY_DRAFT_COLUMNS
                     changed += 1
-                    (db.table("bank_transactions").update({
+                    (privileged_for(db).table("bank_transactions").update({
                         "drafted_at": now, "draft_error": None,
                         "draft_source": c["draft_source"], "draft_grade": c["draft_grade"],
                         "draft_label": c["draft_label"], "draft_reason": c["draft_reason"],
@@ -556,7 +557,7 @@ class BankEntryService:
                         "draft_is_interstate": c["draft_is_interstate"],
                     }).eq("id", t["id"]).eq("firm_id", firm_id).execute())
                 else:
-                    (db.table("bank_transactions").update({"drafted_at": now, "draft_error": None})
+                    (privileged_for(db).table("bank_transactions").update({"drafted_at": now, "draft_error": None})
                      .eq("id", t["id"]).eq("firm_id", firm_id).execute())
         remaining = self._remaining_for_redraft(db, firm_id, client_id, stale_before) if not txn_ids else 0
         return {"drafted": len(rows), "changed": changed, "remaining": remaining,
@@ -608,7 +609,7 @@ class BankEntryService:
 
     @staticmethod
     def _bank_account_names(db, firm_id, client_id) -> dict:
-        rows = (db.table("bank_accounts").select("id, bank_name, account_no")
+        rows = (privileged_for(db).table("bank_accounts").select("id, bank_name, account_no")
                 .eq("firm_id", firm_id).eq("client_id", client_id).execute().data or [])
         out = {}
         for r in rows:
@@ -694,7 +695,7 @@ class BankEntryService:
                 self._unapply(db, firm_id, txn, before)
             # A separate write, AFTER the restore: the trigger clears
             # draft_error when the coding columns change, and they just did.
-            (db.table("bank_transactions").update({"draft_error": detail, "updated_at": _now()})
+            (privileged_for(db).table("bank_transactions").update({"draft_error": detail, "updated_at": _now()})
              .eq("id", txn_id).eq("firm_id", firm_id).execute())
             return _outcome(txn_id, "failed", detail)
         except Exception as e:
@@ -713,12 +714,12 @@ class BankEntryService:
             detail = "Could not pass this line; the error has been recorded for investigation."
             if applied:
                 self._unapply(db, firm_id, txn, before)
-            (db.table("bank_transactions").update({"draft_error": detail, "updated_at": _now()})
+            (privileged_for(db).table("bank_transactions").update({"draft_error": detail, "updated_at": _now()})
              .eq("id", txn_id).eq("firm_id", firm_id).execute())
             return _outcome(txn_id, "failed", detail)
 
         if by_rule:
-            (db.table("bank_transactions")
+            (privileged_for(db).table("bank_transactions")
              .update({"posted_by_rule_id": by_rule.get("id"), "updated_at": _now()})
              .eq("id", post_id).eq("firm_id", firm_id).execute())
             try:
@@ -745,7 +746,7 @@ class BankEntryService:
             if txn.get("draft_source") == E.SOURCE_TRANSFER:
                 bank_transfer_service.unpair(db, firm_id, txn["id"])
             else:
-                (db.table("bank_transactions").update({
+                (privileged_for(db).table("bank_transactions").update({
                     "account_id": before["account_id"], "category": before["category"],
                     "match_status": before["match_status"],
                     "matched_entity_type": before["matched_entity_type"],
@@ -814,7 +815,7 @@ class BankEntryService:
             # rate, no base, no amount, and no figure in any journal moves.
             if txn.get("draft_flags_tds_decision"):
                 try:
-                    (db.table("bank_transactions")
+                    (privileged_for(db).table("bank_transactions")
                        .update({"tds_decision_needed": True})
                        .eq("id", txn_id).eq("firm_id", firm_id).execute())
                 except Exception as e:
@@ -853,7 +854,7 @@ class BankEntryService:
         per person per call. A rule that fails is left out, which is what both `counts()` and `pass_ready` read, so the screen's
         "trusted pending" and the sweep agree and the lines stay READY for a person; `refused`, when given, is appended with the
         rule's id and the reason so the caller can say so."""
-        rows = (db.table("bank_matching_rules").select("*")
+        rows = (privileged_for(db).table("bank_matching_rules").select("*")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .eq("is_active", True).eq("is_trusted", True).execute().data or [])
         verdicts: dict = {}

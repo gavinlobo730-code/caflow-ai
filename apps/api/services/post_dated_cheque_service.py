@@ -41,6 +41,7 @@ from core.db_paging import fetch_all, fetch_all_in
 from core.ist_clock import ist_today
 from domain.accounting import payment_account
 from domain.banking import pdc as P
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.post_dated_cheques")
 
@@ -189,7 +190,7 @@ def options(db, firm_id: str, client_id: str, direction: str,
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("is_active", True)), label="pdc.parties")
     banks = fetch_all(lambda: (
-        db.table("bank_accounts").select("id, bank_name, account_no, is_active")
+        privileged_for(db).table("bank_accounts").select("id, bank_name, account_no, is_active")
         .eq("firm_id", firm_id).eq("client_id", client_id)), label="pdc.banks")
     documents: list[dict] = []
     if party_id:
@@ -250,7 +251,7 @@ def _check_party(db, firm_id: str, client_id: str, direction: str,
 def _check_bank_account(db, firm_id: str, client_id: str, bank_account_id: Optional[str]) -> None:
     if not bank_account_id:
         return
-    found = (db.table("bank_accounts").select("id").eq("id", bank_account_id)
+    found = (privileged_for(db).table("bank_accounts").select("id").eq("id", bank_account_id)
              .eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or []
     if not found:
         raise HTTPException(status_code=404, detail="Bank account not found.")

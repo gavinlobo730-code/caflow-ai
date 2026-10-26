@@ -75,6 +75,7 @@ from domain.tds.section_rates import quarter_dates
 from domain.tds.residency import is_non_resident
 from domain.tds.purchase_return import credit_moved_after_deduction, deposit_position
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.tds_return")
 
@@ -647,7 +648,7 @@ def tds_26q_from_books(
 def _finalized_payroll_runs(db, firm_id: str, client_id: str, start: str, end: str) -> list[dict]:
     # month is stored "YYYY-MM"; a quarter never spans a partial month, so a
     # plain string range on "YYYY-MM" (lexicographically monotonic) is exact.
-    return fetch_all(lambda: db.table("payroll_runs").select("*")
+    return fetch_all(lambda: privileged_for(db).table("payroll_runs").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_PAYROLL_POSTED))
             .gte("month", start[:7]).lte("month", end[:7]))
@@ -659,7 +660,7 @@ def _payroll_slips_for_runs(db, firm_id: str, run_ids: list[str]) -> list[dict]:
     out: list[dict] = []
     for i in range(0, len(run_ids), 200):
         chunk = run_ids[i:i + 200]
-        out.extend(fetch_all(lambda chunk=chunk: db.table("payroll_slips").select("*")
+        out.extend(fetch_all(lambda chunk=chunk: privileged_for(db).table("payroll_slips").select("*")
             .in_("run_id", chunk)))
     return out
 
@@ -667,7 +668,7 @@ def _payroll_slips_for_runs(db, firm_id: str, run_ids: list[str]) -> list[dict]:
 def _employees_by_id(db, firm_id: str, employee_ids: set[str]) -> dict[str, dict]:
     if not employee_ids:
         return {}
-    rows = (db.table("payroll_employees").select("id, name, pan")
+    rows = (privileged_for(db).table("payroll_employees").select("id, name, pan")
             .eq("firm_id", firm_id).in_("id", list(employee_ids)).execute().data) or []
     return {e["id"]: e for e in rows}
 

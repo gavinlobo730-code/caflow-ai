@@ -15,6 +15,8 @@ from core.list_window import probe
 from domain.banking.normalizer import (
     MAPPING_KEYS, StatementParseError, header_fingerprint, validate_mapping,
 )
+from core.authz import scope_query_to_clients
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.banking.column_mapping")
 
@@ -71,14 +73,14 @@ def find_mapping(db, firm_id: str, bank_account_id: str,
     if not db or not bank_account_id or not fingerprint:
         return None
     try:
-        rows = (db.table("bank_statement_column_mappings").select("*")
+        rows = (privileged_for(db).table("bank_statement_column_mappings").select("*")
                 .eq("firm_id", firm_id)
                 .eq("bank_account_id", bank_account_id)
                 .eq("header_fingerprint", fingerprint)
                 .limit(1).execute().data) or []
         if rows:
             return {**rows[0], "match_scope": "account"}
-        rows = (db.table("bank_statement_column_mappings").select("*")
+        rows = (privileged_for(db).table("bank_statement_column_mappings").select("*")
                 .eq("firm_id", firm_id)
                 .eq("header_fingerprint", fingerprint)
                 .order("created_at", desc=True)
@@ -97,7 +99,8 @@ LIST_COLUMNS = "id, client_id, bank_account_id, header_labels, mapping, created_
 
 
 def list_mappings(db, firm_id: str, client_id: Optional[str] = None,
-                  bank_account_id: Optional[str] = None, *, limit: int) -> list[dict]:
+                  bank_account_id: Optional[str] = None, *, limit: int,
+                  allowed_client_ids: Optional[set] = None) -> list[dict]:
     """The newest `limit` saved layouts PLUS ONE (`core.list_window.probe`): the caller splits the extra row off to learn
     whether older ones exist. Ordered by `created_at` then `id`, newest first, so a tie is never on two windows.
 
@@ -106,9 +109,13 @@ def list_mappings(db, firm_id: str, client_id: Optional[str] = None,
     functions here that tolerate a failure (`find_mapping`) do so on purpose, because an import must not be blocked by a lookup."""
     if not db:
         return []
-    q = db.table("bank_statement_column_mappings").select(LIST_COLUMNS).eq("firm_id", firm_id)
+    q = privileged_for(db).table("bank_statement_column_mappings").select(LIST_COLUMNS).eq("firm_id", firm_id)
     if client_id:
         q = q.eq("client_id", client_id)
+    else:
+        # The window below is cut from what this statement returns, so a scoped caller's clients are chosen BEFORE it: cutting
+        # the firm's newest rows first and narrowing afterwards would make `has_more` describe the firm.
+        q = scope_query_to_clients(q, allowed_client_ids)
     if bank_account_id:
         q = q.eq("bank_account_id", bank_account_id)
     return (q.order("created_at", desc=True).order("id", desc=True).limit(probe(limit)).execute().data) or []
@@ -151,7 +158,7 @@ def save_mapping(db, firm_id: str, client_id: str, bank_account_id: str,
         # here too, and the update below changed the layout saved for client A's account while client B's account, whose
         # correction it was, still had none. A layout found elsewhere in the practice is not this account's to overwrite:
         # fall through and record one of its own.
-        out = (db.table("bank_statement_column_mappings").update({
+        out = (privileged_for(db).table("bank_statement_column_mappings").update({
             "mapping": columns,
             "header_labels": labels,
             "updated_at": ist_now().isoformat(),
@@ -162,7 +169,7 @@ def save_mapping(db, firm_id: str, client_id: str, bank_account_id: str,
     # call, and a dict built in a variable hides all seven of them from it.
     # The same choice, for the same reason, is recorded in that file's budget
     # history for an earlier module.
-    out = (db.table("bank_statement_column_mappings").insert({
+    out = (privileged_for(db).table("bank_statement_column_mappings").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "bank_account_id": bank_account_id,
@@ -178,7 +185,7 @@ def delete_mapping(db, firm_id: str, mapping_id: str) -> bool:
     if not db:
         return True
     try:
-        (db.table("bank_statement_column_mappings").delete()
+        (privileged_for(db).table("bank_statement_column_mappings").delete()
          .eq("firm_id", firm_id).eq("id", mapping_id).execute())
         return True
     except Exception as e:                                       # noqa: BLE001

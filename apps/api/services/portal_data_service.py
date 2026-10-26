@@ -25,6 +25,7 @@ from core.ist_clock import ist_today
 from core.db_paging import fetch_all
 from core import db_provider
 from domain.payments import availability as payable
+from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.portal_data")
@@ -306,7 +307,7 @@ def list_documents(firm_id: str, client_id: str, db=None) -> list[dict]:
     """Documents the firm has filed against this client."""
     db = db if db is not None else _db()
     rows = fetch_all(
-        lambda: db.table("client_documents")
+        lambda: privileged_for(db).table("client_documents")
         .select("id, file_name, description, file_size, mime_type, created_at")
         .eq("firm_id", firm_id).eq("client_id", client_id),
         label="portal_data_service.documents")
@@ -321,7 +322,7 @@ def document_in_scope(firm_id: str, client_id: str, document_id: str, db=None) -
     that a document exists under another client, which is the same posture
     `invoice_in_scope` takes."""
     db = db if db is not None else _db()
-    rows = (db.table("client_documents").select("id, file_name, file_path, mime_type")
+    rows = (privileged_for(db).table("client_documents").select("id, file_name, file_path, mime_type")
             .eq("id", document_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .limit(1).execute().data) or []
     return rows[0] if rows else None
@@ -335,7 +336,7 @@ def list_document_requests(firm_id: str, client_id: str, db=None) -> list[dict]:
     month of fulfilled requests above it buries that."""
     db = db if db is not None else _db()
     rows = fetch_all(
-        lambda: db.table("document_requests")
+        lambda: privileged_for(db).table("document_requests")
         .select("id, title, description, is_urgent, status, fulfilled_at, created_at")
         .eq("firm_id", firm_id).eq("client_id", client_id),
         label="portal_data_service.document_requests")

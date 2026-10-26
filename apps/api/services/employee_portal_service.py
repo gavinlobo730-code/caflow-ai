@@ -44,6 +44,7 @@ from fastapi import HTTPException
 from core.authz import assert_client_access
 from core.urls import frontend_base
 from core import db_provider
+from core.db_provider import privileged_for
 
 # Same window the client-portal invites use. Long enough for someone on leave to
 # act on it, short enough that a forgotten invite does not stay live for months.
@@ -104,7 +105,7 @@ def _employee(firm_id: str, employee_id: str, db, actor: Optional[dict] = None) 
         row = next((e for e in MOCK_EMPLOYEES
                     if e.get("id") == employee_id and e.get("firm_id") == firm_id), None)
     else:
-        rows = (db.table("payroll_employees").select("*")
+        rows = (privileged_for(db).table("payroll_employees").select("*")
                 .eq("id", employee_id).eq("firm_id", firm_id).limit(1).execute().data or [])
         row = rows[0] if rows else None
     if not row:
@@ -123,7 +124,7 @@ def _update(employee_id: str, fields: dict, db) -> dict:
                 e.update(fields)
                 return dict(e)
         raise HTTPException(status_code=404, detail="Employee not found.")
-    rows = (db.table("payroll_employees").update(fields)
+    rows = (privileged_for(db).table("payroll_employees").update(fields)
             .eq("id", employee_id).execute().data or [])
     if not rows:
         raise HTTPException(status_code=404, detail="Employee not found.")
@@ -216,7 +217,7 @@ def _find_pending_by_token(token: str, db):
     if _USE_MOCK:
         return next((e for e in MOCK_EMPLOYEES
                      if e.get("portal_invite_token_hash") == h and not e.get("auth_user_id")), None)
-    rows = (db.table("payroll_employees").select("*")
+    rows = (privileged_for(db).table("payroll_employees").select("*")
             .eq("portal_invite_token_hash", h).is_("auth_user_id", "null")
             .limit(1).execute().data or [])
     return rows[0] if rows else None

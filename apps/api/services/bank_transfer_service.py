@@ -25,6 +25,7 @@ from domain.banking.transfers import (
     DEFAULT_WINDOW_DAYS, TransferPair, describe, detect, scan_window,
 )
 from core.observability import capture_soft_failure
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.bank_transfers")
 
@@ -32,7 +33,7 @@ _logger = logging.getLogger("caflow.bank_transfers")
 class BankTransferService:
 
     def _get_txn(self, db, firm_id: str, txn_id: str) -> dict:
-        rows = (db.table("bank_transactions").select("*")
+        rows = (privileged_for(db).table("bank_transactions").select("*")
                 .eq("id", txn_id).eq("firm_id", firm_id).limit(1).execute().data) or []
         if not rows:
             raise HTTPException(status_code=404, detail="Bank transaction not found.")
@@ -41,7 +42,7 @@ class BankTransferService:
     def _account_by_statement(self, db, firm_id: str, client_id: str) -> dict:
         """statement_id -> bank_account_id. One query; the pairing rules need to
         know which account each line belongs to, and that lives on the statement."""
-        rows = (db.table("bank_statements").select("id, bank_account_id")
+        rows = (privileged_for(db).table("bank_statements").select("id, bank_account_id")
                 .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []
         return {r["id"]: r.get("bank_account_id") for r in rows}
 
@@ -76,7 +77,7 @@ class BankTransferService:
             lo, hi = scan_window(around or [], window_days=window_days)
 
             def q():
-                base = (db.table("bank_transactions").select("*")
+                base = (privileged_for(db).table("bank_transactions").select("*")
                         .eq("firm_id", firm_id).eq("client_id", client_id))
                 if lo and hi:
                     base = (base.gte("transaction_date", lo.isoformat())
@@ -123,7 +124,9 @@ class BankTransferService:
         belong to one client. `db` stays the caller's client for every read.
         """
         try:
-            (rpc_db or db).rpc("pair_bank_transfer", {
+            # `privileged_for` also LABELS the call with the person (migration 547): the function is a definer, but the audit trigger
+            # reads the request's header, and a call through the bare service client leaves the pairing's audit rows nobody's.
+            privileged_for(rpc_db or db).rpc("pair_bank_transfer", {
                 "p_firm_id": firm_id, "p_primary_id": primary_id,
                 "p_counter_id": counterpart_id, "p_actor_id": actor_id,
             }).execute()
@@ -139,7 +142,7 @@ class BankTransferService:
     def unpair(self, db, firm_id: str, txn_id: str, actor_id: Optional[str] = None, rpc_db=None) -> dict:
         """Undo a pairing. `rpc_db` is the service role, for the reason given on `pair`."""
         try:
-            (rpc_db or db).rpc("unpair_bank_transfer", {
+            privileged_for(rpc_db or db).rpc("unpair_bank_transfer", {
                 "p_firm_id": firm_id, "p_txn_id": txn_id,
             }).execute()
         except Exception as e:
@@ -176,16 +179,16 @@ class BankTransferService:
         pair_id = txn.get("transfer_pair_id")
         if not pair_id:
             return None
-        other = (db.table("bank_transactions").select("statement_id, client_id")
+        other = (privileged_for(db).table("bank_transactions").select("statement_id, client_id")
                  .eq("id", pair_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
         if not other:
             return None
-        stmt = (db.table("bank_statements").select("bank_account_id")
+        stmt = (privileged_for(db).table("bank_statements").select("bank_account_id")
                 .eq("id", other.get("statement_id")).eq("firm_id", firm_id)
                 .limit(1).execute().data or [None])[0]
         if not stmt or not stmt.get("bank_account_id"):
             return None
-        acct = (db.table("bank_accounts").select("coa_account_id")
+        acct = (privileged_for(db).table("bank_accounts").select("coa_account_id")
                 .eq("id", stmt["bank_account_id"]).eq("firm_id", firm_id)
                 .eq("client_id", other.get("client_id")).limit(1).execute().data or [None])[0]
         return (acct or {}).get("coa_account_id")
