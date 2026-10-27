@@ -28,16 +28,15 @@ from domain.tds import interest as tds_interest
 from domain.tds import vocabulary
 
 from services.filing_demo import common
+from domain.money_sentence import rupee_text, rupee_whole_text
 
 
 def _inr(paise: int) -> str:
     """Integer paise → a rupee string for PROSE only (warning sentences).
     Tabular and figure money stays raw paise for the frontend to format —
-    this exists because a warning stage carries text, not cells. Integer
-    arithmetic throughout; no float ever touches the amount."""
-    rupees_part, paise_part = divmod(abs(int(paise)), 100)
-    body = f"{rupees_part:,}" if paise_part == 0 else f"{rupees_part:,}.{paise_part:02d}"
-    return f"{'-' if paise < 0 else ''}₹{body}"
+    this exists because a warning stage carries text, not cells. Whole rupees print without the ".00"; the grouping and the
+    sign ("minus ₹…") are `domain/money_sentence`'s."""
+    return rupee_whole_text(paise) if int(paise) % 100 == 0 else rupee_text(paise)
 
 
 def build(db, firm_id: str, client_id: str, ref: dict, *, payroll_readable: bool = True) -> dict:

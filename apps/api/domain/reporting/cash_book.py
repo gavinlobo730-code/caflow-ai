@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional, Sequence
+from domain.money_sentence import rupee_text
 
 #: A chart-of-accounts subtype naming physical cash. `coa_seed_service` seeds
 #: "1001 Cash in Hand" and "1002 Petty Cash" both as Asset/'Cash'; the substring
@@ -96,9 +97,8 @@ def explain_negative(day: NegativeCashDay) -> str:
     A bare "balance is negative" is a number they can already see. The value is
     naming the three things that cause it, because the remedy differs for each.
     """
-    rupees = abs(day.balance_paise) // 100
     return (
-        f"{day.account_name} goes to −₹{rupees:,} on {day.on_date}. Physical cash "
+        f"{day.account_name} goes to {rupee_text(day.balance_paise)} on {day.on_date}. Physical cash "
         f"cannot be negative, so something is missing or out of order: a payment "
         f"entered before the receipt that funded it, a cash receipt never "
         f"recorded, or one payment entered twice."

@@ -81,8 +81,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Iterable, Optional
 
-from domain.money_text import rupees_paise
-from domain.reporting.amount_words import indian_rupees
+from domain.money_sentence import rupee_text, rupee_whole_text
 # One gap vocabulary. The code and its generic sentence live with the rest of
 # the register's in domain/tds/residency, where a test holds every code to
 # having a message; this module writes the per-BILL sentence, which is the one
@@ -103,7 +102,7 @@ def _rupees(paise: int) -> str:
     did not add up to its tax. Tax is stated to the paisa wherever it has one.
     """
     p = int(paise or 0)
-    return f"₹{rupees_paise(p)}" if p % 100 else f"₹{indian_rupees(p)}"
+    return rupee_text(p) if p % 100 else rupee_whole_text(p)
 
 
 #: The tax has not gone, as far as the challan register shows. The deductor can

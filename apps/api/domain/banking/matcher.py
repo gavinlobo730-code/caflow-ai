@@ -43,7 +43,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 from .narration import parse_narration, party_matches
 
@@ -235,7 +235,7 @@ def _confidence_label(score: int) -> str:
 def _rupees(paise: int) -> str:
     """Display-only rupee rendering for a reason string. Integer paise in, never
     used for arithmetic."""
-    return f"₹{rupees_paise(int(paise))}"
+    return rupee_text(int(paise))
 
 
 def _rate_label(rate_bps: int) -> str:

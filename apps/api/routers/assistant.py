@@ -9,7 +9,7 @@ from models.ai_chat import ChatTurn, MAX_QUESTION_CHARS, most_recent
 from core.permissions import rbac
 from domain.ai import groq_text
 from middleware.rate_limit import ai_limit
-from domain.money_text import whole_rupees
+from domain.money_sentence import rupee_whole_text
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 logger = logging.getLogger("caflow.assistant")
@@ -60,7 +60,7 @@ def _rupees(paise: int) -> str:
     that has a test pinning it — changing the currency mark in the brief is a
     change to what the model is shown, which is not this fix.
     """
-    return f"Rs {whole_rupees(paise)}"
+    return rupee_whole_text(paise, "Rs ")
 
 
 def _tds_lines(fy: str | None = None) -> str:

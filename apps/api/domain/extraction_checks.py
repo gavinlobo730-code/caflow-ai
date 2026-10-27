@@ -42,7 +42,7 @@ from typing import Optional
 
 from domain.gst import gstin as gstin_rule
 from domain.gst.place_of_supply import supplier_state_code
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 GSTIN = "gstin"
 PLACE_OF_SUPPLY = "place_of_supply"
@@ -54,7 +54,7 @@ _NIL_PAISE = 100
 
 
 def _rs(paise: int) -> str:
-    return f"₹{rupees_paise(paise)}"
+    return rupee_text(paise)
 
 
 def _p(extracted: dict, key: str) -> int:

@@ -22,7 +22,7 @@ from core.authz import (
 )
 from core.permissions import rbac
 from services.timeline_service import timeline_service
-from domain.money_text import whole_rupees
+from domain.money_sentence import rupee_whole_text
 from core import db_provider
 from core.db_paging import fetch_window
 from core.list_window import probe, split
@@ -921,7 +921,7 @@ def create_loan(
             timeline_service.log(
                 data.client_id, "compliance", "Section 185 Flag",
                 f"Loan to director entity flagged — Section 185 Companies Act. "
-                f"Principal: ₹{whole_rupees(data.principal_paise)}",
+                f"Principal: {rupee_whole_text(data.principal_paise)}",
                 "warning", firm_id=firm_id,
             )
         return api_response(True, row)
@@ -933,7 +933,7 @@ def create_loan(
         timeline_service.log(
             data.client_id, "compliance", "Section 185 Flag",
             f"Loan to director flagged under Section 185 Companies Act. "
-            f"Principal: ₹{whole_rupees(data.principal_paise)}",
+            f"Principal: {rupee_whole_text(data.principal_paise)}",
             "warning", firm_id=firm_id,
             entity_type="loan", entity_id=created["id"],
             actor_id=current_user.get("auth_user_id"),

@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from core.ist_clock import assessment_year_for
-from domain.reporting.amount_words import indian_rupees
 from domain.income_tax.statutory_rates import (
     FYTaxRates, apply_rebate_87a, apply_surcharge_with_marginal_relief,
     cess_paise, fy_rate_gap, rates_for, resolve_surcharge_bracket, slab_tax_paise,
@@ -34,7 +33,7 @@ from domain.income_tax.loss_set_off import (
 from domain.income_tax.minimum_tax import apply_minimum_tax, compute_amt, compute_mat
 from domain.income_tax.chapter_vi_a import (
     ChapterVIAClaims, add_section_80gg, compute as compute_chapter_vi_a)
-from domain.money_text import whole_rupees
+from domain.money_sentence import rupee_whole_text
 
 
 # ── Constants (all paise) ─────────────────────────────────────────────────────
@@ -289,14 +288,14 @@ def compute_80g_deduction(
     if refused:
         total_refused = sum(d.amount_paise for d in refused)
         warnings.append(
-            f"Section 80G(5D): ₹{whole_rupees(total_refused)} of donations was paid in cash in "
+            f"Section 80G(5D): {rupee_whole_text(total_refused)} of donations was paid in cash in "
             f"sums exceeding ₹2,000. No deduction is allowed for those donations."
         )
 
     unstated = sum(d.amount_paise for d in allowed if d.mode_of_payment_unstated())
     if unstated:
         warnings.append(
-            f"Section 80G(5D): ₹{whole_rupees(unstated)} of donations exceeds ₹2,000 per donation "
+            f"Section 80G(5D): {rupee_whole_text(unstated)} of donations exceeds ₹2,000 per donation "
             f"and no mode of payment is recorded. The deduction below assumes they were not "
             f"paid in cash — a cash donation over ₹2,000 gets no deduction at all."
         )
@@ -324,8 +323,8 @@ def compute_80g_deduction(
         deduction += share * d.deduction_pct // 100
     warnings.append(
         f"Section 80G(4): donations subject to the qualifying limit total "
-        f"₹{whole_rupees(gross_limited)}, of which only ₹{whole_rupees(qualifying)} qualifies — "
-        f"10% of adjusted gross total income (₹{whole_rupees(max(0, adjusted_gti_paise))}). "
+        f"{rupee_whole_text(gross_limited)}, of which only {rupee_whole_text(qualifying)} qualifies — "
+        f"10% of adjusted gross total income ({rupee_whole_text(max(0, adjusted_gti_paise))}). "
         f"A donation to a fund listed in Section 80G(1)(i), such as the PM National Relief "
         f"Fund, carries no qualifying limit and should be marked as not subject to it."
     )
@@ -901,7 +900,7 @@ class ITREngine:
                     f"Finance (No. 2) Act 2024 is understood to have raised this "
                     f"to {LIMIT_80CCD2_GOVT_PERCENT}% for an employee taxed under "
                     f"§115BAC(1A), which would allow a further "
-                    f"₹{indian_rupees(at_stake)} — but that amendment is not verified "
+                    f"{rupee_whole_text(at_stake)} — but that amendment is not verified "
                     f"against the Act's own text from this deployment, so the "
                     f"lower figure is used. Check the current §80CCD(2) proviso "
                     f"before filing.")
@@ -975,7 +974,7 @@ class ITREngine:
             if req.other_deductions_paise > 0:
                 deductions += req.other_deductions_paise
                 result.warnings.append(
-                    f"₹{indian_rupees(req.other_deductions_paise)} is claimed as "
+                    f"{rupee_whole_text(req.other_deductions_paise)} is claimed as "
                     f"'other deductions' with no section stated, so no ceiling "
                     f"could be applied to it. §80CCE caps §80C, §80CCC and "
                     f"§80CCD(1) at ₹1,50,000 between them, and §80E, §80DD, "
@@ -1217,7 +1216,7 @@ class ITREngine:
             # nothing was deducted, and nothing said why.
             total_donated = sum(d.amount_paise for d in req.donations_80g)
             result.warnings.append(
-                f"₹{whole_rupees(total_donated)} of Section 80G donations gives no deduction under "
+                f"{rupee_whole_text(total_donated)} of Section 80G donations gives no deduction under "
                 f"the new regime — Section 115BAC(2) allows no Chapter VI-A deduction except "
                 f"Section 80CCD(2)/80CCH(2)/80JJAA."
             )
@@ -1225,18 +1224,18 @@ class ITREngine:
             loss = -req.house_property_income_paise
             if req.use_new_regime:
                 result.warnings.append(
-                    f"House property loss of ₹{whole_rupees(loss)} is NOT set off against "
+                    f"House property loss of {rupee_whole_text(loss)} is NOT set off against "
                     f"other income under the new regime (Section 115BAC(2)). It gives "
                     f"no relief this year."
                 )
             elif loss > LIMIT_SET_OFF_71_3A_PAISE:
                 result.warnings.append(
                     f"House property loss capped at ₹2,00,000 (Section 71(3A)). Excess "
-                    f"loss ₹{whole_rupees((loss - LIMIT_SET_OFF_71_3A_PAISE))} carried forward."
+                    f"loss {rupee_whole_text((loss - LIMIT_SET_OFF_71_3A_PAISE))} carried forward."
                 )
         if req.disallowances_paise > 0:
             result.warnings.append(
-                f"₹{whole_rupees(req.disallowances_paise)} of disallowed expenditure has "
+                f"{rupee_whole_text(req.disallowances_paise)} of disallowed expenditure has "
                 f"been added back to business income."
             )
 
@@ -1255,7 +1254,7 @@ class ITREngine:
             if amount < 0:
                 any_loss = True
                 result.warnings.append(
-                    f"{label} of ₹{whole_rupees(-amount)} is not set off against income under any "
+                    f"{label} of {rupee_whole_text(-amount)} is not set off against income under any "
                     f"other head (Section 71(3)). It is carried forward for eight assessment "
                     f"years (Section 74) — this computation does not maintain that carry-forward."
                 )
@@ -1629,7 +1628,7 @@ class ITREngine:
             unused -= take
             result.basic_exemption_absorbed_paise += take
             result.basic_exemption_absorption.append(
-                f"{buckets[i][0]}: ₹{indian_rupees(take)} of the unused basic exemption "
+                f"{buckets[i][0]}: {rupee_whole_text(take)} of the unused basic exemption "
                 f"set against this gain, and tax charged on the balance.")
         return charged
 

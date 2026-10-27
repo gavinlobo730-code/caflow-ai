@@ -197,7 +197,7 @@ def test_no_candidate_carries_a_score_or_a_percentage():
     # same screen. The first draft of this module had exactly that bug.
     (1_25_000_00, "₹1,25,000.00"),
     (1_23_45_678_00, "₹1,23,45,678.00"),
-    (-10_500_00, "-₹10,500.00"),
+    (-10_500_00, "minus ₹10,500.00"),     # a negative figure is written in words (POST-A-346)
 ])
 def test_amounts_in_the_sentence_are_indian_grouped_rupees_and_paise(paise, text):
     """Display only — every amount on the wire stays integer paise.

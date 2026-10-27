@@ -79,7 +79,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Iterable, Optional
 
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 #: The one day-count convention, named on every answer.
 DAY_COUNT = "actual/365"
@@ -538,4 +538,4 @@ def line_description(doc: ChargeableDoc) -> str:
     pct = f"{bps // 100}.{bps % 100:02d}".rstrip("0").rstrip(".")
     return (f"Interest for delayed payment of invoice {doc.invoice_no}: "
             f"{doc.days} days from {doc.period_from} to {doc.period_to} at {pct}% a year "
-            f"on the balance of Rs.{rupees_paise(doc.outstanding_paise)}")
+            f"on the balance of {rupee_text(doc.outstanding_paise, 'Rs.')}")

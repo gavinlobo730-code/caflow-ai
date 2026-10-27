@@ -31,8 +31,8 @@ from domain.tds.residency import (
     GAP_FOREIGN_ADVANCE_NOT_WITHHELD, describe_gaps,
 )
 from core.ist_clock import fy_code, ist_fy_label, ist_today
-from domain.money_text import minor_units_text, whole_rupees
-from domain.money_sentence import rupee_text
+from domain.money_text import minor_units_text
+from domain.money_sentence import rupee_text, rupee_whole_text
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payment_service")
@@ -359,7 +359,7 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         client_id=client_id, firm_id=firm_id or "", financial_year=ist_fy_label(data["payment_date"]),
         category="accounting", event_type="payment_recorded",
         title=f"Vendor Payment {payment_no} recorded",
-        description=f"Payment of ₹{whole_rupees(amount_paise)} made to vendor across {len(alloc_payloads)} bill(s).",
+        description=f"Payment of {rupee_whole_text(amount_paise)} made to vendor across {len(alloc_payloads)} bill(s).",
         severity="success", entity_type="purchase_payment", entity_id=payment_id,
         amount_paise=amount_paise, actor_id=(actor or {}).get("auth_user_id"), actor_name=(actor or {}).get("email"),
     )

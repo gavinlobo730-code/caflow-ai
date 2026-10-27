@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 
 class Unit(str, Enum):
@@ -359,7 +359,7 @@ def not_recorded_caveat(not_recorded_paise: Optional[int]) -> Optional[str]:
     finished. Nothing to say for nil or an absent figure (the tile's own fetch failing is the service's third state)."""
     if not not_recorded_paise or not_recorded_paise <= 0:
         return None
-    return (f"₹{rupees_paise(not_recorded_paise)} was deducted in quarters for which no challan is recorded in PracticeSync, so this "
+    return (f"{rupee_text(not_recorded_paise)} was deducted in quarters for which no challan is recorded in PracticeSync, so this "
             "figure cannot say whether it was deposited. Record the challan to have it counted.")
 
 

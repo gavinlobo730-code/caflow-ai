@@ -27,6 +27,7 @@ from services.timeline_service import timeline_service
 from core.observability import capture_soft_failure
 from core.authz import scope_query_to_clients
 from core.db_provider import privileged_for
+from domain.money_sentence import rupee_text
 
 _logger = logging.getLogger("caflow.bank_reconciliation")
 
@@ -586,8 +587,8 @@ class BankReconciliationService:
                 session, actor_id,
                 "Reconciliation adjustment cleared" if not amount
                 else "Reconciliation adjustment recorded",
-                (f"₹{amount / 100:.2f} — {clean}" if amount
-                 else f"₹{before / 100:.2f} removed"),
+                (f"{rupee_text(amount)} — {clean}" if amount
+                 else f"{rupee_text(before)} removed"),
                 severity="warning")
         try:
             from services.audit_service import log_event
@@ -889,7 +890,7 @@ class BankReconciliationService:
             raise HTTPException(
                 status_code=422,
                 detail=(f"Cannot complete — statement does not tie out. Difference "
-                        f"₹{summary['difference_paise'] / 100:.2f}. Reconcile the remaining "
+                        f"{rupee_text(summary['difference_paise'])}. Reconcile the remaining "
                         f"items. If the difference is a real, documented item, a Manager "
                         f"can record it as an adjustment and say what it is — it is "
                         f"printed on the reconciliation."))
@@ -916,7 +917,7 @@ class BankReconciliationService:
             "snapshot": snapshot, "updated_at": now,
         }).eq("id", recon_id).eq("firm_id", firm_id).execute()
         self._log(session, actor_id, "Reconciliation Completed",
-                  f"Tied out at ₹{summary['statement_closing_balance_paise'] / 100:.2f}", severity="success")
+                  f"Tied out at {rupee_text(summary['statement_closing_balance_paise'])}", severity="success")
         try:
             from services.audit_service import log_event
             log_event(firm_id, "bank_reconciliation", recon_id, "status_change", actor_id=actor_id,

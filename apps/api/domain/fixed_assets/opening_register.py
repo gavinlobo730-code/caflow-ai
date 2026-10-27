@@ -74,7 +74,7 @@ from typing import Iterable, Optional
 from domain.fixed_assets import asset_code as asset_code_rule
 from domain.fixed_assets import integrity as fa_integrity
 from domain.fixed_assets import schedule_ii
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 from domain.spreadsheet_cells import fold_name, parse_cell_date, why_not_a_date
 
 NEW = "new"
@@ -109,7 +109,7 @@ _CATEGORY_BY_FOLDED = {fold_name(c): c for c in schedule_ii.CATEGORIES}
 
 
 def _r(paise: int) -> str:
-    return f"₹{rupees_paise(paise)}"
+    return rupee_text(paise)
 
 
 # ── the position date ────────────────────────────────────────────────────────

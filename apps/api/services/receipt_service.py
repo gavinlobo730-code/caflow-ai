@@ -29,8 +29,8 @@ from services.timeline_service import timeline_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label, ist_today
 from core.observability import capture_soft_failure
-from domain.money_text import minor_units_text, whole_rupees
-from domain.money_sentence import rupee_text
+from domain.money_text import minor_units_text
+from domain.money_sentence import rupee_text, rupee_whole_text
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.receipt_service")
@@ -587,7 +587,7 @@ def _settle_receipt_via_atomic_rpc(
         category="accounting",
         event_type="receipt_recorded",
         title=f"Receipt {receipt_payload.get('receipt_no', '')} recorded",
-        description=f"Payment of ₹{whole_rupees(receipt_payload['amount_paise'])} received from customer.",
+        description=f"Payment of {rupee_whole_text(receipt_payload['amount_paise'])} received from customer.",
         severity="success",
         entity_type="receipt",
         entity_id=receipt_id,
@@ -920,7 +920,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         category="accounting",
         event_type="receipt_recorded",
         title=f"Receipt {receipt.get('receipt_no', '')} recorded",
-        description=f"Payment of ₹{whole_rupees(amount_paise)} received from customer.",
+        description=f"Payment of {rupee_whole_text(amount_paise)} received from customer.",
         severity="success",
         entity_type="receipt",
         entity_id=receipt_id,

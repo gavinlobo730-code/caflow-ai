@@ -84,7 +84,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
 
-from domain.reporting.amount_words import indian_rupees
+from domain.money_sentence import rupee_whole_text
 
 # §50(1), notified at 18% per annum by Notification 13/2017-Central Tax.
 SECTION_50_1_RATE_BPS = 1800
@@ -176,7 +176,7 @@ GAP_LATE_FEE_RATES_NOT_HELD = "gst_late_fee_rates_not_held"
 
 
 def _rupees(paise: int) -> str:
-    return f"₹{indian_rupees(paise)}"
+    return rupee_whole_text(paise)
 
 
 def _ceil_div(numerator: int, denominator: int) -> int:

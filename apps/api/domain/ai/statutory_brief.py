@@ -56,7 +56,7 @@ import re
 from typing import Optional
 
 from core import ist_clock
-from domain.money_text import whole_rupees
+from domain.money_sentence import rupee_whole_text
 
 _CRORE_PAISE = 10_000_000 * 100
 _LAKH_PAISE = 100_000 * 100
@@ -78,7 +78,7 @@ def lakh_label(paise: int) -> str:
     if paise % (_LAKH_PAISE // 10) == 0:
         tenths = paise // (_LAKH_PAISE // 10)
         return f"{tenths // 10}.{tenths % 10}L"
-    return f"Rs {whole_rupees(paise)}"
+    return rupee_whole_text(paise, "Rs ")
 
 
 def _slab_line(slabs) -> str:
@@ -106,7 +106,7 @@ def _surcharge_line(brackets) -> str:
 
 
 def _rupees(paise: int) -> str:
-    return f"Rs {whole_rupees(paise)}"
+    return rupee_whole_text(paise, "Rs ")
 
 
 def _today(today: Optional[date]) -> date:

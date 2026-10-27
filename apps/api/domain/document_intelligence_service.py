@@ -6,7 +6,7 @@ Provider-swappable: mock | aws_textract | google_docai | azure_formrec | claude_
 from datetime import date, timedelta
 from typing import Optional
 from core.ist_clock import ist_today
-from domain.money_text import whole_rupees
+from domain.money_sentence import rupee_whole_text
 
 # THE DAY THE FIXTURES BELOW WERE BUILT, AND NOTHING ELSE. `ist_today()` at
 # module level is evaluated ONCE, at import, so on the long-lived uvicorn
@@ -511,7 +511,6 @@ def detect_document_risks(document_id: str, client_id: str, extracted_data: dict
     import uuid
     from datetime import datetime
 
-    from domain.reporting.amount_words import indian_rupees
     new_risks: list[dict] = []
 
     # Check confidence score
@@ -564,12 +563,12 @@ def detect_document_risks(document_id: str, client_id: str, extracted_data: dict
                 "severity": "medium",
                 "category": "AIS_MISMATCH",
                 "title": "Reconcile AIS against the books before filing",
-                # indian_rupees, not f"{x:,}" — the latter groups in threes
+                # rupee_whole_text, not f"{x:,}" — the latter groups in threes
                 # and gives ₹850,000, which no Indian document uses and which
                 # disagrees with the same figure on the screen (apps/web
                 # formats with Intl.NumberFormat("en-IN")).
                 "description": (
-                    f"AIS reports total income of ₹{indian_rupees(total_income)} "
+                    f"AIS reports total income of {rupee_whole_text(total_income)} "
                     f"(IT Act §285BB). The book figure is not held here, so no "
                     f"difference is stated — reconcile on the AIS screen before "
                     f"the return is filed."
@@ -604,7 +603,7 @@ def detect_document_risks(document_id: str, client_id: str, extracted_data: dict
                 "severity": "medium",
                 "category": "BANK_RECONCILIATION",
                 "title": "Bank Statement — Unreconciled Entries",
-                "description": f"Net unreconciled amount ₹{whole_rupees(abs(credits - debits))}. Verify entries against ledger.",
+                "description": f"Net unreconciled amount {rupee_whole_text(abs(credits - debits))}. Verify entries against ledger.",
                 "resolution_status": "open",
                 "resolved_at": None,
                 "created_at": datetime.utcnow().isoformat(),

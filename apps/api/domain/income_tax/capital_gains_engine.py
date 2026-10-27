@@ -87,7 +87,7 @@ import calendar
 from dataclasses import dataclass, replace
 from datetime import date
 from typing import Optional
-from domain.money_text import rupees_paise, whole_rupees
+from domain.money_sentence import rupee_text, rupee_whole_text
 
 
 # ── The statutory fork dates ────────────────────────────────────────────────
@@ -458,7 +458,7 @@ def _rupees(paise: int) -> str:
     carve-out as `reinvestment_exemption._rupees`. Nothing computed from this
     is stored or returned as an amount; every figure this module answers with
     stays in integer paise."""
-    return f"Rs {rupees_paise(paise)}"
+    return rupee_text(paise, "Rs ")
 
 
 def section_55_2_ac_cost(
@@ -781,7 +781,7 @@ def _compute_capital_gains(
             months, long_term, gain_paise, indexed_cost_paise, gain_with_indexation_paise,
             rate, None, tax, None, tax, "Section 112A",
             f"LTCG on listed equity/equity MF: {rate:g}% on gains exceeding "
-            f"₹{whole_rupees(exemption)} "
+            f"{rupee_whole_text(exemption)} "
             + ("(pre-23-07-2024 rate and exemption)." if pre_2024
                else "(Finance (No. 2) Act 2024, transfers from 23-07-2024)."),
             False,

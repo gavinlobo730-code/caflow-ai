@@ -48,6 +48,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Iterable, Optional
 from core.ist_clock import ist_today
+from domain.money_sentence import rupee_text
 
 
 # ── policy ────────────────────────────────────────────────────────────────────
@@ -118,14 +119,7 @@ def _is_outflow(txn: dict) -> bool:
 
 def _rupees(paise: int) -> str:
     """₹ with two decimals and Indian digit grouping — this text is read by a CA."""
-    neg, paise = paise < 0, abs(int(paise))
-    whole, frac = divmod(paise, 100)
-    s = str(whole)
-    if len(s) > 3:
-        head, tail = s[:-3], s[-3:]
-        head = re.sub(r"(\d)(?=(\d\d)+$)", r"\1,", head)
-        s = f"{head},{tail}"
-    return f"{'-' if neg else ''}₹{s}.{frac:02d}"
+    return rupee_text(paise)
 
 
 # ── the rules ─────────────────────────────────────────────────────────────────

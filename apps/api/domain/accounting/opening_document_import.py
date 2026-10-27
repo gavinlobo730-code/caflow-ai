@@ -63,7 +63,7 @@ from datetime import date
 from typing import Any, Iterable, Optional
 
 from domain.accounting import opening_documents as od
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 from domain.spreadsheet_cells import fold_name, parse_cell_date, why_not_a_date
 
 #: A ceiling on one request. Bulk inserts are chunked below it, but a request that
@@ -124,7 +124,7 @@ class Verdict:
 
 
 def _r(paise: int) -> str:
-    return f"₹{rupees_paise(paise)}"
+    return rupee_text(paise)
 
 
 def _read_dates(row: ImportRow) -> tuple[Optional[date], Optional[date], bool, list[str]]:

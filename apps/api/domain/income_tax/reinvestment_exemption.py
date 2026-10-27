@@ -80,7 +80,7 @@ from datetime import date
 from typing import Optional
 
 from domain.income_tax.capital_gains_engine import fy_for_date
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 # ── the sections ─────────────────────────────────────────────────────────────
 
@@ -348,7 +348,7 @@ def _earliest(rule: SectionRule, transfer_date: date, kind: Optional[str]) -> Op
 
 
 def _rupees(paise: int) -> str:
-    return f"Rs {rupees_paise(paise)}"
+    return rupee_text(paise, "Rs ")
 
 
 def compute_exemption(

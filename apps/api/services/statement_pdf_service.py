@@ -32,6 +32,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from services import pdf_style
 from services.pdf_style import Paragraph, Table
 
+from domain.money_sentence import rupee_text
 from services.invoice_pdf_service import _load_firm, _paise_to_rupee_str
 from services.customer_statement_service import customer_statement_service
 from services.pdf_page_furniture import numbered
@@ -175,7 +176,7 @@ def build_statement_pdf(statement: dict, account_holder: dict, party: dict,
 
     tot = statement["totals"]
     elems.append(Paragraph(" &nbsp;|&nbsp; ".join(
-        f"{label}: Rs.{_paise_to_rupee_str(tot.get(key) or 0)}"
+        f"{label}: {rupee_text(tot.get(key) or 0, 'Rs.')}"
         for label, key in kind.totals), sub))
     elems.append(Spacer(1, 6))
     elems.append(Paragraph("This is a statement of account, not a tax invoice. Amounts in INR.", sub))

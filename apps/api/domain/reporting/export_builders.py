@@ -35,7 +35,7 @@ from __future__ import annotations
 import re
 from typing import Iterable, Optional
 
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 from domain.reporting.export_document import (
     BALANCE, BODY, EMPHASIS, INT, MONEY, SECTION, TEXT,
     Column, ExportRefused, ReportDocument, Row, Table,
@@ -70,7 +70,7 @@ def _nz(paise: Optional[int]) -> Optional[int]:
 
 
 def _rs(paise: int) -> str:
-    return f"Rs.{rupees_paise(paise)}"
+    return rupee_text(paise, "Rs.")
 
 
 def _basis_label(basis: Optional[str]) -> str:

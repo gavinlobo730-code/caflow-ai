@@ -46,8 +46,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Iterable, Mapping, NamedTuple, Optional
 
-from domain.money_text import rupees_paise
-from domain.money_sentence import amount_text
+from domain.money_sentence import amount_text, rupee_text
 
 SALES_INVOICE = "sales_invoice"
 PURCHASE_BILL = "purchase_bill"
@@ -94,7 +93,7 @@ def _paise(row: Mapping[str, Any], column: str) -> int:
 
 
 def _rupees(paise: int) -> str:
-    return f"₹{rupees_paise(paise)}"
+    return rupee_text(paise)
 
 
 def is_foreign(kind: str, header: Mapping[str, Any]) -> bool:

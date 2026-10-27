@@ -22,7 +22,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 from core.ist_clock import ist_now, ist_today
-from domain.money_text import whole_rupees
+from domain.money_sentence import rupee_whole_text
 from domain.practice.compliance_overdue import is_overdue, is_settled
 
 logger = logging.getLogger("caflow.services")
@@ -382,7 +382,7 @@ def compute_recommendations(
                     "detail": (
                         f"Health score {c['health_score']}/100 — "
                         f"{c['overdue_tasks']} overdue tasks, {c['overdue_invoices']} overdue invoices, "
-                        f"₹{whole_rupees(c['outstanding_paise'])} outstanding."
+                        f"{rupee_whole_text(c['outstanding_paise'])} outstanding."
                         if include_fee_figures else
                         f"Health score {c['health_score']}/100 — {c['overdue_tasks']} overdue tasks"
                         + (", and a fee payment is overdue." if c["outstanding_paise"] > 0 and c["overdue_invoices"] > 0
@@ -397,7 +397,7 @@ def compute_recommendations(
                     "priority": "medium",
                     "title": f"Follow up on payment — {c['client_name']}",
                     "detail": (
-                        f"₹{whole_rupees(c['outstanding_paise'])} outstanding with {c['overdue_invoices']} overdue invoice(s)."
+                        f"{rupee_whole_text(c['outstanding_paise'])} outstanding with {c['overdue_invoices']} overdue invoice(s)."
                         if include_fee_figures else "A fee payment from this client is overdue."
                     ),
                     "client_id": c["client_id"],

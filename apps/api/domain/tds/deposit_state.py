@@ -50,6 +50,7 @@ from typing import Callable, Iterable, Optional
 
 from domain.tds import challan_mapping, deposit_due
 from domain.tds.undeposited import fy_label_of, is_salary, quarter_of, section_group
+from domain.money_sentence import rupee_text
 
 DEPOSITED = "deposited"
 PART = "part"
@@ -184,14 +185,13 @@ def _nil_floor(row: dict) -> int:
 
 
 def _surplus_warning(gap: dict, fy: str, quarter: str) -> dict:
-    from domain.money_text import rupees_paise
     serials = sorted({str(n).strip() for n in (gap.get("challan_nos") or []) if n and str(n).strip()})
     section = str(gap.get("section") or "").strip()
     under = f" under {section}" if section else " with no section"
     named = f" ({', '.join(serials)})" if serials else ""
     return {"code": GAP_CHALLAN_EXCEEDS_DEDUCTIONS, "financial_year": fy, "quarter": quarter, "section": section,
             "surplus_paise": int(gap.get("surplus_paise") or 0), "challan_nos": serials,
-            "message": (f"The challans recorded for {quarter} of {fy}{under}{named} are ₹{rupees_paise(int(gap.get('surplus_paise') or 0))} "
+            "message": (f"The challans recorded for {quarter} of {fy}{under}{named} are {rupee_text(int(gap.get('surplus_paise') or 0))} "
                         "more than the tax deducted in that quarter under that section. A challan is matched to the quarter, year "
                         "and section it is recorded for, and the quarter is the one the tax was deducted in, not always the one it "
                         "was paid in: check the quarter, financial year and section it was recorded for.")}
@@ -250,7 +250,6 @@ def due_note(row: RowState) -> Optional[str]:
 def words(row: RowState) -> tuple[str, Optional[str]]:
     """(the short label, the sentence that is about THIS row or None). A row with no sentence of its own is read from `legend()`,
     which the answer carries once. A part's rupees, and a challan dated before the tax, are about one row."""
-    from domain.money_text import rupees_paise
     where = f"{row.quarter} of {row.financial_year}" if row.quarter else "its quarter"
     covered_by = (f"challan {', '.join(row.challans)}" if row.challans else "a recorded challan")
     earlier = (" One of the challans that covers it is dated before the tax was deducted: check its date (the Due for deposit panel "
@@ -259,7 +258,7 @@ def words(row: RowState) -> tuple[str, Optional[str]]:
     if row.state == PART:
         late = ("" if row.due_on is None else
                 f" The deposit was due on {_date_text(row.due_on)}." if row.overdue else f" It is not due yet: due by {_date_text(row.due_on)}.")
-        return label, (f"₹{rupees_paise(row.deposited_paise)} of ₹{rupees_paise(row.tax_paise)} (tax with surcharge and cess) is covered, "
+        return label, (f"{rupee_text(row.deposited_paise)} of {rupee_text(row.tax_paise)} (tax with surcharge and cess) is covered, "
                        f"by {covered_by}; the rest is not covered by any challan recorded for the quarter.{earlier}{late}")
     if row.state == DEPOSITED and row.dated_before:
         return label, f"Covered by {covered_by}, first in first out within {where}.{earlier}"

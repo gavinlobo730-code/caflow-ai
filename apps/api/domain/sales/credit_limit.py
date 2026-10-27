@@ -55,6 +55,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional
+from domain.money_sentence import rupee_text
 
 #: Nobody has recorded a limit for this customer.
 NOT_SET = "not_set"
@@ -159,5 +160,4 @@ def assess(
 
 def _rupees(paise: int) -> str:
     """Indian grouping, through the one formatter — `domain/money_text`."""
-    from domain.money_text import rupees_paise
-    return "Rs. " + rupees_paise(paise)
+    return rupee_text(paise, "Rs. ")

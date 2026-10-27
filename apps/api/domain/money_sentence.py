@@ -7,12 +7,12 @@ not inside the authority: it takes the grouping from `rupees_paise` and adds onl
 """
 from __future__ import annotations
 
-from domain.money_text import minor_units_text, rupees_paise
+from domain.money_text import group_indian, minor_units_text, rupees_paise
 
-__all__ = ["amount_text", "rupee_text"]
+__all__ = ["amount_text", "rupee_text", "rupee_whole_text"]
 
 
-def rupee_text(paise: int | None) -> str:
+def rupee_text(paise: int | None, unit: str = "₹") -> str:
     """Integer paise -> `"₹12,34,567.50"`, and `"minus ₹1.50"` for -150: an AMOUNT INSIDE A SENTENCE.
 
     For a sentence a person reads on a screen, in an email or in a refusal: the unit is the rupee sign, the grouping is
@@ -20,10 +20,23 @@ def rupee_text(paise: int | None) -> str:
     sign with a minus sign inside it and is how three review passes found the same defect. NEVER for a PDF, whose core fonts have
     no glyph for the sign: text that was written elsewhere and ends on a PDF page goes through `domain.reporting.pdf_text.pdf_safe`
     at the PDF, which turns this into "Rs." and keeps the "minus".
+
+    `unit` is the module's own word for the currency where it has one ("Rs " in a statutory note that is stored and printed, with
+    its space): the sign, the grouping and the "minus" are the same whatever it is, which is what private copies of this function
+    each got slightly differently.
     """
     p = int(paise or 0)
     sign = "minus " if p < 0 else ""
-    return f"{sign}₹{rupees_paise(abs(p))}"
+    return f"{sign}{unit}{rupees_paise(abs(p))}"
+
+
+def rupee_whole_text(paise: int | None, unit: str = "₹") -> str:
+    """Integer paise -> `"₹12,34,567"`: WHOLE rupees, truncated toward zero, for a sentence where the paise are noise (a threshold,
+    a limit, a turnover in crores). `"minus ₹5"` for -500, and no minus for a magnitude under one rupee ("-0" is not a figure)."""
+    p = int(paise or 0)
+    whole = abs(p) // 100
+    sign = "minus " if p < 0 and whole else ""
+    return f"{sign}{unit}{group_indian(str(whole))}"
 
 
 def amount_text(amount: int | None, currency: str | None = None, minor_unit: int | None = None) -> str:

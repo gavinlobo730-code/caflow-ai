@@ -30,7 +30,7 @@ from services.audit_service import log_event
 # Delegates to year_end.py's own _assert_engagement_scope rather than a
 # fifth copy of the same check.
 from routers.year_end import _assert_engagement_scope
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -170,7 +170,7 @@ def _compute_fixed_assets_note_data(db, firm_id: str, client_id: str, fy_end: Op
 def _rupees(paise: int) -> str:
     """Paise as a plain rupee figure for a sentence a CA reads. "Rs", not the sign: this text is stored in a note that is printed on a
     PDF page, which cannot draw the sign. A negative figure is written in words, never "Rs -5.00"."""
-    return f"{'minus ' if paise < 0 else ''}Rs {rupees_paise(abs(paise))}"
+    return rupee_text(paise, "Rs ")
 
 
 #: How each AS-2 paragraph 14 formula is worded in a sentence a CA reads. Keyed by `costing.METHODS` and nothing

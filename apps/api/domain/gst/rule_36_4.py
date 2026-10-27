@@ -120,7 +120,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 #: Withdrawn by Notification 40/2021-Central Tax w.e.f. 01-01-2022, when
 #: §16(2)(aa) came into force. Recorded rather than implemented, because a
@@ -467,7 +467,7 @@ def _assess_one(d: BookDocument, two_b: Optional[TwoBDocument]) -> DocumentVerdi
         allow.reason = (
             "The books carry more tax on this document than GSTR-2B "
             "communicated ("
-            + ", ".join(f"{n.upper()} ₹{rupees_paise(v)}" for n, v in over.items())
+            + ", ".join(f"{n.upper()} {rupee_text(v)}" for n, v in over.items())
             + "). §16(2)(aa) allows the credit to the figure furnished; the "
               "excess is withheld until the supplier amends it.")
     return allow

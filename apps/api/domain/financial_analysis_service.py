@@ -35,7 +35,7 @@ import logging
 import os
 from typing import Optional
 from domain.ai import groq_text
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 _logger = logging.getLogger("caflow.financial_analysis")
 
@@ -72,7 +72,7 @@ def _pct_change(curr: int, prev: int) -> Optional[float]:
 
 
 def _rupees(paise: int) -> str:
-    return f"Rs {rupees_paise(paise)}"
+    return rupee_text(paise, "Rs ")
 
 
 def _sum_by_bucket(bs: dict, section_key: str, buckets: set) -> int:
