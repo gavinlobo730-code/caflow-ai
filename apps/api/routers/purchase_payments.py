@@ -35,8 +35,8 @@ from services import reversal_service
 from services import purchase_payment_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label, ist_today
-from domain.money_text import minor_units_text, whole_rupees
-from domain.money_sentence import rupee_text
+from domain.money_text import minor_units_text
+from domain.money_sentence import rupee_text, rupee_whole_text
 from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -702,7 +702,7 @@ def create_purchase_payment(
             category="accounting",
             event_type="payment_recorded",
             title=f"Vendor Payment {payment_no} recorded",
-            description=f"Payment of ₹{whole_rupees(amount_paise)} made to vendor.",
+            description=f"Payment of {rupee_whole_text(amount_paise)} made to vendor.",
             severity="success",
             entity_type="purchase_payment",
             entity_id=payment["id"],

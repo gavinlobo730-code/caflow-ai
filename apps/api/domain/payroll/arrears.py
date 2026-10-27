@@ -59,6 +59,7 @@ from dataclasses import dataclass, field
 
 from domain.income_tax.itr_engine import ITRComputeRequest, ITREngine
 from domain.income_tax.statutory_rates import RATES_BY_FY
+from domain.money_sentence import rupee_text
 
 
 @dataclass
@@ -212,12 +213,12 @@ def compute_relief(
     if not (form_10e_acknowledgement or "").strip():
         out.available = False
         out.blocked_reason = (
-            "Relief of ₹{:,.2f} is computed but NOT AVAILABLE: the proviso to §89, "
+            "Relief of {} is computed but NOT AVAILABLE: the proviso to §89, "
             "read with Rule 21AA, bars relief unless Form 10E has been filed on "
             "the e-filing portal BEFORE the return. A return claiming §89 without "
             "a Form 10E on record draws a §143(1) intimation disallowing the "
             "relief in full."
-        ).format(out.relief_paise / 100)
+        ).format(rupee_text(out.relief_paise))
         return out
 
     out.available = True

@@ -55,7 +55,7 @@ from typing import Iterable, Mapping, Optional
 # One rupee formatter, Indian-grouped — `f"{n:,}"` gives 500,000, which no
 # Indian document uses, and the browser formats the same figure with
 # Intl.NumberFormat("en-IN").
-from domain.reporting.amount_words import indian_rupees
+from domain.money_sentence import rupee_whole_text
 
 # The record types domain/income_tax/form26as_service assigns per 26AS part.
 # Kept as literals rather than imported so a change to that mapping shows up
@@ -183,7 +183,7 @@ def claimable_from_records(records: Iterable[Mapping]) -> ClaimableCredit:
     caveats: list[str] = []
     if provisional:
         caveats.append(
-            f"₹{indian_rupees(provisional)} of credit is not booked final at TRACES "
+            f"{rupee_whole_text(provisional)} of credit is not booked final at TRACES "
             f"(status U, P, O or blank) and is excluded from the claim. Credit "
             f"under Rule 37BA(1) follows the deductor's statement once it is "
             f"matched to a challan actually paid; claiming it before then is "
@@ -198,13 +198,13 @@ def claimable_from_records(records: Iterable[Mapping]) -> ClaimableCredit:
         )
     if tcs:
         caveats.append(
-            f"₹{indian_rupees(tcs)} is TCS collected under §206C and belongs in Schedule "
+            f"{rupee_whole_text(tcs)} is TCS collected under §206C and belongs in Schedule "
             f"TCS, not in the TDS figure. It is reported separately for that "
             f"reason."
         )
     if self_paid:
         caveats.append(
-            f"₹{indian_rupees(self_paid)} in Part C is tax the client paid itself — "
+            f"{rupee_whole_text(self_paid)} in Part C is tax the client paid itself — "
             f"advance tax or self-assessment. It reduces the same liability "
             f"but is its own line on the return "
             f"(`advance_tax_paid_paise`), not part of the TDS claim."
@@ -217,7 +217,7 @@ def claimable_from_records(records: Iterable[Mapping]) -> ClaimableCredit:
     )
     if unclassified:
         caveats.append(
-            f"₹{indian_rupees(unclassified)} sits in rows whose 26AS part the parser could "
+            f"{rupee_whole_text(unclassified)} sits in rows whose 26AS part the parser could "
             f"not classify. Nothing is claimed for them; read the statement and "
             f"add them by hand if they are a credit."
         )

@@ -25,6 +25,7 @@ import pytest
 
 from services.compliance_engine import tds_return_due_date
 from services.filing_demo import common, tds_return
+from domain.money_text import group_indian
 from tests.e2e_harness import FakeDB
 
 FIRM = "FIRM-A"
@@ -32,11 +33,12 @@ CLIENT = "CLI"
 
 
 def _inr(paise: int) -> str:
-    """Mirror of the module's prose formatter, so fee assertions compare the
-    same rendering rather than a re-derived one drifting on separators."""
+    """The module's prose rendering, written out from the grouping authority so a fee assertion does not depend on the helper it
+    is checking: whole rupees print without ".00", the grouping is Indian (₹1,75,800, where this mirror and the module both
+    wrote ₹175,800 until POST-A-346) and a negative figure is written "minus ₹…"."""
     rupees_part, paise_part = divmod(abs(int(paise)), 100)
-    body = f"{rupees_part:,}" if paise_part == 0 else f"{rupees_part:,}.{paise_part:02d}"
-    return f"{'-' if paise < 0 else ''}₹{body}"
+    body = group_indian(str(rupees_part)) + ("" if paise_part == 0 else f".{paise_part:02d}")
+    return f"{'minus ' if paise < 0 else ''}₹{body}"
 
 
 def _db_with_return(**overrides):

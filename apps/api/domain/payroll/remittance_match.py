@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
-from domain.reporting.amount_words import indian_digits
+from domain.money_sentence import rupee_text
 
 #: How far either side of the recorded payment date to look.
 #:
@@ -96,23 +96,12 @@ class Candidate:
 def _rupees(paise: int) -> str:
     """Paise as ₹ for a sentence a CA reads. Display only; the wire stays paise.
 
-    DELEGATES the grouping. The first draft of this module used Python's own
-    `f"{n:,}"`, which groups in threes — so ₹1,25,000 came out as "₹125,000",
-    a figure no Indian document uses and one the browser (Intl.NumberFormat
-    "en-IN") renders correctly two lines away on the same screen.
-    `domain/reporting/amount_words.indian_digits` already exists for exactly
-    this, with the same reasoning written on it.
-
-    The paise are kept rather than truncated the way `indian_rupees` does:
-    `indian_rupees` states a figure in a sentence about a return, where whole
-    rupees is right; here the sentence is a comparison between a challan and a
-    bank debit, and a difference of a few paise is the whole reason the two
-    would not match.
+    The paise are KEPT rather than truncated: the sentence is a comparison between a challan and a bank debit, and a difference of a
+    few paise is the whole reason the two would not match. `domain/money_sentence` writes it (Indian grouping, and "minus ₹x" for a
+    negative figure); this module's first draft used Python's own `f"{n:,}"`, which groups in threes ("₹125,000" for ₹1,25,000), and
+    its second spelled the grouping out by hand with the sign outside the unit.
     """
-    p = int(paise or 0)
-    sign = "-" if p < 0 else ""
-    whole, part = divmod(abs(p), 100)
-    return f"{sign}₹{indian_digits(whole)}.{part:02d}"
+    return rupee_text(paise)
 
 
 def _days_between(a: str, b: str) -> Optional[int]:

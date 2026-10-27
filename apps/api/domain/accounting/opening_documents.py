@@ -34,7 +34,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Optional
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 #: A sales opening document and a purchase one, named so a caller cannot pass
 #: the wrong one by position.
@@ -204,21 +204,15 @@ class PartyReconciliation:
         who = self.party_name or self.party_id
         d = self.difference_paise
         if self.document_count == 0:
-            return (f"{who}: the whole opening balance of ₹{_r(self.opening_balance_paise)} "
+            return (f"{who}: the whole opening balance of {rupee_text(self.opening_balance_paise)} "
                     f"has no document behind it, so none of it appears in any "
                     f"ageing bucket.")
         if d > 0:
-            return (f"{who}: ₹{_r(d)} of the ₹{_r(self.opening_balance_paise)} "
+            return (f"{who}: {rupee_text(d)} of the {rupee_text(self.opening_balance_paise)} "
                     f"opening balance has no document behind it and will not age.")
-        return (f"{who}: the opening documents come to ₹{_r(self.documents_paise)}, "
-                f"which is ₹{_r(-d)} MORE than the ₹{_r(self.opening_balance_paise)} "
+        return (f"{who}: the opening documents come to {rupee_text(self.documents_paise)}, "
+                f"which is {rupee_text(-d)} MORE than the {rupee_text(self.opening_balance_paise)} "
                 f"opening balance the ledger carries.")
-
-
-def _r(paise: int) -> str:
-    """Rupees, for a sentence a CA reads. Money crosses the API in paise; this
-    is the one place a figure is spelled, because the sentence is the answer."""
-    return f"{rupees_paise(paise)}"
 
 
 def reconcile(parties: list[dict], documents: list[dict], *,
@@ -386,8 +380,8 @@ class DoubleOpening:
     @property
     def sentence(self) -> str:
         who = self.account_name or self.account_id
-        return (f"{who} was opened twice: ₹{_r(abs(self.master_paise))} from the "
-                f"party and bank master records, and ₹{_r(abs(self.trial_balance_paise))} "
+        return (f"{who} was opened twice: {rupee_text(abs(self.master_paise))} from the "
+                f"party and bank master records, and {rupee_text(abs(self.trial_balance_paise))} "
                 f"from the imported trial balance. Both are posted, so this "
                 f"account is out by one of them.")
 

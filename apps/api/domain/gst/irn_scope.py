@@ -125,7 +125,7 @@ WHAT THIS MODULE REFUSES TO DECIDE
 """
 from __future__ import annotations
 
-from domain.money_text import whole_rupees
+from domain.money_sentence import rupee_whole_text
 
 from dataclasses import dataclass, field
 from typing import Optional
@@ -531,4 +531,4 @@ def _rupees(paise: int) -> str:
     so a negative would have come back positive; harmless on a threshold,
     which is always positive, and the reason nothing caught it.
     `tests/test_one_module_groups_a_rupee_figure.py` is the rule now."""
-    return "₹" + whole_rupees(paise)
+    return rupee_whole_text(paise)

@@ -49,6 +49,8 @@ from __future__ import annotations
 import re
 from typing import Optional, Sequence
 
+from domain.money_sentence import rupee_text
+
 
 def totals(txns: Sequence) -> tuple[int, int]:
     """(total debits, total credits) in paise. Integer arithmetic throughout —
@@ -117,26 +119,13 @@ def tie_out(
 
 
 def _r(paise: int) -> str:
-    """Paise as rupees, grouped the way an Indian statement prints them.
+    """Paise as rupees in a sentence read beside a bank statement: INDIAN grouping (1,30,000 and not 130,000), the paise kept, and a
+    negative figure in words ("minus ₹5.00"). `domain/money_sentence` writes it; this name stays so the sentences above did not move.
 
-    INDIAN GROUPING, NOT WESTERN. Three digits, then twos: 1,30,000 and not
-    130,000. This sentence is read beside a bank statement and compared against
-    it, and a CA reading `₹130,000.00` next to `₹1,30,000.00` has to stop and
-    count digits. This repository already carries a scar from the other
-    direction — `parseFloat("1,25,000")` is 1, which recorded one rupee for one
-    and a quarter lakh (CLAUDE.md, "Money in the browser").
-
-    Formatting only. Every comparison above is done on the integers.
+    The grouping was spelled out by hand here until POST-A-346, with the sign outside the unit ("-₹5.00") and the first of the
+    two private copies of the grouping that the sweep found.
     """
-    sign = "-" if paise < 0 else ""
-    whole, part = divmod(abs(int(paise)), 100)
-    digits = str(whole)
-    if len(digits) > 3:
-        head, tail = digits[:-3], digits[-3:]
-        # The leading group may be 1 or 2 digits; everything before it is twos.
-        groups = [head[max(0, i - 2):i] for i in range(len(head), 0, -2)][::-1]
-        digits = ",".join(groups + [tail])
-    return f"{sign}₹{digits}.{part:02d}"
+    return rupee_text(paise)
 
 
 # ── The statement's own totals ───────────────────────────────────────────────

@@ -71,7 +71,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Iterable, Optional
 
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 from domain.spreadsheet_cells import fold_name, parse_cell_date, why_not_a_date
 
 #: The legs one request may carry. A bigger file is split by the browser into
@@ -147,7 +147,7 @@ class VoucherVerdict:
 
 
 def _r(paise: int) -> str:
-    return f"₹{rupees_paise(paise)}"
+    return rupee_text(paise)
 
 
 def _index_accounts(accounts: Iterable[dict]):

@@ -52,7 +52,7 @@ from services.timeline_service import timeline_service
 from services import tds_register_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
-from domain.money_text import whole_rupees
+from domain.money_sentence import rupee_whole_text
 from core.observability import capture_posting_failure
 
 # Same private Storage bucket routers/documents.py and debit_notes.py use —
@@ -606,7 +606,7 @@ def issue_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("a
             client_id=client_id, firm_id=firm_id or "", financial_year=ist_fy_label(updated.get("credit_note_date")),
             category="accounting", event_type="purchase_credit_note_issued",
             title=f"Credit Note {updated.get('credit_note_no', '')} issued",
-            description=f"Purchase credit note for ₹{whole_rupees(updated.get('total_paise', 0))} issued.",
+            description=f"Purchase credit note for {rupee_whole_text(updated.get('total_paise', 0))} issued.",
             severity="success", entity_type="purchase_credit_note", entity_id=pcn_id,
             amount_paise=updated.get("total_paise"),
             actor_id=current_user.get("auth_user_id"), actor_name=current_user.get("email"),

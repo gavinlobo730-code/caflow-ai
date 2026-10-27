@@ -64,7 +64,7 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 from domain.sales.line_tax import compute_line_gst
 
 # One rupee. See the module docstring: §170's round-off is 50 paise and the
@@ -78,7 +78,7 @@ TAX_AT_LINE_RATES = "tax_at_line_rates"
 
 
 def _rs(paise: int) -> str:
-    return f"₹{rupees_paise(paise)}"
+    return rupee_text(paise)
 
 
 def _p(extracted: dict, key: str) -> int:

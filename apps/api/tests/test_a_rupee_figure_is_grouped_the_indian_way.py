@@ -111,7 +111,10 @@ def test_the_probe_still_reaches_the_tree_it_is_about():
     stripper is what would silence it."""
     files = _files()
     assert len(files) > 300, f"only {len(files)} modules scanned"
-    callers = [p for p in files if "rupees_paise(" in _code(p) or "whole_rupees(" in _code(p)]
+    # A sentence reaches the authority through `domain/money_sentence` (POST-A-346), which wraps it with the unit and the word
+    # "minus"; a PDF and a spreadsheet cell call it directly. Either is a caller.
+    names = ("rupees_paise(", "whole_rupees(", "rupee_text(", "rupee_whole_text(")
+    callers = [p for p in files if any(n in _code(p) for n in names)]
     assert len(callers) >= 30, (
         f"only {len(callers)} modules call the authority; the sweep has been "
         "reverted, or the scan no longer reads bodies")

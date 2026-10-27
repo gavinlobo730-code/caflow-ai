@@ -408,7 +408,7 @@ def _register_against_ledger(difference_paise: int) -> str:
 
 
 def _below_minimum(label: str, amount: int, minimum: int) -> str:
-    return (f"{label} comes to minus {rupee_text(-amount)} in the books, a balance on the other side of the account, and the "
+    return (f"{label} comes to {rupee_text(amount)} in the books, a balance on the other side of the account, and the "
             f"Department's schema accepts nothing below {rupee_text(minimum * 100)} in this box. It is shown as the books hold it "
             f"and is not a figure to key as it stands: where a balance of this kind belongs on the form is the CA's decision.")
 

@@ -22,7 +22,7 @@ from services.internal_client_service import get_internal_client_id
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from domain.reporting.party_advances import aging_bucket as _shared_aging_bucket
 from core.ist_clock import ist_today
-from domain.money_text import whole_rupees
+from domain.money_sentence import rupee_whole_text
 from core.db_paging import fetch_all, fetch_all_in
 from core import db_provider
 from core.observability import capture_soft_failure
@@ -441,7 +441,7 @@ def flag_overdue_for_internal_followup(firm_id: str, today: Optional[date] = Non
             timeline_service.log(
                 inv.get("client_id", ""), "ai", "Flagged for Collections Follow-up",
                 f"Internal note #{count} for invoice {inv.get('invoice_no','')} "
-                f"(₹{whole_rupees(m['outstanding_paise'])} overdue {m['days_overdue']}d). "
+                f"({rupee_whole_text(m['outstanding_paise'])} overdue {m['days_overdue']}d). "
                 f"Nothing was sent to the customer.",
                 "warning", firm_id=firm_id,
                 entity_type="sales_invoice", entity_id=inv.get("id"),

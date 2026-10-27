@@ -101,5 +101,9 @@ def test_the_assistant_delegates_rather_than_reimplementing():
     from domain.money_text import whole_rupees
     from routers.assistant import _rupees
 
-    for paise in (0, 99, 150, 5_000_000, 10_000_000, -150, -10_050, -1):
+    for paise in (0, 99, 150, 5_000_000, 10_000_000, -1):
         assert _rupees(paise) == f"Rs {whole_rupees(paise)}", paise
+    # A negative figure is written in words ("minus Rs 1"), never "Rs -1" (POST-A-346): the grouping and the truncation toward zero
+    # are still `whole_rupees`', and a magnitude under one rupee carries no minus ("minus Rs 0" is not a figure).
+    for paise, said in ((-150, "minus Rs 1"), (-10_050, "minus Rs 100"), (-5_000_000, "minus Rs 50,000")):
+        assert _rupees(paise) == said, paise

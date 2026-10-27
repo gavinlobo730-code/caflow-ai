@@ -69,7 +69,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from domain.money_text import whole_rupees
+from domain.money_sentence import rupee_whole_text
 
 #: What the model is told about its own licence, in the block itself rather
 #: than only in the system prompt — the figures and the rule about them travel
@@ -94,11 +94,10 @@ WHAT_THIS_IS = (
 def _figure(unit: str, signal: int) -> str:
     """A tile's signal in the unit the tile itself declares.
 
-    `whole_rupees` rather than a second grouping — `domain/money_text` is the
-    one backend authority and this module is not going to become a fourth
-    implementation of it.
+    `rupee_whole_text` rather than a second grouping — `domain/money_sentence` over `domain/money_text` is the one backend authority
+    and this module is not going to become a fourth implementation of it.
     """
-    return f"Rs {whole_rupees(signal)}" if unit == "paise" else str(signal)
+    return rupee_whole_text(signal, "Rs ") if unit == "paise" else str(signal)
 
 
 def build_client_brief(entity_type: Optional[str],

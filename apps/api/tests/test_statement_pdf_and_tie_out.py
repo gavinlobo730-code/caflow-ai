@@ -79,7 +79,7 @@ def test_a_statement_that_does_not_add_up_says_so_with_both_figures():
     (100000000, "₹10,00,000.00"),
     (1234567890, "₹1,23,45,678.90"),
     (100000, "₹1,000.00"),
-    (-13000000, "-₹1,30,000.00"),
+    (-13000000, "minus ₹1,30,000.00"),   # a negative figure is written in words (POST-A-346)
 ])
 def test_the_refusal_is_written_in_indian_digit_grouping(paise, expected):
     """Three digits then twos — 1,30,000 and not 130,000. The sentence is read

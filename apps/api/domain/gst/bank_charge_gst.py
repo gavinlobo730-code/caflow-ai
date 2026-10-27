@@ -90,7 +90,7 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 
 from domain.banking.charge_gst import ChargeSplit, split_inclusive_charge
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 # The columns this module reads off each row. NOT exported as a projection
 # constant: there is exactly one fetch (gst_return_service.
@@ -169,7 +169,7 @@ class BankGSTOnTheReturn:
 
 def _rupees(paise: int) -> str:
     """A caveat is read by a person, so it says rupees."""
-    return f"Rs {rupees_paise(paise)}"
+    return rupee_text(paise, "Rs ")
 
 
 def declared_gst(rows: Iterable[dict]) -> BankGSTOnTheReturn:

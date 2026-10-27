@@ -28,7 +28,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access, filter_by_client
 from services.audit_service import log_event
 from core.ist_clock import ist_today
-from domain.money_text import group_indian
+from domain.money_sentence import rupee_text, rupee_whole_text
 from core import db_provider
 
 _logger = logging.getLogger("caflow.engagement_letters")
@@ -451,18 +451,16 @@ def _next_engagement_no(db, firm_id: str) -> str:
 
 def _format_fee(fee_amount_paise: int) -> str:
     """Format paise as ₹X — integer arithmetic, Indian digit grouping, never
-    float. `group_indian` (domain/money_text.py) is the one grouping
-    implementation in the product (decision D6) — every default template's own
+    float. `domain/money_sentence` (over `domain/money_text.group_indian`, the one
+    grouping implementation in the product, decision D6) writes it — every default template's own
     `{{engagement_fee}}` placeholder is merged with THIS string, which already
     carries the ₹ sign, so a template must never write a literal ₹ of its own
     beside the placeholder (that produced "₹₹18000" — a doubled sign and no
     comma at all, since this function used to interpolate the raw integer)."""
-    # All monetary values in integer paise — CGST Act compliance
-    rupees = fee_amount_paise // 100
-    paise_remainder = fee_amount_paise % 100
-    if paise_remainder:
-        return f"₹{group_indian(str(rupees))}.{paise_remainder:02d}"
-    return f"₹{group_indian(str(rupees))}"
+    # All monetary values in integer paise — CGST Act compliance. A whole-rupee fee prints without ".00", as the letters always have.
+    if fee_amount_paise % 100:
+        return rupee_text(fee_amount_paise)
+    return rupee_whole_text(fee_amount_paise)
 
 
 def _display_date(value) -> str:

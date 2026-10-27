@@ -76,7 +76,6 @@ from domain.payroll import arrears as arrears_domain
 from domain.payroll import one_time_earnings as one_time_domain
 from domain.payroll import perquisites as perq_domain
 from domain.payroll import pf_wage_election as pf_election
-from domain.reporting.amount_words import indian_rupees
 from dataclasses import replace as _replace
 from core import db_provider
 
@@ -106,7 +105,7 @@ from domain.income_tax.statutory_rates import (
 from models.fy import FYLabel, OptionalFYLabel
 from services.compliance_obligation_service import fy_months
 from core.ist_clock import ist_today
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text, rupee_whole_text
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
@@ -894,7 +893,7 @@ def _undo_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
             notes.append(
                 f"This run was finalised before the software recorded WHICH loan "
                 f"each recovery came off, and this employee has {len(loans)} "
-                f"loans. ₹{indian_rupees(amount)} was put back, newest loan first — "
+                f"loans. {rupee_whole_text(amount)} was put back, newest loan first — "
                 f"check the split before re-finalising.")
     return notes
 
@@ -3991,7 +3990,7 @@ def disburse_run(
     _net = int(run.get("total_net_paise") or 0)  # integer paise → ₹ display, no float
     timeline_service.log(run["client_id"], "work", "Salary Disbursed",
         f"Payroll for {run['month']} paid from {bank.get('bank_name', 'bank')} "
-        f"(₹{rupees_paise(_net)} net)", "success",
+        f"({rupee_text(_net)} net)", "success",
         firm_id=run["firm_id"], entity_type="payroll_run", entity_id=run_id,
         actor_id=current_user.get("auth_user_id"))
 
@@ -7057,10 +7056,10 @@ def statutory_summary(
     pf_admin_per_slip_paise = sum(int(s.get("pf_admin_paise") or 0) for s in slip_admin_rows)
     pf_admin_topup_paise = max(0, pf_admin - pf_admin_per_slip_paise)
     pf_admin_reconciliation = (
-        f"PF Admin (0.5%, per employee) ₹{rupees_paise(pf_admin_per_slip_paise)}"
-        + (f" + statutory minimum top-up ₹{rupees_paise(pf_admin_topup_paise)}"
+        f"PF Admin (0.5%, per employee) {rupee_text(pf_admin_per_slip_paise)}"
+        + (f" + statutory minimum top-up {rupee_text(pf_admin_topup_paise)}"
            if pf_admin_topup_paise else "")
-        + f" = ₹{rupees_paise(pf_admin)} challan total"
+        + f" = {rupee_text(pf_admin)} challan total"
     )
 
     return api_response(True, {
@@ -7356,8 +7355,8 @@ def verify_declaration(
         if value > declared:
             raise HTTPException(
                 status_code=422,
-                detail=f"{label}: ₹{rupees_paise(value)} verified against "
-                       f"₹{rupees_paise(declared)} declared. A proof can support less "
+                detail=f"{label}: {rupee_text(value)} verified against "
+                       f"{rupee_text(declared)} declared. A proof can support less "
                        f"than was claimed, never more — raise the declaration first.")
         return max(0, int(value))
 
@@ -7375,8 +7374,8 @@ def verify_declaration(
         if verified > declared:
             raise HTTPException(
                 status_code=422,
-                detail=f"{it.section}: ₹{rupees_paise(verified)} verified against "
-                       f"₹{rupees_paise(declared)} declared. A proof can support less "
+                detail=f"{it.section}: {rupee_text(verified)} verified against "
+                       f"{rupee_text(declared)} declared. A proof can support less "
                        f"than was claimed, never more — raise the declaration first.")
         # Spelled out rather than assembled so the column check can read it.
         # `proof_attachments` is omitted entirely when the request did not send
@@ -8273,7 +8272,7 @@ def record_settlement(
     timeline_service.log(
         body.client_id, "work", "Settlement Recorded",
         f"{emp.get('name') or 'Employee'} settled on {leaving.isoformat()} — "
-        f"net ₹{rupees_paise(net_paid)}", "info",
+        f"net {rupee_text(net_paid)}", "info",
         firm_id=current_user.get("firm_id", ""),
         entity_type="payroll_settlement", entity_id=settlement_id,
         actor_id=current_user.get("auth_user_id"))
@@ -8583,7 +8582,7 @@ def record_perquisites(
         "employee_id": employee_id, "fy": body.fy, "recorded": recorded,
         "total_value_paise": total,
         "what_it_means": (
-            f"₹{indian_rupees(total)} of §17(2) perquisites is now part of this "
+            f"{rupee_whole_text(total)} of §17(2) perquisites is now part of this "
             f"employee's §192 estimate for {body.fy}. It takes effect on the "
             f"NEXT payroll run you compute — a month already finalised was "
             f"withheld without it, and §192(3) spreads the catch-up over the "

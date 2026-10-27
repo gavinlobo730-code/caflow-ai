@@ -74,7 +74,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from domain.gst.gstr2b import GSTR2BDocument
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 #: The only document a bill may be drafted from.
 DRAFTABLE_SECTIONS = ("b2b",)
@@ -252,14 +252,14 @@ def describe_agreement(bill: dict, doc: GSTR2BDocument) -> tuple[bool, list[str]
     if int(bill.get("taxable_amount_paise") or 0) != doc.taxable_value_paise:
         out.append(
             f"Taxable value: the draft carries "
-            f"₹{rupees_paise(int(bill.get('taxable_amount_paise') or 0))} and "
-            f"GSTR-2B ₹{rupees_paise(doc.taxable_value_paise)}.")
+            f"{rupee_text(int(bill.get('taxable_amount_paise') or 0))} and "
+            f"GSTR-2B {rupee_text(doc.taxable_value_paise)}.")
     for key, label in _HEADS:
         got, filed = int(bill.get(key) or 0), int(getattr(doc, key) or 0)
         if got != filed:
             out.append(
-                f"{label}: the draft computes ₹{rupees_paise(got)} and the "
-                f"supplier filed ₹{rupees_paise(filed)}.")
+                f"{label}: the draft computes {rupee_text(got)} and the "
+                f"supplier filed {rupee_text(filed)}.")
     if out and ((int(bill.get("igst_paise") or 0) == 0) != (doc.igst_paise == 0)):
         out.append(
             "The supply is inter-State on one side and intra-State on the "

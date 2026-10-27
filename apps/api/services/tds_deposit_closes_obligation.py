@@ -57,7 +57,7 @@ from datetime import date
 from typing import Any, Optional
 
 from core.ist_clock import ist_today
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 from domain.tds import challan_mapping, deposit_due
 from domain.tds.section_rates import quarter_dates
 from repositories.compliance_records_repository import compliance_records_repo
@@ -125,7 +125,7 @@ def decide_month(*, today: date, due: date, month_end: date, what: str, month_na
         return leave("the month is not over, so more tax may still be deducted in it.",
                      "It is looked at again when the next challan for the quarter is recorded.")
     if outstanding_paise > 0:
-        return leave(f"₹{rupees_paise(outstanding_paise)} of the tax deducted in {month_name} is not yet covered by a "
+        return leave(f"{rupee_text(outstanding_paise)} of the tax deducted in {month_name} is not yet covered by a "
                      "recorded non-salary challan"
                      + (" (a section 192 row in this register is never covered here: payroll deposits salary tax)"
                         if salary_rows else "")

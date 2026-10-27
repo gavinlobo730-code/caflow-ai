@@ -41,7 +41,7 @@ from services.period_validation_service import period_validation_service, get_fy
 from services import period_lock_service
 from services.audit_service import log_event
 from services.numbering import next_sequence
-from domain.money_text import whole_rupees
+from domain.money_sentence import rupee_whole_text
 from core import db_provider
 
 router = APIRouter(prefix="/api/fixed-assets", tags=["fixed_assets"])
@@ -726,7 +726,7 @@ def create_asset(
         asset["journal_entry_id"] = journal_id
 
     timeline_service.log(client_id, "accounting", "Asset Created",
-        f"{asset_code}: {data.asset_name} added — ₹{whole_rupees(capitalised_cost)}", "info")
+        f"{asset_code}: {data.asset_name} added — {rupee_whole_text(capitalised_cost)}", "info")
 
     return api_response(True, asset)
 
@@ -826,8 +826,8 @@ def import_opening_register(
             timeline_service.log(
                 data.client_id, "accounting", "Opening Register Imported",
                 f"{out['created']} assets brought over as at {out['as_at']} — cost "
-                f"₹{whole_rupees(out['cost_paise'])}, accumulated depreciation "
-                f"₹{whole_rupees(out['accumulated_paise'])}. Nothing was posted to the ledger.",
+                f"{rupee_whole_text(out['cost_paise'])}, accumulated depreciation "
+                f"{rupee_whole_text(out['accumulated_paise'])}. Nothing was posted to the ledger.",
                 "info")
         except Exception as exc:  # noqa: BLE001 — never fail a completed import on its audit
             from core.observability import capture_posting_failure
@@ -988,7 +988,7 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str) -> dict:
     asset.update(changed)
 
     timeline_service.log(asset["client_id"], "accounting", "Depreciation Posted",
-        f"{asset.get('asset_code')}: ₹{whole_rupees(monthly)} depreciation for {period}", "info")
+        f"{asset.get('asset_code')}: {rupee_whole_text(monthly)} depreciation for {period}", "info")
 
     return {
         "asset_id":           asset["id"],
@@ -1424,8 +1424,8 @@ def dispose_asset(
     )
 
     timeline_service.log(asset["client_id"], "accounting", "Asset Disposed",
-        f"{asset.get('asset_code')}: {disposal_type} — ₹{whole_rupees(sale_proceeds)} proceeds, "
-        f"{'gain' if gain_loss >= 0 else 'loss'} ₹{whole_rupees(abs(gain_loss))}", "warning")
+        f"{asset.get('asset_code')}: {disposal_type} — {rupee_whole_text(sale_proceeds)} proceeds, "
+        f"{'gain' if gain_loss >= 0 else 'loss'} {rupee_whole_text(abs(gain_loss))}", "warning")
 
     return api_response(True, {
         "asset_id":        asset_id,
@@ -1945,7 +1945,7 @@ def reverse_depreciation(
     db.table("fixed_assets").update(update).eq("id", asset_id).eq("firm_id", firm_id).execute()
 
     timeline_service.log(client_id, "accounting", "Depreciation Reversed",
-        f"{asset.get('asset_code')}: ₹{whole_rupees(charge)} for {period} reversed", "warning")
+        f"{asset.get('asset_code')}: {rupee_whole_text(charge)} for {period} reversed", "warning")
 
     return api_response(True, {
         "asset_id": asset_id,

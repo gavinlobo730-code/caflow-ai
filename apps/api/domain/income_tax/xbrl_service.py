@@ -16,7 +16,7 @@ from uuid import uuid4
 from xml.etree.ElementTree import Element, SubElement, tostring
 import xml.etree.ElementTree as ET
 
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 from domain.income_tax.xbrl_taxonomy import (
     DEFAULT_TAXONOMY, TAXONOMY_BY_VERSION, taxonomy_for, taxonomy_notice,
 )
@@ -196,9 +196,9 @@ def _check_balance_equation(data: dict, mappings=None) -> list[str]:
 
     if total_assets != total_equity_liab:
         return [
-            f"Balance Sheet does not balance: Total Assets (₹{rupees_paise(total_assets)}) != "
-            f"Total Equity & Liabilities (₹{rupees_paise(total_equity_liab)}), "
-            f"difference ₹{rupees_paise(total_assets - total_equity_liab)}"
+            f"Balance Sheet does not balance: Total Assets ({rupee_text(total_assets)}) != "
+            f"Total Equity & Liabilities ({rupee_text(total_equity_liab)}), "
+            f"difference {rupee_text(total_assets - total_equity_liab)}"
         ]
     return []
 

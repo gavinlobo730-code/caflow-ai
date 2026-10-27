@@ -38,6 +38,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from typing import Optional
+from domain.money_sentence import rupee_text
 
 # ── Identity formats ───────────────────────────────────────────────────────────
 # TAN: 4 alpha (3-letter city code + first letter of the deductor's name),
@@ -439,8 +440,7 @@ def _rupees(paise: int) -> str:
     Sign is carried by the caller's wording, so this formats the magnitude —
     integer division on a negative paise value would floor, not truncate.
     """
-    magnitude = abs(int(paise))
-    return f"₹{magnitude // 100}.{magnitude % 100:02d}"
+    return rupee_text(abs(int(paise)))
 
 
 def _rollup(entries: list[Form26ASEntry],

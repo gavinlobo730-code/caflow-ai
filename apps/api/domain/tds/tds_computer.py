@@ -26,6 +26,7 @@ from domain.tds.section_rates import (
     LATEST_VERIFIED_TDS_FY, THRESHOLD_CLASS_ORDINARY, TDSSectionRule,
     class_thresholds_in_force, quarter_dates, tds_rates_for,
 )
+from domain.money_sentence import rupee_text
 
 
 # ── Value Objects ──────────────────────────────────────────────────────────────
@@ -576,7 +577,7 @@ class TDSComputer:
         gap = payload.total_tds_deducted_paise - payload.total_tds_deposited_paise
         if gap > 0:
             errors.append(
-                f"TDS deducted (₹{gap//100}) exceeds deposited — Challan 281 deposit required"
+                f"TDS deducted ({rupee_text(gap)}) exceeds deposited — Challan 281 deposit required"
             )
         return errors
 
@@ -666,7 +667,7 @@ class TDSComputer:
         gap = payload.total_tds_deducted_paise - payload.total_tds_deposited_paise
         if gap > 0:
             errors.append(
-                f"TDS deducted (₹{gap//100}) exceeds deposited — Challan 281 deposit required"
+                f"TDS deducted ({rupee_text(gap)}) exceeds deposited — Challan 281 deposit required"
             )
         return errors
 
@@ -702,7 +703,7 @@ class TDSComputer:
         gap = payload.total_tds_deducted_paise - payload.total_tds_deposited_paise
         if gap > 0:
             errors.append(
-                f"Salary TDS deducted (₹{gap//100}) exceeds deposited — Challan 281 required"
+                f"Salary TDS deducted ({rupee_text(gap)}) exceeds deposited — Challan 281 required"
             )
         return errors
 
@@ -720,8 +721,8 @@ class TDSComputer:
             threshold = rule.single_threshold_paise if rule else 0
             if threshold > 0 and d.payment_amount_paise < threshold:
                 warnings.append(
-                    f"Section {d.section}: payment ₹{d.payment_amount_paise//100} "
-                    f"below threshold ₹{threshold//100} — TDS may not be applicable"
+                    f"Section {d.section}: payment {rupee_text(d.payment_amount_paise)} "
+                    f"below threshold {rupee_text(threshold)} — TDS may not be applicable"
                 )
         return warnings
 

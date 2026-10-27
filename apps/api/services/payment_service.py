@@ -32,7 +32,7 @@ from services.receipt_service import create_receipt_core
 from services.payments import get_provider, PaymentLinkRequest, CAPTURED, FAILED, REFUNDED
 from services.payments import availability as online_payment
 from services.payments.factory import configured_provider
-from domain.money_text import whole_rupees
+from domain.money_sentence import rupee_whole_text
 from domain.payments import availability as payable
 from core.observability import capture_soft_failure
 
@@ -356,7 +356,7 @@ def _apply_event(db, payment: dict, event, firm_id: str) -> None:
             client_id=payment["client_id"], firm_id=firm_id, financial_year=ist_fy_label(receipt.get("receipt_date")),
             category="accounting", event_type="online_payment_captured",
             title="Online payment received",
-            description=f"Online payment of ₹{whole_rupees(int(payment['amount_paise']))} captured.",
+            description=f"Online payment of {rupee_whole_text(int(payment['amount_paise']))} captured.",
             severity="success", entity_type="customer_payment", entity_id=str(payment["id"]),
             amount_paise=int(payment["amount_paise"]), actor_type="system")
         return

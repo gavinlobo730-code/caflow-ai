@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from domain.accounting import journal_source, ledger_anomalies
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 from domain.reporting.sources import SupabaseLedgerSource
 from core.db_paging import fetch_all, fetch_all_in
 from core.db_provider import privileged_for
@@ -98,7 +98,7 @@ def check_trial_balance(db, firm_id: str, client_id: str, entries) -> list[dict]
     if total_debit != total_credit:
         return [_finding(
             "trial_balance", "critical",
-            f"Trial balance is out by ₹{rupees_paise(abs(total_debit - total_credit))} — "
+            f"Trial balance is out by {rupee_text(abs(total_debit - total_credit))} — "
             "total debits do not equal total credits across posted entries.",
             amount_paise=total_debit - total_credit,
             total_debit_paise=total_debit, total_credit_paise=total_credit,
@@ -151,7 +151,7 @@ def check_missing_cogs_journals(db, firm_id: str, client_id: str, entries) -> li
         if f"{invoice_no}-COGS" not in posted_refs:
             findings.append(_finding(
                 "missing_cogs_journal", "critical",
-                f"Sales invoice {invoice_no} sold inventory (₹{rupees_paise(cogs_paise)} cost) "
+                f"Sales invoice {invoice_no} sold inventory ({rupee_text(cogs_paise)} cost) "
                 "but no matching COGS journal was ever posted to the GL.",
                 amount_paise=cogs_paise, invoice_id=invoice_id, invoice_no=invoice_no,
             ))
@@ -206,7 +206,7 @@ def check_missing_inventory_receipt_journals(db, firm_id: str, client_id: str, e
         if not any(ref in posted_refs for ref in candidates):
             findings.append(_finding(
                 "missing_inventory_receipt_journal", "critical",
-                f"Purchase bill {bill_no} received inventory (₹{rupees_paise(receipt_paise)}) "
+                f"Purchase bill {bill_no} received inventory ({rupee_text(receipt_paise)}) "
                 "but no matching Inventory capitalisation journal was ever posted to the GL.",
                 amount_paise=receipt_paise, bill_id=bill_id, bill_no=bill_no,
             ))
@@ -269,10 +269,18 @@ def check_inventory_cache_drift(db, firm_id: str, client_id: str, entries) -> li
 
     if not drifted:
         return []
+    # The drift is signed (cached minus ledger): a positive total is a cache that is too high, a negative one too low, and "net
+    # overstatement of minus ₹x" says the opposite of what it means.
+    if total_drift_paise > 0:
+        net = f"net overstatement of {rupee_text(total_drift_paise)}"
+    elif total_drift_paise < 0:
+        net = f"net understatement of {rupee_text(-total_drift_paise)}"
+    else:
+        net = "no net difference, because the items drift in opposite directions"
     return [_finding(
         "inventory_cache_drift", "critical",
         f"{len(drifted)} inventory item(s) have a cached stock value that doesn't match "
-        f"their own ledger history — net overstatement of ₹{rupees_paise(total_drift_paise)}.",
+        f"their own ledger history — {net}.",
         amount_paise=total_drift_paise, items=drifted[:100], item_count=len(drifted),
     )]
 
@@ -311,8 +319,8 @@ def check_ar_subledger_vs_gl(db, firm_id: str, client_id: str, entries) -> list[
     if diff != 0:
         return [_finding(
             "ar_subledger_vs_gl", "warning" if abs(diff) < 100_000 else "critical",
-            f"GL Trade Receivables (₹{rupees_paise(gl_paise)}) does not match the sum of outstanding "
-            f"sales invoices (₹{rupees_paise(subledger_paise)}) — off by ₹{rupees_paise(diff)}.",
+            f"GL Trade Receivables ({rupee_text(gl_paise)}) does not match the sum of outstanding "
+            f"sales invoices ({rupee_text(subledger_paise)}) — off by {rupee_text(diff)}.",
             amount_paise=diff, gl_paise=gl_paise, subledger_paise=subledger_paise,
         )]
     return []
@@ -340,8 +348,8 @@ def check_ap_subledger_vs_gl(db, firm_id: str, client_id: str, entries) -> list[
     if diff != 0:
         return [_finding(
             "ap_subledger_vs_gl", "warning" if abs(diff) < 100_000 else "critical",
-            f"GL Trade Payables (₹{rupees_paise(gl_paise)}) does not match the sum of outstanding "
-            f"purchase bills (₹{rupees_paise(subledger_paise)}) — off by ₹{rupees_paise(diff)}.",
+            f"GL Trade Payables ({rupee_text(gl_paise)}) does not match the sum of outstanding "
+            f"purchase bills ({rupee_text(subledger_paise)}) — off by {rupee_text(diff)}.",
             amount_paise=diff, gl_paise=gl_paise, subledger_paise=subledger_paise,
         )]
     return []
@@ -553,7 +561,7 @@ def check_orphan_money_journals(db, firm_id: str, client_id: str, entries) -> li
     return [_finding(
         "orphan_money_journals", "critical",
         f"{len(orphans)} posted payment/receipt journal entr"
-        f"{'y' if len(orphans) == 1 else 'ies'} totalling ₹{rupees_paise(total)} have no "
+        f"{'y' if len(orphans) == 1 else 'ies'} totalling {rupee_text(total)} have no "
         "payment or receipt document behind them, and no reversal. The money "
         "moved in the ledger and nothing records why — most likely a document "
         "insert that failed after its journal had posted, whose compensating "

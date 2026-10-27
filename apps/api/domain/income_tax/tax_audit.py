@@ -191,9 +191,9 @@ def _within_cash_ceiling(cash_paise: int, total_paise: int, percent: int) -> boo
 
 
 def _rupees(paise: int) -> str:
-    """Indian-grouped rupees, for a sentence a CA reads."""
-    from domain.reporting.amount_words import indian_rupees
-    return f"₹{indian_rupees(paise)}"
+    """Whole rupees, Indian-grouped, for a sentence a CA reads."""
+    from domain.money_sentence import rupee_whole_text
+    return rupee_whole_text(paise)
 
 
 def answer(

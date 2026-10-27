@@ -56,7 +56,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 _logger = logging.getLogger("caflow.fixed_asset_movement")
 
@@ -276,7 +276,7 @@ def has_nothing_to_depreciate(db, firm_id: str, client_id: str, fy_start: str, f
 
 def rupees(paise: int) -> str:
     """Paise as a plain rupee figure for a sentence a CA reads."""
-    return f"Rs {rupees_paise(paise)}"
+    return rupee_text(paise, "Rs ")
 
 
 def movement_gaps(movement: Movement, posted_charge_paise: Optional[int]) -> list[str]:

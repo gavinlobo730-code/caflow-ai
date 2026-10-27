@@ -1030,7 +1030,7 @@ def create_challan(
             client_id=body.client_id, firm_id=firm_id,
             financial_year=body.financial_year, category="tds",
             event_type="tds_challan_deposited",
-            title=f"TDS Challan deposited: ₹{body.amount_paise // 100} under {body.section}",
+            title=f"TDS Challan deposited: {rupee_text(body.amount_paise)} under {body.section}",
         )
         return api_response(True, {**record, "compliance_obligations": _close_the_deposit_obligations(current_user, record)})
     except HTTPException:
