@@ -213,7 +213,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A COMPLIANCE OBLIGATION IS OVERDUE BY ITS DATE, BECAUSE NOTHING WRITES THE WORD, AND ONE FUNCTION SAYS SO FOR EVERY READER
 - AN MCA FILING'S DATE IS JUDGED BEFORE IT IS STORED, BY THE RULE THE ITR ACKNOWLEDGEMENT USES
 
-### `docs/design-record/fixed-assets-and-inventory.md` (16 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
+### `docs/design-record/fixed-assets-and-inventory.md` (17 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
 
 - AN ASSET UNDER CONSTRUCTION IS NOT IN THE REGISTER, AND THAT IS THE FIX
 - AN ASSET CATEGORY IS BOOKED TO A LEDGER BY ONE TABLE, AND THE CHART A FIRM GETS MUST HOLD EVERY LEDGER IT NAMES
@@ -231,6 +231,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A STOCK MOVEMENT WHOSE LEDGER ROW IS REFUSED PUTS THE ITEM'S CACHE BACK TO THE LEDGER'S LAST ROW, AND AN OPENING-STOCK BATCH WHOSE LEDGER INSERT IS REFUSED REVERSES THE JOURNAL IT POSTED
 - THE ITEM'S CACHED STOCK FIGURES ARE WRITTEN BY THREE FUNCTIONS ON THE PRIVILEGED CLIENT, EACH NAMING THE FIRM AND THE CLIENT, AND THE OPENING BATCH CACHES ONLY THE ROWS THE CALLER'S CLIENT READS AS THIS CLIENT'S.
 - A STRAIGHT-LINE ASSET KEEPS THE OPENING ACCUMULATED DEPRECIATION OF ITS YEAR, SO THE NOTE SHOWS THE YEAR'S CHARGE AND NOT THE LAST MONTH'S
+- A STRAIGHT-LINE ASSET'S YEAR IS CAPPED AT WHAT WAS LEFT WHEN THE YEAR OPENED, SO ITS LAST YEAR POSTS WHAT IS LEFT
 
 ### `docs/design-record/frontend.md` (5 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
