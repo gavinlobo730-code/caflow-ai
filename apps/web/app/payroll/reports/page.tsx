@@ -41,6 +41,7 @@ import { toLocalISO, dueDateUrgency, fromLocalISO } from "@/lib/dateMath";
 import { formatDate, formatMonthYear } from "@/lib/dates/format";
 import { api, type ApiResp, type PayrollDepositDueDates_FY, type PayrollTdsProjection } from "@/lib/api";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { formatPaise } from "@/lib/money/format";
 import { PageHeader } from "@/components/ui/page-header";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -58,15 +59,6 @@ type StatutoryDueRow = {
   status: DueStatus;
   category: DueCategory;
 };
-
-// ── Paise helpers ─────────────────────────────────────────────────────────
-
-/** Format integer paise as ₹X,XX,XXX.XX using Indian numbering */
-function fmtPaise(paise: number): string {
-  const rupees = Math.floor(paise / 100);
-  const p = paise % 100;
-  return `₹${rupees.toLocaleString("en-IN")}.${p.toString().padStart(2, "0")}`;
-}
 
 
 // ── Financial Year helpers ────────────────────────────────────────────────
@@ -400,22 +392,22 @@ function PayslipSummaryTab({
                   <tr key={s.id} className="border-b hover:bg-ps-bg">
                     <td className="py-3 px-4 font-medium">{s.employee?.name ?? "—"}</td>
                     <td className="py-3 px-4 font-mono text-xs text-ps-label">{s.employee?.pan || "—"}</td>
-                    <td className="py-3 px-4 text-right font-mono">{fmtPaise(s.gross_paise)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-red-600">{fmtPaise(s.pf_employee_paise)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-red-600">{fmtPaise(s.esi_employee_paise)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-red-600">{fmtPaise(s.pt_paise)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-red-600">{fmtPaise(s.tds_paise)}</td>
-                    <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{fmtPaise(s.net_paise)}</td>
+                    <td className="py-3 px-4 text-right font-mono">{formatPaise(s.gross_paise)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-red-600">{formatPaise(s.pf_employee_paise)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-red-600">{formatPaise(s.esi_employee_paise)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-red-600">{formatPaise(s.pt_paise)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-red-600">{formatPaise(s.tds_paise)}</td>
+                    <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{formatPaise(s.net_paise)}</td>
                   </tr>
                 ))}
                 <tr className="bg-ps-bg font-semibold border-t-2 border-ps-border">
                   <td className="py-3 px-4" colSpan={2}>Total ({runSlips.length} employees)</td>
-                  <td className="py-3 px-4 text-right font-mono">{fmtPaise(totals.gross)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-state-problem">{fmtPaise(totals.pf)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-state-problem">{fmtPaise(totals.esi)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-state-problem">{fmtPaise(totals.pt)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-state-problem">{fmtPaise(totals.tds)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-green-800">{fmtPaise(totals.net)}</td>
+                  <td className="py-3 px-4 text-right font-mono">{formatPaise(totals.gross)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-state-problem">{formatPaise(totals.pf)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-state-problem">{formatPaise(totals.esi)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-state-problem">{formatPaise(totals.pt)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-state-problem">{formatPaise(totals.tds)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-green-800">{formatPaise(totals.net)}</td>
                 </tr>
               </tbody>
             </table>
@@ -601,22 +593,22 @@ function YtdTab({ employees, runs, fyOptions }: {
                     className={`border-b hover:bg-ps-bg ${r.gross === 0 ? "text-ps-disabled" : ""}`}
                   >
                     <td className="py-3 px-4 font-medium text-ps-body">{formatMonthYear(r.month)}</td>
-                    <td className="py-3 px-4 text-right font-mono">{r.gross > 0 ? fmtPaise(r.gross) : "—"}</td>
-                    <td className="py-3 px-4 text-right font-mono text-red-600">{r.pf > 0 ? fmtPaise(r.pf) : "—"}</td>
-                    <td className="py-3 px-4 text-right font-mono text-red-600">{r.esi > 0 ? fmtPaise(r.esi) : "—"}</td>
-                    <td className="py-3 px-4 text-right font-mono text-red-600">{r.pt > 0 ? fmtPaise(r.pt) : "—"}</td>
-                    <td className="py-3 px-4 text-right font-mono text-red-600">{r.tds > 0 ? fmtPaise(r.tds) : "—"}</td>
-                    <td className="py-3 px-4 text-right font-mono text-state-problem">{r.totalDeductions > 0 ? fmtPaise(r.totalDeductions) : "—"}</td>
-                    <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{r.net > 0 ? fmtPaise(r.net) : "—"}</td>
-                    <td className="py-3 px-4 text-right font-mono bg-blue-50/50 font-semibold text-ps-ink">{fmtPaise(r.ytdGross)}</td>
+                    <td className="py-3 px-4 text-right font-mono">{r.gross > 0 ? formatPaise(r.gross) : "—"}</td>
+                    <td className="py-3 px-4 text-right font-mono text-red-600">{r.pf > 0 ? formatPaise(r.pf) : "—"}</td>
+                    <td className="py-3 px-4 text-right font-mono text-red-600">{r.esi > 0 ? formatPaise(r.esi) : "—"}</td>
+                    <td className="py-3 px-4 text-right font-mono text-red-600">{r.pt > 0 ? formatPaise(r.pt) : "—"}</td>
+                    <td className="py-3 px-4 text-right font-mono text-red-600">{r.tds > 0 ? formatPaise(r.tds) : "—"}</td>
+                    <td className="py-3 px-4 text-right font-mono text-state-problem">{r.totalDeductions > 0 ? formatPaise(r.totalDeductions) : "—"}</td>
+                    <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{r.net > 0 ? formatPaise(r.net) : "—"}</td>
+                    <td className="py-3 px-4 text-right font-mono bg-blue-50/50 font-semibold text-ps-ink">{formatPaise(r.ytdGross)}</td>
                     {/* The YTD trio share `bg-blue-50/50` as a COLUMN-GROUP shade, so the
                         surface is not this cell's to move — the ink is. Tax withheld
                         under §192 is not a problem: §198 deems it income received and
                         §199 gives the employee credit for it. It takes the same neutral
                         as the YTD Gross cell beside it. (The rest of this file's
                         deduction colouring is T4-b's judgement pass, not this rule.) */}
-                    <td className="py-3 px-4 text-right font-mono bg-blue-50/50 text-ps-body">{fmtPaise(r.ytdTds)}</td>
-                    <td className="py-3 px-4 text-right font-mono bg-blue-50/50 text-green-700 font-semibold">{fmtPaise(r.ytdNet)}</td>
+                    <td className="py-3 px-4 text-right font-mono bg-blue-50/50 text-ps-body">{formatPaise(r.ytdTds)}</td>
+                    <td className="py-3 px-4 text-right font-mono bg-blue-50/50 text-green-700 font-semibold">{formatPaise(r.ytdNet)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -790,22 +782,22 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
                   <tr key={r.slip.id} className="border-b hover:bg-ps-bg">
                     <td className="py-3 px-4 font-medium">{r.slip.employee?.name ?? "—"}</td>
                     <td className="py-3 px-4 font-mono text-xs text-ps-label">{r.slip.employee?.pan || "—"}</td>
-                    <td className="py-3 px-4 text-right font-mono">{fmtPaise(r.gross)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-blue-600">+ {fmtPaise(r.employerPf)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-blue-600">+ {fmtPaise(r.employerEsi)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-blue-600">+ {fmtPaise(r.edli)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-blue-600">+ {fmtPaise(r.admin)}</td>
-                    <td className="py-3 px-4 text-right font-mono font-bold text-blue-600 bg-blue-500/[0.08]/50">{fmtPaise(r.totalCtc)}</td>
+                    <td className="py-3 px-4 text-right font-mono">{formatPaise(r.gross)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-blue-600">+ {formatPaise(r.employerPf)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-blue-600">+ {formatPaise(r.employerEsi)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-blue-600">+ {formatPaise(r.edli)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-blue-600">+ {formatPaise(r.admin)}</td>
+                    <td className="py-3 px-4 text-right font-mono font-bold text-blue-600 bg-blue-500/[0.08]/50">{formatPaise(r.totalCtc)}</td>
                   </tr>
                 ))}
                 <tr className="bg-ps-bg font-semibold border-t-2 border-ps-border">
                   <td className="py-3 px-4" colSpan={2}>Total ({ctcRows.length} employees)</td>
-                  <td className="py-3 px-4 text-right font-mono">{fmtPaise(totals.gross)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-blue-700">+ {fmtPaise(totals.employerPf)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-blue-700">+ {fmtPaise(totals.employerEsi)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-blue-700">+ {fmtPaise(totals.edli)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-blue-700">+ {fmtPaise(totals.admin)}</td>
-                  <td className="py-3 px-4 text-right font-mono text-indigo-800 bg-blue-500/[0.08]">{fmtPaise(totals.totalCtc)}</td>
+                  <td className="py-3 px-4 text-right font-mono">{formatPaise(totals.gross)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-blue-700">+ {formatPaise(totals.employerPf)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-blue-700">+ {formatPaise(totals.employerEsi)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-blue-700">+ {formatPaise(totals.edli)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-blue-700">+ {formatPaise(totals.admin)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-indigo-800 bg-blue-500/[0.08]">{formatPaise(totals.totalCtc)}</td>
                 </tr>
               </tbody>
             </table>
@@ -938,20 +930,20 @@ function TdsProjectionTab({ employees, fyOptions }: {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             <div className="p-3 bg-ps-bg rounded-lg border border-ps-border">
               <p className="text-xs text-ps-label">Est. Annual Gross</p>
-              <p className="text-base font-bold text-ps-ink mt-0.5">{fmtPaise(estimatedAnnualGross)}</p>
+              <p className="text-base font-bold text-ps-ink mt-0.5">{formatPaise(estimatedAnnualGross)}</p>
             </div>
             <div className="p-3 bg-state-problem-surface rounded-lg border border-red-100">
               <p className="text-xs text-ps-label">Est. Annual Tax</p>
-              <p className="text-base font-bold text-state-problem mt-0.5">{fmtPaise(estimatedAnnualTds)}</p>
+              <p className="text-base font-bold text-state-problem mt-0.5">{formatPaise(estimatedAnnualTds)}</p>
             </div>
             <div className="p-3 bg-green-50 rounded-lg border border-green-100">
               <p className="text-xs text-ps-label">TDS Deducted So Far</p>
-              <p className="text-base font-bold text-green-700 mt-0.5">{fmtPaise(cumulativeActual)}</p>
+              <p className="text-base font-bold text-green-700 mt-0.5">{formatPaise(cumulativeActual)}</p>
             </div>
             <div className="p-3 bg-orange-50 rounded-lg border border-orange-100">
               <p className="text-xs text-ps-label">Suggested Monthly TDS</p>
               <p className="text-base font-bold text-orange-700 mt-0.5">
-                {remainingMonths > 0 ? fmtPaise(suggestedMonthlyTds) : "—"}
+                {remainingMonths > 0 ? formatPaise(suggestedMonthlyTds) : "—"}
               </p>
               {remainingMonths > 0 && <p className="text-3xs text-orange-600">over {remainingMonths} remaining months</p>}
             </div>
@@ -992,14 +984,14 @@ function TdsProjectionTab({ employees, fyOptions }: {
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono">{r.hasActual ? fmtPaise(r.actualGross) : "—"}</td>
-                      <td className="py-3 px-4 text-right font-mono text-red-600">{r.hasActual ? fmtPaise(r.actualTds) : "—"}</td>
-                      <td className="py-3 px-4 text-right font-mono text-ps-label">{fmtPaise(r.projectedTds)}</td>
+                      <td className="py-3 px-4 text-right font-mono">{r.hasActual ? formatPaise(r.actualGross) : "—"}</td>
+                      <td className="py-3 px-4 text-right font-mono text-red-600">{r.hasActual ? formatPaise(r.actualTds) : "—"}</td>
+                      <td className="py-3 px-4 text-right font-mono text-ps-label">{formatPaise(r.projectedTds)}</td>
                       <td className={`py-3 px-4 text-right font-mono ${varianceColor}`}>
-                        {r.hasActual ? `${variance >= 0 ? "+" : ""}${fmtPaise(Math.abs(variance))}` : "—"}
+                        {r.hasActual ? `${variance >= 0 ? "+" : ""}${formatPaise(Math.abs(variance))}` : "—"}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono font-semibold text-ps-body">{fmtPaise(r.cumulativeActual)}</td>
-                      <td className="py-3 px-4 text-right font-mono text-orange-600">{fmtPaise(r.cumulativeRemaining)}</td>
+                      <td className="py-3 px-4 text-right font-mono font-semibold text-ps-body">{formatPaise(r.cumulativeActual)}</td>
+                      <td className="py-3 px-4 text-right font-mono text-orange-600">{formatPaise(r.cumulativeRemaining)}</td>
                     </tr>
                   );
                 })}
@@ -1154,27 +1146,27 @@ function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 border-b">
               <div className="p-3 bg-ps-bg rounded-lg border border-ps-border">
                 <p className="text-xs text-ps-label">Total Gross Paid</p>
-                <p className="text-lg font-bold text-ps-ink mt-0.5">{fmtPaise(grandTotal.gross)}</p>
+                <p className="text-lg font-bold text-ps-ink mt-0.5">{formatPaise(grandTotal.gross)}</p>
               </div>
               <div className="p-3 bg-state-problem-surface rounded-lg border border-red-100">
                 <p className="text-xs text-ps-label">Total TDS Deducted</p>
-                <p className="text-lg font-bold text-state-problem mt-0.5">{fmtPaise(grandTotal.tds)}</p>
+                <p className="text-lg font-bold text-state-problem mt-0.5">{formatPaise(grandTotal.tds)}</p>
               </div>
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                 <p className="text-xs text-ps-label">Total PF (Employee)</p>
-                <p className="text-lg font-bold text-blue-700 mt-0.5">{fmtPaise(grandTotal.pf)}</p>
+                <p className="text-lg font-bold text-blue-700 mt-0.5">{formatPaise(grandTotal.pf)}</p>
               </div>
               <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
                 <p className="text-xs text-ps-label">Total ESI (Employee)</p>
-                <p className="text-lg font-bold text-purple-700 mt-0.5">{fmtPaise(grandTotal.esi)}</p>
+                <p className="text-lg font-bold text-purple-700 mt-0.5">{formatPaise(grandTotal.esi)}</p>
               </div>
               <div className="p-3 bg-teal-50 rounded-lg border border-teal-100">
                 <p className="text-xs text-ps-label">Total Professional Tax</p>
-                <p className="text-lg font-bold text-teal-700 mt-0.5">{fmtPaise(grandTotal.pt)}</p>
+                <p className="text-lg font-bold text-teal-700 mt-0.5">{formatPaise(grandTotal.pt)}</p>
               </div>
               <div className="p-3 bg-green-50 rounded-lg border border-green-100">
                 <p className="text-xs text-ps-label">Total Net Paid</p>
-                <p className="text-lg font-bold text-green-700 mt-0.5">{fmtPaise(grandTotal.net)}</p>
+                <p className="text-lg font-bold text-green-700 mt-0.5">{formatPaise(grandTotal.net)}</p>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -1196,22 +1188,22 @@ function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
                     <tr key={r.emp?.id ?? idx} className="border-b hover:bg-ps-bg">
                       <td className="py-3 px-4 font-medium">{r.emp?.name ?? "—"}</td>
                       <td className="py-3 px-4 font-mono text-xs text-ps-label">{r.emp?.pan || "—"}</td>
-                      <td className="py-3 px-4 text-right font-mono">{fmtPaise(r.gross)}</td>
-                      <td className="py-3 px-4 text-right font-mono text-blue-600">{fmtPaise(r.pf)}</td>
-                      <td className="py-3 px-4 text-right font-mono text-purple-600">{fmtPaise(r.esi)}</td>
-                      <td className="py-3 px-4 text-right font-mono text-teal-600">{fmtPaise(r.pt)}</td>
-                      <td className="py-3 px-4 text-right font-mono text-red-600">{fmtPaise(r.tds)}</td>
-                      <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{fmtPaise(r.net)}</td>
+                      <td className="py-3 px-4 text-right font-mono">{formatPaise(r.gross)}</td>
+                      <td className="py-3 px-4 text-right font-mono text-blue-600">{formatPaise(r.pf)}</td>
+                      <td className="py-3 px-4 text-right font-mono text-purple-600">{formatPaise(r.esi)}</td>
+                      <td className="py-3 px-4 text-right font-mono text-teal-600">{formatPaise(r.pt)}</td>
+                      <td className="py-3 px-4 text-right font-mono text-red-600">{formatPaise(r.tds)}</td>
+                      <td className="py-3 px-4 text-right font-mono font-semibold text-green-700">{formatPaise(r.net)}</td>
                     </tr>
                   ))}
                   <tr className="bg-ps-bg font-semibold border-t-2 border-ps-border">
                     <td className="py-3 px-4" colSpan={2}>Grand Total ({empRows.length} employees)</td>
-                    <td className="py-3 px-4 text-right font-mono">{fmtPaise(grandTotal.gross)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-blue-700">{fmtPaise(grandTotal.pf)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-purple-700">{fmtPaise(grandTotal.esi)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-teal-700">{fmtPaise(grandTotal.pt)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-state-problem">{fmtPaise(grandTotal.tds)}</td>
-                    <td className="py-3 px-4 text-right font-mono text-green-800">{fmtPaise(grandTotal.net)}</td>
+                    <td className="py-3 px-4 text-right font-mono">{formatPaise(grandTotal.gross)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-blue-700">{formatPaise(grandTotal.pf)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-purple-700">{formatPaise(grandTotal.esi)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-teal-700">{formatPaise(grandTotal.pt)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-state-problem">{formatPaise(grandTotal.tds)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-green-800">{formatPaise(grandTotal.net)}</td>
                   </tr>
                 </tbody>
               </table>

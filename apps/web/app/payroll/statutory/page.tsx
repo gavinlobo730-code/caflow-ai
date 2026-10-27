@@ -38,6 +38,7 @@ import { api, type StatutoryRow, type StatutorySummary } from "@/lib/api";
 import { GapList } from "@/components/ui/callout";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
+import { formatPaise } from "@/lib/money/format";
 
 type Client = { id: string; client_name: string };
 
@@ -45,13 +46,6 @@ const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
-
-function fmtRs(paise: number): string {
-  const rupees = Math.floor(paise / 100);
-  const p = paise % 100;
-  const formatted = new Intl.NumberFormat("en-IN").format(rupees);
-  return p > 0 ? `₹${formatted}.${String(p).padStart(2, "0")}` : `₹${formatted}`;
-}
 
 
 export default function StatutoryPage() {
@@ -239,14 +233,14 @@ export default function StatutoryPage() {
                 <div className="bg-white rounded-lg p-4 border border-blue-500/20">
                   <p className="text-xs font-semibold uppercase text-blue-600 mb-3">PF Challan (EPF Act 1952)</p>
                   <table className="w-full text-sm"><tbody>
-                    <tr><td className="py-1 text-ps-label">Employee PF</td><td className="text-right font-mono">{fmtRs(totalEmpPF)}</td></tr>
-                    <tr><td className="py-1 text-ps-label">Employer EPF</td><td className="text-right font-mono">{fmtRs(t.pf_employer_epf_paise ?? 0)}</td></tr>
-                    <tr><td className="py-1 text-ps-label">Employer EPS</td><td className="text-right font-mono">{fmtRs(t.pf_employer_eps_paise ?? 0)}</td></tr>
-                    <tr><td className="py-1 text-ps-label">EDLI</td><td className="text-right font-mono">{fmtRs(t.edli_paise ?? 0)}</td></tr>
-                    <tr><td className="py-1 text-ps-label">Admin charges</td><td className="text-right font-mono">{fmtRs(t.pf_admin_paise ?? 0)}</td></tr>
+                    <tr><td className="py-1 text-ps-label">Employee PF</td><td className="text-right font-mono">{formatPaise(totalEmpPF)}</td></tr>
+                    <tr><td className="py-1 text-ps-label">Employer EPF</td><td className="text-right font-mono">{formatPaise(t.pf_employer_epf_paise ?? 0)}</td></tr>
+                    <tr><td className="py-1 text-ps-label">Employer EPS</td><td className="text-right font-mono">{formatPaise(t.pf_employer_eps_paise ?? 0)}</td></tr>
+                    <tr><td className="py-1 text-ps-label">EDLI</td><td className="text-right font-mono">{formatPaise(t.edli_paise ?? 0)}</td></tr>
+                    <tr><td className="py-1 text-ps-label">Admin charges</td><td className="text-right font-mono">{formatPaise(t.pf_admin_paise ?? 0)}</td></tr>
                     <tr className="border-t font-bold"><td className="py-2">Total PF Payable</td>
                       <td className="text-right font-mono text-blue-600">
-                        {fmtRs(totalEmpPF + totalEmprPF + (t.edli_paise ?? 0) + (t.pf_admin_paise ?? 0))}
+                        {formatPaise(totalEmpPF + totalEmprPF + (t.edli_paise ?? 0) + (t.pf_admin_paise ?? 0))}
                       </td></tr>
                   </tbody></table>
                   <p className="text-xs text-ps-hint mt-2">
@@ -258,10 +252,10 @@ export default function StatutoryPage() {
                 <div className="bg-white rounded-lg p-4 border border-green-100">
                   <p className="text-xs font-semibold uppercase text-green-600 mb-3">ESIC Challan (ESI Act 1948)</p>
                   <table className="w-full text-sm"><tbody>
-                    <tr><td className="py-1 text-ps-label">Employee ESIC (0.75%)</td><td className="text-right font-mono">{fmtRs(totalEmpESIC)}</td></tr>
-                    <tr><td className="py-1 text-ps-label">Employer ESIC (3.25%)</td><td className="text-right font-mono">{fmtRs(totalEmprESIC)}</td></tr>
+                    <tr><td className="py-1 text-ps-label">Employee ESIC (0.75%)</td><td className="text-right font-mono">{formatPaise(totalEmpESIC)}</td></tr>
+                    <tr><td className="py-1 text-ps-label">Employer ESIC (3.25%)</td><td className="text-right font-mono">{formatPaise(totalEmprESIC)}</td></tr>
                     <tr className="border-t font-bold"><td className="py-2">Total ESIC Payable</td>
-                      <td className="text-right font-mono text-green-700">{fmtRs(totalEmpESIC + totalEmprESIC)}</td></tr>
+                      <td className="text-right font-mono text-green-700">{formatPaise(totalEmpESIC + totalEmprESIC)}</td></tr>
                   </tbody></table>
                   <p className="text-xs text-ps-hint mt-2">
                     Someone whose wages cross ₹21,000 part way through a contribution
@@ -274,7 +268,7 @@ export default function StatutoryPage() {
                     <tr><td className="py-1 text-ps-label">Eligible employees</td>
                       <td className="text-right font-mono">{rows.filter((r) => r.gratuity_eligible).length}</td></tr>
                     <tr className="border-t font-bold"><td className="py-2">Total gratuity liability</td>
-                      <td className="text-right font-mono text-orange-700">{fmtRs(totalGratuity)}</td></tr>
+                      <td className="text-right font-mono text-orange-700">{formatPaise(totalGratuity)}</td></tr>
                   </tbody></table>
                   <p className="text-xs text-ps-hint mt-2">
                     Fifteen days&apos; wages per completed year on basic + DA, divided by 26.
@@ -339,23 +333,23 @@ export default function StatutoryPage() {
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-xs">{fmtRs(r.basic_paise + r.da_paise)}</td>
-                        <td className="py-3 px-3 text-right font-mono text-xs">{fmtRs(r.gross_paise)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-xs">{formatPaise(r.basic_paise + r.da_paise)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-xs">{formatPaise(r.gross_paise)}</td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-red-600">
-                          {r.pf_employee_paise > 0 ? fmtRs(r.pf_employee_paise) : <span className="text-ps-disabled">—</span>}
+                          {r.pf_employee_paise > 0 ? formatPaise(r.pf_employee_paise) : <span className="text-ps-disabled">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-orange-600">
-                          {r.pf_employer_paise > 0 ? fmtRs(r.pf_employer_paise) : <span className="text-ps-disabled">—</span>}
+                          {r.pf_employer_paise > 0 ? formatPaise(r.pf_employer_paise) : <span className="text-ps-disabled">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-red-600">
-                          {r.esi_employee_paise > 0 ? fmtRs(r.esi_employee_paise) : <span className="text-ps-disabled">—</span>}
+                          {r.esi_employee_paise > 0 ? formatPaise(r.esi_employee_paise) : <span className="text-ps-disabled">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-orange-600">
-                          {r.esi_employer_paise > 0 ? fmtRs(r.esi_employer_paise) : <span className="text-ps-disabled">—</span>}
+                          {r.esi_employer_paise > 0 ? formatPaise(r.esi_employer_paise) : <span className="text-ps-disabled">—</span>}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs text-purple-700">
                           {r.gratuity_payable_paise > 0
-                            ? fmtRs(r.gratuity_payable_paise)
+                            ? formatPaise(r.gratuity_payable_paise)
                             : <span className="text-ps-disabled" title={r.gratuity_reasons[0] ?? ""}>—</span>}
                         </td>
                         <td className="py-3 px-3 text-center text-xs">
@@ -373,14 +367,14 @@ export default function StatutoryPage() {
                       <tr className="border-t-2 font-bold bg-ps-bg">
                         <td className="py-3 px-4 text-ps-body">Total</td>
                         <td className="py-3 px-3 text-right font-mono text-xs">
-                          {fmtRs(rows.reduce((s, r) => s + r.basic_paise + r.da_paise, 0))}</td>
+                          {formatPaise(rows.reduce((s, r) => s + r.basic_paise + r.da_paise, 0))}</td>
                         <td className="py-3 px-3 text-right font-mono text-xs">
-                          {fmtRs(rows.reduce((s, r) => s + r.gross_paise, 0))}</td>
-                        <td className="py-3 px-3 text-right font-mono text-xs text-red-600">{fmtRs(totalEmpPF)}</td>
-                        <td className="py-3 px-3 text-right font-mono text-xs text-orange-600">{fmtRs(totalEmprPF)}</td>
-                        <td className="py-3 px-3 text-right font-mono text-xs text-red-600">{fmtRs(totalEmpESIC)}</td>
-                        <td className="py-3 px-3 text-right font-mono text-xs text-orange-600">{fmtRs(totalEmprESIC)}</td>
-                        <td className="py-3 px-3 text-right font-mono text-xs text-purple-700">{fmtRs(totalGratuity)}</td>
+                          {formatPaise(rows.reduce((s, r) => s + r.gross_paise, 0))}</td>
+                        <td className="py-3 px-3 text-right font-mono text-xs text-red-600">{formatPaise(totalEmpPF)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-xs text-orange-600">{formatPaise(totalEmprPF)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-xs text-red-600">{formatPaise(totalEmpESIC)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-xs text-orange-600">{formatPaise(totalEmprESIC)}</td>
+                        <td className="py-3 px-3 text-right font-mono text-xs text-purple-700">{formatPaise(totalGratuity)}</td>
                         <td></td>
                       </tr>
                     </tfoot>

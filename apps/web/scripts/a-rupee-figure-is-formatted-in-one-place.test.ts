@@ -133,6 +133,9 @@ test("the multi-currency formatter is NOT this rule", () => {
 //   matcher now requires the right-hand side to BE a function, and the budget
 //   is the real figure. Lowering it on a corrected measurement is the ratchet
 //   working; raising it is not.
+//   27 Oct 2026: 113 -> 108 (the measured count was 113 under a budget of 115). The payroll reports page, the statutory payroll
+//   page, the pipeline and the executive dashboard each had a private formatter that floored the paise or wrote a negative as
+//   "₹-2"; they now import from `lib/money/format` (POST-A-347), and the budget follows the count down.
 // Non-global for the same reason; `moneyFormatters` makes its own copy.
 // A FUNCTION, not any value whose name ends in `Paise`.
 //
@@ -146,7 +149,7 @@ test("the multi-currency formatter is NOT this rule", () => {
 const MONEY_FN =
   /(?:export\s+)?(?:function\s+(\w*(?:fmt|format|rupee|money|inr|paise|currency)\w*)\s*\(|const\s+(\w*(?:fmt|format|rupee|money|inr|paise|currency)\w*)\s*=\s*(?:async\s+)?(?:function\b|\(|[A-Za-z_$][\w$]*\s*=>))/i;
 const NOT_MONEY = /date|day|time|period|label|name|qty|quantity|percent|pct|bps|size|dur/i;
-const FORMATTER_BUDGET = 115;
+const FORMATTER_BUDGET = 108;
 
 function moneyFormatters(): string[] {
   const found: string[] = [];
