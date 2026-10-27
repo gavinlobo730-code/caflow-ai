@@ -120,7 +120,7 @@ def test_a_percentage_that_does_not_survive_the_round_trip_is_reported():
     assert hra.intended_paise == 850_000
     assert hra.paise == 849_895
     [note] = drift_note("Bikram", a)
-    assert "850000" in note and "849895" in note and "105 paise less" in note
+    assert "₹8,500.00" in note and "₹8,498.95" in note and "₹1.05 less a month" in note and "paise" not in note
 
 
 def test_a_drifting_head_still_leaves_the_gross_exact():

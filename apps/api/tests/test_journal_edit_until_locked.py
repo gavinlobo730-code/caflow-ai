@@ -365,7 +365,7 @@ def test_an_unbalanced_edit_is_refused_before_it_reaches_the_ledger():
         svc.update(db, FIRM, ENTRY, {"lines": _lines(debit=5000000, credit=4000000)})
 
     assert "Unbalanced" in exc.value.detail
-    assert "5000000" in exc.value.detail and "4000000" in exc.value.detail
+    assert "₹50,000.00" in exc.value.detail and "₹40,000.00" in exc.value.detail and "paise" not in exc.value.detail
     assert not db.rpcs or not [r for r in db.rpcs if r[0] == "edit_posted_journal"]
 
 

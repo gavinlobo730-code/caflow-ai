@@ -43,7 +43,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import (
-    HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    HRFlowable, SimpleDocTemplate, Spacer, TableStyle,
 )
 
 from core.ist_clock import ist_today
@@ -52,6 +52,7 @@ from domain.reporting.export_document import (
     BALANCE, EMPHASIS, INT, MONEY, SECTION, ReportDocument, cell_text,
 )
 from services import pdf_style
+from services.pdf_style import Paragraph, Table
 from services.pdf_page_furniture import numbered
 
 _FONT_SIZE = 8

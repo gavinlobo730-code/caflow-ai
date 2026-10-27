@@ -816,7 +816,7 @@ def test_a_note_against_a_cess_invoice_is_named_rather_than_silently_short():
              {"sales_invoice_id": "INV-2", "credit_note_no": "CN-2"}]
     gaps = grs._note_cess_not_carried(notes, parents)
     assert len(gaps) == 1
-    assert "CN-1" in gaps[0] and "12000 paise" in gaps[0]
+    assert "CN-1" in gaps[0] and "₹120.00 of compensation cess" in gaps[0] and "paise" not in gaps[0]
     assert "CN-2" not in " ".join(gaps)
 
 

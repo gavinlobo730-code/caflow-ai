@@ -8,6 +8,7 @@ from datetime import date as _date
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 from enum import Enum
+from domain.money_sentence import rupee_text
 
 
 def _posting_date(v: Optional[str]) -> Optional[str]:
@@ -369,7 +370,7 @@ class JournalEntryIn(BaseModel):
         total_credit = sum(ln.credit_paise for ln in self.lines)
         if total_debit != total_credit:
             raise ValueError(
-                f"Journal entry is unbalanced: debits={total_debit} paise, credits={total_credit} paise."
+                f"Journal entry is unbalanced: debits={rupee_text(total_debit)}, credits={rupee_text(total_credit)}."
             )
         return self
 

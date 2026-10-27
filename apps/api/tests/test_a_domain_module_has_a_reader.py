@@ -73,18 +73,6 @@ NO_READER_YET: dict[str, str] = {
         "is deleted. Until then `tests/test_a_schedule_says_which_period_it_covers_and_when_it_is_due.py` and "
         "`tests/test_a_scheduled_report_is_one_the_server_can_make_and_goes_only_to_people_it_may.py` hold it, "
         "including that it reads no clock and does no I/O.",
-    "domain/reporting/pdf_text.py":
-        "NOT A DEFECT, and the reason is worth keeping so nobody 'fixes' it. "
-        "Its docstring says the rupee-glyph substitution 'is one function "
-        "now'; in fact the five PDF services never CONSTRUCT a ₹ string at "
-        "all — they write 'Rs.' into their format strings directly — and "
-        "test_no_pdf_renders_the_rupee_sign.py is what enforces that. The one "
-        "place the text is NOT under a service's control is CA-authored HTML "
-        "in an engagement letter, and engagement_pdf_service._pdf_safe "
-        "handles that with 'Rs. ' (a space, for running prose) where this "
-        "module uses 'Rs.' (no space, for a table cell). They are two "
-        "answers to two questions; unifying them would change a document a "
-        "client receives.",
     "domain/demo/fixture.py":
         "NOT A STATUTORY RULE, which is what this guard is for. It is the "
         "fictional practice a demo is seeded from — eight clients and a year "

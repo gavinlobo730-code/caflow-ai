@@ -173,6 +173,6 @@ def test_the_end_to_end_arithmetic_holds_for_the_sample_trial_balance():
 
 
 def test_assert_balanced_rejects_a_hand_built_unbalanced_entry():
-    with pytest.raises(TrialBalanceError, match="out of balance by 100"):
+    with pytest.raises(TrialBalanceError, match=r"out of balance by ₹1\.00 \(debits ₹2\.00, credits ₹1\.00\)"):
         assert_balanced([{"account_id": "a", "debit_paise": 200, "credit_paise": 0},
                          {"account_id": "b", "debit_paise": 0, "credit_paise": 100}])

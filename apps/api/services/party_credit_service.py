@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 from services.document_header_writer import update_header
 
 _logger = logging.getLogger("caflow.party_credit")
@@ -172,8 +172,8 @@ class PartyCreditService:
             if balance < amount_paise:
                 raise HTTPException(
                     status_code=409,
-                    detail=(f"This {party_type}'s credit of {amount_paise} paise has already been "
-                            f"used against an invoice (only {balance} paise left). Undo that "
+                    detail=(f"This {party_type}'s credit of {rupee_text(amount_paise)} has already been "
+                            f"used against an invoice (only {rupee_text(balance)} left). Undo that "
                             "application first."))
             upd = (wdb.table("party_credit_balances")
                    .update({"balance_paise": balance - amount_paise, "updated_at": _now()})
@@ -263,8 +263,8 @@ class PartyCreditService:
             current_balance = int(raw_balance or 0)
             if amount_paise > current_balance:
                 raise HTTPException(status_code=422,
-                                    detail=f"Requested application (₹{rupees_paise(amount_paise)}) exceeds "
-                                           f"the available credit (₹{rupees_paise(current_balance)}).")
+                                    detail=f"Requested application ({rupee_text(amount_paise)}) exceeds "
+                                           f"the available credit ({rupee_text(current_balance)}).")
             new_balance = current_balance - amount_paise
             upd = (wdb.table("party_credit_balances")
                    .update({"balance_paise": new_balance, "updated_at": _now()})
@@ -299,7 +299,7 @@ class PartyCreditService:
                 if amount_paise > outstanding:
                     raise HTTPException(status_code=422,
                                         detail=f"{applied_to_type} {applied_to_id}: application would exceed its outstanding "
-                                               f"(₹{rupees_paise(outstanding)}).")
+                                               f"({rupee_text(outstanding)}).")
                 raw_paid = doc.get("paid_paise")
                 new_paid = int(raw_paid or 0) + amount_paise
                 new_status = "paid" if amount_paise >= outstanding else "partially_paid"
@@ -349,7 +349,7 @@ class PartyCreditService:
         capture_posting_failure(
             RuntimeError(
                 f"party credit compensation exhausted {max_retries} CAS retries — "
-                f"{amount_paise} paise not restored, manual reconciliation required"
+                f"{rupee_text(amount_paise)} not restored, manual reconciliation required"
             ),
             operation="party_credit_service._restore_balance",
             firm_id=firm_id, client_id=client_id, party_type=party_type,

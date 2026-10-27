@@ -42,6 +42,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 from core.db_paging import fetch_all
+from domain.money_sentence import rupee_text
 
 _logger = logging.getLogger("caflow.itc_register")
 
@@ -75,6 +76,25 @@ def _amounts(src: dict) -> dict:
 
 def _total(a: dict) -> int:
     return sum(a[h] for h in _HEADS)
+
+
+def _gave_back(net_credit_paise: int) -> str:
+    """What a journal did to GST Input, said for a REVERSAL (which needs it to have given credit back). The net is signed: a journal
+    that debits GST Input (takes credit) nets negative, and "gives back minus ₹90.00" would read as nonsense."""
+    if net_credit_paise > 0:
+        return f"gives back {rupee_text(net_credit_paise)} of input tax"
+    if net_credit_paise < 0:
+        return f"gives back no input tax (it takes {rupee_text(-net_credit_paise)} of credit)"
+    return "gives back no input tax"
+
+
+def _took_back(net_debit_paise: int) -> str:
+    """The same for a RECLAIM, which needs the journal to have taken credit back (a debit to GST Input)."""
+    if net_debit_paise > 0:
+        return f"takes back {rupee_text(net_debit_paise)} of input tax"
+    if net_debit_paise < 0:
+        return f"takes back no input tax (it gives back {rupee_text(-net_debit_paise)} of credit)"
+    return "takes back no input tax"
 
 
 def _gst_input_credit_on(db, firm_id: str, client_id: str, journal_entry_id: str) -> int:
@@ -166,8 +186,8 @@ def record_reversal(db, firm_id: str, client_id: str, *, journal_entry_id: str,
     moved = _gst_input_credit_on(db, firm_id, client_id, journal_entry_id)
     if _total(amt) > moved:
         raise ITCRegisterError(
-            f"The journal gives back {moved} paise of input tax; this row "
-            f"declares {_total(amt)}. A return figure the ledger does not "
+            f"The journal {_gave_back(moved)}; this row "
+            f"declares {rupee_text(_total(amt))}. A return figure the ledger does not "
             "support is the one thing this register exists to prevent.")
 
     # The dict is written INLINE, with every key a string literal, so
@@ -246,7 +266,7 @@ def record_reclaim(db, firm_id: str, client_id: str, *, journal_entry_id: str,
     if over:
         raise ITCRegisterError(
             "This reclaims more than was reversed: "
-            + ", ".join(f"{h} {amt[h]} > {left[h]}" for h in over)
+            + ", ".join(f"{h.removesuffix('_paise').upper()} {rupee_text(amt[h])} > {rupee_text(left[h])}" for h in over)
             + ". Credit can only come back once.")
 
     # A reclaim TAKES credit again, so its journal debits GST Input — the
@@ -254,8 +274,8 @@ def record_reclaim(db, firm_id: str, client_id: str, *, journal_entry_id: str,
     moved = -_gst_input_credit_on(db, firm_id, client_id, journal_entry_id)
     if _total(amt) > moved:
         raise ITCRegisterError(
-            f"The journal takes back {moved} paise of input tax; this row "
-            f"declares {_total(amt)}.")
+            f"The journal {_took_back(moved)}; this row "
+            f"declares {rupee_text(_total(amt))}.")
 
     return (db.table("itc_reversal_register").insert({
         "firm_id": firm_id,

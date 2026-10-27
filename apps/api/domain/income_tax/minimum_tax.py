@@ -52,6 +52,7 @@ from domain.income_tax.entity_rates import (
 from domain.income_tax.statutory_rates import (
     apply_surcharge_with_marginal_relief, cess_paise, rates_for,
 )
+from domain.money_sentence import rupee_text
 
 LAKH_PAISE = 1_00_000_00
 
@@ -280,7 +281,7 @@ def compute_amt(
         return _not_applicable(
             "115JC",
             f"§115JEE exempts an assessee of this kind whose adjusted total "
-            f"income is within {rates.amt_threshold_paise} paise. Note that a "
+            f"income is within {rupee_text(rates.amt_threshold_paise)}. Note that a "
             f"firm or LLP gets no such cushion.",
             base,
         )
@@ -353,9 +354,9 @@ def apply_minimum_tax(
     if not minimum.applies or minimum.minimum_tax_paise <= regular:
         if minimum.applies:
             reasons.append(
-                f"Ordinary tax of {regular} paise is at least the §"
-                f"{minimum.section} minimum of {minimum.minimum_tax_paise} "
-                f"paise, so the ordinary liability stands and no credit arises."
+                f"Ordinary tax of {rupee_text(regular)} is at least the §"
+                f"{minimum.section} minimum of {rupee_text(minimum.minimum_tax_paise)}, "
+                f"so the ordinary liability stands and no credit arises."
             )
         return MinimumTaxOutcome(
             tax_payable_paise=regular, minimum_tax_applied=False,
@@ -367,9 +368,9 @@ def apply_minimum_tax(
     expiry = (assessment_year_end + rates.credit_carry_forward_years
               if assessment_year_end is not None else None)
     reasons.append(
-        f"§{minimum.section} minimum of {minimum.minimum_tax_paise} paise "
-        f"exceeds ordinary tax of {regular} paise, so the minimum is payable "
-        f"and the excess of {credit} paise becomes a credit under "
+        f"§{minimum.section} minimum of {rupee_text(minimum.minimum_tax_paise)} "
+        f"exceeds ordinary tax of {rupee_text(regular)}, so the minimum is payable "
+        f"and the excess of {rupee_text(credit)} becomes a credit under "
         f"§{'115JAA' if minimum.section == '115JB' else '115JD'}, available "
         f"for {rates.credit_carry_forward_years} assessment years."
     )

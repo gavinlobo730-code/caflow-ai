@@ -64,7 +64,7 @@ from typing import Any, Optional
 from domain.income_tax import itr_depreciation_rows as rows
 from domain.income_tax import itr_schema
 from domain.income_tax.itr_json import _to_rupees
-from domain.money_text import rupees_paise
+from domain.money_sentence import rupee_text
 
 #: See the module docstring. A named constant so a test can hold the claim: nothing in this module says the table is confirmed.
 MAPPING_CONFIRMED = False
@@ -400,9 +400,16 @@ def _form_minimum(form: str, path: str) -> Optional[int]:
     return minimum if isinstance(minimum, int) and not isinstance(minimum, bool) else None
 
 
+def _register_against_ledger(difference_paise: int) -> str:
+    """How far the register's figure is from the ledger's, in words a CA reads: "₹15,599.96 higher", never a count of paise."""
+    if difference_paise == 0:
+        return "the same"
+    return f"{rupee_text(abs(difference_paise))} {'higher' if difference_paise > 0 else 'lower'}"
+
+
 def _below_minimum(label: str, amount: int, minimum: int) -> str:
-    return (f"{label} comes to minus ₹{rupees_paise(-amount)} in the books, a balance on the other side of the account, and the "
-            f"Department's schema accepts nothing below ₹{rupees_paise(minimum * 100)} in this box. It is shown as the books hold it "
+    return (f"{label} comes to minus {rupee_text(-amount)} in the books, a balance on the other side of the account, and the "
+            f"Department's schema accepts nothing below {rupee_text(minimum * 100)} in this box. It is shown as the books hold it "
             f"and is not a figure to key as it stands: where a balance of this kind belongs on the form is the CA's decision.")
 
 
@@ -703,10 +710,10 @@ def _row_entry(form: str, row: rows.Row, block: dict) -> dict:
         # §50: where the moneys payable exceed the block, the block is nil and the excess is a short-term capital gain. The realization
         # columns carry what was set against the block; whether the form wants the whole consideration in them is a reading of the form's
         # instructions this environment cannot reach, so the CA is told the two figures and not given a choice made for them.
-        notes.append(f"The moneys payable for assets sold (₹{rupees_paise(deleted)}) exceed what the block could take. The realization "
-                     f"boxes carry the ₹{rupees_paise(set_against)} set against the block, and the ₹{rupees_paise(deleted - set_against)} "
+        notes.append(f"The moneys payable for assets sold ({rupee_text(deleted)}) exceed what the block could take. The realization "
+                     f"boxes carry the {rupee_text(set_against)} set against the block, and the {rupee_text(deleted - set_against)} "
                      f"excess is in the capital gain under section 50. Whether the form's consideration column takes the whole "
-                     f"₹{rupees_paise(deleted)} is the CA's to confirm from the form's instructions.")
+                     f"{rupee_text(deleted)} is the CA's to confirm from the form's instructions.")
     return {
         "row_key": row.key, "schedule": row.schedule, "caption": row.caption, "rate_percent": row.rate_percent,
         "block_key": block["block_key"], "allowance_paise": _block_allowance(block), "boxes": boxes,
@@ -766,7 +773,7 @@ def depreciation(form: str, section_32: dict) -> dict:
             "short_term_capital_gain_paise": int(section_32.get("short_term_capital_gain_paise") or 0),
         },
         "gaps": (gaps + list(section_32.get("statutory_gaps") or [])
-                 + [f"{r['caption']}: {f['label']} (₹{rupees_paise(f['amount_paise'])}) — {f['reason']}"
+                 + [f"{r['caption']}: {f['label']} ({rupee_text(f['amount_paise'])}) — {f['reason']}"
                     for r in placed_rows for f in r["figures_without_a_box"]]
                  + [f"{r['caption']}: {n}" for r in placed_rows for n in r["notes"]]),
         "unclassified_assets": list(section_32.get("unclassified_assets") or []),
@@ -796,9 +803,9 @@ def usable_register(register: Optional[dict], statements: dict) -> tuple[Optiona
         return None, ("The register could not say how much of each asset's depreciation belongs to this year, so the gross block and "
                       "the depreciation to date are left for the CA to key."), row
     if net != ledger_net:
-        return None, (f"The fixed-asset register's net block differs from the ledger's tangible and intangible assets by "
-                      f"{net - ledger_net} paise, so the gross block and the depreciation to date are left for the CA to key. "
-                      f"Reconcile the register to the ledger first."), row
+        return None, (f"The fixed-asset register's net block differs from the ledger's tangible and intangible assets: the register's "
+                      f"is {_register_against_ledger(net - ledger_net)}, so the gross block and the depreciation to date are left for "
+                      f"the CA to key. Reconcile the register to the ledger first."), row
     return {"gross": int(register["gross"]), "accumulated": int(register["accumulated"])}, None, row
 
 
@@ -870,8 +877,9 @@ def register_by_line(register: Optional[dict], statements: dict) -> tuple[Option
                          "difference_paise": per_line[line]["net"] - ledger})
     if any(r["difference_paise"] for r in rows_out):
         tangible, intangible = rows_out[0]["difference_paise"], rows_out[1]["difference_paise"]
-        opening = (f"The fixed-asset register's net block differs from the ledger's by {tangible} paise for tangible assets and "
-                   f"{intangible} paise for intangible assets, so " + left + ". ")
+        opening = (f"The fixed-asset register's net block differs from the ledger's: the register's tangible assets are "
+                   f"{_register_against_ledger(tangible)} and its intangible assets {_register_against_ledger(intangible)}, so "
+                   + left + ". ")
         if tangible > 0 and tangible == -intangible:
             # The ledger's tangible line is lower than the register's by exactly what the intangible line is higher: the shape of an
             # amortised intangible asset whose amortisation sits in the shared account on the tangible line.

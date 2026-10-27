@@ -71,6 +71,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
+from domain.money_sentence import rupee_text
 
 VERIFIED = False
 
@@ -206,19 +207,19 @@ def _row_problems(row: SupplyRow, period: str, pos_required: bool) -> list[str]:
 
     if row.cgst_paise != row.sgst_paise:
         problems.append(
-            f"CGST ({row.cgst_paise} paise) does not equal SGST "
-            f"({row.sgst_paise} paise) — s.52's domestic collection always "
+            f"CGST ({rupee_text(row.cgst_paise)}) does not equal SGST "
+            f"({rupee_text(row.sgst_paise)}) — s.52's domestic collection always "
             f"splits evenly between the two.")
 
     if net <= 0:
         if tax != 0:
             problems.append(
-                f"Net amount liable is {net} paise (nil or negative) but "
-                f"{tax} paise of tax is recorded as collected.")
+                f"Net amount liable is {rupee_text(net)} (nil or negative) but "
+                f"{rupee_text(tax)} of tax is recorded as collected.")
     else:
         if tax == 0:
             problems.append(
-                f"Net amount liable is {net} paise but no tax is recorded "
+                f"Net amount liable is {rupee_text(net)} but no tax is recorded "
                 f"as collected.")
         else:
             low_bps, high_bps = _rate_band_bps(period)
@@ -226,9 +227,9 @@ def _row_problems(row: SupplyRow, period: str, pos_required: bool) -> list[str]:
             high = -(-(net * high_bps) // 10000)  # ceil
             if not (low <= tax <= high):
                 problems.append(
-                    f"Tax collected ({tax} paise) is outside the expected "
-                    f"range for this period ({low}-{high} paise on a net "
-                    f"amount of {net} paise). The rate this checks against "
+                    f"Tax collected ({rupee_text(tax)}) is outside the expected "
+                    f"range for this period ({rupee_text(low)} to {rupee_text(high)} on a net "
+                    f"amount of {rupee_text(net)}). The rate this checks against "
                     f"is [S]-graded — see domain/gst/gstr8.py.")
 
     if pos_required and not row.place_of_supply:

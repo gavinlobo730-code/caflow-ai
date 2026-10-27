@@ -47,6 +47,7 @@ from __future__ import annotations
 from typing import Any, Callable, Iterable, Mapping, NamedTuple, Optional
 
 from domain.money_text import rupees_paise
+from domain.money_sentence import amount_text
 
 SALES_INVOICE = "sales_invoice"
 PURCHASE_BILL = "purchase_bill"
@@ -182,16 +183,17 @@ def _foreign_problems(header: Mapping[str, Any], rows: list[Mapping[str, Any]]) 
     are what the raw line sums (the lines are in that currency) must say. The rupee columns are compared separately, with the line
     sums converted at the document's rate."""
     found: list[Problem] = []
+    ccy = str(header.get("txn_currency") or "").strip().upper() or "the document's currency"
     line_taxable = _sum(rows, "taxable_amount_paise")
     line_gst = _sum(rows, "cgst_paise") + _sum(rows, "sgst_paise") + _sum(rows, "igst_paise")
     if _paise(header, "txn_taxable") != line_taxable:
         found.append(Problem(LINES,
-                             f"its taxable value in the document's currency is {_paise(header, 'txn_taxable')} but its lines come "
-                             f"to {line_taxable} (smallest units)"))
+                             f"its taxable value in the document's currency is {amount_text(_paise(header, 'txn_taxable'), ccy)} "
+                             f"but its lines come to {amount_text(line_taxable, ccy)}"))
     if _paise(header, "txn_total_gst") != line_gst:
         found.append(Problem(LINES,
-                             f"its GST in the document's currency is {_paise(header, 'txn_total_gst')} but its lines come to "
-                             f"{line_gst} (smallest units)"))
+                             f"its GST in the document's currency is {amount_text(_paise(header, 'txn_total_gst'), ccy)} but its "
+                             f"lines come to {amount_text(line_gst, ccy)}"))
     return found
 
 

@@ -18,10 +18,11 @@ from typing import Optional
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, TableStyle, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from services import pdf_style
+from services.pdf_style import Paragraph, Table
 
 from domain.payroll.run_status import PAYROLL_RELEASED
 from domain.reporting.amount_words import amount_in_words

@@ -73,6 +73,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Optional
+from domain.money_sentence import rupee_text
 
 #: Not confirmed against the Act's text from this environment.
 VERIFIED = False
@@ -318,7 +319,7 @@ def position(
         if split and split != total:
             out.gaps.append(SPLIT_DOES_NOT_FOOT.format(
                 serial=str(c.get("challan_serial_no") or "?"),
-                split=split, total=total))
+                split=rupee_text(split), total=rupee_text(total)))
 
     mis_headed = [c for c in challans
                   if str(c.get("minor_head") or MINOR_HEAD_SELF_ASSESSMENT)

@@ -34,6 +34,7 @@ from domain.reporting.year_end_lines import (        # noqa: E402
 # see their own module docstring for why keyset and why a short page is the
 # only honest end-of-data signal.
 from core.db_paging import fetch_all, fetch_all_in          # noqa: E402
+from domain.money_sentence import rupee_text
 
 
 def _mock_statements(client_id: str, firm_id: str, fy_start: str, fy_end: str) -> Dict[str, Any]:
@@ -273,8 +274,8 @@ def _rounding_block(total_income_paise: int, requested_unit, cur, prior) -> dict
     else:
         raise ValueError(
             f"Schedule III General Instructions para 4 does not permit rounding "
-            f"to {requested_unit!r} at a total income of {total_income_paise} "
-            f"paise; permitted units are {permitted}."
+            f"to {requested_unit!r} at a total income of {rupee_text(total_income_paise)}; "
+            f"permitted units are {permitted}."
         )
 
     def _period(st: dict) -> dict:
@@ -811,9 +812,9 @@ def generate_financial_statements(
         # side.
         raise ValueError(
             f"Balance Sheet does not balance: "
-            f"Assets={total_assets} paise, "
-            f"Equity+Liabilities={total_eq_lib} paise, "
-            f"Difference={diff} paise. "
+            f"Assets={rupee_text(total_assets)}, "
+            f"Equity+Liabilities={rupee_text(total_eq_lib)}, "
+            f"Difference={rupee_text(diff)}. "
             f"Every posted entry balances, and prior years' surplus is carried "
             f"into equity, so this is a mapping fault rather than missing "
             f"history: check account_group_mappings for firm {firm_id} for a "

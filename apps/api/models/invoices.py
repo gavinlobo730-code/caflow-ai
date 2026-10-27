@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from domain.gst import uqc as _uqc
 from typing import Optional, Any
 from decimal import Decimal
+from domain.money_sentence import amount_text
 
 # CGST Rule 46(b): a tax invoice's serial number must be a consecutive serial
 # number not exceeding sixteen characters, using only alphabets, numerals, and
@@ -799,8 +800,9 @@ class ReceiptIn(BaseModel):
         settlement = self.amount_paise + self.tds_paise
         if total > settlement:
             raise ValueError(
-                f"Total allocated ({total} paise) exceeds settlement value "
-                f"({settlement} paise = amount {self.amount_paise} + TDS {self.tds_paise})."
+                f"Total allocated ({amount_text(total, self.currency)}) exceeds settlement value "
+                f"({amount_text(settlement, self.currency)} = amount {amount_text(self.amount_paise, self.currency)} "
+                f"+ TDS {amount_text(self.tds_paise, self.currency)})."
             )
         return self
 

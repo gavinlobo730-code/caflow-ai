@@ -17,11 +17,12 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from domain.udin import normalise_udin
 from reportlab.lib.units import mm
 from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle,
-    Paragraph, Spacer, PageBreak, HRFlowable,
+    SimpleDocTemplate, TableStyle,
+    Spacer, PageBreak, HRFlowable,
 )
 
 from services import pdf_style
+from services.pdf_style import Paragraph, Table
 
 # ── Indian number formatting ──────────────────────────────────────────────────
 from core.ist_clock import ist_day_iso, ist_now

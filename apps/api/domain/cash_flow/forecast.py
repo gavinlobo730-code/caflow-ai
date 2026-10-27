@@ -60,6 +60,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from domain.money_sentence import rupee_text
 
 #: Every expected flow names which side it is on and what kind of document it
 #: came from, so the screen can total by kind without a second vocabulary.
@@ -259,7 +260,7 @@ def build(
     if beyond_in or beyond_out:
         named.append(
             f"Documents falling due after {windows[-1][1]} are not in these "
-            f"months: ₹ in {beyond_in} paise expected, ₹ out {beyond_out} paise."
+            f"months: {rupee_text(beyond_in)} expected in, {rupee_text(beyond_out)} expected out."
         )
 
     return Forecast(

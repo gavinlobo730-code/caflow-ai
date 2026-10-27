@@ -440,8 +440,8 @@ def test_aoc4_falls_back_to_the_year_end_engine_paise_exact(monkeypatch):
 def test_unbalanced_books_surface_as_a_note_not_a_refusal(monkeypatch):
     def _raise(*_a, **_k):
         raise ValueError(
-            "Balance Sheet does not balance: Assets=100 paise, "
-            "Equity+Liabilities=99 paise, Difference=1 paise.")
+            "Balance Sheet does not balance: Assets=₹1.00, "
+            "Equity+Liabilities=₹0.99, Difference=₹0.01.")
     monkeypatch.setattr(ye, "generate_financial_statements", _raise)
     out = mca.build(_db(), FIRM, CLIENT, {"filing_id": "F1"})
     summary = out["stages"][0]

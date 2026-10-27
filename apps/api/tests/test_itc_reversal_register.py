@@ -308,7 +308,7 @@ def test_a_reclaim_is_checked_head_by_head(db):
     _journal(db, "je-1", credit_gst_input=9000)
     rev = _rev(db, "je-1", amounts={"cgst_paise": 9000})
     _journal(db, "je-2", debit_gst_input=9000)
-    with pytest.raises(ITCRegisterError, match="sgst"):
+    with pytest.raises(ITCRegisterError, match="SGST"):
         reg.record_reclaim(db, FIRM, CLIENT, journal_entry_id="je-2",
                            period=JULY, reverses_id=rev["id"],
                            amounts={"sgst_paise": 9000})

@@ -48,6 +48,7 @@ from typing import Literal, Optional
 from domain.income_tax.statutory_rates import (
     SurchargeBracket, apply_surcharge_with_marginal_relief, cess_paise, rates_for,
 )
+from domain.money_sentence import rupee_text
 
 CRORE_PAISE = 1_00_00_000_00
 
@@ -204,15 +205,15 @@ def compute_entity_tax(
                 rate = rates.company_concessional_rate_percent
                 workings.append(
                     f"Turnover for {ref_fy} of "
-                    f"{turnover_in_reference_year_paise} paise is within the "
-                    f"{rates.company_turnover_limit_paise} paise limit, so "
+                    f"{rupee_text(turnover_in_reference_year_paise)} is within the "
+                    f"{rupee_text(rates.company_turnover_limit_paise)} limit, so "
                     f"{rate}% applies."
                 )
             else:
                 rate = rates.company_rate_percent
                 workings.append(
                     f"Turnover for {ref_fy} exceeds the "
-                    f"{rates.company_turnover_limit_paise} paise limit, so "
+                    f"{rupee_text(rates.company_turnover_limit_paise)} limit, so "
                     f"{rate}% applies."
                 )
     else:

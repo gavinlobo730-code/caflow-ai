@@ -57,6 +57,7 @@ from fastapi import HTTPException
 from core.db_paging import fetch_all
 from domain import recurrence as _rec
 from core import db_provider
+from domain.money_sentence import rupee_text
 
 _logger = logging.getLogger("caflow.recurring_journal")
 
@@ -146,7 +147,7 @@ def _validate(data: dict, lines: list[dict]) -> None:
         # are looking at it.
         raise HTTPException(
             status_code=422,
-            detail=f"Template does not balance: debit {debit} paise != credit {credit} paise.")
+            detail=f"Template does not balance: debit {rupee_text(debit)} != credit {rupee_text(credit)}.")
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────

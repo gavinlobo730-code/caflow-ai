@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from domain.gst import supply_classification
+from domain.money_sentence import rupee_text
 
 # CGST Act Section 25 — GSTIN format: 2-digit state + PAN + entity + Z + checksum
 GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
@@ -219,7 +220,7 @@ class GSTValidator:
                 0 <= gap <= odd_paisa_allowance(inv.line_count)):
             errors.append(ValidationError(
                 "cgst_sgst",
-                f"CGST ({inv.cgst_paise}p) must equal SGST ({inv.sgst_paise}p) for intra-state supply",
+                f"CGST ({rupee_text(inv.cgst_paise)}) must equal SGST ({rupee_text(inv.sgst_paise)}) for intra-state supply",
                 ref,
             ))
 
@@ -227,7 +228,7 @@ class GSTValidator:
         if not inv.is_interstate and inv.igst_paise > 0:
             errors.append(ValidationError(
                 "igst",
-                f"IGST must be 0 for intra-state supply. Found {inv.igst_paise}p",
+                f"IGST must be 0 for intra-state supply. Found {rupee_text(inv.igst_paise)}",
                 ref,
             ))
         if inv.is_interstate and (inv.cgst_paise > 0 or inv.sgst_paise > 0):
@@ -244,8 +245,8 @@ class GSTValidator:
             if abs(actual_total_tax - expected_total_tax) > TAX_TOLERANCE_PAISE:
                 errors.append(ValidationError(
                     "tax_amount",
-                    f"Tax amount mismatch: computed ₹{expected_total_tax/100:.2f} at {inv.gst_rate}%, "
-                    f"stored ₹{actual_total_tax/100:.2f}. Difference: {abs(actual_total_tax - expected_total_tax)}p",
+                    f"Tax amount mismatch: computed {rupee_text(expected_total_tax)} at {inv.gst_rate}%, "
+                    f"stored {rupee_text(actual_total_tax)}. Difference: {rupee_text(abs(actual_total_tax - expected_total_tax))}",
                     ref,
                     severity="warning",
                 ))
@@ -333,7 +334,7 @@ class GSTValidator:
         if total_itc > total_output * 3:
             errors.append(ValidationError(
                 "itc",
-                f"ITC (₹{total_itc/100:.2f}) is more than 3x the output tax (₹{total_output/100:.2f}). "
+                f"ITC ({rupee_text(total_itc)}) is more than 3x the output tax ({rupee_text(total_output)}). "
                 "Verify purchase invoice data.",
                 severity="warning",
             ))

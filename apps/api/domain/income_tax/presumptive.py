@@ -29,6 +29,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from typing import Optional
+from domain.money_sentence import rupee_text
 
 CRORE_PAISE = 1_00_00_000_00
 LAKH_PAISE = 1_00_000_00
@@ -239,26 +240,26 @@ def compute_44ad(
         workings.append(
             f"Cash receipts are within {lim.enhanced_limit_cash_receipts_percent}% "
             f"of turnover, so the proviso to §44AD(1) raises the ceiling to "
-            f"{ceiling} paise."
+            f"{rupee_text(ceiling)}."
         )
 
     eligible = turnover_paise <= ceiling
     if not eligible:
         reasons.append(
-            f"Turnover of {turnover_paise} paise exceeds the §44AD ceiling of "
-            f"{ceiling} paise, so the scheme is not available."
+            f"Turnover of {rupee_text(turnover_paise)} exceeds the §44AD ceiling of "
+            f"{rupee_text(ceiling)}, so the scheme is not available."
         )
 
     presumptive = (digital * lim.s44ad_digital_rate_percent // 100
                    + other * lim.s44ad_rate_percent // 100)
     if digital:
         workings.append(
-            f"{digital} paise received through prescribed banking modes at "
+            f"{rupee_text(digital)} received through prescribed banking modes at "
             f"{lim.s44ad_digital_rate_percent}%."
         )
     if other:
         workings.append(
-            f"{other} paise of remaining turnover at {lim.s44ad_rate_percent}%."
+            f"{rupee_text(other)} of remaining turnover at {lim.s44ad_rate_percent}%."
         )
 
     declared = presumptive
@@ -266,8 +267,8 @@ def compute_44ad(
         if declared_income_paise < presumptive:
             eligible = False
             reasons.append(
-                f"Income declared ({declared_income_paise} paise) is below the "
-                f"presumptive figure ({presumptive} paise). §44AD(5) then "
+                f"Income declared ({rupee_text(declared_income_paise)}) is below the "
+                f"presumptive figure ({rupee_text(presumptive)}). §44AD(5) then "
                 f"requires books under §44AA and audit under §44AB, so the "
                 f"scheme cannot be used to declare less."
             )
@@ -275,7 +276,7 @@ def compute_44ad(
             declared = declared_income_paise
             if declared > presumptive:
                 workings.append(
-                    f"A higher income of {declared} paise is declared, which "
+                    f"A higher income of {rupee_text(declared)} is declared, which "
                     f"§44AD(1) permits."
                 )
 
@@ -341,19 +342,19 @@ def compute_44ada(
     if enhanced:
         workings.append(
             f"Cash receipts are within {lim.enhanced_limit_cash_receipts_percent}% "
-            f"of gross receipts, so the ceiling is {ceiling} paise."
+            f"of gross receipts, so the ceiling is {rupee_text(ceiling)}."
         )
 
     eligible = gross_receipts_paise <= ceiling
     if not eligible:
         reasons.append(
-            f"Gross receipts of {gross_receipts_paise} paise exceed the §44ADA "
-            f"ceiling of {ceiling} paise, so the scheme is not available."
+            f"Gross receipts of {rupee_text(gross_receipts_paise)} exceed the §44ADA "
+            f"ceiling of {rupee_text(ceiling)}, so the scheme is not available."
         )
 
     presumptive = gross_receipts_paise * lim.s44ada_rate_percent // 100
     workings.append(
-        f"{gross_receipts_paise} paise of gross receipts at "
+        f"{rupee_text(gross_receipts_paise)} of gross receipts at "
         f"{lim.s44ada_rate_percent}%."
     )
 
@@ -362,8 +363,8 @@ def compute_44ada(
         if declared_income_paise < presumptive:
             eligible = False
             reasons.append(
-                f"Income declared ({declared_income_paise} paise) is below the "
-                f"presumptive figure ({presumptive} paise). §44ADA(4) then "
+                f"Income declared ({rupee_text(declared_income_paise)}) is below the "
+                f"presumptive figure ({rupee_text(presumptive)}). §44ADA(4) then "
                 f"requires books and audit, so the scheme cannot be used to "
                 f"declare less."
             )
@@ -450,13 +451,13 @@ def compute_44ae(
             workings.append(
                 f"Vehicle {i}: heavy goods vehicle, "
                 f"{v.gross_vehicle_weight_kg} kg, {months} month(s) at "
-                f"{per_month} paise."
+                f"{rupee_text(per_month)}."
             )
         else:
             per_month = lim.s44ae_other_per_month_paise
             workings.append(
                 f"Vehicle {i}: goods carriage, {months} month(s) at "
-                f"{per_month} paise."
+                f"{rupee_text(per_month)}."
             )
         presumptive += per_month * months
 
@@ -465,8 +466,8 @@ def compute_44ae(
         if declared_income_paise < presumptive:
             eligible = False
             reasons.append(
-                f"Income declared ({declared_income_paise} paise) is below the "
-                f"presumptive figure ({presumptive} paise); §44AE(7) then "
+                f"Income declared ({rupee_text(declared_income_paise)}) is below the "
+                f"presumptive figure ({rupee_text(presumptive)}); §44AE(7) then "
                 f"requires books and audit."
             )
         else:

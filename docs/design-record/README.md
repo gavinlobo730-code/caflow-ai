@@ -29,7 +29,7 @@ itself to the rule in one line.
 | [`fixed-assets-and-inventory.md`](fixed-assets-and-inventory.md) | 11 | Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts |
 | [`frontend.md`](frontend.md) | 4 | Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens |
 | [`identifiers.md`](identifiers.md) | 3 | Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms |
-| [`ledger-and-money.md`](ledger-and-money.md) | 5 | The general ledger, posting kernel, period locks, money columns, reports and interest/cheque/price-list features |
+| [`ledger-and-money.md`](ledger-and-money.md) | 10 | The general ledger, posting kernel, period locks, money columns, reports and interest/cheque/price-list features |
 | [`opening-balances-and-imports.md`](opening-balances-and-imports.md) | 2 | Opening balances as documents and the bulk imports of a migrated client's books |
 | [`payroll.md`](payroll.md) | 7 | Payroll: accrual, PF on actual wages, bonus, monthly review, declarations |
 | [`reporting.md`](reporting.md) | 5 | Reporting: Schedule III captions, report performance, paging, exports |

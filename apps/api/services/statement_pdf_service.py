@@ -26,10 +26,11 @@ from dataclasses import dataclass
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, TableStyle, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from services import pdf_style
+from services.pdf_style import Paragraph, Table
 
 from services.invoice_pdf_service import _load_firm, _paise_to_rupee_str
 from services.customer_statement_service import customer_statement_service

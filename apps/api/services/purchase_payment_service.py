@@ -31,7 +31,8 @@ from domain.tds.residency import (
     GAP_FOREIGN_ADVANCE_NOT_WITHHELD, describe_gaps,
 )
 from core.ist_clock import fy_code, ist_fy_label, ist_today
-from domain.money_text import rupees_paise, whole_rupees
+from domain.money_text import minor_units_text, whole_rupees
+from domain.money_sentence import rupee_text
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payment_service")
@@ -160,7 +161,7 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     if total_allocated > amount_paise:
         raise HTTPException(
             status_code=422,
-            detail=f"Total allocated ({total_allocated} paise) exceeds payment amount ({amount_paise} paise).",
+            detail=f"Total allocated ({rupee_text(total_allocated)}) exceeds payment amount ({rupee_text(amount_paise)}).",
         )
     unallocated_paise = amount_paise - total_allocated
 
@@ -459,7 +460,7 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
         f = int(a["allocated_paise"])
         if f > foreign_out:
             raise HTTPException(status_code=422, detail=(
-                f"Allocation {f} exceeds bill {bill_id} outstanding {foreign_out} {ccy}."))
+                f"Allocation {minor_units_text(f, minor)} exceeds bill {bill_id} outstanding {minor_units_text(foreign_out, minor)} {ccy}."))
         # Snap the base to clear exactly on full settlement — no rounding drift.
         ap_relieved = base_out if f == foreign_out else to_base_minor(f, R0, minor)
         settle_plan.append((bill, f, ap_relieved))
@@ -731,7 +732,7 @@ def update_allocations_core(firm_id: str, payment_id: str, allocations: list, ac
         if req_amt > outstanding:
             raise HTTPException(
                 status_code=422,
-                detail=f"Allocation (₹{rupees_paise(req_amt)}) exceeds the bill's outstanding (₹{rupees_paise(max(outstanding, 0))}).")
+                detail=f"Allocation ({rupee_text(req_amt)}) exceeds the bill's outstanding ({rupee_text(max(outstanding, 0))}).")
 
     # Reverse this payment's PRIOR allocations before re-applying, so
     # paid_paise is recomputed from scratch and never inflated by repeated

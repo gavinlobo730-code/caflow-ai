@@ -168,8 +168,9 @@ def _compute_fixed_assets_note_data(db, firm_id: str, client_id: str, fy_end: Op
 
 
 def _rupees(paise: int) -> str:
-    """Paise as a plain rupee figure for a sentence a CA reads."""
-    return f"Rs {rupees_paise(paise)}"
+    """Paise as a plain rupee figure for a sentence a CA reads. "Rs", not the sign: this text is stored in a note that is printed on a
+    PDF page, which cannot draw the sign. A negative figure is written in words, never "Rs -5.00"."""
+    return f"{'minus ' if paise < 0 else ''}Rs {rupees_paise(abs(paise))}"
 
 
 #: How each AS-2 paragraph 14 formula is worded in a sentence a CA reads. Keyed by `costing.METHODS` and nothing
@@ -677,8 +678,8 @@ def _tie_out_sentence(tie: dict, what: str) -> str:
     direction = "more than" if diff > 0 else "less than"
     return (
         f" THIS NOTE DOES NOT AGREE WITH THE BALANCE SHEET: it shows "
-        f"{abs(diff)} paise {direction} {what} "
-        f"({tie['note_total_paise']} against {tie['balance_sheet_paise']}). "
+        f"{_rupees(abs(diff))} {direction} {what} "
+        f"({_rupees(tie['note_total_paise'])} against {_rupees(tie['balance_sheet_paise'])}). "
         f"The difference must be resolved before these statements are issued."
     )
 
