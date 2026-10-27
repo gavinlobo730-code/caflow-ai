@@ -337,11 +337,25 @@ def _annual_depreciation_for_period(asset: dict, period: str) -> tuple[int, str,
     OPENING WDV. Each month's charge then used a smaller and smaller base,
     systematically under-depreciating (~6.6% understated in year one,
     compounding in later years) versus Schedule II's fixed-rate-on-opening-
-    balance method. SL's CHARGE is unaffected — cost/salvage/life never change, so
-    recomputing it every time already yields the same figure regardless of
-    when accumulated_depreciation_paise last changed. Its stored OPENING
-    accumulated depreciation was not unaffected, and that is the third value
-    returned: see the comment at the resolution below.
+    balance method.
+
+    STRAIGHT LINE NEEDED THE SAME, AND WAS NOT GIVEN IT (found 27-10-2026 by an
+    independent review of the change below). Its annual figure,
+    (cost - salvage) / life, never moves, but the figure is CAPPED at what is
+    left to depreciate (`wdv_now - floor` in _compute_annual_depreciation), and
+    that cap was read from the LIVE accumulated depreciation. In every year but
+    the last the cap is far above the figure and nothing shows; in the last
+    year each month posted lowered the cap, so the next month's charge was
+    smaller: on a cost of 1,00,000.00 over five years the fifth year posted
+    12,960.05 of the 20,000.00 left and 7,039.95 stayed undepreciated at the end
+    of it. An asset brought over from Tally with more than its straight-line
+    share already carried is capped the same way. Both methods now work from the
+    year's OPENING balance, so the year's figure is fixed once, whichever method
+    the asset uses.
+
+    The stored OPENING (the third value returned, and what the fixed-assets note
+    reads the year's charge from) is resolved for every method too: see the
+    comment at the resolution below.
     """
     fy = get_fy_for_date(f"{period}-01")
     live_accum = asset.get("accumulated_depreciation_paise", 0)
@@ -361,10 +375,9 @@ def _annual_depreciation_for_period(asset: dict, period: str) -> tuple[int, str,
         # balance of this FY, since nothing has posted against it yet.
         fy_start_accum = live_accum
 
-    if asset.get("depreciation_method", "WDV") != "WDV":
-        # The CHARGE is unaffected by any of this: cost, salvage and life never move.
-        return _compute_annual_depreciation(asset), fy, fy_start_accum
-
+    # The charge is judged from the year's OPENING balance for every method: for WDV it is the
+    # base the rate is taken on, for straight line it is what the cap on the year's figure (what
+    # is left to depreciate) is measured against.
     snapshot = dict(asset, accumulated_depreciation_paise=fy_start_accum)
     annual = _compute_annual_depreciation(snapshot)
     return annual, fy, fy_start_accum
