@@ -54,6 +54,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from domain.money_sentence import rupee_text
 
 #: PT slabs may be read against the month, or against six months' pay and
 #: deducted only in the named months (Tamil Nadu's shape).
@@ -182,8 +183,8 @@ def professional_tax(slabs: list[dict], *, gross_paise: int, month: int | None,
     # Unreachable while bands_cover_every_wage holds; kept because "unreachable"
     # is how a silent zero gets in when somebody later relaxes the cover check.
     return RateResult(note=(
-        f"No recorded professional-tax band matches a gross of {measure} paise in "
-        f"{state}. Nothing has been deducted."))
+        f"No recorded professional-tax band matches {'a half-yearly gross' if basis == 'half_yearly' else 'a gross'} of "
+        f"{rupee_text(measure)} in {state}. Nothing has been deducted."))
 
 
 def slabs_recorded_against_a_modelled_state(slabs: list[dict],

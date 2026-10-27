@@ -35,7 +35,8 @@ from services import reversal_service
 from services import purchase_payment_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label, ist_today
-from domain.money_text import rupees_paise, whole_rupees
+from domain.money_text import minor_units_text, whole_rupees
+from domain.money_sentence import rupee_text
 from core import db_provider
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -160,8 +161,8 @@ def _claim_bill_outstanding(
         if amount_paise > outstanding:
             raise HTTPException(
                 status_code=422,
-                detail=f"Payment (₹{rupees_paise(amount_paise)}) exceeds the bill's outstanding "
-                       f"(₹{rupees_paise(outstanding)}).")
+                detail=f"Payment ({rupee_text(amount_paise)}) exceeds the bill's outstanding "
+                       f"({rupee_text(outstanding)}).")
         new_paid = paid_paise + amount_paise
         new_status = "paid" if new_paid + debited_paise >= effective_payable else "partially_paid"
         result = update_header(
@@ -506,8 +507,8 @@ def create_purchase_payment(
         if _allocated > amount_paise:
             raise HTTPException(
                 status_code=422,
-                detail=f"Total allocated ({_allocated} paise) exceeds payment "
-                       f"amount ({amount_paise} paise).")
+                detail=f"Total allocated ({rupee_text(_allocated)}) exceeds payment "
+                       f"amount ({rupee_text(amount_paise)}).")
         payment["unallocated_paise"] = (
             0 if purchase_bill_id else amount_paise - _allocated)
         if allocations:
@@ -826,7 +827,7 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
     if f <= 0:
         raise HTTPException(status_code=422, detail="amount_paise must be positive")
     if f > foreign_out:
-        raise HTTPException(status_code=422, detail=f"Payment {f} exceeds the bill's outstanding {foreign_out} {ccy}.")
+        raise HTTPException(status_code=422, detail=f"Payment {minor_units_text(f, minor)} exceeds the bill's outstanding {minor_units_text(foreign_out, minor)} {ccy}.")
     ap_relieved = base_out if f == foreign_out else to_base_minor(f, R0, minor)
     cash_base = to_base_minor(f, R1, minor)
     fx_diff = ap_relieved - cash_base   # + gain (paid less INR) / − loss (paid more)

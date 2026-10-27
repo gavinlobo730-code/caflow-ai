@@ -71,6 +71,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Optional
+from domain.money_sentence import rupee_text
 
 VERIFIED = False
 
@@ -166,18 +167,18 @@ def _check_split(*, igst: int, cgst: int, sgst: int, interstate: Optional[bool],
                  problems: list[str]) -> None:
     if cgst != sgst:
         problems.append(
-            f"CGST ({cgst} paise) does not equal SGST ({sgst} paise) — a "
+            f"CGST ({rupee_text(cgst)}) does not equal SGST ({rupee_text(sgst)}) — a "
             f"domestic levy under s.9 always splits evenly between them.")
     if interstate is None:
         return
     if interstate and (cgst or sgst):
         problems.append(
             f"This is an inter-State supply but carries CGST/SGST "
-            f"({cgst}/{sgst} paise) rather than IGST.")
+            f"({rupee_text(cgst)}/{rupee_text(sgst)}) rather than IGST.")
     if not interstate and igst:
         problems.append(
-            f"This is an intra-State supply but carries IGST ({igst} "
-            f"paise) rather than CGST+SGST.")
+            f"This is an intra-State supply but carries IGST ({rupee_text(igst)}) "
+            f"rather than CGST+SGST.")
 
 
 def _check_filer_state(place_of_supply: str, filer_state_code: Optional[str],

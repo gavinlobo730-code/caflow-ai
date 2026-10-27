@@ -29,6 +29,7 @@ from core.ist_clock import fy_bounds, ist_today
 from domain.tds import deductor_26as as D26
 from services import tds_register_lists_service as lists
 from services.tds_register_lists_service import TDS_LIST_MAX
+from domain.money_sentence import rupee_text
 
 router = APIRouter(prefix="/api/tds-workspace", tags=["tds_workspace"])
 _logger = logging.getLogger("caflow.tds_workspace")
@@ -981,8 +982,8 @@ def create_challan(
                 status_code=422,
                 detail=(
                     f"The surcharge, interest and penalty on this challan come "
-                    f"to {body.surcharge_paise + body.interest_paise + body.penalty_paise} "
-                    f"paise, more than the {body.amount_paise} paise total. "
+                    f"to {rupee_text(body.surcharge_paise + body.interest_paise + body.penalty_paise)}, "
+                    f"more than the {rupee_text(body.amount_paise)} total. "
                     "amount_paise is what left the bank — tax plus the three "
                     "components — not the tax alone."))
         # Period validation — prevent posting to locked financial years (migration 020)

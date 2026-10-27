@@ -221,7 +221,7 @@ def test_an_outward_reverse_charge_supply_is_reported_as_missing_from_F(books):
     t = _turnover()
     assert t["total_paise"] == 70_00_000        # the RCM supply is not in F
     assert len(t["caveats"]) == 1
-    assert "3000000 paise" in t["caveats"][0]
+    assert "₹30,000.00" in t["caveats"][0] and "paise" not in t["caveats"][0]
     assert "reverse charge" in t["caveats"][0]
 
 

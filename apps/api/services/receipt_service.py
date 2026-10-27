@@ -29,7 +29,8 @@ from services.timeline_service import timeline_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label, ist_today
 from core.observability import capture_soft_failure
-from domain.money_text import whole_rupees
+from domain.money_text import minor_units_text, whole_rupees
+from domain.money_sentence import rupee_text
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.receipt_service")
@@ -248,7 +249,7 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
         f = int(a["allocated_paise"])
         if f > foreign_out:
             raise HTTPException(status_code=422, detail=(
-                f"Allocation {f} exceeds invoice {inv_id} outstanding {foreign_out} {ccy}."))
+                f"Allocation {minor_units_text(f, minor)} exceeds invoice {inv_id} outstanding {minor_units_text(foreign_out, minor)} {ccy}."))
         # Snap the base to clear exactly on full settlement — no rounding drift.
         ar_relieved = base_out if f == foreign_out else to_base_minor(f, R0, minor)
         new_paid = int(inv.get("paid_paise") or 0) + ar_relieved
@@ -655,8 +656,8 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     if total_allocated > settlement:
         raise HTTPException(
             status_code=422,
-            detail=f"Total allocated ({total_allocated} paise) exceeds settlement value "
-                   f"({settlement} paise = amount {amount_paise} + TDS {tds_paise})",
+            detail=f"Total allocated ({rupee_text(total_allocated)}) exceeds settlement value "
+                   f"({rupee_text(settlement)} = amount {rupee_text(amount_paise)} + TDS {rupee_text(tds_paise)})",
         )
     unallocated_paise = settlement - total_allocated
 

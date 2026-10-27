@@ -137,7 +137,8 @@ def test_the_opposite_difference_is_not_called_an_amortised_intangible():
     statements = balanced_statements(assets={"tangible_assets": 9 * L + 30_000_00, "intangible_assets": 20_000_00})
     out = _assemble(_register([PLANT, COMPUTERS, SOFTWARE], BOOKED), statements)
     sentence = next(g for g in out["gaps"] if "differs from the ledger's" in g)
-    assert "-3000000 paise for tangible assets and 3000000 paise for intangible assets" in sentence, sentence
+    assert "the register's tangible assets are ₹30,000.00 lower and its intangible assets ₹30,000.00 higher" in sentence, sentence
+    assert "paise" not in sentence, "a figure written for a CA is rupees in the Indian grouping, never a count of paise"
     assert "amortised intangible" not in sentence and "need reconciling" in sentence and "left for the CA to key" in sentence
     assert _parts(out, "tangible_assets")["Gross block"]["amount_paise"] is None
 
@@ -152,7 +153,8 @@ def test_an_amortised_intangible_on_the_standard_chart_withholds_the_split_and_s
         part = _parts(out, key)[label]
         assert part["amount_paise"] is None and part["state"] == "not_recorded", (key, label)
     sentence = next(g for g in out["gaps"] if "differs from the ledger's" in g)
-    assert "3000000 paise for tangible assets" in sentence and "-3000000 paise for intangible assets" in sentence, sentence
+    assert "the register's tangible assets are ₹30,000.00 higher and its intangible assets ₹30,000.00 lower" in sentence, sentence
+    assert "paise" not in sentence
     assert "Accumulated Depreciation account" in sentence and "left for the CA to key" in sentence
     # The ledger's net block of each is still given, and the books still tie: the difference is reported, never absorbed.
     assert _slot(out, "tangible_assets")["amount_paise"] == 9 * L - 30_000_00
@@ -218,6 +220,7 @@ def test_a_register_that_does_not_tie_in_total_gives_one_reason_and_not_two():
     assert _parts(out, "tangible_assets")["Gross block"]["amount_paise"] is None
     reasons = [g for g in out["gaps"] if "the gross block and the depreciation" in g]
     assert len(reasons) == 1 and "differs from the ledger's tangible and intangible assets" in reasons[0], reasons
+    assert "paise" not in reasons[0] and ("higher" in reasons[0] or "lower" in reasons[0]) and "₹" in reasons[0], reasons[0]
     assert _check(out, "register_tangible_net_block_vs_ledger") is None
 
 

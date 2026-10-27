@@ -66,13 +66,14 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.platypus import (
-    Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    Image, SimpleDocTemplate, Spacer, TableStyle,
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing
 
 from services import pdf_style
+from services.pdf_style import Paragraph, Table
 
 from domain.branding.invoice_layout import DEFAULT_LAYOUT, InvoiceLayout, layout_from_row
 

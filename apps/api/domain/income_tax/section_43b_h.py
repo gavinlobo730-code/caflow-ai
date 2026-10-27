@@ -71,6 +71,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Iterable, Optional
+from domain.money_sentence import rupee_text
 
 #: MSMED §2(b) — the appointed day is the day immediately following the expiry
 #: of fifteen days from acceptance. So payment ON day fifteen is in time.
@@ -405,7 +406,7 @@ def compute(bills: Iterable[Bill], *, financial_year: str) -> Section43BHResult:
         if missed == 0:
             reason = "Paid within the MSMED §15 limit."
         elif unpaid:
-            reason = (f"{unpaid} paise still unpaid past {due.isoformat()}.")
+            reason = (f"{rupee_text(unpaid)} still unpaid past {due.isoformat()}.")
         else:
             reason = (f"Paid after {due.isoformat()} — disallowed in the year "
                       f"of accrual and allowed in "

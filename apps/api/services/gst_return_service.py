@@ -48,6 +48,7 @@ import domain.gst.iff as iff
 from domain.gst.classifier import classify_transaction, TransactionForClassification
 from domain.gst.validator import GSTValidator, InvoiceToValidate
 from core.db_provider import privileged_for
+from domain.money_sentence import rupee_text
 
 # One instance; GSTValidator holds no state.
 _validator = GSTValidator()
@@ -466,7 +467,7 @@ def _note_cess_not_carried(note_rows: list[dict], parents: dict[str, dict]) -> l
         ref = (r.get("credit_note_no") or r.get("debit_note_no") or r.get("id") or "")
         out.append(
             f"Note {ref} adjusts an invoice that carried "
-            f"{int(parent['cess_paise'])} paise of compensation cess. The s.34 "
+            f"{rupee_text(int(parent['cess_paise']))} of compensation cess. The s.34 "
             "note tables hold no cess column, so this note declares none — "
             "adjust the cess on the portal.")
     return out
@@ -1361,7 +1362,7 @@ def outward_turnover(db, firm_id: str, client_id: str, period: str,
                   if t.supply_type == "taxable" and t.is_reverse_charge)
     if rcm_out:
         caveats.append(
-            f"Outward supplies of {rcm_out} paise on which the RECIPIENT pays "
+            f"Outward supplies of {rupee_text(rcm_out)} on which the RECIPIENT pays "
             f"under reverse charge are NOT in the total turnover (F) below. "
             f"§2(112) excludes only INWARD reverse-charge supplies, so these "
             f"belong in F — leaving them out makes the exempt fraction, and "

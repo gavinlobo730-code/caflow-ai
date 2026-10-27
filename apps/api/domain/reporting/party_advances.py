@@ -55,6 +55,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Mapping, Optional, Sequence
+from domain.money_sentence import rupee_text
 
 # The operational ageing buckets, in presentation order. One definition:
 # `vendor_statement_service`, `customer_statement_service` and
@@ -159,7 +160,7 @@ def unapplied_advances(
         if stored < 0:
             gaps.append(
                 f"{document_label.capitalize()} {ref} has an unapplied balance of "
-                f"{stored} paise — allocations exceed what it settled. Reported as nil; "
+                f"{rupee_text(stored)} — allocations exceed what it settled. Reported as nil; "
                 f"the allocation rows need correcting."
             )
             stored = 0
@@ -173,7 +174,7 @@ def unapplied_advances(
             if derived != stored:
                 gaps.append(
                     f"{document_label.capitalize()} {ref}: the stored unapplied balance is "
-                    f"{stored} paise but its allocation rows imply {derived} paise. "
+                    f"{rupee_text(stored)} but its allocation rows imply {rupee_text(derived)}. "
                     f"The stored figure is reported; the two need reconciling."
                 )
 

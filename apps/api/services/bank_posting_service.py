@@ -33,6 +33,7 @@ from core.ist_clock import ist_today
 from core.observability import capture_soft_failure
 from services.document_header_writer import update_header
 from core.db_provider import privileged_for
+from domain.money_sentence import amount_text
 
 _logger = logging.getLogger("caflow.bank_posting")
 
@@ -1137,7 +1138,9 @@ class BankPostingService:
         settlement_cap = amount + (tds_paise if entity_type == "sales_invoice" else 0)
         if total_alloc > settlement_cap:
             raise HTTPException(status_code=422,
-                detail=f"Total allocated ({total_alloc} paise) exceeds the transaction amount ({settlement_cap} paise).")
+                detail=(f"Total allocated ({amount_text(total_alloc, currency)}) exceeds the transaction amount"
+                        f"{' plus the tax withheld' if entity_type == 'sales_invoice' and tds_paise else ''} "
+                        f"({amount_text(settlement_cap, currency)})."))
 
         if entity_type == "sales_invoice":
             party_col, doc_table, alloc_key = "customer_id", "client_sales_invoices", "sales_invoice_id"

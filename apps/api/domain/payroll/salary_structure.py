@@ -63,6 +63,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
+from domain.money_sentence import rupee_text
 
 #: Matches routers/payroll.py::_percent_of exactly. Two derivations of one
 #: percentage drift, and this one has to reproduce that one to the paise or the
@@ -201,9 +202,9 @@ def apply_structure(structure: dict, monthly_gross_paise: int) -> Application:
     special = gross - basic - hra_actual - da_actual - lta - medical
     if special < 0:
         raise StructureError(
-            f"The fixed medical allowance of {medical} paise does not fit: "
-            f"basic, HRA, DA and LTA already come to {gross - medical - special} "
-            f"paise of a {gross}-paise gross. Lower the percentages or the "
+            f"The fixed medical allowance of {rupee_text(medical)} does not fit: "
+            f"basic, HRA, DA and LTA already come to {rupee_text(gross - medical - special)} "
+            f"of a {rupee_text(gross)} gross. Lower the percentages or the "
             f"medical amount.")
 
     return Application(
@@ -234,9 +235,9 @@ def drift_note(who: str, application: Application) -> list[str]:
     and fails in the twelfth.
     """
     return [
-        f"{who}: {c.name} works out to {c.intended_paise} paise from the "
+        f"{who}: {c.name} works out to {rupee_text(c.intended_paise)} from the "
         f"structure, but it is stored as a percentage of basic to two decimals, "
-        f"which pays {c.paise} paise — {abs(c.drift_paise)} paise "
+        f"which pays {rupee_text(c.paise)} — {rupee_text(abs(c.drift_paise))} "
         f"{'more' if c.drift_paise > 0 else 'less'} a month. The difference goes "
         f"to special allowance, so the gross is unchanged."
         for c in application.drifts

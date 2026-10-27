@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from domain.tally import party_identifiers
 from core import db_provider
+from domain.money_sentence import rupee_text
 
 try:
     import xml.etree.ElementTree as ET
@@ -426,7 +427,7 @@ def validate_migration_data(
             if abs(total_debit - total_credit) > 1:  # 1 paise tolerance
                 item["status"] = "failed"
                 item["validation_errors"].append(
-                    f"Journal not balanced: Dr={total_debit} Cr={total_credit}"
+                    f"Journal not balanced: Dr={rupee_text(total_debit)} Cr={rupee_text(total_credit)}"
                 )
                 errors.append(f"Unbalanced journal {j.get('tally_id')}")
             items.append(item)

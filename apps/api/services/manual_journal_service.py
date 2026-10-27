@@ -34,6 +34,7 @@ from domain.accounting import line_order
 from services.phase2_journal_service import phase2_journal_service
 from services import period_lock_service
 from services.period_validation_service import period_validation_service
+from domain.money_sentence import rupee_text
 
 _logger = logging.getLogger("caflow.manual_journal")
 
@@ -128,7 +129,7 @@ class ManualJournalService:
         if total_debit != total_credit:
             raise HTTPException(
                 status_code=422,
-                detail=f"Unbalanced entry: debit {total_debit} paise != credit {total_credit} paise.",
+                detail=f"Unbalanced entry: debit {rupee_text(total_debit)} != credit {rupee_text(total_credit)}.",
             )
 
         # FY lock only bites when the entry actually goes onto the books now. A draft
@@ -332,7 +333,7 @@ class ManualJournalService:
             if total_debit != total_credit:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Unbalanced entry: debit {total_debit} paise != credit {total_credit} paise.")
+                    detail=f"Unbalanced entry: debit {rupee_text(total_debit)} != credit {rupee_text(total_credit)}.")
         else:
             total_debit = entry["total_debit_paise"]
             total_credit = entry["total_credit_paise"]

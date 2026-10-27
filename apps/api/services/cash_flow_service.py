@@ -34,6 +34,7 @@ from core.db_paging import fetch_all
 from core.ist_clock import ist_today
 from domain.banking.account_category import _looks_like_bank_or_cash
 from domain.cash_flow import forecast as rule
+from domain.money_sentence import rupee_text
 
 _logger = logging.getLogger("caflow.cash_flow")
 
@@ -207,7 +208,7 @@ def forecast_for_client(svc, db, firm_id: str, client_id: str, *,
                     kind="loan_emi", reference="EMI", party=lender))
         if this_month_emi:
             gaps.append(
-                f"{this_month_emi} paise of loan EMI falls in the current "
+                f"{rupee_text(this_month_emi)} of loan EMI falls in the current "
                 "month. Whether it has already gone out is not recorded — the "
                 "loan carries no EMI date — and the opening position above "
                 "already reflects anything paid, so it is NOT in the figures "

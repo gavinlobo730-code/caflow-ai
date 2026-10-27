@@ -41,7 +41,7 @@ def test_a_note_that_disagrees_says_so_in_the_note_itself():
     assert tie["difference_paise"] == 10_000_00
     sentence = yen._tie_out_sentence(tie, "Share Capital")
     assert "DOES NOT AGREE" in sentence
-    assert "1000000 paise" in sentence
+    assert "Rs 10,000.00 more than" in sentence and "(Rs 60,000.00 against Rs 50,000.00)" in sentence and "paise" not in sentence and "₹" not in sentence
     assert "more than" in sentence
     assert "must be resolved before these statements are issued" in sentence
 

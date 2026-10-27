@@ -13,25 +13,33 @@ Two services already knew this and handled it privately, with the reasoning
 written out twice; three others did not, and shipped the box to a CA's customer,
 to an employee, and into a signed year-end set.
 
-⚠️ THIS MODULE HAS NO PRODUCTION IMPORTER, AND THAT IS NOT A BUG TO FIX BY
-WIRING IT IN. An earlier version of this docstring said the fix was "one
-function now", which was the intention and is not what happened. What the five
-PDF services actually do is never CONSTRUCT a ₹ string at all — they write
-"Rs." into their format strings directly — and
-`tests/test_no_pdf_renders_the_rupee_sign.py` is what holds that, by failing on
-any U+20B9 a PDF service could put on a page. A substitution helper has nothing
-to substitute.
+THE PDF SERVICES NEVER CONSTRUCT A ₹ STRING, AND THAT WAS NOT ENOUGH
 
-The one place the text is NOT under a service's control is CA-authored HTML in
-an engagement letter, and `services/engagement_pdf_service._pdf_safe` handles
-that. It is deliberately NOT this function: it replaces with **"Rs. "**, a
-space, because that text is running prose, where this module uses **"Rs."**
-without one, because its case is a table cell. Two answers to two questions.
-Unifying them would change a document a client receives.
+They write "Rs." into their own format strings, and
+`tests/test_no_pdf_renders_the_rupee_sign.py` holds that by failing on any U+20B9
+a PDF service could put on a page. What that cannot see is text WRITTEN
+ELSEWHERE that a service prints: a sentence a domain module words for a screen
+(a gap, a caveat, a stored note) and text a person typed (a narration, an
+adjustment's reason, a name). On 27-10-2026 a sweep that put "₹" into the
+sentences a CA reads sent it into the year-end pack's notes (a stored tie-out
+sentence) and into the receivables and payables ageing report's notes (the
+advances' gaps), where it printed as a black box in a set a CA signs, and the
+review of that change found the other half: a plain string in a table CELL never
+passes through a paragraph, so a typed narration printed a box when it was short
+and "Rs." when it was long enough to wrap.
 
-So this module is kept for the RULE it records rather than for a caller, and
-`tests/test_a_domain_module_has_a_reader.py` names it with that reason so the
-next sweep does not re-find it.
+So the boundary is the two flowables that carry text, and not the producer: every
+PDF service builds its paragraphs through `services/pdf_style.Paragraph` (which
+passes the text through `pdf_safe(..., prose=True)` and writes "Rs. ") and its
+tables through `services/pdf_style.Table` (which writes "Rs." in a plain-string
+cell, the table-cell form below), and
+`tests/test_text_written_elsewhere_that_reaches_a_pdf_page_has_no_rupee_sign.py`
+holds that no service imports reportlab's own. What is NOT covered because it cannot
+carry such text: the page furniture draws only "Page N of M", and the document's
+title and author metadata are never drawn.
+
+The CA-authored HTML of an engagement letter keeps `engagement_pdf_service._pdf_safe`,
+which is the same substitution on HTML.
 
 WHY "Rs." AND NOT AN EMBEDDED FONT
 
@@ -56,10 +64,16 @@ RUPEE_SIGN = "₹"
 RUPEE_PDF = "Rs."
 
 
-def pdf_safe(text: str | None) -> str:
+#: The same word for running prose, where "Rs. 1,000.00" reads better than "Rs.1,000.00".
+RUPEE_PDF_PROSE = "Rs. "
+
+
+def pdf_safe(text: str | None, *, prose: bool = False) -> str:
     """Replace ₹ with "Rs." for text destined for a core-font PDF.
+
+    `prose=True` writes "Rs. " (a space), for a sentence; the default is the table-cell form.
 
     Returns "" for None so a caller can use it on an optional field without a
     guard — a missing value must print as nothing, never as the word "None".
     """
-    return (text or "").replace(RUPEE_SIGN, RUPEE_PDF)
+    return (text or "").replace(RUPEE_SIGN, RUPEE_PDF_PROSE if prose else RUPEE_PDF)

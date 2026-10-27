@@ -1,8 +1,8 @@
-# The owner's list — one place (refreshed 15 October 2026, IST)
+# The owner's list — one place (refreshed 15 October 2026, IST; S14 confirmed again on 27 October 2026)
 
 Everything that is yours to decide, do or supply, and every statutory or legal point I will not assume. Kept in one place and refreshed, not scattered across replies. Each row names the ledger ids behind it (`decisions-taken-2026-10-14.md` has what I decided myself). Written in plain English: you decide the money and do what only you can do; the legal and statutory points need a primary text, a practising CA or counsel, and **nothing is built on a guess**.
 
-**At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (13, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
+**At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (14, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
 
 ## 1. The single most useful thing: let me read the primary texts
 
@@ -173,7 +173,7 @@ Each row: the exact question, the document or section needed, who can supply it,
 
 - **Question:** For each line of the year-end statements (the Schedule III balance sheet and profit and loss account), which box of Part A of ITR-3, ITR-5 and ITR-6 does it belong in? In particular: where a debit balance in reserves goes in the funds-sourced-and-applied form (ITR-3 and ITR-5); which group other long-term liabilities, long-term provisions and other non-current assets belong in on those two forms; whether finance costs as Schedule III defines them belong wholly in the interest box; and which column of Schedule DPM each of the three additional-depreciation columns is, because ITR-5 and ITR-6 name them differently from ITR-3 and in a different order.
 - **Needed:** The instructions to ITR-3, ITR-5 and ITR-6 for AY 2026-27, and the printed Schedules DPM, DOA and DEP.
-- **Who can supply it:** A practising CA.
+- **Who can supply it:** Claude once the government sites are reachable (section 1) for the instructions, which would let the table be read against the primary text and not only a CA's memory of it; a practising CA for the reading either way. Confirmed on 27-10-2026: the environment's network policy refuses the connection to incometax.gov.in (a 403 on the tunnel), so nothing of this can be read from here until the setting in section 1 is changed.
 - **Stays unbuilt meanwhile:** The flag that says the table is confirmed (every answer says it is not); any use of Part A by the ITR JSON writer; the heads of the profit and loss account and the trading account (POST-A-343). Part A is offered as a keying aid, with the split of every group the books keep whole left to the CA, and the figures for the three renamed columns shown on the row and written into no box.
 - **Ledger:** POST-C-211, POST-A-343, POST-B-342
 

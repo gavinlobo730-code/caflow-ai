@@ -58,6 +58,9 @@ from __future__ import annotations
 
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import Paragraph as _ReportlabParagraph, Table as _ReportlabTable
+
+from domain.reporting.pdf_text import pdf_safe
 
 
 # ── The palette ───────────────────────────────────────────────────────────────
@@ -241,3 +244,32 @@ def subtotal_rule(row: int, weight: float = 0.5) -> tuple:
     being added, and on a laser printer it has to survive.
     """
     return ("LINEABOVE", (0, row), (-1, row), weight, C_HINT)
+
+
+class Paragraph(_ReportlabParagraph):
+    """reportlab's Paragraph, with the rupee sign it cannot draw written as "Rs. ".
+
+    EVERY PDF SERVICE BUILDS ITS PARAGRAPHS THROUGH THIS CLASS (the guard
+    `tests/test_text_written_elsewhere_that_reaches_a_pdf_page_has_no_rupee_sign.py` fails a service that imports reportlab's
+    own). The core fonts are WinAnsiEncoding and have no glyph for U+20B9, which reportlab encodes as a ZapfDingbats "n" and
+    prints as a black box; a service never writes the sign itself, but text written elsewhere for a screen (a gap, a caveat, a
+    stored note) and text a person typed can carry it. See `domain/reporting/pdf_text` for how that came to be found.
+    """
+
+    def __init__(self, text, style=None, *args, **kwargs):
+        super().__init__(pdf_safe(text, prose=True) if isinstance(text, str) else text, style, *args, **kwargs)
+
+
+class Table(_ReportlabTable):
+    """reportlab's Table, with the rupee sign it cannot draw written as "Rs." in every plain-string cell.
+
+    A cell that is a bare string is drawn by the canvas in the core font and never passes through `Paragraph`, so a sign written
+    elsewhere (a narration, an adjustment's reason, a party's description) printed as a black box in a table while the same text in a
+    paragraph read "Rs." (the report PDF printed one narration each way, depending on whether it fitted its column). Found by the
+    second independent review of the change that put the sign into the sentences a CA reads. A cell that is already a flowable is
+    left alone: the `Paragraph` above has done its own.
+    """
+
+    def __init__(self, data, *args, **kwargs):
+        cleaned = [[pdf_safe(cell) if isinstance(cell, str) else cell for cell in row] for row in data]
+        super().__init__(cleaned, *args, **kwargs)

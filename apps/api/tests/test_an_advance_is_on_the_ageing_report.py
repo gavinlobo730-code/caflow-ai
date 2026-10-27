@@ -98,7 +98,7 @@ def test_allocation_rows_that_disagree_with_the_column_are_named_not_absorbed():
     assert pos.total_paise == 1_00_000
     # …and the difference is stated rather than silently resolved.
     assert len(pos.gaps) == 1
-    assert "60000" in pos.gaps[0] and "100000" in pos.gaps[0]
+    assert "₹600.00" in pos.gaps[0] and "₹1,000.00" in pos.gaps[0] and "paise" not in pos.gaps[0]
     assert "VPMT-0001" in pos.gaps[0]
 
 

@@ -137,7 +137,7 @@ def test_money_past_the_horizon_is_named_rather_than_dropped():
     f = build(as_at=TODAY, opening_paise=0, months=2,
               flows=[_flow(date(2027, 6, 1), 123_456)])
     assert all(m.inflows_paise == 0 for m in f.months)
-    assert any("123456" in g for g in f.gaps), f.gaps
+    assert any("₹1,234.56 expected in" in g and "paise" not in g for g in f.gaps), f.gaps
 
 
 def test_a_settled_document_reaches_nothing_and_is_not_a_gap():

@@ -48,6 +48,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Iterable, Optional
+from domain.money_sentence import rupee_text
 
 #: matched / amount_mismatch / missing_in_2b / missing_in_books
 MatchStatus = str
@@ -243,13 +244,19 @@ def reconcile(bills: Iterable[BookBill],
             matches.append(Match(status="matched", bill_id=bill.bill_id, document=doc,
                                  bill=bill, difference_paise=0, reason=reason))
         else:
+            if diff == 0:
+                # The tax agrees and the taxable value does not: saying the bill claims "₹0.00 less tax" would name a
+                # difference that is not there.
+                reason = (f"The tax agrees, but the taxable value does not: the bill carries {rupee_text(bill.taxable_paise)} "
+                          f"and GSTR-2B {rupee_text(doc.taxable_paise)}. One of the two documents is wrong.")
+            else:
+                reason = (f"The bill claims {rupee_text(abs(diff))} "
+                          f"{'more' if diff > 0 else 'less'} tax than GSTR-2B carries. "
+                          f"One of the two documents is wrong — the difference is the "
+                          f"amount at risk.")
             matches.append(Match(
                 status="amount_mismatch", bill_id=bill.bill_id, document=doc, bill=bill,
-                difference_paise=diff,
-                reason=(f"The bill claims {abs(diff)} paise "
-                        f"{'more' if diff > 0 else 'less'} tax than GSTR-2B carries. "
-                        f"One of the two documents is wrong — the difference is the "
-                        f"amount at risk.")))
+                difference_paise=diff, reason=reason))
 
     for i, doc in enumerate(documents):
         if i in consumed:

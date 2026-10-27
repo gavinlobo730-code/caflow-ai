@@ -21,11 +21,12 @@ import logging
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, TableStyle, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from core.ist_clock import ist_day_iso
 from services import pdf_style
+from services.pdf_style import Paragraph, Table
 
 from services.invoice_pdf_service import _load_firm, _paise_to_rupee_str
 from services.pdf_page_furniture import numbered

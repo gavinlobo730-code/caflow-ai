@@ -47,6 +47,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from typing import Optional, Sequence
+from domain.money_sentence import rupee_text
 
 
 def _round_paise(numerator: int, denominator: int) -> int:
@@ -452,7 +453,7 @@ def _apply_proviso(
             where = ("the instalments that remain" if remaining
                      else "31 March, there being no instalment left")
             relief, reason = False, (
-                f"Only {got} of the {needed} paise of tax on it was paid in {where} "
+                f"Only {rupee_text(got)} of the {rupee_text(needed)} of tax on it was paid in {where} "
                 f"(by {settle_by.isoformat()}), so the proviso's condition is not met and "
                 f"it is treated as foreseeable at every instalment.")
 
@@ -582,7 +583,7 @@ def compute_234a_interest(
     reasons.append(
         f"§234A charges {_INTEREST_RATE_PERCENT_PER_MONTH}% per month or part "
         f"for {months} month(s) from the day after {due_date.isoformat()} to "
-        f"{end.isoformat()}, on {net} paise of tax net of TDS, advance tax and "
+        f"{end.isoformat()}, on {rupee_text(net)} of tax net of TDS, advance tax and "
         f"relief."
     )
     return SectionInterestResult(
@@ -627,9 +628,9 @@ def compute_234b_interest(
             section="234B", applies=False, base_paise=0, months=0,
             interest_paise=0, from_date=assessment_year_start,
             to_date=assessment_date,
-            reasons=(f"Advance tax and TDS of {paid} paise is at least "
+            reasons=(f"Advance tax and TDS of {rupee_text(paid)} is at least "
                      f"{_S234B_COMPLIANCE_THRESHOLD_PERCENT}% of assessed tax "
-                     f"of {assessed} paise, so no §234B interest arises.",),
+                     f"of {rupee_text(assessed)}, so no §234B interest arises.",),
         )
 
     shortfall = assessed - paid
@@ -640,11 +641,11 @@ def compute_234b_interest(
         interest_paise=interest, from_date=assessment_year_start,
         to_date=assessment_date,
         reasons=(
-            f"Advance tax and TDS of {paid} paise is below "
+            f"Advance tax and TDS of {rupee_text(paid)} is below "
             f"{_S234B_COMPLIANCE_THRESHOLD_PERCENT}% of assessed tax of "
-            f"{assessed} paise, so §234B charges "
+            f"{rupee_text(assessed)}, so §234B charges "
             f"{_INTEREST_RATE_PERCENT_PER_MONTH}% per month or part on the "
-            f"shortfall of {shortfall} paise for {months} month(s) from "
+            f"shortfall of {rupee_text(shortfall)} for {months} month(s) from "
             f"{assessment_year_start.isoformat()}.",
         ),
     )

@@ -41,6 +41,7 @@ WHY THE DELTA ALWAYS BALANCES
 from __future__ import annotations
 
 from dataclasses import dataclass
+from domain.money_sentence import rupee_text
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,7 @@ def _check_amount(value: object, field: str, row_no: int) -> int:
             f"they reach here — floating point cannot represent money exactly.")
     if value < 0:
         raise TrialBalanceError(
-            f"Row {row_no}: {field} is negative ({value}). A trial balance "
+            f"Row {row_no}: {field} is negative ({rupee_text(value)}). A trial balance "
             f"records a debit or a credit, never a negative one — move the "
             f"amount to the other column instead.")
     return value
@@ -100,8 +101,8 @@ def validate(rows: list[TrialBalanceRow]) -> tuple[int, int]:
         # two lines that silently disagree with the CA's own statement.
         if dr and cr:
             raise TrialBalanceError(
-                f"Row {i} ({name}): has BOTH a debit ({dr} paise) and a credit "
-                f"({cr} paise). A trial balance line carries one or the other; "
+                f"Row {i} ({name}): has BOTH a debit ({rupee_text(dr)}) and a credit "
+                f"({rupee_text(cr)}). A trial balance line carries one or the other; "
                 f"net them to a single side before importing.")
 
         # Duplicate account names would silently collapse in the per-account
@@ -119,8 +120,8 @@ def validate(rows: list[TrialBalanceRow]) -> tuple[int, int]:
         diff = total_dr - total_cr
         side = "debits exceed credits" if diff > 0 else "credits exceed debits"
         raise TrialBalanceError(
-            f"The trial balance does not balance: {side} by {abs(diff)} paise. "
-            f"Total debits {total_dr}, total credits {total_cr}. Posting this "
+            f"The trial balance does not balance: {side} by {rupee_text(abs(diff))}. "
+            f"Total debits {rupee_text(total_dr)}, total credits {rupee_text(total_cr)}. Posting this "
             f"would put the ledger out of balance, so the import is refused.")
 
     if total_dr == 0:
@@ -178,4 +179,4 @@ def assert_balanced(lines: list[dict]) -> None:
     if dr != cr:
         raise TrialBalanceError(
             f"Refusing to post: the computed entry is out of balance by "
-            f"{dr - cr} paise (debits {dr}, credits {cr}).")
+            f"{rupee_text(abs(dr - cr))} (debits {rupee_text(dr)}, credits {rupee_text(cr)}).")

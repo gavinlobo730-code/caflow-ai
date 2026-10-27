@@ -45,6 +45,7 @@ from datetime import date
 from typing import Iterable, Optional
 
 from domain.recurrence import add_months_clamped
+from domain.money_sentence import rupee_text
 
 RECEIVED = "received"
 ISSUED = "issued"
@@ -152,8 +153,8 @@ def allocations_problem(direction: str, allocations: Iterable[dict],
             return "Each allocation is a positive whole number of paise."
         total += amt
     if total > int(amount_paise):
-        return (f"The allocations add up to more than the cheque ({total} paise against "
-                f"{int(amount_paise)}).")
+        return (f"The allocations add up to more than the cheque ({rupee_text(total)} against "
+                f"{rupee_text(int(amount_paise))}).")
     return None
 
 

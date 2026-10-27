@@ -51,6 +51,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Optional
+from domain.money_sentence import rupee_text
 
 # 26AS-side outcomes
 STATUS_MATCHED = "matched"
@@ -193,8 +194,8 @@ _NO_PAN = (
 
 def _variance_reason(entry: PortalEntry, book: BookDeduction) -> str:
     return (
-        f"The portal shows {entry.tds_paise} paise and the register "
-        f"{book.tds_paise}. One of the two is wrong: a short deposit is "
+        f"The portal shows {rupee_text(entry.tds_paise)} and the register "
+        f"{rupee_text(book.tds_paise)}. One of the two is wrong: a short deposit is "
         "s.201(1A) interest, and an over-stated statement gives the deductee "
         "a credit the client never paid."
     )

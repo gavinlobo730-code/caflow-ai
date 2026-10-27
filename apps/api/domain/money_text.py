@@ -55,7 +55,7 @@ whole document, email or response.
 """
 from __future__ import annotations
 
-__all__ = ["group_indian", "rupees_paise", "whole_rupees"]
+__all__ = ["group_indian", "minor_units_text", "rupees_paise", "whole_rupees"]
 
 
 def group_indian(digits: str) -> str:
@@ -89,3 +89,20 @@ def whole_rupees(paise: int | None) -> str:
     # minus sign on a nil reads as an amount somebody owes.
     sign = "-" if p < 0 and whole else ""
     return f"{sign}{group_indian(str(whole))}"
+
+
+def minor_units_text(amount: int | None, minor_unit: int) -> str:
+    """Integer MINOR units of a FOREIGN currency -> `"1,500.00"`, with the decimals that currency has.
+
+    How many minor units make one major unit is a fact about the currency (`currencies.minor_unit`: JPY 0, USD 2, KWD 3), so the
+    caller passes it and nothing here guesses. No unit is written: a sentence names the currency code beside it. The grouping is
+    `group_indian`'s, decision D6. A count of minor units printed bare reads as a hundred times the amount for a two-decimal
+    currency, which is the defect this exists to stop.
+    """
+    value = int(amount or 0)
+    sign = "-" if value < 0 else ""
+    magnitude = abs(value)
+    if minor_unit <= 0:
+        return f"{sign}{group_indian(str(magnitude))}"
+    scale = 10 ** minor_unit
+    return f"{sign}{group_indian(str(magnitude // scale))}.{magnitude % scale:0{minor_unit}d}"
