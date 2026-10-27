@@ -11,10 +11,13 @@ WHY IT EXISTS
     (with a user's token claims) or as `service_role`: it executes SQL through `psql` the way the pg tests already do, so it
     needs no PostgREST. It speaks only the calls the year-end code makes (`select`, `insert`, `update`, `delete`, `eq`,
     `in_`, `limit`, `order`, `single`, `maybe_single`, `rpc`) and RAISES on anything else, so a change to the code under test
-    that reaches for a call this does not model fails loudly instead of being answered wrongly.
+    that reaches for a call this does not model fails loudly instead of being answered wrongly. POST-A-345 added `neq`, `gt`, `gte`,
+    `lt`, `lte`, `is_`, `like`, `ilike`, `range` and a plain `or_` (comma-separated `column.op.value` terms, no nesting), which the
+    reclassification and the ledger-finding code read through.
 
 WHAT IT DOES NOT MODEL
-    PostgREST's own parsing, its row cap, embedded selects (and a filter on an embedded table) and `or_` filters. A dict or a list
+    PostgREST's own parsing, its row cap, embedded selects (and a filter on an embedded table), nested `or_`/`and_` groups and `not_`.
+    A dict or a list
     is written as JSON text; a JSON column is read back as the JSON the database returns.
     Equality filters, and `in_` over a plain list of values (an empty list matches nothing, as PostgREST's does).
 """
@@ -93,6 +96,33 @@ class SignedInDb:
         return json.loads(lines[-1]) if lines else None
 
 
+_COMPARE = {"eq": "=", "neq": "<>", "gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
+
+
+def _condition(op: str, column: str, value: Any) -> str:
+    """One PostgREST filter as a SQL condition. Raises on a shape this double does not model."""
+    if op in _COMPARE:
+        return f"{column} {_COMPARE[op]} {_lit(value)}"
+    if op == "in":
+        return f"{column} IN ({', '.join(_lit(x) for x in value)})" if value else "false"
+    if op == "is":
+        if value is None or str(value).lower() == "null":
+            return f"{column} IS NULL"
+        if str(value).lower() in ("true", "false"):
+            return f"{column} IS {str(value).upper()}"
+        raise ValueError(f"is_ takes null, true or false, not {value!r}")
+    if op in ("like", "ilike"):
+        return f"{column} {op.upper()} {_lit(value)}"
+    if op == "or":
+        terms = []
+        for term in str(value).split(","):
+            col, _, rest = term.strip().partition(".")
+            inner_op, _, inner_value = rest.partition(".")
+            terms.append(_condition(inner_op, _ident(col), inner_value))
+        return "(" + " OR ".join(terms) + ")"
+    raise ValueError(f"filter {op!r} is not modelled")
+
+
 class _Query:
     def __init__(self, db: SignedInDb, table: str):
         self._db, self._table = db, table
@@ -102,6 +132,7 @@ class _Query:
         self._values: dict = {}
         self._filters: list[tuple[str, str, Any]] = []
         self._limit: Optional[int] = None
+        self._offset = 0
         self._order: list[str] = []
         self._one = False
 
@@ -129,6 +160,46 @@ class _Query:
         self._filters.append(("in", _ident(column), list(values)))
         return self
 
+    def neq(self, column: str, value: Any) -> "_Query":
+        self._filters.append(("neq", _ident(column), value))
+        return self
+
+    def gt(self, column: str, value: Any) -> "_Query":
+        self._filters.append(("gt", _ident(column), value))
+        return self
+
+    def gte(self, column: str, value: Any) -> "_Query":
+        self._filters.append(("gte", _ident(column), value))
+        return self
+
+    def lt(self, column: str, value: Any) -> "_Query":
+        self._filters.append(("lt", _ident(column), value))
+        return self
+
+    def lte(self, column: str, value: Any) -> "_Query":
+        self._filters.append(("lte", _ident(column), value))
+        return self
+
+    def is_(self, column: str, value: Any) -> "_Query":
+        self._filters.append(("is", _ident(column), value))
+        return self
+
+    def like(self, column: str, pattern: str) -> "_Query":
+        self._filters.append(("like", _ident(column), pattern))
+        return self
+
+    def ilike(self, column: str, pattern: str) -> "_Query":
+        self._filters.append(("ilike", _ident(column), pattern))
+        return self
+
+    def or_(self, expression: str) -> "_Query":
+        self._filters.append(("or", "", expression))
+        return self
+
+    def range(self, start: int, end: int) -> "_Query":
+        self._offset, self._limit = int(start), int(end) - int(start) + 1
+        return self
+
     def limit(self, n: int) -> "_Query":
         self._limit = int(n)
         return self
@@ -148,9 +219,7 @@ class _Query:
     def _where(self) -> str:
         if not self._filters:
             return ""
-        return " WHERE " + " AND ".join(
-            f"{c} = {_lit(v)}" if op == "eq" else (f"{c} IN ({', '.join(_lit(x) for x in v)})" if v else "false")
-            for op, c, v in self._filters)
+        return " WHERE " + " AND ".join(_condition(op, c, v) for op, c, v in self._filters)
 
     def execute(self) -> _Resp:
         t = f"public.{self._table}"
@@ -161,6 +230,8 @@ class _Query:
                 inner += " ORDER BY " + ", ".join(self._order)
             if self._limit is not None:
                 inner += f" LIMIT {self._limit}"
+            if self._offset:
+                inner += f" OFFSET {self._offset}"
             rows = self._db._run(f"SELECT coalesce(json_agg(row_to_json(q)), '[]'::json) FROM ({inner}) q;")
         elif self._op == "insert":
             cols = list(self._rows[0])

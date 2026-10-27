@@ -28,6 +28,7 @@ from typing import Optional
 from core.db_paging import fetch_all
 from domain.accounting import journal_source as JS
 from domain.fixed_assets import cwip as cwip_domain
+from services.fixed_asset_accumulated_ledger import birth_pointer_fields
 
 _logger = logging.getLogger("caflow.cwip")
 
@@ -367,6 +368,9 @@ def capitalise(db, *, firm_id: str, client_id: str, cwip_id: str,
         "useful_life_years": useful_life_years,
         "depreciation_method": depreciation_method,
         "notes": f"Capitalised from {project.get('project_name') or 'work-in-progress'}",
+        # POST-A-345. An asset capitalised into the intangible line is born pointing at its own accumulated ledger, by the same
+        # predicate the register's create form asks; the key is absent for every other asset.
+        **birth_pointer_fields(db, firm_id, client_id, asset_category or project.get("asset_category")),
     }).execute().data or []
     asset = asset_rows[0] if asset_rows else {}
 

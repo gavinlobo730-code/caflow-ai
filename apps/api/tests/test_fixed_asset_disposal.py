@@ -138,7 +138,7 @@ def test_successful_disposal_posts_journal_and_marks_disposed(monkeypatch):
     db = FakeDB()
     _seed_asset(db)
     monkeypatch.setattr(fa_router, "_db", lambda: db)
-    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-1"
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_asset_disposal", lambda *a, **k: "je-1")
 
     result = fa_router.dispose_asset("asset-1", _disposal(), {"firm_id": FIRM, "id": "u1"})
 
@@ -155,7 +155,7 @@ def test_failed_disposal_rolls_back_and_never_orphans_a_journal(monkeypatch):
     db = FakeDB()
     _seed_asset(db)
     monkeypatch.setattr(fa_router, "_db", lambda: db)
-    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: None
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_asset_disposal", lambda *a, **k: None)
 
     with pytest.raises(HTTPException) as exc:
         fa_router.dispose_asset("asset-1", _disposal(), {"firm_id": FIRM, "id": "u1"})
@@ -177,7 +177,7 @@ def test_retry_after_failure_succeeds_cleanly_with_exactly_one_journal(monkeypat
     def flaky_journal(*a, **k):
         calls.append(1)
         return None if len(calls) == 1 else f"je-{len(calls)}"
-    fa_router._journal_svc.journal_for_asset_disposal = flaky_journal
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_asset_disposal", flaky_journal)
 
     with pytest.raises(HTTPException):
         fa_router.dispose_asset("asset-1", _disposal(), {"firm_id": FIRM, "id": "u1"})
@@ -194,7 +194,7 @@ def test_already_disposed_asset_is_rejected_before_any_journal_call(monkeypatch)
     _seed_asset(db, is_disposed=True)
     monkeypatch.setattr(fa_router, "_db", lambda: db)
     called = []
-    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: called.append(1) or "je-x"
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_asset_disposal", lambda *a, **k: called.append(1) or "je-x")
 
     with pytest.raises(HTTPException) as exc:
         fa_router.dispose_asset("asset-1", _disposal(), {"firm_id": FIRM, "id": "u1"})
@@ -212,7 +212,7 @@ def test_repeated_disposal_attempts_never_create_more_than_one_journal(monkeypat
     def journal(*a, **k):
         posted.append(1)
         return f"je-{len(posted)}"
-    fa_router._journal_svc.journal_for_asset_disposal = journal
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_asset_disposal", journal)
 
     first = fa_router.dispose_asset("asset-1", _disposal(), {"firm_id": FIRM, "id": "u1"})
     assert first["data"]["journal_entry_id"] == "je-1"
@@ -266,7 +266,7 @@ def test_disposing_with_months_unposted_is_refused_and_names_them(monkeypatch):
     _held_asset(db)
     monkeypatch.setattr(fa_router, "_db", lambda: db)
     called = []
-    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: called.append(1) or "je-x"
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_asset_disposal", lambda *a, **k: called.append(1) or "je-x")
 
     with pytest.raises(HTTPException) as exc:
         fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-11-20"),
@@ -288,7 +288,7 @@ def test_the_disposal_month_itself_is_not_required(monkeypatch):
     db = FakeDB()
     _held_asset(db, depreciation_posted_through="2026-10-31")
     monkeypatch.setattr(fa_router, "_db", lambda: db)
-    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-2"
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_asset_disposal", lambda *a, **k: "je-2")
 
     result = fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-11-20"),
                                      {"firm_id": FIRM, "id": "u1"})
@@ -302,7 +302,7 @@ def test_a_disposal_on_a_charged_month_end_leaves_nothing_uncharged(monkeypatch)
     db = FakeDB()
     _held_asset(db, depreciation_posted_through="2026-11-30")
     monkeypatch.setattr(fa_router, "_db", lambda: db)
-    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-3"
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_asset_disposal", lambda *a, **k: "je-3")
 
     result = fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-11-30"),
                                      {"firm_id": FIRM, "id": "u1"})
@@ -318,7 +318,7 @@ def test_an_asset_never_depreciated_at_all_is_refused_from_its_purchase_month(mo
     _seed_asset(db, purchase_date="2026-04-10",
                 accumulated_depreciation_paise=0)
     monkeypatch.setattr(fa_router, "_db", lambda: db)
-    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-4"
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_asset_disposal", lambda *a, **k: "je-4")
 
     with pytest.raises(HTTPException) as exc:
         fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-07-05"),
@@ -335,7 +335,7 @@ def test_a_disposal_in_the_purchase_month_needs_nothing_posted(monkeypatch):
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-10", accumulated_depreciation_paise=0)
     monkeypatch.setattr(fa_router, "_db", lambda: db)
-    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-5"
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_asset_disposal", lambda *a, **k: "je-5")
 
     result = fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-04-25"),
                                      {"firm_id": FIRM, "id": "u1"})

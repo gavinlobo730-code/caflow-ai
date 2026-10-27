@@ -165,11 +165,12 @@ def test_the_other_checks_sentence_counts_the_live_catalogue_not_a_memory():
     and it keeps passing as the catalogue grows, which the old sentence could
     not."""
     other_checks = len(rs.CHECK_CATALOGUE) - len(rs.HEURISTIC_CHECKS)
-    # Eighteen checks today, three of them this module's own heuristics — so
-    # fifteen "other" ones (the register's disposal and orphan-acquisition checks
-    # made it thirteen to fifteen, POST-A-110). If this fails because the
+    # Twenty checks today, three of them this module's own heuristics — so
+    # seventeen "other" ones (the register's disposal and orphan-acquisition checks
+    # made it thirteen to fifteen, POST-A-110, and the two about the Accumulated
+    # Amortisation ledger made it seventeen, POST-A-345). If this fails because the
     # catalogue grew, that is the fix working: the sentence must grow with it.
-    assert other_checks == 15
+    assert other_checks == 17
 
     not_checked = rs.check_catalogue()["not_checked"]
     other_checks_sentence = next(

@@ -9,6 +9,7 @@ from typing import Annotated, Literal, Optional
 from datetime import datetime, timezone
 from models.common import api_response
 from models.accounting import AccountIn, AccountUpdateIn, JournalEntryIn, JournalEntryUpdateIn, JournalReversalIn
+from domain.accounting import journal_source as JS
 from domain.accounting_service import accounting_service
 from domain.reporting import ReportingService, SupabaseLedgerSource, mock_ledger_source
 from domain.reporting.cash_book import (
@@ -973,7 +974,7 @@ def reverse_journal_entry(
 
         # Original (firm-scoped) — only for the timeline reference; reverse_entry
         # re-validates existence/posted/not-already-reversed itself.
-        orig = (db.table("journal_entries").select("client_id, reference_no, entry_type")
+        orig = (db.table("journal_entries").select("client_id, reference_no, entry_type, source_type")
                 .eq("id", entry_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
 
         # `approve` is Partner-only by RBAC (firm-wide), so M2 cannot be
@@ -1000,6 +1001,16 @@ def reverse_journal_entry(
                 status_code=422,
                 detail=f"This journal belongs to a {kind} — reverse the {kind} itself via {endpoint}, not the journal directly.",
             )
+
+        # POST-A-345. The move of an intangible asset's accumulated amortisation is undone by the route that also puts the asset's
+        # ledger pointer back and re-checks that nothing has been posted since. A bare journal reversal would leave the asset pointing
+        # at a ledger that no longer holds its credit, and the asset's next depreciation month would then credit it again.
+        if orig.get("source_type") == JS.AMORTISATION_RECLASS:
+            raise HTTPException(
+                status_code=422,
+                detail=("This journal moved an asset's accumulated amortisation into its own ledger. Undo it from the asset's "
+                        "Depreciation tab (\"Moved by a reclassification\"), which also puts the asset back on the ledger it came "
+                        "from, not by reversing the journal directly."))
 
         # Single reversal path through the kernel (append-only; original untouched).
         rev_id = phase2_journal_service.reverse_entry(

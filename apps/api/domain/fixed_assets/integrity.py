@@ -60,6 +60,15 @@ TWO MORE ASK THE LEDGER ABOUT THE REGISTER, rather than the register about itsel
   These two need what the LEDGER holds, which only the caller can fetch, so they run
   only when the caller passes a `LedgerLinks`; without one they are not asked (and the
   response must not read as having been). Both callers pass one.
+
+TWO MORE ASK THE CHART AND THE ACCUMULATED AMORTISATION LEDGER (POST-A-345), and run only when the caller passes
+`AccumulatedLedgerFacts`:
+
+  * `intangible_amortisation_in_the_shared_ledger` — an asset on the intangible line whose amortisation is still credited to
+    the shared Accumulated Depreciation ledger, which presents on the tangible line. Warning: the books balance, two lines are
+    out by the same amount, and the remedy is a Partner's posting.
+  * `accumulated_amortisation_ledger_disagrees_with_register` — the ledger's credit balance against the live assets pointed at
+    it, one finding per client, with the direction of the difference in words and nothing netted.
 """
 from __future__ import annotations
 
@@ -68,6 +77,7 @@ from decimal import Decimal
 from typing import Iterable, Optional
 
 from domain.fixed_assets import schedule_ii
+from domain.money_sentence import rupee_text
 
 
 #: The columns `register_findings` reads. Named here, beside the rule that
@@ -79,7 +89,7 @@ COLUMNS = (
     "id, asset_code, asset_name, purchase_cost_paise, accumulated_depreciation_paise, "
     "salvage_value_paise, journal_entry_id, acquisition_mode, purchase_bill_id, "
     "is_disposed, asset_category, depreciation_method, wdv_rate_percent, "
-    "useful_life_years, opening_position_date"
+    "useful_life_years, opening_position_date, accumulated_account_id"
 )
 
 #: Every `kind` `register_findings` can produce. DECLARED here rather than
@@ -98,6 +108,8 @@ ALL_KINDS: tuple[str, ...] = (
     "capitalised_from_a_bill_that_is_gone",
     "disposed_asset_has_no_disposal_journal",
     "acquisition_journal_has_no_asset",
+    "intangible_amortisation_in_the_shared_ledger",
+    "accumulated_amortisation_ledger_disagrees_with_register",
 )
 
 
@@ -112,6 +124,19 @@ class LedgerLinks:
     not read the ledger must pass no `LedgerLinks` at all."""
     disposal_journalled_asset_ids: frozenset
     acquisition_journals: tuple
+
+
+@dataclass(frozen=True)
+class AccumulatedLedgerFacts:
+    """What the chart and the ledger say about the Accumulated Amortisation ledger for one client (POST-A-345), resolved by the caller.
+
+    `own_ledger_id` is None where the chart has no such ledger (nothing can be pointed at it, so neither check is asked).
+    `own_ledger_credit_paise` is this client's credit balance of it, None where it could not be read (the disagreement is then not
+    asked). `belongs_asset_ids` are the ids of live, undisposed assets that have no pointer and whose cost sits on the same Schedule III
+    line as the ledger: the assets the reclassification would move. A caller that could not work any of this out passes no facts at all."""
+    own_ledger_id: Optional[str]
+    own_ledger_credit_paise: Optional[int]
+    belongs_asset_ids: frozenset
 
 
 def schedule_ii_departure(asset: dict) -> Optional[dict]:
@@ -292,8 +317,72 @@ def acquisition_journals_without_an_asset(assets: list, links: LedgerLinks) -> l
     return out
 
 
+def amortisation_in_the_shared_ledger(asset: dict, facts: AccumulatedLedgerFacts) -> Optional[dict]:
+    """An intangible asset whose amortisation is still credited to the shared ledger on the tangible line (POST-A-345)."""
+    if asset.get("is_disposed") or asset.get("accumulated_account_id"):
+        return None
+    if str(asset.get("id")) not in facts.belongs_asset_ids:
+        return None
+    amount = int(asset.get("accumulated_depreciation_paise") or 0)
+    return {
+        "kind": "intangible_amortisation_in_the_shared_ledger",
+        "asset_code": asset.get("asset_code"),
+        "asset_name": asset.get("asset_name"),
+        "amount_paise": amount,
+        "what_it_means": (
+            "This asset is on the intangible line of the balance sheet, and what it has been amortised is credited to the shared "
+            "Accumulated Depreciation ledger, which is presented on the tangible line. Each line is then out by the same amount. "
+            "A Partner can move it from the Depreciation tab of the fixed-asset register." if amount else
+            "This asset is on the intangible line of the balance sheet and has not been amortised yet, but its first month will be "
+            "credited to the shared Accumulated Depreciation ledger, which is presented on the tangible line, unless a Partner points it "
+            "at the Accumulated Amortisation ledger first (the Depreciation tab of the fixed-asset register)."),
+    }
+
+
+def accumulated_ledger_disagrees(assets: list, facts: AccumulatedLedgerFacts) -> Optional[dict]:
+    """The Accumulated Amortisation ledger against the live assets pointed at it. One finding per client, not per asset (POST-A-345).
+
+    A disposed asset is left out because its disposal debits the ledger it was pointed at for exactly its accumulated figure, so the
+    ledger no longer holds it. The difference is named with its direction and NOT absorbed: an unexplained credit is often a trial
+    balance mapped to this ledger by name, an unexplained shortfall a reclassification journal reversed by hand, and which it is, is
+    the person's answer."""
+    if facts.own_ledger_id is None or facts.own_ledger_credit_paise is None:
+        return None
+    pointed = sum(int(a.get("accumulated_depreciation_paise") or 0) for a in assets
+                  if not a.get("is_disposed") and str(a.get("accumulated_account_id") or "") == facts.own_ledger_id)
+    held = facts.own_ledger_credit_paise
+    if held == pointed:
+        return None
+    if held > pointed:
+        direction = (f"holds {rupee_text(held - pointed)} more than the assets pointed at it account for. A trial balance "
+                     "mapped to it by name, or an entry made by hand, is the usual cause.")
+    elif held >= 0:
+        direction = (f"holds {rupee_text(pointed - held)} less than the assets pointed at it account for. A reclassification "
+                     "journal reversed or edited by hand is the usual cause.")
+    else:
+        direction = (f"is on the debit side by {rupee_text(-held)}, while the assets pointed at it account for a credit of "
+                     f"{rupee_text(pointed)}. A reclassification journal reversed by hand, or an asset disposed of twice, is the "
+                     "usual cause.")
+    return {
+        "kind": "accumulated_amortisation_ledger_disagrees_with_register",
+        "amount_paise": abs(held - pointed),
+        "what_it_means": (f"The Accumulated Amortisation ledger {direction} Nothing is netted here: look at its entries "
+                          "and at the register, and correct whichever is wrong."),
+    }
+
+
+def accumulated_ledger_findings(assets: list, facts: Optional[AccumulatedLedgerFacts]) -> list[dict]:
+    """Both Accumulated Amortisation checks over one client's register; none where the caller passed no facts (they were not asked)."""
+    if facts is None:
+        return []
+    out = [f for f in (amortisation_in_the_shared_ledger(a, facts) for a in assets) if f]
+    disagreement = accumulated_ledger_disagrees(assets, facts)
+    return out + [disagreement] if disagreement else out
+
+
 def register_findings(assets: Iterable[dict], live_bill_ids: set,
-                      ledger: Optional[LedgerLinks] = None) -> list[dict]:
+                      ledger: Optional[LedgerLinks] = None,
+                      accumulated: Optional[AccumulatedLedgerFacts] = None) -> list[dict]:
     """Every finding over one client's register.
 
     `assets` are `fixed_assets` rows with the soft-deleted ones already
@@ -303,7 +392,8 @@ def register_findings(assets: Iterable[dict], live_bill_ids: set,
     bill-backed asset as orphaned, so a caller that cannot resolve them must
     not call this rather than passing nothing. `ledger` is the same kind of
     fact about the journals (see `LedgerLinks`): None means the two checks
-    that need it are not asked.
+    that need it are not asked. `accumulated` is the same again for the Accumulated Amortisation ledger (POST-A-345): None means those
+    two checks are not asked.
     """
     assets = list(assets)
     findings: list[dict] = []
@@ -367,5 +457,7 @@ def register_findings(assets: Iterable[dict], live_bill_ids: set,
 
     if ledger is not None:
         findings.extend(acquisition_journals_without_an_asset(assets, ledger))
+
+    findings.extend(accumulated_ledger_findings(assets, accumulated))
 
     return findings

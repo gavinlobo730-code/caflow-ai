@@ -77,6 +77,7 @@ const ROUTES: Record<string, { module: string; tab: string }> = {
   fixed_asset:           { module: "fixed-assets", tab: "register" },
   depreciation:          { module: "fixed-assets", tab: "register" },
   asset_disposal:        { module: "fixed-assets", tab: "register" },
+  amortisation_reclass:  { module: "fixed-assets", tab: "register" },
   cwip_addition:         { module: "fixed-assets", tab: "cwip" },
   cwip_capitalisation:   { module: "fixed-assets", tab: "cwip" },
   // Banking.

@@ -79,6 +79,12 @@ SETTLEMENT = "settlement"
 FIXED_ASSET = "fixed_asset"
 DEPRECIATION = "depreciation"
 ASSET_DISPOSAL = "asset_disposal"
+#: The entry that moves an intangible asset's accumulated amortisation out of the shared ledger into the ledger of its own (POST-A-345).
+#: It names the ASSET, like the other fixed-asset sources, and is a source of its own on purpose: stamped `fixed_asset` it would be read
+#: as an acquisition by the register-integrity check, and stamped `manual` it would be editable and discardable through the manual-
+#: journal path. A generic reversal REFUSES it (the asset's pointer would stay set while its history moved back); the dedicated undo is
+#: the only way back.
+AMORTISATION_RECLASS = "amortisation_reclass"
 #: An asset UNDER CONSTRUCTION, which is not one of the four above and must not
 #: be (migration 397). Schedule III Division I presents capital work-in-progress
 #: on its own line and AS-10 paragraph 20 does not start depreciating it, so a
@@ -104,7 +110,7 @@ ALL_SOURCES = frozenset({
     PURCHASE_BILL, DEBIT_NOTE, PURCHASE_CREDIT_NOTE, PURCHASE_PAYMENT,
     BILL_OF_ENTRY,
     PAYROLL_RUN, PAYROLL_DISBURSEMENT, SETTLEMENT,
-    FIXED_ASSET, DEPRECIATION, ASSET_DISPOSAL,
+    FIXED_ASSET, DEPRECIATION, ASSET_DISPOSAL, AMORTISATION_RECLASS,
     CWIP_ADDITION, CWIP_CAPITALISATION,
     BANK_TRANSACTION, BANK_OVERPAYMENT,
     OPENING, TRIAL_BALANCE_IMPORT, YEAR_END_ADJUSTMENT,
@@ -145,6 +151,7 @@ SOURCE_LABEL = {
     FIXED_ASSET: "fixed asset",
     DEPRECIATION: "depreciation charge",
     ASSET_DISPOSAL: "asset disposal",
+    AMORTISATION_RECLASS: "reclassification of accumulated amortisation",
     CWIP_ADDITION: "capital work-in-progress",
     CWIP_CAPITALISATION: "capitalisation of work-in-progress",
     BANK_TRANSACTION: "bank entry",

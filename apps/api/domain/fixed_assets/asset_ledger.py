@@ -63,6 +63,8 @@ LEDGER_PATTERN_BY_CATEGORY: dict[str, str] = {
 #: means the shared ledger below. `services.phase2_journal_service._accumulated_account_id` is the one function that applies this, and
 #: both journals call it: a pattern named here and written out in a journal is how an asset ends up half in each ledger.
 SHARED_ACCUMULATED_PATTERN = "%Accumulated Depreciation%"
+#: The ledger an intangible asset's accumulated amortisation can be kept in (migration 553 seeds it).
+OWN_ACCUMULATED_PATTERN = "%Accumulated Amortisation%"
 
 
 class AccumulatedLedgerUnavailable(ValueError):

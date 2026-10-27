@@ -66,3 +66,11 @@ def test_every_record_file_is_in_the_index():
     assert on_disk == named, (
         f"docs/design-record/ and the index disagree: only on disk {sorted(on_disk - named)}, only in the index "
         f"{sorted(named - on_disk)}")
+
+
+def test_no_design_record_entry_ships_an_unfilled_placeholder():
+    """An entry is written with `{{VERIFIED}}`-style gaps while the checks run and the gaps are filled when they have: one left in
+    would read as a record that says nothing about what was verified, which is the one thing a record of this kind is for."""
+    left = [f"{f.name}: {m.group(0)}" for f in sorted(RECORD.glob("*.md"))
+            for m in re.finditer(r"\{\{[A-Z_]+\}\}", f.read_text(encoding="utf-8"))]
+    assert left == [], f"unfilled placeholders: {left}"

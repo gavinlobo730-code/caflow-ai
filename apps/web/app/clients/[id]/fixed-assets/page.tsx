@@ -19,6 +19,7 @@ import { formatDate, formatDateTime } from "@/lib/dates/format";
 import { fyRangeFor } from "@/lib/dates/periods";
 import { CwipTab } from "@/components/fixed-assets/CwipTab";
 import { OpeningRegisterImportButton } from "@/components/fixed-assets/OpeningRegisterImport";
+import { AmortisationReclassification } from "@/components/fixed-assets/AmortisationReclassification";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 import { Callout, GapList } from "@/components/ui/callout";
@@ -1418,11 +1419,13 @@ function DepreciationTab({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4 max-w-ps-data mx-auto">
+      {/* POST-A-345. Hides itself when there is no intangible asset to move and none already moved. */}
+      <AmortisationReclassification key={clientId} clientId={clientId} onChanged={load} />
       {/* Period + Post All */}
       <div className="bg-white rounded-xl border border-ps-border px-5 py-4 flex items-center justify-between">
         <div className="space-y-1">
           <p className="text-xs font-semibold text-ps-ink">Post Depreciation</p>
-          <p className="text-2xs text-ps-hint">Posts journal entry: Dr Depreciation Expense / Cr Accumulated Depreciation. Idempotent per period.</p>
+          <p className="text-2xs text-ps-hint">Posts journal entry: Dr Depreciation Expense / Cr Accumulated Depreciation (an intangible asset on its own ledger: Cr Accumulated Amortisation). Idempotent per period.</p>
         </div>
         <div className="flex items-center gap-3">
           <input
@@ -1806,7 +1809,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
         <div>
           <p className="text-xs font-semibold text-red-800">Asset Disposal — CA Review Required</p>
           <p className="text-2xs text-state-problem mt-0.5">
-            Disposal creates a journal entry: Dr Accumulated Depreciation + Dr/Cr Bank / Cr Fixed Asset ± Profit/Loss on Disposal.
+            Disposal creates a journal entry: Dr Accumulated Depreciation (or Accumulated Amortisation, for an intangible asset on its own ledger) + Dr/Cr Bank / Cr Fixed Asset ± Profit/Loss on Disposal.
             This action cannot be undone. CA must review before confirming.
           </p>
         </div>
@@ -2271,6 +2274,8 @@ const FINDING_TITLE: Record<string, string> = {
   wdv_asset_has_no_stopping_point: "Depreciation here never stops",
   disposed_asset_has_no_disposal_journal: "Disposed, but no disposal entry",
   acquisition_journal_has_no_asset: "An acquisition entry with no asset behind it",
+  intangible_amortisation_in_the_shared_ledger: "Amortisation is on the tangible line",
+  accumulated_amortisation_ledger_disagrees_with_register: "The amortisation ledger is off the register",
 };
 
 function RegisterIntegrity({ clientId }: { clientId: string }) {
@@ -2281,18 +2286,19 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
     // confusion it exists to catch.
     { phase: "loading" } |
     { phase: "error"; message: string } |
-    { phase: "ok"; checked: number; findings: IntegrityFinding[] }
+    { phase: "ok"; checked: number; findings: IntegrityFinding[]; notChecked: string[] }
   >({ phase: "loading" });
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setState({ phase: "loading" });
     try {
-      const j = await request<ApiEnvelope<{ checked: number; findings: IntegrityFinding[] }>>(
+      const j = await request<ApiEnvelope<{ checked: number; findings: IntegrityFinding[]; not_checked?: string[] }>>(
         `/api/fixed-assets/register-integrity?client_id=${clientId}`);
       if (!j.success) throw new Error(j.error ?? "Failed to load");
-      const d = j.data ?? { checked: 0, findings: [] };
-      setState({ phase: "ok", checked: d.checked ?? 0, findings: d.findings ?? [] });
+      const d = j.data ?? { checked: 0, findings: [], not_checked: [] };
+      setState({ phase: "ok", checked: d.checked ?? 0, findings: d.findings ?? [],
+                 notChecked: Array.isArray(d.not_checked) ? d.not_checked : [] });
     } catch (e) {
       // An "all clear" and a failed load must not look the same. The endpoint
       // returns `checked` for exactly this reason — "no findings" over nothing
@@ -2329,9 +2335,16 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
         </p>
       )}
 
-      {state.phase === "ok" && state.findings.length === 0 && (
+      {state.phase === "ok" && state.findings.length === 0 && state.notChecked.length === 0 && (
         <p className="text-xs text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
           {state.checked} asset{state.checked === 1 ? "" : "s"} checked, nothing to report.
+        </p>
+      )}
+
+      {state.phase === "ok" && state.notChecked.length > 0 && (
+        <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          {state.findings.length === 0 ? `${state.checked} asset${state.checked === 1 ? "" : "s"} checked, nothing to report, but: ` : ""}
+          {state.notChecked.join(" ")}
         </p>
       )}
 
