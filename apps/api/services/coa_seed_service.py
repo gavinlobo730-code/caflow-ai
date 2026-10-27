@@ -90,6 +90,14 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     # seeded and every firm onboarded since holds them.
     ("1508", "Office Equipment",             "Asset", "Fixed Asset"),   # %Office Equipment%
     ("1590", "Accumulated Depreciation",     "Asset", "Fixed Asset"),   # %Accumulated Depreciation%
+    # %Accumulated Amortisation% — the ledger an intangible asset's accumulated amortisation can be kept in, beside its cost ledger
+    # (POST-A-345, migration 553 seeds it for the firms that exist). NOTHING POSTS TO IT YET: stage 1 of 3 adds the ledger and the
+    # asset's pointer to it. The SUBTYPE is load-bearing twice: `schedule_iii.classify` tests "intangible" first, so it sits on the
+    # same Schedule III line as Intangible Assets above, and it contains "fixed", which is what keeps the cash-flow statement
+    # treating it as investing as the shared ledger is today ("Intangible Asset", the cost ledger's own subtype, would make an
+    # amortisation entry a working-capital movement and the statement stop reconciling). The name contains neither "Intangible
+    # Assets" nor "Accumulated Depreciation", so neither pattern the engine already searches can find it.
+    ("1591", "Accumulated Amortisation",     "Asset", "Intangible Fixed Asset"),   # %Accumulated Amortisation%
     # ── Liabilities ──
     ("2001", "Trade Payables",               "Liability", "Payable"),           # %Trade Payable%
     ("2002", "GST Output Tax Payable",       "Liability", "Current Liability"),  # %GST Output%

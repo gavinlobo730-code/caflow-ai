@@ -523,10 +523,12 @@ def test_the_standard_chart_books_every_categorys_depreciation_in_one_account():
     assert lines.schedule_line_for_account("Asset", "Intangible Asset", None) == INTANGIBLE
 
 
-def test_the_depreciation_and_the_disposal_journals_use_the_one_accumulated_depreciation_account_whatever_the_category():
-    """The other half of the sentence the split gives: the account the depreciation is credited to, and the disposal debits, is found by
-    one fixed pattern and never by the asset's category, so an intangible asset's amortisation lands in the same account as a
-    machine's depreciation. If that changes (POST-A-345 is the change) this test and the sentence change with it."""
+def test_the_depreciation_and_the_disposal_journals_ask_one_function_for_the_accumulated_ledger_and_never_the_category():
+    """The other half of the sentence the split gives: the ledger the depreciation is credited to, and the disposal debits, is chosen by
+    ONE function (`Phase2JournalService._accumulated_account_id`) and never by the asset's category, so an intangible asset's
+    amortisation lands in the same ledger as a machine's depreciation UNTIL the asset names another (`fixed_assets.accumulated_account_id`,
+    POST-A-345, written only by the reclassification a Partner posts). Neither journal names a ledger pattern itself.
+    The function's own behaviour is held by tests/test_an_assets_accumulated_ledger_is_chosen_in_one_place.py."""
     import ast
     import inspect
     import textwrap
@@ -534,9 +536,11 @@ def test_the_depreciation_and_the_disposal_journals_use_the_one_accumulated_depr
 
     for fn in (P.journal_for_depreciation, P.journal_for_asset_disposal):
         tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
-        calls = [c for c in ast.walk(tree) if isinstance(c, ast.Call) and getattr(c.func, "attr", "") == "_find_account"]
-        accum = [c for c in calls if any(isinstance(a, ast.Constant) and a.value == "%Accumulated Depreciation%" for a in c.args)]
-        assert len(accum) == 1, (fn.__name__, [ast.unparse(c) for c in calls])
+        asked = [c for c in ast.walk(tree) if isinstance(c, ast.Call) and getattr(c.func, "attr", "") == "_accumulated_account_id"]
+        assert len(asked) == 1, (fn.__name__, [ast.unparse(c) for c in ast.walk(tree) if isinstance(c, ast.Call)])
+        literal = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                   and n.value.startswith("%") and "accumulated" in n.value.lower()]
+        assert not literal, (fn.__name__, literal)
 
 
 def test_every_category_the_register_can_hold_is_booked_to_a_ledger_that_is_on_the_standard_chart_with_a_readable_line():

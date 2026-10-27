@@ -28,6 +28,7 @@ ACCOUNTS = [
     Account("exp",    "5000", "Office Rent",            "Expense",   "Operating Expense"),
     Account("fa",     "1500", "Office Equipment",       "Asset",     "Fixed Asset"),
     Account("accdep", "1599", "Accumulated Depreciation","Asset",    "Fixed Asset"),
+    Account("accam",  "1591", "Accumulated Amortisation","Asset",    "Intangible Fixed Asset"),
     Account("depexp", "5900", "Depreciation Expense",   "Expense",   "Depreciation"),
     Account("gain",   "4900", "Profit on Asset Disposal","Revenue",  "Other Income"),
     Account("loss",   "5950", "Loss on Asset Disposal", "Expense",   "Other Expense"),
@@ -85,6 +86,31 @@ def test_depreciation_excluded_and_added_back():
     assert r["depreciation_addback_paise"] == 10000   # …added back
     assert r["net_cash_operating_paise"] == 0
     assert s["opening_cash_paise"] == 1000000 and s["closing_cash_paise"] == 1000000
+    assert_reconciles(s)
+
+
+def test_amortisation_credited_to_its_own_ledger_is_excluded_and_added_back_like_depreciation():
+    """POST-A-345: an intangible's accumulated amortisation can be kept in its own ledger. Its subtype contains 'fixed', which is
+    what the AS 3 classifier reads to call an Asset INVESTING; with the cost ledger's own subtype ('Intangible Asset') the credit leg
+    was a working-capital movement on top of the add-back and the statement stopped reconciling (reproduced on 27-10-2026)."""
+    s = cf(svc_for([OPENING, je("d", [("depexp", 10000, 0), ("accam", 0, 10000)])]))
+    assert total(s, "operating") == 0 and total(s, "investing") == 0 and total(s, "financing") == 0
+    assert s["non_cash_excluded_count"] == 1
+    r = s["operating_reconciliation"]
+    assert r["net_profit_paise"] == -10000 and r["depreciation_addback_paise"] == 10000
+    assert r["working_capital_change_paise"] == 0
+    assert_reconciles(s)
+
+
+def test_moving_accumulated_amortisation_between_the_two_ledgers_is_not_a_cash_event_and_still_reconciles():
+    """The reclassification entry: Dr the shared Accumulated Depreciation, Cr Accumulated Amortisation. No cash leg, no profit."""
+    s = cf(svc_for([OPENING,
+                    je("d", [("depexp", 10000, 0), ("accdep", 0, 10000)]),
+                    je("r", [("accdep", 10000, 0), ("accam", 0, 10000)], "2026-09-30")]))
+    assert total(s, "operating") == 0 and total(s, "investing") == 0 and total(s, "financing") == 0
+    assert s["non_cash_excluded_count"] == 2
+    r = s["operating_reconciliation"]
+    assert r["working_capital_change_paise"] == 0
     assert_reconciles(s)
 
 

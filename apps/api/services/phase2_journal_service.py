@@ -54,7 +54,9 @@ def purchase_bill_journal_ref(bill_id: str) -> str:
 
 
 from domain.accounting.payment_account import resolve_payment_account
-from domain.fixed_assets.asset_ledger import ledger_pattern
+from domain.fixed_assets.asset_ledger import (
+    SHARED_ACCUMULATED_PATTERN, AccumulatedLedgerUnavailable, accumulated_account_pointer, ledger_pattern,
+)
 
 
 class Phase2JournalService:
@@ -1596,6 +1598,43 @@ class Phase2JournalService:
             _logger.error("journal_for_asset_acquisition error: %s", e, exc_info=True)
             raise
 
+    def _accumulated_account_id(self, db, asset: dict, firm_id: str, client_id: str) -> str:
+        """The ledger this asset's accumulated depreciation is credited to and its disposal debits (POST-A-345).
+
+        ONE FUNCTION, BOTH JOURNALS. The depreciation journal and the disposal journal must name the SAME ledger for one asset, or its
+        history is cleared from a ledger it was never in (the totals still agree and each ledger is wrong by the asset's whole
+        accumulated figure). Neither journal names a ledger pattern itself any more; `tests/test_an_assets_accumulated_ledger_is_
+        chosen_in_one_place.py` holds that.
+
+        An asset that points at no ledger (NULL, or no such key) uses the shared Accumulated Depreciation ledger found by pattern, as
+        every asset always has. An asset that points at a ledger uses THAT ledger or none: a pointed ledger that is missing, another
+        practice's, inactive or not an asset ledger FAILS IN WORDS and is never replaced by the shared one, because the asset's
+        history is in the pointed ledger and posting its next month to the shared one is the defect this change removes.
+        """
+        pointer = accumulated_account_pointer(asset)
+        if pointer is None:
+            return self._find_account(db, firm_id, client_id, SHARED_ACCUMULATED_PATTERN)
+        resp = (
+            db.table("chart_of_accounts")
+            .select("id, account_name, account_type, is_active, client_id")
+            .eq("id", pointer)
+            .eq("firm_id", firm_id)
+            .limit(1)
+            .execute()
+        )
+        row = (resp.data or [None])[0]
+        usable = (row is not None and row.get("is_active") is True and row.get("account_type") == "Asset"
+                  and row.get("client_id") in (None, client_id))
+        if not usable:
+            raise AccumulatedLedgerUnavailable(
+                f"{asset.get('asset_name') or 'This asset'}'s accumulated depreciation is kept in a ledger that cannot be used"
+                + (f" ({row['account_name']})" if row and row.get("account_name") else "")
+                + ": it is missing, inactive, not an asset ledger or not this practice's. Make it usable again on the chart of "
+                  "accounts before posting. The asset is NOT moved to the shared Accumulated Depreciation ledger, because its history "
+                  "is in the ledger it names."
+            )
+        return row["id"]
+
     def journal_for_depreciation(
         self, asset: dict, depreciation_paise: int, period: str, firm_id: str, client_id: str
     ) -> Optional[str]:
@@ -1611,7 +1650,7 @@ class Phase2JournalService:
             db = get_supabase()
 
             depn_exp_id  = self._find_account(db, firm_id, client_id, "%Depreciation Expense%")
-            accum_dep_id = self._find_account(db, firm_id, client_id, "%Accumulated Depreciation%")
+            accum_dep_id = self._accumulated_account_id(db, asset, firm_id, client_id)
 
             # task #232 audit finding: this entry used to be dated "today"
             # (whenever the CA happened to click Post) instead of the PERIOD
@@ -1846,7 +1885,7 @@ class Phase2JournalService:
 
             category = asset.get("asset_category", "Plant & Machinery")
             asset_acct    = self._find_account(db, firm_id, client_id, ledger_pattern(category))
-            accum_dep_id  = self._find_account(db, firm_id, client_id, "%Accumulated Depreciation%")
+            accum_dep_id  = self._accumulated_account_id(db, asset, firm_id, client_id)
             # Disposal proceeds land in the account that RECEIVED them, not a
             # firm-wide guess — the sale of an asset for cash is as ordinary as
             # a cash receipt, and the old line put it in Bank either way.

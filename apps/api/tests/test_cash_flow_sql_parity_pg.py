@@ -62,6 +62,7 @@ ACCOUNTS = [
     Account("exp",    "5000", "Office Rent",             "Expense",   "Operating Expense"),
     Account("fa",     "1500", "Office Equipment",        "Asset",     "Fixed Asset"),
     Account("accdep", "1599", "Accumulated Depreciation", "Asset",    "Fixed Asset"),
+    Account("accam",  "1591", "Accumulated Amortisation", "Asset",    "Intangible Fixed Asset"),
     Account("depexp", "5900", "Depreciation Expense",    "Expense",   "Depreciation"),
     Account("gain",   "4900", "Profit on Asset Disposal", "Revenue",  "Other Income"),
     Account("loss",   "5950", "Loss on Asset Disposal",  "Expense",   "Other Expense"),
@@ -100,6 +101,14 @@ SCENARIOS: list[tuple[str, list]] = [
     ("depreciation excluded and added back", [
         je("s5", [("bank", 50000, 0), ("rev", 0, 50000)]),
         je("d1", [("depexp", 8000, 0), ("accdep", 0, 8000)], "2027-03-31"),
+    ]),
+    ("amortisation credited to its own ledger — excluded and added back (POST-A-345)", [
+        je("s5a", [("bank", 50000, 0), ("rev", 0, 50000)]),
+        je("d1a", [("depexp", 8000, 0), ("accam", 0, 8000)], "2027-03-31"),
+    ]),
+    ("accumulated amortisation moved between the two ledgers — no cash, no profit (POST-A-345)", [
+        je("d1b", [("depexp", 8000, 0), ("accdep", 0, 8000)], "2026-09-30"),
+        je("r1b", [("accdep", 8000, 0), ("accam", 0, 8000)], "2026-10-01"),
     ]),
     ("asset purchase — investing outflow", [
         je("a1", [("fa", 60000, 0), ("bank", 0, 60000)]),

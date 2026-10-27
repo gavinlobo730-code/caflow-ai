@@ -298,3 +298,42 @@ def test_a_capitalised_project_and_a_disposal_use_the_same_ledger(monkeypatch, c
 
     disp = svc.journal_for_asset_disposal(asset, 80_000_00, FIRM, CLIENT)
     assert disp and expected in _credit_account_ids(db, disp)
+
+
+# ── the ledger an intangible's accumulated amortisation can be kept in (POST-A-345, stage 1) ──────────────────────────────
+
+def test_the_standard_chart_holds_one_accumulated_amortisation_ledger_that_neither_existing_pattern_finds():
+    rows = [row for row in STANDARD_COA if _ilike("%Accumulated Amortisation%", row[1])]
+    assert rows == [("1591", "Accumulated Amortisation", "Asset", "Intangible Fixed Asset")]
+    # The two patterns the engine already searches must not find it: they are `.limit(1)` lookups with no ordering.
+    assert not _ilike("%Intangible Assets%", rows[0][1])
+    assert not _ilike("%Accumulated Depreciation%", rows[0][1])
+    # …and it must not have taken either of THEIR ledgers' place.
+    assert [r for r in STANDARD_COA if _ilike("%Accumulated Depreciation%", r[1])] == [
+        ("1590", "Accumulated Depreciation", "Asset", "Fixed Asset")]
+    assert [r for r in STANDARD_COA if _ilike("%Intangible Assets%", r[1])][0][0] == "1506"
+
+
+def test_the_new_ledger_is_on_the_intangible_line_beside_its_cost_ledger_and_investing_in_the_cash_flow():
+    from domain.reporting.year_end_lines import schedule_line_for_account
+    from domain.reporting import Account
+    from domain.reporting.builders import _classify_activity
+
+    new = next(r for r in STANDARD_COA if r[1] == "Accumulated Amortisation")
+    cost = next(r for r in STANDARD_COA if r[1] == "Intangible Assets")
+    assert schedule_line_for_account(new[2], new[3]) == schedule_line_for_account(cost[2], cost[3]) == "intangible_assets"
+    assert schedule_iii.bs_bucket(new[2], new[3]) == schedule_iii.bs_bucket(cost[2], cost[3]) == "Intangible Fixed Assets"
+    # The cost ledger's own subtype ("Intangible Asset") is read as OPERATING by the cash-flow classifier, so an amortisation credit
+    # to a ledger of that subtype is a working-capital movement and the statement stops reconciling. "Intangible Fixed Asset"
+    # contains "fixed", which is what keeps it investing exactly as the shared Accumulated Depreciation ledger is today.
+    assert _classify_activity(Account("a", new[0], new[1], new[2], new[3])) == "investing"
+    shared = next(r for r in STANDARD_COA if r[1] == "Accumulated Depreciation")
+    assert _classify_activity(Account("s", shared[0], shared[1], shared[2], shared[3])) == "investing"
+
+
+def test_the_migration_and_the_standard_chart_write_the_same_row():
+    migration = (API / "migrations" /
+                 "553_an_intangible_asset_can_name_the_ledger_its_accumulated_amortisation_is_kept_in.sql").read_text()
+    new = next(r for r in STANDARD_COA if r[1] == "Accumulated Amortisation")
+    assert f"'{new[1]}'" in migration and "'Intangible Fixed Asset'" in migration and "generate_series(1591, 1599)" in migration
+    assert new[0] == "1591" and new[3] == "Intangible Fixed Asset"
