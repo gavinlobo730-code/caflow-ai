@@ -105,6 +105,9 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("payroll_runs", "reversal_claimed_at"): "migration 508",
     # POST-A-215. The date a billing schedule's cadence is measured from.
     ("billing_schedules", "anchor_date"): "migration 511",
+    #
+    # POST-A-345. The ledger an asset's accumulated depreciation is kept in; NULL for every asset before the change.
+    ("fixed_assets", "accumulated_account_id"): "migration 553",
 }
 
 

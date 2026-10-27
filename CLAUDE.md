@@ -190,7 +190,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE "IS THIS CODE OR SERVICE STILL USED?" CHECKS READ EVERY LINE TABLE THAT CARRIES THE CODE, OR NAME THE ONES THEY DO NOT, AND AN ARCHIVED TEMPLATE DOES NOT PIN A SERVICE
 - A DRAFT IS ASKED WHETHER IT ADDS UP TO ITS OWN LINES BEFORE IT IS ISSUED, BECAUSE THE ISSUE POSTS FROM THE STORED HEADER AND A MEMBER'S OWN TOKEN CAN STILL CHANGE A DRAFT'S HEADER.
 
-### `docs/design-record/engineering-and-ci.md` (11 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
+### `docs/design-record/engineering-and-ci.md` (12 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
 - THE BACKEND HAS A LINT RATCHET, A PROPERTY SUITE, ONE PAGER, ONE DOOR TO THE DATABASE CLIENT AND A COVERAGE FLOOR, AND EACH IS A R
 - THE SMOKE WALK RUNS BY ITSELF, NIGHTLY AND ON DEMAND, AND IS NOT A CHECK ANYTHING WAITS ON
@@ -203,6 +203,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE WEB SERVER IS GUNICORN 22.0.0, THE TWO REQUEST-SMUGGLING ADVISORIES ARE OFF THE BASELINE, AND WHAT WAS NOT TRIED IS NAMED
 - THE SCHEMA GUARD EXPECTS COLUMNS ON TABLES A MIGRATION CREATES, AND A WORD OF THE SQL AROUND A TABLE NAME IS NOT ONE
 - A WINDOW IS READ IN REQUESTS THE DATABASE WILL HONOUR, AND AN ID IT CANNOT READ IS A 422 WITH A SENTENCE, SAID BY THE ONE SPEAKER
+- A TEST STUBS A JOURNAL METHOD THROUGH MONKEYPATCH, NEVER BY ASSIGNING IT
 
 ### `docs/design-record/filing-and-compliance.md` (6 entries): Filing to government portals, trackers and the period lock
 
@@ -213,7 +214,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A COMPLIANCE OBLIGATION IS OVERDUE BY ITS DATE, BECAUSE NOTHING WRITES THE WORD, AND ONE FUNCTION SAYS SO FOR EVERY READER
 - AN MCA FILING'S DATE IS JUDGED BEFORE IT IS STORED, BY THE RULE THE ITR ACKNOWLEDGEMENT USES
 
-### `docs/design-record/fixed-assets-and-inventory.md` (17 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
+### `docs/design-record/fixed-assets-and-inventory.md` (18 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
 
 - AN ASSET UNDER CONSTRUCTION IS NOT IN THE REGISTER, AND THAT IS THE FIX
 - AN ASSET CATEGORY IS BOOKED TO A LEDGER BY ONE TABLE, AND THE CHART A FIRM GETS MUST HOLD EVERY LEDGER IT NAMES
@@ -232,6 +233,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE ITEM'S CACHED STOCK FIGURES ARE WRITTEN BY THREE FUNCTIONS ON THE PRIVILEGED CLIENT, EACH NAMING THE FIRM AND THE CLIENT, AND THE OPENING BATCH CACHES ONLY THE ROWS THE CALLER'S CLIENT READS AS THIS CLIENT'S.
 - A STRAIGHT-LINE ASSET KEEPS THE OPENING ACCUMULATED DEPRECIATION OF ITS YEAR, SO THE NOTE SHOWS THE YEAR'S CHARGE AND NOT THE LAST MONTH'S
 - A STRAIGHT-LINE ASSET'S YEAR IS CAPPED AT WHAT WAS LEFT WHEN THE YEAR OPENED, SO ITS LAST YEAR POSTS WHAT IS LEFT
+- AN INTANGIBLE ASSET'S AMORTISATION HAS A LEDGER OF ITS OWN, ONE FUNCTION SAYS WHICH, AND A PARTNER MOVES WHAT THE SHARED LEDGER HOLDS
 
 ### `docs/design-record/frontend.md` (5 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 

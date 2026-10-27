@@ -29,7 +29,8 @@ from models.accounting import (FixedAssetIn, FixedAssetUpdateIn, DepreciationIn,
                                DepreciationRunIn, DisposalIn)
 from core.db_paging import fetch_all
 from domain.fixed_assets import integrity as fa_integrity
-from domain.fixed_assets.asset_ledger import AccumulatedLedgerUnavailable
+from domain.fixed_assets.asset_ledger import AccumulatedLedgerUnavailable, accumulated_account_pointer
+from services.fixed_asset_accumulated_ledger import birth_pointer, birth_pointer_fields, fetch_facts as fetch_accumulated_facts
 from services.fixed_asset_ledger_links import fetch_ledger_links
 from domain.fixed_assets import schedule_ii
 from domain.gst import section_18_6 as s186
@@ -42,7 +43,7 @@ from services.period_validation_service import period_validation_service, get_fy
 from services import period_lock_service
 from services.audit_service import log_event
 from services.numbering import next_sequence
-from domain.money_sentence import rupee_whole_text
+from domain.money_sentence import rupee_text, rupee_whole_text
 from core import db_provider
 
 router = APIRouter(prefix="/api/fixed-assets", tags=["fixed_assets"])
@@ -716,6 +717,7 @@ def create_asset(
         # "not eligible" — the hardcoded False this replaces made a real
         # deduction invisible, because the row renders ₹0 either way.
         "additional_depreciation_eligible": data.additional_depreciation_eligible,
+        **birth_pointer_fields(db, current_user["firm_id"], client_id, data.asset_category),
     }).execute()
 
     asset = (row.data or [{}])[0]
@@ -988,7 +990,31 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str) -> dict:
         "depreciation_fy":               fy,
         "depreciation_fy_start_accum_paise": fy_start_accum,
     }
-    db.table("fixed_assets").update(changed).eq("id", asset["id"]).eq("firm_id", firm_id).execute()
+    update = db.table("fixed_assets").update(changed).eq("id", asset["id"]).eq("firm_id", firm_id)
+    if "accumulated_account_id" in asset:
+        # POST-A-345: the journal above credited the ledger THIS COPY of the asset names. If a reclassification has moved the asset to
+        # (or back from) another ledger since the row was read, a month credited to the old one would leave the asset half in each,
+        # so the register moves only if the pointer is still the one the journal used.
+        pointer = accumulated_account_pointer(asset)
+        update = update.eq("accumulated_account_id", pointer) if pointer else update.is_("accumulated_account_id", "null")
+    if not (update.execute().data or []) and "accumulated_account_id" in asset:
+        try:
+            _reverse_tolerating_already_reversed(
+                db, firm_id, journal_id, entry_date,
+                f"Reversal of depreciation on {asset.get('asset_code')} for {period}: the asset's accumulated-depreciation ledger changed "
+                "while it was being posted", None)
+        except Exception as exc:
+            from core.observability import capture_posting_failure
+            capture_posting_failure(exc, operation="fixed_assets.post_depreciation.lost_race_reversal", firm_id=firm_id,
+                                    client_id=asset.get("client_id"), asset_id=asset["id"])
+            raise HTTPException(status_code=502, detail=(
+                f"This asset's accumulated-depreciation ledger changed while {period} was being posted, and the month's journal "
+                f"({journal_id}) could not be reversed ({_why_a_reversal_failed(exc)}). It is still posted to the ledger the asset "
+                "used to point at and the register does not include it. Reverse that journal from the ledger before posting the "
+                "month again.")) from exc
+        raise HTTPException(status_code=409, detail=(
+            f"This asset's accumulated-depreciation ledger changed while {period} was being posted (a reclassification committed in "
+            "between), so the month was not kept. Nothing was posted; try again."))
     # The caller's copy moves with the row, so a month-by-month loop reads the
     # opening accumulated depreciation each iteration without re-fetching.
     asset.update(changed)
@@ -1354,6 +1380,8 @@ def dispose_asset(
         "igst_paise": section_18_6.tax_on_transaction_value.igst_paise,
     }
 
+    _refuse_a_disposal_that_strands_a_reclassification(db, current_user["firm_id"], asset, asset_id, disposal_date)
+
     # Capture pre-disposal values for rollback before any mutation.
     prior_disposal_date  = asset.get("disposal_date")
     prior_disposal_value = asset.get("disposal_value_paise")
@@ -1384,8 +1412,18 @@ def dispose_asset(
         "disposal_is_supply":     data.is_supply,
         "disposal_gst_rate_bps":  data.gst_rate_bps,
         "disposal_is_interstate": bool(data.is_interstate),
-    }).eq("id", asset_id).eq("firm_id", current_user["firm_id"]).eq("is_disposed", False).execute()
+    }).eq("id", asset_id).eq("firm_id", current_user["firm_id"]).eq("is_disposed", False)
+    if "accumulated_account_id" in asset:
+        # POST-A-345: the disposal debits the ledger THIS COPY names; if a reclassification moved the asset since it was read, the claim
+        # misses instead of clearing the wrong ledger.
+        _p = accumulated_account_pointer(asset)
+        claim = claim.eq("accumulated_account_id", _p) if _p else claim.is_("accumulated_account_id", "null")
+    claim = claim.execute()
     if not claim.data:
+        if "accumulated_account_id" in asset:
+            raise HTTPException(status_code=409, detail=(
+                "Asset already disposed, or its accumulated-depreciation ledger changed since you opened it (a reclassification "
+                "committed in between). Reload the asset and try again."))
         raise HTTPException(status_code=409, detail="Asset already disposed")
 
     asset["disposal_date"] = disposal_date
@@ -1547,6 +1585,93 @@ def _previous_month(period: str) -> str:
     return f"{y - 1}-12" if m == 1 else f"{y}-{m - 1:02d}"
 
 
+def _why_a_reversal_failed(exc: Exception) -> str:
+    """A failure in words for the browser: the one speaker of the reclassification service (an HTTPException's own sentence, the kernel's
+    ValueError, otherwise `core.exceptions.unhandled_failure`), so a database refusal is never shown as its error dict."""
+    from services.amortisation_reclass_service import why
+    return why(exc)
+
+
+def _refuse_a_disposal_that_strands_a_reclassification(db, firm_id: str, asset: dict, asset_id: str, disposal_date: str) -> None:
+    """POST-A-345. Two refusals, both made before the claim so a refused disposal touches nothing.
+
+    An asset whose move into the Accumulated Amortisation ledger did not finish has part of its amortisation in each ledger: a disposal
+    debits whichever the pointer names for the whole register figure and the undo then refuses a disposed asset. And an asset whose
+    amortisation was moved by a reclassification dated AFTER this disposal would have the new ledger debited before it was credited, so
+    every balance sheet cut in between would show a debit balance on a contra account. An asset created in its own ledger has no such
+    entry."""
+    from services.amortisation_reclass_service import unfinished_move_reason
+    half_moved = unfinished_move_reason(db, firm_id, asset["client_id"], asset)
+    if half_moved:
+        raise HTTPException(status_code=422, detail=half_moved)
+    if accumulated_account_pointer(asset):
+        moved_on = [str(e["entry_date"])[:10] for e in live_reclass_entries(db, firm_id, asset["client_id"], asset_id)]
+        if moved_on and disposal_date < max(moved_on):
+            raise HTTPException(status_code=422, detail=(
+                f"This asset's accumulated amortisation was moved into its own ledger by a reclassification dated {max(moved_on)}. "
+                f"A disposal dated {disposal_date} would debit that ledger before it was credited. Date the disposal on or after "
+                f"{max(moved_on)}, or undo the reclassification first."))
+
+
+def live_reclass_entries(db, firm_id: str, client_id: str, asset_id: str) -> list:
+    """The asset's live amortisation-reclassification entries: empty for an asset created in its own ledger."""
+    from services.amortisation_reclass_service import live_entries
+    return live_entries(db, firm_id, client_id, [asset_id])
+
+
+def _repointed_for_category(db, firm_id: str, client_id: str, asset: dict, changes: dict) -> dict:
+    """`{"accumulated_account_id": <ledger id or None>}` when a correction that changes an asset's CATEGORY moves it between the shared
+    Accumulated Depreciation ledger and the Accumulated Amortisation ledger, `{}` otherwise (POST-A-345).
+
+    The new category is judged by the predicate that decided it when the asset was born. It is asked BEFORE the acquisition is reversed,
+    so a refusal leaves nothing half-done. Nothing is posted by then (Tier B refuses a depreciated asset), so there is no credit to move
+    and the pointer is simply re-decided. An asset that nevertheless carries accumulated depreciation is refused: a pointer that flipped
+    under a credit would leave that credit in the ledger the asset no longer points at."""
+    if "asset_category" not in changes:
+        return {}
+    new_pointer = birth_pointer(db, firm_id, client_id, changes["asset_category"])
+    if new_pointer == accumulated_account_pointer(asset):
+        return {}
+    if int(asset.get("accumulated_depreciation_paise") or 0) != 0:
+        raise HTTPException(
+            status_code=422,
+            detail=("This asset already carries accumulated depreciation, and the new category would keep it in a different ledger. "
+                    "Reverse the depreciation first, or leave the category as it is."))
+    return {"accumulated_account_id": new_pointer}
+
+
+def _write_correction_and_say_if_refused(db, firm_id: str, asset: dict, asset_id: str, update: dict, current_user: dict) -> None:
+    """The correction's final write. The edit-log row for the correction was written before the mutation, by design; when the write is
+    refused this one says the mutation did not happen, so the log is not left claiming a correction the register never received."""
+    try:
+        _write_correction(db, firm_id, asset, asset_id, update)
+    except HTTPException:
+        log_event(firm_id, "fixed_asset", asset_id, "update",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  metadata={"action": "correction_not_applied",
+                            "reason": "the asset changed while it was being corrected, so the register was not written"})
+        raise
+
+
+def _write_correction(db, firm_id: str, asset: dict, asset_id: str, update: dict) -> None:
+    """The correction's final write. When it carries a re-decided ledger (POST-A-345) it is a compare-and-set on the pointer and the
+    figure the request read: the first month's depreciation that landed since was credited to the OLD ledger, and writing the new
+    pointer now would leave it there."""
+    final = db.table("fixed_assets").update(update).eq("id", asset_id).eq("firm_id", firm_id)
+    if "accumulated_account_id" not in update:
+        final.execute()
+        return
+    _p = accumulated_account_pointer(asset)
+    final = final.eq("accumulated_account_id", _p) if _p else final.is_("accumulated_account_id", "null")
+    final = final.eq("accumulated_depreciation_paise", int(asset.get("accumulated_depreciation_paise") or 0))
+    if not (final.execute().data or []):
+        raise HTTPException(status_code=409, detail=(
+            "The asset changed while its category was being corrected (its first month of depreciation was posted), so the register and "
+            "the ledger it is kept in were not changed, but the acquisition entry may already have been replaced under the new category. "
+            "Reverse that month first, then send the correction again, and run Verify Books to see whether the register and the ledger "
+            "agree."))
+
+
 @router.patch("/{asset_id}")
 def correct_asset(
     asset_id: str,
@@ -1672,6 +1797,8 @@ def correct_asset(
                         "was capitalised into it (CGST Act §17(5)) and does not keep "
                         "the figure as typed, so the two have to be given together."))
 
+        update.update(_repointed_for_category(db, firm_id, client_id, asset, changes))
+
         merged = dict(asset)
         merged.update({k: v for k, v in changes.items() if k in _TIER_B_FIELDS})
         merged.update(update)
@@ -1726,7 +1853,7 @@ def correct_asset(
     )
 
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
-    db.table("fixed_assets").update(update).eq("id", asset_id).eq("firm_id", firm_id).execute()
+    _write_correction_and_say_if_refused(db, firm_id, asset, asset_id, update, current_user)
 
     timeline_service.log(client_id, "accounting", "Asset Corrected",
         f"{asset.get('asset_code')}: {', '.join(sorted(changes))}"
@@ -1790,6 +1917,19 @@ def delete_asset(
             status_code=422,
             detail="This asset has been disposed. A disposal is a transaction, not a "
                    "mistake to remove — reverse the disposal journal instead.")
+    # POST-A-345. An asset whose amortisation a reclassification moved into its own ledger has a live entry behind it, and a deleted
+    # asset can no longer be undone (the undo works on live assets), which would strand that credit in the new ledger with nothing
+    # pointed at it. Undo the reclassification first.
+    from services.amortisation_reclass_service import unfinished_move_reason
+    half_moved = unfinished_move_reason(db, firm_id, client_id, asset)
+    if half_moved:
+        raise HTTPException(status_code=422, detail=half_moved)
+    if accumulated_account_pointer(asset) and live_reclass_entries(db, firm_id, client_id, asset_id):
+        raise HTTPException(
+            status_code=422,
+            detail=("This asset's accumulated amortisation was moved into its own ledger by a reclassification. Undo that first "
+                    "(Depreciation tab, \"Moved by a reclassification\"), then delete the asset: deleted now, the credit would stay in "
+                    "the Accumulated Amortisation ledger with no asset behind it."))
 
     # Removing an untouched opening asset moves nothing in the ledger — no
     # acquisition was posted for it — so there is no period for it to move in, and
@@ -1828,6 +1968,46 @@ def delete_asset(
 
     return api_response(True, {"asset_id": asset_id, "deleted": True,
                                "acquisition_reversed": bool(asset.get("journal_entry_id"))})
+
+
+def _reverse_month_claiming_the_register(db, asset: dict, update: dict, new_accum: int, entry: dict, entry_date: str, period: str,
+                                         actor_id) -> None:
+    """Write the register's new figures by compare-and-set on the figure and the pointer the request read, THEN reverse the month's
+    journal, and put the register back if the reversal fails (POST-A-345).
+
+    Writing the register unconditionally AFTER the reversal let a reclassification that landed in between move the whole figure, this
+    month included, into the new ledger and leave the register lower than it by the month: the new ledger above the register and the
+    shared ledger in debit, with no 409. A miss here is a 409 before anything was posted."""
+    firm_id, asset_id = asset["firm_id"], asset["id"]
+    claim = (db.table("fixed_assets").update(update).eq("id", asset_id).eq("firm_id", firm_id)
+             .eq("accumulated_depreciation_paise", int(asset.get("accumulated_depreciation_paise") or 0)))
+    if "accumulated_account_id" in asset:
+        _p = accumulated_account_pointer(asset)
+        claim = claim.eq("accumulated_account_id", _p) if _p else claim.is_("accumulated_account_id", "null")
+    if not (claim.execute().data or []):
+        raise HTTPException(status_code=409, detail=(
+            f"This asset changed while {period} was being reversed (a month was posted or reversed, or its depreciation was moved to "
+            "another ledger). Nothing was reversed; look at the asset again."))
+    try:
+        _reverse_tolerating_already_reversed(
+            db, firm_id, entry["id"], entry.get("entry_date") or entry_date,
+            f"Reversal of depreciation on {asset.get('asset_code')} for {period}", actor_id)
+    except Exception:
+        try:
+            # The five columns a month's depreciation or reversal can move, named so that the column check reads them. The row was read
+            # whole (`select("*")`), so a column this request did not change is put back as itself.
+            (db.table("fixed_assets").update({
+                "accumulated_depreciation_paise": asset.get("accumulated_depreciation_paise"),
+                "current_wdv_paise": asset.get("current_wdv_paise"),
+                "depreciation_posted_through": asset.get("depreciation_posted_through"),
+                "depreciation_fy": asset.get("depreciation_fy"),
+                "depreciation_fy_start_accum_paise": asset.get("depreciation_fy_start_accum_paise"),
+            }).eq("id", asset_id).eq("firm_id", firm_id).eq("accumulated_depreciation_paise", new_accum).execute())
+        except Exception as restore_exc:                                   # noqa: BLE001 — reported; the original failure is re-raised
+            from core.observability import capture_posting_failure
+            capture_posting_failure(restore_exc, operation="fixed_assets.reverse_depreciation.restore", firm_id=firm_id,
+                                    client_id=asset.get("client_id"), asset_id=asset_id)
+        raise
 
 
 @router.post("/{asset_id}/depreciation/{period}/reverse")
@@ -1893,17 +2073,26 @@ def reverse_depreciation(
             detail=(f"No live depreciation journal found for {period} ({reference}). "
                     f"It may already have been reversed."))
 
-    lines = (db.table("journal_lines").select("debit_paise")
+    lines = (db.table("journal_lines").select("account_id, debit_paise, credit_paise")
              .eq("journal_entry_id", entry["id"]).execute().data) or []
     charge = max([int(l.get("debit_paise") or 0) for l in lines] or [0])
     if charge <= 0:
         raise HTTPException(status_code=422,
                             detail=f"The {period} depreciation journal carries no charge to reverse.")
 
-    _reverse_tolerating_already_reversed(
-        db, firm_id, entry["id"], entry.get("entry_date") or entry_date,
-        f"Reversal of depreciation on {asset.get('asset_code')} for {period}",
-        current_user.get("id"))
+    # POST-A-345. A reversal mirrors the original's lines, so a month credited to the SHARED ledger before the asset was moved to its
+    # own would, reversed now, debit the shared ledger a second time and leave the new one with a credit the register no longer has.
+    # Refuse in words; the way back is to undo the reclassification first.
+    credited = {str(l["account_id"]) for l in lines if int(l.get("credit_paise") or 0) > 0}
+    try:
+        ledger_now = _journal_svc._accumulated_account_id(db, asset, firm_id, client_id)
+    except AccumulatedLedgerUnavailable as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    if credited and str(ledger_now) not in credited:
+        raise HTTPException(status_code=409, detail=(
+            f"The {period} depreciation was credited to a different ledger from the one this asset's accumulated depreciation is kept "
+            "in now (it was posted before the asset was reclassified). Reversing it would debit the wrong ledger. Undo the "
+            "reclassification first, then reverse the month."))
 
     # Roll the register back to where it stood before that month. The previous
     # month is only the new mark if it was actually POSTED — the first posting
@@ -1941,18 +2130,19 @@ def reverse_depreciation(
         update["depreciation_fy"] = None
         update["depreciation_fy_start_accum_paise"] = None
 
+    # The edit log is written AFTER the claim and the reversal, because the claim can refuse (a reclassification or another month landed
+    # first): a row saying the register was reduced and the month reversed must not exist for a request that was answered 409.
+    old_register = {"period": period, "reference_no": reference,
+                    "accumulated_depreciation_paise": asset.get("accumulated_depreciation_paise"),
+                    "depreciation_posted_through": asset.get("depreciation_posted_through"),
+                    "depreciation_fy": asset.get("depreciation_fy")}
+    _reverse_month_claiming_the_register(db, asset, update, new_accum, entry, entry_date, period, current_user.get("id"))
     log_event(
         firm_id, "fixed_asset", asset_id, "update",
         actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
-        old_data={"period": period, "reference_no": reference,
-                  "accumulated_depreciation_paise": asset.get("accumulated_depreciation_paise"),
-                  "depreciation_posted_through": asset.get("depreciation_posted_through"),
-                  "depreciation_fy": asset.get("depreciation_fy")},
-        new_data=update,
+        old_data=old_register, new_data=update,
         metadata={"action": "depreciation_reversed", "charge_paise": charge},
     )
-
-    db.table("fixed_assets").update(update).eq("id", asset_id).eq("firm_id", firm_id).execute()
 
     timeline_service.log(client_id, "accounting", "Depreciation Reversed",
         f"{asset.get('asset_code')}: {rupee_whole_text(charge)} for {period} reversed", "warning")
@@ -2189,7 +2379,8 @@ def register_integrity(
     """Where the fixed-asset register disagrees with the ledger, or with
     Schedule II (FA-07, FA-02).
 
-    THE SEVEN WAYS IT COMES APART, and each is silent today (the last two ask the ledger about the register, POST-A-110):
+    THE NINE WAYS IT COMES APART, and each is silent today (two ask the ledger about the register, POST-A-110, and the last two ask the
+    Accumulated Amortisation ledger, POST-A-345):
 
       * AN ASSET WITH NO ACQUISITION JOURNAL. The register says the client owns
         a machine and no entry ever put it on the balance sheet. It arises when
@@ -2215,6 +2406,10 @@ def register_integrity(
         accumulated depreciation are still on the balance sheet.
       * AN ACQUISITION ENTRY WITH NO ASSET. The ledger holds a live acquisition
         entry for an asset the register does not hold.
+      * AN INTANGIBLE ASSET AMORTISED IN THE WRONG LEDGER. Its amortisation is
+        credited to the shared ledger on the tangible line (a Partner can move it).
+      * THE ACCUMULATED AMORTISATION LEDGER DISAGREEING WITH THE ASSETS POINTED AT
+        IT, named with its direction and never netted.
 
     This REPORTS. It repairs nothing and posts nothing: every remedy is a
     judgement — repost, delete a duplicate, re-link a bill — and which one is
@@ -2222,19 +2417,125 @@ def register_integrity(
     """
     db = _db()
     if not db:
-        return api_response(True, {"checked": 0, "findings": []})
+        return api_response(True, {"checked": 0, "findings": [], "not_checked": []})
     firm_id = current_user["firm_id"]
     assert_client_access(current_user, client_id)
 
     rows = _register_rows(db, firm_id, client_id)
+    accumulated = fetch_accumulated_facts(db, firm_id, client_id, rows)
     findings = fa_integrity.register_findings(
         rows, live_bill_ids=_live_bill_ids(db, firm_id, rows),
-        ledger=fetch_ledger_links(db, firm_id, client_id, rows))
+        ledger=fetch_ledger_links(db, firm_id, client_id, rows),
+        accumulated=accumulated)
+    # The Accumulated Amortisation checks are SKIPPED, not failed, when their facts could not be read (`register_findings` treats "not
+    # asked" as no finding). A reply that said "nothing to report" over a check that did not run would be a false clean result, so
+    # the reply says which check did not run.
+    not_checked = []
+    if accumulated is None or (accumulated.own_ledger_id is not None and accumulated.own_ledger_credit_paise is None):
+        not_checked.append("The checks of the Accumulated Amortisation ledger against the register could not be run (a read failed), "
+                           "so nothing is said about whether they agree.")
 
     return api_response(True, {
         "checked": len(rows),
         "findings": findings,
+        "not_checked": not_checked,
         # An empty list is an ANSWER, and the count is what makes it one — "no
         # findings" over nothing checked is not the same statement.
-        "clean": not findings,
+        "clean": not findings and not not_checked,
     })
+
+
+# ── Moving an intangible asset's accumulated amortisation into the ledger of its own (POST-A-345, stage 3) ────────────────────
+#
+# PREPARED BY THE PRODUCT, POSTED BY A PARTNER (`accounting`/`approve`): posted history is the CA's entry and not a migration's
+# rewrite. Everything that decides what moves, and when it must not, is `services/amortisation_reclass_service` and
+# `domain/fixed_assets/amortisation_reclass`; these three routes only ask who may and hand the answer back. The preview writes nothing.
+
+class AmortisationReclassIn(BaseModel):
+    client_id: str
+    #: REQUIRED, no default (the opening-register import's rule): the date the reclassification is AS AT decides which balance sheets
+    #: change, and a default of "today" would silently leave the year being filed for unchanged.
+    as_at: str
+    asset_ids: list[str]
+    #: The total the Partner saw. A register that moved since is answered 409, not posted at a different figure.
+    expected_total_paise: int
+    #: Where the carried-over part (depreciation an asset already had when it was brought over) sits. Required when an asset has one:
+    #: the shared ledger is a valid answer, but it is named on purpose and never assumed.
+    carried_over_from_account_id: Optional[str] = None
+
+
+@router.get("/amortisation-reclassification/summary")
+def amortisation_reclassification_summary(
+    client_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Whether the client holds an intangible asset the reclassification could move or has moved, from the register and the chart alone.
+    What the Depreciation tab asks on every open, so that it costs a few rows and not a full preparation."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"unmoved": 0, "moved": 0, "unfinished": 0, "excluded": 0, "moved_assets": [], "refusal": None,
+                                   "own_ledger": None})
+    from services import amortisation_reclass_service as arcs
+    return api_response(True, arcs.summary(db, current_user["firm_id"], client_id))
+
+
+@router.get("/amortisation-reclassification")
+def amortisation_reclassification_preview(
+    client_id: str,
+    as_at: str,
+    carried_over_from_account_id: Optional[str] = None,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """What moving the client's intangible assets' accumulated amortisation into its own ledger would do, as at a stated date. Writes
+    nothing. `ready` is false, with every reason in words, when it must not be posted."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"as_at": as_at, "ready": False, "refusals": ["No database is configured."], "assets": [],
+                                   "excluded": [], "reclassified": [], "own_ledger": None, "shared_ledger": None,
+                                   "carried_over_ledger": None, "carried_over_candidates": [], "entry_dates": [], "later_dates": [],
+                                   "carried_over_total_paise": 0, "journals_to_post": 0, "moves_count": 0, "pointed_only_count": 0,
+                                   "total_to_move_paise": 0,
+                                   "financial_years": []})
+    from services import amortisation_reclass_service as arcs
+    return api_response(True, arcs.preview(db, current_user["firm_id"], client_id, as_at, carried_over_from_account_id))
+
+
+@router.post("/amortisation-reclassification")
+def amortisation_reclassification_post(
+    data: AmortisationReclassIn,
+    current_user: dict = Depends(rbac("accounting", "approve")),
+):
+    """Post it: one journal per asset (and per tranche), each asset claimed by compare-and-set first, the claim undone if a journal
+    fails. Partner only."""
+    assert_client_access(current_user, data.client_id)
+    db = _db()
+    if not db:
+        raise HTTPException(status_code=503, detail="No database is configured.")
+    from services import amortisation_reclass_service as arcs
+    out = arcs.post(db, current_user["firm_id"], data.client_id, data.as_at, data.asset_ids, data.expected_total_paise,
+                    data.carried_over_from_account_id, current_user)
+    if out["moved"]:
+        timeline_service.log(
+            data.client_id, "accounting", "Accumulated Amortisation Reclassified",
+            f"{len(out['moved'])} intangible asset(s) moved to the Accumulated Amortisation ledger as at {out['as_at']}: "
+            f"{rupee_text(out['total_moved_paise'])}.", "info")
+    return api_response(True, out)
+
+
+@router.post("/{asset_id}/amortisation-reclassification/reverse")
+def amortisation_reclassification_undo(
+    asset_id: str,
+    current_user: dict = Depends(rbac("accounting", "approve")),
+):
+    """Undo one asset's reclassification. Allowed only while nothing has been posted or reversed on the asset since. Partner only."""
+    db = _db()
+    if not db:
+        raise HTTPException(status_code=503, detail="No database is configured.")
+    asset = _live_asset(db, asset_id, current_user["firm_id"])
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    assert_client_access(current_user, asset["client_id"], detail="Asset not found")
+    from services import amortisation_reclass_service as arcs
+    return api_response(True, arcs.undo(db, current_user["firm_id"], asset_id, current_user))

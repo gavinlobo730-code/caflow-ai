@@ -602,6 +602,7 @@ def check_fixed_asset_register(db, firm_id: str, client_id: str, entries) -> lis
     # The DOMAIN, never the router: a service importing a router to reach a
     # statutory rule is the wrong direction and one refactor from a cycle.
     from domain.fixed_assets import integrity as fa_integrity
+    from services.fixed_asset_accumulated_ledger import fetch_facts as fetch_accumulated_facts
     from services.fixed_asset_ledger_links import fetch_ledger_links
 
     rows = fetch_all(lambda: (
@@ -630,10 +631,15 @@ def check_fixed_asset_register(db, firm_id: str, client_id: str, entries) -> lis
         # the register and the ledger, so both are critical (POST-A-110).
         "disposed_asset_has_no_disposal_journal": "critical",
         "acquisition_journal_has_no_asset": "critical",
+        # POST-A-345. The books balance and two Schedule III lines are out by the same amount: a prompt to move it. Whereas the
+        # accumulated ledger disagreeing with the assets pointed at it breaks the tie between register and ledger.
+        "intangible_amortisation_in_the_shared_ledger": "warning",
+        "accumulated_amortisation_ledger_disagrees_with_register": "critical",
     }
     out: list[dict] = []
     ledger = fetch_ledger_links(db, firm_id, client_id, rows)
-    for f in fa_integrity.register_findings(rows, live_bill_ids=live, ledger=ledger):
+    accumulated = fetch_accumulated_facts(db, firm_id, client_id, rows)
+    for f in fa_integrity.register_findings(rows, live_bill_ids=live, ledger=ledger, accumulated=accumulated):
         kind = f["kind"]
         subject = f.get("asset_code") or f.get("purchase_bill_id") or "an asset"
         out.append(_finding(
@@ -804,6 +810,15 @@ CHECK_CATALOGUE: dict[str, dict[str, str]] = {
     "fixed_asset_register.acquisition_journal_has_no_asset": {
         "label": "Acquisition Entry, No Asset",
         "looks_for": "Every asset acquisition entry in the ledger has its asset in the register.",
+    },
+    "fixed_asset_register.intangible_amortisation_in_the_shared_ledger": {
+        "label": "Amortisation on the Tangible Line",
+        "looks_for": "Each intangible asset's accumulated amortisation is in the Accumulated Amortisation ledger, not the shared "
+                     "Accumulated Depreciation ledger on the tangible line.",
+    },
+    "fixed_asset_register.accumulated_amortisation_ledger_disagrees_with_register": {
+        "label": "Amortisation Ledger Off the Register",
+        "looks_for": "The Accumulated Amortisation ledger holds what the assets pointed at it account for.",
     },
     ledger_anomalies.CONTRA_BALANCE: {
         "label": "Balance on the Unusual Side",

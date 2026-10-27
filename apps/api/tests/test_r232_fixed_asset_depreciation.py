@@ -229,7 +229,7 @@ def test_wdv_monthly_charge_stays_fixed_across_months_in_the_same_fy(monkeypatch
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-01", wdv_rate_percent=24.0)
     monkeypatch.setattr(fa_router, "_db", lambda: db)
-    fa_router._journal_svc.journal_for_depreciation = lambda *a, **k: "je-1"
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_depreciation", lambda *a, **k: "je-1")
 
     r1 = fa_router.post_depreciation("asset-1", _dep(period="2026-05"), {"firm_id": FIRM, "id": "u1"})
     r2 = fa_router.post_depreciation("asset-1", _dep(period="2026-06"), {"firm_id": FIRM, "id": "u1"})
@@ -251,7 +251,7 @@ def test_wdv_resets_base_when_crossing_into_a_new_financial_year(monkeypatch):
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-01", wdv_rate_percent=25.0)
     monkeypatch.setattr(fa_router, "_db", lambda: db)
-    fa_router._journal_svc.journal_for_depreciation = lambda *a, **k: "je-1"
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_depreciation", lambda *a, **k: "je-1")
 
     # Post every month of FY 2026-27 (Apr..Mar).
     months = [f"2026-{m:02d}" for m in range(4, 13)] + [f"2027-{m:02d}" for m in (1, 2, 3)]
@@ -284,7 +284,7 @@ def test_purchase_month_depreciation_is_prorated_by_days_held(monkeypatch):
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-10", wdv_rate_percent=24.0)
     monkeypatch.setattr(fa_router, "_db", lambda: db)
-    fa_router._journal_svc.journal_for_depreciation = lambda *a, **k: "je-1"
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_depreciation", lambda *a, **k: "je-1")
 
     result = fa_router.post_depreciation("asset-1", _dep(period="2026-04"), {"firm_id": FIRM, "id": "u1"})
 
@@ -298,7 +298,7 @@ def test_month_after_purchase_month_gets_the_full_charge_not_prorated(monkeypatc
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-10", wdv_rate_percent=24.0)
     monkeypatch.setattr(fa_router, "_db", lambda: db)
-    fa_router._journal_svc.journal_for_depreciation = lambda *a, **k: "je-1"
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_depreciation", lambda *a, **k: "je-1")
 
     result = fa_router.post_depreciation("asset-1", _dep(period="2026-05"), {"firm_id": FIRM, "id": "u1"})
 
@@ -322,7 +322,7 @@ def test_accepts_the_exact_purchase_month(monkeypatch):
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-07-15")
     monkeypatch.setattr(fa_router, "_db", lambda: db)
-    fa_router._journal_svc.journal_for_depreciation = lambda *a, **k: "je-1"
+    monkeypatch.setattr(fa_router._journal_svc, "journal_for_depreciation", lambda *a, **k: "je-1")
 
     result = fa_router.post_depreciation("asset-1", _dep(period="2026-07"), {"firm_id": FIRM, "id": "u1"})
     assert result["success"] is True

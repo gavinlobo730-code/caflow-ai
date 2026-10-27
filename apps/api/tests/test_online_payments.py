@@ -363,7 +363,7 @@ def test_journal_failure_reverts_capturing_claim_not_stranded(monkeypatch):
     assert db.data["client_sales_invoices"][0]["paid_paise"] == 0   # AR untouched
 
     # A retry (e.g. webhook redelivery) can now re-attempt settlement.
-    js.phase2_journal_service.journal_for_receipt = lambda *a, **k: "JE-mock"
+    monkeypatch.setattr(js.phase2_journal_service, "journal_for_receipt", lambda *a, **k: "JE-mock")
     from services.payments.base import VerifiedEvent
     ev = VerifiedEvent(provider="mock", event_id="evt-2", event_type="payment.captured",
                        status="captured", signature_verified=True,

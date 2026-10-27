@@ -1685,6 +1685,47 @@ class Phase2JournalService:
             _logger.error("journal_for_depreciation error: %s", e, exc_info=True)
             raise
 
+    def journal_for_amortisation_reclass(
+        self, asset: dict, *, entry_date: str, tranche: int, from_accounts: list[tuple[str, int]],
+        to_account_id: str, firm_id: str, client_id: str, created_by: Optional[str] = None,
+    ) -> Optional[str]:
+        """Move part of an intangible asset's accumulated amortisation out of the ledger it sits in, into the ledger of its own
+        (POST-A-345). A Partner's posting: the product prepares it (`services/amortisation_reclass_service`), it never posts one itself.
+
+            Dr  <the ledger(s) it sits in>   (one line per ledger)
+              Cr  Accumulated Amortisation   (the sum)
+
+        ONE ENTRY PER ASSET AND DATE, never one for the client: an entry that names the asset can be drilled into, reversed
+        with that asset alone, and re-posted for an asset that arrives later, where one constant reference per client would make every
+        later batch "already posted". Tranche 1 is dated as at the date the Partner stated; each further tranche carries the months
+        posted after that date and is dated at the end of the financial year they fall in, or today (the reference gains `-T2`, `-T3`). A reversed entry frees its reference (the kernel's dedupe and the
+        unique index look at live entries only).
+
+        The closure lock is the kernel's: a year the CA has closed refuses, and the caller has already said so in words.
+        """
+        if _USE_MOCK:
+            return None
+        if not from_accounts or any(amount <= 0 for _, amount in from_accounts):
+            raise ValueError("A reclassification entry needs at least one ledger to move out of, with a positive amount each.")
+        if any(acct == to_account_id for acct, _ in from_accounts):
+            raise ValueError("A reclassification cannot move amortisation out of the ledger it moves it into: that debits and credits "
+                             "one account and moves nothing.")
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        total = sum(amount for _, amount in from_accounts)
+        suffix = "" if tranche == 1 else f"-T{tranche}"
+        lines = [{"account_id": acct, "debit_paise": amount, "credit_paise": 0,
+                  "narration": f"Accumulated amortisation moved out: {asset['asset_name']}"} for acct, amount in from_accounts]
+        lines.append({"account_id": to_account_id, "debit_paise": 0, "credit_paise": total,
+                      "narration": f"Accumulated amortisation: {asset['asset_name']}"})
+        return self._create_journal(
+            db=db, firm_id=firm_id, client_id=client_id, entry_date=entry_date,
+            reference_no=f"FA-AMORT-RECLASS-{(asset.get('asset_code') or asset['id'][:8])}{suffix}",
+            narration=f"Accumulated amortisation of {asset['asset_name']} moved to its own ledger (as at {entry_date})",
+            entry_type="Journal", lines=lines, created_by=created_by,
+            source_type=JS.AMORTISATION_RECLASS, source_id=asset.get("id"),
+        )
+
     # ── Capital work-in-progress (FA-11a, migration 397) ────────────────────
     #
     # TWO ENTRIES, AND NEITHER IS AN ACQUISITION. Schedule III Division I puts

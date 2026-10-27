@@ -49,9 +49,9 @@ THE FIXED-ASSET REGISTER FILLS A GROSS BLOCK ONLY WHERE IT TIES TO THE LEDGER (P
     movement is by asset CATEGORY, so the split needs the Schedule III line of the ledger each category is booked to (the caller reads
     it: `domain/fixed_assets/asset_ledger` says which ledger books a category and `year_end_lines.schedule_line_for_account` says which
     line that ledger is on). A figure is placed only where the register's net block of each line equals the ledger's line to the paisa.
-    THAT IS A REAL CONDITION AND NOT A FORMALITY: the standard chart books the depreciation of every category in ONE Accumulated
-    Depreciation account, so the ledger's tangible line carries the amortisation of intangible assets and the two lines cannot match the
-    register's unless no intangible asset has been amortised. Where they do not, the split is withheld with the difference in words.
+    THAT IS A REAL CONDITION AND NOT A FORMALITY: an intangible asset created before POST-A-345 stage 3 (or one a Partner has not yet
+    moved) has its amortisation in the shared Accumulated Depreciation ledger, which is presented on the tangible line, so the two
+    lines cannot match the register's until it is moved. Where they do not match, the split is withheld with the difference in words.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to the Income Tax Portal
 """
@@ -883,9 +883,10 @@ def register_by_line(register: Optional[dict], statements: dict) -> tuple[Option
         if tangible > 0 and tangible == -intangible:
             # The ledger's tangible line is lower than the register's by exactly what the intangible line is higher: the shape of an
             # amortised intangible asset whose amortisation sits in the shared account on the tangible line.
-            return None, (opening + "That is what an amortised intangible asset does: the standard chart books the depreciation of every "
-                          "category in one Accumulated Depreciation account, which sits on one of the two lines, so the ledger's lines "
-                          "cannot match the register's category by category."), rows_out
+            return None, (opening + "That is what an intangible asset amortised in the shared Accumulated Depreciation account does: that "
+                          "account sits on the tangible line, so the ledger's lines cannot match the register's category by category "
+                          "until a Partner moves the amortisation into the Accumulated Amortisation account (the Depreciation tab of "
+                          "the fixed-asset register)."), rows_out
         return None, (opening + "The register and the ledger disagree by an amount that moves between the two lines in no pattern the "
                       "books explain, and need reconciling."), rows_out
     flat = {}
