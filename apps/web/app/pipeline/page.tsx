@@ -21,7 +21,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDate } from "@/lib/dates/format";
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
+import { formatPaise } from "@/lib/money/format";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
@@ -281,12 +282,6 @@ async function apiDeleteLead(id: string): Promise<void> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatRupees(paise: number): string {
-  // Integer paise to rupees display — never floating point
-  const rupees = Math.floor(paise / 100);
-  return `₹${rupees.toLocaleString("en-IN")}`;
-}
-
 // The estimated monthly fee crosses the API as integer paise, through the one
 // parser. What was here stripped every non-digit and then multiplied by 100,
 // so "1234.56" became the digits "123456" and then ₹1,23,456 — a HUNDREDFOLD
@@ -295,9 +290,6 @@ function rupeesToPaise(rupees: string): number | null {
   return paiseFromRupeeInput(rupees.replace(/[,\s₹]/g, ""));
 }
 
-function paiseToDRupeeString(paise: number): string {
-  return String(Math.floor(paise / 100));
-}
 
 function isOverdueOrToday(dateStr: string): boolean {
   if (!dateStr) return false;
@@ -351,7 +343,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
           email: initial.email,
           businessName: initial.businessName,
           entityType: initial.entityType,
-          estimatedMonthlyFeeRupees: paiseToDRupeeString(
+          estimatedMonthlyFeeRupees: rupeeInputFromPaise(
             initial.estimatedMonthlyFee
           ),
           source: initial.source,
@@ -698,7 +690,7 @@ function LeadCard({ lead, onEdit, onMoveNext, onConvert, onDelete }: LeadCardPro
         {lead.estimatedMonthlyFee > 0 && (
           <div className="flex items-center gap-1.5 text-xs text-green-700 font-medium">
             <TrendingUp size={11} className="shrink-0" />
-            {formatRupees(lead.estimatedMonthlyFee)}/mo
+            {formatPaise(lead.estimatedMonthlyFee)}/mo
           </div>
         )}
 
@@ -1046,7 +1038,7 @@ export default function PipelinePage() {
         <div className="bg-white rounded-lg border border-ps-border px-4 py-3">
           <p className="text-xs text-ps-label">Est. MRR (if all convert)</p>
           <p className="text-xl font-bold text-green-700 mt-0.5">
-            {formatRupees(estimatedMRRPaise)}
+            {formatPaise(estimatedMRRPaise)}
           </p>
         </div>
         {STAGES.slice(0, 2).map((stage) => {

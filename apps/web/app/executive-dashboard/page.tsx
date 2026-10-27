@@ -16,6 +16,7 @@ import { scoreBasisLine, type ScoreBasis } from "@/lib/health/scoreBasis";
 import { formatDateTime, formatTime } from "@/lib/dates/format";
 import { ATTENTION, BRAND, GOLD, MUTED, PROBLEM, READY } from "@/lib/design/tokens";
 import { PageHeader } from "@/components/ui/page-header";
+import { formatCroreLakh } from "@/lib/money/format";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -81,14 +82,6 @@ interface ExecutiveDashboard {
 const NO_DATA = "No data";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function fmtRupees(paise: number): string {
-  const rupees = Math.floor(paise / 100);
-  if (rupees >= 10000000) return `₹${(rupees / 10000000).toFixed(1)}Cr`;
-  if (rupees >= 100000) return `₹${(rupees / 100000).toFixed(1)}L`;
-  if (rupees >= 1000) return `₹${(rupees / 1000).toFixed(0)}K`;
-  return `₹${rupees}`;
-}
 
 // The firm's figure is the average of its clients' health scores, on the same
 // 0–100 scale, so it takes the SAME bands (`lib/health/vocabulary`, pinned to
@@ -326,7 +319,7 @@ export default function ExecutiveDashboardPage() {
           <KPICard
             label="Outstanding Fee Invoices"
             value={revenueOk && typeof revenue?.outstanding_amount_paise === "number"
-              ? fmtRupees(revenue.outstanding_amount_paise) : NO_DATA}
+              ? formatCroreLakh(revenue.outstanding_amount_paise) : NO_DATA}
             sub={revenueOk ? `${revenue?.outstanding_invoices ?? 0} invoices — the practice's own fees` : revenueWhy}
             icon={<DollarSign size={18} style={{ color: GOLD }} />}
             color={GOLD}
