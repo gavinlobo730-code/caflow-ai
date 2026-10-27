@@ -1,4 +1,4 @@
-# The owner's list — one place (refreshed 15 October 2026, IST; S14 confirmed again on 27 October 2026)
+# The owner's list — one place (refreshed 15 October 2026, IST; S14 confirmed again and S15 added on 27 October 2026)
 
 Everything that is yours to decide, do or supply, and every statutory or legal point I will not assume. Kept in one place and refreshed, not scattered across replies. Each row names the ledger ids behind it (`decisions-taken-2026-10-14.md` has what I decided myself). Written in plain English: you decide the money and do what only you can do; the legal and statutory points need a primary text, a practising CA or counsel, and **nothing is built on a guess**.
 
@@ -176,6 +176,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Who can supply it:** Claude once the government sites are reachable (section 1) for the instructions, which would let the table be read against the primary text and not only a CA's memory of it; a practising CA for the reading either way. Confirmed on 27-10-2026: the environment's network policy refuses the connection to incometax.gov.in (a 403 on the tunnel), so nothing of this can be read from here until the setting in section 1 is changed.
 - **Stays unbuilt meanwhile:** The flag that says the table is confirmed (every answer says it is not); any use of Part A by the ITR JSON writer; the heads of the profit and loss account and the trading account (POST-A-343). Part A is offered as a keying aid, with the split of every group the books keep whole left to the CA, and the figures for the three renamed columns shown on the row and written into no box.
 - **Ledger:** POST-C-211, POST-A-343, POST-B-342
+
+### S15. Cash paid for an intangible asset: operating or investing in the cash-flow statement?
+
+- **Question:** Under AS 3, are cash paid to acquire an intangible asset (software, a licence, goodwill) and cash received on selling one investing cash flows, and is capital work in progress read the same way? The product shows both as operating today.
+- **Needed:** The text of AS 3 on investing activities, or a practising CA's answer.
+- **Who can supply it:** Claude once the government sites are reachable (section 1) for the text; a practising CA for the reading.
+- **Stays unbuilt meanwhile:** The change to the cash-flow classifier in the Python builder and the SQL function (POST-A-348). The new accumulated-amortisation ledger is classified to match the shared depreciation ledger, so it does not worsen the statement.
+- **Ledger:** POST-C-212, POST-A-348
 
 ## 5. Wait-until-asked items the goal probably needs
 

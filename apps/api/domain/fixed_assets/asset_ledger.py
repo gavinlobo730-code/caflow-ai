@@ -56,6 +56,32 @@ LEDGER_PATTERN_BY_CATEGORY: dict[str, str] = {
     "Other":                    "%Plant & Machinery%",
 }
 
+#: THE LEDGER AN ASSET'S ACCUMULATED DEPRECIATION IS CREDITED TO, AND ITS DISPOSAL DEBITS (POST-A-345). Until migration 553 this was one
+#: fixed pattern for every category, found by name: the firm's Accumulated Depreciation, which Schedule III places on the TANGIBLE line,
+#: so an amortised intangible asset's amortisation reduced the wrong line. An asset may now NAME its ledger
+#: (`fixed_assets.accumulated_account_id`); NULL, which is every asset before the change and every asset nobody has reclassified,
+#: means the shared ledger below. `services.phase2_journal_service._accumulated_account_id` is the one function that applies this, and
+#: both journals call it: a pattern named here and written out in a journal is how an asset ends up half in each ledger.
+SHARED_ACCUMULATED_PATTERN = "%Accumulated Depreciation%"
+
+
+class AccumulatedLedgerUnavailable(ValueError):
+    """The ledger an asset names for its accumulated depreciation cannot be used. A ValueError so that the journals' own
+    "re-raise account problems" branch lets it through, and a type of its own so a route can answer 422 in the sentence it carries."""
+
+
+def accumulated_account_pointer(asset: dict) -> Optional[str]:
+    """The id of the ledger this asset's accumulated depreciation is kept in, or None for the shared ledger.
+
+    An ABSENT key reads as None, deliberately: the row comes from `select("*")` and the column arrived with migration 553, so a row
+    read before it, a hand-built dict in a test and an asset nobody has pointed anywhere all mean the same thing, which is what
+    every asset meant before the change. (The other direction is the dangerous one, and it is guarded where the pointer is WRITTEN:
+    an asset is never pointed at a ledger without the entry that moved its history.)
+    """
+    pointer = asset.get("accumulated_account_id") if isinstance(asset, dict) else None
+    return str(pointer) if pointer else None
+
+
 #: What an asset whose category is absent, empty or outside the taxonomy (a row
 #: written before the taxonomy was fixed) is booked to. Named so the fall-through
 #: is a decision in the table's own module rather than a default argument.

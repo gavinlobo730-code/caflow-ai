@@ -29,6 +29,7 @@ from models.accounting import (FixedAssetIn, FixedAssetUpdateIn, DepreciationIn,
                                DepreciationRunIn, DisposalIn)
 from core.db_paging import fetch_all
 from domain.fixed_assets import integrity as fa_integrity
+from domain.fixed_assets.asset_ledger import AccumulatedLedgerUnavailable
 from services.fixed_asset_ledger_links import fetch_ledger_links
 from domain.fixed_assets import schedule_ii
 from domain.gst import section_18_6 as s186
@@ -959,9 +960,14 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str) -> dict:
                 "posted": False}
 
     # Post journal — CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-    journal_id = _journal_svc.journal_for_depreciation(
-        asset, monthly, period, firm_id, asset["client_id"]
-    )
+    try:
+        journal_id = _journal_svc.journal_for_depreciation(
+            asset, monthly, period, firm_id, asset["client_id"]
+        )
+    except AccumulatedLedgerUnavailable as e:
+        # The ledger this asset's history is kept in cannot be used. Nothing was posted, and it is never replaced by the shared
+        # ledger (POST-A-345): the sentence says what to repair.
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     # Update accumulated depreciation
     new_accum = asset.get("accumulated_depreciation_paise", 0) + monthly
@@ -1389,6 +1395,10 @@ def dispose_asset(
         journal_id = _journal_svc.journal_for_asset_disposal(
             asset, sale_proceeds, current_user["firm_id"], asset["client_id"],
             output_tax=output_tax)
+    except AccumulatedLedgerUnavailable as e:
+        # The ledger this asset's accumulated depreciation is kept in cannot be used (POST-A-345): undo the claim and say what to repair.
+        _rollback_claim()
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception:
         # Compensate: the claim above must never be left standing without a
         # journal behind it — undo it so a retry can cleanly start over.
