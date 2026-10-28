@@ -783,6 +783,11 @@ export default function TDSPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [deductions, setDeductions] = useState<TDSDeduction[]>([]);
   const [challans, setChallans] = useState<TDSChallan[]>([]);
+  // The financial year the deductions are listed for; "" is every year, as before. A client whose register passes the server's ceiling
+  // is cut to its latest rows, and this is how the older years are reached (POST-A-294). It starts at "every year" for each client:
+  // narrowing it to the current year by default would hide a back-dated deduction just recorded, and the cards beside the table
+  // (the deposit position) are over every year.
+  const [yearFilter, setYearFilter] = useState("");
   // What the server counts over ALL of the client's rows, not over the windows above: the footer under the deductions table, the
   // Returns tab's Not filed / Filed / Overdue and the Certificates Pending card. null until read (a dash, never a zero).
   const [deductionTotals, setDeductionTotals] = useState<TdsDeductionTotals | null>(null);
@@ -844,7 +849,7 @@ export default function TDSPage() {
   // split are the server's counts over ALL of the client's rows. Called on a client switch and again after anything that writes, so
   // that a figure is never the browser's sum of a list it prepended to.
   const listSeq = useRef(0);
-  async function loadLists(clientId: string, fresh: boolean) {
+  async function loadLists(clientId: string, fresh: boolean, year: string = yearFilter) {
     // A modal's or an import's answer that lands after the CA switched client asks for a client that is no longer open: it must not
     // take a number, because that would throw away the read of the client that is.
     if (clientId !== openClient.current) return;
@@ -859,7 +864,7 @@ export default function TDSPage() {
     setLoading(true);
     try {
       const [ded, chal, ret, cert] = await Promise.allSettled([
-        listTdsDeductions(clientId), listTdsChallans(clientId), listTdsReturns(clientId), listTdsCertificates(clientId),
+        listTdsDeductions(clientId, year || null), listTdsChallans(clientId), listTdsReturns(clientId), listTdsCertificates(clientId),
       ]);
       if (seq !== listSeq.current) return;
       const failures: string[] = [];
@@ -896,6 +901,7 @@ export default function TDSPage() {
     openClient.current = selectedClientId;
     depositSeq.current += 1;
     setDepositState(null); setDepositStateError(null); setCalendarAnswers(null);
+    setYearFilter("");
     // client_id is required by the reads below; an empty string would be refused.
     if (!selectedClientId) {
       listSeq.current += 1;
@@ -906,7 +912,7 @@ export default function TDSPage() {
       return;
     }
     void refreshDepositState(selectedClientId);
-    void loadLists(selectedClientId, true);
+    void loadLists(selectedClientId, true, "");
     return () => { listSeq.current += 1; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId]);
@@ -1188,6 +1194,14 @@ export default function TDSPage() {
               <p className="text-xs text-ps-hint mt-0.5">IT Act Section 194 — deductions recorded</p>
             </div>
             <div className="flex items-center gap-2">
+              {/* Nothing to narrow until a client is open (a read with no client is refused), and the footer and the cut notice
+                  describe the PREVIOUS choice until the new answer lands, so they come down at once. */}
+              <YearPicker value={yearFilter} placeholder="All years" count={10} size="sm" className="w-auto" disabled={loading || !selectedClientId}
+                onChange={(v) => {
+                  if (!selectedClientId) return;
+                  setYearFilter(v); setDeductionTotals(null); setCut((c) => ({ ...c, deductions: false }));
+                  void loadLists(selectedClientId, false, v);
+                }} />
               <button onClick={() => setShowImport(true)}
                 className="flex items-center gap-1.5 border border-ps-border text-ps-label text-xs px-3 py-1.5 rounded-lg hover:bg-ps-bg">
                 <Upload className="w-3.5 h-3.5" /> Import CSV
@@ -1210,8 +1224,10 @@ export default function TDSPage() {
             initialSort={{ key: "transaction_date", dir: "desc" }}
             exportFilename="tds-deductions"
             persistKey="tds.deductions"
-            emptyTitle="No deductions recorded yet"
-            emptyDescription="A deduction is one payment on which tax was withheld. Record each one so the challans and the quarterly statement can be built from them."
+            emptyTitle={yearFilter ? `No deductions recorded for FY ${yearFilter}` : "No deductions recorded yet"}
+            emptyDescription={yearFilter
+              ? "Nothing is recorded in this financial year. Choose another year, or record a deduction."
+              : "A deduction is one payment on which tax was withheld. Record each one so the challans and the quarterly statement can be built from them."}
             emptyAction={
               <EmptyStateActions>
                 <EmptyStateAction requires={["tds", "compute"]} icon={<Plus size={14} />} label="Add Deduction"
@@ -1220,10 +1236,15 @@ export default function TDSPage() {
             }
           />
 
-          <ListWindowNotice hasMore={cut.deductions} what={`the latest ${deductions.length} deductions`} limit={deductions.length}
-            maxLimit={deductions.length} elsewhere="The totals below are over all of this client's deductions." />
+          <ListWindowNotice hasMore={cut.deductions}
+            what={`the latest ${deductions.length} deductions${yearFilter ? ` of FY ${yearFilter}` : ""}`} limit={deductions.length}
+            maxLimit={deductions.length}
+            elsewhere={yearFilter
+              ? `The totals below are over all of this client's deductions of FY ${yearFilter}.`
+              : "Choose a financial year above to see the older ones. The totals below are over all of this client's deductions."} />
           {deductionTotals && deductionTotals.count > 0 && (
             <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 px-1 text-xs text-ps-label">
+              {yearFilter && <span className="font-medium">FY {yearFilter}</span>}
               <span>Total Gross: <span className="font-semibold text-ps-ink">{formatPaise(deductionTotals.payment_amount_paise)}</span></span>
               <span>Total of the TDS Amount column: <span className="font-semibold text-ps-ink">{formatPaise(deductionTotals.tds_paise)}</span></span>
             </div>

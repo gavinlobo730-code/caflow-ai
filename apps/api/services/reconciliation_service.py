@@ -602,7 +602,8 @@ def check_fixed_asset_register(db, firm_id: str, client_id: str, entries) -> lis
     # The DOMAIN, never the router: a service importing a router to reach a
     # statutory rule is the wrong direction and one refactor from a cycle.
     from domain.fixed_assets import integrity as fa_integrity
-    from services.fixed_asset_accumulated_ledger import fetch_facts as fetch_accumulated_facts
+    from services.fixed_asset_accumulated_ledger import (
+        CHECKS_NOT_RUN_SENTENCE, checks_could_not_run, fetch_facts as fetch_accumulated_facts)
     from services.fixed_asset_ledger_links import fetch_ledger_links
 
     rows = fetch_all(lambda: (
@@ -649,6 +650,10 @@ def check_fixed_asset_register(db, firm_id: str, client_id: str, entries) -> lis
             amount_paise=f.get("amount_paise"),
             **{k: v for k, v in f.items() if k not in ("kind", "what_it_means", "amount_paise")},
         ))
+    # POST-A-349. The two Accumulated Amortisation checks are skipped, not failed, when their facts could not be read, and a sweep with
+    # no finding for it reads as "all clear" over checks that did not run. The register-integrity screen says so in the same words.
+    if checks_could_not_run(accumulated):
+        out.append(_finding("fixed_asset_register.accumulated_amortisation_checks_not_run", "warning", CHECKS_NOT_RUN_SENTENCE))
     return out
 
 
@@ -819,6 +824,11 @@ CHECK_CATALOGUE: dict[str, dict[str, str]] = {
     "fixed_asset_register.accumulated_amortisation_ledger_disagrees_with_register": {
         "label": "Amortisation Ledger Off the Register",
         "looks_for": "The Accumulated Amortisation ledger holds what the assets pointed at it account for.",
+    },
+    "fixed_asset_register.accumulated_amortisation_checks_not_run": {
+        "label": "Amortisation Checks Not Run",
+        "looks_for": "The two checks of the Accumulated Amortisation ledger could be run: a read that failed is reported here instead of "
+                     "being left looking like a clean result.",
     },
     ledger_anomalies.CONTRA_BALANCE: {
         "label": "Balance on the Unusual Side",

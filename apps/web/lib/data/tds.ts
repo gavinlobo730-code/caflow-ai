@@ -719,8 +719,12 @@ async function readTdsWindow<T, F>(path: string, rowsField: string, figuresField
 
 const clientQuery = (clientId: string) => `client_id=${encodeURIComponent(clientId)}`;
 
-export const listTdsDeductions = (clientId: string) =>
-  readTdsWindow<Record<string, unknown>, TdsDeductionTotals>(`/api/tds-workspace/deductions?${clientQuery(clientId)}`, "deductions", "totals", "deductions");
+/** A client's deductions, latest first. `financialYear` asks for that year's rows only (and the totals over them): a client whose register
+ *  passes the ceiling reaches the older years this way (POST-A-294). Null or omitted is every year. */
+export const listTdsDeductions = (clientId: string, financialYear: string | null = null) =>
+  readTdsWindow<Record<string, unknown>, TdsDeductionTotals>(
+    `/api/tds-workspace/deductions?${clientQuery(clientId)}${financialYear ? `&financial_year=${encodeURIComponent(financialYear)}` : ""}`,
+    "deductions", "totals", "deductions");
 export const listTdsChallans = (clientId: string) =>
   readTdsWindow<Record<string, unknown>, never>(`/api/tds-workspace/challans?${clientQuery(clientId)}`, "challans", null, "challans");
 export const listTdsReturns = (clientId: string) =>

@@ -12,7 +12,7 @@ import os
 import uuid
 import logging
 from datetime import date, datetime, timezone
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
@@ -24,7 +24,7 @@ from domain.tds.tds_validator import TDSValidator
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
-from models.fy import FYLabel
+from models.fy import FYLabel, OptionalFYLabel
 from core.ist_clock import fy_bounds, ist_today
 from domain.tds import deductor_26as as D26
 from services import tds_register_lists_service as lists
@@ -451,20 +451,23 @@ def list_deductions(
     quarter: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=TDS_LIST_MAX),
     offset: int = Query(0, ge=0),
+    financial_year: Annotated[OptionalFYLabel, Query(description="Only the deductions of this financial year, e.g. 2026-27")] = None,
     current_user: dict = Depends(rbac("tds", "read")),
 ):
     """A client's TDS deductions, latest payment first (IT Act §192-194Q), as a window: `{deductions, has_more, limit, max_limit,
-    totals}`. `totals` (how many, the gross column and the tax column) are over ALL of the client's deductions in the quarter asked
-    for, not over the window."""
+    totals}`. `totals` (how many, the gross column and the tax column) are over ALL of the client's deductions in the quarter and the
+    financial year asked for, not over the window. A client with more deductions than the ceiling reaches the older ones by asking
+    for their year (POST-A-294)."""
     assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
             out = lists.deductions_in_memory([d for d in _MOCK_DEDUCTIONS.values() if d["client_id"] == client_id],
-                                             quarter=quarter, limit=limit, offset=offset)
+                                             quarter=quarter, limit=limit, offset=offset, financial_year=financial_year)
         else:
             from core.supabase_client import get_supabase
-            out = lists.deductions(get_supabase(), firm_id, client_id, quarter=quarter, limit=limit, offset=offset)
+            out = lists.deductions(get_supabase(), firm_id, client_id, quarter=quarter, limit=limit, offset=offset,
+                                   financial_year=financial_year)
         return api_response(True, out)
     except Exception as e:
         return _could_not(e, "list the TDS deductions")

@@ -185,6 +185,71 @@ def test_a_quarter_narrows_the_list_and_the_totals_alike():
     assert q1["totals"]["count"] == len(q1["deductions"]) == 3
 
 
+def _two_years_db():
+    """Five deductions of FY 2024-25, three of FY 2025-26 and two of FY 2026-27 for one client, and one of 2025-26 for another."""
+    db = FakeDB()
+    plan = [("2024-25", "2024-06-1%d", 5), ("2025-26", "2025-06-1%d", 3), ("2026-27", "2026-06-1%d", 2)]
+    for fy, day, n in plan:
+        for i in range(n):
+            db.seed("tds_deductions", {"id": f"{fy}-{i}", "firm_id": FIRM, "client_id": CLIENT, "financial_year": fy,
+                                       "quarter": "Q1", "transaction_date": day % i, "payment_amount_paise": 1000, "tds_paise": 100})
+    db.seed("tds_deductions", {"id": "other-client", "firm_id": FIRM, "client_id": "CLIENT-2", "financial_year": "2025-26",
+                               "quarter": "Q1", "transaction_date": "2025-06-19", "payment_amount_paise": 777, "tds_paise": 77})
+    return db
+
+
+def test_a_financial_year_reaches_the_older_rows_and_narrows_the_totals_with_the_list():
+    """POST-A-294: a register longer than the ceiling is cut to its latest rows, and the older years could not be reached from the
+    screen. Asking for a year lists that year's rows only, and the footer is over the same rows."""
+    db = _two_years_db()
+    whole = lists.deductions(db, FIRM, CLIENT, quarter=None, limit=50, offset=0)
+    assert whole["totals"]["count"] == 10, "no year asked for: every year, as before"
+    older = lists.deductions(db, FIRM, CLIENT, quarter=None, limit=50, offset=0, financial_year="2024-25")
+    assert {r["financial_year"] for r in older["deductions"]} == {"2024-25"} and len(older["deductions"]) == 5
+    assert older["totals"] == {"count": 5, "payment_amount_paise": 5000, "tds_paise": 500}, "the footer describes the year, not the register"
+    mine = lists.deductions(db, FIRM, CLIENT, quarter=None, limit=50, offset=0, financial_year="2025-26")
+    assert [r["id"] for r in mine["deductions"]] == ["2025-26-2", "2025-26-1", "2025-26-0"], "latest day first"
+    assert "other-client" not in {r["id"] for r in mine["deductions"]}, "another client's row of the same year is not listed"
+    assert mine["totals"]["count"] == 3
+    none = lists.deductions(db, FIRM, CLIENT, quarter=None, limit=50, offset=0, financial_year="2019-20")
+    assert none["deductions"] == [] and none["totals"] == {"count": 0, "payment_amount_paise": 0, "tds_paise": 0}
+
+
+def test_a_year_and_a_quarter_narrow_together_and_a_year_is_cut_by_the_ceiling_like_any_list():
+    db = _two_years_db()
+    db.seed("tds_deductions", {"id": "q2", "firm_id": FIRM, "client_id": CLIENT, "financial_year": "2025-26", "quarter": "Q2",
+                               "transaction_date": "2025-08-10", "payment_amount_paise": 50, "tds_paise": 5})
+    both = lists.deductions(db, FIRM, CLIENT, quarter="Q2", limit=50, offset=0, financial_year="2025-26")
+    assert [r["id"] for r in both["deductions"]] == ["q2"] and both["totals"]["count"] == 1
+    cut = lists.deductions(db, FIRM, CLIENT, quarter=None, limit=2, offset=0, financial_year="2025-26")
+    assert len(cut["deductions"]) == 2 and cut["has_more"] is True and cut["totals"]["count"] == 4, \
+        "a year longer than the window says so, and the totals are still the whole year's"
+
+
+def test_the_in_memory_store_narrows_by_year_the_same_way():
+    rows = [r for r in _two_years_db().rows("tds_deductions") if r["client_id"] == CLIENT]
+    mem = lists.deductions_in_memory(rows, quarter=None, limit=50, offset=0, financial_year="2024-25")
+    assert len(mem["deductions"]) == 5 and mem["totals"]["count"] == 5
+    assert lists.deductions_in_memory(rows, quarter=None, limit=50, offset=0)["totals"]["count"] == 10
+
+
+def test_the_route_takes_the_year_as_a_validated_label_with_a_real_default_of_none(monkeypatch):
+    import typing
+    hints = typing.get_type_hints(tw.list_deductions, include_extras=True)
+    assert "BeforeValidator" in repr(hints["financial_year"]), "a bare str would take '2026-28' for 2026-27"
+    import inspect
+    assert inspect.signature(tw.list_deductions).parameters["financial_year"].default is None
+    db = _two_years_db()
+    import core.supabase_client as sc
+    monkeypatch.setattr(tw, "_USE_MOCK", False)
+    monkeypatch.setattr(sc, "get_supabase", lambda: db)
+    monkeypatch.setattr(tw, "assert_client_access", lambda *a, **k: None)
+    out = tw.list_deductions(client_id=CLIENT, quarter=None, limit=50, offset=0, current_user=CALLER)["data"]
+    assert out["totals"]["count"] == 10, "called directly without a year, the default is none and not a Query object"
+    out = tw.list_deductions(client_id=CLIENT, quarter=None, limit=50, offset=0, financial_year="2024-25", current_user=CALLER)["data"]
+    assert out["totals"]["count"] == 5
+
+
 def test_challans_are_latest_payment_first_and_the_date_bounds_apply():
     db = FakeDB()
     for n, day in enumerate(("2026-05-07", "2026-07-07", "2026-06-07")):
