@@ -350,9 +350,9 @@ routers/purchase_credit_notes.py :: PLR0915 :: issue_purchase_credit_note :: 90
 routers/purchase_cycle.py :: F401 :: <module> :: 1
 routers/purchase_payments.py :: B904 :: _create_foreign_payment :: 2
 routers/purchase_payments.py :: C901 :: _create_foreign_payment :: 23
-routers/purchase_payments.py :: C901 :: create_purchase_payment :: 23
+routers/purchase_payments.py :: C901 :: create_purchase_payment :: 21
 routers/purchase_payments.py :: PLR0915 :: _create_foreign_payment :: 97
-routers/purchase_payments.py :: PLR0915 :: create_purchase_payment :: 83
+routers/purchase_payments.py :: PLR0915 :: create_purchase_payment :: 78
 routers/receipts.py :: C901 :: update_allocations :: 18
 routers/recurring_journals.py :: F401 :: <module> :: 1
 routers/relationships.py :: C901 :: detect_cross_client_matches :: 24
@@ -521,10 +521,10 @@ services/ratio_analysis_service.py :: B904 :: fy_bounds :: 1
 services/ratio_analysis_service.py :: B905 :: ratio_note :: 1
 services/receipt_service.py :: B904 :: create_foreign_receipt :: 2
 services/receipt_service.py :: C901 :: create_foreign_receipt :: 27
-services/receipt_service.py :: C901 :: create_receipt_core :: 28
+services/receipt_service.py :: C901 :: create_receipt_core :: 26
 services/receipt_service.py :: F401 :: _compensate_failed_settlement :: 1
 services/receipt_service.py :: PLR0915 :: create_foreign_receipt :: 122
-services/receipt_service.py :: PLR0915 :: create_receipt_core :: 100
+services/receipt_service.py :: PLR0915 :: create_receipt_core :: 96
 services/recurring_invoice_service.py :: C901 :: update_template :: 16
 services/recurring_invoice_service.py :: F401 :: <module> :: 6
 services/recurring_purchase_bill_service.py :: C901 :: update_template :: 16

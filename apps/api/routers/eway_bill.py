@@ -112,6 +112,15 @@ def create_eway_bill(
     current_user: dict = Depends(rbac("gst", "compute")),
 ):
     assert_client_access(current_user, req.client_id)
+    # The invoice this bill names is this client's (POST-A-350): the record is listed on the invoice's own hub, so another client's
+    # invoice would show a bill its owner never made. Mock mode has no table to ask, as on the e-invoice route.
+    if req.sales_invoice_id:
+        from routers.sales_invoices import _USE_MOCK as _SALES_MOCK
+        if not _SALES_MOCK:
+            from core.supabase_client import get_supabase
+            from services import named_row_ownership
+            named_row_ownership.sales_invoice_is_the_clients(
+                get_supabase(), current_user["firm_id"], req.client_id, req.sales_invoice_id)
     from domain.income_tax.eway_service import create_eway_bill as _create
     try:
         rec = _create(

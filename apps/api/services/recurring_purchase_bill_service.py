@@ -59,6 +59,7 @@ _d = _rec.to_date
 from domain.recurrence import next_occurrence                       # noqa: E402
 from core.ist_clock import ist_today
 from core import db_provider
+from services import named_row_ownership
 from services.line_item_ownership import assert_items_are_the_clients
 
 # Mock stores (mock mode only).
@@ -196,6 +197,8 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None
         MOCK_RECURRING_BILL_TEMPLATES.append(payload)
         return dict(payload)
     db = db or _db()
+    # The vendor is this client's: a template naming another client's would generate bills for that vendor under this client (POST-A-350).
+    named_row_ownership.vendor_is_the_clients(db, firm_id, data["client_id"], data["vendor_id"])
     # A template whose line names another client's item could never generate (every run would refuse it): say so now (POST-A-246).
     assert_items_are_the_clients(db, firm_id, data["client_id"], data["lines"])
     # Spelled out rather than `insert(payload)`: the column check above reads a
@@ -268,6 +271,7 @@ def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict
                     t["lines"] = new_lines
         return dict(existing)
     db = db or _db()
+    named_row_ownership.vendor_is_the_clients(db, firm_id, existing.get("client_id"), fields.get("vendor_id"))
     _assert_edited_lines_are_the_clients(db, firm_id, existing, data)
     (db.table("recurring_purchase_bill_templates").update(fields)
        .eq("id", template_id).eq("firm_id", firm_id).execute())
