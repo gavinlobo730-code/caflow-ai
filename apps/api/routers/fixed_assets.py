@@ -31,6 +31,7 @@ from core.db_paging import fetch_all
 from domain.fixed_assets import integrity as fa_integrity
 from domain.fixed_assets.asset_ledger import AccumulatedLedgerUnavailable, accumulated_account_pointer
 from services.fixed_asset_accumulated_ledger import birth_pointer, birth_pointer_fields, fetch_facts as fetch_accumulated_facts
+from services import named_row_ownership
 from services.fixed_asset_ledger_links import fetch_ledger_links
 from domain.fixed_assets import schedule_ii
 from domain.gst import section_18_6 as s186
@@ -611,6 +612,11 @@ def create_asset(
     # the real guarantee; this check exists so the CA gets a sentence rather
     # than a constraint-violation message, and so the reason is stated where
     # somebody reading the router can see it.
+    # THE BILL AND THE VENDOR ARE THIS CLIENT'S (POST-A-338): the foreign keys are not client-aware, so a bill of a sibling client
+    # was accepted here and then looked clean to the clash check below, which is firm-wide.
+    named_row_ownership.purchase_bill_is_the_clients(db, current_user["firm_id"], client_id, data.purchase_bill_id)
+    named_row_ownership.vendor_is_the_clients(db, current_user["firm_id"], client_id, data.vendor_id)
+    named_row_ownership.bank_account_is_the_clients(db, current_user["firm_id"], client_id, data.bank_account_id)
     if data.purchase_bill_id:
         clash = (db.table("fixed_assets").select("id, asset_code")
                  .eq("firm_id", current_user["firm_id"])
@@ -1704,6 +1710,12 @@ def correct_asset(
     tier_a = set(changes) & _TIER_A_FIELDS
     tier_b = set(changes) & _TIER_B_FIELDS
     tier_c = set(changes) & _TIER_C_FIELDS
+
+    # THE ROWS A CORRECTION NAMES ARE THIS CLIENT'S (POST-A-338), asked before anything is reversed or reposted: the create door asks
+    # the same three, and this door copies them onto the register and into the new acquisition journal.
+    named_row_ownership.vendor_is_the_clients(db, firm_id, client_id, changes.get("vendor_id"))
+    named_row_ownership.purchase_bill_is_the_clients(db, firm_id, client_id, changes.get("purchase_bill_id"))
+    named_row_ownership.bank_account_is_the_clients(db, firm_id, client_id, changes.get("bank_account_id"))
 
     # AN ASSET BROUGHT OVER WITH ITS OWN HISTORY HAS NO ACQUISITION JOURNAL TO
     # REVERSE AND REPOST (accounting-18, migration 456), which is the whole of what a

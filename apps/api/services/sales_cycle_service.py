@@ -27,6 +27,7 @@ from fastapi import HTTPException
 
 from core.db_paging import fetch_all
 from core.ist_clock import ist_now, ist_today
+from services import named_row_ownership
 from domain.gst import compensation_cess
 from domain.gst import delivery_challan as dc
 from domain.gst import discount as gst_discount
@@ -430,6 +431,8 @@ def _refuse_duplicate(db, table: str, firm_id: str, client_id: str,
 def create_quotation(db, firm_id: str, payload: dict,
                      actor_id: Optional[str] = None) -> dict:
     client_id = str(payload["client_id"])
+    # THE CUSTOMER IS THIS CLIENT'S (POST-A-338): the foreign key is not client-aware.
+    named_row_ownership.customer_is_the_clients(db, firm_id, client_id, payload.get("customer_id"))
     _refuse_duplicate(db, "sales_quotations", firm_id, client_id,
                       payload["document_no"], payload.get("kind"), None)
     priced, totals = compute_lines(
@@ -506,6 +509,10 @@ def _write_quotation_lines(db, firm_id: str, client_id: str,
 def create_order(db, firm_id: str, payload: dict,
                  actor_id: Optional[str] = None) -> dict:
     client_id = str(payload["client_id"])
+    named_row_ownership.customer_is_the_clients(db, firm_id, client_id, payload.get("customer_id"))
+    if payload.get("quotation_id"):
+        # THE QUOTATION THIS ORDER CONVERTS IS THIS CLIENT'S (POST-A-338): it is marked converted below, by firm and id.
+        row_of_client(db, "sales_quotations", firm_id, str(payload["quotation_id"]), client_id, "quotation")
     _refuse_duplicate(db, "sales_orders", firm_id, client_id,
                       payload["document_no"], None, None)
     priced, totals = compute_lines(
@@ -595,6 +602,12 @@ def create_challan(db, firm_id: str, payload: dict,
     """
     client_id = str(payload["client_id"])
     reason = str(payload["reason"])
+    # EVERY ROW THE CHALLAN NAMES IS THIS CLIENT'S (POST-A-338), asked before `_refuse_over_delivery` reads the order's position.
+    named_row_ownership.customer_is_the_clients(db, firm_id, client_id, payload.get("customer_id"))
+    named_row_ownership.vendor_is_the_clients(db, firm_id, client_id, payload.get("vendor_id"))
+    named_row_ownership.sales_invoice_is_the_clients(db, firm_id, client_id, payload.get("sales_invoice_id"))
+    if payload.get("order_id"):
+        row_of_client(db, "sales_orders", firm_id, str(payload["order_id"]), client_id, "sales order")
     _refuse_duplicate(db, "delivery_challans", firm_id, client_id,
                       payload["document_no"], None, None)
 
@@ -681,7 +694,10 @@ def _refuse_over_delivery(db, firm_id: str, order_id: Optional[str],
     agreement. Amending the order is the real answer and the message says so.
     """
     if not order_id:
-        return []
+        # A LINE CANNOT NAME AN ORDER LINE WHEN THE CHALLAN NAMES NO ORDER (POST-A-338): the position readers count delivered
+        # quantity by order-line id alone, so another client's order would show this challan's goods as delivered against it.
+        return [f"{ln.get('description')}: this line names an order line but the challan names no order."
+                for ln in priced if ln.get("order_line_id")]
     position = order_open_position(db, firm_id, str(order_id))
     by_id = {str(ln["order_line_id"]): ln for ln in position["lines"]}
     problems: list = []
@@ -880,6 +896,8 @@ def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
         _refuse_duplicate(db, "delivery_challans", firm_id,
                           str(row["client_id"]), fields["document_no"], None,
                           challan_id)
+    # THE INVOICE A CHALLAN IS RE-POINTED AT IS THIS CLIENT'S (POST-A-338): the one named row the update door still accepts.
+    named_row_ownership.sales_invoice_is_the_clients(db, firm_id, str(row["client_id"]), fields.get("sales_invoice_id"))
     if fields.get("received_back_on") and not fields.get("status"):
         fields["status"] = "received_back"
     fields["updated_at"] = ist_now().isoformat()

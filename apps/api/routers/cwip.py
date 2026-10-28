@@ -260,6 +260,12 @@ def add_cost(
     if _mock_enabled():
         return api_response(True, {"ok": True, "addition": {"id": "mock-cost"}})
     db = _db()
+    # THE VENDOR, THE BILL AND THE BANK ACCOUNT ARE THIS CLIENT'S (POST-A-338): the cost is posted against them.
+    from services import named_row_ownership
+    _firm = current_user.get("firm_id") or ""
+    named_row_ownership.vendor_is_the_clients(db, _firm, data.client_id, data.vendor_id)
+    named_row_ownership.purchase_bill_is_the_clients(db, _firm, data.client_id, data.purchase_bill_id)
+    named_row_ownership.bank_account_is_the_clients(db, _firm, data.client_id, data.bank_account_id)
     from services import period_lock_service
     period_lock_service.assert_open(db, current_user.get("firm_id") or "",
                                     data.client_id, data.incurred_on)

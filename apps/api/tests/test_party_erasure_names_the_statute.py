@@ -146,6 +146,10 @@ def test_every_dated_dependency_table_names_a_real_date_column():
         "purchase_payments": "payment_date",
         "debit_notes": "debit_note_date",
         "purchase_credit_notes": "credit_note_date",
+        # A memorandum and a certificate are undated on purpose (POST-A-334): they block on referential grounds, and a date here
+        # would have the refusal name a statutory retention year for a document nobody has said is a book of account.
+        "post_dated_cheques": None,
+        "tds_lower_deduction_certificates": None,
     }
     for _label, table, date_col in [*_DEPENDENCY_TABLES, *_VENDOR_DEPENDENCY_TABLES]:
         assert table in expected, f"{table} is a new dependency with no date decision"

@@ -25,6 +25,7 @@ from services.audit_service import log_event
 from services.document_header_writer import update_header
 from domain.accounting import draft_integrity
 from services import draft_integrity_service
+from services import named_row_ownership
 from domain.gst import place_of_supply
 from domain.gst import inter_state as _inter_state
 from domain.gst import supply_classification
@@ -1840,14 +1841,16 @@ def update_invoice(
         # FY-lock: block editing an invoice dated in a locked year, and block moving
         # it INTO a locked year. (Create already validates; edits were the gap.)
         existing_date = resp.data[0].get("invoice_date")
-        if existing_date:
-            period_validation_service.validate_posting_date(firm_id, existing_date)
-        if data.get("invoice_date"):
-            period_validation_service.validate_posting_date(firm_id, data["invoice_date"])
+        for _posting_date in (existing_date, data.get("invoice_date")):
+            if _posting_date:
+                period_validation_service.validate_posting_date(firm_id, _posting_date)
         # Both dates again, against filed returns. Moving an invoice INTO a
         # filed period changes that period's numbers as surely as editing one
         # already there, which is why the new date is checked too.
         _client_id = resp.data[0].get("client_id")
+        # A DRAFT CANNOT BE RE-POINTED AT A SIBLING CLIENT'S CUSTOMER (POST-A-338): create reads the customer under the client
+        # and this door wrote `customer_id` wholesale.
+        named_row_ownership.customer_is_the_clients(db, firm_id, _client_id, data.get("customer_id"))
         period_lock_service.assert_open(db, firm_id, _client_id, existing_date)
         if data.get("invoice_date"):
             period_lock_service.assert_open(db, firm_id, _client_id, data["invoice_date"])

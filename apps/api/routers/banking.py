@@ -2904,27 +2904,39 @@ def delete_rule(
     # The partial index on posted_by_rule_id (migration 322) makes this cheap,
     # and `count="exact"` with `limit(1)` asks the database for the number
     # rather than shipping the rows to count them here.
-    posted = 0
+    #
+    # AN UNREADABLE COUNT IS "UNKNOWN", NEVER ZERO (POST-A-342). It was zero, and the count decides whether an Executive may delete the
+    # rule, so a failed read let the deletion through exactly where it is meant to be refused. Deleting is irreversible
+    # (`ON DELETE SET NULL` erases the record of why each line posted), a retry is not, so a person who could not delete a rule that
+    # posted lines is refused with a sentence until the count can be taken. Someone who may delete it whatever the count says is not
+    # held up, and the audit entry and the answer then say the count was not known.
+    posted: Optional[int] = None
     try:
         resp = (privileged_for(db).table("bank_transactions").select("id", count="exact")
                 .eq("firm_id", current_user["firm_id"])
                 .eq("posted_by_rule_id", rule_id).limit(1).execute())
-        posted = int(getattr(resp, "count", None) or 0)
-    except Exception:                                              # noqa: BLE001
-        # A count that cannot be taken must not decide the permission — failing
-        # closed here would make a rule undeletable by the person who wrote it
-        # because of a transient read. The audit entry below still records the
-        # deletion; only the count is unknown.
-        posted = 0
+        counted = getattr(resp, "count", None)
+        if counted is None:
+            raise ValueError("the response carried no count")      # a missing Content-Range is unknown, not zero
+        posted = int(counted)
+    except Exception as exc:                                       # noqa: BLE001 — reported; see above
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="banking.delete_rule.count", firm_id=current_user["firm_id"], rule_id=rule_id)
 
-    if posted:
-        from core.permissions import can_user
-        if not can_user(current_user, "banking", "approve"):
-            raise HTTPException(
-                status_code=403,
-                detail=(f"This rule posted {posted} bank line{'s' if posted != 1 else ''} by "
-                        f"itself, and deleting it erases the record of why they posted. "
-                        f"Only a Manager or Partner can delete it — or deactivate it instead."))
+    from core.permissions import can_user
+    may_delete_a_rule_that_posted = can_user(current_user, "banking", "approve")
+    if posted is None and not may_delete_a_rule_that_posted:
+        raise HTTPException(
+            status_code=503,
+            detail=("Could not check whether this rule has posted bank lines, and deleting one that has erases the record of why "
+                    "they posted, so nothing was deleted. Try again in a moment, or ask a Manager or Partner, or deactivate the "
+                    "rule instead."))
+    if posted and not may_delete_a_rule_that_posted:
+        raise HTTPException(
+            status_code=403,
+            detail=(f"This rule posted {posted} bank line{'s' if posted != 1 else ''} by "
+                    f"itself, and deleting it erases the record of why they posted. "
+                    f"Only a Manager or Partner can delete it — or deactivate it instead."))
 
     (privileged_for(db).table("bank_matching_rules").delete()
      .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())

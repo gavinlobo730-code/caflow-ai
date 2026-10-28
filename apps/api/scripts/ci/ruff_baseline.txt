@@ -377,7 +377,7 @@ routers/sales_invoices.py :: C901 :: list_invoices :: 17
 routers/sales_invoices.py :: C901 :: update_invoice :: 29
 routers/sales_invoices.py :: F401 :: _do_send_invoice :: 1
 routers/sales_invoices.py :: PLR0915 :: _create_invoice_core :: 145
-routers/sales_invoices.py :: PLR0915 :: update_invoice :: 142
+routers/sales_invoices.py :: PLR0915 :: update_invoice :: 141
 routers/search.py :: C901 :: global_search :: 39
 routers/search.py :: PLR0915 :: global_search :: 112
 routers/service_catalogue.py :: B007 :: bulk_create_services :: 1

@@ -15,9 +15,14 @@ WHAT THIS HOLDS
     and a table that appears must be put on the router's list or here with a reason.
 
 WHAT IT DOES NOT HOLD
-    That the not-yet-guarded tables SHOULD be guarded. That is POST-A-334, an open decision about which of them are records and which are
-    working data; this file only keeps the list from growing by accident. A table that names a party with no foreign key at all
-    (`debit_notes`, `purchase_credit_notes` on the vendor side) is not found by a catalogue query and is on the router's list by name.
+    A table that names a party with no foreign key at all (`debit_notes`, `purchase_credit_notes` on the vendor side) is not found by a
+    catalogue query and is on the router's list by name.
+
+THE DECISION (POST-A-334, 28-10-2026, taken on the three tests: lawful, safe for the data of a CA's clients, best for the product)
+    Guarded, undated (they block on referential grounds and claim no statutory clock): `post_dated_cheques`, a memorandum of a cheque the
+    practice holds or has presented, and `tds_lower_deduction_certificates`, a section 197 certificate the withholding reads. Left to go
+    with the party, each for the reason beside it below: the three that are working data or a derived figure. The mail log is the one
+    whose answer depends on a retention reading nobody has made, so it stays as it always was and the question is on the owner's list.
 """
 from __future__ import annotations
 
@@ -31,17 +36,17 @@ pytestmark = pytest.mark.skipif(
     not os.environ.get("HARNESS_PG") or shutil.which("psql") is None,
     reason="real-Postgres harness requires HARNESS_PG + psql")
 
-# table -> why it is not on the router's list (shrinks only; each is POST-A-334)
+# table -> why it is not on the router's list. Shrinks only: a table that stops cascading, or that the router starts to name, comes off.
 CUSTOMER_NOT_YET_GUARDED = {
-    "client_firm_customer_links": "the link that ties a customer to a client of the practice; no accounting date",
-    "customer_statement_deliveries": "a mail log of statements sent",
-    "late_interest_charges": "an interest figure prepared as a draft, never posted on its own",
-    "post_dated_cheques": "a memorandum of a cheque held, until it is converted to a receipt",
+    "client_firm_customer_links": "working data: the link that ties a customer to a client of the practice; it holds no accounting "
+                                  "fact, and the invoices it was made for are guarded by their own table",
+    "customer_statement_deliveries": "a mail log of statements sent. The statement is derived from the invoices and receipts, which are "
+                                     "guarded; whether the LOG must be kept after the party goes is a retention reading nobody has made "
+                                     "(the owner's list), so it stays as it always was",
+    "late_interest_charges": "a figure derived from invoices and receipts and recomputable; once an interest invoice is raised, that "
+                             "invoice is guarded by its own table",
 }
-VENDOR_NOT_YET_GUARDED = {
-    "post_dated_cheques": "a memorandum of a cheque issued, until it is converted to a payment",
-    "tds_lower_deduction_certificates": "a section 197 certificate held on a payee; carries its own validity dates",
-}
+VENDOR_NOT_YET_GUARDED: dict[str, str] = {}
 
 _QUERY = """
 SELECT c.conrelid::regclass::text
@@ -94,5 +99,6 @@ def test_the_two_party_lists_name_the_documents_that_matter_most():
 
     customer = {table for _l, table, _d in _DEPENDENCY_TABLES}
     vendor = {table for _l, table, _d in _VENDOR_DEPENDENCY_TABLES}
-    assert {"client_sales_invoices", "receipts", "credit_notes", "sales_debit_notes"} <= customer
-    assert {"purchase_bills", "purchase_payments", "debit_notes", "purchase_credit_notes", "recurring_purchase_bill_templates"} <= vendor
+    assert {"client_sales_invoices", "receipts", "credit_notes", "sales_debit_notes", "post_dated_cheques"} <= customer
+    assert {"purchase_bills", "purchase_payments", "debit_notes", "purchase_credit_notes", "recurring_purchase_bill_templates",
+            "post_dated_cheques", "tds_lower_deduction_certificates"} <= vendor

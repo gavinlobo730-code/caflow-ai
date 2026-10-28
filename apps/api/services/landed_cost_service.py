@@ -241,6 +241,15 @@ def carry_over_from_bill_of_entry(db, *, firm_id: str, row: dict,
         duty = boe_domain.assessment_of(row).non_creditable_duty_paise
         if duty <= 0:
             return None
+        # THE BILL MUST BE THIS BILL OF ENTRY'S CLIENT'S (POST-A-338). The routes ask this before they write, but a row that
+        # already names another client's bill (written before they did, or by an import) must not take this client's duty into
+        # that bill's cost, and the charge below is written under THIS client against THAT bill.
+        if not (db.table("purchase_bills").select("id").eq("id", bill_id)
+                .eq("firm_id", firm_id).eq("client_id", row.get("client_id")).limit(1).execute().data):
+            import logging
+            logging.getLogger("caflow.inventory").warning(
+                "carry_over_from_bill_of_entry: be=%s names a bill that is not this client's; no landed cost carried", row.get("id"))
+            return None
         existing = (
             db.table("purchase_bill_landed_costs").select("id")
             .eq("firm_id", firm_id).eq("bill_id", bill_id)

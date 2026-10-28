@@ -90,14 +90,15 @@ class FXRevaluationService:
         revalued against ITS OWN GL account, so it is keyed by that account id
         (item_ref). foreign balance = Σ(txn_debit − txn_credit) over the account's
         posted journal lines; carrying base = Σ(debit − credit) in paise — both
-        derived purely from posted data (no historical recompute). No-op until
-        bank_accounts.currency exists (probed)."""
-        try:
-            banks = (privileged_for(db).table("bank_accounts")
-                     .select("id, currency, coa_account_id")
-                     .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []
-        except Exception:  # noqa: BLE001 — column/table absent ⇒ no foreign bank data
-            return []
+        derived purely from posted data (no historical recompute).
+
+        A READ THAT FAILS RAISES (POST-A-342). This used to answer "no foreign bank data" on any error, on the reasoning that
+        `bank_accounts.currency` might not exist yet; it has existed since the multi-currency migrations, so the only thing the
+        swallow could still hide was an outage, and the revaluation then ran WITHOUT the foreign bank accounts and said nothing:
+        a year-end that looked complete and was not."""
+        banks = (privileged_for(db).table("bank_accounts")
+                 .select("id, currency, coa_account_id")
+                 .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []
         out = []
         for b in banks:
             ccy = (b.get("currency") or _BASE).upper()
