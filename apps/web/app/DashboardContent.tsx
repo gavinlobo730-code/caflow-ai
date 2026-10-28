@@ -143,7 +143,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   in_progress:     { label: "In Progress", color: "text-state-working bg-state-working-surface" },
   todo:            { label: "To Do",       color: "text-ps-label bg-ps-muted" },
   review_required: { label: "Review",      color: "text-state-attention bg-state-attention-surface" },
-  waiting_client:  { label: "Waiting",     color: "text-purple-600 bg-purple-50" },
+  waiting_client:  { label: "Waiting",     color: "text-state-waiting bg-state-waiting-surface" },
 };
 
 function StatusBadge({ status }: { status: string | null }) {
@@ -517,7 +517,7 @@ export default function DashboardContent() {
                     "w-1.5 h-1.5 rounded-full shrink-0 mt-0.5",
                     t.status === "in_progress" ? "bg-blue-400" :
                     t.status === "review_required" ? "bg-amber-400" :
-                    t.status === "waiting_client" ? "bg-purple-400" :
+                    t.status === "waiting_client" ? "bg-state-waiting" :
                     "bg-gray-300"
                   )} />
                   <div className="min-w-0 flex-1">

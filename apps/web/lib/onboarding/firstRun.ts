@@ -39,6 +39,8 @@ export interface FirstRunChecklist {
   next_step: string | null;
   unreadable: string[];
   visible: boolean;
+  /** Whether THIS person dismissed the card for good (POST-A-002). `null` = the server could not read it, which is not a dismissal. */
+  dismissed: boolean | null;
   minutes_to_first_invoice: number | null;
 }
 
@@ -94,6 +96,8 @@ export function readFirstRun(data: unknown): FirstRunChecklist | null {
     // An absent `visible` is NOT visible: a frontend ahead of its backend must not
     // invent a card the server never asked for.
     visible: fr.visible === true,
+    // Only an exact boolean is a statement; anything else is "could not tell", never a guess in either direction.
+    dismissed: fr.dismissed === true ? true : fr.dismissed === false ? false : null,
     minutes_to_first_invoice:
       typeof fr.minutes_to_first_invoice === "number" ? fr.minutes_to_first_invoice : null,
   };

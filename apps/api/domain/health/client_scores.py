@@ -1,7 +1,7 @@
 """A client's health score, from the health engine's stored result, or none.
 
-`clients.health_score` is `INTEGER DEFAULT 100` (migration 003) and nothing writes it, so a roll-up that read it called every client
-healthy: the executive dashboard said a firm health of 100 and every client Healthy beside a Deadlines screen with 220 overdue
+`clients.health_score` was `INTEGER DEFAULT 100` (migration 003; dropped by migration 556 on 28-10-2026) and nothing ever wrote it, so a
+roll-up that read it called every client healthy: the executive dashboard said a firm health of 100 and every client Healthy beside a Deadlines screen with 220 overdue
 filings and a client Health screen that scored one of them 34 and Critical. The engine's own result lives in `health_scores`
 (`repositories/health_scores_repository`), and a client that has never been calculated has no row there: its Health screen answers
 "no score yet", and every roll-up must say the same, "not yet scored", and never a number.
@@ -32,8 +32,8 @@ def attach(clients: Iterable[dict], score_rows: Iterable[dict]) -> list[dict]:
     `health_critical` / `health_at_risk` set to the engine's stored verdict and `health_calculated_at` to the instant it was calculated
     (all None for a client without a score).
 
-    The client row's own `health_score` is overwritten either way: it is the column nothing writes, and a copy that kept it for an
-    unscored client would put the default back. A row whose score is not a number is not a score."""
+    The key is set either way: a client row has no `health_score` of its own any more (the column nothing wrote was dropped), and a copy
+    that carried one for an unscored client would put a default back. A row whose score is not a number is not a score."""
     by_client: dict[str, tuple[int, bool, bool, Optional[str]]] = {}
     for row in score_rows:
         score = row.get("overall_score")

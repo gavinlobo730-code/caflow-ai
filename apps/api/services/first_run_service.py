@@ -91,8 +91,19 @@ def _read(name: str, fn: Callable[[], rule.Fact]) -> rule.Fact:
         return rule.Fact(None)
 
 
-def first_run(firm_id: str) -> dict:
-    """The first-run checklist for one firm, as `domain/onboarding/first_run.build`."""
+def _dismissed(db, firm_id: str, user_id: Optional[str]) -> Optional[bool]:
+    """Whether THIS person dismissed the card for good: True / False, or None when it could not be read (which is not a dismissal)."""
+    if not user_id:
+        return None
+    rows = (db.table("users").select("first_run_dismissed_at")
+            .eq("id", user_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+    if not rows:
+        return None
+    return rows[0].get("first_run_dismissed_at") is not None
+
+
+def first_run(firm_id: str, user_id: Optional[str] = None) -> dict:
+    """The first-run checklist for one firm as `user_id` sees it, as `domain/onboarding/first_run.build`."""
     if _USE_MOCK:
         # No database to ask: every step is unreadable, which hides the card rather
         # than showing a firm four steps it may already have done.
@@ -109,4 +120,9 @@ def first_run(firm_id: str) -> dict:
         created_at = _firm_created_at(db, firm_id)
     except Exception:  # noqa: BLE001 - the time to first value is a nicety
         _log.warning("caflow.onboarding: could not read the firm's created_at", exc_info=True)
-    return rule.build(facts, firm_created_at=created_at)
+    dismissed: Optional[bool] = None
+    try:
+        dismissed = _dismissed(db, firm_id, user_id)
+    except Exception:  # noqa: BLE001 - an unread dismissal leaves the card to its steps, and says so
+        _log.warning("caflow.onboarding: could not read whether the caller dismissed the first-run card", exc_info=True)
+    return rule.build(facts, firm_created_at=created_at, dismissed=dismissed)

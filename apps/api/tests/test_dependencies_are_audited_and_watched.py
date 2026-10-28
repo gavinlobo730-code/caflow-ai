@@ -311,3 +311,43 @@ def test_the_snapshot_covers_the_population_and_is_not_an_empty_shell():
         assert entry["advisories"], app
         assert {a["severity"] for a in entry["advisories"]} <= {"high", "critical"}, app
         assert all(a["id"].upper().startswith("GHSA-") for a in entry["advisories"]), app
+
+
+# ── the image the backend runs in (POST-A-175, POST-A-176) ───────────────────────
+
+DOCKERFILE = APPS / "api" / "Dockerfile"
+
+
+def test_the_base_image_is_pinned_by_digest_and_something_moves_the_pin():
+    """`FROM python:3.11-slim` is a moving tag, so a build next month starts from an image the lock was never tested on. A digest fixes
+    that and creates the opposite problem: a pin nothing moves is an unpatched base. So the rule has two halves and they are asserted
+    together: every `FROM` carries a sha256 digest, and Dependabot has a docker entry for the directory the Dockerfile is in."""
+    froms = re.findall(r"^FROM\s+(\S+)", _code(DOCKERFILE), flags=re.M)
+    assert froms, "the scan found no FROM line: the Dockerfile moved or the pattern did"
+    for ref in froms:
+        assert re.fullmatch(r"[\w./-]+(:[\w.-]+)?@sha256:[0-9a-f]{64}", ref), (
+            f"{ref!r} is not pinned by a sha256 digest: a moving tag is a different image next month")
+    assert ("docker", "/apps/api") in set(_entries()), (
+        "the base image is pinned by digest and Dependabot is not told to move the pin, so it would never be patched")
+
+
+def test_the_python_the_lock_is_compiled_for_is_held_back_in_the_docker_entry():
+    """The lock is compiled for Python 3.11 (its header says so), and a docker proposal of 3.12 would build an image the lock was not
+    made for. The entry holds the minor and the major of `python` back; the digest and the patch releases still arrive."""
+    ignores = [b for b in _blocks(_code(DEPENDABOT), "ignore") if 'dependency-name: "python"' in b]
+    assert len(ignores) == 1, "the docker entry must hold the python minor and major back"
+    assert "version-update:semver-minor" in ignores[0] and "version-update:semver-major" in ignores[0]
+
+
+def test_the_web_server_worker_comes_from_its_own_package_and_is_locked():
+    """`uvicorn.workers` is deprecated in favour of the separate `uvicorn-worker` package. The Dockerfile's command names the new class,
+    the package is a direct dependency, and the lock holds it with its hashes (the lock test recompiles nothing, so this is the check
+    that the command and the lock agree)."""
+    cmd = re.search(r'^CMD\s*(\[.*\])\s*$', _code(DOCKERFILE), flags=re.M)
+    assert cmd, "the Dockerfile has no CMD in exec form"
+    args = json.loads(cmd.group(1))
+    worker = args[args.index("--worker-class") + 1]
+    assert worker == "uvicorn_worker.UvicornWorker", f"the worker class is {worker!r}: uvicorn.workers is the deprecated spelling"
+    assert re.search(r"^uvicorn-worker==\d", (APPS / "api" / "requirements.in").read_text(encoding="utf-8"), flags=re.M)
+    lock = (APPS / "api" / "requirements.txt").read_text(encoding="utf-8")
+    assert re.search(r"^uvicorn-worker==\d[\d.]*\s*\\\n\s+--hash=sha256:[0-9a-f]{64}", lock, flags=re.M)

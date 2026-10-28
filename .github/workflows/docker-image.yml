@@ -22,8 +22,8 @@
 #     minutes and a pull request that touches none of these cannot change the answer. It is not required: a
 #     base-image or PyPI outage must not block an unrelated merge.
 #
-# NOT DONE: the image is not pushed anywhere (Render builds its own from the repository), and the base image
-# is not pinned by digest, which is a separate decision with its own upkeep (Dependabot's docker ecosystem).
+# NOT DONE: the image is not pushed anywhere (Render builds its own from the repository). The base image IS pinned by
+# digest (POST-A-175) and Dependabot's docker entry moves the pin, so each proposed digest is built here first.
 name: Docker image
 
 on:

@@ -3,8 +3,8 @@
 nothing else.
 
 This is what a client's health IS, everywhere a figure is shown: the client's own Health screen reads this table, and so does every
-roll-up built on it (`domain/health/client_scores.attach`). `clients.health_score` is not a second copy of it: it is an INTEGER
-DEFAULT 100 (migration 003) that no code path writes, so reading it said every client was healthy.
+roll-up built on it (`domain/health/client_scores.attach`). `clients.health_score` was not a second copy of it: it was an INTEGER
+DEFAULT 100 (migration 003) that no code path wrote, so reading it said every client was healthy; migration 556 dropped it.
 """
 import os
 from typing import Optional

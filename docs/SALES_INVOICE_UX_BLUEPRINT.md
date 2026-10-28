@@ -404,5 +404,15 @@ Multi-GSTIN place-of-business, GST treatments (SEZ/export/LUT/deemed-export), an
 
 ---
 
+## Known deferred and superseded (recorded 28-10-2026, so a later audit does not re-flag them)
+The July 2026 density audit (deleted on 8 October 2026; `git show 315e6a19:docs/audits/2026-07-06-sales-invoice-workspace-density-audit.md`) compared the built workspace with this blueprint and graded four differences. Three are decisions and one is a gap:
+- **F5 — the edit-mode "Activity mini" in the summary rail (section 1.1)** is NOT built. The audit graded it an accidental omission, not a deferral. The full timeline is in the Hub drawer (`lib/invoices/hub.buildActivity`). Still open as a small item in the ledger (POST-A-150).
+- **F6 — the "computed on server" affordance in section 1.7** is SUPERSEDED, not a defect. The shipped design computes the preview totals client-side and is server-authoritative only on save, so there is no server round-trip per keystroke to debounce or to show a shimmer for.
+- **F7 — Attachments (section 1.9)** are an intentional, documented deferral: the blueprint's own Part 7 schedules them as Batch 9.
+- **F8 — the per-line `GoodsServicesToggle`** was replaced in Batch 5 by `HsnLookup` grouping its results into Services and Goods with an inline SAC/HSN chip per row. An intentional substitution, not drift.
+The Hub drawer's loading state is now shaped like the drawer (`InvoiceHubSkeleton`), which closes the audit's F2 residue.
+
+---
+
 ## Definition of done (Batch 0)
 This blueprint is the frozen foundation. Coding begins at **Batch 1** and proceeds in order; each batch merges only when its test plan + regression checklist pass and the immutable-kernel invariants are untouched. No code has been written in this document — it is specification only.

@@ -16,7 +16,7 @@
  * THREE STATES PER STEP. A step the server could not read is "could not check", not an
  * empty circle: an empty circle tells a firm to repeat what it may already have done.
  *
- * ONLY PARTNER AND MANAGER ARE ASKED. The endpoint is `firm:read`; an Executive or a
+ * ONLY PARTNER AND MANAGER ARE ASKED. The status endpoint is `firm:read`; an Executive or a
  * Reviewer gets a refusal, and so does a failed call — both render nothing. That is a
  * prompt and not a statement, so silence on failure does not present an unknown as a
  * value, and a role that cannot act on setup is not shown a setup card.
@@ -26,7 +26,13 @@
  * anything. It is read in an effect (this app is a static export: nothing may touch
  * `window` during render), every access is in a try/catch (a private window or blocked
  * site data throws), and collapsing leaves one line with the progress on it, so the card
- * is never hidden. A "dismiss for good" would need a column; none was available.
+ * is never hidden.
+ *
+ * "DISMISS FOR GOOD" IS THE SERVER'S AND IS ONE PERSON'S (POST-A-002). It is two clicks, in the card and not in a browser pop-up, because
+ * it cannot be taken back from here: the first says what it does, the second does it. The server keeps it on the person's own row
+ * (`POST /api/onboarding/first-run/dismiss`) and answers `visible: false` from then on, on every device; a second Partner who has not
+ * dismissed it still sees it. A refusal or a failed call leaves the card where it is and says so in a sentence, so a person is never
+ * told it is gone when it is not.
  */
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -34,6 +40,7 @@ import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, Circle, HelpCircle } 
 import { api } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
 import { hrefFor, readFirstRun, shouldShow, type FirstRunChecklist, type FirstRunStep } from "@/lib/onboarding/firstRun";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const COLLAPSED_KEY = "ps.firstRun.collapsed";
@@ -92,6 +99,10 @@ export function FirstRunChecklist() {
   // below, so nothing renders from a field of `r.data` directly.
   const [payload, setPayload] = useState<Record<string, unknown> | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  // "Dismiss for good" is asked in two steps, in the card: `asking` shows what it does, `refused` says why a try did not work.
+  const [asking, setAsking] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
+  const [gone, setGone] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -128,7 +139,19 @@ export function FirstRunChecklist() {
     }
   }
 
-  if (!shouldShow(checklist)) return null;
+  // Returned, never dropped: the Button ignores a second click while this is unresolved.
+  async function dismissForGood(): Promise<void> {
+    setRefused(null);
+    try {
+      const r = await api.firstRun.dismiss();
+      if (r && r.success) { setGone(true); return; }
+      setRefused(r?.error || "Could not dismiss the checklist just now. It is still here; try again.");
+    } catch {
+      setRefused("Could not dismiss the checklist just now. It is still here; try again.");
+    }
+  }
+
+  if (gone || !shouldShow(checklist)) return null;
 
   const pct = checklist.total > 0 ? Math.round((checklist.done_count / checklist.total) * 100) : 0;
 
@@ -176,6 +199,30 @@ export function FirstRunChecklist() {
           ))}
         </ol>
       ) : null}
+
+      <div className="mt-3 border-t border-ps-border pt-3 text-xs text-ps-hint">
+        {asking ? (
+          <div role="group" aria-label="Dismiss the checklist for good" className="flex flex-wrap items-center gap-2">
+            <p className="min-w-0 flex-1">
+              This hides the checklist for you, on every device. The steps stay where they live: Clients, Sales, Banking and Team.
+              It does not come back.
+            </p>
+            <Button variant="plain" size="none" onClick={dismissForGood}
+              className="rounded-md bg-brand px-2.5 py-1.5 text-xs font-medium text-white hover:bg-brand-dark">
+              Dismiss for good
+            </Button>
+            <button type="button" onClick={() => { setAsking(false); setRefused(null); }}
+              className="rounded-md border border-ps-border px-2.5 py-1.5 text-xs text-ps-ink hover:bg-ps-muted">
+              Keep it
+            </button>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setAsking(true)} className="underline decoration-dotted hover:text-ps-ink">
+            I don&apos;t need this checklist
+          </button>
+        )}
+        {refused ? <p className="mt-2 text-state-problem" role="alert">{refused}</p> : null}
+      </div>
     </section>
   );
 }

@@ -200,7 +200,11 @@ const HEX_BUDGET = 44;
 // conversion cannot be quietly undone by the next screen somebody writes, and
 // that the plan's metric and this guard cannot drift apart. The end state is a
 // number small enough to argue about entry by entry, not necessarily zero.
-const NAMED_COLOUR_BUDGET = 3712;
+const NAMED_COLOUR_BUDGET = 3585;
+// 3,712 → 3,585 ON 28-10-2026. NINE OF THE 127 ARE THE CONVERSION AND 118 WERE SLACK. The `waiting` state (POST-A-137) took the
+// five purple "waiting on somebody outside the firm" sites onto tokens (3,594 → 3,585, measured on the same tree before and after),
+// and the budget is set to what is actually there, which is what the paragraph below it says every change does: the tree had
+// fallen to 3,594 with the number still at 3,712, a slack that would have let a hundred raw colours in without a red.
 // ⚠️ 3,833 → 3,712 IS A FALL OF 121 AND TWO MOVEMENTS OF DIFFERENT KINDS. The
 // eleven families added above brought 216 previously-uncounted sites IN
 // (3,833 → 4,049 on the same tree), and two module conversions took 337 out.
@@ -235,7 +239,8 @@ const NAMED_COLOUR_BUDGET = 3712;
 // figures match) and from `done`, whose surface and ink are within a shade of
 // the `ps-muted`/`ps-label` pair the "Not reviewed" branch uses, so *settled*
 // and *nobody looked* would render alike. Left raw, the way 1.3c left
-// `waiting_client` and `queued`.
+// `waiting_client` and `queued`. (`waiting_client` has had its own token since 28-10-2026,
+// POST-A-137; `queued` is still raw because it is used in one place.)
 // 392 → 289 on 24-09-2026, the auth family converted (see above). Lowered to
 // what is actually there each time, because a budget with slack in it is a
 // budget that permits a regression.
@@ -813,6 +818,10 @@ const OWN_HUES: Record<string, RegExp> = {
      when none of the four fitted. Its own hues are the three the product was
      already writing for "somebody is on it". */
   working: /^(blue|sky|indigo)$/,
+  /* `waiting` is the sixth (POST-A-137): somebody OUTSIDE the firm has the ball. It is the purple the task board, the work list,
+     a client's tasks and the dashboard were each writing for it. Purple is also used for other things (an entity type, a role, a
+     filing kind) and none of those sits beside a `waiting` ink, so the family is claimed only here. */
+  waiting: /^(purple|violet)$/,
   /* And the severity LADDER, whose steps are ranked rather than exclusive.
      `ok` and `critical` share their values with `ready` and `problem`, so
      they share their hues too. */
@@ -1079,7 +1088,8 @@ test("the four rules above are not vacuous", () => {
   }
   // And every token the two passes rest on must actually exist in the config.
   for (const t of ["problem-hover", "attention-hover", "ready-hover", "working",
-                   "working-surface", "working-border", "working-hover"]) {
+                   "working-surface", "working-border", "working-hover",
+                   "waiting", "waiting-surface", "waiting-border", "waiting-hover"]) {
     assert.match(CONFIG, new RegExp(`"?${t}"?\\s*:`), `state.${t} is missing from the config`);
   }
   for (const t of ["ok", "low", "medium", "high", "critical"]) {

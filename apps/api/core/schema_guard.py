@@ -128,6 +128,11 @@ _ALTER_TABLE_BLOCK = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _ADD_COLUMN = re.compile(r"ADD COLUMN\s+IF NOT EXISTS\s+(\w+)", re.IGNORECASE)
+# A later migration that DROPS a column takes it out of what the guard expects. Without this the expectation outlived the column:
+# migration 556 dropped `clients.health_score` (added by 003) and a database built from the migrations then "lacked" it, which on
+# production would have been /health 503 and a held deploy (found by the real-Postgres job on 28-10-2026, not by this repository's
+# mock-mode suite).
+_DROP_COLUMN = re.compile(r"DROP COLUMN\s+(?:IF\s+EXISTS\s+)?(\w+)", re.IGNORECASE)
 
 # Tables some migration adds columns to that this database does not have and no
 # live code queries. Every one was verified against the production catalog
@@ -215,7 +220,10 @@ def expected_columns_from_migrations(migrations_dir: Path = MIGRATIONS_DIR) -> d
     if not migrations_dir.exists():
         return expected
     for path in sorted(migrations_dir.glob("*.sql")):
-        if path.name.startswith("_"):
+        if path.name.startswith("_") or "rollback" in path.name:
+            # The runner applies neither (scripts/db/apply_migrations.py). A rollback file sorts AFTER its migration, so reading it put a
+            # column a migration drops back on the expected list (556's rollback re-adds `clients.health_score`) and took one a migration
+            # adds off it (521's rollback drops `maturity_amount_is_estimate`).
             continue
         text = path.read_text(errors="ignore")
         for schema, table, body in _ALTER_TABLE_BLOCK.findall(text):
@@ -224,6 +232,11 @@ def expected_columns_from_migrations(migrations_dir: Path = MIGRATIONS_DIR) -> d
             cols = _ADD_COLUMN.findall(body)
             if cols:
                 expected.setdefault(table.lower(), set()).update(c.lower() for c in cols)
+            dropped = {c.lower() for c in _DROP_COLUMN.findall(body)}
+            if dropped and table.lower() in expected:
+                expected[table.lower()] -= dropped
+                if not expected[table.lower()]:
+                    del expected[table.lower()]
     return expected
 
 

@@ -6292,6 +6292,9 @@ export const api = {
   // `data` is `unknown` here on purpose.
   firstRun: {
     status: () => request<ApiResp<unknown>>("/api/onboarding/status"),
+    /** The caller dismisses the checklist for good (POST-A-002): a fact about the PERSON, kept on their `users` row. */
+    dismiss: () => request<ApiResp<{ dismissed: boolean; dismissed_at: string }>>(
+      "/api/onboarding/first-run/dismiss", { method: "POST" }),
   },
   onboarding: {
     /** Start a 10-step Product Bible Ch. 7 onboarding checklist for a client. */
