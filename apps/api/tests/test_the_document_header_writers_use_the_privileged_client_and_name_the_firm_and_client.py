@@ -45,6 +45,12 @@ from tests.e2e_harness import FakeDB, _Query, seed_standard_coa, wire_e2e
 API_ROOT = Path(__file__).resolve().parents[1]
 DOOR = "services/document_header_writer.py"
 HEADER_TABLES = set(door.HEADER_TABLES)
+#: The seven tables a document's settlement is derived from (ledger POST-A-336, migration 558). The request's client refuses their writes
+#: too, so every flow below proves the receipt, vendor payment, re-allocation, reversal and note-application writers are on the
+#: privileged client.
+SETTLEMENT_TABLES = {"receipts", "receipt_allocations", "purchase_payments", "purchase_payment_allocations",
+                     "debit_note_allocations", "sales_debit_note_allocations", "purchase_credit_note_allocations"}
+REFUSED_TABLES = HEADER_TABLES | SETTLEMENT_TABLES
 
 #: The columns that say what has been settled against a document, what state it is in and which journal entry it posted.
 SETTLEMENT = {
@@ -419,7 +425,7 @@ class _Client:
     def table(self, name):
         q = self.inner.table(name)
         q._label = self.label
-        if self.label == "request" and name in HEADER_TABLES:
+        if self.label == "request" and name in REFUSED_TABLES:
             return _Refusing(q, name, self.attempts)
         if name in self.fail_tables:
             return _Refusing(q, name, [])
@@ -1185,7 +1191,7 @@ class _SpyingQuery:
         self.rec = {"label": owner.label, "table": name, "verb": "select", "payload": None, "filters": []}
 
     def __getattr__(self, attr):
-        if attr in WRITE_VERBS and self.name in HEADER_TABLES and self.owner.refuse:
+        if attr in WRITE_VERBS and self.name in REFUSED_TABLES and self.owner.refuse:
             self.owner.attempts.append((self.name, attr))
             raise RuntimeError(f"permission denied for table {self.name}")
 

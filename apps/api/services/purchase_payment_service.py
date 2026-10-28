@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 
 from core.authz import can_access_client
+from core.db_provider import privileged_for
 from domain.accounting.payment_account import resolve_payment_account
 from domain.currency.fx_writer import fx_writer
 from services.audit_service import log_event
@@ -94,7 +95,7 @@ def _compensate_failed_settlement(
                     narration=f"Compensating reversal — payment {payment_id} settlement failed",
                     created_by=(actor or {}).get("id"),
                 )
-        db.table("purchase_payments").delete().eq("id", payment_id).execute()
+        privileged_for(db).table("purchase_payments").delete().eq("id", payment_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
         _logger.warning(
             "Compensation applied: reversed journal=%s and deleted payment=%s "
             "(firm=%s client=%s) after a settlement failure. Bills touched this "
@@ -291,7 +292,7 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     alloc_payloads = []
     _attempted_bill_ids = [a.get("purchase_bill_id") for a in allocations if a.get("purchase_bill_id")]
     try:
-        pay_resp = db.table("purchase_payments").insert(payment_payload).execute()
+        pay_resp = privileged_for(db).table("purchase_payments").insert(payment_payload).execute()
         payment    = pay_resp.data[0] if pay_resp.data else payment_payload
         payment_id = payment.get("id", payment_id)
 
@@ -340,7 +341,7 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
                     detail=f"Bill {bill_id} is being paid concurrently — please retry.")
 
         if alloc_payloads:
-            db.table("purchase_payment_allocations").insert(alloc_payloads).execute()
+            privileged_for(db).table("purchase_payment_allocations").insert(alloc_payloads).execute()
     except HTTPException:
         _compensate_failed_settlement(db, firm_id, client_id, payment_id, journal_id, actor, _attempted_bill_ids)
         raise
@@ -531,7 +532,7 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
     # compensated rather than left as a phantom GL entry.
     alloc_rows = []
     try:
-        pay_resp = db.table("purchase_payments").insert(payment_payload).execute()
+        pay_resp = privileged_for(db).table("purchase_payments").insert(payment_payload).execute()
         payment    = pay_resp.data[0] if pay_resp.data else payment_payload
         payment_id = payment.get("id", payment_id)
 
@@ -567,7 +568,7 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
             alloc_rows.append({"purchase_payment_id": payment_id, "purchase_bill_id": bill_id,
                                "allocated_paise": ap_relieved, "allocated_txn": f})
         if alloc_rows:
-            db.table("purchase_payment_allocations").insert(alloc_rows).execute()
+            privileged_for(db).table("purchase_payment_allocations").insert(alloc_rows).execute()
 
         if fx_diff != 0:
             fx_writer(db).table("fx_adjustments").insert({
@@ -739,7 +740,7 @@ def update_allocations_core(firm_id: str, payment_id: str, allocations: list, ac
     # re-allocation.
     for old in prior:
         _adjust_bill_paid(db, firm_id, client_id, old.get("purchase_bill_id"), -int(old.get("allocated_paise", 0) or 0), actor=actor)
-    db.table("purchase_payment_allocations").delete().eq("purchase_payment_id", payment_id).execute()
+    privileged_for(db).table("purchase_payment_allocations").delete().eq("purchase_payment_id", payment_id).execute()
 
     alloc_payloads = []
     for a in allocations:
@@ -755,10 +756,10 @@ def update_allocations_core(firm_id: str, payment_id: str, allocations: list, ac
         _adjust_bill_paid(db, firm_id, client_id, bill_id, amt, actor=actor)
 
     if alloc_payloads:
-        db.table("purchase_payment_allocations").insert(alloc_payloads).execute()
+        privileged_for(db).table("purchase_payment_allocations").insert(alloc_payloads).execute()
 
     unallocated_paise = amount_paise - total_requested
-    db.table("purchase_payments").update({"unallocated_paise": unallocated_paise}).eq("id", payment_id).execute()
+    privileged_for(db).table("purchase_payments").update({"unallocated_paise": unallocated_paise}).eq("id", payment_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
 
     log_event(
         firm_id or "", "purchase_payment", payment_id, "update",

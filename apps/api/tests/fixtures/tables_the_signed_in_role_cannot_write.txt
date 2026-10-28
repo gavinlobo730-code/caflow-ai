@@ -4,6 +4,8 @@
 # to a client that can. A table leaves this list when a migration grants the signed-in role a write back (then its writers may use the
 # caller's session); a table joins it in the migration that takes the write away. The real-Postgres half checks each name here that
 # exists in the migration-built database against the privileges themselves.
+# Joined by a migration in the change that moves its writers (the first line below the names is the migration): 558 closes
+# receipts, receipt_allocations, purchase_payments, purchase_payment_allocations and the three note-allocation tables.
 account_period_balances
 activity_logs
 advance_tax_payments
@@ -50,6 +52,7 @@ client_year_locks
 compliance_tasks
 credit_note_allocations
 currencies
+debit_note_allocations
 delivery_challan_lines
 delivery_challan_returns
 delivery_challans
@@ -122,14 +125,20 @@ post_dated_cheques
 practice_email_log
 price_list_items
 price_lists
+purchase_credit_note_allocations
 purchase_order_lines
 purchase_orders
+purchase_payment_allocations
+purchase_payments
 rcm_documents
+receipt_allocations
+receipts
 reconciliation_findings
 reconciliation_runs
 recurring_journal_template_lines
 retainer_logs
 salary_structures
+sales_debit_note_allocations
 sales_invoices
 sales_order_lines
 sales_orders

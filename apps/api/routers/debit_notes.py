@@ -22,6 +22,7 @@ from models.common import api_response
 from models.invoices import InvoiceLineIn
 from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
+from core.db_provider import privileged_for
 from services import named_row_ownership
 from core.permissions import rbac
 from core.storage_door import StoragePathRefused, storage_folder
@@ -548,7 +549,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             else:
                 raise HTTPException(status_code=409, detail=f"Bill {bill_id} is being updated concurrently — please retry.")
             try:
-                db.table("debit_note_allocations").insert({
+                privileged_for(db).table("debit_note_allocations").insert({
                     "firm_id": firm_id, "debit_note_id": dn_id,
                     "purchase_bill_id": bill_id, "allocated_paise": dn_total,
                 }).execute()
@@ -569,7 +570,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
         except Exception as jerr:
             if prior_bill is not None and bill_id:
                 try:
-                    db.table("debit_note_allocations").delete().eq("debit_note_id", dn_id).eq("purchase_bill_id", bill_id).execute()
+                    privileged_for(db).table("debit_note_allocations").delete().eq("debit_note_id", dn_id).eq("purchase_bill_id", bill_id).eq("firm_id", firm_id).execute()
                     update_header(
                         db, "purchase_bills", bill_id,
                         {"debited_paise": prior_bill["debited_paise"], "status": prior_bill["status"]},

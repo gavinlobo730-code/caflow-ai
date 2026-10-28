@@ -38,6 +38,7 @@ from models.common import api_response
 from models.invoices import InvoiceLineIn
 from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
+from core.db_provider import privileged_for
 from services import named_row_ownership
 from core.permissions import rbac
 from services.audit_service import log_event
@@ -466,7 +467,7 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
             else:
                 raise HTTPException(status_code=409, detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
             try:
-                db.table("sales_debit_note_allocations").insert({
+                privileged_for(db).table("sales_debit_note_allocations").insert({
                     "firm_id": firm_id, "debit_note_id": sdn_id,
                     "sales_invoice_id": inv_id, "allocated_paise": sdn_total,
                 }).execute()
@@ -491,7 +492,7 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
         except Exception as jerr:
             if prior_inv is not None and inv_id:
                 try:
-                    db.table("sales_debit_note_allocations").delete().eq("debit_note_id", sdn_id).eq("sales_invoice_id", inv_id).execute()
+                    privileged_for(db).table("sales_debit_note_allocations").delete().eq("debit_note_id", sdn_id).eq("sales_invoice_id", inv_id).eq("firm_id", firm_id).execute()
                     update_header(
                         db, "client_sales_invoices", inv_id,
                         {"debit_note_paise": prior_inv["debit_note_paise"], "status": prior_inv["status"]},

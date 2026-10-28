@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 
 from domain.accounting.payment_account import resolve_payment_account
+from core.db_provider import privileged_for
 from domain.currency.fx_writer import fx_writer
 from services.audit_service import log_event
 from services.document_header_writer import update_header
@@ -344,7 +345,7 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
     # the loop's 409 is now only reachable via a genuine concurrent race.
     alloc_rows = []
     try:
-        receipt = (db.table("receipts").insert(receipt_payload).execute().data or [receipt_payload])[0]
+        receipt = (privileged_for(db).table("receipts").insert(receipt_payload).execute().data or [receipt_payload])[0]
         receipt_id = receipt.get("id", receipt_id)
 
         for (inv, f, ar_relieved, _new_paid, _new_paid_txn, _status) in settle_plan:
@@ -388,7 +389,7 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
             alloc_rows.append({"receipt_id": receipt_id, "sales_invoice_id": inv_id,
                                "allocated_paise": ar_relieved, "allocated_txn": f})
         if alloc_rows:
-            db.table("receipt_allocations").insert(alloc_rows).execute()
+            privileged_for(db).table("receipt_allocations").insert(alloc_rows).execute()
 
         if fx_diff != 0:
             fx_writer(db).table("fx_adjustments").insert({
@@ -478,7 +479,7 @@ def _compensate_failed_settlement(
                     narration=f"Compensating reversal — receipt {receipt_id} settlement failed",
                     created_by=(actor or {}).get("id"),
                 )
-        db.table("receipts").delete().eq("id", receipt_id).execute()
+        privileged_for(db).table("receipts").delete().eq("id", receipt_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
         _logger.warning(
             "F7 compensation applied: reversed journal=%s and deleted receipt=%s "
             "(firm=%s client=%s) after a settlement failure. Invoices touched this "
@@ -844,7 +845,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     alloc_payloads = []
     _attempted_invoice_ids = [a.get("sales_invoice_id") for a in allocations if a.get("sales_invoice_id")]
     try:
-        rcpt_resp  = db.table("receipts").insert(receipt_payload).execute()
+        rcpt_resp  = privileged_for(db).table("receipts").insert(receipt_payload).execute()
         receipt    = rcpt_resp.data[0] if rcpt_resp.data else receipt_payload
         receipt_id = receipt.get("id", receipt_id)
 
@@ -898,7 +899,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
                     detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
 
         if alloc_payloads:
-            db.table("receipt_allocations").insert(alloc_payloads).execute()
+            privileged_for(db).table("receipt_allocations").insert(alloc_payloads).execute()
     except HTTPException:
         _compensate_failed_settlement(
             db, firm_id, client_id, receipt_id, journal_id, actor, _attempted_invoice_ids,
