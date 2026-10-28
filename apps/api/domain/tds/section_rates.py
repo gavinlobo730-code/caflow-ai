@@ -6,7 +6,7 @@ TODO(compliance): docs/compliance/03-income-tax-and-tds.md
     The Income-tax Act 2025 consolidated ss. 192-196D and the whole 194-series
     into a table-driven architecture under ss. 392-402: salary is s. 392, the
     194-series collapsed into s. 393(1), and s. 195 became s. 393(2). TCS is
-    s. 394. Statements from 01-04-2026 carry numeric payment codes 1001-1067.
+    s. 394. TDS statements from 01-04-2026 carry numeric payment codes 1001-1067 (the TCS block is separate and unread).
 
     Substantive rates and thresholds are UNCHANGED, so every number below is
     still right. What moved is the LABEL a payment is reported under, and

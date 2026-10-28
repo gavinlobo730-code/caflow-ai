@@ -27,10 +27,10 @@ THE DEADLINE, REPORTED AND NEVER ENFORCED
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Optional
 
-from core.ist_clock import IST, ist_today
+from core.ist_clock import ist_date_of, ist_today
 from domain.gst.amendment_proposal import propose
 from domain.gst.amendments import SECTION_TABLE, group_amendments, merge_into_payload
 from domain.gst.correction_window import fy_label, is_actionable, window_for
@@ -88,7 +88,7 @@ def annual_returns_filed(db, firm_id: str, client_id: str) -> dict:
     out: dict = {}
     for r in rows:
         fy = (r.get("financial_year") or "").strip()
-        filed = _ist_date(r.get("submitted_at"))
+        filed = ist_date_of(r.get("submitted_at"))
         if not fy or filed is None:
             # A submitted row with no date cannot shorten anything, and guessing
             # one would shorten it wrongly. The 30 November limit still applies.
@@ -118,22 +118,6 @@ def annual_returns_filed_safely(db, firm_id: str, client_id: str) -> dict:
             "annual return dates unavailable (%s) — correction windows fall back "
             "to the 30 November statutory limit", e)
         return {}
-
-
-def _ist_date(value) -> Optional[date]:
-    """A timestamptz (or an ISO string) as the calendar date it was in India."""
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        dt = value
-    else:
-        try:
-            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-        except (TypeError, ValueError):
-            return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(IST).date()
 
 
 def _earlier_filed_periods(db, firm_id: str, client_id: str, period: str) -> list[str]:

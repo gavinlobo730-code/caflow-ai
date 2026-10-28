@@ -30,7 +30,7 @@ import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
-from core.ist_clock import fy_bounds, fy_quarters
+from core.ist_clock import fy_bounds, fy_quarters, ist_date_of
 from domain.reporting import report_schedule as R
 from tests._property import kernel
 
@@ -150,12 +150,12 @@ def test_the_next_slot_is_the_first_one_after_both_today_and_the_day_the_schedul
     ("2026-10-05", "2026-10-05"),
 ])
 def test_a_stored_timestamp_is_converted_to_its_indian_day(stamp, expected):
-    assert R.created_on(stamp).isoformat() == expected
+    assert ist_date_of(stamp).isoformat() == expected
 
 
 @pytest.mark.parametrize("junk", [None, "", "   ", "not a date", "2026-13-40", 12345, [], {}])
 def test_a_stamp_that_cannot_be_read_is_none_and_never_today(junk):
-    assert R.created_on(junk) is None
+    assert ist_date_of(junk) is None
 
 
 def test_a_schedule_created_just_after_indian_midnight_does_not_owe_that_days_slot():

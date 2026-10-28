@@ -4,12 +4,12 @@ Migrations 522 and 523 — the SQL "TDS deducted and not yet deposited" and "not
 MIGRATION 523 SPLIT THE ANSWER IN TWO. 522 counted every quarter, so a client with NO challan recorded (a firm that keeps its deposits
 in Tally) showed all of its tax as undeposited. `public.tds_deposit_position` returns the shortfall in quarters for which at least one
 non-salary challan is recorded, and, apart, the tax deducted in quarters for which none is (NOT RECORDED: the books cannot say).
-Every figure below is therefore a PAIR, and `tds_undeposited_paise` is held equal to the pair's first.
+Every figure below is therefore a PAIR. (The one-line wrapper 523 kept for the API that was live when it applied, `tds_undeposited_paise`, was dropped by migration 555.)
 
 WHY THIS FILE IS THE POINT OF THE CHANGE
     The hub's TDS tile read `tds_deductions.challan_no IS NULL`, a column nothing writes, so it counted every deduction as
     undeposited. The right answer is the challan register's, and a firm-wide tile may not fetch rows proportional to the
-    ledger (CLAUDE.md's reporting rule), so `public.tds_undeposited_paise` computes it where the rows are.
+    ledger (CLAUDE.md's reporting rule), so `public.tds_deposit_position` computes it where the rows are.
     `domain/tds/undeposited.py` has to survive anyway: mock mode, local development and the in-memory suites have no SQL
     functions. Two implementations of one rule drift, and they are safe only while something proves they agree. Every scenario
     below is declared ONCE, as deductions and challans, and fed to both halves.
@@ -237,15 +237,23 @@ def test_the_clients_asked_for_decide_the_answer_the_same_way_on_both_halves(db,
     deductions, challans = SCENARIOS["two clients and a challan of one"]
     sql, py = _both(db, deductions, challans, client_ids=scope)
     assert (sql, py) == (want, want)
-    assert _wrapper(db, client_ids=scope) == want[0]
 
 
-@pytest.mark.parametrize("name", sorted(SCENARIOS))
-def test_the_wrapper_the_previous_api_calls_is_the_first_figure_for_every_scenario(db, name):
-    """The migration applies before the API that calls the new function is deployed; the previous API calls the old name."""
-    deductions, challans = SCENARIOS[name]
+def test_the_one_line_wrapper_523_kept_for_the_previous_api_is_gone(db):
+    """Migration 555 dropped `tds_undeposited_paise`: the API that calls the pair has been live since 523 applied, and nothing calls the
+    old name. The pair's function stays."""
+    r = _psql(db, "SELECT to_regprocedure('public.tds_undeposited_paise(uuid, uuid[])') IS NULL, "
+                  "to_regprocedure('public.tds_deposit_position(uuid, uuid[])') IS NOT NULL;", tuples=True)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "t|t"
+
+
+def test_555s_rollback_brings_the_wrapper_back_as_the_first_figure_of_the_pair(db):
+    deductions, challans = SCENARIOS["two clients and a challan of one"]
     sql, _ = _both(db, deductions, challans)
-    assert _wrapper(db) == sql[0], name
+    path = API_ROOT / "migrations" / "555_the_retired_undeposited_tds_wrapper_is_dropped_rollback.sql"
+    assert _psql(db, path.read_text(encoding="utf-8")).returncode == 0
+    assert _wrapper(db) == sql[0]
 
 
 # Two halves that agree on a wrong answer pass a parity test, so these are the figures the RULE gives: (undeposited, not recorded).
@@ -380,7 +388,7 @@ def test_it_runs_as_the_caller_so_row_security_still_applies(db):
     assert _figure(_as(db, AUTH_OTHER, FIRM)) == (0, 0)
 
 
-FUNCTIONS = ("tds_deposit_position", "tds_undeposited_paise")
+FUNCTIONS = ("tds_deposit_position",)
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
@@ -409,12 +417,12 @@ def test_anon_and_public_cannot_execute_it_and_the_service_and_signed_in_roles_c
 def test_anon_cannot_execute_either_function_even_where_the_platform_grants_new_functions_to_anon(db):
     """Supabase's default privileges give `anon` EXECUTE on every function created in `public`; the template database does not,
     so the plain check above cannot tell whether the migration's own REVOKE FROM anon is doing anything. Here the platform's
-    default is switched on, both functions are dropped and the migration applied again."""
+    default is switched on, the function is dropped and the migration applied again."""
     path = API_ROOT / "migrations" / "523_tds_not_yet_deposited_ignores_a_quarter_with_no_challan_recorded.sql"
-    assert _psql(db, "DROP FUNCTION public.tds_undeposited_paise(uuid, uuid[]); DROP FUNCTION public.tds_deposit_position(uuid, uuid[]);"
+    assert _psql(db, "DROP FUNCTION IF EXISTS public.tds_undeposited_paise(uuid, uuid[]); DROP FUNCTION public.tds_deposit_position(uuid, uuid[]);"
                      " ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon;").returncode == 0
     assert _psql(db, path.read_text(encoding="utf-8")).returncode == 0
-    for name in FUNCTIONS:
+    for name in ("tds_deposit_position", "tds_undeposited_paise"):     # 523 creates both; 555 is not re-applied here
         r = _psql(db, f"SELECT has_function_privilege('anon', 'public.{name}(uuid,uuid[])', 'EXECUTE');", tuples=True)
         assert r.returncode == 0, r.stderr
         assert r.stdout.strip() == "f", name
@@ -423,6 +431,9 @@ def test_anon_cannot_execute_either_function_even_where_the_platform_grants_new_
 def test_the_rollback_restores_migration_522s_every_quarter_reading_and_drops_the_new_function(db):
     """For fidelity with the previous schema, not for use: the wrapper counts every quarter again, recorded or not."""
     assert _psql(db, _seed_sql(*SCENARIOS["no challan"])).returncode == 0
+    # Migration 555 dropped the wrapper, so put 523's back first: this test is about what 523's rollback does to it.
+    path_555 = API_ROOT / "migrations" / "555_the_retired_undeposited_tds_wrapper_is_dropped_rollback.sql"
+    assert _psql(db, path_555.read_text(encoding="utf-8")).returncode == 0
     assert _wrapper(db) == 0, "migration 523 counts a quarter with no challan recorded as not recorded"
     path = API_ROOT / "migrations" / "523_tds_not_yet_deposited_ignores_a_quarter_with_no_challan_recorded_rollback.sql"
     assert _psql(db, path.read_text(encoding="utf-8")).returncode == 0

@@ -57,7 +57,8 @@ ss. 392–402**: `[S]`
 | s. 139 (return of income) | **s. 263** |
 
 TDS challans and returns now use **numeric payment codes 1001–1067**
-corresponding to table entries in s. 393.
+corresponding to table entries in s. 393. (The TCS codes are a separate block that
+has not been read; the range here is the TDS one.)
 
 > ⚠️ **Correction to an earlier source.** One search result stated s. 195 moved
 > to **s. 400**. Targeted follow-up shows that is **wrong**: s. 195 is now
@@ -130,7 +131,7 @@ relied on silently.
 
 Three things it **refuses** rather than guessing:
 
-- **The s. 393 payment-code table (1001–1067) is held only in part.** A confirmed
+- **The s. 393 payment-code table (TDS, 1001–1067; the TCS block is separate and unread) is held only in part.** A confirmed
   subset is held (25-09-2026): `payment_code_for()` answers fourteen sections (s.192,
   193, 194, 194B, 194C, 194D, 194G, 194H, 194I(a), 194I(b), 194J(a), 194LA, 194Q,
   194T) from Annexure 2 of Protean's specification for the renumbered statements, and

@@ -457,7 +457,10 @@ def _dim_document_health_db(db, client_id: str, firm_id: str) -> int:
     score = 100
 
     try:
-        outstanding = privileged_for(db).table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").execute().data or []
+        # SPELLED AS THE TABLE'S CHECK ALLOWS (POST-A-341): `document_requests.status` is 'pending' or 'fulfilled' (migration 024). This read
+        # said "Pending", which no row can hold, so a client with outstanding requests lost nothing here, ever. Its two siblings further
+        # down this file were corrected earlier and say so.
+        outstanding = privileged_for(db).table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "pending").execute().data or []
         score -= len(outstanding) * 15
     except Exception as exc:
         capture_soft_failure(exc, operation="health.dim_document_health_db", firm_id=firm_id, client_id=client_id)
@@ -549,7 +552,8 @@ def _dim_client_responsiveness_db(db, client_id: str, firm_id: str) -> int:
 
     try:
         stale_cutoff = (today - timedelta(days=7)).isoformat()
-        stale_requests = privileged_for(db).table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "Pending").lt("created_at", stale_cutoff).execute().data or []
+        # Spelled as the table's CHECK allows, for the same reason as the document-health read above (POST-A-341).
+        stale_requests = privileged_for(db).table("document_requests").select("id").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "pending").lt("created_at", stale_cutoff).execute().data or []
         score -= len(stale_requests) * 10
     except Exception as exc:
         capture_soft_failure(exc, operation="health.dim_client_responsiveness_db.2", firm_id=firm_id, client_id=client_id)

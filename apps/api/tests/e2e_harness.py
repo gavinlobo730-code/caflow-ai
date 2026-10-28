@@ -589,10 +589,6 @@ class _Rpc:
             [r for r in self.db.rows("tds_challans") if r.get("firm_id") == firm], client_ids=ids)
         return [{"undeposited_paise": got.undeposited_paise, "not_recorded_paise": got.not_recorded_paise}]
 
-    def _fn_tds_undeposited_paise(self):
-        """The first figure of `tds_deposit_position`, the wrapper migration 523 keeps for the API that was live when it applied."""
-        return self._fn_tds_deposit_position()[0]["undeposited_paise"]
-
     def _fn_period_lock_reason(self):
         """DELEGATES to services.period_lock_service.reason_from_tables.
 
