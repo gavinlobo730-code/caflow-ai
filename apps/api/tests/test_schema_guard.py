@@ -134,3 +134,30 @@ def test_real_migrations_directory_parses_without_error():
     assert "stock_version" in expected.get("service_catalogue", set())
     assert "company_id" in expected.get("mca_filings", set())
     assert "itc_eligible" in expected.get("purchase_bill_lines", set())
+
+
+# ── a column a later migration DROPS is no longer expected (migration 556) ─────────────────────────────────────────────────
+
+def test_a_later_migration_that_drops_a_column_takes_it_out_of_what_is_expected(tmp_path):
+    (tmp_path / "003_x.sql").write_text("ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS health_score INTEGER DEFAULT 100;\n"
+                                        "ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS keep_me TEXT;\n")
+    (tmp_path / "556_y.sql").write_text("ALTER TABLE public.clients DROP COLUMN IF EXISTS health_score;   -- its CHECK goes with it\n")
+    assert expected_columns_from_migrations(tmp_path) == {"clients": {"keep_me"}}
+
+
+def test_a_table_whose_every_expected_column_was_dropped_is_not_expected_at_all(tmp_path):
+    (tmp_path / "001.sql").write_text("ALTER TABLE public.t ADD COLUMN IF NOT EXISTS a TEXT;\n")
+    (tmp_path / "002.sql").write_text("ALTER TABLE public.t DROP COLUMN a;\n")
+    assert expected_columns_from_migrations(tmp_path) == {}
+
+
+def test_a_drop_that_comes_before_the_add_does_not_remove_it(tmp_path):
+    """Migrations apply in file order, so a column dropped in 001 and added back in 002 exists."""
+    (tmp_path / "001.sql").write_text("ALTER TABLE public.t DROP COLUMN IF EXISTS a;\n")
+    (tmp_path / "002.sql").write_text("ALTER TABLE public.t ADD COLUMN IF NOT EXISTS a TEXT;\n")
+    assert expected_columns_from_migrations(tmp_path) == {"t": {"a"}}
+
+
+def test_the_real_history_no_longer_expects_the_dropped_health_score_column():
+    expected = expected_columns_from_migrations()
+    assert "health_score" not in expected.get("clients", set())
