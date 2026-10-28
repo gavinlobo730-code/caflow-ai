@@ -165,7 +165,7 @@ test("the register is read again after anything that changes it, and a slow answ
   // A switch takes a number too, so an answer started for the previous client is stale, and starts from nothing.
   assert.ok(/openClient\.current = selectedClientId;\s*depositSeq\.current \+= 1;\s*setDepositState\(null\); setDepositStateError\(null\); setCalendarAnswers\(null\);/.test(PAGE),
     "a client switch does not take the open client, invalidate the answer in flight and clear the deposit state and the calendar answer");
-  assert.ok(/void loadLists\(selectedClientId, true\);/.test(PAGE) && /if \(fresh\) \{\s*setDeductions\(\[\]\); setChallans\(\[\]\); setCertificates\(\[\]\);/.test(PAGE),
+  assert.ok(/void loadLists\(selectedClientId, true, ""\);/.test(PAGE) && /if \(fresh\) \{\s*setDeductions\(\[\]\); setChallans\(\[\]\); setCertificates\(\[\]\);/.test(PAGE),
     "a client switch does not start the lists from nothing");
   // Each read takes its own number, so two overlapping reads cannot share one; a read for a client no longer open is not started.
   assert.ok(/const seq = \+\+depositSeq\.current;/.test(PAGE), "two overlapping reads can share a number");

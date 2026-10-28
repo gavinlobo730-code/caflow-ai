@@ -830,6 +830,81 @@ def test_a_correction_that_loses_the_race_with_the_first_month_does_not_write_th
     assert exc.value.status_code == 409 and not row.get("accumulated_account_id")
 
 
+def test_a_category_change_that_loses_the_race_with_the_first_month_touches_nothing(monkeypatch):
+    """POST-A-349 (2). The compare-and-set used to be the correction's LAST write, after the old acquisition entry was reversed and the new
+    one posted: a first month that landed in between left the acquisition replaced under the new category and the register on the old one.
+    It is the first thing that changes now, so the refusal leaves the ledger and the register exactly as they were."""
+    db = _firm(monkeypatch)
+    row = _create(db, name="Lathe", category="Plant & Machinery", life=15, method="WDV")
+    stale = dict(row)
+    row["accumulated_depreciation_paise"] = 1_00                         # the first month landed after the request read the row
+    monkeypatch.setattr(fa, "_live_asset", lambda db_, asset_id, firm_id: stale)
+    entries_before = [(e["id"], e.get("is_reversed")) for e in db.rows("journal_entries")]
+    before = {k: row.get(k) for k in ("asset_category", "accumulated_account_id", "journal_entry_id", "purchase_cost_paise", "corrections_count")}
+    with pytest.raises(HTTPException) as exc:
+        fa.correct_asset(row["id"], FixedAssetUpdateIn(asset_category="Intangibles"), CALLER)
+    assert exc.value.status_code == 409 and "nothing was changed" in exc.value.detail
+    assert [(e["id"], e.get("is_reversed")) for e in db.rows("journal_entries")] == entries_before, "no entry was reversed or posted"
+    assert {k: row.get(k) for k in before} == before, "and the register is as it was"
+
+
+def test_the_new_ledger_is_claimed_before_the_acquisition_entry_is_reversed(monkeypatch):
+    """A first month of depreciation that starts after the claim is credited to the NEW ledger, which is the right one."""
+    db = _firm(monkeypatch)
+    row = _create(db, name="Lathe", category="Plant & Machinery", life=15, method="WDV")
+    seen = {}
+    real = fa._reverse_tolerating_already_reversed
+
+    def reverse_and_look(*a, **k):
+        seen["pointer"], seen["category"] = row.get("accumulated_account_id"), row.get("asset_category")
+        return real(*a, **k)
+
+    monkeypatch.setattr(fa, "_reverse_tolerating_already_reversed", reverse_and_look)
+    fa.correct_asset(row["id"], FixedAssetUpdateIn(asset_category="Intangibles"), CALLER)
+    assert seen == {"pointer": OWN, "category": "Intangibles"}, seen
+    assert row["accumulated_account_id"] == OWN and row["asset_category"] == "Intangibles"
+
+
+def test_a_month_posted_after_the_claim_is_refused_at_the_last_write_and_not_written_over(monkeypatch):
+    """The reviewer's sequence: the claim passes, a first month (computed on the OLD cost, credited to the new ledger because the pointer is
+    already the new one) lands while the acquisition entry is being replaced, and the last write would then set the new cost and a book value
+    that ignores the month. It is a compare-and-set on the accumulated figure, so the register keeps the old cost and the answer says what to do."""
+    db = _firm(monkeypatch)
+    row = _create(db, name="Lathe", category="Plant & Machinery", life=15, method="WDV")
+    cost_before = row["purchase_cost_paise"]
+    real = fa._reverse_tolerating_already_reversed
+
+    def reverse_then_a_month_lands(*a, **k):
+        out = real(*a, **k)
+        row["accumulated_depreciation_paise"] = 1_00                     # the first month, posted by another request
+        return out
+
+    monkeypatch.setattr(fa, "_reverse_tolerating_already_reversed", reverse_then_a_month_lands)
+    logged = []
+    monkeypatch.setattr(fa, "log_event", lambda *a, **k: logged.append(k.get("metadata") or {}))
+    with pytest.raises(HTTPException) as exc:
+        fa.correct_asset(row["id"], FixedAssetUpdateIn(asset_category="Intangibles", purchase_cost_paise=cost_before + 10_000_00), CALLER)
+    assert exc.value.status_code == 409 and "Reverse that month" in exc.value.detail
+    assert row["purchase_cost_paise"] == cost_before, "the cost was not written over a month computed on the old one"
+    assert row["accumulated_depreciation_paise"] == 1_00
+    assert any(m.get("action") == "correction_not_applied" for m in logged), "and the edit log says the correction did not happen"
+
+
+def test_a_correction_that_fails_after_the_claim_is_completed_by_sending_it_again(monkeypatch):
+    db = _firm(monkeypatch)
+    row = _create(db, name="Lathe", category="Plant & Machinery", life=15, method="WDV")
+    old_journal = row["journal_entry_id"]
+    real = fa._reverse_tolerating_already_reversed
+    monkeypatch.setattr(fa, "_reverse_tolerating_already_reversed", lambda *a, **k: (_ for _ in ()).throw(ValueError("outage")))
+    with pytest.raises(ValueError):
+        fa.correct_asset(row["id"], FixedAssetUpdateIn(asset_category="Intangibles"), CALLER)
+    assert row["accumulated_account_id"] == OWN and row["journal_entry_id"] == old_journal, "claimed, the entry not yet replaced"
+    monkeypatch.setattr(fa, "_reverse_tolerating_already_reversed", real)
+    assert fa.correct_asset(row["id"], FixedAssetUpdateIn(asset_category="Intangibles"), CALLER)["success"] is True
+    assert row["asset_category"] == "Intangibles" and row["accumulated_account_id"] == OWN
+    assert row["journal_entry_id"] != old_journal and row["corrections_count"] == 1
+
+
 def test_a_correction_whose_pointer_moved_after_it_was_read_does_not_overwrite_it_even_when_the_figure_did_not_move(monkeypatch):
     """A claim changes the pointer and not the figure, so the figure condition alone cannot see it."""
     db = _firm(monkeypatch)
@@ -1410,6 +1485,33 @@ def test_the_integrity_reply_says_when_the_amortisation_checks_did_not_run_and_i
     monkeypatch.setattr(fa, "fetch_accumulated_facts", lambda *a, **k: None)
     out = fa.register_integrity(CLIENT, CALLER)["data"]
     assert out["not_checked"] and "could not be run" in out["not_checked"][0] and out["clean"] is False
+    from services.fixed_asset_accumulated_ledger import CHECKS_NOT_RUN_SENTENCE
+    assert out["not_checked"] == [CHECKS_NOT_RUN_SENTENCE], "the screen and the nightly sweep say it in the same words"
+
+
+def test_the_nightly_check_files_a_named_finding_when_the_amortisation_checks_could_not_run(monkeypatch):
+    """POST-A-349 (3). The sweep used to skip the two checks without a word, so a failed read looked like a clean register."""
+    from services import fixed_asset_accumulated_ledger as fal
+    from services import reconciliation_service as rs
+    db = _firm(monkeypatch)
+    _legacy(db)
+    name = "fixed_asset_register.accumulated_amortisation_checks_not_run"
+    ran = rs.check_fixed_asset_register(db, FIRM, CLIENT, entries={})
+    assert not [f for f in ran if f["check_name"] == name], "the checks could run, so there is nothing to say"
+    monkeypatch.setattr(fal, "fetch_facts", lambda *a, **k: None)
+    out = [f for f in rs.check_fixed_asset_register(db, FIRM, CLIENT, entries={}) if f["check_name"] == name]
+    assert len(out) == 1 and out[0]["severity"] == "warning" and out[0]["summary"] == fal.CHECKS_NOT_RUN_SENTENCE
+    assert name in rs.CHECK_CATALOGUE, "and the screen has words for it"
+
+
+def test_only_a_failed_read_means_the_amortisation_checks_did_not_run():
+    from domain.fixed_assets.integrity import AccumulatedLedgerFacts
+    from services.fixed_asset_accumulated_ledger import checks_could_not_run
+    assert checks_could_not_run(None) is True
+    assert checks_could_not_run(AccumulatedLedgerFacts(own_ledger_id=OWN, own_ledger_credit_paise=None, belongs_asset_ids=frozenset())) is True
+    assert checks_could_not_run(AccumulatedLedgerFacts(own_ledger_id=OWN, own_ledger_credit_paise=0, belongs_asset_ids=frozenset())) is False
+    assert checks_could_not_run(AccumulatedLedgerFacts(own_ledger_id=None, own_ledger_credit_paise=None, belongs_asset_ids=frozenset())) is False, \
+        "a chart with no Accumulated Amortisation ledger has nothing to check and nothing failed"
 
 
 def test_the_edit_log_does_not_record_a_reversal_the_claim_refused(monkeypatch):

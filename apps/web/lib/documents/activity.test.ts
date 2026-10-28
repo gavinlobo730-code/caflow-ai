@@ -3,8 +3,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  ACTIVITY_NOT_YET_ASKED, DOCUMENT_ACTIVITY_WINDOW, activityItems, activityStatusOf, documentActivityUrl,
-  emptyActivityLine, readDocumentActivity,
+  ACTIVITY_MINI_COUNT, ACTIVITY_NOT_YET_ASKED, DOCUMENT_ACTIVITY_WINDOW, activityItems, activityStatusOf, documentActivityUrl,
+  emptyActivityLine, miniActivity, readDocumentActivity,
 } from "./activity.ts";
 
 const DOC = "11111111-1111-4111-8111-111111111111";
@@ -62,4 +62,34 @@ test("entries list newest first, and an undated one is left out", () => {
   ]);
   assert.deepEqual(items.map((i) => i.title), ["new", "reversed", "old"]);
   assert.equal(items[0].detail, "detail");
+});
+
+// POST-A-150. The compact list in the editor's rail shows the newest few and says when it is not the whole history.
+const ev = (n: number) => ({ at: `2026-01-${String(n).padStart(2, "0")}T00:00:00Z`, title: `e${n}` });
+
+test("the rail lists the newest events and says nothing when they are all of them", () => {
+  const items = [3, 2, 1].map(ev);
+  const out = miniActivity(items, { read: true, hasMore: false, limit: 100, maxLimit: 100 });
+  assert.deepEqual(out.shown.map((i) => i.title), ["e3", "e2", "e1"]);
+  assert.equal(out.more, false);
+});
+
+test("more events than fit are cut to the newest and the list says older ones exist", () => {
+  const items = Array.from({ length: ACTIVITY_MINI_COUNT + 2 }, (_, i) => ev(30 - i));
+  const out = miniActivity(items, { read: true, hasMore: false, limit: 100, maxLimit: 100 });
+  assert.equal(out.shown.length, ACTIVITY_MINI_COUNT);
+  assert.equal(out.shown[0].title, "e30");
+  assert.equal(out.more, true);
+});
+
+test("a window the server cut short says older entries exist even when few are held, and a failed read claims nothing", () => {
+  assert.equal(miniActivity([ev(2), ev(1)], { read: true, hasMore: true, limit: 100, maxLimit: 100 }).more, true);
+  const failed = miniActivity([], { read: false });
+  assert.deepEqual(failed, { shown: [], more: false });
+  assert.equal(emptyActivityLine({ read: false }), "The activity could not be loaded.");
+});
+
+test("exactly the count is the whole list and is not reported as cut", () => {
+  const items = Array.from({ length: ACTIVITY_MINI_COUNT }, (_, i) => ev(20 - i));
+  assert.equal(miniActivity(items, { read: true, hasMore: false, limit: 100, maxLimit: 100 }).more, false);
 });

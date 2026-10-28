@@ -48,6 +48,7 @@ import {
   type Customer, type InvoiceDetail, type InvoiceLine, type CurrencyOption,
 } from "@/lib/invoices/shared";
 import { Callout } from "@/components/ui/callout";
+import { ActivityMini } from "@/components/documents/ActivityMini";
 import { formatPaise } from "@/lib/money/format";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
@@ -916,6 +917,7 @@ export function InvoiceEditor({
   // ── Sticky summary panel ──────────────────────────────────────────────────────
   const outstanding = isEdit && existing ? totals.grand_total_paise - (existing.paid_paise ?? 0) : null;
   const summary = (
+    <>
     <div className="bg-white rounded-xl border border-ps-border p-4 space-y-2 text-xs">
       <p className="font-semibold text-ps-body">Summary{isForeign ? ` (${currency})` : ""}</p>
       {/* CGST §15(3)(a): the discount is EXCLUDED from the value of supply, so
@@ -1005,6 +1007,9 @@ export function InvoiceEditor({
         </div>
       )}
     </div>
+    {/* The invoice's own latest events, read by the component (the editor asks for nothing): POST-A-150. */}
+    {isEdit && existing?.id && <ActivityMini clientId={clientId} entityType="sales_invoice" entityId={existing.id} />}
+    </>
   );
 
   return (

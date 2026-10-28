@@ -27,12 +27,6 @@ LIST_FILE = Path(__file__).resolve().parent / "fixtures" / "tables_the_signed_in
 CLOSED = [ln.strip() for ln in LIST_FILE.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")]
 SIGNED_IN = ("authenticated", "anon")
 
-#: Closed to the signed-in role in production (read 28-10-2026) and still open in a database built from the migrations: two reference
-#: tables whose production grants were changed by a statement no migration in the repository carries. A rebuilt database therefore
-#: differs from production here (POST-A-355). Shrink-only: the day a migration revokes them the entry has to go.
-OPEN_WHERE_THE_MIGRATIONS_ARE_THE_ONLY_SOURCE = {"hsn_master", "tds_section_limits"}
-
-
 def _rows(pg_template, sql: str) -> list[str]:
     dsn = f"{_ADMIN.strip()} dbname={pg_template.name}"
     r = subprocess.run(["psql", dsn, "-v", "ON_ERROR_STOP=1", "-X", "-tA", "-c", sql], capture_output=True, text=True)
@@ -45,15 +39,11 @@ def _quoted(items) -> str:
 
 
 def test_no_listed_table_can_be_written_by_a_signed_in_role_at_table_or_column_level(pg_template):
-    held = _held(pg_template, [t for t in CLOSED if t not in OPEN_WHERE_THE_MIGRATIONS_ARE_THE_ONLY_SOURCE])
+    # Every listed table, with no exception list: `hsn_master` and `tds_section_limits` were the two production closed and the migrations
+    # did not, and migration 558 closed them (POST-A-355). A table closed only by a statement no migration carries fails here by name.
+    held = _held(pg_template, CLOSED)
     assert held == [], ("a signed-in role can write these tables directly, so the list is wrong and the writers' choice of client no "
                         f"longer decides who may write them: {held}")
-
-
-def test_the_two_tables_production_closed_and_the_migrations_did_not_are_still_open_in_the_migration_built_database(pg_template):
-    open_now = {line.split()[1] for line in _held(pg_template, sorted(OPEN_WHERE_THE_MIGRATIONS_ARE_THE_ONLY_SOURCE))}
-    assert open_now == OPEN_WHERE_THE_MIGRATIONS_ARE_THE_ONLY_SOURCE, (
-        f"{OPEN_WHERE_THE_MIGRATIONS_ARE_THE_ONLY_SOURCE - open_now} is closed by the migrations now: delete it from the exception set")
 
 
 def _held(pg_template, tables: list[str]) -> list[str]:
@@ -66,6 +56,11 @@ def _held(pg_template, tables: list[str]) -> list[str]:
           and (has_table_privilege(r.rolname, c.oid, v.verb)
                or (v.verb in ('INSERT', 'UPDATE') and has_any_column_privilege(r.rolname, c.oid, v.verb)))
         order by 1""")
+
+
+def test_the_two_reference_tables_production_closed_are_on_the_list_and_closed_by_a_migration(pg_template):
+    assert {"hsn_master", "tds_section_limits"} <= set(CLOSED), "the list lost a table migration 558 closes"
+    assert _held(pg_template, ["hsn_master", "tds_section_limits"]) == []
 
 
 def test_the_list_is_mostly_tables_the_migrations_create(pg_template):

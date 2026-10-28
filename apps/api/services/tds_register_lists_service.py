@@ -16,6 +16,11 @@ WHAT EACH ANSWER IS
     The figures are read with the narrow columns they need (`core.db_paging.fetch_all`, keyset), so a client with a long history
     costs a few small pages and not the whole table.
 
+`financial_year` narrows the deductions to one year (POST-A-294): the register is listed whole and sorted and searched in the browser, so a
+client with a long history passes the ceiling below, and the older rows were then unreachable from the screen. The totals narrow with
+the rows, as they do for a quarter, so a footer never describes rows the table does not hold. Every writer of a deduction sets the
+column (migration 263 backfilled the rest), and the (firm, client, financial year) index serves the filter.
+
 `TDS_LIST_MAX` is the ceiling one read may ask for. The screen lists a client's register whole and searches and sorts it in the
 browser, so it asks for the ceiling, as the entity register does; it is the one browser-side copy of this number
 (`TDS_REGISTER_WINDOW_MAX` in `lib/lists/window.ts`), and a test holds the two equal.
@@ -56,8 +61,11 @@ def _read_window(base: Callable, order_field: str, limit: int, offset: int) -> t
 
 # ── deductions ───────────────────────────────────────────────────────────────
 
-def deductions(db, firm_id: str, client_id: str, *, quarter: Optional[str], limit: int, offset: int) -> dict:
+def deductions(db, firm_id: str, client_id: str, *, quarter: Optional[str], limit: int, offset: int,
+               financial_year: Optional[str] = None) -> dict:
     def narrow(q):
+        if financial_year:
+            q = q.eq("financial_year", financial_year)
         return q.eq("quarter", quarter) if quarter else q
     rows, has_more = _read_window(
         lambda: narrow(db.table("tds_deductions").select("*").eq("firm_id", firm_id).eq("client_id", client_id)),
@@ -68,8 +76,10 @@ def deductions(db, firm_id: str, client_id: str, *, quarter: Optional[str], limi
     return _window(rows, limit, has_more, "deductions", totals=screen_counts.deduction_totals(every))
 
 
-def deductions_in_memory(all_rows: list, *, quarter: Optional[str], limit: int, offset: int) -> dict:
-    rows = [d for d in all_rows if not quarter or d.get("quarter") == quarter]
+def deductions_in_memory(all_rows: list, *, quarter: Optional[str], limit: int, offset: int,
+                         financial_year: Optional[str] = None) -> dict:
+    rows = [d for d in all_rows
+            if (not quarter or d.get("quarter") == quarter) and (not financial_year or d.get("financial_year") == financial_year)]
     window, has_more = _cut(_sorted_latest_first(rows, "transaction_date"), limit, offset)
     return _window(window, limit, has_more, "deductions", totals=screen_counts.deduction_totals(rows))
 

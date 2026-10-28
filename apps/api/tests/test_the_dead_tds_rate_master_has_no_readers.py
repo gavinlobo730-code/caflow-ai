@@ -44,9 +44,13 @@ _ALLOWED_SUFFIXES = (
     "migrations/095_grant_reconciliation.sql",
     "migrations/371_the_dead_tds_rate_master_says_it_is_not_the_authority.sql",
     "migrations/371_the_dead_tds_rate_master_says_it_is_not_the_authority_rollback.sql",
+    # closes the table to the signed-in role in a database built from the migrations, as production already had (POST-A-355): it revokes
+    # privileges and reads nothing in the table
+    "migrations/558_two_reference_tables_are_closed_to_the_signed_in_role_in_every_database.sql",
+    "migrations/558_two_reference_tables_are_closed_to_the_signed_in_role_in_every_database_rollback.sql",
     "tests/test_the_dead_tds_rate_master_has_no_readers.py",
-    # names the table to say it is still open in a migration-built database although production has closed it (POST-A-355); it reads
-    # the table's privileges and nothing in it
+    # names the table to check that migration 558 closed it to the signed-in role (POST-A-355); it reads the table's privileges and
+    # nothing in it
     "tests/test_the_tables_the_signed_in_role_cannot_write_are_closed_in_the_migration_built_database_pg.py",
 )
 

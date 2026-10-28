@@ -207,3 +207,18 @@ def fetch_facts(db, firm_id: str, client_id: str, assets) -> Optional[Accumulate
         from core.observability import capture_soft_failure
         capture_soft_failure(exc, operation="fixed_asset_accumulated_ledger.fetch_facts", firm_id=firm_id, client_id=client_id)
         return None
+
+
+#: What both callers say when the two Accumulated Amortisation checks of the register were SKIPPED because their facts could not be read.
+#: Said by the register-integrity reply (`not_checked`) and by the nightly reconciliation (a named finding), in these words, so neither
+#: can report "nothing to report" over a check that did not run (POST-A-349).
+CHECKS_NOT_RUN_SENTENCE = (
+    "The checks of the Accumulated Amortisation ledger against the register could not be run (a read failed), "
+    "so nothing is said about whether they agree.")
+
+
+def checks_could_not_run(facts: Optional[AccumulatedLedgerFacts]) -> bool:
+    """True when `register_findings` was not asked the two Accumulated Amortisation checks BECAUSE a read failed: no facts at all, or a
+    ledger that exists whose balance could not be read. A chart with no such ledger is not a failure (nothing can be pointed at it)."""
+    return facts is None or (facts.own_ledger_id is not None and facts.own_ledger_credit_paise is None)
+

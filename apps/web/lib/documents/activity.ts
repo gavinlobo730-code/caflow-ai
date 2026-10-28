@@ -90,3 +90,19 @@ export function activityStatusOf(win: ReadWindow<RawActivityEvent> | null): Acti
 export function emptyActivityLine(status: ActivityStatus): string {
   return status.read ? "No activity recorded yet." : "The activity could not be loaded.";
 }
+
+/** How many of a document's newest events a compact list (the summary rail of an editor) shows. */
+export const ACTIVITY_MINI_COUNT = 5;
+
+/**
+ * The newest `count` events for a compact list, and whether it is NOT the whole history: more events than fit, or a window the server
+ * said was cut short. A list that stops at a number says it stopped (POST-A-150); a read that failed has no history to be cut, so it
+ * claims nothing here and the empty-state line says the read failed.
+ */
+export function miniActivity(
+  items: ActivityItem[],
+  status: ActivityStatus,
+  count: number = ACTIVITY_MINI_COUNT,
+): { shown: ActivityItem[]; more: boolean } {
+  return { shown: items.slice(0, count), more: status.read && (items.length > count || status.hasMore) };
+}

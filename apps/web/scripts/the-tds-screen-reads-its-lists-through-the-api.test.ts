@@ -36,7 +36,7 @@ test("the TDS screen reads no table itself: no database client, no pager, no fir
   assert.ok(!/getSupabaseClient|selectAll|getFirmId|\.from\(\s*["']tds_/.test(PAGE),
     "app/tds/page.tsx reads a table straight from the database again (rbac() and the client assignment never run there)");
   for (const reader of ["listTdsDeductions", "listTdsChallans", "listTdsReturns", "listTdsCertificates"]) {
-    assert.ok(PAGE.includes(`${reader}(clientId)`), `the page does not read through ${reader}`);
+    assert.ok(PAGE.includes(`${reader}(clientId`), `the page does not read through ${reader}`);
   }
 });
 
@@ -45,7 +45,7 @@ test("the data module's four readers ask the API for a window at the ceiling and
     ["listTdsReturns", "returns", "returns"], ["listTdsCertificates", "certificates", "certificates"]]) {
     const at = DATA.indexOf(`export const ${fn}`);
     assert.ok(at > 0, `${fn} is missing`);
-    const body = DATA.slice(at, at + 260);
+    const body = DATA.slice(at, at + 520);
     assert.ok(body.includes(`/api/tds-workspace/${endpoint}?`) && body.includes(`"${field}"`), `${fn} does not ask /${endpoint} for its ${field}`);
   }
   assert.ok(/limit=\$\{TDS_REGISTER_WINDOW_MAX\}/.test(DATA) && /readWindow<T>\(resp\.data, rowsField, TDS_REGISTER_WINDOW_MAX\)/.test(DATA),
@@ -96,6 +96,23 @@ test("the screen holds no copy of the sections or their names: they are the serv
     "the Section filter is not every section a recorded deduction can carry (the limbs the form offers and the sections a challan names)");
   assert.ok(/listTdsSections\(\)/.test(PAGE) && /sectionChoices\(r\)/.test(PAGE), "the page does not read the server's sections once");
   assert.ok(/\{choicesError && \(/.test(PAGE), "a failed read of the sections is not said");
+});
+
+test("the deductions can be listed for one financial year, the server narrows both the rows and the totals, and a client starts at every year", () => {
+  // POST-A-294: a register longer than the ceiling is cut to its latest rows, and without a year the older ones could not be reached.
+  assert.ok(/financial_year=\$\{encodeURIComponent\(financialYear\)\}/.test(DATA), "the data module does not send the year to the server");
+  assert.ok(/listTdsDeductions\(clientId, year \|\| null\)/.test(PAGE), "the page does not ask the server for the chosen year");
+  assert.ok(/<YearPicker value=\{yearFilter\} placeholder="All years"/.test(PAGE), "the deductions have no year control");
+  assert.ok(!/deductions\.filter\(|\.filter\(\(?d\)? => [^)]*financial_year/.test(PAGE), "the page narrows a year itself over rows the server cut");
+  assert.ok(/setYearFilter\(""\);/.test(PAGE) && /void loadLists\(selectedClientId, true, ""\)/.test(PAGE),
+    "a client switch must start from every year and read with it (a year chosen for the last client must not narrow this one's)");
+  assert.ok(/Choose a financial year above to see the older ones/.test(PAGE), "a cut register does not say how to reach the older rows");
+  // No client open: the picker is off and the handler does nothing (a read with no client is refused and shows the table-missing banner),
+  // and a year change takes the previous choice's footer and cut notice down at once instead of printing them under the new year's name.
+  assert.ok(/disabled=\{loading \|\| !selectedClientId\}/.test(PAGE) && /if \(!selectedClientId\) return;\s*setYearFilter\(v\);/.test(PAGE),
+    "the year picker can be used with no client open");
+  assert.ok(/setYearFilter\(v\); setDeductionTotals\(null\); setCut\(\(c\) => \(\{ \.\.\.c, deductions: false \}\)\);/.test(PAGE),
+    "a year change leaves the previous choice's totals and cut notice under the new year's name");
 });
 
 test("anything that writes reads the lists again instead of prepending to them", () => {

@@ -30,7 +30,8 @@ from models.accounting import (FixedAssetIn, FixedAssetUpdateIn, DepreciationIn,
 from core.db_paging import fetch_all
 from domain.fixed_assets import integrity as fa_integrity
 from domain.fixed_assets.asset_ledger import AccumulatedLedgerUnavailable, accumulated_account_pointer
-from services.fixed_asset_accumulated_ledger import birth_pointer, birth_pointer_fields, fetch_facts as fetch_accumulated_facts
+from services.fixed_asset_accumulated_ledger import (
+    CHECKS_NOT_RUN_SENTENCE, birth_pointer, birth_pointer_fields, checks_could_not_run, fetch_facts as fetch_accumulated_facts)
 from services import named_row_ownership
 from services.fixed_asset_ledger_links import fetch_ledger_links
 from domain.fixed_assets import schedule_ii
@@ -1646,11 +1647,39 @@ def _repointed_for_category(db, firm_id: str, client_id: str, asset: dict, chang
     return {"accumulated_account_id": new_pointer}
 
 
-def _write_correction_and_say_if_refused(db, firm_id: str, asset: dict, asset_id: str, update: dict, current_user: dict) -> None:
+def _claim_the_new_ledger_first(db, firm_id: str, asset: dict, asset_id: str, update: dict, changes: dict, reason, current_user: dict) -> bool:
+    """POST-A-349 (2). A category that moves the asset between the shared Accumulated Depreciation ledger and its own is CLAIMED BEFORE
+    the acquisition entry is touched, and the pointer leaves `update` (the correction's last write carries none).
+
+    The compare-and-set used to be that last write, after the old entry was reversed and the new one posted: if the asset's first month
+    of depreciation landed in between, the write was refused with the acquisition already replaced under the new category and the
+    register still on the old one. Now the claim is the first thing that changes, so a refusal means nothing has moved, and a first
+    month that starts after the claim is credited to the new ledger, which is the right one (the posting's own register write is a
+    compare-and-set on the pointer it read). The correction's last write is then a compare-and-set on the accumulated figure, so a month
+    posted on the OLD cost since the claim is refused and not written over. Returns whether a claim was made. Nothing to claim when the
+    category does not change the ledger."""
+    if "accumulated_account_id" not in update:
+        return False
+    claim = {"accumulated_account_id": update.pop("accumulated_account_id"), "asset_category": changes["asset_category"],
+             "updated_at": datetime.now(timezone.utc).isoformat()}
+    log_event(
+        firm_id, "fixed_asset", asset_id, "update",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        old_data={"asset_code": asset.get("asset_code"), "asset_category": asset.get("asset_category"),
+                  "accumulated_account_id": asset.get("accumulated_account_id")},
+        new_data=claim,
+        metadata={"reason": reason or None, "action": "category_claimed_before_the_acquisition_moves"},
+    )
+    _write_correction_and_say_if_refused(db, firm_id, asset, asset_id, claim, current_user)
+    return True
+
+
+def _write_correction_and_say_if_refused(db, firm_id: str, asset: dict, asset_id: str, update: dict, current_user: dict,
+                                         after_claim: bool = False) -> None:
     """The correction's final write. The edit-log row for the correction was written before the mutation, by design; when the write is
     refused this one says the mutation did not happen, so the log is not left claiming a correction the register never received."""
     try:
-        _write_correction(db, firm_id, asset, asset_id, update)
+        _write_correction(db, firm_id, asset, asset_id, update, after_claim=after_claim)
     except HTTPException:
         log_event(firm_id, "fixed_asset", asset_id, "update",
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
@@ -1659,11 +1688,24 @@ def _write_correction_and_say_if_refused(db, firm_id: str, asset: dict, asset_id
         raise
 
 
-def _write_correction(db, firm_id: str, asset: dict, asset_id: str, update: dict) -> None:
-    """The correction's final write. When it carries a re-decided ledger (POST-A-345) it is a compare-and-set on the pointer and the
-    figure the request read: the first month's depreciation that landed since was credited to the OLD ledger, and writing the new
-    pointer now would leave it there."""
+def _write_correction(db, firm_id: str, asset: dict, asset_id: str, update: dict, after_claim: bool = False) -> None:
+    """A write of the register by the correction. When it carries a re-decided ledger (POST-A-345) it is a compare-and-set on the
+    pointer and the figure the request read: the first month's depreciation that landed since was credited to the OLD ledger, and
+    writing the new pointer now would leave it there. Since POST-A-349 that write is the CLAIM made before the acquisition entry is
+    reversed, and the final write of the other fields carries no pointer.
+
+    `after_claim` is that final write. The pointer is the new one by then, so nothing compares it, and what a month of depreciation
+    posted since the claim changes is the accumulated figure: the cost and book value in `update` were worked out from the figure read
+    at the start, and a month computed on the OLD cost must not be left beside a cost that changed under it."""
     final = db.table("fixed_assets").update(update).eq("id", asset_id).eq("firm_id", firm_id)
+    if after_claim:
+        final = final.eq("accumulated_depreciation_paise", int(asset.get("accumulated_depreciation_paise") or 0))
+        if not (final.execute().data or []):
+            raise HTTPException(status_code=409, detail=(
+                "A month of depreciation was posted on this asset while its category was being corrected, so the cost and the book value "
+                "were not written: that month was worked out on the old cost. The new category's ledger is already in place and the "
+                "acquisition entry has been replaced at the corrected cost. Reverse that month, then send the correction again."))
+        return
     if "accumulated_account_id" not in update:
         final.execute()
         return
@@ -1672,10 +1714,9 @@ def _write_correction(db, firm_id: str, asset: dict, asset_id: str, update: dict
     final = final.eq("accumulated_depreciation_paise", int(asset.get("accumulated_depreciation_paise") or 0))
     if not (final.execute().data or []):
         raise HTTPException(status_code=409, detail=(
-            "The asset changed while its category was being corrected (its first month of depreciation was posted), so the register and "
-            "the ledger it is kept in were not changed, but the acquisition entry may already have been replaced under the new category. "
-            "Reverse that month first, then send the correction again, and run Verify Books to see whether the register and the ledger "
-            "agree."))
+            "The asset changed while its category was being corrected (its first month of depreciation was posted, or it was moved to "
+            "another ledger), so nothing was changed: the claim on the new ledger is made before the acquisition entry is touched. "
+            "Reverse that month first, then send the correction again."))
 
 
 @router.patch("/{asset_id}")
@@ -1794,6 +1835,7 @@ def correct_asset(
             update["depreciation_method"], "value", update["depreciation_method"])
 
     journal_id = asset.get("journal_entry_id")
+    claimed = False
     if tier_b:
         # The stored purchase_cost_paise is the CAPITALISED figure —
         # capitalised_cost_paise() already folded §17(5)-blocked tax into it and
@@ -1822,9 +1864,11 @@ def correct_asset(
 
         revision = int(asset.get("corrections_count") or 0) + 1
 
+        claimed = _claim_the_new_ledger_first(db, firm_id, asset, asset_id, update, changes, reason, current_user)
+
         # Reverse first, then post the correction, then move the row. If the
-        # post fails the acquisition is reversed and the register is unchanged
-        # — recoverable by sending the same correction again, which is what the
+        # post fails the acquisition is reversed and the register still shows
+        # the old cost — recoverable by sending the same correction again, which is what the
         # 502 below says, because the reversal is then already done.
         if journal_id:
             _reverse_tolerating_already_reversed(
@@ -1841,7 +1885,7 @@ def correct_asset(
             raise HTTPException(
                 status_code=502,
                 detail=("The acquisition journal was reversed but the corrected one "
-                        "could not be posted. The asset is unchanged — send the same "
+                        "could not be posted. The asset's cost and journal link are unchanged — send the same "
                         "correction again to complete it."))
 
         update.update({k: v for k, v in changes.items() if k in _TIER_B_FIELDS})
@@ -1865,7 +1909,7 @@ def correct_asset(
     )
 
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
-    _write_correction_and_say_if_refused(db, firm_id, asset, asset_id, update, current_user)
+    _write_correction_and_say_if_refused(db, firm_id, asset, asset_id, update, current_user, after_claim=claimed)
 
     timeline_service.log(client_id, "accounting", "Asset Corrected",
         f"{asset.get('asset_code')}: {', '.join(sorted(changes))}"
@@ -2442,10 +2486,7 @@ def register_integrity(
     # The Accumulated Amortisation checks are SKIPPED, not failed, when their facts could not be read (`register_findings` treats "not
     # asked" as no finding). A reply that said "nothing to report" over a check that did not run would be a false clean result, so
     # the reply says which check did not run.
-    not_checked = []
-    if accumulated is None or (accumulated.own_ledger_id is not None and accumulated.own_ledger_credit_paise is None):
-        not_checked.append("The checks of the Accumulated Amortisation ledger against the register could not be run (a read failed), "
-                           "so nothing is said about whether they agree.")
+    not_checked = [CHECKS_NOT_RUN_SENTENCE] if checks_could_not_run(accumulated) else []
 
     return api_response(True, {
         "checked": len(rows),
