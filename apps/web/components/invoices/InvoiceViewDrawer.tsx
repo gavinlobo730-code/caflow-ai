@@ -20,7 +20,7 @@ import { Modal as ModalShell } from "@/components/ui/modal";
 import { formatDateTime } from "@/lib/services/formatting";
 import { diffDaysISO } from "@/lib/sales/dateMath";
 import { termLabelForDays } from "@/lib/sales/paymentTerms";
-import { FormSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { InvoiceHubSkeleton } from "@/components/invoices/InvoiceEditorSkeleton";
 
 // Receipt payment modes — must match the receipts.payment_mode CHECK constraint
 // (migration 050, widened by 161: bank/cash/cheque/upi/neft/rtgs/online).
@@ -226,11 +226,7 @@ export function InvoiceViewDrawer({
   return (
     <Drawer open onClose={onClose} title={inv ? inv.invoice_no : "Invoice"} widthClass="sm:max-w-lg">
       {loading ? (
-        <div className="p-6 space-y-5">
-          {/* Header detail fields, then the line-items table */}
-          <FormSkeleton fields={6} />
-          <TableSkeleton cols={7} rows={4} />
-        </div>
+        <InvoiceHubSkeleton />
       ) : error || !inv ? (
         <div className="p-8 text-center">
           <AlertCircle size={28} className="mx-auto mb-3 text-state-problem" />

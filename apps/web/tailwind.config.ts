@@ -254,6 +254,33 @@ const config: Config = {
           "working-surface":"#DBEAFE",
           "working-border": "#BFDBFE",
           "working-hover":  "#BFDBFE",
+
+          /* ── THE SIXTH QUESTION: SOMEBODY OUTSIDE THE FIRM HAS THE BALL ───
+             `working` says a person in the practice is on it. A task waiting
+             on the CLIENT, on a bank or on a department is not that, and it
+             is not `attention` either: nothing here has to be answered, and a
+             screen that painted it amber would tell the CA to act on a thing
+             they cannot move. Five screens already wrote this meaning in
+             purple (the task board, the work list, a client's tasks and the
+             dashboard's list and dot), and each wrote it from raw palette
+             classes, so it is the one state the vocabulary had no word for
+             that is used more than once.
+
+             The values are the `purple-700` / `purple-100` / `purple-200` the
+             task screens were already writing, which is the method that named
+             `working` and `problem-hover`: naming it moves nothing on those
+             three screens. The dashboard's lighter `purple-600` on `purple-50`
+             becomes this pair and gets darker, not lighter. Ink on surface is
+             5.92:1 and on white 6.98:1; the border is a hairline and, like
+             every other `-border` here, never carries its own ink.
+
+             `queued` ("nobody is on it yet", one site, the workflows page) is
+             NOT added: a state that earns a word is used in more than one
+             place, and that one is answered by `done`'s grey until it is. */
+          waiting:          "#7E22CE",  /* somebody outside the firm has it */
+          "waiting-surface":"#F3E8FF",
+          "waiting-border": "#E9D5FF",
+          "waiting-hover":  "#E9D5FF",
         },
 
         /* ── Severity, which is a LADDER and therefore not a state ───────────

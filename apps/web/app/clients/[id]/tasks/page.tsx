@@ -32,7 +32,7 @@ import { DIRECT_READ_WINDOW_MAX, windowDescription } from "@/lib/lists/window";
 const TASK_STATUS_COLORS: Record<string, string> = {
   todo: "bg-ps-muted text-ps-label",
   in_progress: "bg-state-working-surface text-state-working",
-  waiting_client: "bg-purple-100 text-purple-700",
+  waiting_client: "bg-state-waiting-surface text-state-waiting",
   review_required: "bg-state-attention-surface text-state-attention",
   completed: "bg-state-ready-surface text-state-ready",
 };

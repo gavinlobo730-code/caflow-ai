@@ -124,3 +124,76 @@ export function InvoiceToolbarSkeleton() {
     </>
   );
 }
+
+/**
+ * The Invoice Hub drawer's loading state (POST-A-150, the audit's F2 residue). It mirrors the LOADED drawer's silhouette, top to bottom:
+ * customer and grand total, the status and compliance chips, the six detail rows in two columns, the action bar, the line-item table and the
+ * accounting rows. The drawer used to show a generic form and table skeleton, which looked like neither.
+ */
+export function InvoiceHubSkeleton() {
+  return (
+    <div className="p-5 space-y-5" role="status" aria-label="Loading invoice">
+      {/* Customer and grand total */}
+      <section className="space-y-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-1.5">
+            <Skeleton className="h-3.5 w-40" />
+            <Skeleton className="h-2.5 w-28" />
+          </div>
+          <div className="space-y-1.5 flex flex-col items-end">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-2.5 w-16" />
+          </div>
+        </div>
+        {/* Status chips */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Skeleton className="h-4 w-14 rounded-full" />
+          <Skeleton className="h-4 w-16 rounded-full" />
+          <Skeleton className="h-4 w-12 rounded-full" />
+          <Skeleton className="h-4 w-14 rounded-full" />
+        </div>
+        {/* Six detail rows, two columns */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pt-1">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex justify-between gap-2">
+              <Skeleton className="h-2.5 w-16" />
+              <Skeleton className="h-2.5 w-20" />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Action bar */}
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Skeleton className="h-7 w-16 rounded-lg" />
+        <Skeleton className="h-7 w-20 rounded-lg" />
+        <Skeleton className="h-7 w-28 rounded-lg" />
+        <Skeleton className="h-7 w-16 rounded-lg" />
+      </div>
+
+      {/* Line items */}
+      <section>
+        <Skeleton className="h-3 w-20 mb-2" />
+        <div className="border border-ps-border rounded-lg p-2 space-y-1.5">
+          <Skeleton className="h-2.5 w-full" />
+          <div className="divide-y divide-ps-border">
+            <LineRowSkeleton />
+            <LineRowSkeleton />
+            <LineRowSkeleton />
+          </div>
+        </div>
+      </section>
+
+      {/* Accounting rows */}
+      <section className="space-y-2">
+        <Skeleton className="h-3 w-24" />
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="flex justify-between gap-2">
+            <Skeleton className="h-2.5 w-24" />
+            <Skeleton className="h-2.5 w-28" />
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
