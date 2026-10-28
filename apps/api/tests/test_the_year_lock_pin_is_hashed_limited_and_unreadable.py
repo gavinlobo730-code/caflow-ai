@@ -526,9 +526,15 @@ def test_the_pin_table_is_named_as_a_literal_and_every_read_and_write_of_it_carr
     # filter is a red line there and not a silent pass.
     import json
     from tests import _firm_scope_scan as S
-    meta = json.loads((API / "tests" / "fixtures" / "production_schema_2026-09-03.meta.json").read_text(encoding="utf-8"))
-    newer = S.firm_tables_from_newer_migrations(API / "migrations", meta["applied_through_migration"])
-    assert "firm_lock_pins" in newer
+    # The guard's table set is the snapshot's firm tables plus those of migrations newer than the snapshot's mark
+    # (`test_every_query_on_a_firm_table_carries_its_firm_scope.firm_tables`). The table was only in the second half
+    # until the snapshot was refreshed past migration 480 (POST-A-351) and is in the first half now: either way is known.
+    fixtures = API / "tests" / "fixtures"
+    meta = json.loads((fixtures / "production_schema_2026-09-03.meta.json").read_text(encoding="utf-8"))
+    snapshot = json.loads((fixtures / "production_schema_2026-09-03.json").read_text(encoding="utf-8"))
+    known = (S.firm_tables_from_snapshot(snapshot)
+             | S.firm_tables_from_newer_migrations(API / "migrations", meta["applied_through_migration"]))
+    assert "firm_lock_pins" in known
 
 
 _SECRET_NAMES = {"pin", "raw", "stored", "stored_hash", "computed", "expected", "digest", "salt", "pin_hash"}

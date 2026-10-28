@@ -732,6 +732,33 @@
    "type": "uuid"
   }
  },
+ "ai_firm_budgets": {
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "monthly_page_limit": {
+   "default": "",
+   "nullable": "YES",
+   "type": "integer"
+  },
+  "monthly_token_limit": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "set_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  }
+ },
  "ai_insights": {
   "category": {
    "default": "",
@@ -953,7 +980,7 @@
    "type": "jsonb"
   },
   "model_used": {
-   "default": "'llama-3.3-70b-versatile'::text",
+   "default": "",
    "nullable": "YES",
    "type": "text"
   },
@@ -1015,7 +1042,7 @@
    "type": "uuid"
   },
   "model_used": {
-   "default": "'llama-3.3-70b-versatile'::text",
+   "default": "",
    "nullable": "YES",
    "type": "text"
   },
@@ -1149,7 +1176,7 @@
    "type": "jsonb"
   },
   "model_used": {
-   "default": "'llama-3.3-70b-versatile'::text",
+   "default": "",
    "nullable": "YES",
    "type": "text"
   },
@@ -2891,6 +2918,11 @@
    "default": "0",
    "nullable": "NO",
    "type": "bigint"
+  },
+  "anchor_date": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
   },
   "arrangement": {
    "default": "",
@@ -5460,11 +5492,6 @@
    "nullable": "YES",
    "type": "text"
   },
-  "health_score": {
-   "default": "100",
-   "nullable": "YES",
-   "type": "integer"
-  },
   "id": {
    "default": "uuid_generate_v4()",
    "nullable": "NO",
@@ -5686,11 +5713,6 @@
    "default": "",
    "nullable": "YES",
    "type": "text"
-  },
-  "health_score": {
-   "default": "",
-   "nullable": "YES",
-   "type": "integer"
   },
   "id": {
    "default": "",
@@ -8382,6 +8404,170 @@
    "type": "timestamp with time zone"
   }
  },
+ "email_outbox": {
+  "attempts": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "delivery_event": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "delivery_event_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "event_type": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "final_reason": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "html": {
+   "default": "''::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "last_attempt_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "last_error_code": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "last_status_code": {
+   "default": "",
+   "nullable": "YES",
+   "type": "integer"
+  },
+  "lease_expires_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "log_ids": {
+   "default": "'{}'::uuid[]",
+   "nullable": "NO",
+   "type": "ARRAY"
+  },
+  "max_attempts": {
+   "default": "6",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "next_attempt_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "origin": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "provider_message_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "recipient_kind": {
+   "default": "'staff'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "recipient_user_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "reply_to": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "sender_name": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "sent_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "status": {
+   "default": "'pending'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "subject": {
+   "default": "''::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "to_address": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  }
+ },
+ "email_suppressions": {
+  "address": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "first_event_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "last_event_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "provider_message_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "reason": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  }
+ },
  "email_templates": {
   "body": {
    "default": "",
@@ -10013,6 +10199,28 @@
    "type": "text"
   }
  },
+ "firm_lock_pins": {
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "pin_hash": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  }
+ },
  "firm_profiles": {
   "avg_revenue_per_client_paise": {
    "default": "0",
@@ -10325,6 +10533,11 @@
   }
  },
  "fixed_assets": {
+  "accumulated_account_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
   "accumulated_depreciation_paise": {
    "default": "0",
    "nullable": "NO",
@@ -10595,6 +10808,11 @@
   "is_auto_renewed": {
    "default": "false",
    "nullable": "YES",
+   "type": "boolean"
+  },
+  "maturity_amount_is_estimate": {
+   "default": "true",
+   "nullable": "NO",
    "type": "boolean"
   },
   "maturity_amount_paise": {
@@ -11595,6 +11813,73 @@
    "type": "timestamp with time zone"
   }
  },
+ "gst_credit_ledger_openings": {
+  "cess_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "cgst_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "gstin": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "igst_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "note": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "recorded_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "sgst_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "window_start": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  }
+ },
  "gst_portal_snapshots": {
   "client_id": {
    "default": "",
@@ -12157,6 +12442,56 @@
    "default": "now()",
    "nullable": "NO",
    "type": "timestamp with time zone"
+  },
+  "credit_closing_as_of": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
+  "credit_closing_cess_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "credit_closing_cgst_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "credit_closing_igst_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "credit_closing_sgst_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "credit_opening_cess_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "credit_opening_cgst_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "credit_opening_igst_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "credit_opening_sgst_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "credit_opening_source": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
   },
   "firm_id": {
    "default": "",
@@ -13592,6 +13927,11 @@
    "default": "gen_random_uuid()",
    "nullable": "NO",
    "type": "uuid"
+  },
+  "itr_schedule_row": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
   },
   "notes": {
    "default": "",
@@ -16376,6 +16716,21 @@
    "nullable": "NO",
    "type": "boolean"
   },
+  "pf_on_actual_wages": {
+   "default": "",
+   "nullable": "YES",
+   "type": "boolean"
+  },
+  "pf_on_actual_wages_from": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
+  "pf_on_actual_wages_reference": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
   "portal_activated_at": {
    "default": "",
    "nullable": "YES",
@@ -16957,6 +17312,11 @@
    "nullable": "NO",
    "type": "uuid"
   },
+  "disbursement_claimed_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
   "disbursement_journal_entry_id": {
    "default": "",
    "nullable": "YES",
@@ -16992,6 +17352,11 @@
    "nullable": "YES",
    "type": "uuid"
   },
+  "loan_writedown_owed_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
   "month": {
    "default": "",
    "nullable": "NO",
@@ -17011,6 +17376,11 @@
    "default": "",
    "nullable": "YES",
    "type": "text"
+  },
+  "reversal_claimed_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
   },
   "status": {
    "default": "'draft'::text",
@@ -17424,6 +17794,11 @@
    "default": "0",
    "nullable": "NO",
    "type": "bigint"
+  },
+  "pf_on_actual_wages": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
   },
   "pf_wages_addback_paise": {
    "default": "",
@@ -21751,6 +22126,63 @@
    "type": "text"
   }
  },
+ "scheduler_claims": {
+  "attempt": {
+   "default": "1",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "claim_key": {
+   "default": "''::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "claimed_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "expires_at": {
+   "default": "",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "finished_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "job_name": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "owner": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "run_date": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "status": {
+   "default": "'running'::text",
+   "nullable": "NO",
+   "type": "text"
+  }
+ },
  "scheduler_runs": {
   "detail": {
    "default": "",
@@ -22958,10 +23390,20 @@
    "nullable": "YES",
    "type": "uuid"
   },
+  "workflow_instance_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
   "workflow_step_id": {
    "default": "",
    "nullable": "YES",
    "type": "uuid"
+  },
+  "workflow_step_ref": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
   }
  },
  "tax_audit_checklists": {
@@ -24458,6 +24900,11 @@
    "nullable": "NO",
    "type": "uuid"
   },
+  "first_run_dismissed_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
   "full_name": {
    "default": "",
    "nullable": "NO",
@@ -25278,6 +25725,11 @@
   }
  },
  "workflow_templates": {
+  "archived_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
   "avg_duration_ms": {
    "default": "",
    "nullable": "YES",
@@ -25341,6 +25793,11 @@
   "name": {
    "default": "",
    "nullable": "NO",
+   "type": "text"
+  },
+  "starter_key": {
+   "default": "",
+   "nullable": "YES",
    "type": "text"
   },
   "success_count": {

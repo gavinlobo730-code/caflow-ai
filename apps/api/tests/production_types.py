@@ -70,46 +70,12 @@ _NUMERIC_RE = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
 # Keep this SHORT. A long list means the snapshot needs refreshing, not that the
 # list needs another entry.
 ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
-    # Everything for migrations 382-461 was HERE until the pair of fixtures was
-    # refreshed to production's mark of 470 on 1 October 2026 — forty-nine
-    # entries over twenty-two migrations, nine over the cap its own guard sets,
-    # which is what forced the refresh rather than another entry. The schema
-    # fixture now matches production row for row (md5
-    # 9bc498d0c90ca0ff8a946641eebb58b2 over 5,108 columns in 331 tables, both
-    # sides ordered by C collation), so the only entries left are the migrations
-    # this branch has not merged yet.
-    #
-    # gst-06. The ten columns a saved GSTR-3B records about the electronic credit
-    # ledger it opened with and left. `gst_credit_ledger_openings` is a whole new
-    # table and needs no entry.
-    ("gstr3b_returns", "credit_opening_igst_paise"): "migration 474",
-    ("gstr3b_returns", "credit_opening_cgst_paise"): "migration 474",
-    ("gstr3b_returns", "credit_opening_sgst_paise"): "migration 474",
-    ("gstr3b_returns", "credit_opening_cess_paise"): "migration 474",
-    ("gstr3b_returns", "credit_closing_igst_paise"): "migration 474",
-    ("gstr3b_returns", "credit_closing_cgst_paise"): "migration 474",
-    ("gstr3b_returns", "credit_closing_sgst_paise"): "migration 474",
-    ("gstr3b_returns", "credit_closing_cess_paise"): "migration 474",
-    ("gstr3b_returns", "credit_closing_as_of"): "migration 474",
-    ("gstr3b_returns", "credit_opening_source"): "migration 474",
-    # payroll-22. The employer's PF election on the employee master, and the
-    # record on each slip of whether its contribution was on actual wages.
-    ("payroll_employees", "pf_on_actual_wages"): "migration 477",
-    ("payroll_employees", "pf_on_actual_wages_from"): "migration 477",
-    ("payroll_employees", "pf_on_actual_wages_reference"): "migration 477",
-    ("payroll_slips", "pf_on_actual_wages"): "migration 477",
-    # POST-A-239. The lease a request takes on a finalized run before it posts the salary disbursement.
-    ("payroll_runs", "disbursement_claimed_at"): "migration 504",
-    # POST-A-253, POST-A-254. The loan write-down a release still owes, and the lease a reversal takes on a released run.
-    ("payroll_runs", "loan_writedown_owed_at"): "migration 508",
-    ("payroll_runs", "reversal_claimed_at"): "migration 508",
-    # POST-A-215. The date a billing schedule's cadence is measured from.
-    ("billing_schedules", "anchor_date"): "migration 511",
-    # POST-A-002. When a person dismissed the dashboard's first-run checklist for good.
-    ("users", "first_run_dismissed_at"): "migration 557",
-    #
-    # POST-A-345. The ledger an asset's accumulated depreciation is kept in; NULL for every asset before the change.
-    ("fixed_assets", "accumulated_account_id"): "migration 553",
+    # EMPTY since the schema fixture was refreshed to production's mark of 557 on 28 October 2026 (POST-A-351). Everything for
+    # migrations 474-557 that added a column was here until then: the ten `gstr3b_returns` columns of 474, the payroll columns of
+    # 477, 504 and 508, `billing_schedules.anchor_date` (511), `fixed_assets.accumulated_account_id` (553) and
+    # `users.first_run_dismissed_at` (557). The schema fixture now matches production row for row (md5
+    # b164e362b13a15648f57a55b872dd5b1 over 5,197 columns in 337 tables, both sides ordered by C collation), so an entry belongs here
+    # only for a migration this branch has not merged yet. Migration 558 adds no column.
 }
 
 

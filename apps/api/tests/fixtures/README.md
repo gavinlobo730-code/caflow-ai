@@ -561,6 +561,44 @@ Every entry at or below the new mark was deleted from `ADDED_AFTER_THE_SNAPSHOT`
 what remains is migration 474's ten `gstr3b_returns` columns, which is genuinely
 in flight.
 
+# Schema fixture refreshed 28 October 2026 (22:40 IST), after migration 557
+
+`ADDED_AFTER_THE_SNAPSHOT` in `tests/production_types.py` held thirteen entries over nine migrations (474 to 557) and the snapshot sat
+at production's mark of 470. Migrations 556 and 557 reached production between 22:25 and 22:40 IST (not applied at 22:25, applied at 22:39) and the ledger line that asked for this
+(POST-A-351) was waiting for them, so the file was refreshed to **557**. `production_guards_2026-09-03.json` is NOT refreshed with it:
+it runs on its own cycle, and its in-flight exclusion is judged against its own mark.
+
+Same constraint as every refresh since 293: no libpq route to production, only the SQL console. So the file was rebuilt from a DELTA and
+the reassembly was hashed against production BEFORE anything was written to the repository:
+
+1. production's PER-TABLE digest (an md5 of each table's own columns, ordered by column name in C collation) was pulled for all 337
+   tables and diffed against the file. Six tables were new (`ai_firm_budgets`, `email_outbox`, `email_suppressions`, `firm_lock_pins`,
+   `gst_credit_ledger_openings`, `scheduler_claims`), thirteen differed (`ai_messages`, `ai_recommendations`, `ai_summaries`,
+   `billing_schedules`, `fixed_assets`, `fixed_deposits`, `gstr3b_returns`, `income_tax_asset_blocks`, `payroll_employees`,
+   `payroll_runs`, `payroll_slips`, `tasks`, `workflow_templates`) and none were missing. Asking per table rather than per migration is what
+   makes the delta exhaustive: a table nobody remembered a migration touching would still have shown up;
+2. those nineteen tables were re-read IN FULL and replaced wholesale, not merged column by column, so a column dropped from one of them
+   disappears here too; the result matched production's whole-schema md5 `9cd82bf62f4ef6708afaab29fffd11d9` over 5,198 columns in 337
+   tables exactly, at a moment when 556 and 557 had not yet applied;
+3. once they had, the three tables they touch (`clients`, its view `clients_external`, `users`) were re-read in full and replaced, and
+   the whole file was hashed again.
+
+Both sides `b164e362b13a15648f57a55b872dd5b1`, over **5,197 columns in 337 tables** (5,198, less `clients.health_score` and the same column
+on the view, plus `users.first_run_dismissed_at`). That covers every column, not only the tables touched, so an unrelated out-of-band change
+anywhere in the schema would have failed the comparison rather than passing silently. The query, run in production:
+
+    SELECT md5(string_agg(
+             table_name||'|'||column_name||'|'||data_type||'|'||is_nullable
+             ||'|'||COALESCE(column_default,''),
+             E'\n' ORDER BY table_name COLLATE "C", column_name COLLATE "C"))
+    FROM information_schema.columns WHERE table_schema = 'public';
+
+The diff removes thirteen lines and every one is explained: the two `health_score` entries (migration 556 dropped the column and recreated
+the view) and the `llama-3.3-70b-versatile` default on `ai_messages.model_used`, `ai_recommendations.model_used` and
+`ai_summaries.model_used` (migration 516). Everything else is an insertion. `ADDED_AFTER_THE_SNAPSHOT` is empty: migration 558 adds no
+column.
+
+
 ---
 
 # rls_expected_access.json
