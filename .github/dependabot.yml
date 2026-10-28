@@ -17,7 +17,11 @@
 #       npm             apps/marketing   its own lockfile and its own Cloudflare project.
 #       github-actions  /                .github/workflows/*.yml
 #
-#     Not covered, on purpose: the Dockerfile's base image (not asked for here), and the gitleaks
+#       docker          apps/api         the Dockerfile's base image, which is pinned by DIGEST (POST-A-175): a pin
+#                                        nothing moves is an unpatched base, so this entry proposes the next
+#                                        digest each week and the `docker image` workflow builds it.
+#
+#     Not covered, on purpose: the gitleaks
 #     binary that secret-scan.yml downloads, which is neither a package nor an action — its
 #     version and checksum move together by hand, and the workflow says how.
 #
@@ -44,6 +48,8 @@
 #                           answered /health. The later majors stay held for the reason this one was held:
 #                           it is the production web server, and the one check that matters, the container
 #                           starting under Render's health check, cannot be run from CI.
+#       python (docker)   minor and major ignored: the lock is compiled for Python 3.11 and the image must stay on
+#                           it; the digest and the patch releases of 3.11 still arrive.
 #       next, eslint-config-next, tailwindcss, typescript, @sentry/nextjs
 #                           major ignored in apps/web and apps/marketing (the two sites are on the same
 #                           versions). Next 16 and Tailwind 4 fail the Cloudflare Pages build as they stand;
@@ -135,3 +141,18 @@ updates:
     groups:
       actions-minor-and-patch:
         update-types: ["minor", "patch"]
+
+  - package-ecosystem: "docker"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+    groups:
+      docker-minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]

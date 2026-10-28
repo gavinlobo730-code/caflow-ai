@@ -2,7 +2,7 @@
 
 Every entry below was something an audit, plan or CLAUDE.md paragraph said was open, which a reader then checked against the code on 1-2 Oct 2026 and found done, answered or moot. It exists so a future session does not reopen them and so the audit documents can be deleted with their conclusions kept. Each entry names the evidence. The list is grouped by the source it came from; it is not exhaustive of everything ever fixed (CLAUDE.md is the record of that), only of what the sweep tested.
 
-471 entries.
+472 entries.
 
 ## From `claude-md-1` (6)
 
@@ -558,3 +558,7 @@ Every entry below was something an audit, plan or CLAUDE.md paragraph said was o
 ## From `session-2026-10-17` (1)
 
 - POST-A-116 Company-card purchase is typed 'Payment' by `entry_type_for` — Closed as won't-fix on 17-10-2026: cosmetic. The accounting is right either way (Dr Expense / Cr Card), `journal_entries.entry_type` allows only Receipt, Payment and Contra, and a different label would need that CHECK widened, a migration on the posting kernel's own table, to change a word on no report, return or figure. If a card-specific label is ever wanted it belongs to the display of the entry, not the stored type.
+
+## From `session-2026-10-28` (1)
+
+- POST-A-085 The payroll reports page pages every `payroll_runs` row for the firm through `selectAll` with `select *` (PAY-16 residual) — Moot on 28-10-2026: POST-A-010 moved the read behind the server. The page asks `api.payroll.listRuns()`, the server reads every run in pages of its own (`fetch_all`), narrows them to the caller's clients and answers newest month first, so the browser no longer pages anything and the thousand-row cut cannot truncate the export. What still travels is one row per client per month, which grows with client-months and not with transactions, and the year picker needs all of them; that is not the volume the reporting rule bounds.

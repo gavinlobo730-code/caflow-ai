@@ -1,4 +1,9 @@
-FROM python:3.11-slim
+# THE BASE IMAGE IS PINNED BY DIGEST (POST-A-175). `python:3.11-slim` is a moving tag, so a build next month could start from
+# a different image from the one the lock was tested on. The digest is the multi-architecture INDEX, so amd64 (Render) and
+# arm64 both resolve from it; it was Python 3.11.18 when it was taken on 28-10-2026. A pin that nothing moves is an unpatched
+# base, so Dependabot's docker entry (.github/dependabot.yml) proposes the next digest every week, holds the minor and the
+# major back (the lock is compiled for 3.11), and the `docker image` workflow builds each proposal.
+FROM python:3.11-slim@sha256:96909ccf1d448a93a966e9fc47a607781b0f22975f3dc17a4cec879600d0a827
 
 WORKDIR /app
 
@@ -33,4 +38,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # answers nothing about how long the request took. middleware/request_context.py writes ONE JSON line per
 # request instead, carrying the matched route TEMPLATE, the status, the duration and the request id, and
 # skips the health probes that would otherwise be most of the log (ops-11).
-CMD ["gunicorn", "main:app", "--workers", "1", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--error-logfile", "-"]
+CMD ["gunicorn", "main:app", "--workers", "1", "--worker-class", "uvicorn_worker.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--error-logfile", "-"]
