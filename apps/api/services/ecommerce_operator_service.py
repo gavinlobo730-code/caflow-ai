@@ -107,12 +107,13 @@ def record_supply(db, firm_id: str, client_id: str, *, gstin: str, period: str,
     return rows[0] if rows else {}
 
 
-def delete_supply(db, firm_id: str, supply_id: str) -> dict:
-    """Withdraw an entry recorded in error. Soft-deleted, like every other
-    document this product keeps an edit trail on."""
+def delete_supply(db, firm_id: str, client_id: str, supply_id: str) -> dict:
+    """Withdraw an entry of THIS client recorded in error. Soft-deleted, like every other
+    document this product keeps an edit trail on. The client is part of the key: the id alone
+    names an entry of any client of the firm (POST-A-337)."""
     rows = (db.table("ecommerce_operator_supplies")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
-            .eq("id", supply_id).eq("firm_id", firm_id)
+            .eq("id", supply_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
     if not rows:
         raise HTTPException(status_code=404, detail="Entry not found.")
@@ -177,10 +178,11 @@ def record_unregistered_supply(db, firm_id: str, client_id: str, *, gstin: str,
     return rows[0] if rows else {}
 
 
-def delete_unregistered_supply(db, firm_id: str, supply_id: str) -> dict:
+def delete_unregistered_supply(db, firm_id: str, client_id: str, supply_id: str) -> dict:
+    """Withdraw an unregistered-supply entry of THIS client (POST-A-337)."""
     rows = (db.table("ecommerce_operator_unregistered_supplies")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
-            .eq("id", supply_id).eq("firm_id", firm_id)
+            .eq("id", supply_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
     if not rows:
         raise HTTPException(status_code=404, detail="Entry not found.")

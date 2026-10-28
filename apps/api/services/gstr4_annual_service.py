@@ -97,10 +97,12 @@ def record_b2b_supply(db, firm_id: str, client_id: str, *, gstin: str,
     return rows[0] if rows else {}
 
 
-def delete_b2b_supply(db, firm_id: str, supply_id: str) -> dict:
+def delete_b2b_supply(db, firm_id: str, client_id: str, supply_id: str) -> dict:
+    """Withdraw one entry of THIS client. The id alone names a row of any client of the firm, and the route only proved the caller may act
+    on the client they sent (POST-A-337), so the client is part of the key."""
     rows = (db.table("gstr4_annual_b2b_supplies")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
-            .eq("id", supply_id).eq("firm_id", firm_id)
+            .eq("id", supply_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
     if not rows:
         raise HTTPException(status_code=404, detail="Entry not found.")
@@ -177,10 +179,12 @@ def record_b2b_rc_supply(db, firm_id: str, client_id: str, *, gstin: str,
     return rows[0] if rows else {}
 
 
-def delete_b2b_rc_supply(db, firm_id: str, supply_id: str) -> dict:
+def delete_b2b_rc_supply(db, firm_id: str, client_id: str, supply_id: str) -> dict:
+    """Withdraw one entry of THIS client. The id alone names a row of any client of the firm, and the route only proved the caller may act
+    on the client they sent (POST-A-337), so the client is part of the key."""
     rows = (db.table("gstr4_annual_b2b_rc_supplies")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
-            .eq("id", supply_id).eq("firm_id", firm_id)
+            .eq("id", supply_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
     if not rows:
         raise HTTPException(status_code=404, detail="Entry not found.")
@@ -275,10 +279,12 @@ def record_urp_supply(db, firm_id: str, client_id: str, *, gstin: str,
     return rows[0] if rows else {}
 
 
-def delete_urp_supply(db, firm_id: str, supply_id: str) -> dict:
+def delete_urp_supply(db, firm_id: str, client_id: str, supply_id: str) -> dict:
+    """Withdraw one entry of THIS client. The id alone names a row of any client of the firm, and the route only proved the caller may act
+    on the client they sent (POST-A-337), so the client is part of the key."""
     rows = (db.table("gstr4_annual_urp_supplies")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
-            .eq("id", supply_id).eq("firm_id", firm_id)
+            .eq("id", supply_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
     if not rows:
         raise HTTPException(status_code=404, detail="Entry not found.")
@@ -348,10 +354,12 @@ def record_import_of_service(db, firm_id: str, client_id: str, *, gstin: str,
     return rows[0] if rows else {}
 
 
-def delete_import_of_service(db, firm_id: str, supply_id: str) -> dict:
+def delete_import_of_service(db, firm_id: str, client_id: str, supply_id: str) -> dict:
+    """Withdraw one entry of THIS client. The id alone names a row of any client of the firm, and the route only proved the caller may act
+    on the client they sent (POST-A-337), so the client is part of the key."""
     rows = (db.table("gstr4_annual_import_of_services")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
-            .eq("id", supply_id).eq("firm_id", firm_id)
+            .eq("id", supply_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
     if not rows:
         raise HTTPException(status_code=404, detail="Entry not found.")

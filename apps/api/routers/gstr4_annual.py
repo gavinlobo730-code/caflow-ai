@@ -155,7 +155,7 @@ def delete_b2b_supply(
     from core.supabase_client import get_supabase
     from services import gstr4_annual_service as svc
     from services.audit_service import log_event
-    row = svc.delete_b2b_supply(get_supabase(), current_user.get("firm_id"), supply_id)
+    row = svc.delete_b2b_supply(get_supabase(), current_user.get("firm_id"), client_id, supply_id)
     log_event(current_user.get("firm_id") or "", "gstr4_annual_b2b_supply",
               supply_id, "delete", actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), old_data=row)
@@ -227,7 +227,7 @@ def delete_b2b_rc_supply(
     from core.supabase_client import get_supabase
     from services import gstr4_annual_service as svc
     from services.audit_service import log_event
-    row = svc.delete_b2b_rc_supply(get_supabase(), current_user.get("firm_id"), supply_id)
+    row = svc.delete_b2b_rc_supply(get_supabase(), current_user.get("firm_id"), client_id, supply_id)
     log_event(current_user.get("firm_id") or "", "gstr4_annual_b2b_rc_supply",
               supply_id, "delete", actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), old_data=row)
@@ -311,7 +311,7 @@ def delete_urp_supply(
     from core.supabase_client import get_supabase
     from services import gstr4_annual_service as svc
     from services.audit_service import log_event
-    row = svc.delete_urp_supply(get_supabase(), current_user.get("firm_id"), supply_id)
+    row = svc.delete_urp_supply(get_supabase(), current_user.get("firm_id"), client_id, supply_id)
     log_event(current_user.get("firm_id") or "", "gstr4_annual_urp_supply",
               supply_id, "delete", actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), old_data=row)
@@ -377,7 +377,7 @@ def delete_import_of_service(
     from core.supabase_client import get_supabase
     from services import gstr4_annual_service as svc
     from services.audit_service import log_event
-    row = svc.delete_import_of_service(get_supabase(), current_user.get("firm_id"), supply_id)
+    row = svc.delete_import_of_service(get_supabase(), current_user.get("firm_id"), client_id, supply_id)
     log_event(current_user.get("firm_id") or "", "gstr4_annual_import_of_service",
               supply_id, "delete", actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), old_data=row)

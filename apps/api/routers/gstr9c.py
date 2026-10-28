@@ -206,7 +206,7 @@ def delete_rate_wise_line(
     from core.supabase_client import get_supabase
     from services import gstr9c_service as svc
     from services.audit_service import log_event
-    row = svc.delete_rate_wise_line(get_supabase(), current_user.get("firm_id"), line_id)
+    row = svc.delete_rate_wise_line(get_supabase(), current_user.get("firm_id"), client_id, line_id)
     log_event(current_user.get("firm_id") or "", "gstr9c_rate_wise_line",
               line_id, "delete", actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), old_data=row)
@@ -266,7 +266,7 @@ def delete_expense_line(
     from core.supabase_client import get_supabase
     from services import gstr9c_service as svc
     from services.audit_service import log_event
-    row = svc.delete_expense_line(get_supabase(), current_user.get("firm_id"), line_id)
+    row = svc.delete_expense_line(get_supabase(), current_user.get("firm_id"), client_id, line_id)
     log_event(current_user.get("firm_id") or "", "gstr9c_expense_line",
               line_id, "delete", actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), old_data=row)

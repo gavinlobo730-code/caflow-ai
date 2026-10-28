@@ -180,11 +180,23 @@ def list_rate_wise_lines(db, firm_id: str, reconciliation_id: str,
     return fetch_all(lambda: query, key="id", label="gstr9c_rate_wise_lines")
 
 
+def _reconciliation_of_client(db, firm_id: str, client_id: str, reconciliation_id: str) -> None:
+    """404 unless `reconciliation_id` is a reconciliation of THIS client (POST-A-337). The foreign key on a line's `reconciliation_id`
+    is not client-aware, so a line of client A could be attached to client B's reconciliation, and B's statement, which lists a
+    reconciliation's lines by its id, would carry it."""
+    rows = (db.table("gstr9c_reconciliations").select("id")
+            .eq("id", reconciliation_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .limit(1).execute().data) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Reconciliation not found.")
+
+
 def add_rate_wise_line(db, firm_id: str, client_id: str, reconciliation_id: str, *,
                        table_ref: str, rate_description: str,
                        taxable_value_paise: int = 0, igst_paise: int = 0,
                        cgst_paise: int = 0, sgst_paise: int = 0, cess_paise: int = 0,
                        line_order: int = 0, actor_id: Optional[str] = None) -> dict:
+    _reconciliation_of_client(db, firm_id, client_id, reconciliation_id)
     rows = db.table("gstr9c_rate_wise_lines").insert({
         "firm_id": firm_id, "client_id": client_id,
         "reconciliation_id": reconciliation_id, "table_ref": table_ref,
@@ -196,10 +208,11 @@ def add_rate_wise_line(db, firm_id: str, client_id: str, reconciliation_id: str,
     return rows[0] if rows else {}
 
 
-def delete_rate_wise_line(db, firm_id: str, line_id: str) -> dict:
+def delete_rate_wise_line(db, firm_id: str, client_id: str, line_id: str) -> dict:
+    """Withdraw one line of THIS client: the id alone names a line of any client of the firm (POST-A-337)."""
     rows = (db.table("gstr9c_rate_wise_lines")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
-            .eq("id", line_id).eq("firm_id", firm_id)
+            .eq("id", line_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
     if not rows:
         raise HTTPException(status_code=404, detail="Entry not found.")
@@ -222,6 +235,7 @@ def add_expense_line(db, firm_id: str, client_id: str, reconciliation_id: str, *
                      expense_head: str, value_paise: int = 0, total_itc_paise: int = 0,
                      eligible_itc_availed_paise: int = 0, line_order: int = 0,
                      actor_id: Optional[str] = None) -> dict:
+    _reconciliation_of_client(db, firm_id, client_id, reconciliation_id)
     rows = db.table("gstr9c_expense_lines").insert({
         "firm_id": firm_id, "client_id": client_id,
         "reconciliation_id": reconciliation_id, "expense_head": expense_head,
@@ -232,10 +246,11 @@ def add_expense_line(db, firm_id: str, client_id: str, reconciliation_id: str, *
     return rows[0] if rows else {}
 
 
-def delete_expense_line(db, firm_id: str, line_id: str) -> dict:
+def delete_expense_line(db, firm_id: str, client_id: str, line_id: str) -> dict:
+    """Withdraw one line of THIS client: the id alone names a line of any client of the firm (POST-A-337)."""
     rows = (db.table("gstr9c_expense_lines")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
-            .eq("id", line_id).eq("firm_id", firm_id)
+            .eq("id", line_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
     if not rows:
         raise HTTPException(status_code=404, detail="Entry not found.")
