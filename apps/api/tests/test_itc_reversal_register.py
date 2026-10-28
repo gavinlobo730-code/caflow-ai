@@ -283,18 +283,31 @@ def test_a_reclaim_cannot_exceed_its_reversal(db):
                            amounts={"cgst_paise": 5000})
 
 
+def test_a_reclaim_cannot_be_registered_against_another_clients_reversal(db):
+    """POST-A-352: a reversal id alone names a row of any client of the firm."""
+    _journal(db, "je-1", credit_gst_input=9000)
+    rev = _rev(db, "je-1")                                     # client-1's reversal
+    _journal(db, "je-9", debit_gst_input=3000, client_id="client-2")      # a journal of client-2, so only the reversal is wrong
+    with pytest.raises(ITCRegisterError, match="Reversal not found"):
+        reg.record_reclaim(db, FIRM, "client-2", journal_entry_id="je-9", period=JULY,
+                           reverses_id=rev["id"], amounts={"cgst_paise": 3000})
+    with pytest.raises(ITCRegisterError, match="Reversal not found"):
+        reg.outstanding_for(db, FIRM, "client-2", rev["id"])
+    assert reg.outstanding_for(db, FIRM, CLIENT, rev["id"])["cgst_paise"] == 4500, "the owner's own view is unchanged"
+
+
 def test_a_reversal_can_be_reclaimed_in_parts(db):
     _journal(db, "je-1", credit_gst_input=9000)
     rev = _rev(db, "je-1")
     _journal(db, "je-2", debit_gst_input=3000)
     reg.record_reclaim(db, FIRM, CLIENT, journal_entry_id="je-2", period=JULY,
                        reverses_id=rev["id"], amounts={"cgst_paise": 3000})
-    assert reg.outstanding_for(db, FIRM, rev["id"])["cgst_paise"] == 1500
+    assert reg.outstanding_for(db, FIRM, CLIENT, rev["id"])["cgst_paise"] == 1500
 
     _journal(db, "je-3", debit_gst_input=1500)
     reg.record_reclaim(db, FIRM, CLIENT, journal_entry_id="je-3", period=JULY,
                        reverses_id=rev["id"], amounts={"cgst_paise": 1500})
-    assert reg.outstanding_for(db, FIRM, rev["id"])["cgst_paise"] == 0
+    assert reg.outstanding_for(db, FIRM, CLIENT, rev["id"])["cgst_paise"] == 0
 
     _journal(db, "je-4", debit_gst_input=100)
     with pytest.raises(ITCRegisterError, match="only come back once"):
