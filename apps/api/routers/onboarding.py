@@ -189,7 +189,7 @@ def onboarding_status(
 def dismiss_first_run(
     current_user: dict = Depends(rbac("firm", "read")),
 ):
-    """The caller dismisses the dashboard's first-run checklist for good (POST-A-002, migration 555).
+    """The caller dismisses the dashboard's first-run checklist for good (POST-A-002, migration 557).
 
     It is a fact about the PERSON: only the caller's own `users` row is written, a second Partner who has not dismissed the card still
     sees it, and asking twice keeps the first stamp. The same roles that are shown the card (`firm:read`) can dismiss it; anyone else is

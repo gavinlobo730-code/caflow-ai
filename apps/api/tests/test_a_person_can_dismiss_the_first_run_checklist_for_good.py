@@ -1,4 +1,4 @@
-"""A person can dismiss the first-run checklist for good (POST-A-002, migration 555).
+"""A person can dismiss the first-run checklist for good (POST-A-002, migration 557).
 
 WHAT WAS MISSING
     The dashboard's "Getting started" card ticks itself from the firm's own rows and stays until the firm has done its first four things.

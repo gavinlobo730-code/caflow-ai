@@ -1,4 +1,4 @@
--- Migration 555: a person can dismiss the first-run checklist for good (ledger POST-A-002).
+-- Migration 557: a person can dismiss the first-run checklist for good (ledger POST-A-002).
 --
 -- The dashboard's "Getting started" card (market_and_trust-16) ticks itself from the firm's own rows and stays until the firm has done its first
 -- four things. A person who does not want it could only COLLAPSE it, per browser, which is a convenience and not a record. A dismissal is a
@@ -22,6 +22,6 @@ BEGIN
                     WHERE table_schema = 'public' AND table_name = 'users'
                       AND column_name = 'first_run_dismissed_at'
                       AND data_type = 'timestamp with time zone' AND is_nullable = 'YES' AND column_default IS NULL) THEN
-        RAISE EXCEPTION 'migration 555: users.first_run_dismissed_at is not a nullable timestamptz with no default';
+        RAISE EXCEPTION 'migration 557: users.first_run_dismissed_at is not a nullable timestamptz with no default';
     END IF;
 END $$;

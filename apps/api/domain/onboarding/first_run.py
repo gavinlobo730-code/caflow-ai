@@ -39,7 +39,7 @@ is still showing, so a person rehearsing the sign-up can read it off afterwards.
 
 WHAT THIS DELIBERATELY DOES NOT DO.
   * Nothing about the FIRM is stored. A person can dismiss the card for good (POST-A-002,
-    migration 555: `users.first_run_dismissed_at`), and that is a fact about the person and
+    migration 557: `users.first_run_dismissed_at`), and that is a fact about the person and
     not about the firm: a second Partner who has not dismissed it still sees it. The browser
     may also COLLAPSE the card on one device, a per-viewer convenience and not a record.
   * It does not count the practice's own FEE invoices (`fee_invoices`): the step is about

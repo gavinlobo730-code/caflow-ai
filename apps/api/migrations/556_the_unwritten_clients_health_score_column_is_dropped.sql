@@ -1,4 +1,4 @@
--- Migration 554: drop `clients.health_score`, the column nothing writes and nothing reads (ledger POST-A-283).
+-- Migration 556: drop `clients.health_score`, the column nothing writes and nothing reads (ledger POST-A-283).
 --
 -- Migration 003 gave `clients` a `health_score INTEGER DEFAULT 100 CHECK (health_score BETWEEN 0 AND 100)`. Nothing has ever written it, so
 -- every client carries its default of 100, and a roll-up that read it called every client healthy. The dashboard, the assistant, the memory
@@ -42,24 +42,24 @@ DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.columns
                 WHERE table_schema = 'public' AND table_name = 'clients' AND column_name = 'health_score') THEN
-        RAISE EXCEPTION 'migration 554: clients.health_score is still there';
+        RAISE EXCEPTION 'migration 556: clients.health_score is still there';
     END IF;
     IF EXISTS (SELECT 1 FROM information_schema.columns
                 WHERE table_schema = 'public' AND table_name = 'clients_external' AND column_name = 'health_score') THEN
-        RAISE EXCEPTION 'migration 554: clients_external still names health_score';
+        RAISE EXCEPTION 'migration 556: clients_external still names health_score';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_class c WHERE c.oid = 'public.clients_external'::regclass
                       AND 'security_invoker=true' = ANY (c.reloptions)) THEN
-        RAISE EXCEPTION 'migration 554: clients_external is not security_invoker, so the caller''s row security would not apply through it';
+        RAISE EXCEPTION 'migration 556: clients_external is not security_invoker, so the caller''s row security would not apply through it';
     END IF;
     IF NOT (has_table_privilege('anon', 'public.clients_external', 'SELECT')
             AND has_table_privilege('authenticated', 'public.clients_external', 'SELECT')
             AND has_table_privilege('service_role', 'public.clients_external', 'SELECT')) THEN
-        RAISE EXCEPTION 'migration 554: clients_external lost its SELECT grants';
+        RAISE EXCEPTION 'migration 556: clients_external lost its SELECT grants';
     END IF;
     IF has_table_privilege('authenticated', 'public.clients_external', 'INSERT')
        OR has_table_privilege('authenticated', 'public.clients_external', 'UPDATE')
        OR has_table_privilege('authenticated', 'public.clients_external', 'DELETE') THEN
-        RAISE EXCEPTION 'migration 554: clients_external can be written through';
+        RAISE EXCEPTION 'migration 556: clients_external can be written through';
     END IF;
 END $$;

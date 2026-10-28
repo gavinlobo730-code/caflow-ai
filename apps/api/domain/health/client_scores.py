@@ -1,6 +1,6 @@
 """A client's health score, from the health engine's stored result, or none.
 
-`clients.health_score` was `INTEGER DEFAULT 100` (migration 003; dropped by migration 554 on 28-10-2026) and nothing ever wrote it, so a
+`clients.health_score` was `INTEGER DEFAULT 100` (migration 003; dropped by migration 556 on 28-10-2026) and nothing ever wrote it, so a
 roll-up that read it called every client healthy: the executive dashboard said a firm health of 100 and every client Healthy beside a Deadlines screen with 220 overdue
 filings and a client Health screen that scored one of them 34 and Critical. The engine's own result lives in `health_scores`
 (`repositories/health_scores_repository`), and a client that has never been calculated has no row there: its Health screen answers

@@ -1,4 +1,4 @@
--- Rollback of migration 554: puts `clients.health_score` back as migration 003 declared it (INTEGER DEFAULT 100, CHECK 0..100) and
+-- Rollback of migration 556: puts `clients.health_score` back as migration 003 declared it (INTEGER DEFAULT 100, CHECK 0..100) and
 -- recreates `clients_external` with the column in its original place in the list. Every client comes back at 100, which is what every
 -- client held when the column was dropped (read from production on 28-10-2026). For fidelity with the previous schema, not for use: the
 -- column is the one that reads "healthy" for a client nobody has scored.

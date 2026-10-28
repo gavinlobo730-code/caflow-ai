@@ -1,4 +1,4 @@
-"""Migration 554 — `clients.health_score`, the column nothing writes, is dropped, and the view that named it is recreated (ledger POST-A-283).
+"""Migration 556 — `clients.health_score`, the column nothing writes, is dropped, and the view that named it is recreated (ledger POST-A-283).
 
 WHAT IS HELD
     * The column is gone from `clients` and from `clients_external`, and a client can still be created and read without it.
@@ -23,7 +23,7 @@ import pytest
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
-_STEM = "554_the_unwritten_clients_health_score_column_is_dropped"
+_STEM = "556_the_unwritten_clients_health_score_column_is_dropped"
 MIGRATION = API_ROOT / "migrations" / f"{_STEM}.sql"
 ROLLBACK = API_ROOT / "migrations" / f"{_STEM}_rollback.sql"
 _ADMIN = os.environ.get("HARNESS_PG")
@@ -72,7 +72,7 @@ def db(pg_template):
         pytest.skip("could not create throwaway db")
     dsn = f"{admin} dbname={dbname}"
     try:
-        assert f"{_STEM}.sql" not in pg_template.failed, "migration 554 did not apply, so everything below would pass vacuously"
+        assert f"{_STEM}.sql" not in pg_template.failed, "migration 556 did not apply, so everything below would pass vacuously"
         seed = _psql(dsn, f"""
             INSERT INTO auth.users (id, email) VALUES ('{AUTH_A}', 'a@m554hs.test');
             INSERT INTO firms (id, name, email) VALUES ('{FIRM_A}', 'Firm A', 'a@m554hs.in'), ('{FIRM_B}', 'Firm B', 'b@m554hs.in');
