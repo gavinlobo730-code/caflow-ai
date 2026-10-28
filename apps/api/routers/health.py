@@ -37,7 +37,7 @@ CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone, date, time, timedelta
 import contextvars
 import uuid
 
@@ -46,7 +46,7 @@ from core.permissions import rbac
 from core.observability import capture_soft_failure as _report_soft_failure
 from core.authz import filter_by_client, assert_client_access, can_access_client, effective_client_ids
 from services.timeline_service import timeline_service
-from core.ist_clock import ist_today
+from core.ist_clock import IST, ist_date_of, ist_today
 from domain.health.scoring import DIMENSION_WEIGHTS_BP, DIMENSIONS, grade, is_at_risk, is_critical, weighted_score
 from domain.health.overrides import apply_overrides, as_payload
 from core import db_provider
@@ -1167,10 +1167,12 @@ def calculate_score(
                    "nothing to score yet. A score is calculated once something is recorded."
                    + (" The score it had, which was made of nothing, has been removed." if removed else "")) from nothing
 
-    old_row = db.table("health_scores").select("overall_score, id").eq("client_id", client_id).eq("firm_id", firm_id).limit(1).execute().data
+    old_row = (db.table("health_scores").select("overall_score, id, last_calculated_at")
+               .eq("client_id", client_id).eq("firm_id", firm_id).limit(1).execute().data)
     old_overall = (old_row[0]["overall_score"] if old_row else None)
-    if old_overall is not None:
-        scores["trend"] = f"{scores['overall_score'] - old_overall:+d}"
+    trend = _trend_against_an_earlier_day(db, firm_id, client_id, scores["overall_score"], old=old_row)
+    if trend is not None:
+        scores["trend"] = trend
 
     score_id = str(uuid.uuid4())
     upsert_payload = {
@@ -1366,6 +1368,32 @@ def list_overrides(
     return api_response(True, _annotate_overrides(rows, dims))
 
 
+def _trend_against_an_earlier_day(db, firm_id: str, client_id: str, overall: int, old: list | None = None):
+    """The signed change of `overall` from the last score stored on an EARLIER Indian day, or None when there is nothing to compare
+    with (the client has never been scored, or only today).
+
+    It used to compare with whatever was stored, so a second run on the same night (a forced run, a catch-up after a kill, a
+    Recalculate after the sweep) compared the day's score with the score the first run had stored a minute before, read "+0", and the
+    day's real change was lost (POST-A-289). A score stored today is replaced by the last history row recorded before the start of
+    today in India; one stored on an earlier day is the baseline itself, which is the ordinary one-run-a-night case and costs no
+    extra read."""
+    if old is None:
+        old = (db.table("health_scores").select("overall_score, last_calculated_at")
+               .eq("client_id", client_id).eq("firm_id", firm_id).limit(1).execute().data)
+    if not old:
+        return None
+    baseline = old[0].get("overall_score")
+    if ist_date_of(old[0].get("last_calculated_at")) == ist_today():
+        start_of_today = datetime.combine(ist_today(), time.min, tzinfo=IST).astimezone(timezone.utc).isoformat()
+        earlier = (db.table("health_score_history").select("overall_score")
+                   .eq("client_id", client_id).eq("firm_id", firm_id).lt("recorded_at", start_of_today)
+                   .order("recorded_at", desc=True).limit(1).execute().data)
+        baseline = earlier[0].get("overall_score") if earlier else None
+    if baseline is None:
+        return None
+    return f"{overall - baseline:+d}"
+
+
 def clients_to_score(db, firm_id: str) -> list[dict]:
     """The clients a firm's health is calculated for: the live ones (not deleted), not archived, and never the firm's own practice client
     (guardrail G2: the internal practice client is never health-scored or triaged). `client_name` is selected because the health list
@@ -1399,9 +1427,9 @@ def recalculate_clients(db, firm_id: str, clients: list[dict]) -> dict:
     for client in clients:
         try:
             scores = _calculate_scores_or_say_a_read_was_lost(db, client["id"], firm_id)
-            old_row = db.table("health_scores").select("overall_score").eq("client_id", client["id"]).eq("firm_id", firm_id).limit(1).execute().data
-            if old_row:
-                scores["trend"] = f"{scores['overall_score'] - old_row[0]['overall_score']:+d}"
+            trend = _trend_against_an_earlier_day(db, firm_id, client["id"], scores["overall_score"])
+            if trend is not None:
+                scores["trend"] = trend
             score_id = str(uuid.uuid4())
             upsert_payload = {
                 "id": score_id, "client_id": client["id"], "firm_id": firm_id,

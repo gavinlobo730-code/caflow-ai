@@ -12,10 +12,12 @@ WHAT IS HELD
     * `routers/health.recalculate_clients` is the one loop (score, trend against the last stored score, upsert, history row, one
       expiry of what was cached from the old scores), used by the button for the caller's clients and by the job for the firm's.
     * `jobs/health_scores_job.run_health_scores_for_firm` runs it for a firm that is active, counts a client that would not score
-      without stopping the others, and raises only when clients failed and none was scored (POST-A-288: a firm whose clients all have nothing on record is not a failed run), so the run row says `failed`.
+      without stopping the others, and raises when most of the clients that could be judged failed (POST-A-288: a firm whose clients all have nothing on record is not a failed run; POST-A-289: nor is one client of many failing), so the run row says `failed`.
     * The sweep runs it as a gated, logged, claimed job before the memory pipeline.
 """
 from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -96,11 +98,47 @@ def test_a_second_night_replaces_the_stored_score_keeps_one_row_and_adds_history
     db, _, _ = _world(monkeypatch, score=70)
     _clients(db, {"id": "a", "client_name": "A"})
     job.run_health_scores_for_firm(FIRM)
+    _it_was_yesterday(db)
     monkeypatch.setattr(hl, "_calculate_scores_db", lambda _db, cid, fid: {"overall_score": 64, "health_grade": "Needs Attention"})
     job.run_health_scores_for_firm(FIRM)
     rows = db._tables["health_scores"]
     assert len(rows) == 1 and rows[0]["overall_score"] == 64 and rows[0]["trend"] == "-6"
     assert len(db._tables["health_score_history"]) == 2
+
+
+def _it_was_yesterday(db):
+    """Make what a run stored an earlier night's: the stored score and its history row carry yesterday's stamp."""
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    for row in db._tables.get("health_scores", []):
+        row["last_calculated_at"] = yesterday
+    for row in db._tables.get("health_score_history", []):
+        row["recorded_at"] = yesterday
+
+
+def test_a_second_run_on_the_same_night_still_compares_with_the_last_score_of_an_earlier_day(monkeypatch):
+    """POST-A-289: a forced run, a catch-up or a Recalculate after the sweep compared with the score the first run had stored a minute
+    before, so the trend read +0 and the day's real change was lost."""
+    db, _, _ = _world(monkeypatch, score=70)
+    _clients(db, {"id": "a", "client_name": "A"})
+    job.run_health_scores_for_firm(FIRM)                      # the first night: 70
+    _it_was_yesterday(db)
+    monkeypatch.setattr(hl, "_calculate_scores_db", lambda _db, cid, fid: {"overall_score": 64, "health_grade": "Needs Attention"})
+    job.run_health_scores_for_firm(FIRM)                      # tonight: 64, trend -6 against last night's 70
+    monkeypatch.setattr(hl, "_calculate_scores_db", lambda _db, cid, fid: {"overall_score": 66, "health_grade": "Needs Attention"})
+    job.run_health_scores_for_firm(FIRM)                      # tonight again: 66, still compared with last night's 70
+    row = db._tables["health_scores"][0]
+    assert row["overall_score"] == 66 and row["trend"] == "-4", "the second run of the night compared with the first run of the night"
+    assert len(db._tables["health_score_history"]) == 3
+
+
+def test_two_runs_on_the_very_first_day_have_nothing_earlier_to_compare_with(monkeypatch):
+    db, _, _ = _world(monkeypatch, score=70)
+    _clients(db, {"id": "a", "client_name": "A"})
+    job.run_health_scores_for_firm(FIRM)
+    monkeypatch.setattr(hl, "_calculate_scores_db", lambda _db, cid, fid: {"overall_score": 64, "health_grade": "Needs Attention"})
+    job.run_health_scores_for_firm(FIRM)
+    assert db._tables["health_scores"][0]["overall_score"] == 64
+    assert db._tables["health_scores"][0].get("trend", "+0") == "+0", "a change within the first day is not a trend"
 
 
 def test_what_was_cached_from_the_old_scores_is_marked_stale_once_per_run(monkeypatch):
@@ -130,9 +168,25 @@ def test_one_client_that_will_not_score_is_counted_and_reported_and_the_others_a
 def test_a_run_that_scored_no_client_at_all_raises_so_the_sweep_records_it_failed(monkeypatch):
     db, expired, _ = _world(monkeypatch, fails=("a", "b"))
     _clients(db, {"id": "a"}, {"id": "b"})
-    with pytest.raises(RuntimeError, match="no client of firm f1 could be scored"):
+    with pytest.raises(RuntimeError, match="most clients of firm f1 could not be scored"):
         job.run_health_scores_for_firm(FIRM)
     assert expired == [] and "health_scores" not in db._tables
+
+
+def test_a_run_in_which_almost_every_client_failed_raises_too_and_keeps_the_ones_it_scored(monkeypatch):
+    """POST-A-289: it used to record success if even one client scored, so a night in which the engine broke for almost everybody was
+    not retaken until the next night."""
+    db, expired, _ = _world(monkeypatch, fails=("b", "c", "d"))
+    _clients(db, {"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"})
+    with pytest.raises(RuntimeError, match="3 failed of 4 that could be judged"):
+        job.run_health_scores_for_firm(FIRM)
+    assert [r["client_id"] for r in db._tables["health_scores"]] == ["a"] and expired, "the client that scored stays scored"
+
+
+def test_half_the_clients_failing_is_reported_without_failing_the_run(monkeypatch):
+    db, _, _ = _world(monkeypatch, fails=("b",))
+    _clients(db, {"id": "a"}, {"id": "b"})
+    assert job.run_health_scores_for_firm(FIRM) == {"clients": 2, "updated": 1, "failed": 1, "unscored": 0}
 
 
 # ── when it does not run ─────────────────────────────────────────────────────
@@ -276,7 +330,7 @@ def test_a_client_never_scored_whose_calculation_lost_a_read_stays_unscored(monk
         return {"overall_score": 98, "health_grade": "Healthy"}
 
     monkeypatch.setattr(hl, "_calculate_scores_db", calculate)
-    with pytest.raises(RuntimeError, match="could be scored"):
+    with pytest.raises(RuntimeError, match="could not be scored"):
         job.run_health_scores_for_firm(FIRM)
     assert "health_scores" not in db._tables
 
@@ -303,7 +357,7 @@ def test_the_real_engine_over_a_database_whose_compliance_read_fails_does_not_ov
                                    "due_date": "2026-07-31"})
     db.seed("health_scores", {"id": "old", "client_id": "a", "firm_id": FIRM, "overall_score": 34, "is_critical": True, "client_name": "A"})
     db.broken = True
-    with pytest.raises(RuntimeError, match="could be scored"):
+    with pytest.raises(RuntimeError, match="could not be scored"):
         job.run_health_scores_for_firm(FIRM)
     row, = db._tables["health_scores"]
     assert row["overall_score"] == 34 and row["is_critical"] is True and "last_calculated_at" not in row, "the stored 34 survived the failed read"

@@ -11,7 +11,7 @@ WHY THIS EXISTS
 WHAT IT DOES NOT DO
     * It does not run for a firm someone deactivated (the memory job's rule, and its fail-open read).
     * It does not raise for one client that would not score: that client is counted in `failed` and reported, and the others are
-      scored. It raises only when clients failed and none was scored, so the run row says `failed` and the sweep retakes the job.
+      scored. It raises when most of the clients that could be judged failed, so the run row says `failed` and the sweep retakes the job.
     * It stores nothing for a client with nothing on record at all (POST-A-288): the engine would have called it near 100, so it
       stays "not yet scored", is counted in `unscored` and is not a failure.
     * It sends nothing to anyone and calls no model: a score is arithmetic on rows already held.
@@ -45,8 +45,12 @@ def run_health_scores_for_firm(firm_id: str) -> dict:
     summary = {"clients": len(clients), **outcome}
     logger.info("Health scores for firm %s: %d clients, %d scored, %d failed, %d with nothing on record",
                 firm_id, summary["clients"], summary["updated"], summary["failed"], summary["unscored"])
-    # A run in which every client that could be judged failed raises; a firm whose clients have nothing on record yet (all of them
-    # `unscored`) is not a failed run, it is a firm with nothing to score.
-    if outcome["failed"] and not outcome["updated"]:
-        raise RuntimeError(f"no client of firm {firm_id} could be scored ({outcome['failed']} failed)")
+    # A run in which most of the clients that could be judged failed raises, so the run row says `failed` and the sweep retakes the job
+    # (POST-A-289: a run in which almost every client failed used to record success and nothing retried until the next night). The
+    # clients that did score stay scored. A firm whose clients have nothing on record yet (all of them `unscored`) is not a failed
+    # run, it is a firm with nothing to score, and one client of many failing is reported and counted without failing the run.
+    judged = outcome["updated"] + outcome["failed"]
+    if outcome["failed"] and outcome["failed"] * 2 > judged:
+        raise RuntimeError(
+            f"most clients of firm {firm_id} could not be scored ({outcome['failed']} failed of {judged} that could be judged)")
     return summary
