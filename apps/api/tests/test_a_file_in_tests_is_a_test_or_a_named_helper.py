@@ -67,6 +67,9 @@ HELPERS = {
     "_backend_query_parser.py",
     "_frontend_select_parser.py",
     "_schema_checked_db.py",
+    # The one call graph of the API's own source (imports, singletons and methods resolved) that two rules read: the named-row rule and
+    # the rule over the client a write of a closed table is made on. Imported by both, so neither carries its own resolver.
+    "_call_graph.py",
     "e2e_harness.py",
     # A stand-in for the health engine's stored scores (`repositories/health_scores_repository`) for the tests whose fixture clients carry a
     # `health_score`; five test files use it, so none of them grows its own copy.

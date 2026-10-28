@@ -32,6 +32,7 @@ from services.timeline_service import timeline_service
 from services import tds_register_service
 from services import vendor_tds
 from services import reversal_service
+from services import named_row_ownership
 from services import purchase_payment_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label, ist_today
@@ -420,6 +421,22 @@ def get_purchase_payment(
 # Create
 # ---------------------------------------------------------------------------
 
+def _vendor_and_account_of_the_client(db, firm_id: str, client_id: str, vendor_id: str, bank_account_id) -> dict:
+    """The vendor row (active, and in THIS client's books) and the check that the account the money is paid from is this client's too.
+
+    The vendor lookup is scoped by firm AND client and `select("*")`: an advance withholds, and the section, the PAN, the residency and
+    the §195 paperwork all decide how much (services/vendor_tds.VENDOR_FIELDS_THAT_DECIDE_WITHHOLDING). The bank account is asked
+    because the posting resolves it by firm alone (POST-A-350)."""
+    _v = (db.table("vendors").select("*")
+          .eq("id", vendor_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data)
+    if not _v:
+        raise HTTPException(status_code=422, detail="This vendor is not part of this client's books.")
+    if _v[0].get("is_active") is False:
+        raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before recording a payment.")
+    named_row_ownership.bank_account_is_the_clients(db, firm_id, client_id, bank_account_id)
+    return _v[0]
+
+
 @router.post("")
 def create_purchase_payment(
     data: PurchasePaymentIn,
@@ -528,13 +545,7 @@ def create_purchase_payment(
         # section, the PAN, the residency and the §195 paperwork all decide how
         # much (services/vendor_tds.VENDOR_FIELDS_THAT_DECIDE_WITHHOLDING). The
         # bill path resolves its vendor the same way.
-        _v = (db.table("vendors").select("*")
-              .eq("id", vendor_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data)
-        if not _v:
-            raise HTTPException(status_code=422, detail="This vendor is not part of this client's books.")
-        if _v[0].get("is_active") is False:
-            raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before recording a payment.")
-        vendor = _v[0]
+        vendor = _vendor_and_account_of_the_client(db, firm_id, client_id, vendor_id, data.get("bank_account_id"))
         # PUR-22: from here the multi-bill engine owns everything — its own
         # foreign-currency dispatch, the per-bill CAS settlement and the
         # compensation. It repeats the vendor lookup above and that is cheap;

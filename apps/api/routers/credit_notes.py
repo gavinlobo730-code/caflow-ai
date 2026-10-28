@@ -572,6 +572,7 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
             raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
         c = resp.data[0]
         named_row_ownership.customer_is_the_clients(db, firm_id, c.get("client_id"), data.get("customer_id"))
+        named_row_ownership.sales_invoice_is_the_clients(db, firm_id, c.get("client_id"), data.get("sales_invoice_id"))
         status = c.get("status")
         if status != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
             raise HTTPException(

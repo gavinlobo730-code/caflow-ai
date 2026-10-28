@@ -12,6 +12,7 @@ from typing import Any, Optional
 from fastapi import HTTPException
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 
 
 def _first(rows) -> Optional[dict]:
@@ -65,7 +66,7 @@ def record_b2b_supply(db, firm_id: str, client_id: str, *, gstin: str,
     existing = _existing_b2b_supply(db, firm_id, client_id, gstin, financial_year,
                                     supplier_gstin, place_of_supply, rate_bps)
     if existing:
-        rows = (db.table("gstr4_annual_b2b_supplies")
+        rows = (privileged_for(db).table("gstr4_annual_b2b_supplies")
                 .update({
                     "taxable_value_paise": taxable_value_paise,
                     "igst_paise": igst_paise,
@@ -75,10 +76,10 @@ def record_b2b_supply(db, firm_id: str, client_id: str, *, gstin: str,
                     "notes": notes,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
-                .eq("id", existing["id"]).eq("firm_id", firm_id)
+                .eq("id", existing["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
                 .execute().data) or []
         return rows[0] if rows else existing
-    rows = db.table("gstr4_annual_b2b_supplies").insert({
+    rows = privileged_for(db).table("gstr4_annual_b2b_supplies").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "gstin": gstin,
@@ -100,7 +101,7 @@ def record_b2b_supply(db, firm_id: str, client_id: str, *, gstin: str,
 def delete_b2b_supply(db, firm_id: str, client_id: str, supply_id: str) -> dict:
     """Withdraw one entry of THIS client. The id alone names a row of any client of the firm, and the route only proved the caller may act
     on the client they sent (POST-A-337), so the client is part of the key."""
-    rows = (db.table("gstr4_annual_b2b_supplies")
+    rows = (privileged_for(db).table("gstr4_annual_b2b_supplies")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
             .eq("id", supply_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
@@ -147,7 +148,7 @@ def record_b2b_rc_supply(db, firm_id: str, client_id: str, *, gstin: str,
     existing = _existing_b2b_rc_supply(db, firm_id, client_id, gstin, financial_year,
                                        supplier_gstin, place_of_supply, rate_bps)
     if existing:
-        rows = (db.table("gstr4_annual_b2b_rc_supplies")
+        rows = (privileged_for(db).table("gstr4_annual_b2b_rc_supplies")
                 .update({
                     "taxable_value_paise": taxable_value_paise,
                     "igst_paise": igst_paise,
@@ -157,10 +158,10 @@ def record_b2b_rc_supply(db, firm_id: str, client_id: str, *, gstin: str,
                     "notes": notes,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
-                .eq("id", existing["id"]).eq("firm_id", firm_id)
+                .eq("id", existing["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
                 .execute().data) or []
         return rows[0] if rows else existing
-    rows = db.table("gstr4_annual_b2b_rc_supplies").insert({
+    rows = privileged_for(db).table("gstr4_annual_b2b_rc_supplies").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "gstin": gstin,
@@ -182,7 +183,7 @@ def record_b2b_rc_supply(db, firm_id: str, client_id: str, *, gstin: str,
 def delete_b2b_rc_supply(db, firm_id: str, client_id: str, supply_id: str) -> dict:
     """Withdraw one entry of THIS client. The id alone names a row of any client of the firm, and the route only proved the caller may act
     on the client they sent (POST-A-337), so the client is part of the key."""
-    rows = (db.table("gstr4_annual_b2b_rc_supplies")
+    rows = (privileged_for(db).table("gstr4_annual_b2b_rc_supplies")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
             .eq("id", supply_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
@@ -243,7 +244,7 @@ def record_urp_supply(db, firm_id: str, client_id: str, *, gstin: str,
     existing = _existing_urp_supply(db, firm_id, client_id, gstin, financial_year,
                                     counterparty_pan, place_of_supply, rate_bps)
     if existing:
-        rows = (db.table("gstr4_annual_urp_supplies")
+        rows = (privileged_for(db).table("gstr4_annual_urp_supplies")
                 .update({
                     "reverse_charge": reverse_charge,
                     "supply_type": supply_type,
@@ -255,10 +256,10 @@ def record_urp_supply(db, firm_id: str, client_id: str, *, gstin: str,
                     "notes": notes,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
-                .eq("id", existing["id"]).eq("firm_id", firm_id)
+                .eq("id", existing["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
                 .execute().data) or []
         return rows[0] if rows else existing
-    rows = db.table("gstr4_annual_urp_supplies").insert({
+    rows = privileged_for(db).table("gstr4_annual_urp_supplies").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "gstin": gstin,
@@ -282,7 +283,7 @@ def record_urp_supply(db, firm_id: str, client_id: str, *, gstin: str,
 def delete_urp_supply(db, firm_id: str, client_id: str, supply_id: str) -> dict:
     """Withdraw one entry of THIS client. The id alone names a row of any client of the firm, and the route only proved the caller may act
     on the client they sent (POST-A-337), so the client is part of the key."""
-    rows = (db.table("gstr4_annual_urp_supplies")
+    rows = (privileged_for(db).table("gstr4_annual_urp_supplies")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
             .eq("id", supply_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
@@ -326,7 +327,7 @@ def record_import_of_service(db, firm_id: str, client_id: str, *, gstin: str,
     existing = _existing_import_of_service(db, firm_id, client_id, gstin,
                                            financial_year, rate_bps)
     if existing:
-        rows = (db.table("gstr4_annual_import_of_services")
+        rows = (privileged_for(db).table("gstr4_annual_import_of_services")
                 .update({
                     "place_of_supply": place_of_supply,
                     "taxable_value_paise": taxable_value_paise,
@@ -335,10 +336,10 @@ def record_import_of_service(db, firm_id: str, client_id: str, *, gstin: str,
                     "notes": notes,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
-                .eq("id", existing["id"]).eq("firm_id", firm_id)
+                .eq("id", existing["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
                 .execute().data) or []
         return rows[0] if rows else existing
-    rows = db.table("gstr4_annual_import_of_services").insert({
+    rows = privileged_for(db).table("gstr4_annual_import_of_services").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "gstin": gstin,
@@ -357,7 +358,7 @@ def record_import_of_service(db, firm_id: str, client_id: str, *, gstin: str,
 def delete_import_of_service(db, firm_id: str, client_id: str, supply_id: str) -> dict:
     """Withdraw one entry of THIS client. The id alone names a row of any client of the firm, and the route only proved the caller may act
     on the client they sent (POST-A-337), so the client is part of the key."""
-    rows = (db.table("gstr4_annual_import_of_services")
+    rows = (privileged_for(db).table("gstr4_annual_import_of_services")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
             .eq("id", supply_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []

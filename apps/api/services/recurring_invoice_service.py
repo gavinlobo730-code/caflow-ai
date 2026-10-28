@@ -36,6 +36,7 @@ from fastapi import HTTPException
 from domain import recurrence as _rec
 from models.invoices import SalesInvoiceIn, SalesInvoiceLineIn
 from services.numbering import draft_placeholder_invoice_no
+from services import named_row_ownership
 from services.line_item_ownership import assert_items_are_the_clients
 from core import db_provider
 
@@ -175,6 +176,8 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None
         MOCK_RECURRING_TEMPLATES.append(payload)
         return dict(payload)
     db = db or _db()
+    # The customer is this client's: a template naming another client's would invoice that customer under this client (POST-A-350).
+    named_row_ownership.customer_is_the_clients(db, firm_id, data["client_id"], data["customer_id"])
     # A template whose line names another client's item could never generate (every run would refuse it): say so now (POST-A-246).
     assert_items_are_the_clients(db, firm_id, data["client_id"], data["lines"])
     row = db.table("recurring_invoice_templates").insert(payload).execute().data[0]

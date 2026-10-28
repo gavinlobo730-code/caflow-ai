@@ -14,6 +14,7 @@ from typing import Any, Optional
 from fastapi import HTTPException
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 
 
 def _first(rows) -> Optional[dict]:
@@ -78,7 +79,7 @@ def save_reconciliation(db, firm_id: str, client_id: str, *, gstin: str,
     """
     existing = get_reconciliation(db, firm_id, client_id, gstin, financial_year)
     if existing:
-        rows = (db.table("gstr9c_reconciliations")
+        rows = (privileged_for(db).table("gstr9c_reconciliations")
                 .update({
                     "act_name": fields.get("act_name"),
                     "turnover_per_audited_fs_paise": fields.get("turnover_per_audited_fs_paise"),
@@ -117,10 +118,10 @@ def save_reconciliation(db, firm_id: str, client_id: str, *, gstin: str,
                     "notes": fields.get("notes"),
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
-                .eq("id", existing["id"]).eq("firm_id", firm_id)
+                .eq("id", existing["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
                 .execute().data) or []
         return rows[0] if rows else existing
-    rows = db.table("gstr9c_reconciliations").insert({
+    rows = privileged_for(db).table("gstr9c_reconciliations").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "gstin": gstin,
@@ -197,7 +198,7 @@ def add_rate_wise_line(db, firm_id: str, client_id: str, reconciliation_id: str,
                        cgst_paise: int = 0, sgst_paise: int = 0, cess_paise: int = 0,
                        line_order: int = 0, actor_id: Optional[str] = None) -> dict:
     _reconciliation_of_client(db, firm_id, client_id, reconciliation_id)
-    rows = db.table("gstr9c_rate_wise_lines").insert({
+    rows = privileged_for(db).table("gstr9c_rate_wise_lines").insert({
         "firm_id": firm_id, "client_id": client_id,
         "reconciliation_id": reconciliation_id, "table_ref": table_ref,
         "rate_description": rate_description,
@@ -210,7 +211,7 @@ def add_rate_wise_line(db, firm_id: str, client_id: str, reconciliation_id: str,
 
 def delete_rate_wise_line(db, firm_id: str, client_id: str, line_id: str) -> dict:
     """Withdraw one line of THIS client: the id alone names a line of any client of the firm (POST-A-337)."""
-    rows = (db.table("gstr9c_rate_wise_lines")
+    rows = (privileged_for(db).table("gstr9c_rate_wise_lines")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
             .eq("id", line_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
@@ -236,7 +237,7 @@ def add_expense_line(db, firm_id: str, client_id: str, reconciliation_id: str, *
                      eligible_itc_availed_paise: int = 0, line_order: int = 0,
                      actor_id: Optional[str] = None) -> dict:
     _reconciliation_of_client(db, firm_id, client_id, reconciliation_id)
-    rows = db.table("gstr9c_expense_lines").insert({
+    rows = privileged_for(db).table("gstr9c_expense_lines").insert({
         "firm_id": firm_id, "client_id": client_id,
         "reconciliation_id": reconciliation_id, "expense_head": expense_head,
         "value_paise": value_paise, "total_itc_paise": total_itc_paise,
@@ -248,7 +249,7 @@ def add_expense_line(db, firm_id: str, client_id: str, reconciliation_id: str, *
 
 def delete_expense_line(db, firm_id: str, client_id: str, line_id: str) -> dict:
     """Withdraw one line of THIS client: the id alone names a line of any client of the firm (POST-A-337)."""
-    rows = (db.table("gstr9c_expense_lines")
+    rows = (privileged_for(db).table("gstr9c_expense_lines")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
             .eq("id", line_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []

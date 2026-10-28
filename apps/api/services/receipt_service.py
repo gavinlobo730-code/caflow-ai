@@ -24,6 +24,7 @@ from services.audit_service import log_event
 from services.document_header_writer import update_header
 from services.ledger_door import ledger_rpc
 from services.period_validation_service import period_validation_service
+from services import named_row_ownership
 from services import period_lock_service
 from services.timeline_service import timeline_service
 from services.numbering import sequence_after
@@ -607,6 +608,21 @@ def _settle_receipt_via_atomic_rpc(
     return receipt
 
 
+def _assert_the_customer_and_the_account_are_the_clients(db, firm_id, client_id: str, data: dict) -> None:
+    """The customer a receipt names is in THIS client's books and active, and so is the account the money was paid into.
+
+    The account is asked because `resolve_payment_account` reads it by firm alone: without this a receipt under one client naming
+    another client's bank account posted to that client's bank ledger (the ledger trigger refused it later, as a 500) (POST-A-350)."""
+    _cust = (db.table("customers").select("is_active")
+             .eq("id", data["customer_id"]).eq("firm_id", firm_id or "").eq("client_id", client_id)
+             .limit(1).execute().data)
+    if not _cust:
+        raise HTTPException(status_code=422, detail="This customer is not part of this client's books.")
+    if _cust[0].get("is_active") is False:
+        raise HTTPException(status_code=422, detail="This customer is inactive. Reactivate the customer before recording a receipt.")
+    named_row_ownership.bank_account_is_the_clients(db, firm_id or "", client_id, data.get("bank_account_id"))
+
+
 def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     """Create a customer receipt with optional invoice allocations — the single
     source of truth for receipt creation.
@@ -631,13 +647,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     # exactly one client) and rejects when the customer can't be found in
     # THIS client's books at all, not just when found-but-inactive.
     if db is not None:
-        _cust = (db.table("customers").select("is_active")
-                 .eq("id", data["customer_id"]).eq("firm_id", firm_id or "").eq("client_id", client_id)
-                 .limit(1).execute().data)
-        if not _cust:
-            raise HTTPException(status_code=422, detail="This customer is not part of this client's books.")
-        if _cust[0].get("is_active") is False:
-            raise HTTPException(status_code=422, detail="This customer is inactive. Reactivate the customer before recording a receipt.")
+        _assert_the_customer_and_the_account_are_the_clients(db, firm_id, client_id, data)
 
     # ── Multi-Currency (Phase 4): a foreign receipt runs a dedicated realized-FX
     # path — each invoice is settled at ITS frozen booking rate, the cash is taken
