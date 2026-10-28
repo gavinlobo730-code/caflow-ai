@@ -16,6 +16,7 @@ from typing import Any, Optional
 from fastapi import HTTPException
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 from core.ist_clock import ist_today
 from domain.inventory import count_session as cs
 
@@ -70,7 +71,7 @@ def open_session(db, *, firm_id: str, client_id: str, count_date: Optional[str],
     from services import stock_position_service
     position = stock_position_service.position(db, firm_id, client_id, date)
 
-    row = (db.table("stock_count_sessions").insert({
+    row = (privileged_for(db).table("stock_count_sessions").insert({
         "firm_id": firm_id, "client_id": client_id, "count_date": date,
         "reference_no": reference, "status": cs.STATUS_OPEN,
         "notes": notes, "created_by": created_by,
@@ -84,7 +85,7 @@ def open_session(db, *, firm_id: str, client_id: str, count_date: Optional[str],
     # body large enough to be refused, and unlike a short READ that failure is
     # loud — so this is about not sending it, not about noticing.
     for start in range(0, len(items), _INSERT_CHUNK):
-        db.table("stock_count_lines").insert([{
+        privileged_for(db).table("stock_count_lines").insert([{
             "firm_id": firm_id, "client_id": client_id, "session_id": session_id,
             "service_catalogue_id": i.get("service_catalogue_id") or i.get("id"),
             "system_qty_units": str(_qty(i.get("qty_units"))),
@@ -209,13 +210,13 @@ def save_counts(db, *, firm_id: str, session_id: str, entries: list[dict]) -> in
                       if "itc_reversal_is_interstate" not in e
                       else bool(e["itc_reversal_is_interstate"]))
         notes = prior.get("notes") if "notes" not in e else e["notes"]
-        res = (db.table("stock_count_lines").update({
+        res = (privileged_for(db).table("stock_count_lines").update({
                    "counted_qty_units": counted,
                    "reverse_itc": reverse,
                    "itc_reversal_is_interstate": interstate,
                    "notes": notes,
                })
-               .eq("session_id", session_id).eq("firm_id", firm_id)
+               .eq("session_id", session_id).eq("firm_id", firm_id).eq("client_id", session["client_id"])
                .eq("service_catalogue_id", item_id).execute())
         written += len(getattr(res, "data", None) or [])
     return written
@@ -307,11 +308,11 @@ def post_session(db, *, firm_id: str, session_id: str, actor_id: Optional[str]) 
                               p.line.service_catalogue_id)
             failed.append({"item": p.line.item_name, "why": str(e)[:200]})
 
-    db.table("stock_count_sessions").update({
+    privileged_for(db).table("stock_count_sessions").update({
         "status": cs.STATUS_POSTED,
         "posted_at": _now(),
         "posted_by": actor_id,
-    }).eq("id", session_id).eq("firm_id", firm_id).execute()
+    }).eq("id", session_id).eq("firm_id", firm_id).eq("client_id", session["client_id"]).execute()
 
     return {
         "session_id": session_id,

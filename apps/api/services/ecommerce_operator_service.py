@@ -13,6 +13,7 @@ from typing import Any, Optional
 from fastapi import HTTPException
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 
 def _first(rows) -> Optional[dict]:
     rows = rows or []
@@ -71,7 +72,7 @@ def record_supply(db, firm_id: str, client_id: str, *, gstin: str, period: str,
     """
     existing = _existing_supply(db, firm_id, client_id, gstin, period, supplier_gstin)
     if existing:
-        rows = (db.table("ecommerce_operator_supplies")
+        rows = (privileged_for(db).table("ecommerce_operator_supplies")
                 .update({
                     "place_of_supply": place_of_supply,
                     "gross_registered_paise": gross_registered_paise,
@@ -84,10 +85,10 @@ def record_supply(db, firm_id: str, client_id: str, *, gstin: str, period: str,
                     "notes": notes,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
-                .eq("id", existing["id"]).eq("firm_id", firm_id)
+                .eq("id", existing["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
                 .execute().data) or []
         return rows[0] if rows else existing
-    rows = db.table("ecommerce_operator_supplies").insert({
+    rows = privileged_for(db).table("ecommerce_operator_supplies").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "gstin": gstin,
@@ -111,7 +112,7 @@ def delete_supply(db, firm_id: str, client_id: str, supply_id: str) -> dict:
     """Withdraw an entry of THIS client recorded in error. Soft-deleted, like every other
     document this product keeps an edit trail on. The client is part of the key: the id alone
     names an entry of any client of the firm (POST-A-337)."""
-    rows = (db.table("ecommerce_operator_supplies")
+    rows = (privileged_for(db).table("ecommerce_operator_supplies")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
             .eq("id", supply_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []
@@ -154,17 +155,17 @@ def record_unregistered_supply(db, firm_id: str, client_id: str, *, gstin: str,
     existing = _existing_unregistered_supply(db, firm_id, client_id, gstin,
                                              period, enrolment_id)
     if existing:
-        rows = (db.table("ecommerce_operator_unregistered_supplies")
+        rows = (privileged_for(db).table("ecommerce_operator_unregistered_supplies")
                 .update({
                     "gross_value_paise": gross_value_paise,
                     "returns_paise": returns_paise,
                     "notes": notes,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
-                .eq("id", existing["id"]).eq("firm_id", firm_id)
+                .eq("id", existing["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
                 .execute().data) or []
         return rows[0] if rows else existing
-    rows = db.table("ecommerce_operator_unregistered_supplies").insert({
+    rows = privileged_for(db).table("ecommerce_operator_unregistered_supplies").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "gstin": gstin,
@@ -180,7 +181,7 @@ def record_unregistered_supply(db, firm_id: str, client_id: str, *, gstin: str,
 
 def delete_unregistered_supply(db, firm_id: str, client_id: str, supply_id: str) -> dict:
     """Withdraw an unregistered-supply entry of THIS client (POST-A-337)."""
-    rows = (db.table("ecommerce_operator_unregistered_supplies")
+    rows = (privileged_for(db).table("ecommerce_operator_unregistered_supplies")
             .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
             .eq("id", supply_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data) or []

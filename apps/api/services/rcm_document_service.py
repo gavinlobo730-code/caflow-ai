@@ -27,6 +27,7 @@ from typing import Any, Optional
 from fastapi import HTTPException
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 from core.ist_clock import ist_fy_label, ist_today
 from domain.gst import rcm_documents as rd
 from domain.gst.invoice_series import (
@@ -462,7 +463,7 @@ def issue(db, *, firm_id: str, client_id: str, kind: str, bill_id: Optional[str]
     period_lock_service.assert_open(db, firm_id, client_id, date)
 
     heads = {t["head"]: int(t["amount_paise"]) for t in particulars.get("taxes", [])}
-    row = (db.table("rcm_documents").insert({
+    row = (privileged_for(db).table("rcm_documents").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "vendor_id": parent["vendor_id"],
