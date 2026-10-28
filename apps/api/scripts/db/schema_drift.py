@@ -12,6 +12,8 @@ can break code:
     NOT NULL column absent from the migrations is invisible to every check here
     and rejects every insert there
   * a column whose TYPE differs
+  * a column whose DEFAULT differs, in the two ways that matter: the migrations give a NOT NULL column a default production does
+    not have (an insert written from the migrations is rejected there), and both give one and the VALUES differ
 
 Ordering, indexes, policies and functions are not compared. The failures this
 exists for were all column shape, and a diff that reports everything reports
@@ -37,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -46,6 +49,18 @@ from pathlib import Path
 NOT_OURS = {
     "schema_migrations",   # written by scripts/db/apply_migrations.py itself
 }
+
+
+# Two spellings of one default are not drift. A default is compared after its casts are dropped (`'info'::text` and
+# `'info'::event_severity` are one default) and with the two UUID functions read as one, because the snapshot stores the
+# expression text and that text is the only thing that differs.
+_CAST = re.compile(r"::[a-z_][a-z0-9_ ]*(\[\])?")
+_UUID_FUNCTIONS = {"uuid_generate_v4()": "gen_random_uuid()"}
+
+
+def normalised_default(expression: str) -> str:
+    text = _CAST.sub("", (expression or "").strip()).strip()
+    return _UUID_FUNCTIONS.get(text, text)
 
 
 def load(path: str) -> dict:
@@ -66,6 +81,12 @@ def diff(declared: dict, live: dict) -> dict:
         "columns_only_in_live": [],
         "nullability_differs": [],
         "type_differs": [],
+        # THE MIRROR OF THE FIRST KEY. The migrations give a column a default and production, where it is NOT NULL, has none: code
+        # written from the migrations omits the column and the insert is rejected there while every check here passes.
+        "live_lacks_a_default_the_migrations_give": [],
+        # Both give a default and the values differ (casts and the two UUID functions are not a difference): a row that omits the
+        # column stores one thing here and another there.
+        "default_value_differs": [],
     }
 
     for table in sorted(set(declared) | set(live)):
@@ -102,6 +123,12 @@ def diff(declared: dict, live: dict) -> dict:
                 if d["type"] != l["type"]:
                     out["type_differs"].append(
                         f"{table}.{col}: migrations say {d['type']}, live says {l['type']}")
+                if d["default"] and not l["default"] and l["nullable"] == "NO":
+                    out["live_lacks_a_default_the_migrations_give"].append(f"{table}.{col}")
+                elif (d["default"] and l["default"]
+                      and normalised_default(d["default"]) != normalised_default(l["default"])):
+                    out["default_value_differs"].append(
+                        f"{table}.{col}: migrations say {d['default']}, live says {l['default']}")
     return out
 
 
@@ -117,6 +144,10 @@ HEADINGS = {
     "columns_only_in_live": "Columns in the live database that no migration declares",
     "nullability_differs": "Columns whose NULLABILITY differs",
     "type_differs": "Columns whose TYPE differs",
+    "live_lacks_a_default_the_migrations_give":
+        "NOT NULL in the live database with NO default, where the migrations give one — "
+        "an insert written from the migrations is REJECTED in production",
+    "default_value_differs": "Columns whose DEFAULT VALUE differs",
 }
 
 

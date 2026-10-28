@@ -63,7 +63,7 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   `/api/identity/permissions` decides what a screen renders and `rbac()` decides
   what it does; two derivations of one answer is how the Schedule III caption
   list came to offer five captions the engine had never heard of. A test asserts
-  they agree over every pair.
+  they agree over every pair. **THE READS OF PAYROLL, BANK AND DOCUMENTS ARE CLOSED BY REMOVING THE PRIVILEGE, WHICH ANSWERS THE GRID BETTER THAN A READ POLICY DID (POST-A-005, closed 28-10-2026).** The item asked for read policies keyed on `my_permission` on the payroll, document and bank tables, so a Partner who unticks Payroll, Documents or Banking for a Manager also stops that Manager's direct select. Migration 485 did it for three payroll tables and 524 for the bank lines; its two open halves (the documents, which needed a Storage decision, and the bank-account master, which receipts, payments and fixed assets still read from the browser) were closed the other way: the browser stopped reading all three groups (POST-A-010) and migrations 549 (payroll), 550 (bank, `bank_accounts` included) and 551 (documents, and the Storage object policies) took every privilege on them from a signed-in session, so no setting of the grid can leave a member able to select them over PostgREST. The grid still decides every API route through `rbac()`, and the row policies of 485, 524 and 527 stay as the second lock, measured in the access matrix's second-lock file with the privilege given back.
 
 - **THERE ARE THREE PRINCIPALS AND ONLY ONE OF THEM IS STAFF.** `rbac()` decides
   a staff request; `core/portal_auth.get_current_portal_client` is the CLIENT

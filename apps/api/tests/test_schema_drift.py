@@ -109,6 +109,37 @@ def test_a_type_difference_is_reported_with_both_sides():
         "t.c: migrations say uuid, live says text"]
 
 
+# ── Defaults (ledger POST-A-168) ──────────────────────────────────────────────
+
+def test_a_default_the_migrations_give_a_required_column_and_production_lacks_is_caught():
+    """The mirror of uploaded_by: code written from the migrations omits the column, and production, where it is NOT NULL
+    with no default, rejects the insert. eway_bill_records.taxable_value_paise was one."""
+    declared = {"t": {"c": col("bigint", "NO", "0")}}
+    live = {"t": {"c": col("bigint", "NO", "")}}
+    report = diff(declared, live)
+    assert report["live_lacks_a_default_the_migrations_give"] == ["t.c"]
+    assert report["default_value_differs"] == []
+
+
+def test_a_default_production_lacks_on_an_optional_column_is_not_a_rejection():
+    """An omitted column is NULL there: a difference in what is stored, named in the ledger, but not an insert that fails."""
+    declared = {"t": {"c": col("text", "NO", "'x'::text")}}
+    live = {"t": {"c": col("text", "YES", "")}}
+    assert diff(declared, live)["live_lacks_a_default_the_migrations_give"] == []
+
+
+def test_two_values_for_one_default_are_reported_with_both_sides():
+    report = diff({"t": {"c": col("boolean", "NO", "false")}}, {"t": {"c": col("boolean", "NO", "true")}})
+    assert report["default_value_differs"] == ["t.c: migrations say false, live says true"]
+
+
+def test_one_default_spelled_two_ways_is_not_drift():
+    """A cast to the enum or to text, and the two UUID functions, are spellings and not values."""
+    declared = {"t": {"a": col("text", "NO", "'info'::event_severity"), "id": col("uuid", "NO", "uuid_generate_v4()")}}
+    live = {"t": {"a": col("text", "NO", "'info'::text"), "id": col("uuid", "NO", "gen_random_uuid()")}}
+    assert diff(declared, live)["default_value_differs"] == []
+
+
 def test_the_runners_own_tracking_table_is_not_drift():
     """scripts/db/apply_migrations.py creates schema_migrations itself, so it is
     in every live database and in no migration. Reporting it forever would

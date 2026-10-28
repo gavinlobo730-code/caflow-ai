@@ -264,6 +264,29 @@ def test_no_column_has_a_different_type_in_production(report):
         + "\n  ".join(offenders))
 
 
+@_NEEDS_PG
+def test_no_column_the_migrations_default_is_required_without_one_in_production(report):
+    """The mirror of the first test (ledger POST-A-168): a default the migrations give a column that production requires and does
+    not default. Code written from the migrations omits it, the test database accepts the insert, and production rejects it.
+    Migration 560 closed the nine the first run found. A column a migration above the snapshot's mark names is excused as the
+    other tests excuse it, because the snapshot is a day in the past."""
+    in_flight = _columns_added_after_the_snapshot()
+    offenders = [o for o in report["live_lacks_a_default_the_migrations_give"] if o.split(".", 1)[1] not in in_flight]
+    assert not offenders, (
+        "These columns are NOT NULL with no default in production and have a default in the migrations, so an insert that omits "
+        "them is rejected there and accepted here. Give production the default in a migration (560 is the pattern; a default on a "
+        "NOT NULL column only loosens), or drop the default from the migration's table.\n  " + "\n  ".join(offenders))
+
+
+@_NEEDS_PG
+def test_no_column_has_one_default_value_in_the_migrations_and_another_in_production(report):
+    offenders = [o for o in report["default_value_differs"] if o.split(": ", 1)[0].split(".", 1)[1] not in _columns_added_after_the_snapshot()]
+    assert not offenders, (
+        "These columns default to one value in the migrations and another in production, so a row that omits the column stores "
+        "one thing in the test database and another there. Migration 560 made the two it found match production.\n  "
+        + "\n  ".join(offenders))
+
+
 # ── Guard the guard ───────────────────────────────────────────────────────────
 
 @_NEEDS_PG

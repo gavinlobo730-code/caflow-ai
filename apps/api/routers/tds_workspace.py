@@ -25,6 +25,7 @@ from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
 from models.fy import FYLabel, OptionalFYLabel
+from core.db_paging import fetch_all
 from core.ist_clock import fy_bounds, ist_today
 from domain.tds import deductor_26as as D26
 from services import tds_register_lists_service as lists
@@ -1720,19 +1721,12 @@ def _paginate_deductions(db, firm_id: str, client_id: str) -> list[dict]:
     the default limit easily, and a truncated register is the same false clean
     result as a filtered one.
     """
-    out: list[dict] = []
-    page, size = 0, 1000
-    while True:
-        chunk = (db.table("tds_deductions")
+    return fetch_all(
+        lambda: (db.table("tds_deductions")
                  .select("id, deductee_pan, deductee_name, section, tds_paise, "
                          "transaction_date, financial_year")
-                 .eq("firm_id", firm_id).eq("client_id", client_id)
-                 .order("id").range(page * size, page * size + size - 1)
-                 .execute().data) or []
-        out.extend(chunk)
-        if len(chunk) < size:
-            return out
-        page += 1
+                 .eq("firm_id", firm_id).eq("client_id", client_id)),
+        label="tds_deductions.register")
 
 
 def _o26(o) -> dict:

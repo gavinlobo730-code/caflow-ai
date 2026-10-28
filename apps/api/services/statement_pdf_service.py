@@ -12,7 +12,8 @@ printed, and WHICH SIGN MEANS WHAT — so a second builder would be one
 formatting change away from two documents that look like two products.
 `StatementKind` holds those four and nothing else.
 
-Reuses the invoice PDF stack (reportlab, _load_firm, _paise_to_rupee_str). This
+Reuses the invoice PDF stack (reportlab, _paise_to_rupee_str). It reads the CLIENT's row and never the practice's
+(`load_account_holder`; tests/test_a_pdf_reads_the_practices_row_only_when_the_practice_is_who_issues_it.py holds that). This
 is NOT a tax document and carries NO accounting entries — it renders the opening
 balance, the period's invoices/receipts/credit notes with a running balance, and
 the closing outstanding. All amounts arrive as integer paise (display only).
@@ -33,7 +34,7 @@ from services import pdf_style
 from services.pdf_style import Paragraph, Table
 
 from domain.money_sentence import rupee_text
-from services.invoice_pdf_service import _load_firm, _paise_to_rupee_str
+from services.invoice_pdf_service import _paise_to_rupee_str
 from services.customer_statement_service import customer_statement_service
 from services.pdf_page_furniture import numbered
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from core.db_paging import PAGE
 from services import itc_reversal_service as svc
 from tests.e2e_harness import FakeDB
 
@@ -186,13 +187,13 @@ def test_a_book_larger_than_one_page_is_read_completely(db):
     complaint — this codebase has hit that six times now. Under-reading here
     under-reports the reversal, which is the direction that costs interest.
     """
-    for i in range(svc.PAGE + 25):
+    for i in range(PAGE + 25):
         _bill(db, f"B-{i:05d}")
 
     out = _report(db)
 
-    assert out["bill_count"] == svc.PAGE + 25
-    assert out["totals"]["total_paise"] == (svc.PAGE + 25) * 18_000_00
+    assert out["bill_count"] == PAGE + 25
+    assert out["totals"]["total_paise"] == (PAGE + 25) * 18_000_00
 
 
 # ── §34 notes: PUR-09, the double reversal ───────────────────────────────────

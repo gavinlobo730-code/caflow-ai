@@ -228,9 +228,9 @@ def test_the_register_read_is_firm_and_client_scoped():
     from routers import tds_workspace as m
     src = inspect.getsource(m._paginate_deductions)
     assert '.eq("firm_id", firm_id)' in src and '.eq("client_id", client_id)' in src
-    assert ".range(" in src, (
+    assert "fetch_all(" in src, (
         "PostgREST caps a response; a truncated register is the same false "
-        "clean result as a filtered one")
+        "clean result as a filtered one, so the read goes through the shared pager")
 
 
 def test_a_row_with_no_financial_year_is_placed_by_its_date():
