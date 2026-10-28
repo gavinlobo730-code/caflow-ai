@@ -340,6 +340,11 @@ def _app(user):
     return TestClient(app, raise_server_exceptions=False)
 
 
+def _facts_of(first_run: dict) -> dict:
+    """The checklist without the one key that is about the person asking (`dismissed`, POST-A-002)."""
+    return {k: v for k, v in first_run.items() if k != "dismissed"}
+
+
 @pytest.fixture()
 def served(world, monkeypatch):
     monkeypatch.setattr(onboarding, "get_service_supabase", lambda: world)
@@ -361,7 +366,9 @@ def test_it_persists_across_logins_because_a_second_partner_sees_what_the_first_
     first = _app(PARTNER).get("/api/onboarding/status").json()["data"]["first_run"]
     second = _app(PARTNER_2).get("/api/onboarding/status").json()["data"]["first_run"]
     again = _app(PARTNER).get("/api/onboarding/status").json()["data"]["first_run"]
-    assert first == second == again
+    # `dismissed` is about the PERSON (POST-A-002) and the second Partner has no row in this fixture; what persists is what is TRUE.
+    assert _facts_of(first) == _facts_of(second) == _facts_of(again)
+    assert first == again
     assert first["steps"][0]["done"] is True
 
 
@@ -369,7 +376,7 @@ def test_a_manager_sees_the_same_checklist_as_a_partner(served):
     _client(served)
     p = _app(PARTNER).get("/api/onboarding/status").json()["data"]["first_run"]
     m = _app(MANAGER).get("/api/onboarding/status").json()["data"]["first_run"]
-    assert p == m
+    assert _facts_of(p) == _facts_of(m)
 
 
 @pytest.mark.parametrize("user", [EXECUTIVE, REVIEWER], ids=["Executive", "Reviewer"])

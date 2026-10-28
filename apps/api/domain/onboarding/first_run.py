@@ -38,9 +38,10 @@ table because both timestamps already exist, and it is served whether or not the
 is still showing, so a person rehearsing the sign-up can read it off afterwards.
 
 WHAT THIS DELIBERATELY DOES NOT DO.
-  * No "dismiss for good". That needs a column (`users.first_run_dismissed_at`) and no
-    migration number was left for it; the browser may COLLAPSE the card on this device,
-    which is a per-viewer convenience and not a record. The card stays as one line.
+  * Nothing about the FIRM is stored. A person can dismiss the card for good (POST-A-002,
+    migration 555: `users.first_run_dismissed_at`), and that is a fact about the person and
+    not about the firm: a second Partner who has not dismissed it still sees it. The browser
+    may also COLLAPSE the card on one device, a per-viewer convenience and not a record.
   * It does not count the practice's own FEE invoices (`fee_invoices`): the step is about
     the books of a client, which is what the product is for, and a pure-billing firm
     that never raises a client invoice will see that step stay open.
@@ -117,8 +118,11 @@ def minutes_between(start: object, end: object) -> Optional[int]:
     return int((b - a).total_seconds() // 60)
 
 
-def build(facts: Mapping[str, Fact], *, firm_created_at: object = None) -> dict:
-    """The checklist for one firm. `facts` may omit a step, which reads as unreadable."""
+def build(facts: Mapping[str, Fact], *, firm_created_at: object = None, dismissed: Optional[bool] = None) -> dict:
+    """The checklist for one firm, as one PERSON sees it. `facts` may omit a step, which reads as unreadable.
+
+    `dismissed` is whether THIS person dismissed the card for good: True hides it, and False and None leave it to the steps. None is
+    "could not be read", which is not a dismissal: a card the person did not ask to lose stays, and the answer says `dismissed: None`."""
     steps = []
     for definition in STEPS:
         fact = facts.get(definition.id) or Fact(None)
@@ -144,7 +148,8 @@ def build(facts: Mapping[str, Fact], *, firm_created_at: object = None) -> dict:
         "complete": complete,
         "next_step": next_step,
         "unreadable": unreadable,
-        "visible": (not complete) and readable,
+        "dismissed": dismissed if dismissed in (True, False) else None,
+        "visible": (not complete) and readable and dismissed is not True,
         "minutes_to_first_invoice": (
             minutes_between(firm_created_at, first_invoice.at) if first_invoice.done is True else None),
     }

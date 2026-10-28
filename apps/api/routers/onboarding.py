@@ -2,9 +2,11 @@
 Firm onboarding endpoints.
 POST /api/onboarding/firm       — create firm + first Partner user (JWT-authenticated)
 GET  /api/onboarding/status     — onboarding completeness + the first-run checklist (Partner/Manager only)
+POST /api/onboarding/first-run/dismiss — the caller dismisses the first-run checklist for good (Partner/Manager only)
 """
 import re
 import logging
+from datetime import datetime, timezone
 from domain.firm import identity as firm_identity
 from domain.gst.gstin import problem_with as gstin_problem
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +16,7 @@ from middleware.public_rate_limit import public_limit
 from models.client import EntityType
 from models.common import api_response
 from core.supabase_client import get_service_supabase
+from core.db_provider import privileged_for
 from core.auth import get_jwt_user
 from core.permissions import rbac
 
@@ -168,7 +171,7 @@ def onboarding_status(
         raise HTTPException(status_code=404, detail="Firm not found")
 
     from services import first_run_service
-    first_run = first_run_service.first_run(firm_id)
+    first_run = first_run_service.first_run(firm_id, current_user.get("id"))
     done = {s["id"]: s["done"] is True for s in first_run["steps"]}
 
     checks = {
@@ -180,3 +183,29 @@ def onboarding_status(
     score = sum(checks.values())
     return api_response(True, {"checks": checks, "score": score, "total": len(checks),
                                "first_run": first_run})
+
+
+@router.post("/first-run/dismiss")
+def dismiss_first_run(
+    current_user: dict = Depends(rbac("firm", "read")),
+):
+    """The caller dismisses the dashboard's first-run checklist for good (POST-A-002, migration 555).
+
+    It is a fact about the PERSON: only the caller's own `users` row is written, a second Partner who has not dismissed the card still
+    sees it, and asking twice keeps the first stamp. The same roles that are shown the card (`firm:read`) can dismiss it; anyone else is
+    refused by the permission and nothing is written. The write is made by the server for the person, so the row-level edit log names
+    them (`privileged_for`)."""
+    firm_id, user_id = current_user["firm_id"], current_user.get("id")
+    if not user_id:
+        raise HTTPException(status_code=403, detail="Only a signed-in team member can dismiss this.")
+    db = privileged_for(get_service_supabase())
+    # Only a row that has not been dismissed is written, so the first stamp stays the stamp.
+    db.table("users").update({"first_run_dismissed_at": datetime.now(timezone.utc).isoformat()}) \
+        .eq("id", user_id).eq("firm_id", firm_id).is_("first_run_dismissed_at", "null").execute()
+    rows = (db.table("users").select("first_run_dismissed_at")
+            .eq("id", user_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+    stamp = rows[0].get("first_run_dismissed_at") if rows else None
+    if stamp is None:
+        # The write matched nothing and the row has no stamp: nothing was dismissed, and saying it was would be the lie.
+        raise HTTPException(status_code=409, detail="Could not dismiss the checklist just now; nothing was changed. Try again.")
+    return api_response(True, {"dismissed": True, "dismissed_at": stamp})

@@ -85,3 +85,21 @@ test("each step the server names has a screen to open, and an unknown one has no
   assert.equal(hrefFor("a_step_the_server_added_tomorrow"), null);
   assert.equal(hrefFor("constructor"), null, "an inherited property is not a route");
 });
+
+// POST-A-002: a person can dismiss the card for good, and the server says whether this person did.
+test("dismissed is read as exactly true or false, and anything else is 'could not tell'", () => {
+  const read = (v: unknown) => readFirstRun(payload({ dismissed: v }))!.dismissed;
+  assert.equal(read(true), true);
+  assert.equal(read(false), false);
+  assert.equal(read(null), null);
+  assert.equal(read("yes"), null);
+  assert.equal(read(1), null);
+  const p = payload();
+  assert.equal(readFirstRun(p)!.dismissed, null, "a backend that does not send the key yet is not a dismissal");
+});
+
+test("a card the server says is not visible stays hidden whatever else it says", () => {
+  assert.equal(shouldShow(readFirstRun(payload({ visible: false, dismissed: true }))), false);
+  assert.equal(shouldShow(readFirstRun(payload({ visible: true, dismissed: false }))), true);
+  assert.equal(shouldShow(readFirstRun(payload({ visible: true, dismissed: null }))), true, "an unreadable dismissal leaves the card");
+});

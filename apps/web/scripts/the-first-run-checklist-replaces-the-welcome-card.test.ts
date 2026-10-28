@@ -67,7 +67,8 @@ test("the browser counts nothing and reads no table: every tick is the server's"
 test("a failed call or a refusal renders nothing rather than an unknown shown as a value", () => {
   const card = code(CARD);
   assert.match(card, /catch\s*\{[\s\S]*?setPayload\(null\)/);
-  assert.match(card, /if \(!shouldShow\(checklist\)\) return null;/);
+  // (`gone` is the person having just dismissed it, POST-A-002: the server's answer decides, this only hides it at once)
+  assert.match(card, /if \((gone \|\| )?!shouldShow\(checklist\)\) return null;/);
   // the payload is narrowed to an object at the setter and READ through the shape guard
   assert.match(card, /setPayload\(r && r\.success \? objectOrNull</);
   assert.match(card, /useMemo\(\(\) => readFirstRun\(payload\)/);
@@ -100,4 +101,29 @@ test("a step opens an existing screen; no route was added for it", () => {
     assert.ok(lib.includes(`"${href}"`), href);
     assert.ok(fs.existsSync(path.join(ROOT, "app", ...href.split("/").filter(Boolean), "page.tsx")), `${href} is a real screen`);
   }
+});
+
+// ── POST-A-002: dismiss for good ──────────────────────────────────────────────────────────────────────────────────────────
+test("dismissing is a POST the server keeps on the person's row, through the api client", () => {
+  assert.match(code(API), /dismiss:\s*\(\)\s*=>[\s\S]*?\/api\/onboarding\/first-run\/dismiss[\s\S]*?method:\s*"POST"/,
+    "the endpoint that keeps the dismissal has no caller");
+  assert.match(code(CARD), /api\.firstRun\.dismiss\(/);
+});
+
+test("it is asked in two steps in the card, never with a browser pop-up, and a refusal leaves the card and says so", () => {
+  const card = code(CARD);
+  assert.doesNotMatch(card, /window\.(confirm|alert|prompt)\(|\bconfirm\(|\balert\(/, "a browser pop-up is not how this product asks");
+  assert.match(card, /I don&apos;t need this checklist/, "the first step is a plain link that only asks");
+  assert.match(card, /Dismiss for good/, "the second step names what it does");
+  assert.match(card, /Keep it/, "and the person can say no");
+  assert.match(card, /setGone\(true\)/, "the card goes only when the server said it was dismissed");
+  assert.match(card, /r\.success[\s\S]{0,80}setGone\(true\)/, "and only on a success answer");
+  assert.match(card, /role="alert"/, "a refusal is said in words");
+});
+
+test("the dismiss click is held by the Button's repeat-click guard: the handler returns its promise", () => {
+  const card = code(CARD);
+  assert.match(card, /async function dismissForGood\(\):\s*Promise<void>/);
+  assert.match(card, /<Button[^>]*onClick=\{dismissForGood\}/, "the handler is handed to the Button itself, so its promise is the guard");
+  assert.doesNotMatch(card, /onClick=\{\(\)\s*=>\s*(void\s+)?dismissForGood\(\)\}/, "a dropped promise releases the guard on the same tick");
 });
