@@ -31,6 +31,7 @@ from fastapi import HTTPException
 
 from core.db_paging import fetch_all
 from core.ist_clock import ist_now
+from services import named_row_ownership
 from domain.gst import compensation_cess
 from domain.gst import discount as gst_discount
 from domain.purchases import order_cycle as oc
@@ -333,6 +334,10 @@ def match_bill(db, firm_id: str, bill_id: str) -> dict:
         raise HTTPException(status_code=404, detail="That bill was not found.")
     bill = rows[0]
     order_id = bill.get("purchase_order_id")
+    if order_id:
+        # THE ORDER THE BILL NAMES IS THE BILL'S CLIENT'S (POST-A-338): nothing in the API writes this column, but the match reads
+        # the order's lines and its goods receipts and a bill that names another client's order would report that client's.
+        order_of_client(db, firm_id, str(order_id), str(bill.get("client_id")))
 
     # Scoped through the bill, which was read above with the firm filter —
     # `purchase_bill_lines` has no firm_id of its own.
@@ -451,6 +456,8 @@ def _refuse_duplicate(db, table: str, firm_id: str, client_id: str,
 def create_order(db, firm_id: str, payload: dict,
                  actor_id: Optional[str] = None) -> dict:
     client_id = str(payload["client_id"])
+    # THE VENDOR IS THIS CLIENT'S (POST-A-338): the foreign key is not client-aware.
+    named_row_ownership.vendor_is_the_clients(db, firm_id, client_id, payload.get("vendor_id"))
     _refuse_duplicate(db, "purchase_orders", firm_id, client_id,
                       payload["document_no"], None)
     priced, totals = compute_lines(
@@ -521,6 +528,10 @@ def create_receipt(db, firm_id: str, payload: dict,
     record of stock that physically exists.
     """
     client_id = str(payload["client_id"])
+    # THE VENDOR AND THE ORDER ARE THIS CLIENT'S (POST-A-338), asked before `_refuse_over_receipt` reads the order's open position.
+    named_row_ownership.vendor_is_the_clients(db, firm_id, client_id, payload.get("vendor_id"))
+    if payload.get("order_id"):
+        order_of_client(db, firm_id, str(payload["order_id"]), client_id)
     _refuse_duplicate(db, "goods_receipt_notes", firm_id, client_id,
                       payload["document_no"], None)
     lines = list(payload.get("lines") or [])
@@ -573,7 +584,10 @@ def create_receipt(db, firm_id: str, payload: dict,
 def _refuse_over_receipt(db, firm_id: str, order_id: Optional[str],
                          lines: list) -> list:
     if not order_id:
-        return []
+        # A LINE CANNOT NAME AN ORDER LINE WHEN THE RECEIPT NAMES NO ORDER (POST-A-338): the position readers count received quantity
+        # by order-line id alone, so another client's order would show this receipt's goods as received against it.
+        return [f"{ln.get('description')}: this line names an order line but the receipt names no order."
+                for ln in lines if ln.get("order_line_id")]
     position = order_open_position(db, firm_id, str(order_id))
     by_id = {str(ln["order_line_id"]): ln for ln in position["lines"]}
     problems: list = []

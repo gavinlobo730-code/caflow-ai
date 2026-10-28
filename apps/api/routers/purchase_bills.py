@@ -107,6 +107,16 @@ def _assert_bill_scope(current_user: dict, bill_id: str) -> Optional[str]:
     return client_id
 
 
+def _assert_body_client_is_the_bills(bill_client: Optional[str], body_client: Optional[str], bill_id: str) -> None:
+    """404, in the missing-bill words, when the client the BODY names is not the client the bill belongs to (POST-A-338).
+
+    `_assert_bill_scope` proves the caller may act on the bill's client and `assert_client_access` proves they may act on the body's,
+    and a caller who reaches both could record a charge under one client against the other's bill. `bill_client` is None in mock
+    mode, where there is no bill to compare."""
+    if bill_client is not None and body_client is not None and str(bill_client).lower() != str(body_client).lower():
+        raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
+
+
 def _assert_batch_scope(current_user: dict, client_ids) -> None:
     """Every DISTINCT client in a bulk payload, checked before ANY row is written.
 
@@ -2588,8 +2598,9 @@ def add_landed_cost(
     `applied_at` staying NULL is what lets the register report that it is not
     in the cost rather than leaving it out of a figure that reads as complete.
     """
-    _assert_bill_scope(current_user, bill_id)
+    bill_client = _assert_bill_scope(current_user, bill_id)
     assert_client_access(current_user, data.client_id)
+    _assert_body_client_is_the_bills(bill_client, data.client_id, bill_id)
     if _USE_MOCK:
         return api_response(True, None)
     from core.supabase_client import get_supabase
@@ -2640,6 +2651,9 @@ def put_landed_cost_basis(
 ):
     """Record the client's basis, or override it for one consignment."""
     assert_client_access(current_user, data.client_id)
+    if data.bill_id:
+        # A bill-level override is addressed by the bill's id: the bill must be the body's client's (POST-A-338).
+        _assert_body_client_is_the_bills(_assert_bill_scope(current_user, data.bill_id), data.client_id, data.bill_id)
     if _USE_MOCK:
         return api_response(True, None)
     from core.supabase_client import get_supabase

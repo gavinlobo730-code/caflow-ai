@@ -87,6 +87,7 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Needed:** DPDP Act s.8(7) and the Rules; Companies Act s.128(5); the Income-tax record-keeping periods.
 - **Who can supply it:** Counsel with a practising CA.
 - **Stays unbuilt meanwhile:** Scrub-in-place erasure; any retention job (nothing is deleted meanwhile, which is how it behaves today); the retention period on soft-deleted documents.
+- **Also asked here (28 October 2026):** must the log of statement emails sent to a customer be KEPT after that customer is permanently deleted, or may it go with the customer? Today it goes with the customer, as it always did; the books it was drawn from (invoices, receipts, notes) already stop the delete. Needed: the same texts as above, read for a mail log.
 - **Ledger:** POST-B-296, POST-B-313, POST-B-017, POST-B-271
 
 ### S4. Notice, terms and processor agreement

@@ -80,7 +80,8 @@ def refusal(
         # blocker is a referential one.
         return (
             f"This {party} still has linked records that carry no accounting "
-            f"date — a recurring template or an opening balance — so a "
+            f"date — a recurring template, a post-dated cheque, a "
+            f"lower-deduction certificate or an opening balance — so a "
             f"retention date cannot be computed for it. It cannot be "
             f"permanently deleted while they exist. Deactivate the {party} "
             f"instead to preserve history."
@@ -104,4 +105,25 @@ def refusal(
         f"{decision.reason} Until then this {party} cannot be permanently "
         f"deleted — its records would cascade away with it. Deactivate the "
         f"{party} instead to preserve history."
+    )
+
+
+#: What a dependency's label is called in a sentence a CA reads.
+_RECORD_WORDS = {
+    "invoices": "invoices", "receipts": "receipts", "credit_notes": "credit notes", "debit_notes": "debit notes",
+    "recurring_templates": "recurring templates", "bills": "bills", "payments": "payments",
+    "cheques": "post-dated cheques", "certificates": "lower-deduction certificates",
+}
+
+
+def unreadable_refusal(party: str, labels: list[str]) -> str:
+    """The sentence for a permanent delete whose dependency count could not be taken (POST-A-334).
+
+    The count used to answer ZERO for a table it could not read, on the reasoning that a missing or locked table "must never mask a
+    dependency" while doing exactly that, so an outage turned a refusal into a delete that cascaded the records away. An unknown count is
+    a reason to stop, said in words, with the way out."""
+    names = ", ".join(_RECORD_WORDS.get(label, label.replace("_", " ")) for label in labels)
+    return (
+        f"Could not check whether this {party} has {names} on record, and a permanent delete would remove them with it, so nothing was "
+        f"deleted. Try again in a moment, or deactivate the {party} instead to preserve history."
     )

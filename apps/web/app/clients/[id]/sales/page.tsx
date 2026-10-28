@@ -2983,7 +2983,7 @@ function Customers({
     const token = await getAuthToken();
     const res = await apiGet(`/api/customers/${c.id}/dependencies`, token);
     if (res.success) setDeleteDeps(res.data as CustomerDependencies);
-    else { showToast("Could not check customer dependencies", "error"); setDeleteTarget(null); }
+    else { showToast(res.error || "Could not check customer dependencies", "error"); setDeleteTarget(null); }
   }
 
   // Permanent delete — only reachable when the dependency check returned clean.
@@ -3330,6 +3330,7 @@ function Customers({
                       ["credit_notes", "Credit notes"],
                       ["debit_notes", "Debit notes"],
                       ["recurring_templates", "Recurring templates"],
+                      ["cheques", "Post-dated cheques"],
                       ["opening_balance", "Opening balance"],
                     ] as const)
                       .filter(([k]) => (deleteDeps.dependencies?.[k] ?? 0) > 0)

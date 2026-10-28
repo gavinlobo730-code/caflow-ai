@@ -381,7 +381,9 @@ class _Q:
 
 class _FakeDB:
     def __init__(self, **tables):
-        self.store = {k: list(v) for k, v in tables.items()}
+        # The vendor every document here names is this client's (POST-A-338): the create doors ask for it.
+        self.store = {"vendors": [{"id": "V1", "firm_id": "F1", "client_id": "C1"}]}
+        self.store.update({k: list(v) for k, v in tables.items()})
 
     def table(self, name):
         return _Q(self.store, name)

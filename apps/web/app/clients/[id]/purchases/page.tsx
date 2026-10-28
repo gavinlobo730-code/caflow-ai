@@ -1785,7 +1785,7 @@ function Vendors({ clientId }: { clientId: string }) {
     const token = await getAuthToken();
     const res = await apiGet(`/api/vendors/${v.id}/dependencies`, token);
     if (res.success) setDeleteDeps(res.data as VendorDependencies);
-    else { setMsg({ type: "err", text: "Could not check vendor dependencies" }); setDeleteTarget(null); }
+    else { setMsg({ type: "err", text: res.error || "Could not check vendor dependencies" }); setDeleteTarget(null); }
   }
 
   // Permanent delete — only reachable when the dependency check returned clean.
@@ -2043,6 +2043,8 @@ function Vendors({ clientId }: { clientId: string }) {
                       ["debit_notes", "Debit notes"],
                       ["credit_notes", "Credit notes"],
                       ["recurring_templates", "Recurring templates"],
+                      ["cheques", "Post-dated cheques"],
+                      ["certificates", "Lower-deduction certificates"],
                       ["opening_balance", "Opening balance"],
                     ] as const)
                       .filter(([k]) => (deleteDeps.dependencies?.[k] ?? 0) > 0)

@@ -430,6 +430,10 @@ def test_a_charge_on_ANOTHER_bill_is_not_deletable_through_this_door():
 # ── 6. the Bill of Entry carry-over ─────────────────────────────────────────
 
 def _boe(db, *, bill_id, bcd=0, swc=0, other=0, be_id=None):
+    # The bill a Bill of Entry names is this client's (POST-A-338): the carry-over reads it under the client, so a test that names a
+    # bill has to hold it. A test that seeded the bill itself keeps its own row.
+    if bill_id and not any(r.get("id") == bill_id for r in db.rows("purchase_bills")):
+        db.seed("purchase_bills", {"id": bill_id, "firm_id": FIRM, "client_id": CLIENT, "bill_no": "BILL-1", "status": "draft"})
     return db.seed("bills_of_entry", {
         "id": be_id or str(uuid.uuid4()),
         "firm_id": FIRM, "client_id": CLIENT, "be_number": "BE-1",

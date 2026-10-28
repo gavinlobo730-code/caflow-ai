@@ -38,6 +38,7 @@ from models.common import api_response
 from models.invoices import InvoiceLineIn
 from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
+from services import named_row_ownership
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.document_header_writer import update_header
@@ -241,6 +242,8 @@ def create_sales_debit_note(data: SalesDebitNoteIn, current_user: dict = Depends
         from core.supabase_client import get_supabase
         from services.numbering import insert_numbered_document_with_lines
         db = get_supabase()
+        # THE CUSTOMER IS THIS CLIENT'S (POST-A-338): the foreign key is not client-aware.
+        named_row_ownership.customer_is_the_clients(db, firm_id, client_id, data["customer_id"])
         sdn = insert_numbered_document_with_lines(
             db, "sales_debit_notes", payload, "debit_note_no",
             lambda s: f"SDN-{fy}-{s:04d}",
@@ -328,6 +331,7 @@ def update_sales_debit_note(sdn_id: str, data: SalesDebitNoteUpdateIn, current_u
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Debit note {sdn_id} not found")
         d = resp.data[0]
+        named_row_ownership.customer_is_the_clients(db, firm_id, d.get("client_id"), data.get("customer_id"))
         status = d.get("status")
         if status != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
             raise HTTPException(

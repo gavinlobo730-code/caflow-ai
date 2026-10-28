@@ -38,6 +38,7 @@ from models.common import api_response
 from models.invoices import InvoiceLineIn
 from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
+from services import named_row_ownership
 from core.permissions import rbac
 from core.storage_door import StoragePathRefused, storage_folder
 from core.uploads import accept_upload, safe_path_segment
@@ -253,6 +254,8 @@ def create_purchase_credit_note(data: PurchaseCreditNoteIn, current_user: dict =
         from core.supabase_client import get_supabase
         from services.numbering import insert_numbered_document_with_lines
         db = get_supabase()
+        # THE VENDOR IS THIS CLIENT'S (POST-A-338): the foreign key is not client-aware.
+        named_row_ownership.vendor_is_the_clients(db, firm_id, client_id, data["vendor_id"])
         pcn = insert_numbered_document_with_lines(
             db, "purchase_credit_notes", payload, "credit_note_no",
             lambda s: f"PCN-{fy}-{s:04d}",
@@ -339,6 +342,7 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Credit note {pcn_id} not found")
         d = resp.data[0]
+        named_row_ownership.vendor_is_the_clients(db, firm_id, d.get("client_id"), data.get("vendor_id"))
         status = d.get("status")
         if status != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
             raise HTTPException(

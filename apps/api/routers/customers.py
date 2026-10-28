@@ -157,6 +157,11 @@ _DEPENDENCY_TABLES: list[tuple[str, str, str | None]] = [
     # record was an issued debit note could be hard-deleted and the document would go with it.
     ("debit_notes", "sales_debit_notes", "debit_note_date"),
     ("recurring_templates", "recurring_invoice_templates", None),
+    # A memorandum of a cheque the practice holds or has presented, until it is converted to a receipt (POST-A-334). Its customer_id
+    # is ON DELETE CASCADE, so a hard delete removed the memorandum of money held without a word. UNDATED on purpose: it blocks on
+    # referential grounds and says no statutory clock, because whether a memorandum is a book of account is not something this list
+    # decides.
+    ("cheques", "post_dated_cheques", None),
 ]
 # Tables with a deleted_at (soft-delete) column — a deleted row is no longer
 # a live accounting record and must not block a customer's permanent delete.
@@ -175,6 +180,7 @@ def _customer_dependencies(db, customer_id: str, opening_balance_paise: int) -> 
     """
     counts: dict[str, int] = {}
     latest: str | None = None
+    unreadable: list[str] = []
     for label, table, date_col in _DEPENDENCY_TABLES:
         try:
             columns = "id" if date_col is None else f"id, {date_col}"
@@ -193,16 +199,20 @@ def _customer_dependencies(db, customer_id: str, opening_balance_paise: int) -> 
                     if isinstance(value, str) and len(value) >= 10:
                         if latest is None or value[:10] > latest:
                             latest = value[:10]
-        except Exception as e:  # a missing/locked table must never mask a dependency
+        except Exception as e:
+            # A TABLE THAT COULD NOT BE READ IS NOT A TABLE WITH NOTHING IN IT (POST-A-334). This answered zero, under a comment saying a
+            # missing or locked table "must never mask a dependency", which is the thing it did: the records the count would have
+            # found were cascaded away with the customer. The caller refuses, in words, while any table is unreadable.
             _logger.warning("dependency count failed for %s: %s", table, e)
             counts[label] = 0
+            unreadable.append(label)
     counts["opening_balance"] = 1 if (opening_balance_paise or 0) != 0 else 0
     total = sum(counts.values())
     # latest_record_date is the newest DATED accounting record. None means the
-    # only blockers are undated ones (a recurring template, an opening balance),
+    # only blockers are undated ones (a recurring template, a post-dated cheque, an opening balance),
     # which block referentially and carry no statutory clock.
     return {"counts": counts, "total": total, "has_any": total > 0,
-            "latest_record_date": latest}
+            "latest_record_date": latest, "unreadable": unreadable}
 
 
 # ---------------------------------------------------------------------------
@@ -752,12 +762,14 @@ def get_customer_dependencies(
         opening = cust.get("opening_balance_paise") or 0
         if _USE_MOCK:
             deps = {"counts": {"invoices": 0, "receipts": 0, "credit_notes": 0, "debit_notes": 0,
-                               "recurring_templates": 0,
+                               "recurring_templates": 0, "cheques": 0,
                                "opening_balance": 1 if opening else 0},
                     "total": 1 if opening else 0, "has_any": bool(opening)}
         else:
             from core.supabase_client import get_supabase
             deps = _customer_dependencies(get_supabase(), customer_id, opening)
+        if deps.get("unreadable"):
+            return api_response(False, None, party_erasure.unreadable_refusal(party_erasure.CUSTOMER, deps["unreadable"]))
         return api_response(True, {
             "can_delete": not deps["has_any"],
             "dependencies": deps["counts"],
@@ -824,6 +836,11 @@ def delete_customer(
         if permanent:
             opening = cust.get("opening_balance_paise") or 0
             deps = _customer_dependencies(db, customer_id, opening)
+            if deps.get("unreadable"):
+                raise HTTPException(
+                    status_code=503,
+                    detail=party_erasure.unreadable_refusal(party_erasure.CUSTOMER, deps["unreadable"]),
+                )
             if deps["has_any"]:
                 # CASCADE FKs would otherwise destroy these records silently.
                 # The refusal names the statute and the date it lapses, not just

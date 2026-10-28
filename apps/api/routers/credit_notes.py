@@ -15,6 +15,7 @@ from models.common import api_response
 from models.invoices import InvoiceLineIn
 from core import db_provider
 from core.authz import assert_client_access, can_access_client
+from services import named_row_ownership
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.document_header_writer import update_header
@@ -289,6 +290,8 @@ def create_credit_note(
         else:
             from core.supabase_client import get_supabase
             db = get_supabase()
+            # THE CUSTOMER IS THIS CLIENT'S (POST-A-338): the foreign key is not client-aware.
+            named_row_ownership.customer_is_the_clients(db, firm_id, client_id, data["customer_id"])
             if data.get("sales_invoice_id"):
                 inv_resp = (
                     db.table("client_sales_invoices")
@@ -568,6 +571,7 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
         c = resp.data[0]
+        named_row_ownership.customer_is_the_clients(db, firm_id, c.get("client_id"), data.get("customer_id"))
         status = c.get("status")
         if status != "draft" and (set(data.keys()) - soft_fields or lines_data is not None):
             raise HTTPException(

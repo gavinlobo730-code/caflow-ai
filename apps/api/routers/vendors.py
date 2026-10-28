@@ -140,6 +140,11 @@ _VENDOR_DEPENDENCY_TABLES: list[tuple[str, str, str | None]] = [
     # A schedule and not an accounting record, so it carries no date (the customer side's recurring template is the same). Its
     # vendor_id is ON DELETE CASCADE, so a hard delete of the vendor would remove the schedule without a word.
     ("recurring_templates", "recurring_purchase_bill_templates", None),
+    # A memorandum of a cheque issued, until it is converted to a payment, and a section 197 certificate held on this payee that the
+    # withholding reads (services/vendor_tds) (POST-A-334). Both vendor_id columns are ON DELETE CASCADE, so a hard delete removed them
+    # without a word. UNDATED on purpose, as the recurring template is: they block on referential grounds and claim no statutory clock.
+    ("cheques", "post_dated_cheques", None),
+    ("certificates", "tds_lower_deduction_certificates", None),
 ]
 # Tables with a deleted_at (soft-delete) column — a deleted row is no longer
 # a live accounting record and must not block a vendor's permanent delete.
@@ -155,6 +160,7 @@ def _vendor_dependencies(db, vendor_id: str, opening_balance_paise: int) -> dict
     lapses. None means the only blocker carries no accounting date."""
     counts: dict[str, int] = {}
     latest: str | None = None
+    unreadable: list[str] = []
     for label, table, date_col in _VENDOR_DEPENDENCY_TABLES:
         try:
             columns = "id" if date_col is None else f"id, {date_col}"
@@ -172,15 +178,17 @@ def _vendor_dependencies(db, vendor_id: str, opening_balance_paise: int) -> dict
                     if isinstance(value, str) and len(value) >= 10:
                         if latest is None or value[:10] > latest:
                             latest = value[:10]
-        except Exception as e:  # a missing/locked table must never mask a dependency
+        except Exception as e:
+            # A TABLE THAT COULD NOT BE READ IS NOT A TABLE WITH NOTHING IN IT (POST-A-334): see customers._customer_dependencies.
             _logger.warning("dependency count failed for %s: %s", table, e)
             counts[label] = 0
+            unreadable.append(label)
     counts["opening_balance"] = 1 if (opening_balance_paise or 0) != 0 else 0
     total = sum(counts.values())
     # latest_record_date is the newest DATED accounting record. None means the
-    # only blocker is an opening balance, which carries no statutory clock.
+    # only blockers are undated (an opening balance, a recurring template, a cheque, a certificate), which carry no statutory clock.
     return {"counts": counts, "total": total, "has_any": total > 0,
-            "latest_record_date": latest}
+            "latest_record_date": latest, "unreadable": unreadable}
 
 
 # ---------------------------------------------------------------------------
@@ -755,11 +763,13 @@ def get_vendor_dependencies(
         opening = vend.get("opening_balance_paise") or 0
         if _USE_MOCK:
             deps = {"counts": {"bills": 0, "payments": 0, "debit_notes": 0, "credit_notes": 0, "recurring_templates": 0,
-                               "opening_balance": 1 if opening else 0},
+                               "cheques": 0, "certificates": 0, "opening_balance": 1 if opening else 0},
                     "total": 1 if opening else 0, "has_any": bool(opening)}
         else:
             from core.supabase_client import get_supabase
             deps = _vendor_dependencies(get_supabase(), vendor_id, opening)
+        if deps.get("unreadable"):
+            return api_response(False, None, party_erasure.unreadable_refusal(party_erasure.VENDOR, deps["unreadable"]))
         return api_response(True, {
             "can_delete": not deps["has_any"],
             "dependencies": deps["counts"],
@@ -823,6 +833,11 @@ def delete_vendor(
         if permanent:
             opening = vend.get("opening_balance_paise") or 0
             deps = _vendor_dependencies(db, vendor_id, opening)
+            if deps.get("unreadable"):
+                raise HTTPException(
+                    status_code=503,
+                    detail=party_erasure.unreadable_refusal(party_erasure.VENDOR, deps["unreadable"]),
+                )
             if deps["has_any"]:
                 # The refusal names the statute and the date it lapses, not just
                 # that records exist — see services/party_erasure.py.

@@ -156,16 +156,15 @@ class FXReportingService:
         return self._foreign_bank_balances_python(db, firm_id, client_id)
 
     def _foreign_bank_balances_python(self, db, firm_id, client_id) -> list[dict]:
-        """The pre-281 implementation. A no-op until bank_accounts.currency exists
-        (the column is probed, so this is safe on any schema). foreign balance =
-        Σ(txn_debit − txn_credit) over the account's posted journal lines; base
-        carrying = Σ(debit − credit) in paise."""
-        try:
-            banks = (privileged_for(db).table("bank_accounts")
-                     .select("id, bank_name, account_no, currency, coa_account_id")
-                     .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []
-        except Exception:  # noqa: BLE001 — column/table absent ⇒ no foreign bank data yet
-            return []
+        """The pre-281 implementation. foreign balance = Σ(txn_debit − txn_credit) over
+        the account's posted journal lines; base carrying = Σ(debit − credit) in paise.
+
+        A READ THAT FAILS RAISES (POST-A-342). It used to answer "no foreign bank data yet" on any error, on the reasoning that
+        `bank_accounts.currency` might not exist; it does, so what the swallow could still hide was an outage, and the report of the
+        foreign bank balances then showed none, as though the client held none."""
+        banks = (privileged_for(db).table("bank_accounts")
+                 .select("id, bank_name, account_no, currency, coa_account_id")
+                 .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []
         out = []
         for b in banks:
             cur = (b.get("currency") or _BASE).upper()

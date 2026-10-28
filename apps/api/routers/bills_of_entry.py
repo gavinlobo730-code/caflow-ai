@@ -26,6 +26,7 @@ from models.common import api_response
 from domain.gst import bill_of_entry as boe
 from services import bill_of_entry_service as svc
 from services import landed_cost_service
+from services import named_row_ownership
 
 router = APIRouter(prefix="/api/bills-of-entry", tags=["bills_of_entry"])
 
@@ -151,6 +152,10 @@ def create_bill_of_entry(
     from core.supabase_client import get_service_supabase
     from services.audit_service import log_event
     db = get_service_supabase()
+    # THE VENDOR AND THE BILL ARE THIS CLIENT'S (POST-A-338). The carry-over below attaches the customs duty to the named bill, so a
+    # bill of a sibling client would have taken this client's duty into its own stock cost.
+    named_row_ownership.vendor_is_the_clients(db, current_user.get("firm_id"), data.client_id, data.vendor_id)
+    named_row_ownership.purchase_bill_is_the_clients(db, current_user.get("firm_id"), data.client_id, data.purchase_bill_id)
     # EVERY COLUMN NAMED, rather than `**data.model_dump()`. The spread reads
     # better and is invisible to
     # `tests/test_backend_inserts_supply_every_required_column_pg.py` and to the
@@ -227,6 +232,9 @@ def update_bill_of_entry(
             status_code=409,
             detail="This Bill of Entry is posted. Its journal is on the ledger "
                    "and a posted entry cannot be rewritten — reverse it instead.")
+    # Only the ids this request SENDS are asked: a field left out is what the row already holds (POST-A-338).
+    named_row_ownership.vendor_is_the_clients(db, current_user.get("firm_id"), client_id, data.vendor_id)
+    named_row_ownership.purchase_bill_is_the_clients(db, current_user.get("firm_id"), client_id, data.purchase_bill_id)
     # Named, for the same reason the insert above is. A None means "leave it
     # alone", which is what every field on the update model means.
     patch = {k: v for k, v in {

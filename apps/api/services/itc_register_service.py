@@ -178,6 +178,9 @@ def record_reversal(db, firm_id: str, client_id: str, *, journal_entry_id: str,
         raise ITCRegisterError("A reversal of nothing is not a declaration.")
 
     _posted_journal(db, firm_id, client_id, journal_entry_id)
+    # THE BILL THE REVERSAL IS FILED AGAINST IS THIS CLIENT'S (POST-A-338).
+    from services import named_row_ownership
+    named_row_ownership.purchase_bill_is_the_clients(db, firm_id, client_id, purchase_bill_id)
     if _existing_for_journal(db, firm_id, journal_entry_id):
         raise ITCRegisterError(
             "That journal is already registered. Declaring one posting twice "
