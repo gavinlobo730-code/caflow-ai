@@ -45,6 +45,9 @@ _ALLOWED_SUFFIXES = (
     "migrations/371_the_dead_tds_rate_master_says_it_is_not_the_authority.sql",
     "migrations/371_the_dead_tds_rate_master_says_it_is_not_the_authority_rollback.sql",
     "tests/test_the_dead_tds_rate_master_has_no_readers.py",
+    # names the table to say it is still open in a migration-built database although production has closed it (POST-A-355); it reads
+    # the table's privileges and nothing in it
+    "tests/test_the_tables_the_signed_in_role_cannot_write_are_closed_in_the_migration_built_database_pg.py",
 )
 
 #: The production snapshots record the table because it IS in production. They

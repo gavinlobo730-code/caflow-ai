@@ -46,6 +46,7 @@ import routers.sales_invoices as sales_router
 import services.recurring_invoice_service as ri_service
 import services.recurring_purchase_bill_service as rpb_service
 from core.auth import get_current_user
+from tests._call_graph import CallGraph, called_name, chain_of
 from tests.e2e_harness import FakeDB, wire_e2e
 
 API = Path(__file__).resolve().parent.parent
@@ -60,7 +61,7 @@ KINDS: dict[str, tuple[re.Pattern, set[str], set[str]]] = {
     "order": (re.compile(r"(^|_)order_id$"), {"order_of_client", "row_of_client"}, {"purchase_orders", "sales_orders"}),
     "quotation": (re.compile(r"(^|_)quotation_id$"), {"row_of_client"}, {"sales_quotations"}),
 }
-SCAN_DIRS = ("services", "domain", "repositories", "routers", "models", "core")
+SCAN_DIRS = ("services", "domain", "repositories", "routers", "models", "core")      # not jobs: nothing a route calls lives there
 WRITING_VERBS = ("post", "put", "patch", "delete")
 DEPTH = 5
 
@@ -73,45 +74,12 @@ REVIEWED: dict[tuple[str, str, str], str] = {
 
 
 # ── the scanner ────────────────────────────────────────────────────────────────────────────────────────────────────────────
-class _Tree:
-    """Every module under the scanned directories of `root`, its functions and methods, and what each file imports."""
+class _Tree(CallGraph):
+    """The shared call graph, plus the request models that carry a named field and what a function asks."""
 
     def __init__(self, root: Path):
-        self.mods: dict[str, ast.Module] = {}
-        for d in SCAN_DIRS:
-            for p in (root / d).rglob("*.py") if (root / d).is_dir() else []:
-                try:
-                    tree = ast.parse(p.read_text(encoding="utf-8"))
-                except (SyntaxError, UnicodeDecodeError):
-                    continue
-                self.mods[p.relative_to(root).with_suffix("").as_posix().replace("/", ".")] = tree
-        self.funcs: dict[tuple[str, str], ast.AST] = {}
-        self.imports: dict[str, dict] = {}
-        self.by_name: dict[str, list[tuple[str, str]]] = {}
-        for mod, tree in self.mods.items():
-            self.imports[mod] = self._imports_of(tree)
-            for node in tree.body:
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    self.funcs[(mod, node.name)] = node
-                elif isinstance(node, ast.ClassDef):
-                    for b in node.body:
-                        if isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                            self.funcs[(mod, f"{node.name}.{b.name}")] = b
-        for (mod, name) in self.funcs:
-            self.by_name.setdefault(name.split(".")[-1], []).append((mod, name))
+        super().__init__(root, SCAN_DIRS)
         self.models = self._models_with_named_fields()
-
-    def _imports_of(self, scope) -> dict:
-        out: dict = {}
-        for node in ast.walk(scope):
-            if isinstance(node, ast.Import):
-                for a in node.names:
-                    out[a.asname or a.name.split(".")[0]] = ("mod", a.name if a.asname else a.name.split(".")[0])
-            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-                for a in node.names:
-                    full = f"{node.module}.{a.name}"
-                    out[a.asname or a.name] = ("mod", full) if full in self.mods else ("sym", node.module, a.name)
-        return out
 
     def _models_with_named_fields(self) -> dict[str, dict[str, set[str]]]:
         found: dict[str, dict[str, set[str]]] = {}
@@ -127,23 +95,10 @@ class _Tree:
                                     found.setdefault(c.name, {}).setdefault(kind, set()).add(n.target.id)
         return found
 
-    # ── what a function asks, itself and down its calls ──
     @staticmethod
-    def _called(call: ast.Call):
-        f = call.func
-        return f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", None)
-
-    @staticmethod
-    def _chain(call: ast.Call):
-        out, node = [], call
-        while isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            out.append((node.func.attr, node))
-            node = node.func.value
-        return out
-
-    def _tables(self, fn) -> set[str]:
+    def _tables(fn) -> set[str]:
         return {c.args[0].value for c in ast.walk(fn)
-                if isinstance(c, ast.Call) and self._called(c) == "table" and c.args and isinstance(c.args[0], ast.Constant)}
+                if isinstance(c, ast.Call) and called_name(c) == "table" and c.args and isinstance(c.args[0], ast.Constant)}
 
     @staticmethod
     def _compares_a_clients_id(fn) -> bool:
@@ -159,12 +114,12 @@ class _Tree:
         for c in ast.walk(fn):
             if not isinstance(c, ast.Call):
                 continue
-            name = self._called(c) or ""
+            name = called_name(c) or ""
             for kind, (_, asking, _) in KINDS.items():
                 if name in asking:
                     asked.add(kind)
             table, filtered = None, False
-            for method, link in self._chain(c):
+            for method, link in chain_of(c):
                 if method == "table" and link.args and isinstance(link.args[0], ast.Constant):
                     table = link.args[0].value
                 if method in ("eq", "in_") and link.args and isinstance(link.args[0], ast.Constant) and link.args[0].value == "client_id":
@@ -175,39 +130,10 @@ class _Tree:
                         asked.add(kind)
         return asked
 
-    def _resolve(self, call: ast.Call, mod: str, imports: dict, cls) -> list[tuple[str, str]]:
-        f = call.func
-        if isinstance(f, ast.Name):
-            if (mod, f.id) in self.funcs:
-                return [(mod, f.id)]
-            i = imports.get(f.id)
-            if i and i[0] == "sym" and (i[1], i[2]) in self.funcs:
-                return [(i[1], i[2])]
-            return []
-        if isinstance(f, ast.Attribute):
-            if isinstance(f.value, ast.Name):
-                if f.value.id == "self" and cls and (mod, f"{cls}.{f.attr}") in self.funcs:
-                    return [(mod, f"{cls}.{f.attr}")]
-                i = imports.get(f.value.id)
-                if i and i[0] in ("mod", "sym"):
-                    if i[0] == "mod" and (i[1], f.attr) in self.funcs:
-                        return [(i[1], f.attr)]
-                    methods = [k for k in self.funcs if k[0] == i[1] and k[1].endswith("." + f.attr)]
-                    if len(methods) == 1:
-                        return methods
-            candidates = self.by_name.get(f.attr, [])
-            if len(candidates) == 1:
-                return candidates
-        return []
-
     def asks(self, key: tuple[str, str], depth: int = DEPTH, seen: frozenset = frozenset()) -> set[str]:
-        mod, name = key
         fn = self.funcs[key]
         asked = self._own_kinds(fn)
-        local = dict(self.imports[mod])
-        local.update(self._imports_of(fn))
-        cls = name.split(".")[0] if "." in name else None
-        callees = [k for c in ast.walk(fn) if isinstance(c, ast.Call) for k in self._resolve(c, mod, local, cls)]
+        callees = [t for _call, targets in self.calls_of(key) for t in targets]
         if self._compares_a_clients_id(fn):
             tables = set(self._tables(fn))
             for k in callees:
