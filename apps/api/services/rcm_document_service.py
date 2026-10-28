@@ -196,9 +196,11 @@ def _bill_or_none(db, firm_id: str, bill_id: str) -> Optional[dict]:
         .eq("id", bill_id).eq("firm_id", firm_id).limit(1).execute().data)
 
 
-def _bill(db, firm_id: str, bill_id: str) -> dict:
+def _bill(db, firm_id: str, client_id: str, bill_id: str) -> dict:
+    """The bill, if it is THIS client's. A bill id alone names a bill of any client of the firm and the route proved the caller may act
+    on the client they SENT (POST-A-337), so another client's bill answers in the words a missing one does."""
     row = _bill_or_none(db, firm_id, bill_id)
-    if not row or row.get("deleted_at"):
+    if not row or row.get("deleted_at") or str(row.get("client_id")) != str(client_id):
         raise HTTPException(status_code=404, detail="Purchase bill not found.")
     return row
 
@@ -245,12 +247,13 @@ def _client(db, firm_id: str, client_id: str) -> dict:
     return row
 
 
-def _payment(db, firm_id: str, payment_id: str) -> dict:
+def _payment(db, firm_id: str, client_id: str, payment_id: str) -> dict:
+    """The payment, if it is THIS client's (POST-A-337): the same rule as `_bill`, the same words for a missing one."""
     row = _first(db.table("purchase_payments").select(
         "id, firm_id, client_id, vendor_id, purchase_bill_id, "
         "payment_no, payment_date, amount_paise, reference_no")
         .eq("id", payment_id).eq("firm_id", firm_id).limit(1).execute().data)
-    if not row:
+    if not row or str(row.get("client_id")) != str(client_id):
         raise HTTPException(status_code=404, detail="Payment not found.")
     return row
 
@@ -323,7 +326,7 @@ def existing_for(db, firm_id: str, *, bill_id: Optional[str] = None,
 
 # ── The two previews ─────────────────────────────────────────────────────────
 
-def preview_self_invoice(db, *, firm_id: str, bill_id: str,
+def preview_self_invoice(db, *, firm_id: str, client_id: str, bill_id: str,
                          document_no: Optional[str] = None,
                          document_date: Optional[str] = None) -> dict:
     """What a s.31(3)(f) self-invoice for this bill would say, or why none is due.
@@ -331,7 +334,7 @@ def preview_self_invoice(db, *, firm_id: str, bill_id: str,
     Writes nothing. The same function `issue` builds from, so what the CA
     confirms is what gets stored.
     """
-    bill = _bill(db, firm_id, bill_id)
+    bill = _bill(db, firm_id, client_id, bill_id)
     vendor = _vendor(db, firm_id, bill["vendor_id"])
     decision = rd.self_invoice_due(bill, vendor)
     registration, _why = rd.registration_of(vendor)
@@ -363,12 +366,12 @@ def preview_self_invoice(db, *, firm_id: str, bill_id: str,
     return out
 
 
-def preview_payment_voucher(db, *, firm_id: str, payment_id: str,
+def preview_payment_voucher(db, *, firm_id: str, client_id: str, payment_id: str,
                             document_no: Optional[str] = None,
                             document_date: Optional[str] = None) -> dict:
     """What a s.31(3)(g) payment voucher for this payment would say, or why none
     is due. Writes nothing."""
-    payment = _payment(db, firm_id, payment_id)
+    payment = _payment(db, firm_id, client_id, payment_id)
     vendor = _vendor(db, firm_id, payment["vendor_id"])
     settled = settled_bills(db, firm_id, payment)
     decision = rd.payment_voucher_due(payment, settled)
@@ -404,7 +407,7 @@ def preview_payment_voucher(db, *, firm_id: str, payment_id: str,
 
 # ── The write ────────────────────────────────────────────────────────────────
 
-def issue(db, *, firm_id: str, kind: str, bill_id: Optional[str] = None,
+def issue(db, *, firm_id: str, client_id: str, kind: str, bill_id: Optional[str] = None,
           payment_id: Optional[str] = None, document_no: Optional[str] = None,
           document_date: Optional[str] = None, notes: Optional[str] = None,
           actor_id: Optional[str] = None) -> dict:
@@ -415,11 +418,11 @@ def issue(db, *, firm_id: str, kind: str, bill_id: Optional[str] = None,
     if kind not in rd.KINDS:
         raise HTTPException(status_code=422, detail=f"Unknown document kind {kind!r}.")
 
-    preview = (preview_self_invoice(db, firm_id=firm_id, bill_id=bill_id,
+    preview = (preview_self_invoice(db, firm_id=firm_id, client_id=client_id, bill_id=bill_id,
                                     document_no=document_no,
                                     document_date=document_date)
                if kind == rd.KIND_SELF_INVOICE
-               else preview_payment_voucher(db, firm_id=firm_id,
+               else preview_payment_voucher(db, firm_id=firm_id, client_id=client_id,
                                             payment_id=payment_id,
                                             document_no=document_no,
                                             document_date=document_date))
@@ -445,9 +448,8 @@ def issue(db, *, firm_id: str, kind: str, bill_id: Optional[str] = None,
         # IRP reject such a number anyway.
         raise HTTPException(status_code=422, detail=violation)
 
-    parent = _bill(db, firm_id, bill_id) if kind == rd.KIND_SELF_INVOICE \
-        else _payment(db, firm_id, payment_id)
-    client_id = parent["client_id"]
+    parent = _bill(db, firm_id, client_id, bill_id) if kind == rd.KIND_SELF_INVOICE \
+        else _payment(db, firm_id, client_id, payment_id)
     date = particulars.get("document_date") or ist_today().isoformat()
 
     from services.period_validation_service import period_validation_service

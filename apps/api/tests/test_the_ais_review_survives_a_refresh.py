@@ -114,7 +114,7 @@ def test_the_portals_own_wording_is_kept_beside_the_bucket():
 def test_the_working_is_read_back_too():
     got = _upload()
     salary = next(r for r in got["records"] if r["transaction_type"] == "Salary")
-    ais_service.save_working(firm_id=FIRM, record_id=salary["id"],
+    ais_service.save_working(firm_id=FIRM, client_id=CLIENT, record_id=salary["id"],
                              books_amount_paise=1250000 * 100, reviewed_by=USER)
     again = ais_service.get_statement(
         firm_id=FIRM, client_id=CLIENT, assessment_year=AY)
@@ -147,12 +147,12 @@ def test_a_null_books_figure_is_not_a_nil_one():
     got = _upload()
     line = got["records"][0]
     saved = ais_service.save_working(
-        firm_id=FIRM, record_id=line["id"], books_amount_paise=None)
+        firm_id=FIRM, client_id=CLIENT, record_id=line["id"], books_amount_paise=None)
     assert saved["status"] == "not_reviewed"
     assert saved["books_amount_paise"] is None
 
     nil = ais_service.save_working(
-        firm_id=FIRM, record_id=line["id"], books_amount_paise=None,
+        firm_id=FIRM, client_id=CLIENT, record_id=line["id"], books_amount_paise=None,
         status="not_in_books", reviewed_by=USER)
     assert nil["status"] == "not_in_books"
     assert nil["books_amount_paise"] == 0
@@ -162,7 +162,7 @@ def test_a_line_the_books_do_not_carry_is_an_open_figure():
     got = _upload()
     stock = next(r for r in got["records"]
                  if r["transaction_type"] == "Stock Sale")
-    ais_service.save_working(firm_id=FIRM, record_id=stock["id"],
+    ais_service.save_working(firm_id=FIRM, client_id=CLIENT, record_id=stock["id"],
                              books_amount_paise=None, status="not_in_books",
                              reviewed_by=USER)
     s = ais_service.get_statement(
@@ -177,11 +177,11 @@ def test_a_shortfall_is_the_difference_and_an_overstatement_is_not_negative():
                     if r["transaction_type"] == "Interest")
     salary = next(r for r in got["records"] if r["transaction_type"] == "Salary")
     # Books carry LESS than AIS: a shortfall of ₹5,000.
-    ais_service.save_working(firm_id=FIRM, record_id=interest["id"],
+    ais_service.save_working(firm_id=FIRM, client_id=CLIENT, record_id=interest["id"],
                              books_amount_paise=40000 * 100, reviewed_by=USER)
     # Books carry MORE than AIS. That is still a question, but it is not
     # undeclared income and must not net off the shortfall above.
-    ais_service.save_working(firm_id=FIRM, record_id=salary["id"],
+    ais_service.save_working(firm_id=FIRM, client_id=CLIENT, record_id=salary["id"],
                              books_amount_paise=1300000 * 100, reviewed_by=USER)
     s = ais_service.get_statement(
         firm_id=FIRM, client_id=CLIENT, assessment_year=AY)["summary"]
@@ -194,7 +194,7 @@ def test_a_shortfall_is_the_difference_and_an_overstatement_is_not_negative():
 def test_the_summary_states_no_tax_and_says_why():
     got = _upload()
     line = got["records"][0]
-    ais_service.save_working(firm_id=FIRM, record_id=line["id"],
+    ais_service.save_working(firm_id=FIRM, client_id=CLIENT, record_id=line["id"],
                              books_amount_paise=None, status="not_in_books",
                              reviewed_by=USER)
     s = ais_service.get_statement(
@@ -242,7 +242,7 @@ def test_matched_cannot_be_asserted_over_two_different_figures():
     got = _upload()
     line = next(r for r in got["records"] if r["transaction_type"] == "Salary")
     with pytest.raises(ais_service.AISRefused) as e:
-        ais_service.save_working(firm_id=FIRM, record_id=line["id"],
+        ais_service.save_working(firm_id=FIRM, client_id=CLIENT, record_id=line["id"],
                                  books_amount_paise=1200000 * 100,
                                  status="matched", reviewed_by=USER)
     assert "not the same" in str(e.value)
@@ -252,7 +252,7 @@ def test_amount_mismatch_cannot_be_asserted_over_two_equal_figures():
     got = _upload()
     line = next(r for r in got["records"] if r["transaction_type"] == "Salary")
     with pytest.raises(ais_service.AISRefused):
-        ais_service.save_working(firm_id=FIRM, record_id=line["id"],
+        ais_service.save_working(firm_id=FIRM, client_id=CLIENT, record_id=line["id"],
                                  books_amount_paise=1250000 * 100,
                                  status="amount_mismatch", reviewed_by=USER)
 
@@ -261,7 +261,7 @@ def test_not_in_books_cannot_be_asserted_over_a_books_figure():
     got = _upload()
     line = got["records"][0]
     with pytest.raises(ais_service.AISRefused) as e:
-        ais_service.save_working(firm_id=FIRM, record_id=line["id"],
+        ais_service.save_working(firm_id=FIRM, client_id=CLIENT, record_id=line["id"],
                                  books_amount_paise=45000 * 100,
                                  status="not_in_books", reviewed_by=USER)
     assert "carry nothing" in str(e.value)
@@ -271,13 +271,13 @@ def test_explained_needs_the_explanation():
     got = _upload()
     line = next(r for r in got["records"] if r["transaction_type"] == "Salary")
     with pytest.raises(ais_service.AISRefused) as e:
-        ais_service.save_working(firm_id=FIRM, record_id=line["id"],
+        ais_service.save_working(firm_id=FIRM, client_id=CLIENT, record_id=line["id"],
                                  books_amount_paise=1200000 * 100,
                                  status="explained", reviewed_by=USER)
     assert "143(1)(a)" in str(e.value)
 
     ok = ais_service.save_working(
-        firm_id=FIRM, record_id=line["id"], books_amount_paise=1200000 * 100,
+        firm_id=FIRM, client_id=CLIENT, record_id=line["id"], books_amount_paise=1200000 * 100,
         status="explained", note="₹50,000 is the March salary credited on "
                                  "2 April and taxable in the next year.",
         reviewed_by=USER)
@@ -291,7 +291,7 @@ def test_explained_needs_the_explanation():
 def test_a_negative_books_figure_is_refused():
     got = _upload()
     with pytest.raises(ais_service.AISRefused):
-        ais_service.save_working(firm_id=FIRM, record_id=got["records"][0]["id"],
+        ais_service.save_working(firm_id=FIRM, client_id=CLIENT, record_id=got["records"][0]["id"],
                                  books_amount_paise=-1, reviewed_by=USER)
 
 
@@ -338,7 +338,7 @@ def test_a_manual_line_needs_a_type_the_product_holds():
 def test_an_identical_line_carries_its_working_onto_the_new_statement():
     got = _upload()
     salary = next(r for r in got["records"] if r["transaction_type"] == "Salary")
-    ais_service.save_working(firm_id=FIRM, record_id=salary["id"],
+    ais_service.save_working(firm_id=FIRM, client_id=CLIENT, record_id=salary["id"],
                              books_amount_paise=1250000 * 100, reviewed_by=USER)
 
     # The department publishes a revised AIS: the STOCK line moved, the
@@ -360,7 +360,7 @@ def test_a_line_whose_amount_moved_does_not_carry_its_working():
     got = _upload()
     stock = next(r for r in got["records"]
                  if r["transaction_type"] == "Stock Sale")
-    ais_service.save_working(firm_id=FIRM, record_id=stock["id"],
+    ais_service.save_working(firm_id=FIRM, client_id=CLIENT, record_id=stock["id"],
                              books_amount_paise=820000 * 100, reviewed_by=USER)
     revised = _statement(
         ("NSE Clearing", "Sale of securities", "Kotak Securities", "910000", "0"),
@@ -443,9 +443,23 @@ def test_another_firms_record_cannot_be_worked_on():
     got = _upload()
     other = "44444444-4444-4444-4444-444444444444"
     with pytest.raises(ais_service.AISRefused):
-        ais_service.save_working(firm_id=other,
+        ais_service.save_working(firm_id=other, client_id=CLIENT,
                                  record_id=got["records"][0]["id"],
                                  books_amount_paise=1)
+
+
+def test_another_clients_record_cannot_be_worked_on_by_naming_it_under_your_own_client():
+    """POST-A-337: the route proves the caller may act on the client they SENT, and a record id names a line of any client of the
+    firm, so a caller assigned to client A could rewrite client B's working by sending A and B's record id. The service answers in
+    the words a missing record gets, and the line is left as it was."""
+    got = _upload()
+    line = got["records"][0]
+    sibling = "55555555-5555-5555-5555-555555555555"
+    before = dict(ais_service.get_record(FIRM, line["id"]))
+    with pytest.raises(ais_service.AISRefused) as e:
+        ais_service.save_working(firm_id=FIRM, client_id=sibling, record_id=line["id"], books_amount_paise=1)
+    assert str(e.value) == "Record not found", "the same words a record that is not there gets"
+    assert ais_service.get_record(FIRM, line["id"]) == before, "and nothing was written"
 
 
 # ── The screen calls it ────────────────────────────────────────────────────

@@ -97,7 +97,7 @@ def preview_self_invoice(
                                    "existing": None})
     from core.supabase_client import get_supabase
     return api_response(True, svc.preview_self_invoice(
-        get_supabase(), firm_id=current_user.get("firm_id"),
+        get_supabase(), firm_id=current_user.get("firm_id"), client_id=client_id,
         bill_id=purchase_bill_id, document_no=document_no,
         document_date=document_date))
 
@@ -119,7 +119,7 @@ def preview_payment_voucher(
                                    "existing": None})
     from core.supabase_client import get_supabase
     return api_response(True, svc.preview_payment_voucher(
-        get_supabase(), firm_id=current_user.get("firm_id"),
+        get_supabase(), firm_id=current_user.get("firm_id"), client_id=client_id,
         payment_id=purchase_payment_id, document_no=document_no,
         document_date=document_date))
 
@@ -167,7 +167,7 @@ def issue_document(
     from core.supabase_client import get_supabase
     from services.audit_service import log_event
     row = svc.issue(
-        get_supabase(), firm_id=current_user.get("firm_id"), kind=data.kind,
+        get_supabase(), firm_id=current_user.get("firm_id"), client_id=data.client_id, kind=data.kind,
         bill_id=data.purchase_bill_id, payment_id=data.purchase_payment_id,
         document_no=data.document_no, document_date=data.document_date,
         notes=data.notes, actor_id=current_user.get("id"))

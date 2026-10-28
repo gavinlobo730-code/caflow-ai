@@ -139,7 +139,7 @@ def delete_supply(
     from core.supabase_client import get_supabase
     from services import ecommerce_operator_service as eco_svc
     from services.audit_service import log_event
-    row = eco_svc.delete_supply(get_supabase(), current_user.get("firm_id"), supply_id)
+    row = eco_svc.delete_supply(get_supabase(), current_user.get("firm_id"), client_id, supply_id)
     log_event(current_user.get("firm_id") or "", "ecommerce_operator_supply",
               supply_id, "delete", actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), old_data=row)
@@ -186,7 +186,7 @@ def delete_unregistered_supply(
     from services import ecommerce_operator_service as eco_svc
     from services.audit_service import log_event
     row = eco_svc.delete_unregistered_supply(get_supabase(),
-                                             current_user.get("firm_id"), supply_id)
+                                             current_user.get("firm_id"), client_id, supply_id)
     log_event(current_user.get("firm_id") or "",
               "ecommerce_operator_unregistered_supply", supply_id, "delete",
               actor_id=current_user.get("auth_user_id"),

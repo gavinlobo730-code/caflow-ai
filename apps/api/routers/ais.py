@@ -135,6 +135,7 @@ def save_working(
     try:
         return api_response(True, ais_service.save_working(
             firm_id=current_user["firm_id"],
+            client_id=req.client_id,
             record_id=record_id,
             books_amount_paise=req.books_amount_paise,
             status=req.status,

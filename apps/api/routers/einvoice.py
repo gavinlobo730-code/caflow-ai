@@ -159,6 +159,17 @@ def create_record(
 ):
     """Create e-invoice record in draft state."""
     assert_client_access(current_user, req.client_id)
+    # THE INVOICE MUST BE THIS CLIENT'S (POST-A-337). `_invoice_treatment` answers None for an invoice it cannot find under the client,
+    # on purpose (an unreadable invoice must not stop a record being prepared), so a foreign invoice id passed straight through: the
+    # record was stored against it, and the 409 below named another client's live record. Asked once, before anything else, in the words
+    # a missing invoice gets. Mock mode has no table to ask.
+    if req.sales_invoice_id:
+        from routers.sales_invoices import _USE_MOCK as _SALES_MOCK
+        if not _SALES_MOCK:
+            from core.supabase_client import get_supabase
+            from services import named_row_ownership
+            named_row_ownership.sales_invoice_is_the_clients(
+                get_supabase(), current_user["firm_id"], req.client_id, req.sales_invoice_id)
     # ONE SUPPLY CANNOT BE DECLARED TWO WAYS (SALES-19). The invoice already
     # settles its own treatment through `supply_type` + `invoice_type` — the
     # fields GSTR-1 is built from — and this endpoint used to store whatever the

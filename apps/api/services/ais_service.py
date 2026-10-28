@@ -225,6 +225,7 @@ def _carry_forward(firm_id: str, client_id: str, ay: str, upload_id: str) -> Non
 def save_working(
     *,
     firm_id: str,
+    client_id: str,
     record_id: str,
     books_amount_paise: Optional[int],
     status: Optional[str] = None,
@@ -238,7 +239,10 @@ def save_working(
     do not carry) and unreviewed is an absence of one.
     """
     record = _get_record(firm_id, record_id)
-    if not record:
+    # THE RECORD MUST BE THIS CLIENT'S (POST-A-337). The route proved the caller may act on the client they SENT; a record id alone
+    # names a line of any client of the firm, so a caller assigned to client A could rewrite client B's working by naming B's line.
+    # A line of another client is answered in the words a missing one gets.
+    if not record or str(record.get("client_id")) != str(client_id):
         raise AISRefused("Record not found")
 
     if status is not None and status not in STATUSES:
