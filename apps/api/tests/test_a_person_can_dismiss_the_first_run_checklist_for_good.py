@@ -11,7 +11,8 @@ WHAT IS ASSERTED
     * the service reads the CALLER's own row only, so a second Partner who has not dismissed it still sees it, and a table that cannot be
       read leaves the card to its steps;
     * `POST /api/onboarding/first-run/dismiss` writes the caller's own `users` row and nobody else's, in their own firm only, keeps the first
-      stamp when asked twice, is refused for the roles that are not shown the card, and writes nothing when the caller has no row;
+      stamp when asked twice, is `identity:write` (a mutating route is not satisfied by a read-level permission) so a role that is never
+      shown the card writes only its own flag, and writes nothing when the caller has no row;
     * the next `GET /api/onboarding/status` for that person says `visible: false, dismissed: true`.
 """
 from __future__ import annotations
@@ -149,10 +150,13 @@ def test_a_manager_can_dismiss_it_too(world):
     assert _stamp(world, "u-m1") is not None
 
 
-def test_a_role_that_is_not_shown_the_card_is_refused_and_nothing_is_written(world):
+def test_a_role_that_is_never_shown_the_card_writes_only_its_own_flag(world):
+    """The permission is `identity:write`, a person writing their own record, so an Executive is not refused; what they write is their own
+    row and nothing else, and the status they would read for themselves still says the card is not theirs to see."""
     res = _app(EXECUTIVE).post("/api/onboarding/first-run/dismiss")
-    assert res.status_code == 403
-    assert all(r["first_run_dismissed_at"] is None for r in world.rows("users"))
+    assert res.status_code == 200, res.text
+    assert _stamp(world, "u-e1") is not None
+    assert all(_stamp(world, u) is None for u in ("u-p1", "u-p2", "u-m1", "u-x1"))
 
 
 def test_a_caller_with_no_users_row_writes_nothing_and_is_told_so(world):

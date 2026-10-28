@@ -1703,6 +1703,8 @@ EXEMPT: dict[str, str] = {
         "accounts.",
     "/api/onboarding/status":
         "which onboarding steps this firm has completed.",
+    "/api/onboarding/first-run/dismiss":
+        "the caller's own flag on their own `users` row (a person's choice to hide the dashboard checklist); no client is named.",
     # ai_copilot.py — the client-level copilot, WITHDRAWN.
     "/api/ai-copilot/client/{client_id}/chat":
         "withdrawn — returns 410 unconditionally and reads nothing. It used to "

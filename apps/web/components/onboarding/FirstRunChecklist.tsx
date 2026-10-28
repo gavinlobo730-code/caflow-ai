@@ -16,7 +16,7 @@
  * THREE STATES PER STEP. A step the server could not read is "could not check", not an
  * empty circle: an empty circle tells a firm to repeat what it may already have done.
  *
- * ONLY PARTNER AND MANAGER ARE ASKED. The endpoint is `firm:read`; an Executive or a
+ * ONLY PARTNER AND MANAGER ARE ASKED. The status endpoint is `firm:read`; an Executive or a
  * Reviewer gets a refusal, and so does a failed call — both render nothing. That is a
  * prompt and not a statement, so silence on failure does not present an unknown as a
  * value, and a role that cannot act on setup is not shown a setup card.

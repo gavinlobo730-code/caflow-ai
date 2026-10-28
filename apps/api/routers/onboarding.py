@@ -187,14 +187,16 @@ def onboarding_status(
 
 @router.post("/first-run/dismiss")
 def dismiss_first_run(
-    current_user: dict = Depends(rbac("firm", "read")),
+    current_user: dict = Depends(rbac("identity", "write")),
 ):
     """The caller dismisses the dashboard's first-run checklist for good (POST-A-002, migration 557).
 
     It is a fact about the PERSON: only the caller's own `users` row is written, a second Partner who has not dismissed the card still
-    sees it, and asking twice keeps the first stamp. The same roles that are shown the card (`firm:read`) can dismiss it; anyone else is
-    refused by the permission and nothing is written. The write is made by the server for the person, so the row-level edit log names
-    them (`privileged_for`)."""
+    sees it, and asking twice keeps the first stamp. It is `identity:write`, the permission every staff role holds to write its OWN record
+    (the sign-in log is the other user of it), and not `firm:read`: a route that changes data is not satisfied by a read-level permission
+    (test_write_requires_write_permission), and the card is shown to Partner and Manager only, so a role that is never shown it has
+    nothing to dismiss and writes a flag nobody reads. A caller who is not staff is refused by the permission and nothing is written.
+    The write is made by the server for the person, so the row-level edit log names them (`privileged_for`)."""
     firm_id, user_id = current_user["firm_id"], current_user.get("id")
     if not user_id:
         raise HTTPException(status_code=403, detail="Only a signed-in team member can dismiss this.")
