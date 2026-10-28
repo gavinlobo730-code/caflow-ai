@@ -113,6 +113,12 @@ class _FakeDB:
         # The period lock fails CLOSED, so a fake that cannot answer makes
         # every period look shut. Nothing is seeded, so answer as an empty
         # database does: open.
+        if fn == "replace_draft_document_lines" and params:
+            # A draft's lines are replaced through this one call (migration 559, POST-A-332): record them as the insert this file
+            # has always read them from.
+            from services.draft_document_lines import DOCUMENTS
+            table = DOCUMENTS[params["p_document"]][0]
+            self._rec.append({"table": table, "op": "insert", "payload": params["p_lines"], "filters": {}, "count": None})
         return type("R", (), {"execute": lambda self: _Resp(data=None)})()
 
 

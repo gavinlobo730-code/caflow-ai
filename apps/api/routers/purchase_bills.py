@@ -30,6 +30,7 @@ from services.audit_service import log_event
 from services.document_header_writer import update_header
 from domain.accounting import draft_integrity
 from services import draft_integrity_service
+from services import draft_document_lines
 from services.credit_terms import resolve_credit_terms, apply_credit_days_due_date, apply_due_date_credit_days
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
@@ -1716,7 +1717,6 @@ def update_purchase_bill(
                 is_reverse_charge=bool(data.get("is_reverse_charge", bill_row.get("is_reverse_charge"))),
                 owner=ItemOwner(db, firm_id or "", bill_row.get("client_id") or ""),
             )
-            db.table("purchase_bill_lines").delete().eq("bill_id", bill_id).execute()
             line_payloads = [
                 {
                     "bill_id":               bill_id,
@@ -1741,7 +1741,8 @@ def update_purchase_bill(
                 }
                 for ln in computed["computed_lines"]
             ]
-            db.table("purchase_bill_lines").insert(line_payloads).execute()
+            # One transaction, header locked first, refused if the bill was issued meanwhile (POST-A-332).
+            draft_document_lines.replace_draft_lines(db, "purchase_bill", bill_id, firm_id, line_payloads)
             data.update({
                 "taxable_amount_paise": computed["taxable_amount_paise"],
                 "cgst_paise":            computed["cgst_paise"],

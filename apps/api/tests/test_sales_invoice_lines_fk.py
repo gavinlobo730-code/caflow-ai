@@ -121,7 +121,19 @@ class _FakeDB:
         stand-in, not a smaller one. The period lock (migration 267) is now
         consulted on every invoice write, and it fails CLOSED — so a fake that
         cannot answer makes every period look shut. Nothing is seeded here, so
-        the honest answer is the one an empty database gives: open."""
+        the honest answer is the one an empty database gives: open.
+
+        A draft's lines are replaced through `replace_draft_document_lines` (migration 559, POST-A-332). The double records what that
+        function does, a delete of the document's lines and an insert of the new ones with the document's own id as their foreign
+        key, as the two events this file has always read, so what is asserted below is still the contract: the lines are keyed on
+        `sales_invoice_id` and never on `invoice_id`."""
+        if fn == "replace_draft_document_lines" and params:
+            from services.draft_document_lines import DOCUMENTS
+            table, fk, _noun = DOCUMENTS[params["p_document"]]
+            self._rec.append({"table": table, "op": "delete", "payload": None,
+                              "filters": {fk: params["p_document_id"]}, "count": None})
+            self._rec.append({"table": table, "op": "insert", "payload": [{**r, fk: params["p_document_id"]} for r in params["p_lines"]],
+                              "filters": {}, "count": None})
         return _Rpc()
 
 

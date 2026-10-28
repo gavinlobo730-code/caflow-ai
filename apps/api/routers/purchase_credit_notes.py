@@ -40,6 +40,7 @@ from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
 from core.db_provider import privileged_for
 from services import named_row_ownership
+from services import draft_document_lines
 from core.permissions import rbac
 from core.storage_door import StoragePathRefused, storage_folder
 from core.uploads import accept_upload, safe_path_segment
@@ -376,9 +377,7 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
                 "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
                 "total_gst_paise": total_cgst + total_sgst + total_igst,
             })
-            db.table("purchase_credit_note_lines").delete().eq("credit_note_id", pcn_id).execute()
-            for ln in computed:
-                db.table("purchase_credit_note_lines").insert({**ln, "credit_note_id": pcn_id}).execute()
+            draft_document_lines.replace_draft_lines(db, "purchase_credit_note", pcn_id, firm_id or "", computed)
 
         if data:
             upd = db.table("purchase_credit_notes").update(data).eq("id", pcn_id).eq("firm_id", firm_id).execute()
