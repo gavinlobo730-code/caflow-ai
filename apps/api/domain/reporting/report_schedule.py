@@ -39,7 +39,7 @@ A DUE DATE IS COMPUTED FROM AN INJECTED IST DATE. Every function takes `today` (
 the clock, which `tests/test_a_schedule_says_which_period_it_covers_and_when_it_is_due.py` asserts from the source.
 Between 00:00 and 05:30 IST the UTC date is yesterday (CLAUDE.md, "A stored instant and ist_today() are not
 comparable"), so the one instant this module is handed, a row's `created_at`, is converted to its IST DATE by
-`created_on` and never compared as a UTC date.
+`core.ist_clock.ist_date_of` and never compared as a UTC date.
 
 THE FOUR RULES OF A PERIOD
     * DAY 1 TO 28 ONLY. 29, 30 and 31 do not occur in every month, so a report due "on the 31st" would be due on a
@@ -99,10 +99,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from typing import Iterable, Iterator, Mapping, Optional, Sequence
 
-from core.ist_clock import IST, fy_bounds, fy_quarters, ist_fy_label
+from core.ist_clock import fy_bounds, fy_quarters, ist_date_of, ist_fy_label
 from core.validators import validate_email
 
 #: The sentence the screen shows where it used to say reports are "emailed automatically". Nothing is mailed by
@@ -420,30 +420,6 @@ def plan(frequency: str, day: int, *, since: date, today: date, recorded: Iterab
     )
 
 
-def created_on(stamp: object) -> Optional[date]:
-    """The IST calendar day of a stored timestamp, or None where it cannot be read.
-
-    A `timestamptz` comes back from PostgREST in UTC, and from 18:30 to 24:00 UTC the UTC date is the day BEFORE the
-    Indian one, so the stamp is converted and the date taken after. A naive value is read as UTC (the server's own
-    convention); a bare date is that day. `core.ist_clock._as_ist_date` takes `d[:10]` of a string and would give the
-    UTC date of a timestamp.
-    """
-    if isinstance(stamp, datetime):
-        moment = stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
-        return moment.astimezone(IST).date()
-    if isinstance(stamp, date):
-        return stamp
-    if not isinstance(stamp, str) or not stamp.strip():
-        return None
-    text = stamp.strip()
-    try:
-        if len(text) == 10:
-            return date.fromisoformat(text)
-        return created_on(datetime.fromisoformat(text.replace("Z", "+00:00")))
-    except ValueError:
-        return None
-
-
 # ── a stored row ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 def schedule_problems(row: Mapping, *, check_active: bool = True) -> list[Problem]:
@@ -482,7 +458,7 @@ def plan_for(row: Mapping, *, today: date, recorded: Iterable[str] = ()) -> Plan
     problem = schedule_problem(row)
     if problem is not None:
         return Plan(problem=problem)
-    since = created_on(row.get("created_at"))
+    since = ist_date_of(row.get("created_at"))
     if since is None:
         return Plan(problem=Problem(
             "created_unknown",

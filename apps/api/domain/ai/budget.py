@@ -33,7 +33,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional
 
-from core.ist_clock import IST
+from core.ist_clock import IST, ist_date_of
 from domain.ai import gateway
 from domain.money_text import group_indian
 
@@ -92,9 +92,7 @@ def month_of(today: _dt.date) -> Month:
 
 def month_for(instant: _dt.datetime) -> Month:
     """The IST month an instant falls in. A naive instant is read as UTC."""
-    if instant.tzinfo is None:
-        instant = instant.replace(tzinfo=_dt.timezone.utc)
-    return month_of(instant.astimezone(IST).date())
+    return month_of(ist_date_of(instant))
 
 
 def parse_month(raw: Optional[str], today: _dt.date) -> Month:

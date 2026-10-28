@@ -193,6 +193,10 @@ def test_the_payment_code_table_is_named_as_a_gap_not_invented():
     assert gap.field == "tds_payment_code"
     assert "1001-1067" in gap.note
     assert "confirmed subset" in gap.note
+    # POST-A-079: the range is the TDS one and the note says the TCS block is separate and unread, so it does not read as covering
+    # every code of the table.
+    assert "TCS" in gap.note and "separate block" in gap.note and "has not read" in gap.note
+    assert "1092" not in gap.note, "the TCS range is unconfirmed (POST-C-113) and is not written into the note"
 
 
 def test_only_a_2025_act_period_carries_the_payment_code_gap():

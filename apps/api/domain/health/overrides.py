@@ -109,6 +109,11 @@ def _ist_date(value) -> date | None:
     India. A firm's day is the Indian one, so the STAMP moves, never the
     question. A bare `YYYY-MM-DD` (what an `<input type="date">` sends) carries
     no instant and is taken as written.
+
+    KEPT AS ITS OWN FUNCTION, AND IT IS THE ONE OF THE FOUR COPIES WITH A REASON (POST-A-251). It reads a NAIVE datetime as the
+    Indian day already, where `core.ist_clock.ist_date_of` reads it as UTC (the other three copies read it as UTC and are folded onto
+    that helper), and it RAISES on a string it cannot read, because an expiry nobody can read must not become "no expiry": the caller
+    below turns the raise into a refusal in words. Folding it would change both.
     """
     if value is None or value == "":
         return None

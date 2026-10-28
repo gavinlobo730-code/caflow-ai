@@ -40,8 +40,9 @@ rules return the same answer for the same reason.
 
 WHAT THIS MODULE REFUSES, AND WHAT IT NOW PARTLY DOES NOT (25-09-2026)
 
-The 2025 Act's statements carry NUMERIC PAYMENT CODES 1001-1067, corresponding
-to entries in the s. 393 table. Guessing any of them would be a wrong label on
+The 2025 Act's TDS statements carry NUMERIC PAYMENT CODES 1001-1067, corresponding
+to entries in the s. 393 table. (The TCS codes are a SEPARATE block and have not
+been read here; 1001-1067 is the TDS range and does not claim to cover them.) Guessing any of them would be a wrong label on
 a filed return, and a wrong code is a correction statement rather than a
 rejection — it gets accepted and is wrong. That refusal still stands for most
 of the table.
@@ -165,8 +166,10 @@ _SECTION_2025_ONE_TO_ONE: dict[str, str] = {
 
 SECTION_194_SERIES_2025 = "393(1)"
 
-#: The numeric payment codes the 2025 Act's statements carry. The RANGE is
-#: known; the FULL mapping is not held. See payment_code_gap().
+#: The numeric TDS payment codes the 2025 Act's statements carry (194T is 1067,
+#: confirmed in the specification read). The RANGE is known; the FULL mapping is
+#: not held. The TCS codes are a separate block that has not been read, and this
+#: constant says nothing about them. See payment_code_gap().
 PAYMENT_CODE_RANGE = (1001, 1067)
 
 #: THE PART OF THE TABLE THAT IS NOW HELD (25-09-2026), read from a PRIMARY
@@ -435,9 +438,10 @@ def payment_code_gap() -> Gap:
     lo, hi = PAYMENT_CODE_RANGE
     return Gap(
         field="tds_payment_code",
-        note=(f"Statements under the Income-tax Act 2025 carry a numeric "
+        note=(f"TDS statements under the Income-tax Act 2025 carry a numeric "
               f"payment code ({lo}-{hi}) for each line, corresponding to an "
-              f"entry in the s. 393 table. PracticeSync holds a confirmed "
+              f"entry in the s. 393 table (the TCS codes are a separate block "
+              f"PracticeSync has not read). PracticeSync holds a confirmed "
               f"subset (see payment_code_for()) and not the rest, so some "
               f"lines' codes are not filled in — read those off the current "
               f"Rules and enter them on the portal. The section and every "

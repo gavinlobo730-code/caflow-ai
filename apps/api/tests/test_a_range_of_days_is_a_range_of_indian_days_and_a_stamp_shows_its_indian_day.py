@@ -22,8 +22,15 @@ WHAT IS HELD
       with a reason each. The rule is a count of a shape, not a list of today's lines, and it has a negative control. Its blind
       spots are named below.
 
-THE RULE'S BLIND SPOTS (not a claim of coverage): a stamp sliced after being copied into a variable with another name, a
-    `.split("T")[0]`, a `strftime` of an un-converted datetime, and a column that holds a stamp but is not named `..._at`.
+THE RULE'S BLIND SPOTS (not a claim of coverage): a stamp sliced after being copied into a variable with another name, and a
+    column that holds a stamp but is not named `..._at` (nine of production's timestamptz columns are not, and three sites slice them:
+    `ewb_date` and `ewb_valid_upto` in routers/eway_bill.py and `ack_date` in services/invoice_pdf_service.py. Whether those portal
+    stamps are stored as the Indian wall-clock labelled UTC, in which case the first ten characters ARE the Indian day and
+    `ist_date_of` would be the wrong fix, is a question about what the portal sends and the column stores, left open on the ledger).
+    CLOSED on 28-10-2026: a `.split("T")[0]` / `.partition("T")[0]` of a stamp and a `.strftime(...)` called on a value that names one
+    (the server holds none of either), and the four private copies of the stamp-to-day conversion: three are folded onto
+    `ist_date_of` and the fourth (`domain/health/overrides._ist_date`) stays because it reads a naive value as Indian and raises on
+    junk, which the helper does not, and says so.
 """
 from __future__ import annotations
 
@@ -240,3 +247,70 @@ def test_negative_control_the_rule_catches_each_spelling_and_spares_a_date_colum
     }
     for why, source in fine.items():
         assert [k for _f, _l, k in _first_ten_characters_of_a_stamp(source)] == [], why
+
+
+# ── POST-A-251: the other spellings of the same cut ──────────────────────────────────────────────────────────────────────
+def _other_cuts_of_a_stamp(source: str):
+    """(function, line, key, how) for `<stamp>.split("T")[0]` (also " "), `<stamp>.partition("T")[0]` and `<stamp>.strftime(...)`."""
+    tree = ast.parse(source)
+    owner: dict[ast.AST, str] = {}
+    for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+        for child in ast.walk(fn):
+            owner.setdefault(child, fn.name)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if node.func.attr == "strftime":
+                key = _stamp_key(node.func.value)
+                if key:
+                    yield owner.get(node, "<module>"), node.lineno, key, "strftime"
+            elif (node.func.attr in {"split", "partition"} and node.args and isinstance(node.args[0], ast.Constant)
+                  and node.args[0].value in {"T", " "}):
+                key = _stamp_key(node.func.value)
+                if key:
+                    yield owner.get(node, "<module>"), node.lineno, key, node.func.attr
+
+
+def test_no_stamp_is_split_at_its_time_or_formatted_unconverted():
+    found = []
+    for path in sorted(API_ROOT.rglob("*.py")):
+        rel = path.relative_to(API_ROOT)
+        if rel.parts[0] in {"tests", "scripts", "venv", ".venv", "migrations"}:
+            continue
+        for fn, line, key, how in _other_cuts_of_a_stamp(path.read_text(encoding="utf-8")):
+            found.append((rel.as_posix(), fn, line, key, how))
+    assert found == [], ("a stored stamp is cut at its time or formatted without being converted to the Indian day: use "
+                         f"core.ist_clock.ist_date_of / ist_day_iso. {found}")
+
+
+def test_negative_control_the_other_spellings_are_caught_and_a_date_column_is_spared():
+    bad = {
+        "split at T": "def f(r):\n    return r['created_at'].split('T')[0]\n",
+        "split at a space": "def f(r):\n    return str(r.get('updated_at')).split(' ')[0]\n",
+        "partition": "def f(r):\n    return r.approved_at.partition('T')[0]\n",
+        "strftime of a stamp": "def f(row):\n    return row['started_at'].strftime('%d-%m-%Y')\n",
+        "strftime of a name": "def f(created_at):\n    return created_at.strftime('%Y-%m')\n",
+    }
+    for why, source in bad.items():
+        assert list(_other_cuts_of_a_stamp(source)), why
+    fine = {
+        "a date column": "def f(r):\n    return r['invoice_date'].strftime('%d-%m-%Y')\n",
+        "a split on something else": "def f(r):\n    return r['created_at'].split('-')[0]\n",
+        "a name that is not a stamp": "def f(label):\n    return label.split('T')[0]\n",
+    }
+    for why, source in fine.items():
+        assert list(_other_cuts_of_a_stamp(source)) == [], why
+
+
+def test_three_private_copies_of_the_stamp_to_day_conversion_are_folded_onto_the_helper():
+    """`gst_amendment_service._ist_date`, `report_schedule.created_on` and `ai.budget.month_for`'s own astimezone each re-did what
+    `ist_date_of` does, and a copy is how a fourth reading of a naive value appears. They read through the helper now."""
+    for rel, gone in (("services/gst_amendment_service.py", "_ist_date"), ("domain/reporting/report_schedule.py", "created_on")):
+        tree = ast.parse((API_ROOT / rel).read_text(encoding="utf-8"))
+        defined = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+        assert gone not in defined, f"{rel} defines {gone} again"
+        assert "ist_date_of" in (API_ROOT / rel).read_text(encoding="utf-8")
+    budget = (API_ROOT / "domain/ai/budget.py").read_text(encoding="utf-8")
+    assert "month_of(ist_date_of(instant))" in budget and "astimezone(IST)" not in budget.split("def month_for", 1)[1].split("def ", 1)[0]
+    # the one copy that stays says why, and keeps its two differences
+    kept = (API_ROOT / "domain/health/overrides.py").read_text(encoding="utf-8")
+    assert "KEPT AS ITS OWN FUNCTION" in kept and "except ValueError:\n        raise" in kept
