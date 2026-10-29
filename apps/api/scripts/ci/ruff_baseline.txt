@@ -171,7 +171,6 @@ routers/billing.py :: B904 :: record_fee_receipt :: 1
 routers/cash_flow_forecast.py :: F401 :: <module> :: 1
 routers/clients.py :: C901 :: _check_delete_blockers :: 16
 routers/clients.py :: F401 :: <module> :: 1
-routers/compliance.py :: B904 :: seed_compliance_calendar :: 2
 routers/compliance_ops.py :: B904 :: _assert_obligation_scope :: 1
 routers/compliance_ops.py :: B904 :: mark_filed_obligation :: 2
 routers/compliance_ops.py :: B904 :: transition_obligation :: 2

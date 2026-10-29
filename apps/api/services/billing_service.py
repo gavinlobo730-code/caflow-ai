@@ -119,7 +119,9 @@ def ensure_customer_link(firm_id: str, practice_client_id: str, internal_client_
         .eq("firm_id", firm_id).eq("client_id", practice_client_id).limit(1).execute()
     )
     if existing.data:
-        return existing.data[0]["internal_customer_id"]
+        cust_id = existing.data[0]["internal_customer_id"]
+        _refresh_the_customer_snapshot(db, firm_id, practice_client_id, internal_client_id, cust_id)
+        return cust_id
 
     # task #230 audit finding: defense-in-depth twin of the router's
     # assert_client_access(body.client_id) guard — this read was previously
@@ -160,6 +162,39 @@ def ensure_customer_link(firm_id: str, practice_client_id: str, internal_client_
         if again.data:
             return again.data[0]["internal_customer_id"]
         raise
+
+
+#: The columns of the practice's customer that are a copy of the client's own record, each by the name the client carries it under.
+_SNAPSHOT_FIELDS = (("name", "client_name", "Client"), ("gstin", "gstin", None), ("pan", "pan", None), ("state_code", "state_code", None))
+
+
+def _refresh_the_customer_snapshot(db, firm_id: str, practice_client_id: str, internal_client_id: str, cust_id: str) -> None:
+    """Bring the practice's customer back in line with the client's record, so a fee invoice is raised on the client's CURRENT name,
+    GSTIN, PAN and state (POST-A-216). The customer was a snapshot taken at first use and never refreshed, so a client that changed its
+    name or registered for GST was billed under what it was called the day it was first billed.
+
+    The client's record is the truth: a GSTIN or PAN the client no longer carries is cleared on the customer. Only the columns that
+    differ are written, on the customer of THIS firm and the practice's own client (the privileged client has no row security), and a
+    refresh that cannot be made never blocks the billing run: the invoice is raised on what the customer holds and the failure is
+    reported."""
+    from core.observability import capture_soft_failure
+    try:
+        pc = (db.table("clients").select("client_name, gstin, pan, state_code")
+              .eq("id", practice_client_id).eq("firm_id", firm_id).limit(1).execute().data or [])
+        cust = (db.table("customers").select("name, gstin, pan, state_code")
+                .eq("id", cust_id).eq("firm_id", firm_id).eq("client_id", internal_client_id).limit(1).execute().data or [])
+        if not pc or not cust:
+            return
+        changes = {}
+        for column, source, fallback in _SNAPSHOT_FIELDS:
+            wanted = pc[0].get(source) or fallback
+            if (cust[0].get(column) or None) != (wanted or None):
+                changes[column] = wanted
+        if changes:
+            (db.table("customers").update(changes)
+             .eq("id", cust_id).eq("firm_id", firm_id).eq("client_id", internal_client_id).execute())
+    except Exception as exc:  # noqa: BLE001 - reported below; billing goes on
+        capture_soft_failure(exc, operation="billing.refresh_customer_snapshot", firm_id=firm_id, client_id=practice_client_id)
 
 
 # ── Idempotency lookup ───────────────────────────────────────────────────────

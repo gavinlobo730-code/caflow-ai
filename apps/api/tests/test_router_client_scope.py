@@ -571,24 +571,16 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/income-tax": ("assert_client_access", "can_access_client",
                         "_assert_capital_gains_scope", "_entry_and_claims"),
     # "/api/compliance" is a SHARED prefix — TWO DISTINCT FILES both declare
-    # APIRouter(prefix="/api/compliance"): compliance.py (4 routes: /tasks,
-    # /calendar, /seed, /due-dates/calculate — the older compliance_calendar
-    # entity) and compliance_ops.py (8 routes: /obligations/*, /dashboard,
+    # APIRouter(prefix="/api/compliance"): compliance.py (the ITR and payroll
+    # due-date routes, /due-dates/calculate and PATCH /calendar/{id}/filed; its
+    # /tasks, /calendar and /seed routes were retired with the System B table, POST-A-322) and compliance_ops.py (8 routes: /obligations/*, /dashboard,
     # /run-escalations — the canonical compliance_records entity, Phase
     # 4.4). Same shape as "/api/tasks" (tasks.py + task_extras.py) and "/api
     # /gst" (three files) — registering the shared prefix is a claim about
     # BOTH files.
     #
-    # compliance.py: list_compliance_tasks and compliance_calendar already
-    # used filter_by_client pre-phase (client_id, when supplied, is narrowed
-    # into the firm-scoped query AND then filtered — a caller-named foreign
-    # client_id returns rows filter_by_client immediately drops, so this was
-    # already correct, not merely permissive). seed_compliance_calendar
-    # checked only client.firm_id == firm_id (a bespoke inline check, the
-    # tally_migration.py-shaped gap) and never the caller's assignment — an
-    # Executive/Manager could seed ~30 compliance task rows into any other
-    # staff member's assigned client. calculate_due_dates is a stateless
-    # due-date calculator (year/month only) — EXEMPT below.
+    # compliance.py: calculate_due_dates is a stateless due-date calculator
+    # (year/month only) — EXEMPT below.
     #
     # compliance_ops.py: list_obligations and obligations_calendar already
     # used filter_by_client pre-phase. assign_obligation/transition_

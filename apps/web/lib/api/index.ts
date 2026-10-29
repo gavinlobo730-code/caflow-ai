@@ -4446,11 +4446,6 @@ export const api = {
       request<ApiResp<MarkFiledResult>>(
         `/api/compliance/calendar/${encodeURIComponent(recordId)}/filed`,
         { method: "PATCH", body: JSON.stringify(body) }),
-    tasks: (params?: { client_id?: string; status?: string }) => {
-      const q = new URLSearchParams(params as Record<string, string>).toString();
-      return request(`/api/compliance/tasks${q ? `?${q}` : ""}`);
-    },
-    calendar: () => request("/api/compliance/calendar"),
     /** Every GST due date for one period, from services/compliance_engine.py —
      *  the single source CLAUDE.md names for every date in this product. The
      *  method existed and nothing called it, while app/gst/page.tsx computed

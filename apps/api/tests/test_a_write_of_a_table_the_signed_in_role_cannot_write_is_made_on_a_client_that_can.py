@@ -55,11 +55,6 @@ DEPTH = 5
 
 #: (file, function): why the write is safe although the rule cannot trace its client. Shrink-only.
 REVIEWED: dict[tuple[str, str], str] = {
-    ("repositories/compliance_repository.py", "create"):
-        "compliance 'System B': the table is empty, the signed-in role has no write on it (migration 170) and no screen calls the three routes "
-        "that reach this; the writer cannot succeed and is retired by POST-A-322, not moved.",
-    ("repositories/compliance_repository.py", "update"):
-        "compliance 'System B': the same dead repository as `create` (POST-A-322).",
     ("services/document_header_writer.py", "<module>"):
         "the six UPDATE statements are held in lambdas at module level, one literal chain per table so the firm-scope reader can read each; "
         "the only caller is `update_header`, which hands them the client `header_writer` returns (the privileged one wherever there is one) "

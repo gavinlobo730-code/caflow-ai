@@ -571,7 +571,6 @@ OTHER_ENTITIES = {
     ("services/intelligence_service.py", "_relationship_rows"): "invoices: a job writes 'Overdue' onto an invoice",
     ("domain/portal_service.py", "compute_dues_summary"): "invoice dues",
     ("domain/memory_pipeline.py", "compute_client_profile"): "tasks (their lowercase vocabulary, not this table's)",
-    ("repositories/compliance_repository.py", "find_overdue"): "System B compliance_tasks, retired; nothing calls it",
     ("services/risk_register_service.py", "build_register"): "loans",
 }
 

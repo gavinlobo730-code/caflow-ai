@@ -137,7 +137,6 @@
  "GET /api/clients/{client_id}",
  "GET /api/clients/{client_id}/instructions",
  "GET /api/clients/{client_id}/knowledge",
- "GET /api/compliance/calendar",
  "GET /api/compliance/dashboard",
  "GET /api/compliance/due-dates/calculate",
  "GET /api/compliance/engagement-status",

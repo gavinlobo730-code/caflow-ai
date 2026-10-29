@@ -172,8 +172,12 @@ non-Partner is told 404, never 403, so its existence is not disclosed.*
   foreign client id fails loud rather than copying another firm's PAN into this firm's
   books). When two runs race, the loser deactivates the customer it just made and returns
   the winner's.
-- The customer is a **snapshot** (name, GSTIN, PAN, state code) taken at first use.
-  Nothing updates it when the client's record changes (§9).
+- The customer is a **snapshot** (name, GSTIN, PAN, state code) taken at first use and
+  **brought back in line with the client's record each time a fee invoice is prepared**
+  (`billing_service._refresh_the_customer_snapshot`, POST-A-216): the client's record is the
+  truth, so a GSTIN or PAN the client no longer carries is cleared, only the columns that
+  differ are written, and a refresh that cannot be made never blocks the run (it is
+  reported). Fee invoices already issued are not re-written.
 - The portal reads the link as the client's own principal to show them their fee
   invoices: `portal_data_service.resolve_fee_scope()`, with the policy repair of
   migration 442 (`test_r442_portal_client_reads_own_fee_scope_pg.py`).
@@ -382,9 +386,9 @@ has an invoice; billing's cadence is
 day (the quarterly key is still the calendar quarter, which is a key and not a statutory period); a `DRAFT-` number is
 refused at issue (`routers/sales_invoices._assert_invoice_no_is_not_a_placeholder`), while a draft may still hold it; and
 `knowledge_service.edit_article()` reads the highest version actually written and retries a `UNIQUE (article_id, version)`
-collision, so the loser's text is saved as the version after the winner's. Two remain:
+collision, so the loser's text is saved as the version after the winner's. The G3 customer is now refreshed from the
+client each time a fee invoice is prepared (29-10-2026, §3). One remains:
 
-- The G3 customer is never refreshed from the client (§3).
 - Nothing schedules draft generation: `billing_service.run_due()` is reached only from
   `POST /api/billing/run`. **Decided, 18 October 2026: it stays that way.** A billing run prepares drafts that carry a
   placeholder number a Partner has to replace before issue, so an unattended sweep would only fill the Partner's list with

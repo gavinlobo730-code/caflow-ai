@@ -375,30 +375,6 @@ def test_the_client_read_is_firm_scoped(api, a_client):
         "assignment/firm guard rather than a bespoke check")
 
 
-def test_the_seeder_stops_giving_every_company_31_july(api, a_client):
-    """routers/compliance.py's /seed wrote itr_due_date(fy_end) — 31 July — for
-    every client it ever seeded, companies included."""
-    cid = a_client("Private Limited")
-    r = api.post("/api/compliance/seed",
-                 params={"client_id": cid, "financial_year": FY})
-    assert r.status_code == 200, r.text
-    data = r.json()["data"]
-    itr = [t for t in data["tasks"] if t["compliance_type"] == "ITR"]
-    assert len(itr) == 1
-    assert itr[0]["due_date"] == "2026-10-31"
-    assert "statutory_gaps" not in data
-    assert "2(a)(i)" in data["itr_due_date_basis"]
-
-
-def test_the_seeder_reports_an_assumed_date(api, a_client):
-    cid = a_client("Proprietorship")
-    data = api.post("/api/compliance/seed",
-                    params={"client_id": cid, "financial_year": FY}).json()["data"]
-    itr = [t for t in data["tasks"] if t["compliance_type"] == "ITR"]
-    assert itr[0]["due_date"] == "2026-07-31"
-    assert data["statutory_gaps"], "an assumed date must be reported, not seeded silently"
-
-
 def test_the_period_calculator_no_longer_states_an_itr_date_as_fact(api):
     """It names no assessee at all, so Explanation 2 cannot be applied to it.
     It used to return itr_due_date(fy_end) with no qualification."""
