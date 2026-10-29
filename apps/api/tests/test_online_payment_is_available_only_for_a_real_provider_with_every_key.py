@@ -226,7 +226,9 @@ def test_a_link_the_test_double_made_is_masked_and_a_real_one_is_not():
     assert masked["id"] == "L1" and masked["status"] == "active", "listed: the history is true"
     assert mock["short_url"], "the stored row is not changed"
     real = {"id": "L2", "provider": "razorpay", "short_url": "https://pay.example/L2", "status": "active"}
-    assert rule.mask_link(real) is real
+    shown = rule.mask_link(real)
+    assert {k: v for k, v in shown.items() if k != "displayed_status"} == real, "a real link is shown as it is stored, with what it is NOW beside it"
+    assert shown["displayed_status"] == "active" and "displayed_status" not in real, "the stored row is not changed"
     assert rule.mask_link({"id": "L3", "provider": " MOCK ", "short_url": "x"})["short_url"] is None
 
 
