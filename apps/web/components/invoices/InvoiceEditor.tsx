@@ -51,6 +51,7 @@ import { Callout } from "@/components/ui/callout";
 import { ActivityMini } from "@/components/documents/ActivityMini";
 import { IssueReadinessPanel } from "@/components/invoices/IssueReadinessPanel";
 import { HELD_SENTENCE, holdsTheIssue, type ReadinessState } from "@/lib/invoices/issueReadiness";
+import { editorMode } from "@/lib/invoices/editorMode";
 import { formatPaise } from "@/lib/money/format";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
@@ -300,6 +301,8 @@ export function InvoiceEditor({
   // know its id: without it the next click on Save & Issue creates a second invoice with the same number. `readiness` is the
   // server's pre-flight answer for the draft as last saved, and `checkNonce` asks again after every attempt.
   const [createdDraftId, setCreatedDraftId] = useState<string | null>(null);
+  // What is still the NEW invoice's once a draft exists on the server (the currency, the series suggestion): `lib/invoices/editorMode`.
+  const mode = editorMode(isEdit, createdDraftId);
   const [readiness, setReadiness] = useState<ReadinessState>({ status: "loading" });
   const [checkNonce, setCheckNonce] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -378,7 +381,7 @@ export function InvoiceEditor({
           // carries the number the document was issued or drafted with, and
           // replacing it would silently renumber somebody's invoice.
           const replaceable = !typed || typed === lastAutoFilled.current;
-          if (!isEdit && !numberTouched.current && replaceable && d.suggested_number
+          if (mode.mayFillTheNumber && !numberTouched.current && replaceable && d.suggested_number
               && d.suggested_number !== typed) {
             lastAutoFilled.current = d.suggested_number;
             lastAutoFilledFor.current = { clientId, invoiceDate };
@@ -400,7 +403,7 @@ export function InvoiceEditor({
       })();
     }, typed ? 400 : 0);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [clientId, invoiceDate, invoiceNo, isEdit, isLocked]);
+  }, [clientId, invoiceDate, invoiceNo, isEdit, isLocked, mode.mayFillTheNumber]);
 
   // Rehydrate each existing line's Product/Service picker. detailLinesToEditorLines
   // deliberately keeps only serviceCatalogueId from the server (not the full
@@ -872,10 +875,9 @@ export function InvoiceEditor({
   const issueHeld = holdsTheIssue(readiness, dirty);
   const heldTitle = issueHeld ? HELD_SENTENCE : undefined;
   // What the panel's "fix" buttons do: take the CA to the field. The server names the field and this maps it to a control.
-  function focusField(field: "invoice_no" | "supply_state" | "lines") {
+  function focusField(field: "invoice_no" | "supply_state") {
     const target = field === "invoice_no" ? document.getElementById("inv-invoice-no")
-      : field === "supply_state" ? document.querySelector<HTMLElement>("#inv-supply-state input, #inv-supply-state button")
-      : document.getElementById("inv-lines");
+      : document.querySelector<HTMLElement>("#inv-supply-state input, #inv-supply-state button");
     target?.scrollIntoView?.({ block: "center" });
     target?.focus?.();
   }
@@ -1107,7 +1109,7 @@ export function InvoiceEditor({
               {!isLocked && !numberSeries?.format_problem && numberSeries?.sequence_warning && (
                 <p className="mt-1 text-3xs text-state-attention">{numberSeries.sequence_warning}</p>
               )}
-              {!isLocked && !isEdit && !numberSeries?.gap && !numberSeries?.format_problem
+              {!isLocked && mode.mayFillTheNumber && !numberSeries?.gap && !numberSeries?.format_problem
                 && !numberSeries?.sequence_warning && numberSeries?.suggested_number && (
                 <p className="mt-1 text-3xs text-ps-hint">
                   Next in your series ({numberSeries.series_head}…) — edit it if this
@@ -1284,7 +1286,7 @@ export function InvoiceEditor({
           )}
 
           {/* Multi-currency (create-only) */}
-          {!isEdit && mcActive && (
+          {!mode.currencyIsFrozen && mcActive && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 pt-3 border-t border-ps-border">
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Currency</label>
@@ -1307,7 +1309,7 @@ export function InvoiceEditor({
               )}
             </div>
           )}
-          {isEdit && isForeign && (
+          {mode.currencyIsFrozen && isForeign && (
             <div className="mt-3 bg-[#EEF2FF] border border-[#C7D2FE] rounded-lg px-3 py-2 text-2xs text-[#4338CA]">
               Foreign-currency invoice ({currency}, rate {exchangeRate || "—"}) — currency and rate are frozen after creation.
             </div>
@@ -1323,7 +1325,7 @@ export function InvoiceEditor({
             cell. "Add line" and end-of-row Tab both create a new row whose
             first field is the Product/Service selector, never a blank
             Description box. */}
-        <section id="inv-lines" tabIndex={-1} className="bg-white rounded-xl border border-ps-border p-4 focus:outline-none focus:ring-2 focus:ring-brand">
+        <section className="bg-white rounded-xl border border-ps-border p-4">
           <div className="mb-2 flex items-center justify-between gap-3">
             <h2 className="text-xs font-semibold text-ps-body">Line items</h2>
             {!isLocked && (

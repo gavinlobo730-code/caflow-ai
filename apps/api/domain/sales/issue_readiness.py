@@ -1,10 +1,12 @@
 """What stands between a draft sales invoice and its issue, as a list a screen can show BEFORE the click (POST-A-125).
 
 Issuing a draft posts a dated journal and turns the draft into a tax invoice (CGST Act §31, Rule 46), so the route refuses in a
-fixed order for eight reasons: the status, the firm's locked year, a filed return covering the date, a number Rule 46(b) does not
-allow, a placeholder number, a place of supply Rule 46(n) needs, a draft that does not add up to its own lines, and a chart of
-accounts that lacks an account the posting needs. Each was an English sentence, and the editor showed whichever the server sent
-after the CA had already clicked, with no way for the screen to tell "go and fix the state" from "ask a Partner to reopen the year".
+fixed order for seven reasons: the status; a locked period (the firm's locked year, a finalised client year or a filed return
+covering the date, which the lock check reports together and which therefore share one code, `PERIOD_LOCKED`, with the sentence
+saying which); a number Rule 46(b) does not allow; a placeholder number; a place of supply Rule 46(n) needs; a draft that does not
+add up to its own lines; and a chart of accounts that lacks an account the posting needs. Each was an English sentence, and the
+editor showed whichever the server sent after the CA had already clicked, with no way for the screen to tell "go and fix the state"
+from "ask a Partner to reopen the year".
 
 This module is the vocabulary and the pure parts:
 
@@ -29,8 +31,7 @@ from domain.gst.validator import VALID_STATE_CODES
 
 # Codes: stable words a screen may branch on. Adding one is a change to this tuple, the service and the screen together.
 NOT_A_DRAFT = "NOT_A_DRAFT"
-PERIOD_LOCKED_YEAR = "PERIOD_LOCKED_YEAR"
-PERIOD_LOCKED_RETURN = "PERIOD_LOCKED_RETURN"
+PERIOD_LOCKED = "PERIOD_LOCKED"
 INVOICE_NO_NOT_ALLOWED = "INVOICE_NO_NOT_ALLOWED"
 INVOICE_NO_PLACEHOLDER = "INVOICE_NO_PLACEHOLDER"
 PLACE_OF_SUPPLY_MISSING = "PLACE_OF_SUPPLY_MISSING"
@@ -39,7 +40,7 @@ DRAFT_DOES_NOT_ADD_UP = "DRAFT_DOES_NOT_ADD_UP"
 COA_MISSING = "COA_MISSING"
 
 CODES: tuple[str, ...] = (
-    NOT_A_DRAFT, PERIOD_LOCKED_YEAR, PERIOD_LOCKED_RETURN, INVOICE_NO_NOT_ALLOWED, INVOICE_NO_PLACEHOLDER,
+    NOT_A_DRAFT, PERIOD_LOCKED, INVOICE_NO_NOT_ALLOWED, INVOICE_NO_PLACEHOLDER,
     PLACE_OF_SUPPLY_MISSING, PLACE_OF_SUPPLY_INVALID, DRAFT_DOES_NOT_ADD_UP, COA_MISSING,
 )
 
@@ -47,7 +48,7 @@ CODES: tuple[str, ...] = (
 ACTION_FIX_IN_EDITOR = "fix_in_editor"
 ACTION_SEED_CHART_OF_ACCOUNTS = "seed_chart_of_accounts"
 ACTION_KINDS: tuple[str, ...] = (ACTION_FIX_IN_EDITOR, ACTION_SEED_CHART_OF_ACCOUNTS)
-EDITOR_FIELDS: tuple[str, ...] = ("invoice_no", "supply_state", "lines")
+EDITOR_FIELDS: tuple[str, ...] = ("invoice_no", "supply_state")
 
 
 @dataclass(frozen=True)
@@ -69,17 +70,17 @@ def seed_chart_of_accounts() -> dict:
     return {"kind": ACTION_SEED_CHART_OF_ACCOUNTS, "label": "Set up the chart of accounts"}
 
 
-# Which action each code offers. A locked year or a filed return offers none: what unlocks them is a Partner reopening the year or
-# a later period's amendment, and the sentence the server already says names it.
+# Which action each code offers. A locked period offers none: what unlocks it is a Partner reopening the year, or a later period's
+# amendment after a filed return, and the sentence the server already says names which. A draft that does not add up offers none
+# either: it can be a tampered figure, a stale total or a carried-over flag, and "re-save the lines" fixes only the first.
 ACTION_FOR: dict[str, Optional[dict]] = {
     NOT_A_DRAFT: None,
-    PERIOD_LOCKED_YEAR: None,
-    PERIOD_LOCKED_RETURN: None,
+    PERIOD_LOCKED: None,
     INVOICE_NO_NOT_ALLOWED: fix_in_editor("invoice_no", "Change the invoice number"),
     INVOICE_NO_PLACEHOLDER: fix_in_editor("invoice_no", "Enter the invoice number"),
     PLACE_OF_SUPPLY_MISSING: fix_in_editor("supply_state", "Set the supply state"),
     PLACE_OF_SUPPLY_INVALID: fix_in_editor("supply_state", "Set the supply state"),
-    DRAFT_DOES_NOT_ADD_UP: fix_in_editor("lines", "Re-save the draft's lines"),
+    DRAFT_DOES_NOT_ADD_UP: None,
     COA_MISSING: seed_chart_of_accounts(),
 }
 

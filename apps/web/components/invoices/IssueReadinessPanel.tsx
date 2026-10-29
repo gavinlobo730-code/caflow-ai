@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { readinessFrom, type IssueBlocker, type ReadinessState } from "@/lib/invoices/issueReadiness";
 
-type Field = "invoice_no" | "supply_state" | "lines";
+type Field = "invoice_no" | "supply_state";
 
 export function IssueReadinessPanel({ invoiceId, checkNonce, unsavedChanges, onState, onFix }: {
   invoiceId: string | null;
@@ -108,6 +108,12 @@ export function IssueReadinessPanel({ invoiceId, checkNonce, unsavedChanges, onS
         </ul>
       )}
       {setupError && <p className="text-3xs text-state-problem">{setupError}</p>}
+      {/* A blocked answer can go stale without this screen knowing (a Partner reopens the year, a chart is set up in another tab), and
+          it holds the issue buttons, so it can always be asked again. */}
+      {invoiceId && (state.status === "blocked" || state.status === "ready") && (
+        <button type="button" onClick={() => setRetry((n) => n + 1)}
+          className="text-2xs font-medium text-brand hover:underline">Check again</button>
+      )}
       {invoiceId && (
         <p className="text-3xs text-ps-hint">
           {unsavedChanges

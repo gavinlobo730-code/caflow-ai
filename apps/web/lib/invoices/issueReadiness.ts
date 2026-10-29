@@ -18,7 +18,7 @@
  */
 
 export type IssueBlockerAction =
-  | { kind: "fix_in_editor"; field: "invoice_no" | "supply_state" | "lines"; label: string }
+  | { kind: "fix_in_editor"; field: "invoice_no" | "supply_state"; label: string }
   | { kind: "seed_chart_of_accounts"; label: string };
 
 export type IssueBlocker = { code: string; message: string; action: IssueBlockerAction | null };
@@ -32,7 +32,7 @@ export type ReadinessState =
   | { status: "ready" }
   | { status: "blocked"; blockers: IssueBlocker[] };
 
-const EDITOR_FIELDS = ["invoice_no", "supply_state", "lines"] as const;
+const EDITOR_FIELDS = ["invoice_no", "supply_state"] as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);

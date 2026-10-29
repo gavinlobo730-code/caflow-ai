@@ -48,10 +48,10 @@ def test_the_editor_can_take_the_clerk_to_every_field_an_action_names():
     editor = _strip(EDITOR)
     focus = editor[editor.index("function focusField"):]
     focus = focus[:focus.index("\n  }\n") + 5]
-    ids = {"invoice_no": "inv-invoice-no", "supply_state": "inv-supply-state", "lines": "inv-lines"}
+    ids = {"invoice_no": "inv-invoice-no", "supply_state": "inv-supply-state"}
     assert set(ids) == set(ir.EDITOR_FIELDS), "a field the server can name has no target in this test, and so none in the editor"
+    assert 'field === "invoice_no"' in focus and 'field: "invoice_no" | "supply_state"' in editor
     for field, element in ids.items():
-        assert f'field === "{field}"' in focus or f'"{field}"' in editor, field
         assert f'id="{element}"' in editor, f"the editor has no element with id {element} for the field {field}"
         assert element in focus, f"focusField does not look for {element}"
 
@@ -73,6 +73,23 @@ def test_a_draft_that_was_created_and_refused_is_saved_again_and_not_created_twi
     assert "setCreatedDraftId(invoiceId)" in editor
     assert "if (patchId) {" in editor
     assert "api/sales-invoices/${existing.id}" not in editor, "a save of a draft must go to the id it was created under"
+
+
+def test_what_belongs_to_the_new_invoice_follows_the_draft_that_exists_and_not_only_an_invoice_opened_for_editing():
+    """A new invoice that was created and refused at the issue is a draft on the server. The update takes no currency or rate, so a
+    rate corrected on the screen after the refusal was ignored by the save and the issue posted at the old one; and the series
+    suggestion, which counts that draft, replaced its number and left a hole in the series. Both follow `lib/invoices/editorMode`."""
+    editor = _strip(EDITOR)
+    assert "const mode = editorMode(isEdit, createdDraftId);" in editor
+    assert "{!mode.currencyIsFrozen && mcActive && (" in editor and "{mode.currencyIsFrozen && isForeign && (" in editor
+    assert "mode.mayFillTheNumber && !numberTouched.current" in editor and "mode.mayFillTheNumber]" in editor
+    assert "!isLocked && mode.mayFillTheNumber && !numberSeries" in editor
+    assert "{!isEdit && mcActive" not in editor and "!isEdit && !numberTouched" not in editor
+
+
+def test_a_blocked_or_ready_answer_can_be_asked_again_because_it_can_go_stale_while_it_holds_the_buttons():
+    panel = _strip(PANEL)
+    assert 'state.status === "blocked" || state.status === "ready"' in panel and "Check again" in panel
 
 
 def test_the_panel_is_shown_for_a_draft_only_and_the_client_names_the_route():

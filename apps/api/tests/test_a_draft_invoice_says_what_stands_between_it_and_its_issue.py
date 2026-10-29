@@ -38,9 +38,10 @@ def test_every_code_offers_the_action_it_should_and_only_known_ones():
             assert action["label"].strip(), code
             if action["kind"] == ir.ACTION_FIX_IN_EDITOR:
                 assert action["field"] in ir.EDITOR_FIELDS, code
-    # A locked year, a filed return and an issued document are not the editor's to fix: a Partner reopens the year, a later period's
-    # amendment carries a correction, a credit note adjusts an issued invoice. Offering a button would be offering a way round them.
-    for code in (ir.NOT_A_DRAFT, ir.PERIOD_LOCKED_YEAR, ir.PERIOD_LOCKED_RETURN):
+    # A locked period and an issued document are not the editor's to fix: a Partner reopens the year, a later period's amendment
+    # carries a correction, a credit note adjusts an issued invoice. Offering a button would be offering a way round them. A draft that
+    # does not add up can be a tampered figure, a stale total or a carried-over flag, and re-saving the lines mends only the first.
+    for code in (ir.NOT_A_DRAFT, ir.PERIOD_LOCKED, ir.DRAFT_DOES_NOT_ADD_UP):
         assert ir.ACTION_FOR[code] is None
     assert ir.ACTION_FOR[ir.COA_MISSING]["kind"] == ir.ACTION_SEED_CHART_OF_ACCOUNTS
 
@@ -170,7 +171,17 @@ def test_a_draft_that_does_not_add_up_to_its_lines_is_a_blocker(monkeypatch):
     _row(db, inv)["total_paise"] += 1_000
     data = _preflight(inv)
     assert _codes(data) == [ir.DRAFT_DOES_NOT_ADD_UP] and "its total is" in data["blockers"][0]["message"]
-    assert data["blockers"][0]["action"]["field"] == "lines"
+    assert data["blockers"][0]["action"] is None
+
+
+def test_a_carried_over_draft_is_a_blocker_that_offers_nothing_the_editor_could_do(monkeypatch):
+    """The flag is not mended by re-saving the lines, so no button says it is."""
+    db = _setup(monkeypatch)
+    inv = _new_invoice("INV-OPEN")
+    _row(db, inv)["is_opening"] = True
+    data = _preflight(inv)
+    assert _codes(data) == [ir.DRAFT_DOES_NOT_ADD_UP] and "carried-over" in data["blockers"][0]["message"]
+    assert data["blockers"][0]["action"] is None
 
 
 def test_a_missing_chart_of_accounts_names_the_accounts_and_offers_to_set_it_up(monkeypatch):
@@ -198,33 +209,49 @@ def test_an_issued_invoice_has_one_blocker_and_nothing_after_it_is_asked(monkeyp
     assert data["blockers"][0]["action"] is None
 
 
-def test_a_locked_year_and_a_filed_return_are_blockers_with_no_editor_action(monkeypatch):
+def test_a_locked_year_is_one_blocker_and_the_second_lock_is_not_asked(monkeypatch):
+    """`assert_open` answers for the closures too, so it repeats a locked year. One cause is one blocker, in the lock's own words."""
     _setup(monkeypatch)
     inv = _new_invoice("INV-LOCK")
+    asked = []
 
     def locked_year(firm_id, date):
         raise HTTPException(status_code=422, detail="Financial year 2025-26 is locked.")
 
+    def second(db, firm_id, client_id, date, cache=None):
+        asked.append(date)
+        raise HTTPException(status_code=422, detail="Financial year 2025-26 is locked.")
+
+    monkeypatch.setattr(period_validation_service, "validate_posting_date", locked_year)
+    monkeypatch.setattr(period_lock_service, "assert_open", second)
+    data = _preflight(inv)
+    assert _codes(data) == [ir.PERIOD_LOCKED] and data["blockers"][0]["message"] == "Financial year 2025-26 is locked."
+    assert data["blockers"][0]["action"] is None
+    assert asked == [], "the client's lock repeats the firm's year, so it is asked only when the firm's year did not refuse"
+
+
+def test_a_filed_return_or_a_finalised_year_is_a_blocker_with_no_editor_action(monkeypatch):
+    _setup(monkeypatch)
+    inv = _new_invoice("INV-FILED")
+
     def filed_return(db, firm_id, client_id, date, cache=None):
         raise HTTPException(status_code=422, detail="GSTR-1 for June 2025 has been filed.")
 
-    monkeypatch.setattr(period_validation_service, "validate_posting_date", locked_year)
     monkeypatch.setattr(period_lock_service, "assert_open", filed_return)
     data = _preflight(inv)
-    assert _codes(data) == [ir.PERIOD_LOCKED_YEAR, ir.PERIOD_LOCKED_RETURN]
-    assert [b["message"] for b in data["blockers"]] == ["Financial year 2025-26 is locked.", "GSTR-1 for June 2025 has been filed."]
-    assert all(b["action"] is None for b in data["blockers"])
+    assert _codes(data) == [ir.PERIOD_LOCKED]
+    assert data["blockers"][0]["message"] == "GSTR-1 for June 2025 has been filed." and data["blockers"][0]["action"] is None
 
 
 def test_the_pre_flight_reads_and_writes_nothing(monkeypatch):
     db = _setup(monkeypatch)
     inv = _new_invoice("INV-READ")
     _row(db, inv)["supply_state_code"] = ""
-    before = {t: [dict(r) for r in db.rows(t)] for t in ("client_sales_invoices", "journal_entries", "journal_lines", "chart_of_accounts")}
+    before = {t: [dict(r) for r in rows] for t, rows in db._tables.items()}
     _preflight(inv)
     _preflight(inv)
-    after = {t: [dict(r) for r in db.rows(t)] for t in before}
-    assert before == after
+    after = {t: [dict(r) for r in rows] for t, rows in db._tables.items()}
+    assert before == after, "every table is as it was, not only the ones the author thought of"
 
 
 def test_an_unknown_invoice_is_a_404_in_the_words_a_missing_row_gets(monkeypatch):
@@ -270,10 +297,34 @@ def test_a_missing_chart_of_accounts_stays_an_http_200_that_did_not_succeed_and_
     assert _row(db, inv)["status"] == "draft"
 
 
-def test_the_readiness_service_raises_nothing_a_screen_would_have_to_catch(monkeypatch):
+def test_a_check_that_refused_with_an_http_error_becomes_an_entry_and_not_an_exception(monkeypatch):
     """A check that raised an HTTPException used to end the route; here each is caught and becomes an entry."""
     db = _setup(monkeypatch)
     inv = _new_invoice("INV-NORAISE")
     row = _row(db, inv)
     row["status"] = "issued"
     assert [b.code for b in service.blockers_for_sales_invoice(db, FIRM, row)] == [ir.NOT_A_DRAFT]
+    row["status"], row["supply_state_code"] = "draft", ""
+    assert [b.code for b in service.blockers_for_sales_invoice(db, FIRM, row)] == [ir.PLACE_OF_SUPPLY_MISSING]
+
+
+def test_the_issue_stops_at_the_first_blocker_and_asks_no_later_check_the_preflight_asks_them_all(monkeypatch):
+    """`first_only` is what keeps the issue as it always was: a bad number never reaches the reads after it (the draft's lines, the
+    chart of accounts), so an error in one of those cannot turn a plain refusal into a generic failure."""
+    db = _setup(monkeypatch)
+    inv = _new_invoice("INV-FIRST")
+    row = _row(db, inv)
+    row["invoice_no"], row["supply_state_code"] = "DRAFT-ABCDEFGHIJ", ""
+    later = []
+    from services import draft_integrity_service
+    from services.phase2_journal_service import phase2_journal_service
+    monkeypatch.setattr(draft_integrity_service, "assert_draft_adds_up", lambda *a, **k: later.append("lines"))
+    monkeypatch.setattr(phase2_journal_service, "missing_accounts_for_sales_invoice", lambda *a, **k: later.append("accounts") or [])
+    first = service.blockers_for_sales_invoice(db, FIRM, row, first_only=True)
+    assert [b.code for b in first] == [ir.INVOICE_NO_PLACEHOLDER] and later == []
+    everything = service.blockers_for_sales_invoice(db, FIRM, row)
+    assert [b.code for b in everything] == [ir.INVOICE_NO_PLACEHOLDER, ir.PLACE_OF_SUPPLY_MISSING] and later == ["lines", "accounts"]
+
+    with pytest.raises(HTTPException):
+        si.issue_invoice(inv, CALLER)
+    assert later == ["lines", "accounts"], "the issue route added no call to the later checks"

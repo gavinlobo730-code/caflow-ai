@@ -342,7 +342,7 @@ def test_issuing_a_sales_invoice_into_a_filed_period_is_refused(db):
 
     assert e.value.status_code == 422
     # Since POST-A-125 the sales invoice's refusal is {message, code, action}; the words are the lock's own.
-    assert "GSTR-1" in e.value.detail["message"] and e.value.detail["code"] == "PERIOD_LOCKED_RETURN"
+    assert "GSTR-1" in e.value.detail["message"] and e.value.detail["code"] == "PERIOD_LOCKED"
 
 
 def _receipt_db(monkeypatch, advance_tax: bool):

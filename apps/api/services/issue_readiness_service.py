@@ -3,15 +3,17 @@
 
 `issue_invoice` used to carry these inline and answer the FIRST one that failed, as a sentence. A screen that wants to say "three
 things are in the way" before the click cannot get that from a route that stops at one, and a second list written for the screen
-would be a second place to say the same thing. So there is one list: the issue route asks `blockers_for_sales_invoice` and refuses with
-the first blocker (`refuse`), and `GET /api/sales-invoices/{id}/issue-preflight` returns all of them.
+would be a second place to say the same thing. So there is one list: the issue route asks `blockers_for_sales_invoice(first_only=True)`
+and refuses with the first blocker (`refuse`), exactly as it always stopped at the first refusal, and
+`GET /api/sales-invoices/{id}/issue-preflight` returns all of them.
 
 Each check is the function the route already called, run under a catch of the 422 it raises, and its CODE is attached here at the call
 site. The code is never read back out of the sentence, so rewording a sentence cannot change what a screen branches on.
 
-THE ORDER IS THE ROUTE'S OLD ORDER: status, the firm's locked year, a filed return covering the date, the number's two rules, the place
-of supply, whether the draft adds up to its own lines, the chart of accounts. A draft that is not a draft has one blocker and nothing
-after it is asked: its lock and its accounts are a different question about a document that is already issued.
+THE ORDER IS THE ROUTE'S OLD ORDER: status, the locks (the firm's year, then the client's closures and a filed return: one blocker
+for one cause), the number's two rules, the place of supply, whether the draft adds up to its own lines, the chart of accounts. A
+draft that is not a draft has one blocker and nothing after it is asked: its lock and its accounts are a different question about a
+document that is already issued.
 
 THE CHART OF ACCOUNTS IS ASKED LAST AND ASKED OF THE POSTING'S OWN LOOKUPS (`phase2_journal_service.missing_accounts_for_sales_invoice`
 resolves `domain/sales/issue_readiness.required_accounts` through the same `_find_account` the posting uses), so a pre-flight that
@@ -69,12 +71,16 @@ def _status(found: list[ir.Blocker], invoice: dict) -> None:
 
 def _locks(found: list[ir.Blocker], db, firm_id: str, invoice: dict) -> None:
     """The date is the posting's, and a draft raised in June and issued in September is posted with its June date, so the locks are
-    asked HERE and not only at create. The firm's year first, then the portal's: a return covering the date that has been filed."""
+    asked HERE and not only at create. The firm's year first, then the client's: `period_lock_service.assert_open` answers for the
+    closures AND for a return covering the date that has been filed, so it repeats the firm's year when that is what is locked. One
+    cause is one blocker: the second lock is asked only when the first did not refuse, and both are one code, `PERIOD_LOCKED`,
+    because the second cannot tell a filed return from a finalised year by anything but its sentence."""
     date = invoice.get("invoice_date")
     if not date:
         return
-    _ask(found, ir.PERIOD_LOCKED_YEAR, lambda: period_validation_service.validate_posting_date(firm_id, date))
-    _ask(found, ir.PERIOD_LOCKED_RETURN, lambda: period_lock_service.assert_open(db, firm_id, invoice.get("client_id"), date))
+    _ask(found, ir.PERIOD_LOCKED, lambda: period_validation_service.validate_posting_date(firm_id, date))
+    if not found:
+        _ask(found, ir.PERIOD_LOCKED, lambda: period_lock_service.assert_open(db, firm_id, invoice.get("client_id"), date))
 
 
 def _number(found: list[ir.Blocker], invoice: dict) -> None:
@@ -93,17 +99,29 @@ def _place(found: list[ir.Blocker], invoice: dict) -> None:
         found.append(ir.blocker(*place))
 
 
-def blockers_for_sales_invoice(db, firm_id: str, invoice: dict) -> list[ir.Blocker]:
-    """Every reason the draft `invoice` cannot be issued now, in the order the route refuses in. Empty means ready."""
+def blockers_for_sales_invoice(db, firm_id: str, invoice: dict, *, first_only: bool = False) -> list[ir.Blocker]:
+    """Every reason the draft `invoice` cannot be issued now, in the order the route refuses in. Empty means ready.
+
+    `first_only` stops at the first reason, which is what the ISSUE does: it used to end at the first refusal, so a bad number never
+    reached the reads that follow it (the draft's lines, the currency master, the chart of accounts), and an error in one of those reads
+    could not turn a plain refusal into a generic failure. The pre-flight asks for them all."""
     found: list[ir.Blocker] = []
     _status(found, invoice)
     if found:
         return found
     _locks(found, db, firm_id, invoice)
+    if first_only and found:
+        return found
     _number(found, invoice)
+    if first_only and found:
+        return found
     _place(found, invoice)
+    if first_only and found:
+        return found
     _ask(found, ir.DRAFT_DOES_NOT_ADD_UP,
          lambda: draft_integrity_service.assert_draft_adds_up(db, draft_integrity.SALES_INVOICE, invoice))
+    if first_only and found:
+        return found
 
     from services.phase2_journal_service import phase2_journal_service
     missing = phase2_journal_service.missing_accounts_for_sales_invoice(

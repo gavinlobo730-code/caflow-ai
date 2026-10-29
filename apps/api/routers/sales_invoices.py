@@ -2195,7 +2195,7 @@ def issue_invoice(
         # draft adds up to its own lines, the chart of accounts), and the first blocker is the refusal. `GET /{id}/issue-preflight`
         # answers the same list to a screen BEFORE the click. The reasoning for each check is in `services/issue_readiness_service`.
         # POST-A-335: the stored figures are what the journal posts, and a draft is a row a member's own token can still change.
-        blockers = issue_readiness_service.blockers_for_sales_invoice(db, current_user.get("firm_id") or "", inv)
+        blockers = issue_readiness_service.blockers_for_sales_invoice(db, current_user.get("firm_id") or "", inv, first_only=True)
         if blockers:
             return issue_readiness_service.refuse(blockers[0])
         # Auto-create journal entry FIRST — CGST Act §9. If the Chart of Accounts
