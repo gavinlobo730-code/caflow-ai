@@ -25,13 +25,11 @@ from core.permissions import rbac
 from services.audit_service import log_event
 from services import draft_document_lines
 from services.document_header_writer import update_header
-from domain.accounting import draft_integrity
-from services import draft_integrity_service
+from services import issue_readiness_service
 from services import named_row_ownership
 from domain.gst import place_of_supply
 from domain.gst import inter_state as _inter_state
 from domain.gst import supply_classification
-from domain.gst.validator import VALID_STATE_CODES
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
@@ -39,7 +37,7 @@ from services.internal_client_service import is_internal_client, assert_partner_
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from core.ist_clock import ist_fy_label, ist_today
 from domain.gst import invoice_series
-from services import numbering, sales_numbering_service
+from services import sales_numbering_service
 from services.line_item_ownership import assert_items_are_the_clients
 from domain.money_sentence import rupee_whole_text
 
@@ -158,10 +156,9 @@ def _assert_invoice_no_is_not_a_placeholder(invoice_no: str) -> None:
     until now replacing it was a convention: issue it and it is a tax invoice number in the books, the GSTR-1 and the
     customer's copy, correctable only by a §34 credit note. A draft may hold it; an invoice may not.
     """
-    if numbering.is_placeholder_invoice_no(invoice_no):
-        raise HTTPException(status_code=422, detail=(
-            f"This invoice still carries the placeholder number {invoice_no}. Replace it with the next number in your "
-            "invoice series before issuing: once issued, the number is the one on the tax invoice."))
+    problem = issue_readiness_service.placeholder_number_problem(invoice_no)
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
 
 
 def _assert_invoice_no_available(
@@ -2123,6 +2120,33 @@ def update_invoice(
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
 
 
+@router.get("/{invoice_id}/issue-preflight")
+def issue_preflight(
+    invoice_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Everything that would stop `POST /{invoice_id}/issue` right now, listed (POST-A-125). Reads and writes nothing.
+
+    `{ready, blockers: [{code, message, action}]}`, the SAME list the issue route refuses from (its first entry is the refusal), so the
+    editor can say what is in the way before the click and offer the action that clears it. It is a reading at one moment: a lock set a
+    second later still refuses the issue. In the in-memory mode, which has no database, only the checks that need none are made."""
+    _assert_invoice_scope(current_user, invoice_id)
+    firm_id = current_user.get("firm_id") or ""
+    if _USE_MOCK:
+        mock = next((i for i in MOCK_SALES_INVOICES if i["id"] == invoice_id), None)
+        if mock is None:
+            raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+        blockers = issue_readiness_service.blockers_without_database(mock)
+    else:
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        found = db.table("client_sales_invoices").select("*").eq("id", invoice_id).eq("firm_id", firm_id).limit(1).execute().data
+        if not found:
+            raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+        blockers = issue_readiness_service.blockers_for_sales_invoice(db, firm_id, found[0])
+    return api_response(True, {"ready": not blockers, "blockers": [b.as_dict() for b in blockers]})
+
+
 @router.post("/{invoice_id}/issue")
 def issue_invoice(
     invoice_id: str,
@@ -2166,56 +2190,14 @@ def issue_invoice(
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         inv = resp.data[0]
-        draft_integrity_service.assert_a_draft(inv, not_a_draft="Only draft invoices can be issued")
-        # FY-lock: issuing posts a dated journal — block if the year was locked after
-        # the draft was created (deferred-posting gap).
-        if inv.get("invoice_date"):
-            period_validation_service.validate_posting_date(current_user.get("firm_id") or "", inv["invoice_date"])
-            # ...and the PORTAL's lock, re-checked HERE and not only at create.
-            # A draft raised in June and issued in September is posted with its
-            # June date, so if GSTR-1 for June has since been filed the supply
-            # belongs to a return that can no longer accept it (CGST §37 —
-            # corrections go in a later period's amendment tables). Checking
-            # only at create is checking at the moment nothing was posted.
-            period_lock_service.assert_open(
-                db, current_user.get("firm_id") or "", inv.get("client_id"),
-                inv["invoice_date"])
-
-        # A PLACE OF SUPPLY, CHECKED AT ISSUE AND NOT AT DRAFT (SALES-29).
-        #
-        # `supply_state_code` fell through to "" when neither the request nor
-        # the customer carried one, was written unvalidated, and first became an
-        # error when GSTR-1 was built — domain/gst/validator rejects a place of
-        # supply outside VALID_STATE_CODES. So invoices went out all quarter and
-        # the CA met the list of errors on the 10th of the following month, by
-        # which time each one was issued, posted and sent, and correcting it is
-        # a §34 credit note rather than an edit.
-        #
-        # AT ISSUE, not at create: a draft is allowed to be incomplete — that is
-        # what a draft is — and Rule 46(n) requires the place of supply on a
-        # tax INVOICE. Issuing is the moment the document becomes one.
-        # A NUMBER RULE 46(b) ALLOWS, CHECKED AT ISSUE AS WELL AS AT CREATE.
-        # Create and edit both refuse one now, so this catches only the drafts
-        # that pre-date that (SALES-12) and anything a future write path forgets
-        # — which is the point of a backstop. Issuing is the moment the document
-        # becomes a tax invoice, and it is the last moment the number can be
-        # corrected without a §34 credit note.
-        _assert_invoice_no_legal(inv.get("invoice_no") or "")
-        _assert_invoice_no_is_not_a_placeholder(inv.get("invoice_no") or "")
-
-        _pos = (inv.get("supply_state_code") or "").strip()
-        if _pos not in VALID_STATE_CODES:
-            raise HTTPException(status_code=422, detail=(
-                f"Cannot issue — place of supply is "
-                f"{'missing' if not _pos else f'invalid ({_pos})'}. CGST Rule 46(n) "
-                f"requires it on a tax invoice, and GSTR-1 is rejected without a "
-                f"valid 2-digit state code. Set the Supply State on the invoice, "
-                f"or record the customer's state or GSTIN and re-open the draft."
-            ))
-
-        # POST-A-335: the stored figures are what the journal posts, and a draft is a row a member's own token can still change,
-        # so the draft is asked whether it adds up to its own lines (and is not flagged as carried over) before anything is posted.
-        draft_integrity_service.assert_draft_adds_up(db, draft_integrity.SALES_INVOICE, inv)
+        # POST-A-125: everything that can stand between this draft and its issue is asked in ONE place, in the order this route has
+        # always refused in (status, the firm's locked year, a filed return, the number's two rules, the place of supply, whether the
+        # draft adds up to its own lines, the chart of accounts), and the first blocker is the refusal. `GET /{id}/issue-preflight`
+        # answers the same list to a screen BEFORE the click. The reasoning for each check is in `services/issue_readiness_service`.
+        # POST-A-335: the stored figures are what the journal posts, and a draft is a row a member's own token can still change.
+        blockers = issue_readiness_service.blockers_for_sales_invoice(db, current_user.get("firm_id") or "", inv, first_only=True)
+        if blockers:
+            return issue_readiness_service.refuse(blockers[0])
         # Auto-create journal entry FIRST — CGST Act §9. If the Chart of Accounts
         # is not set up, this raises ValueError and the invoice stays a draft.
         try:

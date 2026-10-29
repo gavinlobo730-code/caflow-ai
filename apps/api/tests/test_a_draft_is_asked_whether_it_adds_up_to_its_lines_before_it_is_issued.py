@@ -497,7 +497,7 @@ def test_the_status_test_keeps_each_routes_own_sentence():
     for status in ("issued", "received", "cancelled", "paid", None):
         with pytest.raises(HTTPException) as e:
             service.assert_a_draft({"status": status}, not_a_draft="Only draft invoices can be issued")
-        assert e.value.status_code == 422 and e.value.detail == "Only draft invoices can be issued"
+        assert e.value.status_code == 422 and _said(e.value) == "Only draft invoices can be issued"
 
 
 class _Tables:
@@ -533,7 +533,7 @@ def test_a_foreign_document_is_converted_at_its_own_stored_rate_and_its_currency
     with pytest.raises(HTTPException) as e:
         service.assert_draft_adds_up(_Tables(client_sales_invoice_lines=_invoice_line_rows(), currencies=_usd_master()),
                                      rule.SALES_INVOICE, inflated)
-    assert e.value.status_code == 422 and "at the document's exchange rate" in e.value.detail
+    assert e.value.status_code == 422 and "at the document's exchange rate" in _said(e.value)
 
 
 def test_a_currency_with_no_minor_unit_is_converted_as_the_master_says():
@@ -551,7 +551,7 @@ def test_a_stored_rate_that_is_not_positive_is_refused_in_words():
     db = _Tables(client_sales_invoice_lines=_invoice_line_rows(), currencies=_usd_master())
     with pytest.raises(HTTPException) as e:
         service.assert_draft_adds_up(db, rule.SALES_INVOICE, _foreign_invoice_header(exchange_rate="0"))
-    assert e.value.status_code == 422 and "not a positive number" in e.value.detail and e.value.detail.endswith("Nothing was posted.")
+    assert e.value.status_code == 422 and "not a positive number" in _said(e.value) and _said(e.value).endswith("Nothing was posted.")
 
 
 def test_a_document_in_rupees_never_reads_the_currency_master():
@@ -757,7 +757,7 @@ def test_a_round_off_no_rounding_could_give_is_refused_and_nothing_is_posted(mon
     row["round_off_paise"], row["total_paise"] = row["round_off_paise"] + 1_000_000, row["total_paise"] + 1_000_000
     with pytest.raises(HTTPException) as e:
         si.issue_invoice(inv, CALLER)
-    assert e.value.status_code == 422 and "round-off" in e.value.detail
+    assert e.value.status_code == 422 and "round-off" in _said(e.value)
     assert row["status"] == "draft" and len(db.rows("journal_entries")) == entries_before
 
 
@@ -793,7 +793,7 @@ def test_a_foreign_currency_draft_whose_rupee_columns_were_inflated_is_refused_a
         row["net_payable_paise"] = row["total_paise"]
     with pytest.raises(HTTPException) as e:
         issue(doc)
-    assert e.value.status_code == 422 and "at the document's exchange rate" in e.value.detail
+    assert e.value.status_code == 422 and "at the document's exchange rate" in _said(e.value)
     assert row["status"] == "draft" and len(db.rows("journal_entries")) == entries_before
 
 
@@ -826,7 +826,7 @@ def test_a_document_discount_sent_without_the_lines_is_refused_on_a_draft_invoic
     before = dict(_row(db, "client_sales_invoices", inv))
     with pytest.raises(HTTPException) as e:
         si.update_invoice(inv, SalesInvoiceUpdateIn(**field), CALLER)
-    assert e.value.status_code == 422 and "send the lines with it" in e.value.detail
+    assert e.value.status_code == 422 and "send the lines with it" in _said(e.value)
     assert _row(db, "client_sales_invoices", inv) == before
     assert si.update_invoice(inv, SalesInvoiceUpdateIn(lines=[_line()], **field), CALLER)["success"] is True
     assert _row(db, "client_sales_invoices", inv)["discount_paise"] > 0
@@ -839,7 +839,7 @@ def test_an_issued_invoice_still_answers_a_discount_in_the_locked_fields_words(m
     assert si.issue_invoice(inv, CALLER)["success"] is True
     with pytest.raises(HTTPException) as e:
         si.update_invoice(inv, SalesInvoiceUpdateIn(discount_paise=5_000), CALLER)
-    assert e.value.status_code == 422 and "Cannot change discount_paise on an issued invoice" in e.value.detail
+    assert e.value.status_code == 422 and "Cannot change discount_paise on an issued invoice" in _said(e.value)
 
 
 def test_the_in_memory_twins_of_both_edits_refuse_what_the_database_paths_refuse(monkeypatch):
@@ -849,14 +849,14 @@ def test_the_in_memory_twins_of_both_edits_refuse_what_the_database_paths_refuse
                                                      "invoice_date": "2025-06-01"}])
     with pytest.raises(HTTPException) as e:
         si.update_invoice("MI", SalesInvoiceUpdateIn(discount_paise=5_000), CALLER)
-    assert e.value.status_code == 422 and "send the lines with it" in e.value.detail
+    assert e.value.status_code == 422 and "send the lines with it" in _said(e.value)
     monkeypatch.setattr(pb, "_USE_MOCK", True)
     monkeypatch.setattr(pb, "MOCK_PURCHASE_BILLS", [{
         "id": "MB", "firm_id": FIRM, "client_id": "CLI", "vendor_id": "V", "status": "draft", "bill_date": "2025-06-01",
         "is_interstate": False, "is_reverse_charge": False, "total_paise": 118_000}])
     with pytest.raises(HTTPException) as e:
         pb.update_purchase_bill("MB", PurchaseBillUpdateIn(is_reverse_charge=True), CALLER)
-    assert e.value.status_code == 422 and "send the bill's lines with it" in e.value.detail
+    assert e.value.status_code == 422 and "send the bill's lines with it" in _said(e.value)
 
 
 @pytest.mark.parametrize("kind", list(ROUTES))
@@ -880,8 +880,8 @@ def test_a_tampered_draft_is_refused_and_nothing_is_posted(monkeypatch, kind, ta
 
     with pytest.raises(HTTPException) as e:
         issue(doc)
-    assert e.value.status_code == 422 and e.value.detail.startswith("Cannot issue this ")
-    assert e.value.detail.endswith("Nothing was posted.")
+    assert e.value.status_code == 422 and _said(e.value).startswith("Cannot issue this ")
+    assert _said(e.value).endswith("Nothing was posted.")
     assert row["status"] == "draft"
     assert len(db.rows("journal_entries")) == entries_before
 
@@ -897,7 +897,7 @@ def test_a_draft_flagged_as_carried_over_is_refused_and_leaves_no_trace(monkeypa
     row["is_opening"] = True
     with pytest.raises(HTTPException) as e:
         issue(doc)
-    assert e.value.status_code == 422 and "carried-over" in e.value.detail
+    assert e.value.status_code == 422 and "carried-over" in _said(e.value)
     assert row["status"] == "draft" and len(db.rows("journal_entries")) == entries_before
 
 
@@ -911,7 +911,7 @@ def test_the_status_sentence_is_asked_before_the_figures(monkeypatch, kind):
     _row(db, header_table, doc)["total_paise"] += 1            # damaged afterwards: it is no longer a draft, so nobody asks
     with pytest.raises(HTTPException) as e:
         issue(doc)
-    assert e.value.status_code == 422 and e.value.detail.startswith("Only draft ")
+    assert e.value.status_code == 422 and _said(e.value).startswith("Only draft ")
 
 
 # ── a draft bill edited to (or from) reverse charge stays a draft that adds up ───────────────────────────────────────────
@@ -964,7 +964,7 @@ def test_changing_reverse_charge_without_the_lines_is_refused_in_words_and_chang
     before = dict(_row(db, "purchase_bills", bill))
     with pytest.raises(HTTPException) as e:
         pb.update_purchase_bill(bill, PurchaseBillUpdateIn(is_reverse_charge=True), CALLER)
-    assert e.value.status_code == 422 and "send the bill's lines with it" in e.value.detail
+    assert e.value.status_code == 422 and "send the bill's lines with it" in _said(e.value)
     assert _row(db, "purchase_bills", bill) == before
 
 
@@ -982,7 +982,7 @@ def test_a_received_bill_still_answers_its_locked_fields_in_the_old_words(monkey
     assert pb.receive_purchase_bill(bill, CALLER)["success"] is True
     with pytest.raises(HTTPException) as e:
         pb.update_purchase_bill(bill, PurchaseBillUpdateIn(is_reverse_charge=True), CALLER)
-    assert e.value.status_code == 422 and "Cannot change is_reverse_charge on a received bill" in e.value.detail
+    assert e.value.status_code == 422 and "Cannot change is_reverse_charge on a received bill" in _said(e.value)
 
 
 # ── the rule over the routers ────────────────────────────────────────────────────────────────────────────────────────────
@@ -1014,10 +1014,55 @@ def _calls(fn: ast.FunctionDef, dotted_tail: str) -> list[ast.Call]:
     return found
 
 
+def _said(exc) -> str:
+    """The sentence a refusal carried. The sales invoice's issue route answers `{message, code, action}` since POST-A-125 and the other
+    five answer a string; the words are the same."""
+    detail = exc.detail
+    return detail["message"] if isinstance(detail, dict) else detail
+
+
+SERVICES = API / "services"
+
+
+def _service_function(name: str) -> ast.FunctionDef:
+    tree = ast.parse((SERVICES / "issue_readiness_service.py").read_text(encoding="utf-8"))
+    return next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name)
+
+
+def _the_sales_invoice_asks_through_the_readiness_service(fn: ast.FunctionDef, kind_const: str) -> None:
+    """POST-A-125 moved the sales invoice's checks out of its route into one list (`issue_readiness_service`), which the route and the
+    pre-flight both ask. The RULE this file holds is unchanged and is restated on the two places that now carry it: the route asks the
+    list exactly once, before anything is written, and the list asks the status first, the locks before the figures, and the draft
+    as its own kind of document exactly once."""
+    asks = _calls(fn, "issue_readiness_service.blockers_for_sales_invoice")
+    assert len(asks) == 1, "issue_invoice must ask the readiness list exactly once"
+    writers = [c for c in ast.walk(fn) if isinstance(c, ast.Call)
+               and (getattr(c.func, "attr", "") in {"journal_for_sales_invoice"} or getattr(c.func, "id", "") == "update_header")]
+    opened = [c for c in ast.walk(fn) if isinstance(c, ast.Call) and getattr(c.func, "id", "") == "get_supabase"]
+    assert opened, "the real branch opens the database"
+    real_writers = [w for w in writers if w.lineno > min(o.lineno for o in opened)]
+    assert real_writers and min(w.lineno for w in real_writers) > asks[0].lineno, "nothing is written before the list is asked"
+
+    service = _service_function("blockers_for_sales_invoice")
+    status = [c for c in ast.walk(service) if isinstance(c, ast.Call) and getattr(c.func, "id", "") == "_status"]
+    locks = [c for c in ast.walk(service) if isinstance(c, ast.Call) and getattr(c.func, "id", "") == "_locks"]
+    figures = [c for c in ast.walk(service) if isinstance(c, ast.Call) and getattr(c.func, "id", "") == "_ask"
+               and any(ast.unparse(a).endswith("DRAFT_DOES_NOT_ADD_UP") for a in c.args)]
+    assert len(status) == 1 and len(locks) == 1 and len(figures) == 1, "the list asks the status, the locks and the figures once each"
+    assert status[0].lineno < locks[0].lineno < figures[0].lineno, "status, then the locks, then the figures"
+    kind = [c for c in ast.walk(figures[0]) if isinstance(c, ast.Call) and ast.unparse(c.func).endswith("assert_draft_adds_up")]
+    assert len(kind) == 1 and ast.unparse(kind[0].args[1]) == f"draft_integrity.{kind_const}", "it is asked as its own kind of document"
+    lock_checks = [c for c in ast.walk(_service_function("_locks")) if isinstance(c, ast.Call)
+                   and ast.unparse(c.func).endswith("period_lock_service.assert_open")]
+    assert lock_checks, "the locks include the filed-return lock"
+
+
 @pytest.mark.parametrize("module,spec", list(ISSUE_ROUTERS.items()))
 def test_each_issue_route_asks_after_the_locks_and_before_it_writes(module, spec):
     fn_name, kind_const = spec
     fn = _function(module, fn_name)
+    if module == "sales_invoices":
+        return _the_sales_invoice_asks_through_the_readiness_service(fn, kind_const)
     asks = _calls(fn, "draft_integrity_service.assert_draft_adds_up")
     assert len(asks) == 1, f"{module}.{fn_name} must ask the draft whether it adds up, exactly once"
     ask = asks[0]
@@ -1041,16 +1086,19 @@ def test_each_issue_route_asks_after_the_locks_and_before_it_writes(module, spec
 
 def test_the_invoice_asks_after_its_own_number_and_place_of_supply_refusals():
     """The record says the question is asked after the invoice's own refusals, so that a bad number is answered as a bad number and
-    not as an arithmetic complaint. Moving the question above any of them changed no test until this one."""
-    fn = _function("sales_invoices", "issue_invoice")
-    ask = _calls(fn, "draft_integrity_service.assert_draft_adds_up")[0].lineno
-    legal = _calls(fn, "_assert_invoice_no_legal")
-    placeholder = _calls(fn, "_assert_invoice_no_is_not_a_placeholder")
-    state_check = [n for n in ast.walk(fn) if isinstance(n, ast.Name) and n.id == "VALID_STATE_CODES"]
-    assert legal and placeholder and state_check, "the three refusals this test orders against the question were not found"
-    for found in (legal, placeholder):
-        assert max(c.lineno for c in found) < ask
-    assert max(n.lineno for n in state_check) < ask
+    not as an arithmetic complaint. Moving the question above any of them changed no test until this one. Since POST-A-125 the order
+    is the order of the readiness list's calls."""
+    service = _service_function("blockers_for_sales_invoice")
+    calls = {c.func.id: c.lineno for c in ast.walk(service) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+    figures = [c.lineno for c in ast.walk(service) if isinstance(c, ast.Call) and getattr(c.func, "id", "") == "_ask"
+               and any(ast.unparse(a).endswith("DRAFT_DOES_NOT_ADD_UP") for a in c.args)]
+    assert "_number" in calls and "_place" in calls and len(figures) == 1, "the two refusals this test orders against the question were not found"
+    assert calls["_number"] < figures[0] and calls["_place"] < figures[0]
+    # ...and the sales invoice's own refusals are still the ones the old route made: the number's two rules and the place of supply.
+    number = _service_function("_number")
+    assert any("format_violation" in ast.unparse(c.func) for c in ast.walk(number) if isinstance(c, ast.Call))
+    assert any("placeholder_number_problem" in ast.unparse(c.func) for c in ast.walk(number) if isinstance(c, ast.Call))
+    assert any("place_of_supply_problem" in ast.unparse(c.func) for c in ast.walk(_service_function("_place")) if isinstance(c, ast.Call))
 
 
 def test_the_rule_found_the_six_routes_and_every_poster_of_a_drafts_journal_is_one_of_them():

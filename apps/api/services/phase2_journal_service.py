@@ -22,6 +22,7 @@ from services.ledger_door import ledger_rpc
 from core.observability import capture_posting_failure
 from domain.currency.policy import BASE_CURRENCY, CurrencyPolicy
 from domain.accounting import journal_source as JS
+from domain.sales import issue_readiness
 from domain.currency.rate_types import DEFAULT_RATE_TYPE, is_valid_rate_type
 from core.db_provider import privileged_for
 
@@ -213,6 +214,23 @@ class Phase2JournalService:
             # existing actionable behaviour via the ValueError branch above.
             _logger.error("journal_for_sales_invoice error: %s", e, exc_info=True)
             raise
+
+    def missing_accounts_for_sales_invoice(self, db, firm_id: str, client_id: str, invoice: dict) -> list[str]:
+        """Labels of the ledger accounts `journal_for_sales_invoice` would fail to find for this invoice, in its order; empty when it
+        would find them all (POST-A-125).
+
+        Asked through the SAME `_find_account` the posting uses and for the accounts `issue_readiness.required_accounts` names, which
+        `tests/test_the_issue_preflight_asks_for_the_accounts_the_posting_looks_up.py` holds identical to the posting's own lookups, so
+        a pre-flight that says "ready" cannot be refused by an account the posting then goes looking for. Writes nothing."""
+        if _USE_MOCK:
+            return []
+        missing: list[str] = []
+        for account in issue_readiness.required_accounts(invoice):
+            try:
+                self._find_account(db, firm_id, client_id, account.pattern, system_key=account.system_key)
+            except ValueError:
+                missing.append(account.label)
+        return missing
 
     def receipt_journal_lines(self, db, receipt: dict, firm_id: str, client_id: str) -> list[dict]:
         """Build (but do not post) the double-entry lines for a receipt:

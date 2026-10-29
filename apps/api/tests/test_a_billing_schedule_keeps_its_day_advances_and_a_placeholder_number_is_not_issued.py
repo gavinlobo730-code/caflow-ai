@@ -165,8 +165,17 @@ def test_both_issue_paths_ask_the_placeholder_question_straight_after_the_legal_
     tree = ast.parse((Path(sales.__file__)).read_text(encoding="utf-8"))
     fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "issue_invoice")
     calls = [ast.unparse(n.func) for n in ast.walk(fn) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
-    assert calls.count("_assert_invoice_no_legal") == 2
-    assert calls.count("_assert_invoice_no_is_not_a_placeholder") == 2
+    # The in-memory branch still asks the two itself; the real branch asks them through the readiness list since POST-A-125.
+    assert calls.count("_assert_invoice_no_legal") == 1
+    assert calls.count("_assert_invoice_no_is_not_a_placeholder") == 1
+    assert "issue_readiness_service.blockers_for_sales_invoice" in [
+        ast.unparse(n.func) for n in ast.walk(fn) if isinstance(n, ast.Call)]
+    from services import issue_readiness_service as service
+    number = next(n for n in ast.walk(ast.parse(Path(service.__file__).read_text(encoding="utf-8")))
+                  if isinstance(n, ast.FunctionDef) and n.name == "_number")
+    asked = [ast.unparse(n.func) for n in ast.walk(number) if isinstance(n, ast.Call)]
+    assert asked.index("invoice_series.format_violation") < asked.index("placeholder_number_problem"), \
+        "the placeholder question comes straight after the legal one"
 
 
 # ── two editors, one version number ───────────────────────────────────────────────────────────────────────────────────
