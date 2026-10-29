@@ -416,6 +416,14 @@ _USAGE_CHECKS = [
     ("a sales debit note", "sales_debit_note_lines", "sales_debit_notes"),
     ("a purchase credit note", "purchase_credit_note_lines", "purchase_credit_notes"),
     ("a recurring purchase bill template", "recurring_purchase_bill_template_lines", "recurring_purchase_bill_templates"),
+    # The five documents before the tax invoice and the bill carry the code too (migrations 392 and 393; ledger POST-A-324).
+    # A code is judged by string match with no status, as for every row above: a code that was ever typed on a document is
+    # kept visible.
+    ("a sales quotation", "sales_quotation_lines", "sales_quotations"),
+    ("a sales order", "sales_order_lines", "sales_orders"),
+    ("a delivery challan", "delivery_challan_lines", "delivery_challans"),
+    ("a purchase order", "purchase_order_lines", "purchase_orders"),
+    ("a goods receipt", "goods_receipt_lines", "goods_receipt_notes"),
 ]
 
 
@@ -459,7 +467,7 @@ def _find_hsn_usage_mock(hsn_code: str) -> list[str]:
     """Mock-mode equivalent of _find_hsn_usage, mirrors service_catalogue.py's
     delete_service mock branch (deferred import of each router's in-memory
     store to avoid a circular import). Best-effort: the recurring invoice
-    and recurring purchase bill templates have no mock line store, so they're not checked here — the
+    and recurring purchase bill templates and the five documents before the invoice and the bill have no mock line store, so they're not checked here — the
     real (Supabase) path above is exhaustive."""
     found: list[str] = []
     from routers.service_catalogue import MOCK_SERVICES

@@ -826,6 +826,16 @@ _SERVICE_USAGE_CHECKS = [
     # Migration 210's two note families carry the service link too (ledger POST-A-312); their status is draft or issued.
     ("a sales debit note", "sales_debit_note_lines", "debit_note_id", "sales_debit_notes"),
     ("a purchase credit note", "purchase_credit_note_lines", "credit_note_id", "purchase_credit_notes"),
+    # Migrations 392 and 393: the documents that come BEFORE the tax invoice and the bill carry the link too, ON DELETE SET NULL
+    # (ledger POST-A-324), so the delete would not be stopped by the database: it would quietly cut the link from a quotation
+    # that was sent, an order being delivered, a challan in transit, a purchase order that was approved or a goods receipt that
+    # was recorded. All five families have a draft and a cancelled state, and a document in any other state (closed ones
+    # included, as with the paid invoice above) is a record that names the item.
+    ("a sales quotation", "sales_quotation_lines", "quotation_id", "sales_quotations"),
+    ("a sales order", "sales_order_lines", "order_id", "sales_orders"),
+    ("a delivery challan", "delivery_challan_lines", "challan_id", "delivery_challans"),
+    ("a purchase order", "purchase_order_lines", "order_id", "purchase_orders"),
+    ("a goods receipt", "goods_receipt_lines", "receipt_id", "goods_receipt_notes"),
 ]
 
 
@@ -866,6 +876,24 @@ def _find_service_usage(db, service_id: str) -> list[str]:
     if (db.table("inventory_stock_ledger").select("id")
             .eq("service_catalogue_id", service_id).limit(1).execute().data or []):
         found.append("your inventory stock ledger (it has recorded stock movements)")
+    # stock_count_lines.service_catalogue_id cascades on delete (migration 387): the delete would wipe what was counted
+    # for the item, and a posted count is the record of a physical verification. A session that was abandoned never
+    # posted anything and does not count, the rule the cancelled documents above follow (ledger POST-A-324).
+    count_lines = (db.table("stock_count_lines").select("id, session_id")
+                   .eq("service_catalogue_id", service_id).execute().data or [])
+    count_ids = list({ln["session_id"] for ln in count_lines if ln.get("session_id")})
+    if count_ids:
+        sessions = (db.table("stock_count_sessions").select("id, status")
+                    .in_("id", count_ids).execute().data or [])
+        if any(s.get("status") != "abandoned" for s in sessions):
+            found.append("a physical stock count")
+    # inventory_batches.service_catalogue_id cascades too (migration 398). A batch exists where a stock movement does and the
+    # stock ledger above is read, but a lot can be recorded before any movement, so it is asked for itself; a lot that was
+    # soft-deleted is gone as far as the screens are concerned.
+    if (db.table("inventory_batches").select("id")
+            .eq("service_catalogue_id", service_id).is_("deleted_at", "null")
+            .limit(1).execute().data or []):
+        found.append("a stock batch")
     # recurring_invoice_template_lines.service_catalogue_id is NOT NULL (migration
     # 206) — the FK would block the delete anyway; check first for a friendly
     # message. "archived" templates never generate again, so they don't count.
@@ -899,7 +927,8 @@ def _find_service_usage(db, service_id: str) -> list[str]:
 def _find_service_usage_mock(service_id: str) -> list[str]:
     """Mock-mode equivalent — deferred imports of each router's in-memory
     store to avoid a circular import (mirrors firm_hsn_library.py's
-    _find_hsn_usage_mock)."""
+    _find_hsn_usage_mock). The five documents before the invoice and the bill, the stock count lines and the
+    batches have no in-memory store, so this does not see them; the real path above is exhaustive."""
     found: list[str] = []
 
     from routers.sales_invoices import MOCK_SALES_INVOICE_LINES, MOCK_SALES_INVOICES

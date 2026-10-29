@@ -19,7 +19,11 @@ WHAT IS HELD
     * THE RULE, over the schema: every table with a `service_catalogue_id` column is one `_find_service_usage` reads or is on
       `SERVICE_LINK_NOT_READ`, and every table with an `hsn_sac` column is one `_find_hsn_usage` reads or is on
       `HSN_NOT_READ`. Both lists are shrink-only: a table that is now read, or that no longer exists, fails the list. The next
-      table to carry the link is a red test here and not a code someone purged.
+      table to carry the link is a red test here and not a code someone purged;
+    * (POST-A-324) a service on a quotation, an order, a challan, a purchase order or a goods receipt is found in every state
+      those families allow except draft and cancelled, a stock count line in a count that was not abandoned and a batch that
+      was not soft-deleted are found, and a code on any of the five documents is reachable through the relationship the purge
+      embeds, for the firm that owns it and not for another.
 """
 from __future__ import annotations
 
@@ -55,29 +59,17 @@ OTHER_VENDOR = "31200000-0000-0000-0000-0000000000e2"
 SERVICE = "31200000-0000-0000-0000-0000000000a1"
 NEIGHBOUR_SERVICE = "31200000-0000-0000-0000-0000000000a2"
 
-# Tables that carry the service link and that `_find_service_usage` does not read, each with the reason it is not read yet.
-# All are the open ledger item POST-A-324 (the documents before the tax invoice, and the price list): some cascade a delete
-# (stock count lines, batches, price list items) and some cut the link quietly (SET NULL); whether any of them should block a
-# delete is a per-document decision, not an hours-sized one.
+# Tables that carry the service link and that `_find_service_usage` does not read, each with the reason it is not read.
+# The five documents before the tax invoice and the bill, the stock count lines and the batches were on this list until
+# POST-A-324 and are read now. What is left cascades a delete and has no document behind it.
 SERVICE_LINK_NOT_READ = {
-    "delivery_challan_lines": "SET NULL; a challan is not a tax invoice (POST-A-324)",
-    "goods_receipt_lines": "SET NULL; a goods receipt is a statutory fact of the purchase cycle (POST-A-324)",
-    "inventory_batches": "CASCADE; a batch exists only where a stock movement does, and the stock ledger is read (POST-A-324)",
-    "price_list_items": "CASCADE; a price entry has no document status (POST-A-324)",
-    "purchase_order_lines": "SET NULL; an order before the bill (POST-A-324)",
-    "sales_order_lines": "SET NULL; an order before the invoice (POST-A-324)",
-    "sales_quotation_lines": "SET NULL; a quotation before the order (POST-A-324)",
-    "stock_count_lines": "CASCADE; a count line exists only where the item is stocked (POST-A-324)",
+    "price_list_items": "CASCADE; a price entry is a pre-fill for an invoice line's rate and nothing else (the price-list "
+                        "design record), so it goes with the item it prices (POST-A-324)",
 }
 
 # Tables that carry `hsn_sac` and that `_find_hsn_usage` does not read.
 HSN_NOT_READ = {
-    "delivery_challan_lines": "a challan before the tax invoice (POST-A-324)",
-    "goods_receipt_lines": "a goods receipt before the bill (POST-A-324)",
     "hsn_sac_preferences": "a learned suggestion (description to code, with a use count), not a document: it records no use of a code",
-    "purchase_order_lines": "an order before the bill (POST-A-324)",
-    "sales_order_lines": "an order before the invoice (POST-A-324)",
-    "sales_quotation_lines": "a quotation before the order (POST-A-324)",
 }
 
 
@@ -160,9 +152,76 @@ def _template(w, *, firm=FIRM, client=CLIENT, vendor=VENDOR, status="active", hs
     return tid
 
 
+# The five documents before the tax invoice and the bill (migrations 392 and 393), each with its parent, its line table, the
+# line's foreign key to the parent and the states it allows. Every one has a draft and a cancelled state.
+CYCLE_FAMILIES = {
+    "a sales quotation": ("sales_quotations", "sales_quotation_lines", "quotation_id",
+                          ["draft", "sent", "accepted", "declined", "converted", "cancelled"]),
+    "a sales order": ("sales_orders", "sales_order_lines", "order_id",
+                      ["draft", "confirmed", "partially_delivered", "delivered", "closed", "cancelled"]),
+    "a delivery challan": ("delivery_challans", "delivery_challan_lines", "challan_id",
+                           ["draft", "issued", "received_back", "cancelled"]),
+    "a purchase order": ("purchase_orders", "purchase_order_lines", "order_id",
+                         ["draft", "approved", "partially_received", "received", "closed", "cancelled"]),
+    "a goods receipt": ("goods_receipt_notes", "goods_receipt_lines", "receipt_id", ["draft", "recorded", "cancelled"]),
+}
+
+
+def _cycle_document(w, label: str, *, firm=FIRM, client=CLIENT, status="draft", hsn=None, service=None) -> str:
+    """One document of a family with one line, carrying the code and the service link it is given."""
+    parent, line_table, fk, _states = CYCLE_FAMILIES[label]
+    did = str(uuid.uuid4())
+    no = f"D{did[:8]}"
+    columns = {
+        "sales_quotations": f"(id, firm_id, client_id, customer_id, kind, document_no, document_date, status) "
+                            f"VALUES ('{did}', '{firm}', '{client}', '{CUSTOMER}', 'quotation', '{no}', '2026-04-10', '{status}')",
+        "sales_orders": f"(id, firm_id, client_id, customer_id, document_no, document_date, status) "
+                        f"VALUES ('{did}', '{firm}', '{client}', '{CUSTOMER}', '{no}', '2026-04-10', '{status}')",
+        "delivery_challans": f"(id, firm_id, client_id, document_no, document_date, reason, status) "
+                             f"VALUES ('{did}', '{firm}', '{client}', '{no}', '2026-04-10', 'job_work', '{status}')",
+        "purchase_orders": f"(id, firm_id, client_id, vendor_id, document_no, document_date, status) "
+                           f"VALUES ('{did}', '{firm}', '{client}', '{VENDOR}', '{no}', '2026-04-10', '{status}')",
+        "goods_receipt_notes": f"(id, firm_id, client_id, vendor_id, document_no, received_on, status) "
+                               f"VALUES ('{did}', '{firm}', '{client}', '{VENDOR}', '{no}', '2026-04-10', '{status}')",
+    }[parent]
+    sql = f"""
+        INSERT INTO {parent} {columns};
+        INSERT INTO {line_table} (firm_id, client_id, {fk}, description, hsn_sac, service_catalogue_id)
+             VALUES ('{firm}', '{client}', '{did}', 'line', {f"'{hsn}'" if hsn else 'NULL'}, {f"'{service}'" if service else 'NULL'});
+    """
+    result = _psql(w.dsn, sql)
+    assert result.returncode == 0, result.stderr
+    return did
+
+
+def _count_line(w, *, session_status="open", service=SERVICE) -> str:
+    sid = str(uuid.uuid4())
+    sql = f"""
+        INSERT INTO stock_count_sessions (id, firm_id, client_id, count_date, reference_no, status)
+             VALUES ('{sid}', '{FIRM}', '{CLIENT}', '2026-04-{10 + uuid.uuid4().int % 15}', 'C-{sid[:8]}', '{session_status}');
+        INSERT INTO stock_count_lines (firm_id, client_id, session_id, service_catalogue_id)
+             VALUES ('{FIRM}', '{CLIENT}', '{sid}', '{service}');
+    """
+    result = _psql(w.dsn, sql)
+    assert result.returncode == 0, result.stderr
+    return sid
+
+
+def _batch(w, *, deleted=False, service=SERVICE) -> str:
+    bid = str(uuid.uuid4())
+    sql = f"""INSERT INTO inventory_batches (id, firm_id, client_id, service_catalogue_id, batch_no, deleted_at)
+                   VALUES ('{bid}', '{FIRM}', '{CLIENT}', '{service}', 'B-{bid[:8]}', {"now()" if deleted else "NULL"});"""
+    result = _psql(w.dsn, sql)
+    assert result.returncode == 0, result.stderr
+    return bid
+
+
 def _purge(w, ids: list[str]) -> None:
-    for table, column in (("sales_debit_notes", "id"), ("purchase_credit_notes", "id"), ("recurring_purchase_bill_templates", "id")):
-        quoted = ", ".join(f"'{i}'" for i in ids)
+    tables = [("sales_debit_notes", "id"), ("purchase_credit_notes", "id"), ("recurring_purchase_bill_templates", "id"),
+              ("sales_quotations", "id"), ("sales_orders", "id"), ("delivery_challans", "id"), ("purchase_orders", "id"),
+              ("goods_receipt_notes", "id"), ("stock_count_sessions", "id"), ("inventory_batches", "id")]
+    quoted = ", ".join(f"'{i}'" for i in ids)
+    for table, column in tables:
         assert _psql(w.dsn, f"DELETE FROM {table} WHERE {column} IN ({quoted});").returncode == 0
 
 
@@ -181,8 +240,10 @@ def _embed_chain(world, line_table: str, parent_table: str) -> tuple[str, int]:
     (_sales_debit_note, "sales_debit_note_lines", "sales_debit_notes", "a sales debit note"),
     (_purchase_credit_note, "purchase_credit_note_lines", "purchase_credit_notes", "a purchase credit note"),
     (_template, "recurring_purchase_bill_template_lines", "recurring_purchase_bill_templates", "a recurring purchase bill template"),
+    *[((lambda w, hsn=None, _label=label: _cycle_document(w, _label, hsn=hsn)), line_table, parent, label)
+      for label, (parent, line_table, _fk, _states) in CYCLE_FAMILIES.items()],
 ])
-def test_a_code_on_one_of_the_three_tables_is_reachable_through_the_relationship_the_check_embeds(world, make, line_table, parent_table, label):
+def test_a_code_on_one_of_the_eight_tables_is_reachable_through_the_relationship_the_check_embeds(world, make, line_table, parent_table, label):
     # the entry the check holds is the one this proof is about
     assert (label, line_table, parent_table) in hsn_library._USAGE_CHECKS
     fk_column, how_many = _embed_chain(world, line_table, parent_table)
@@ -224,6 +285,50 @@ def test_a_service_on_a_recurring_purchase_bill_template_is_found_unless_the_tem
     try:
         assert service_catalogue._find_service_usage(world.db, SERVICE) == (["a recurring purchase bill template"] if found else [])
         assert service_catalogue._find_service_usage(world.db, NEIGHBOUR_SERVICE) == []
+    finally:
+        _purge(world, [made])
+
+
+@pytest.mark.parametrize("label,status", [
+    (label, status) for label, (_p, _l, _f, states) in CYCLE_FAMILIES.items() for status in states
+])
+def test_a_service_on_a_document_before_the_invoice_is_found_in_every_state_but_draft_and_cancelled(world, label, status):
+    """Each family's own vocabulary is walked, so a state added to a family's CHECK later is a state this test must be given."""
+    made = _cycle_document(world, label, status=status, service=SERVICE)
+    try:
+        expected = [] if status in ("draft", "cancelled") else [label]
+        assert service_catalogue._find_service_usage(world.db, SERVICE) == expected, (label, status)
+        assert service_catalogue._find_service_usage(world.db, NEIGHBOUR_SERVICE) == []
+    finally:
+        _purge(world, [made])
+
+
+def test_the_states_the_test_walks_are_the_ones_the_schema_allows(world):
+    """The vocabulary above is copied from migrations 392 and 393; this reads each CHECK so a copy that drifts fails here."""
+    import re
+    for label, (parent, _line, _fk, states) in CYCLE_FAMILIES.items():
+        rows = _rows(world.dsn, f"""
+            SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c
+             WHERE c.conrelid = 'public.{parent}'::regclass AND c.contype = 'c' AND pg_get_constraintdef(c.oid) LIKE '%status%'""")
+        allowed = {m for r in rows for m in re.findall(r"'([a-z_]+)'::text", r[0])}
+        assert allowed == set(states), (label, sorted(allowed ^ set(states)))
+
+
+@pytest.mark.parametrize("session_status,found", [("open", True), ("posted", True), ("abandoned", False)])
+def test_a_service_on_a_stock_count_line_is_found_unless_the_count_was_abandoned(world, session_status, found):
+    made = _count_line(world, session_status=session_status)
+    try:
+        assert service_catalogue._find_service_usage(world.db, SERVICE) == (["a physical stock count"] if found else [])
+        assert service_catalogue._find_service_usage(world.db, NEIGHBOUR_SERVICE) == []
+    finally:
+        _purge(world, [made])
+
+
+@pytest.mark.parametrize("deleted,found", [(False, True), (True, False)])
+def test_a_service_on_a_batch_is_found_unless_the_batch_was_soft_deleted(world, deleted, found):
+    made = _batch(world, deleted=deleted)
+    try:
+        assert service_catalogue._find_service_usage(world.db, SERVICE) == (["a stock batch"] if found else [])
     finally:
         _purge(world, [made])
 

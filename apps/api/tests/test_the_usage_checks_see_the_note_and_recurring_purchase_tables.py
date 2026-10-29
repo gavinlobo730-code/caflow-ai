@@ -167,6 +167,53 @@ def test_each_table_is_reported_under_its_own_label_and_only_for_its_own_service
     assert service_catalogue._find_service_usage(db, OTHER_SERVICE) == []
 
 
+# ── the five documents before the tax invoice and the bill, and the stock count and batch rows (ledger POST-A-324) ──
+
+_BEFORE_THE_INVOICE = [
+    ("a sales quotation", "sales_quotations", "sales_quotation_lines", "quotation_id"),
+    ("a sales order", "sales_orders", "sales_order_lines", "order_id"),
+    ("a delivery challan", "delivery_challans", "delivery_challan_lines", "challan_id"),
+    ("a purchase order", "purchase_orders", "purchase_order_lines", "order_id"),
+    ("a goods receipt", "goods_receipt_notes", "goods_receipt_lines", "receipt_id"),
+]
+
+
+@pytest.mark.parametrize("label,parent,line_table,fk", _BEFORE_THE_INVOICE)
+@pytest.mark.parametrize("status,found", [("draft", False), ("cancelled", False), ("live", True), ("closed", True)])
+def test_a_service_on_a_document_before_the_invoice_is_reported_unless_it_is_a_draft_or_cancelled(label, parent, line_table, fk, status, found):
+    db = _db()
+    db.seed(parent, {"id": "doc-1", "firm_id": FIRM, "status": status})
+    db.seed(line_table, {"id": "ln-1", fk: "doc-1", "service_catalogue_id": SERVICE})
+    assert service_catalogue._find_service_usage(db, SERVICE) == ([label] if found else [])
+    assert service_catalogue._find_service_usage(db, OTHER_SERVICE) == []
+
+
+def test_the_five_families_are_in_the_check_and_in_the_code_purge_check():
+    import routers.firm_hsn_library as hsn_library
+    service_side = {(label, line_table, fk, parent) for label, line_table, fk, parent in service_catalogue._SERVICE_USAGE_CHECKS}
+    code_side = {(label, line_table, parent) for label, line_table, parent in hsn_library._USAGE_CHECKS}
+    for label, parent, line_table, fk in _BEFORE_THE_INVOICE:
+        assert (label, line_table, fk, parent) in service_side, label
+        assert (label, line_table, parent) in code_side, label
+
+
+@pytest.mark.parametrize("session_status,found", [("open", True), ("posted", True), ("abandoned", False)])
+def test_a_service_on_a_stock_count_line_is_reported_unless_the_count_was_abandoned(session_status, found):
+    db = _db()
+    db.seed("stock_count_sessions", {"id": "cs-1", "firm_id": FIRM, "status": session_status})
+    db.seed("stock_count_lines", {"id": "cl-1", "session_id": "cs-1", "service_catalogue_id": SERVICE})
+    assert service_catalogue._find_service_usage(db, SERVICE) == (["a physical stock count"] if found else [])
+    assert service_catalogue._find_service_usage(db, OTHER_SERVICE) == []
+
+
+def test_a_service_on_a_batch_is_reported_unless_the_batch_was_soft_deleted():
+    db = _db()
+    db.seed("inventory_batches", {"id": "b-1", "firm_id": FIRM, "service_catalogue_id": SERVICE, "deleted_at": "2026-05-01T00:00:00+00:00"})
+    assert service_catalogue._find_service_usage(db, SERVICE) == []
+    db.seed("inventory_batches", {"id": "b-2", "firm_id": FIRM, "service_catalogue_id": SERVICE, "deleted_at": None})
+    assert service_catalogue._find_service_usage(db, SERVICE) == ["a stock batch"]
+
+
 # ── the same answers through the mock twin ───────────────────────────────────────
 
 def test_the_mock_twin_reports_an_issued_sales_debit_note_and_not_a_draft_or_a_cancelled_one():

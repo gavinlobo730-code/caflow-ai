@@ -52,6 +52,10 @@ class _Query:
         self._filters.append(("in", column, list(values)))
         return self
 
+    def is_(self, column, value):
+        self._filters.append(("is", column, value))
+        return self
+
     def limit(self, *_a, **_k):
         return self
 
@@ -65,6 +69,8 @@ class _Query:
                 if kind == "eq" and row.get(column) != value:
                     return False
                 if kind == "in" and row.get(column) not in value:
+                    return False
+                if kind == "is" and value == "null" and row.get(column) is not None:
                     return False
             return True
 
