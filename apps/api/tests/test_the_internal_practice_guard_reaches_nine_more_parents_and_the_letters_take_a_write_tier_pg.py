@@ -82,7 +82,8 @@ _F = f"'{FIRM}'"
 NINE = ["debit_notes", "purchase_credit_notes", "sales_debit_notes", "onboarding_workflows", "tasks",
         "recurring_journal_templates", "recurring_purchase_bill_templates", "workflow_instances", "itr_filings"]
 NULLABLE_CLIENT = {"workflow_instances"}                      # a workflow can run for the firm
-NOT_WRITABLE = {"workflow_instances"}                         # the signed-in role holds no write grant on it
+NOT_WRITABLE = {"workflow_instances",                         # the signed-in role holds no write grant on it
+                "recurring_journal_templates", "recurring_purchase_bill_templates"}   # nor, since migration 562, on these two
 WRITABLE_NINE = [t for t in NINE if t not in NOT_WRITABLE]
 CLEARABLE = [("engagements", "client_id"), ("customer_payment_events", "payment_id"),
              ("properties", "client_id"), ("tally_migration_jobs", "client_id")]

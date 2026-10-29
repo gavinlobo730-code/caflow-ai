@@ -179,6 +179,11 @@ def _as(who: str) -> str:
     return f"SET request.jwt.claims = '{{\"sub\": \"{PEOPLE[who][1]}\", \"role\": \"authenticated\"}}'; SET ROLE authenticated; "
 
 
+def _by_the_privilege_not_the_trigger(out: str) -> bool:
+    """A refusal that is the table privilege (42501), not this trigger's own refusal."""
+    return out.startswith("err:42501") and "permission denied" in out
+
+
 def _op(dsn: str, who: str, dml: str) -> str:
     """Run one statement as `who`, report its row count (or `err:<SQLSTATE> <message>` when the database refuses it), and undo it."""
     do = (f"DO $$ DECLARE c bigint; BEGIN BEGIN {dml}; GET DIAGNOSTICS c = ROW_COUNT; RAISE NOTICE 'out=%', c; "
@@ -695,7 +700,10 @@ def test_a_partners_delete_of_a_vendor_cascades_to_its_issued_bills_without_the_
 
 
 def test_an_on_delete_set_null_update_of_an_issued_invoice_is_not_judged(world):
-    """Deleting a recurring template sets `recurring_template_id` to NULL on the invoices it generated, whatever their state."""
+    """Deleting a recurring template sets `recurring_template_id` to NULL on the invoices it generated, whatever their state.
+    Since migration 562 a signed-in session cannot delete a template at all (the API does it as the server), so the delete is made
+    as the service role: what is proved is that the cascade is not judged by this trigger, which is still the rule for any
+    foreign key's SET NULL on an issued document."""
     tpl = _rows(world.dsn, f"SET session_replication_role = replica; INSERT INTO recurring_invoice_templates (firm_id, client_id, customer_id, title, frequency, start_date, next_run_date) "
                            f"SELECT '{FIRM}', '{CLIENT_A}', id, 'tpl', 'monthly', '2026-04-01', '2026-05-01' FROM customers LIMIT 1 RETURNING id;")
     tpl_id = [r[0] for r in tpl if re.fullmatch(r"[0-9a-f-]{36}", r[0])][0]
@@ -703,8 +711,10 @@ def test_an_on_delete_set_null_update_of_an_issued_invoice_is_not_judged(world):
     world.owner(f"UPDATE client_sales_invoices SET recurring_template_id = '{tpl_id}' WHERE id = '{inv}'")
     # the same column changed directly is refused, so the cascade passing is the depth rule and nothing else
     assert _by_the_trigger(_op(world.dsn, "manager_a", f"UPDATE client_sales_invoices SET recurring_template_id = NULL WHERE id = '{inv}'"))
-    out = _op(world.dsn, "manager_a", f"DELETE FROM recurring_invoice_templates WHERE id = '{tpl_id}'")
+    out = _op(world.dsn, "service_role", f"DELETE FROM recurring_invoice_templates WHERE id = '{tpl_id}'")
     assert _wrote(out), out
+    assert _by_the_privilege_not_the_trigger(_op(world.dsn, "manager_a", f"DELETE FROM recurring_invoice_templates WHERE id = '{tpl_id}'")), (
+        "a signed-in Manager can still delete a recurring template (migration 562)")
 
 
 # ── WHAT THE DEPTH RULE LEANS ON ────────────────────────────────────────────
