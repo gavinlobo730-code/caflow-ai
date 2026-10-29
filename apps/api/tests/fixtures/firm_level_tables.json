@@ -1,0 +1,230 @@
+{
+  "_what": "Every public base table with NO client_id column and no foreign-key path to a client table that the authenticated role can reach (a table grant or a column grant), with the kind of table it is and the write commands the signed-in role holds on it. Held by tests/test_a_table_with_no_client_is_firm_level_on_purpose_pg.py: a new table of this shape is a red test until it is listed here with a reason, a listed table that left the shape is a red test, the category is checked against the table's own policies, the 'writes' string (a = insert, w = update, d = delete) must equal what is granted, and every granted write must be held by a tier, a permission or the person's own row. Categories: reference (no firm column, the same rows for every firm), parent (no client of its own, a policy reads the row it hangs from), scoped (names clients under other column names and asks the assignment scope), personal (a policy lets a person see their own rows), tiered (a role tier or permission narrows who reads), firm_wide (every member of the firm reads it, and that is the point).",
+  "tables": {
+    "account_group_mappings": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's own overrides of the year-end statement lines, shared by all its clients' statements. The signed-in role holds no write; the server writes it."
+    },
+    "ai_conversations": {
+      "category": "personal",
+      "writes": "",
+      "why": "A copilot conversation belongs to the person who had it; a restrictive policy lets only that person read it."
+    },
+    "ai_firm_budgets": {
+      "category": "tiered",
+      "writes": "",
+      "why": "The firm's optional monthly AI allowance; only a Partner reads it, and the server writes it."
+    },
+    "ai_messages": {
+      "category": "personal",
+      "writes": "",
+      "why": "A message of a copilot conversation; a restrictive policy lets only the person who owns the conversation read it."
+    },
+    "ai_usage_events": {
+      "category": "tiered",
+      "writes": "",
+      "why": "One row per attempt at a model call, with counts and no content; only a Partner reads it, and the server writes it."
+    },
+    "approval_requests": {
+      "category": "tiered",
+      "writes": "",
+      "why": "A maker-checker request for a sensitive action; read by a Partner or a Manager of the firm, written by the server."
+    },
+    "audit_log": {
+      "category": "tiered",
+      "writes": "",
+      "why": "The firm's append-only edit log; read by a Partner only, written by the server and its triggers."
+    },
+    "automation_executions": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's automation run history, one firm-wide log. The signed-in role holds no write; the server writes it."
+    },
+    "automation_rules": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "What the firm's automation does; the firm's own rules, not any client's. The signed-in role holds no write; the server writes it."
+    },
+    "cross_client_matches": {
+      "category": "scoped",
+      "writes": "awd",
+      "why": "A match between two clients' records; it names two clients (client_id_a, client_id_b) and not one, so its restrictive policy asks the assignment scope for both, and its writes are held to the client write permission."
+    },
+    "currencies": {
+      "category": "reference",
+      "writes": "",
+      "why": "The list of currencies, the same for every firm; it has no firm column and nobody signed in can change it."
+    },
+    "dsc_records": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The practice's own digital signature tokens (holder, PAN, type, expiry), a register of the firm and not of a client. The signed-in role holds no write; the server writes it."
+    },
+    "dtaa_treaty_rates": {
+      "category": "firm_wide",
+      "writes": "awd",
+      "why": "The firm's own reading of the tax treaty rates it withholds under, one row per country and nature of income (its table comment says why it ships empty). Writing is held to a Manager or above."
+    },
+    "email_templates": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's email templates with merge fields, one set for all its clients. The signed-in role holds no write."
+    },
+    "engagement_templates": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The wording of the firm's engagement letters, shared by all clients. The signed-in role holds no write; the server writes it."
+    },
+    "entities": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The people and companies the firm keeps on record (PAN, GSTIN, date of birth), shared across clients on purpose because one person can stand behind several clients. The signed-in role holds no write."
+    },
+    "entity_relationships": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "A relationship between two entities, with its type and dates; part of the firm's own record of who stands behind whom. The signed-in role holds no write."
+    },
+    "entity_to_entity_relationships": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "An ownership link between two entities, with a percentage and dates; part of the firm's own record. The signed-in role holds no write."
+    },
+    "escalation_rules": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "After how many days, and to which role, the firm escalates an overdue task; one set for the firm. The signed-in role holds no write."
+    },
+    "firm_branding": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's logo, colours and fonts, one row per firm. The signed-in role holds no write."
+    },
+    "firm_hsn_library": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's own HSN and SAC master that every client's invoices draw on. The signed-in role holds no write; the server writes it."
+    },
+    "firm_hsn_rate_history": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The history of the rates the firm's HSN master carried. The signed-in role holds no write; the server writes it."
+    },
+    "firm_profiles": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's own profile (name, registrations, contact), one row per firm. The signed-in role holds no write."
+    },
+    "firms": {
+      "category": "firm_wide",
+      "writes": "awd",
+      "why": "The firm itself: a member reads their own firm's row, and writing it is held to the firm write permission."
+    },
+    "fx_rates": {
+      "category": "reference",
+      "writes": "aw",
+      "why": "Exchange rates are global, one row per currency and date for all firms. A signed-in write is allowed only for a manual rate and only to a person holding the settings write permission."
+    },
+    "hsn_master": {
+      "category": "reference",
+      "writes": "",
+      "why": "The HSN and SAC code list, the same for every firm; it has no firm column and nobody signed in can change it."
+    },
+    "invoice_sequences": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's atomic invoice number counter (its table comment says it is moved only by the numbering function). The signed-in role holds no write."
+    },
+    "invoice_settings": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's invoice numbering and payment details, one row per firm. The signed-in role holds no write."
+    },
+    "invoice_templates": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's invoice layouts, shared by all its clients. The signed-in role holds no write."
+    },
+    "leads": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's pipeline of prospective clients, who are by definition not yet clients. The signed-in role holds no write; the server writes it."
+    },
+    "login_events": {
+      "category": "tiered",
+      "writes": "",
+      "why": "Sign-in and sign-out events of the firm's members; read by a Partner only, written by the server."
+    },
+    "practice_email_log": {
+      "category": "personal",
+      "writes": "",
+      "why": "A record of a mail the practice sent; read by a Partner or by the person it was addressed to, and carries no client of its own on purpose (its table comment says why)."
+    },
+    "reminder_settings": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's payment-reminder switches (on or off, the interval, the maximum number, whether the PDF is attached), one row per firm. The signed-in role holds no write; the server writes it."
+    },
+    "scheduler_runs": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's record of each scheduled job having run (job, day, status). The signed-in role holds no write."
+    },
+    "task_dependencies": {
+      "category": "parent",
+      "writes": "",
+      "why": "A dependency between two tasks; its only policy asks that the task belongs to the caller's firm, so a row is as visible as its task."
+    },
+    "task_templates": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's task templates, shared across clients. The signed-in role holds no write."
+    },
+    "tds_section_limits": {
+      "category": "reference",
+      "writes": "",
+      "why": "A retired, unmaintained copy of old TDS thresholds that nothing reads (its own table comment says so); it has no firm column and nobody signed in can change it."
+    },
+    "user_capacity": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "A member's weekly hours and the most tasks they can hold at once, read by the firm for planning. The signed-in role holds no write."
+    },
+    "user_notification_preferences": {
+      "category": "personal",
+      "writes": "awd",
+      "why": "One person's choices about which emails they receive; a restrictive policy lets a person read and change only their own rows."
+    },
+    "user_permissions": {
+      "category": "tiered",
+      "writes": "awd",
+      "why": "Per-person access overrides; a Manager or above reads them and only a Partner writes them, whatever the firm policy beside it says."
+    },
+    "users": {
+      "category": "personal",
+      "writes": "w",
+      "why": "A member's own row: a policy lets a member read and rename only their own row, and nobody else's."
+    },
+    "workflow_schedules": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "When the firm's workflows run, one firm-wide schedule. The signed-in role holds no write."
+    },
+    "workflow_steps": {
+      "category": "parent",
+      "writes": "",
+      "why": "A step of a workflow or of a workflow template; its policies read the workflow or the template and ask that it is the caller's firm's (or a system template, for reading)."
+    },
+    "workflow_templates": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's workflow templates, and the system templates every firm reads; a signed-in session cannot write a system row, and holds no write at all."
+    },
+    "workflows": {
+      "category": "firm_wide",
+      "writes": "",
+      "why": "The firm's workflow definitions, shared across clients. The signed-in role holds no write."
+    }
+  }
+}

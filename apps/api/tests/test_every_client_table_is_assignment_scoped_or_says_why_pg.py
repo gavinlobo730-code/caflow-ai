@@ -34,7 +34,7 @@ WHY THIS EXISTS
       * it needs a foreign key: a table that names the row it hangs from without one is not in the population unless it is
         named in `NAMED_LINKS` below (`task_tags` and `task_timeline_events` have a `task_id` and no constraint, so they are
         named; `ri_cross_client_signals`, whose `client_ids` array pointed at no table at all, was not, and was dropped by
-        migration 538; POST-A-305 lists the third population that would find such tables);
+        migration 538; the third population, `test_a_table_with_no_client_is_firm_level_on_purpose_pg`, is the one that finds such tables);
       * it does not read `relrowsecurity` or a policy's roles (no table needs that today).
     A child that follows a client table which ITSELF has no scope is not protected by it, so a policy that reads only tables
     on the `pending` list is flagged (`test_a_child_does_not_borrow_its_scope_from_a_table_that_has_none`).
@@ -154,7 +154,7 @@ SELECT json_build_object(
 
 # A table that names the row it hangs from in a column that carries no foreign key (so the scan above cannot find it): child ->
 # parent. Written out by hand on purpose and checked against the schema by `test_a_named_link_is_a_real_child`, so a rename
-# is a red test and not a table that quietly leaves the population (POST-A-305).
+# is a red test and not a table that quietly leaves the population.
 NAMED_LINKS = {"task_tags": ("tasks", "task_id"), "task_timeline_events": ("tasks", "task_id")}   # child: (parent, the column)
 
 # What a policy may call and still be "computed from the row, the firm and the role alone". Anything else it calls is a
