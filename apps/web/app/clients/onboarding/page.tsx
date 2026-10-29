@@ -16,7 +16,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/services/formatting";
 import { Callout } from "@/components/ui/callout";
-import { objectWithLists } from "@/lib/api/shape";
+import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 
@@ -259,8 +259,9 @@ export default function OnboardingChecklistPage() {
     try {
       const res = await api.onboarding.get(workflowId) as ApiResponse<OnboardingWorkflow>;
       if (res.success) {
+        const refreshed = objectOrNull<OnboardingWorkflow>(res.data);
         setSelected(objectWithLists<OnboardingWorkflow>(res.data, "steps"));
-        setWorkflows((prev) => prev.map((w) => w.id === workflowId ? res.data : w));
+        if (refreshed) setWorkflows((prev) => prev.map((w) => w.id === workflowId ? refreshed : w));
       }
     } catch {
       // Non-fatal refresh failure
@@ -289,8 +290,9 @@ export default function OnboardingChecklistPage() {
     try {
       const res = await api.onboarding.complete(selected.id) as ApiResponse<OnboardingWorkflow>;
       if (!res.success) throw new Error(res.error ?? "Go-live failed");
+      const completed = objectOrNull<OnboardingWorkflow>(res.data);
       setSelected(objectWithLists<OnboardingWorkflow>(res.data, "steps"));
-      setWorkflows((prev) => prev.map((w) => w.id === selected.id ? res.data : w));
+      if (completed) setWorkflows((prev) => prev.map((w) => w.id === selected.id ? completed : w));
     } catch (e) {
       setGoLiveError(e instanceof Error ? e.message : "Go-live verification failed");
     } finally {

@@ -16,6 +16,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { objectOrNull } from "@/lib/api/shape";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -177,7 +178,9 @@ export default function ClientLifecyclePage() {
         body: JSON.stringify({ client_id: clientId }),
       });
       if (!json.success) throw new Error(json.error ?? "Failed to create workflow");
-      setWorkflows((prev) => [json.data, ...prev]);
+      const created = objectOrNull<OnboardingWorkflow>(json.data);
+      if (!created) throw new Error("The new workflow came back in a form this screen cannot read. Reload to see it.");
+      setWorkflows((prev) => [created, ...prev]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create workflow");
     } finally {
@@ -253,7 +256,9 @@ export default function ClientLifecyclePage() {
         }),
       });
       if (!json.success) throw new Error(json.error ?? "Failed to save");
-      setRenewals((prev) => [json.data, ...prev]);
+      const created = objectOrNull<Renewal>(json.data);
+      if (!created) throw new Error("The new renewal came back in a form this screen cannot read. Reload to see it.");
+      setRenewals((prev) => [created, ...prev]);
       setRenewalModal(false);
       setRenewalForm({ financial_year: "", service_type: "", renewal_date: "", value_paise: "", notes: "" });
     } catch (e) {

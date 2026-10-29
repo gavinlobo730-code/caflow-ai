@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { CheckCircle2, Circle, Clock, Ban, Loader2, ChevronRight } from "lucide-react";
 import { yearEndApi, type ChecklistItem, type ChecklistItemStatus } from "@/lib/api/yearEnd";
-import { arrayOrEmpty } from "@/lib/api/shape";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { Skeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { useRefreshEngagement } from "../_engagementRefresh";
@@ -92,7 +92,9 @@ export default function ChecklistPage() {
     try {
       const res = await yearEndApi.checklist.updateItem(engagementId, item.id, { status: nextStatus });
       if (!res.success) throw new Error(res.error ?? "Failed to update");
-      setItems((prev) => prev.map((i) => (i.id === item.id ? res.data : i)));
+      const updated = objectOrNull<ChecklistItem>(res.data);
+      if (!updated) throw new Error("The answer came back in a form this screen cannot read. Reload to see the current state.");
+      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
       setActionError(null);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to update status");
@@ -108,7 +110,9 @@ export default function ChecklistPage() {
     try {
       const res = await yearEndApi.checklist.updateItem(engagementId, item.id, { status: "not_applicable" });
       if (!res.success) throw new Error(res.error ?? "Failed to update");
-      setItems((prev) => prev.map((i) => (i.id === item.id ? res.data : i)));
+      const updated = objectOrNull<ChecklistItem>(res.data);
+      if (!updated) throw new Error("The answer came back in a form this screen cannot read. Reload to see the current state.");
+      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
       setActionError(null);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to mark not applicable");
@@ -124,7 +128,9 @@ export default function ChecklistPage() {
     try {
       const res = await yearEndApi.checklist.updateItem(engagementId, item.id, { notes });
       if (!res.success) throw new Error(res.error ?? "Failed to save notes");
-      setItems((prev) => prev.map((i) => (i.id === item.id ? res.data : i)));
+      const updated = objectOrNull<ChecklistItem>(res.data);
+      if (!updated) throw new Error("The answer came back in a form this screen cannot read. Reload to see the current state.");
+      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
       setEditingNotes((prev) => { const n = { ...prev }; delete n[item.id]; return n; });
       setActionError(null);
     } catch (err) {
