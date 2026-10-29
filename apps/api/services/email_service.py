@@ -12,6 +12,7 @@ from email.utils import parseaddr
 from typing import Callable, Optional
 
 from core.env import env_or_default
+from core.request_context import outbound_headers
 from domain.branding import email_template
 from domain.money_sentence import rupee_text
 
@@ -220,7 +221,7 @@ def transport(to: str, subject: str, html: str, *,
             "to=%s subject=%r", to, subject,
         )
         return SendOutcome(False, retryable=True, code="not_configured")
-    headers = {"Authorization": f"Bearer {_RESEND_API_KEY}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"Bearer {_RESEND_API_KEY}", "Content-Type": "application/json", **outbound_headers()}
     if idempotency_key:
         headers["Idempotency-Key"] = idempotency_key
     try:
@@ -595,6 +596,7 @@ def _send_with_attachment(
             headers={
                 "Authorization": f"Bearer {_RESEND_API_KEY}",
                 "Content-Type": "application/json",
+                **outbound_headers(),
             },
             json=payload,
             timeout=30,

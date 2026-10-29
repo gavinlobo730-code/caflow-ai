@@ -40,6 +40,8 @@ from __future__ import annotations
 
 import logging
 import re
+from contextlib import contextmanager
+import functools
 import uuid
 from contextvars import ContextVar, Token
 from typing import Optional
@@ -123,6 +125,45 @@ def current() -> Optional[RequestContext]:
 def current_request_id() -> Optional[str]:
     ctx = _current.get()
     return ctx.request_id if ctx else None
+
+
+def outbound_headers() -> dict:
+    """`{X-Request-ID: <id>}` for a call this request makes to a provider (mail, payments, a model), or `{}` outside any request or job.
+
+    The id is what ties a provider's own log line to ours: a CA reports "the invoice email did not arrive" with the reference the
+    screen showed, and the same reference is then on our log lines AND on the request the provider received (POST-A-027). It is the
+    16-hex id this module generates and nothing else: no path, no firm, no person."""
+    rid = current_request_id()
+    return {REQUEST_ID_HEADER: rid} if rid else {}
+
+
+@contextmanager
+def job_run(name: str):
+    """Bind a request context for the length of a scheduled run, so its log lines carry `[request_id=job-<name>-<8 hex>]` and its
+    outbound calls carry the same id (`outbound_headers`). A run that is already inside a request (a person's manual run) keeps the
+    request's id. The id obeys the same shape rule as a caller's (`clean_request_id`)."""
+    if current_request_id():
+        yield current_request_id()
+        return
+    safe = re.sub(r"[^A-Za-z0-9._-]", "-", name)[:40] or "run"
+    rid = f"job-{safe}-{uuid.uuid4().hex[:8]}"
+    token = begin(rid)
+    try:
+        yield rid
+    finally:
+        end(token)
+
+
+def in_job_run(name: str):
+    """Decorator form of `job_run`: the whole call runs inside it. The function keeps its own name and shape, which the lint baseline and
+    every caller read."""
+    def wrap(fn):
+        @functools.wraps(fn)
+        def inner(*args, **kwargs):
+            with job_run(name):
+                return fn(*args, **kwargs)
+        return inner
+    return wrap
 
 
 def current_firm_id() -> Optional[str]:

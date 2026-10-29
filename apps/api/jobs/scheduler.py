@@ -35,6 +35,7 @@ whatever is pending through the same claims - ops-15).
 import logging
 import os
 import threading
+from core.request_context import in_job_run
 from core.db_paging import fetch_all
 from datetime import date, datetime, timezone
 from typing import Optional
@@ -257,10 +258,15 @@ def _close_sweep(firm_ids: list) -> None:
     logger.info(f"Daily scheduler run completed for {len(firm_ids)} firm(s)")
 
 
+@in_job_run("daily")
 def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
     """
     Run all daily automation jobs. Safe to call repeatedly — each job is
     skipped if it already succeeded today (unless force=True).
+
+    The run is bound to a request context of its own (`core.request_context.in_job_run`), so every log line it writes carries
+    `[request_id=job-daily-<8 hex>]` and every call it makes to a provider carries the same id (POST-A-027); inside a person's manual
+    request it keeps that request's id.
     """
     firm_ids = [firm_id] if firm_id else _list_firm_ids()
     results: dict = {"firms": {}, "ran_at": datetime.now(timezone.utc).isoformat()}
