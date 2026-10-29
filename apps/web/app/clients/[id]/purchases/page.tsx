@@ -17,6 +17,8 @@ import { api } from "@/lib/api";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
 import { registerNotesFrom, topLevelNotesFrom, dedupeRegisterNotes, type RegisterNote } from "@/lib/purchases/registerNotes";
+import { bulkStockSentence, stockEffectProblem, stockEffectSummary, withMoreStockSentences } from "@/lib/documents/stockEffect";
+import { StockEffectNotice } from "@/components/documents/StockEffectNotice";
 import { DebitNoteViewDrawer } from "@/components/purchases/DebitNoteViewDrawer";
 import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
 import { writeDebitNoteDuplicateSeed } from "@/lib/purchases/debitNoteDuplicateSeed";
@@ -461,6 +463,8 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   // answered differently: the bill posted, and a fact only the CA holds is
   // missing. Same shape as payroll's runGaps.
   const [registerNotes, setRegisterNotes] = useState<RegisterNote[]>([]);
+  // Bills received whose stock effect was not all recorded (POST-A-092). Not a failure and not a TDS gap, so its own panel.
+  const [stockNotes, setStockNotes] = useState<string[]>([]);
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const router = useRouter();
 
@@ -588,6 +592,8 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
       // them has ever reached a screen: the response carried them and nothing
       // read it. A gap that only exists in a log is not a gap anybody acts on.
       setRegisterNotes(registerNotesFrom(result.data));
+      const stock = stockEffectProblem(result.data);
+      setStockNotes((shown) => withMoreStockSentences(shown, [stock]));
       load();
     } catch (err) {
       setMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to receive purchase bill" });
@@ -696,12 +702,12 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     const draftRows = rows.filter((b) => b.status === "draft");
     const skipped = rows.length - draftRows.length;
 
-    type ReceiveResult = { ok: true; notes: RegisterNote[] } | { ok: false; reason: string };
+    type ReceiveResult = { ok: true; notes: RegisterNote[]; data: unknown } | { ok: false; reason: string };
     const results: ReceiveResult[] = await mapWithConcurrency(draftRows, 8, async (b): Promise<ReceiveResult> => {
       try {
         // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         const result = await apiCall(`/api/purchase-bills/${b.id}/receive`, "POST", undefined, token);
-        if (result.success) return { ok: true, notes: registerNotesFrom(result.data) };
+        if (result.success) return { ok: true, notes: registerNotesFrom(result.data), data: result.data };
         return { ok: false, reason: result.error ?? "Failed to receive bill" };
       } catch (e) {
         return { ok: false, reason: e instanceof Error ? e.message : "Failed to receive bill" };
@@ -715,6 +721,9 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     // scrolled past.
     setRegisterNotes(dedupeRegisterNotes(
       results.flatMap((r) => (r.ok ? r.notes : []))));
+    // POST-A-092: the panel names how many of the bills did not record all of their stock effect and shows the first sentence.
+    const stockHead = bulkStockSentence(stockEffectSummary(results.flatMap((r) => (r.ok ? [r.data] : []))));
+    if (stockHead) setStockNotes((shown) => withMoreStockSentences(shown, [stockHead]));
     const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
     const failed = failures.length;
 
@@ -1065,6 +1074,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
           on the year's aggregate is CORRECT and looks wrong — tds_paise is not
           taxable x rate, because s.200 credits what earlier bills withheld and
           this one carries the balance. */}
+      <StockEffectNotice texts={stockNotes} onDismiss={() => setStockNotes([])} />
       {registerNotes.length > 0 && (
         <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3">
           <div className="flex items-start gap-2">
@@ -3268,6 +3278,8 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
   const [loadFailed, setLoadFailed] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [registerNotes, setRegisterNotes] = useState<RegisterNote[]>([]);
+  // Debit notes issued whose goods did not all leave stock in the books (POST-A-092).
+  const [stockNotes, setStockNotes] = useState<string[]>([]);
   const [issuingId, setIssuingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -3368,6 +3380,8 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
       // not the toast, because a statutory warning a CA dismisses in passing
       // is one they never acted on.
       setRegisterNotes(dedupeRegisterNotes(topLevelNotesFrom(result.data)));
+      const stock = stockEffectProblem(result.data);
+      setStockNotes((shown) => withMoreStockSentences(shown, [stock]));
       load();
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Error issuing debit note" });
@@ -3444,11 +3458,11 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     const draftRows = rows.filter((d) => d.status === "draft");
     const skipped = rows.length - draftRows.length;
 
-    type IssueResult = { ok: true } | { ok: false; reason: string };
+    type IssueResult = { ok: true; data: unknown } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (d): Promise<IssueResult> => {
       try {
         const result = await apiCall(`/api/debit-notes/${d.id}/issue`, "POST", undefined, token);
-        if (result.success) return { ok: true };
+        if (result.success) return { ok: true, data: result.data };
         return { ok: false, reason: result.error ?? "Failed to issue debit note" };
       } catch (e) {
         return { ok: false, reason: e instanceof Error ? e.message : "Failed to issue debit note" };
@@ -3469,6 +3483,9 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
       parts.push(`${failed} failed (${reasons.join("; ")})`);
     }
     const text = parts.length > 0 ? `${parts.join(", ")}.` : "No draft debit notes selected.";
+    // POST-A-092: as for bills, the panel names how many debit notes did not take all their goods out of stock.
+    const stockHead = bulkStockSentence(stockEffectSummary(results.flatMap((r) => (r.ok ? [r.data] : []))));
+    if (stockHead) setStockNotes((shown) => withMoreStockSentences(shown, [stockHead]));
 
     if (skipped > 0 || failed > 0) {
       setMsg({ type: "err", text });
@@ -3550,6 +3567,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
           on when the challan went — a fact the books do not hold, so the
           software states the divergence and adjusts no figure. The wording is
           the backend's, so this cannot be phrased differently here. */}
+      <StockEffectNotice texts={stockNotes} onDismiss={() => setStockNotes([])} />
       {registerNotes.length > 0 && (
         <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-4 py-3">
           <div className="flex items-start gap-2">

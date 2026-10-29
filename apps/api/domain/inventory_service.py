@@ -51,6 +51,7 @@ from core.ist_clock import ist_today, ist_date_of
 from core.observability import capture_posting_failure
 from domain.inventory import costing
 from domain.inventory import landed_cost as landed
+from domain.inventory import stock_effect as stock_effects
 
 _logger = logging.getLogger("caflow.inventory")
 
@@ -1348,7 +1349,21 @@ def post_opening_stock_journal_entry(
 # itself is already committed, so a failure here must never surface as a
 # failure of the sale or purchase that triggered it.
 
-def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, created_by: Optional[str] = None) -> None:
+def _stopped(effect: "stock_effects.StockEffect", exc: Exception) -> None:
+    """Record that a per-document call stopped, and, when every goods line had already moved, that the journal behind
+    them was not posted. Only the exception's TYPE is kept: the message of a database error can carry an identifier, and
+    the sentence a screen prints is written by `stock_effect`, never from an exception."""
+    effect.stopped_by = type(exc).__name__
+    if (effect.goods_lines > 0 and effect.moved_lines == effect.goods_lines
+            and effect.journal == stock_effects.JOURNAL_NOT_OWED):
+        effect.journal = stock_effects.JOURNAL_NOT_POSTED
+
+
+def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, created_by: Optional[str] = None
+                            ) -> "stock_effects.StockEffect":
+    """Stock-out and COGS journal for an issued sales invoice. Never raises; RETURNS what it did (POST-A-092), so the route
+    can say on the response when the stock effect was not all recorded. A caller that ignores the return behaves as before."""
+    effect = stock_effects.StockEffect("sales_invoice", reference=invoice.get("invoice_no"))
     try:
         # ONE read of the client's cost formula for the whole document, not
         # one per line — `clients` is a Singapore-to-Mumbai round trip
@@ -1363,7 +1378,7 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
         ) or []
         catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
         if not catalogue_ids:
-            return
+            return effect
         # A line's `service_catalogue_id` is a field of the REQUEST that created
         # the document, and nothing at create time checks it belongs to the
         # caller's firm. Resolved WITHOUT the firm, a line naming another firm's
@@ -1388,6 +1403,7 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
             qty = line.get("quantity")
             if not item or not qty or float(qty) <= 0:
                 continue
+            effect.goods_lines += 1
             movement = record_stock_out(
                 db, firm_id=firm_id, client_id=client_id, service_catalogue_id=item["id"],
                 movement_date=invoice.get("invoice_date"), quantity=qty, movement_type="sale",
@@ -1395,6 +1411,7 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
                 created_by=created_by,
                 policy=policy,
             )
+            effect.moved_lines += 1
             total_value += abs(int(movement["value_delta_paise"]))
             if movement and movement.get("id"):
                 movement_ids.append(movement["id"])
@@ -1413,14 +1430,17 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
                 reference_no=invoice_no,
                 source_type="sales_invoice", source_id=invoice["id"], created_by=created_by,
             )
+            effect.note_journal(bool(journal_id))
             for mid in movement_ids:
                 _set_ledger_journal_entry_id(db, mid, journal_id)
     except Exception as e:
+        _stopped(effect, e)
         capture_posting_failure(
             e, operation="apply_sale_to_inventory",
             firm_id=firm_id, client_id=client_id, source_id=invoice.get("id"),
             reference_no=invoice.get("invoice_no"),
         )
+    return effect
 
 
 def _blocked_tax_on_line(line: dict) -> int:
@@ -1561,7 +1581,10 @@ def _mark_landed_costs_applied(db, charges: list) -> None:
                                     landed_cost_id=charge.get("id"))
 
 
-def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict, created_by: Optional[str] = None) -> None:
+def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict, created_by: Optional[str] = None
+                                ) -> "stock_effects.StockEffect":
+    """Stock-in and the receipt journal for a received purchase bill. Never raises; RETURNS what it did (POST-A-092)."""
+    effect = stock_effects.StockEffect("purchase_bill", reference=bill.get("bill_no") or bill.get("our_reference"))
     try:
         # ONE read of the client's cost formula for the whole document, not
         # one per line — `clients` is a Singapore-to-Mumbai round trip
@@ -1578,7 +1601,7 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
         ) or []
         catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
         if not catalogue_ids:
-            return
+            return effect
         # The firm and client filters are what keep a line naming another firm's
         # or another client's item out; see apply_sale_to_inventory for why.
         items = (
@@ -1613,6 +1636,7 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
             cost_paise = own_cost_paise + sum(int(p) for _acct, p in share)
             if not item or not qty or float(qty) <= 0 or cost_paise <= 0:
                 continue
+            effect.goods_lines += 1
             movement = record_stock_in(
                 db, firm_id=firm_id, client_id=client_id, service_catalogue_id=item["id"],
                 movement_date=bill.get("bill_date"), quantity=qty, total_cost_paise=cost_paise,
@@ -1620,6 +1644,7 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
                 reference_no=reference_no, created_by=created_by,
                 policy=policy,
             )
+            effect.moved_lines += 1
             # EACH CONTRIBUTING ACCOUNT IS CREDITED WITH WHAT IT CONTRIBUTED.
             # The line's own cost relieves the LINE's expense account; each
             # charge's share relieves the account that charge already landed
@@ -1674,6 +1699,7 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
                 items=receipt_items,
                 source_type="purchase_bill", source_id=bill["id"], created_by=created_by,
             )
+            effect.note_journal(bool(journal_id))
             for mid in movement_ids:
                 _set_ledger_journal_entry_id(db, mid, journal_id)
             # The receipt is posted, so the charges it carried are spent.
@@ -1683,18 +1709,21 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
         # receipt journal above since a bill fully absorbed into a prior
         # deficit has trueup_items but no receipt_items at all.
         if trueup_items:
-            post_inventory_trueup_journal_entry(
+            trueup_id = post_inventory_trueup_journal_entry(
                 db, firm_id=firm_id, client_id=client_id, movement_date=bill.get("bill_date"),
                 item_name=f"purchase bill {reference_no}", reference_no=journal_ref,
                 items=trueup_items,
                 source_type="purchase_bill", source_id=bill["id"], created_by=created_by,
             )
+            effect.note_journal(bool(trueup_id))
     except Exception as e:
+        _stopped(effect, e)
         capture_posting_failure(
             e, operation="apply_purchase_to_inventory",
             firm_id=firm_id, client_id=client_id, source_id=bill.get("id"),
             reference_no=bill.get("bill_no"),
         )
+    return effect
 
 
 # ── Reversal on cancellation ─────────────────────────────────────────────────
@@ -1875,7 +1904,8 @@ def _sale_unit_cost_for_return(db, service_catalogue_id: str, invoice_id: Option
     return int(rows[0]["unit_cost_paise"]) if rows else None
 
 
-def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_note: dict, created_by: Optional[str] = None) -> None:
+def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_note: dict, created_by: Optional[str] = None
+                                   ) -> "stock_effects.StockEffect":
     """Sales return: goods physically return to stock AT COST — the original
     sale's unit cost when the credit note references its invoice, else the
     item's current moving average — never at the credit note's taxable
@@ -1885,7 +1915,8 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
     COGS). A separate Dr Inventory / Cr COGS journal posts for the same
     realized total. Called AFTER the credit note is already issued and its
     own GL journal + AR sub-ledger application have committed
-    (routers/credit_notes.py) — fail-soft, never raises."""
+    (routers/credit_notes.py) — fail-soft, never raises; RETURNS what it did (POST-A-092)."""
+    effect = stock_effects.StockEffect("credit_note", reference=credit_note.get("credit_note_no"))
     try:
         # ONE read of the client's cost formula for the whole document, not
         # one per line — `clients` is a Singapore-to-Mumbai round trip
@@ -1903,7 +1934,7 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
         ) or []
         catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
         if not catalogue_ids:
-            return
+            return effect
         # The firm and client filters are what keep a line naming another firm's
         # or another client's item out; see apply_sale_to_inventory for why.
         items = (
@@ -1919,6 +1950,7 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
             qty = line.get("quantity")
             if not item or not qty or float(qty) <= 0:
                 continue
+            effect.goods_lines += 1
             unit_cost = _sale_unit_cost_for_return(db, item["id"], invoice_id)
             if unit_cost is None:
                 prev = _last_ledger_row(db, item["id"])
@@ -1931,6 +1963,7 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
                 reference_no=cn_no, created_by=created_by,
                 policy=policy,
             )
+            effect.moved_lines += 1
             total_value += value
             if movement and movement.get("id"):
                 movement_ids.append(movement["id"])
@@ -1940,23 +1973,28 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
                 item_name=f"credit note {cn_no}", value_paise=total_value, reference_no=cn_no,
                 source_type="credit_note", source_id=cn_id, created_by=created_by,
             )
+            effect.note_journal(bool(journal_id))
             for mid in movement_ids:
                 _set_ledger_journal_entry_id(db, mid, journal_id)
     except Exception as e:
+        _stopped(effect, e)
         capture_posting_failure(
             e, operation="apply_credit_note_to_inventory",
             firm_id=firm_id, client_id=client_id, source_id=credit_note.get("id"),
             reference_no=credit_note.get("credit_note_no"),
         )
+    return effect
 
 
-def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_note: dict, created_by: Optional[str] = None) -> None:
+def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_note: dict, created_by: Optional[str] = None
+                                  ) -> "stock_effects.StockEffect":
     """Purchase return: goods physically leave stock. Stock-OUT at the
     CURRENT moving-average cost (same convention as a sale), plus a
     separate Dr Expense / Cr Inventory journal entry for the realised
     value. Called AFTER the debit note is already issued and its own GL
     journal + AP sub-ledger application have committed
-    (routers/debit_notes.py) — fail-soft, never raises."""
+    (routers/debit_notes.py) — fail-soft, never raises; RETURNS what it did (POST-A-092)."""
+    effect = stock_effects.StockEffect("debit_note", reference=debit_note.get("debit_note_no"))
     try:
         # ONE read of the client's cost formula for the whole document, not
         # one per line — `clients` is a Singapore-to-Mumbai round trip
@@ -1973,7 +2011,7 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
         ) or []
         catalogue_ids = list({l["service_catalogue_id"] for l in lines if l.get("service_catalogue_id")})
         if not catalogue_ids:
-            return
+            return effect
         # The firm and client filters are what keep a line naming another firm's
         # or another client's item out; see apply_sale_to_inventory for why.
         items = (
@@ -1989,12 +2027,14 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
             qty = line.get("quantity")
             if not item or not qty or float(qty) <= 0:
                 continue
+            effect.goods_lines += 1
             movement = record_stock_out(
                 db, firm_id=firm_id, client_id=client_id, service_catalogue_id=item["id"],
                 movement_date=debit_note.get("debit_note_date"), quantity=qty, movement_type="purchase_return",
                 source_type="debit_note", source_id=dn_id, reference_no=dn_no, created_by=created_by,
                 policy=policy,
             )
+            effect.moved_lines += 1
             total_value += abs(int(movement["value_delta_paise"]))
             if movement.get("id"):
                 movement_ids.append(movement["id"])
@@ -2004,14 +2044,17 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
                 item_name=f"debit note {dn_no}", value_paise=total_value, reference_no=dn_no,
                 source_type="debit_note", source_id=dn_id, created_by=created_by,
             )
+            effect.note_journal(bool(journal_id))
             for mid in movement_ids:
                 _set_ledger_journal_entry_id(db, mid, journal_id)
     except Exception as e:
+        _stopped(effect, e)
         capture_posting_failure(
             e, operation="apply_debit_note_to_inventory",
             firm_id=firm_id, client_id=client_id, source_id=debit_note.get("id"),
             reference_no=debit_note.get("debit_note_no"),
         )
+    return effect
 
 
 def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bill_reference: str, created_by: Optional[str] = None) -> None:

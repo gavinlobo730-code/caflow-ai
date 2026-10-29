@@ -15,6 +15,7 @@ from models.common import api_response
 from models.invoices import InvoiceLineIn
 from core import db_provider
 from core.authz import assert_client_access, can_access_client
+from domain.inventory import stock_effect as stock_effects
 from services import named_row_ownership
 from services import draft_document_lines
 from core.permissions import rbac
@@ -828,17 +829,20 @@ def issue_credit_note(
         # Inventory: sales return — goods physically return to stock (goods
         # lines only). Runs AFTER issuance and the AR/GL effects above have
         # committed — never blocks issuing the credit note.
-        try:
-            from domain.inventory_service import apply_credit_note_to_inventory
-            apply_credit_note_to_inventory(
+        # What it did comes back and rides on the response (POST-A-092).
+        from domain.inventory_service import apply_credit_note_to_inventory
+        stock = stock_effects.guarded(
+            "credit_note", updated_cn.get("credit_note_no"),
+            lambda: apply_credit_note_to_inventory(
                 db, firm_id=firm_id or "", client_id=client_id,
                 # journal_entries.created_by FK references users(id), not auth_user_id.
                 credit_note=updated_cn, created_by=current_user.get("id"),
-            )
-        except Exception as e:
-            _logger.error("issue_credit_note: inventory apply failed for %s: %s", cn_id, e, exc_info=True)
+            ),
+            lambda e: _logger.error("issue_credit_note: inventory apply failed for %s: %s", cn_id, e, exc_info=True),
+        )
 
         updated_cn["journal_entry_id"] = journal_id
+        stock_effects.attach(updated_cn, stock)
         # §34(2), said again at the moment it bites. Create warns when the note
         # is drafted; this is when the reduction reaches the ledger and the
         # return, and a draft raised inside the window can be issued outside it.

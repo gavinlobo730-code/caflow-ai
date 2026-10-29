@@ -182,10 +182,10 @@ routers/compliance_records.py :: B904 :: update_compliance_record :: 2
 routers/compliance_records.py :: F401 :: <module> :: 1
 routers/cost_centres.py :: B904 :: create_cost_centre :: 1
 routers/cost_centres.py :: B904 :: update_cost_centre :: 1
-routers/credit_notes.py :: C901 :: issue_credit_note :: 22
+routers/credit_notes.py :: C901 :: issue_credit_note :: 21
 routers/credit_notes.py :: C901 :: update_credit_note :: 17
 routers/credit_notes.py :: F841 :: issue_credit_note :: 1
-routers/credit_notes.py :: PLR0915 :: issue_credit_note :: 92
+routers/credit_notes.py :: PLR0915 :: issue_credit_note :: 90
 routers/currencies.py :: B904 :: record_fx_rate :: 2
 routers/customer_statements.py :: B904 :: email_statement :: 1
 routers/customer_statements.py :: F401 :: <module> :: 2
@@ -195,9 +195,9 @@ routers/customers.py :: F401 :: <module> :: 1
 routers/customers.py :: PLR0915 :: bulk_create_customers :: 90
 routers/cwip.py :: B904 :: _a_date :: 1
 routers/cwip.py :: B904 :: get_schedules :: 1
-routers/debit_notes.py :: C901 :: issue_debit_note :: 27
+routers/debit_notes.py :: C901 :: issue_debit_note :: 26
 routers/debit_notes.py :: C901 :: update_debit_note :: 17
-routers/debit_notes.py :: PLR0915 :: issue_debit_note :: 98
+routers/debit_notes.py :: PLR0915 :: issue_debit_note :: 96
 routers/document_intelligence.py :: F401 :: <module> :: 3
 routers/document_intelligence.py :: F811 :: trigger_extraction :: 1
 routers/document_intelligence_v1.py :: F401 :: <module> :: 2

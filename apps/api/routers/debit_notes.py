@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, 
 from pydantic import BaseModel, field_validator
 from models.common import api_response
 from models.invoices import InvoiceLineIn
+from domain.inventory import stock_effect as stock_effects
 from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
 from core.db_provider import privileged_for
@@ -613,15 +614,17 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
         # Inventory: purchase return — goods physically leave stock (goods
         # lines only). Runs AFTER issuance and the AP/GL effects above have
         # committed — never blocks issuing the debit note.
-        try:
-            from domain.inventory_service import apply_debit_note_to_inventory
-            apply_debit_note_to_inventory(
+        # What it did comes back and rides on the response (POST-A-092).
+        from domain.inventory_service import apply_debit_note_to_inventory
+        stock = stock_effects.guarded(
+            "debit_note", updated.get("debit_note_no"),
+            lambda: apply_debit_note_to_inventory(
                 db, firm_id=firm_id or "", client_id=client_id,
                 # journal_entries.created_by FK references users(id), not auth_user_id.
                 debit_note=updated, created_by=current_user.get("id"),
-            )
-        except Exception as e:
-            _logger.error("issue_debit_note: inventory apply failed for %s: %s", dn_id, e, exc_info=True)
+            ),
+            lambda e: _logger.error("issue_debit_note: inventory apply failed for %s: %s", dn_id, e, exc_info=True),
+        )
 
         # THE TDS REGISTER, WHICH NOTHING REVISITED ON THIS TRANSITION
         # (PUR-23 ≡ TDS-32). `tds_register_service.sync_for_bill` says in its
@@ -660,6 +663,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             _logger.error("issue_debit_note: TDS register resync failed for %s: %s", dn_id, e)
 
         updated["journal_entry_id"] = journal_id
+        stock_effects.attach(updated, stock)
         return api_response(True, updated)
     except HTTPException:
         raise

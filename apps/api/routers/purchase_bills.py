@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError, field_validator
 from dataclasses import asdict
 from domain.purchases import near_duplicate
+from domain.inventory import stock_effect as stock_effects
 from domain.gst import compensation_cess, draft_bill_from_2b, gstr2b_intake
 from domain.gst.gstr2b import parse_gstr2b
 from domain.extraction_lines import LABELS, UNIT, read_line
@@ -1976,17 +1977,20 @@ def receive_purchase_bill(
         # failure here must never affect an already-received bill.
         # apply_purchase_to_inventory itself never raises; this try/except is
         # belt-and-suspenders.
-        try:
-            from domain.inventory_service import apply_purchase_to_inventory
-            apply_purchase_to_inventory(
+        # What it did comes back and rides on the response (POST-A-092).
+        from domain.inventory_service import apply_purchase_to_inventory
+        stock = stock_effects.guarded(
+            "purchase_bill", updated_bill.get("bill_no"),
+            lambda: apply_purchase_to_inventory(
                 db, firm_id=current_user.get("firm_id", ""), client_id=updated_bill.get("client_id", ""),
                 # journal_entries.created_by FK references users(id), not auth_user_id.
                 bill=updated_bill, created_by=current_user.get("id"),
-            )
-        except Exception as e:
-            _logger.error("receive_purchase_bill: inventory posting failed for %s: %s", bill_id, e, exc_info=True)
+            ),
+            lambda e: _logger.error("receive_purchase_bill: inventory posting failed for %s: %s", bill_id, e, exc_info=True),
+        )
 
         updated_bill["journal_entry_id"] = journal_id
+        stock_effects.attach(updated_bill, stock)
         # The register's own account of what it wrote, and what it could not
         # establish. Carried on the receive response because THIS is the moment
         # the deduction becomes real — the credit under s.194C(3)/s.195 — and
