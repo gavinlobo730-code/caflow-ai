@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from core.db_paging import fetch_all
 from core.ist_clock import ist_today
 import domain.gst.late_filing as late_filing
 from domain.accounting import opening_documents as _opening
@@ -41,7 +42,6 @@ _logger = logging.getLogger("caflow.itc_reversal")
 # were never claimed and cancelled bills were undone.
 _LIVE_STATUSES = ("received", "partially_paid", "paid")
 
-PAGE = 1000
 
 
 def _all_bills(db, firm_id: str, client_id: Optional[str]) -> list[dict]:
@@ -52,33 +52,22 @@ def _all_bills(db, firm_id: str, client_id: Optional[str]) -> list[dict]:
     A silently short list here would under-report the reversal, which is the
     direction that costs the client interest.
     """
-    out: list[dict] = []
-    cursor = None
-    while True:
-        # RULE 37'S 180 DAYS NEVER STARTED HERE FOR AN OPENING BILL (ACC-14,
-        # migration 391): the credit was availed in the system the client
-        # migrated from, so a reversal computed here would give back credit
-        # this client's own electronic credit ledger never took.
-        # `is_opening` is in the projection because the filter reads it off the
-        # row — a select that omitted it would match nothing, silently.
+    # RULE 37'S 180 DAYS NEVER STARTED HERE FOR AN OPENING BILL (ACC-14,
+    # migration 391): the credit was availed in the system the client
+    # migrated from, so a reversal computed here would give back credit
+    # this client's own electronic credit ledger never took.
+    # `is_opening` is in the projection because the filter reads it off the
+    # row — a select that omitted it would match nothing, silently.
+    def query():
         q = (db.table("purchase_bills")
              .select("id, bill_no, bill_date, vendor_id, status, total_paise, "
                      "paid_paise, tds_paise, cgst_paise, sgst_paise, igst_paise, "
                      "debited_paise, credit_note_paise, is_opening")
              .eq("firm_id", firm_id)
              .in_("status", list(_LIVE_STATUSES)))
-        if client_id:
-            q = q.eq("client_id", client_id)
-        if cursor is not None:
-            q = q.gt("id", cursor)
-        page = q.order("id").limit(PAGE).execute().data or []
-        out.extend(_opening.without_carried_over(page))
-        if len(page) < PAGE:
-            break
-        cursor = page[-1].get("id")
-        if cursor is None:
-            break
-    return out
+        return q.eq("client_id", client_id) if client_id else q
+
+    return _opening.without_carried_over(fetch_all(query, label="rule37.purchase_bills"))
 
 
 def _fold_notes(rows: list, sign: int, out: dict) -> None:
@@ -121,42 +110,22 @@ def _note_adjustments(db, firm_id: str, client_id: Optional[str]) -> dict:
     """
     out: dict = {}
 
-    cursor = None
-    while True:
+    def debit_notes():
         q = (db.table("debit_notes")
              .select("id, purchase_bill_id, total_paise, cgst_paise, "
                      "sgst_paise, igst_paise, status, deleted_at")
              .eq("firm_id", firm_id))
-        if client_id:
-            q = q.eq("client_id", client_id)
-        if cursor is not None:
-            q = q.gt("id", cursor)
-        page = q.order("id").limit(PAGE).execute().data or []
-        _fold_notes(page, -1, out)
-        if len(page) < PAGE:
-            break
-        cursor = page[-1].get("id")
-        if cursor is None:
-            break
+        return q.eq("client_id", client_id) if client_id else q
 
-    cursor = None
-    while True:
+    def purchase_credit_notes():
         q = (db.table("purchase_credit_notes")
              .select("id, purchase_bill_id, total_paise, cgst_paise, "
                      "sgst_paise, igst_paise, status, deleted_at")
              .eq("firm_id", firm_id))
-        if client_id:
-            q = q.eq("client_id", client_id)
-        if cursor is not None:
-            q = q.gt("id", cursor)
-        page = q.order("id").limit(PAGE).execute().data or []
-        _fold_notes(page, +1, out)
-        if len(page) < PAGE:
-            break
-        cursor = page[-1].get("id")
-        if cursor is None:
-            break
+        return q.eq("client_id", client_id) if client_id else q
 
+    _fold_notes(fetch_all(debit_notes, label="rule37.debit_notes"), -1, out)
+    _fold_notes(fetch_all(purchase_credit_notes, label="rule37.purchase_credit_notes"), +1, out)
     return out
 
 

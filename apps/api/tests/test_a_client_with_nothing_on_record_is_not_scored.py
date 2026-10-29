@@ -246,7 +246,7 @@ def test_a_run_in_which_clients_failed_and_none_was_scored_still_raises(monkeypa
     monkeypatch.setattr(hl, "_report_soft_failure", lambda exc, **kw: None)
     monkeypatch.setattr(hl, "_calculate_scores_db", lambda _db, cid, fid: (_ for _ in ()).throw(RuntimeError("the engine failed"))
                         if cid == "c1" else (_ for _ in ()).throw(hl._NothingToScore("none")))
-    with pytest.raises(RuntimeError, match="no client of firm"):
+    with pytest.raises(RuntimeError, match="clients of firm"):
         job.run_health_scores_for_firm(FIRM)
 
 

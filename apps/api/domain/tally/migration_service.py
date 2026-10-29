@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from domain.tally import party_identifiers
 from core import db_provider
+from core.db_paging import fetch_all
 from domain.money_sentence import rupee_text
 
 try:
@@ -108,9 +109,8 @@ def _not_written_sentence(by_type: dict[str, int]) -> str:
 
 
 # PostgREST caps a response at ~1000 rows and says nothing about it. Every read
-# of tally_migration_items below goes through _all_items for that reason — see
-# its docstring for what the unpaged versions were doing.
-_ITEM_PAGE = 1000
+# of tally_migration_items below goes through _all_items (and so core.db_paging.fetch_all)
+# for that reason — see its docstring for what the unpaged versions were doing.
 
 # Rows per insert when saving parsed items. A single insert of a whole Tally
 # export is one enormous request body; chunking keeps each round trip bounded
@@ -154,23 +154,15 @@ def _all_items(sb, job_id: str, firm_id: str, columns: str = "*",
     domain/reporting/sources.py::_fetch_all: OFFSET re-scans every preceding row
     on each page. End of data is a SHORT page, never an assumed row count.
     """
-    out: list[dict] = []
-    cursor: str | None = None
     # `id` must be in the projection or the next cursor cannot be read.
     select = columns if columns == "*" or "id" in columns else f"id, {columns}"
 
-    while True:
+    def query():
         q = (sb.table("tally_migration_items").select(select)
              .eq("job_id", job_id).eq("firm_id", firm_id))
-        if status is not None:
-            q = q.eq("status", status)
-        if cursor is not None:
-            q = q.gt("id", cursor)
-        page = q.order("id").limit(_ITEM_PAGE).execute().data or []
-        out.extend(page)
-        if len(page) < _ITEM_PAGE:
-            return out
-        cursor = page[-1]["id"]
+        return q.eq("status", status) if status is not None else q
+
+    return fetch_all(query, label="tally_migration_items")
 
 
 # ── Job Management ────────────────────────────────────────────────────────────

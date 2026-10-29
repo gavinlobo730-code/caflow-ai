@@ -68,12 +68,14 @@ def trigger_run(
 
     Scoped to the caller's firm by default (tenant isolation) — mirrors
     /api/tasks/trigger-scheduler-run. Idempotent per day unless force=true.
+
+    Answers at once with whether the run started (the sweep is minutes, so it runs on a thread, as the external trigger's does);
+    GET /api/scheduler/status shows the outcome.
     """
     # The sibling route (POST /api/tasks/trigger-scheduler-run) has always refused a caller who is not firm-wide; this one asked only
     # `team:write`, which the role grid gives to the Partner alone but a per-person override can give to anyone, and the batch it
     # starts runs privileged across EVERY client of the firm (recurring journals, the bank's trusted-rule posting, escalations).
     assert_firmwide_job(current_user, "The daily automation batch")
-    from jobs.scheduler import run_daily_jobs
+    from jobs.scheduler import start_daily_jobs
     firm_id = current_user.get("firm_id")
-    results = run_daily_jobs(firm_id=firm_id, force=force)
-    return api_response(True, {"results": results})
+    return api_response(True, start_daily_jobs(firm_id, force))

@@ -539,7 +539,7 @@ services/rule_37a_service.py :: B904 :: build :: 1
 services/rule_37a_service.py :: F401 :: <module> :: 1
 services/sales_cycle_service.py :: B904 :: compute_lines :: 1
 services/sales_cycle_service.py :: B905 :: compute_lines :: 2
-services/statement_pdf_service.py :: F401 :: <module> :: 2
+services/statement_pdf_service.py :: F401 :: <module> :: 1
 services/stock_ageing_service.py :: B904 :: _as_of :: 1
 services/stock_count_service.py :: F401 :: <module> :: 1
 services/stock_position_service.py :: B904 :: _as_of :: 1

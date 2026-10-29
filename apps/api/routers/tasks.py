@@ -484,12 +484,14 @@ def trigger_scheduler_run(force: bool = False, current_user: dict = Depends(rbac
     Run all daily automation jobs for this firm now: recurring generation,
     escalations, and invoice overdue transitions. Idempotent per day unless
     force=true. Intended for external cron services and manual catch-up.
+
+    Answers at once with whether the run started: the sweep is minutes, so it runs on a thread and `GET /api/scheduler/status`
+    shows the outcome.
     """
     _assert_firmwide_job(current_user, "The daily automation batch")
-    from jobs.scheduler import run_daily_jobs
+    from jobs.scheduler import start_daily_jobs
     firm_id = current_user.get("firm_id")
-    result = run_daily_jobs(firm_id=firm_id, force=force)
-    return api_response(True, result)
+    return api_response(True, start_daily_jobs(firm_id, force))
 
 
 @router.post("/trigger-recurring-generation")

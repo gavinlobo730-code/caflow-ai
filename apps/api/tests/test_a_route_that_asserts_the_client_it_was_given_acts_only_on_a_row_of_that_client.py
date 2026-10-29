@@ -159,7 +159,7 @@ def test_patching_a_bank_account_that_is_there_still_works(monkeypatch):
 def test_the_manual_scheduler_run_is_refused_to_a_caller_who_is_not_firm_wide(monkeypatch):
     import jobs.scheduler as js
     ran = []
-    monkeypatch.setattr(js, "run_daily_jobs", lambda **k: ran.append(k) or {"ok": True})
+    monkeypatch.setattr(js, "start_daily_jobs", lambda firm_id, force=False: ran.append((firm_id, force)) or {"started": True})
     with pytest.raises(HTTPException) as e:
         sched.trigger_run(force=False, current_user={**USER, "role": "Manager"})
     assert e.value.status_code == 403 and "every client in the firm" in e.value.detail

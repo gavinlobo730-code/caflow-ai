@@ -219,10 +219,14 @@ def record_reversal(db, firm_id: str, client_id: str, *, journal_entry_id: str,
     }).execute().data or [{}])[0]
 
 
-def outstanding_for(db, firm_id: str, reversal_id: str) -> dict:
-    """What of one reversal has not yet been reclaimed, per head."""
+def outstanding_for(db, firm_id: str, client_id: str, reversal_id: str) -> dict:
+    """What of one reversal has not yet been reclaimed, per head.
+
+    THE REVERSAL MUST BE THIS CLIENT'S (POST-A-352). A reversal id alone names a row of any client of the firm, and a reclaim
+    registered against another client's reversal would be counted against the wrong client's credit; the route proved the caller may
+    act on the client they SENT. A reversal of another client answers in the words a missing one does. `client_id` has no default."""
     rows = (db.table("itc_reversal_register").select("*")
-            .eq("firm_id", firm_id).eq("id", reversal_id).limit(1)
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("id", reversal_id).limit(1)
             .execute().data) or []
     if not rows:
         raise ITCRegisterError("Reversal not found.")
@@ -230,7 +234,7 @@ def outstanding_for(db, firm_id: str, reversal_id: str) -> dict:
     if rev.get("kind") != "reversal":
         raise ITCRegisterError("That row is a reclaim, not a reversal.")
     claimed = (db.table("itc_reversal_register").select("*")
-               .eq("firm_id", firm_id).eq("reverses_id", reversal_id)
+               .eq("firm_id", firm_id).eq("client_id", client_id).eq("reverses_id", reversal_id)
                .execute().data) or []
     out = _amounts(rev)
     for c in claimed:
@@ -256,7 +260,7 @@ def record_reclaim(db, firm_id: str, client_id: str, *, journal_entry_id: str,
         raise ITCRegisterError("That journal is already registered.")
 
     parent = (db.table("itc_reversal_register").select("reason_code, kind")
-              .eq("firm_id", firm_id).eq("id", reverses_id).limit(1)
+              .eq("firm_id", firm_id).eq("client_id", client_id).eq("id", reverses_id).limit(1)
               .execute().data) or []
     if parent and not is_reclaimable(str(parent[0].get("reason_code") or "")):
         raise ITCRegisterError(
@@ -264,7 +268,7 @@ def record_reclaim(db, firm_id: str, client_id: str, *, journal_entry_id: str,
             "credit cannot be reclaimed in Table 4(D)(1). Re-availing it would "
             "claim credit the Act denies outright.")
 
-    left = outstanding_for(db, firm_id, reverses_id)
+    left = outstanding_for(db, firm_id, client_id, reverses_id)
     over = [h for h in _HEADS if amt[h] > left[h]]
     if over:
         raise ITCRegisterError(

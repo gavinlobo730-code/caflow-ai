@@ -88,12 +88,6 @@ FROZEN: dict[tuple[str, str], str] = {
     ("services/bank_exception_service.py", "_seen_before"):
         "keyset over a SHRINKING IN list that stops as soon as every wanted value is seen, with a page cap "
         "whose hit is the answer ('complete' is False)",
-    ("domain/tally/migration_service.py", "_all_items"):
-        "could move: keyset over `id` with a caller-chosen projection; no test of its own drives it past a page",
-    ("services/itc_reversal_service.py", "_all_bills"):
-        "could move: keyset over `id`, with the carried-over filter applied per page",
-    ("services/itc_reversal_service.py", "_note_adjustments"):
-        "could move: two keyset walks, written out as literal blocks so the column guard reads each table name",
     ("domain/inventory_service.py", "get_stock_ledger"):
         "OFFSET in (movement_date, created_at) order: the stored running totals were chained in that order and "
         "the display must keep it (its own comment); fetch_all imposes ORDER BY id",
@@ -103,8 +97,6 @@ FROZEN: dict[tuple[str, str], str] = {
         "OFFSET in (movement_date, created_at) order, the FIFO walk's own",
     ("services/stock_position_service.py", "_fetch_movements"):
         "OFFSET in (movement_date, created_at) order, the position's own",
-    ("routers/tds_workspace.py", "_paginate_deductions"):
-        "could move: OFFSET over `id`, which is exactly what fetch_all does by keyset",
 }
 
 
@@ -122,7 +114,8 @@ def test_the_detector_finds_a_keyset_loop_an_offset_loop_and_nothing_else():
 
 
 def test_the_scan_finds_the_pagers_that_remain_so_it_is_not_vacuous():
-    assert len(_tree()) >= 8, "the tree scan stopped finding hand-rolled pagers; the rule below would pass over nothing"
+    # 8 until the four plain walks moved onto fetch_all (POST-A-045); six remain, each with a reason it cannot
+    assert len(_tree()) >= 5, "the tree scan stopped finding hand-rolled pagers; the rule below would pass over nothing"
 
 
 def test_no_module_pages_a_query_by_hand_except_the_frozen_ones():
