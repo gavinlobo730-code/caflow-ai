@@ -122,6 +122,11 @@ HELPERS = {
     # signed-in member, so it gives the privilege back in its throwaway database through this one helper, which applies 509's
     # rollback file and so cannot drift from what the migration took away.
     "_signed_in_workflow_writes.py",
+    # POST-A-335 part 2, migration 563. The same device for the six document headers and their six lines tables: 563 takes INSERT,
+    # UPDATE and DELETE from the signed-in roles on them, and the modules that measure the second lock (the particulars and settlement
+    # triggers of 539, 541 and 544, the internal-practice guard) write as a signed-in member, so each gives the privilege back in its
+    # throwaway database through this one helper, which applies 563's rollback file and so cannot drift from what the migration took.
+    "_signed_in_document_writes.py",
     # POST-A-314, migration 532. A PostgREST-shaped client that runs each call in a REAL database as `authenticated` (with a
     # token's claims) or as `service_role`, for the tests that must see row security and grants: every other double answers from
     # Python, which is how the year lock's table could refuse every signed-in write and no test notice. Imported by

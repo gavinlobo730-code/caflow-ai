@@ -48,6 +48,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._signed_in_document_writes import give_the_signed_in_writes_back
+
 API_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = API_ROOT / "migrations"
 _ADMIN = os.environ.get("HARNESS_PG")
@@ -239,6 +241,9 @@ def seeded(pg_template):
         assert seed.returncode == 0, seed.stderr
         w = World(d)
         _seed(w)
+        # Migration 563 took the signed-in write on the six document headers and their lines; this file measures the SECOND lock (the
+        # policies and the triggers), so the write is given back on this throwaway copy once its rows are seeded.
+        give_the_signed_in_writes_back(d)
         yield name, w.ids
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')

@@ -3,15 +3,4 @@
 # table here to the same source rule as one on `tables_the_signed_in_role_cannot_write.txt` from the day its writers move; the
 # migration that revokes the grant moves each name to that list and empties this one. The Python ships first, the grant at least an
 # hour later: the old API against a revoked grant fails soft and wrong.
-client_sales_invoices
-client_sales_invoice_lines
-purchase_bills
-purchase_bill_lines
-credit_notes
-credit_note_lines
-debit_notes
-debit_note_lines
-purchase_credit_notes
-purchase_credit_note_lines
-sales_debit_notes
-sales_debit_note_lines
+# Empty since migration 563 (29-10-2026) moved the twelve document tables to the closed list; the next change that moves writers ahead of a grant fills it.

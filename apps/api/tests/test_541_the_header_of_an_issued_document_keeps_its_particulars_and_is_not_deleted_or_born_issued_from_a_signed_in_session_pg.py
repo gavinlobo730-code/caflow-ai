@@ -42,6 +42,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._signed_in_document_writes import give_the_signed_in_writes_back
+
 API_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = API_ROOT / "migrations"
 _ADMIN = os.environ.get("HARNESS_PG")
@@ -281,6 +283,9 @@ def seeded(pg_template):
         assert seed.returncode == 0, seed.stderr
         w = World(d)
         _seed(w)
+        # Migration 563 took the signed-in write on the six document headers and their lines; this file measures the SECOND lock (the
+        # policies and the triggers), so the write is given back on this throwaway copy once its rows are seeded.
+        give_the_signed_in_writes_back(d)
         # Migration 544 refuses a signed-in change of the settlement columns (status, the paid and applied amounts, the journal link),
         # which several cases below change as a Manager to show what 541 leaves open. This file is about 541's rule alone, so the
         # later trigger is switched off in the copy these cases run on; tests/test_544_..._pg.py holds that rule, and the two together.
