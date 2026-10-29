@@ -21,8 +21,8 @@ THE PARALLEL HALF WAS CHECKED BEFORE IT WAS TURNED ON
 WHAT CANNOT BE PINNED HERE
     That the parallel run is faster on a GitHub runner, or that the floor holds there: both are properties of a run
     this suite cannot make. Both were measured on a development machine, and the first pull request through the
-    workflow is the first reading from the runner. Nor can it say the real-Postgres modules are safe in parallel:
-    the workflow runs only the mock suite under `-n`, and a test below holds that the migration job does not.
+    workflow is the first reading from the runner. The real-Postgres modules were measured separately on 29-10-2026
+    (`docs/design-record/engineering-and-ci.md`), and a test below holds the configuration that was measured.
 """
 from __future__ import annotations
 
@@ -197,11 +197,17 @@ def test_the_parallel_and_coverage_tools_are_pinned_in_the_dev_requirements_and_
         assert tool not in prod, f"{tool} would ship in the production image"
 
 
-def test_the_real_postgres_job_is_not_run_in_parallel():
-    """Only the mock suite was measured under xdist. Several real-Postgres modules create a database of a fixed
-    name, so `-n` over them is a thing nobody has shown safe, and the job that runs them stays serial."""
+def test_the_real_postgres_job_runs_on_workers_by_file_and_in_the_configuration_that_was_measured():
+    """The real-Postgres job ran one worker for 63 to 79 minutes. On 29-10-2026 the whole suite (5,692 tests) was run under
+    `-n 4 --dist loadfile` on a four-core machine and passed in 43 minutes, nothing removed. The fixed-name databases this test used to
+    cite belong to `tests/test_batch*_migration.py`, which the job's glob does not run; every database a `_pg` test makes is uniquely
+    named and cloned from a per-worker template. What is pinned is the configuration that was measured: workers, by file (a module's
+    fixtures are built once per module). `load` mode was not measured. The hosted runner's time is read off the first run."""
     job = _job("migration apply — real Postgres 16")
     pytest_lines = [line for line in job.splitlines() if re.search(r"\bpytest\b", line) and not line.lstrip().startswith("#")]
     assert pytest_lines, "the migration job no longer runs pytest where this test looks; update the reading"
-    for line in pytest_lines:
-        assert not re.search(r"(^|\s)(-n\b|--numprocesses|--dist\b)", line), f"the real-Postgres job runs in parallel: {line.strip()}"
+    suite = [line for line in pytest_lines if "test_*_pg.py" in line]
+    assert len(suite) == 1, pytest_lines
+    assert re.search(r"(^|\s)-n (auto|\d+)\b", suite[0]), f"the real-Postgres suite no longer runs on workers: {suite[0].strip()}"
+    assert "--dist loadfile" in suite[0], f"the distribution is not the one that was measured: {suite[0].strip()}"
+    assert "--durations" in suite[0], "the slowest tests are the next thing to attack and must stay in the log"
