@@ -318,6 +318,15 @@ jobs:
       # pytestmark), so they were silently never executed anywhere — a
       # migration's own SQL could regress with nothing in CI to catch it. This
       # glob picks up every such file, including future ones, automatically.
+      # FOUR WORKERS, BY FILE (POST-A-037). This step was one worker and took 63 to 79 minutes on every backend change, which is what the
+      # merge of a batch of changes waits for. Run on four workers locally (a four-core machine, Postgres on the same box) the same
+      # 5,692 tests all passed in 43 minutes, and the file-grained distribution is the one the mock job above already uses. It is safe
+      # because each test builds a database of its own, named uniquely, from a per-worker template; the one thing that is shared is the
+      # CLUSTER, whose roles `tests/conftest._ensure_cluster_roles` creates once, under a lock, before any worker builds its template
+      # (a precaution: a race between workers was looked for on fresh clusters and not found; the note in
+      # `tests/test_the_cluster_roles_are_created_before_the_workers_build_their_templates.py` holds that and this line together).
+      # `-q` and `--durations=25` instead of `-v`: five thousand PASSED lines would push the failure summary out of the 5,000-line
+      # window the log service returns, and the slowest tests are the next thing to attack.
       - name: Run real-Postgres regression suite (migration ratchet + atomic RPCs + RLS)
         if: needs.scope.outputs.api == 'true'
         working-directory: apps/api
@@ -325,7 +334,7 @@ jobs:
           # 127.0.0.1 (not localhost) so libpq targets the IPv4-published service
           # port directly and never stalls on an IPv6 ::1 attempt first.
           HARNESS_PG: "host=127.0.0.1 port=5432 user=postgres password=postgres"
-        run: pytest tests/test_migrations_apply.py tests/test_atomic_journal_posting.py tests/test_*_pg.py -v --tb=short
+        run: pytest tests/test_migrations_apply.py tests/test_atomic_journal_posting.py tests/test_*_pg.py -q -n 4 --dist loadfile --tb=short --durations=25
 
   # THE GUARD THAT PROTECTS THE REDESIGN USED TO BE SWITCHED OFF BY THE REDESIGN.
   #

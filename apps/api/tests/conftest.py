@@ -220,6 +220,50 @@ def _tpl_psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
     )
 
 
+#: The cluster-wide roles `migrations/_supabase_compat_bootstrap.sql` stubs. A role belongs to the CLUSTER and not to a database, so
+#: when the real-Postgres suite runs on several workers at once (`-n`), every worker's template build runs the bootstrap against one
+#: fresh cluster at the same moment and two of them can both find a role missing and both create it. They are created here, once,
+#: under a lock, before any worker builds its template; the bootstrap then finds them and does nothing. The statements are the
+#: bootstrap's own (`tests/test_the_cluster_roles_are_created_before_the_workers_build_their_templates.py` holds the two together).
+_ROLES_SQL = """
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    CREATE ROLE anon NOLOGIN NOINHERIT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    CREATE ROLE authenticated NOLOGIN NOINHERIT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+    CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticator') THEN
+    CREATE ROLE authenticator NOINHERIT LOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_storage_admin') THEN
+    CREATE ROLE supabase_storage_admin NOLOGIN NOINHERIT;
+  END IF;
+END
+$$;
+GRANT anon, authenticated, service_role TO authenticator;
+"""
+
+
+def _ensure_cluster_roles(admin_dsn: str) -> None:
+    """Create the cluster-wide roles once, under a file lock shared by every worker of this machine. A failure is not raised: the
+    bootstrap in the template build creates the same roles and reports its own error if they cannot be had."""
+    import fcntl
+    import hashlib
+    import tempfile
+    key = hashlib.sha1(admin_dsn.encode()).hexdigest()[:12]
+    with open(Path(tempfile.gettempdir()) / f"caflow_pg_roles_{key}.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            _tpl_psql(admin_dsn, _ROLES_SQL)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 class PgTemplate:
     """Handle on the session's pre-migrated template database.
 
@@ -259,6 +303,7 @@ def pg_template():
     admin_dsn = f"{admin} dbname=postgres"
     name = f"caflow_tpl_{uuid.uuid4().hex[:12]}"
 
+    _ensure_cluster_roles(admin_dsn)
     if _tpl_psql(admin_dsn, f'CREATE DATABASE "{name}";').returncode != 0:
         pytest.skip("could not create the template database")
 
