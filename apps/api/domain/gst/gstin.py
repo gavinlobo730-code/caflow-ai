@@ -30,14 +30,16 @@ THE CHECK DIGIT IS THE POINT OF THIS MODULE
     product on division by 36, and total. The check digit is the character whose
     value is (36 - total mod 36) mod 36.
 
-WHY THIS IS NOT WIRED INTO models.client.validate_gstin
+WHY THIS IS WIRED INTO models.client.validate_gstin (POST-A-060, 29-10-2026)
 
-    Deliberately. That validator guards a Pydantic field and every fixture in
-    this repository flows through it — 512 GSTINs across 95 files are
-    well-formed inventions that do not carry a real check digit, because they
-    are exercising GST arithmetic and cross-tenant isolation rather than
-    registration numbers. Tightening the schema type would fail them all and
-    prove nothing.
+    It was not, deliberately, while the repository's fixtures were thought to
+    flow through that Pydantic field with GSTINs that carry no real check digit.
+    Measured, only one test did (the one that pinned the carve-out), because the
+    fixtures that matter go through the customer and vendor models, which have
+    checked since GST-29. The client's own GSTIN is the number a return is filed
+    under and the one a CA types at onboarding and on the client form, so the
+    model refuses a wrong check digit in the same sentence `problem_with` gives
+    everywhere else.
 
     The check digit belongs where a HUMAN types a GSTIN: the client, customer
     and vendor forms, and onboarding. Those are the places a typo enters, and

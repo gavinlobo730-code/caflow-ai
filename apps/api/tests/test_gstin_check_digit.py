@@ -242,9 +242,26 @@ def test_a_vendor_with_a_transposed_gstin_is_refused(_scoped):
     assert "check digit" in str(e.value)
 
 
-def test_the_shape_validator_is_deliberately_left_alone():
-    """models.client.validate_gstin guards a Pydantic field that 512 invented
-    fixture GSTINs flow through. Tightening it would fail them all and prove
-    nothing — the typo this catches happens at a keyboard, not in a fixture."""
+def test_the_client_models_validator_asks_the_check_digit_too():
+    """POST-A-060. `models.client.validate_gstin` guards the client's OWN GSTIN, the number a return is filed under. It was shape-only
+    on the belief that 512 fixture GSTINs flowed through it; measured, one test did. A wrong check digit is refused in the sentence
+    `problem_with` gives everywhere else, and a right one passes."""
     from models.client import validate_gstin
-    assert validate_gstin(TRANSPOSED) == TRANSPOSED
+    with pytest.raises(ValueError) as e:
+        validate_gstin(TRANSPOSED)
+    assert "check digit" in str(e.value)
+    assert validate_gstin(GOOD) == GOOD
+
+
+def test_a_client_is_refused_a_transposed_gstin_on_create_and_on_the_practice_identity():
+    """The two models that carry a GSTIN (the generic ClientUpdate carries none: tax identifiers are immutable there)."""
+    from pydantic import ValidationError
+    from models.client import ClientCreate, PracticeIdentityUpdate
+    base = {"client_name": "Acme", "entity_type": "Private Limited", "pan": "AAPFU0939F"}
+    with pytest.raises(ValidationError) as e:
+        ClientCreate(**base, gstin=TRANSPOSED)
+    assert "check digit" in str(e.value)
+    assert ClientCreate(**base, gstin=GOOD).gstin == GOOD
+    with pytest.raises(ValidationError):
+        PracticeIdentityUpdate(gstin=TRANSPOSED)
+    assert PracticeIdentityUpdate(gstin=GOOD).gstin == GOOD

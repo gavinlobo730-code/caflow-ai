@@ -2360,9 +2360,9 @@ not parse, so `"1200abc"` passed at 1200 while `toPaise` returned NaN, and
   96. The RESOLVER falls through instead of raising: it is a fallback chain, an
   unusable link is what the next one is for, and that also repairs rows written
   before the door existed or straight over PostgREST.
-  Deliberately still NOT in `models.client.validate_gstin`, which guards a
-  Pydantic field that 512 invented fixture GSTINs across 95 files flow through.
-  Closing the bulk door showed how load-bearing that carve-out is:
+  `models.client.validate_gstin` asks the check digit too since 29-10-2026
+  (POST-A-060); the 512-fixture carve-out it was kept for measured as one test.
+  Closing the bulk door showed how load-bearing the rule is:
   `test_customer_bulk_create`'s own fixtures both ended in `5`, so the import
   path had only ever been exercised with GSTINs the portal would reject. The
   fixtures were corrected, not the guard relaxed.

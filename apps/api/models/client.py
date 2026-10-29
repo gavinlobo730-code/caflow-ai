@@ -89,6 +89,10 @@ def validate_pan(pan: str) -> str:
 def validate_gstin(gstin: str) -> str:
     if not GSTIN_REGEX.match(gstin):
         raise ValueError(f"Invalid GSTIN format: {gstin}. Expected: 2-digit state + PAN + entity + Z + check")
+    from domain.gst.gstin import problem_with
+    problem = problem_with(gstin)
+    if problem:
+        raise ValueError(problem)
     return gstin
 
 
