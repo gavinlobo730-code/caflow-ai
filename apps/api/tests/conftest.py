@@ -62,6 +62,42 @@ def _no_schema_drift_watch_outlives_its_test():
     schema_guard.stop_drift_watch(timeout=1.0)
 
 
+# ── a monkeypatch of a METHOD on an instance must not leave the instance holding the method (POST-A-034) ──────────
+#
+# `monkeypatch.setattr(instance, "method", stub)` records the old value with `getattr`, which for a method the INSTANCE only
+# inherits is the bound method, and puts it back with `setattr`: the instance ends the test holding an attribute of its own that
+# shadows the class's, for the rest of the process. A later test that patches the same method on the CLASS (the only way to reach
+# every instance a router builds for itself) is then ignored by that instance. CI runs `pytest -n auto --dist loadfile`, where which
+# files share a worker is not chosen, and a run that spread the tests one by one (`--dist load`, the order-dependence hunt of
+# POST-A-034) found it: `test_a_year_of_depreciation_is_one_request` patched `fa._journal_svc.journal_for_depreciation`, and two
+# tests that patch `Phase2JournalService.journal_for_depreciation` then failed with "DID NOT RAISE" on whichever worker had run it.
+# So an instance patch of an inherited attribute is undone with `delattr`, which is what the author meant by "put it back".
+import pytest as _pytest_for_the_undo
+try:                                               # pytest 8 and later keep the sentinel here
+    from _pytest.compat import NOTSET as _notset
+except ImportError:                                # pragma: no cover - an older pytest
+    from _pytest.monkeypatch import notset as _notset
+
+_real_monkeypatch_setattr = _pytest_for_the_undo.MonkeyPatch.setattr
+
+
+def _setattr_that_undoes_an_inherited_attribute_by_deleting_it(self, target, name, value=_notset, raising=True):
+    inherited_only = (
+        value is not _notset
+        and not isinstance(target, (str, type))
+        and not hasattr(target, "__path__") and type(target).__name__ != "module"
+        and isinstance(name, str)
+        and name not in getattr(target, "__dict__", {})
+        and hasattr(type(target), name)
+    )
+    _real_monkeypatch_setattr(self, target, name, value, raising)
+    if inherited_only and self._setattr and self._setattr[-1][0] is target and self._setattr[-1][1] == name:
+        self._setattr[-1] = (target, name, _notset)
+
+
+_pytest_for_the_undo.MonkeyPatch.setattr = _setattr_that_undoes_an_inherited_attribute_by_deleting_it
+
+
 # The modules whose module-level singleton a test module reloads away. `importlib.reload` re-runs the module in the
 # SAME module object, so `phase2_journal_service = Phase2JournalService()` builds a NEW instance: a test module that
 # imported the old one at collection keeps it, while application code that imports it inside a function at call time
