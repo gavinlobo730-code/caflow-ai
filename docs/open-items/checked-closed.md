@@ -2,7 +2,7 @@
 
 Every entry below was something an audit, plan or CLAUDE.md paragraph said was open, which a reader then checked against the code on 1-2 Oct 2026 and found done, answered or moot. It exists so a future session does not reopen them and so the audit documents can be deleted with their conclusions kept. Each entry names the evidence. The list is grouped by the source it came from; it is not exhaustive of everything ever fixed (CLAUDE.md is the record of that), only of what the sweep tested.
 
-472 entries.
+473 entries.
 
 ## From `claude-md-1` (6)
 
@@ -562,3 +562,7 @@ Every entry below was something an audit, plan or CLAUDE.md paragraph said was o
 ## From `session-2026-10-28` (1)
 
 - POST-A-085 The payroll reports page pages every `payroll_runs` row for the firm through `selectAll` with `select *` (PAY-16 residual) — Moot on 28-10-2026: POST-A-010 moved the read behind the server. The page asks `api.payroll.listRuns()`, the server reads every run in pages of its own (`fetch_all`), narrows them to the caller's clients and answers newest month first, so the browser no longer pages anything and the thousand-row cut cannot truncate the export. What still travels is one row per client per month, which grows with client-months and not with transactions, and the year picker needs all of them; that is not the volume the reporting rule bounds.
+
+## From `session-2026-10-29` (1)
+
+- POST-A-357 The register of people and companies (`entities` and its two relationship tables) is read by every member of the firm whatever clients the member is assigned to — Decided on 29-10-2026: the firm-wide read stays and the Entity Registry screen says so. Narrowing the read to the clients in reach would hide a person already known through another client from the entity picker and the cross-client match detection, which is what the register is for, and the signed-in role holds no write on any of the three (migration 562). `tests/test_the_register_says_it_is_shared_across_the_practice.py` holds the screen's sentence to the catalog category (`firm_wide`) the policies are checked against; narrowing the read later means changing both.

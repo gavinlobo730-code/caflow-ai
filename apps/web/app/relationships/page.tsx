@@ -414,6 +414,15 @@ export default function RelationshipsPage() {
         }
       />
 
+      {/* POST-A-357: the register is read by every member of the firm on purpose, so the screen says so (the Python guard
+          tests/test_the_register_says_it_is_shared_across_the_practice.py holds this sentence to the catalog). */}
+      <Callout tone="note" title="This register is shared across the whole practice">
+        Everyone in the firm who can open Relationships sees every person and company here, whichever clients they are
+        assigned to, including PAN, GSTIN, date of birth, phone and address. That is deliberate: one person who stands
+        behind several clients is one record, and the match detection needs to see all of them. Who may add or change a
+        record is decided by role.
+      </Callout>
+
       {/* Registry table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable
         data={entities}
