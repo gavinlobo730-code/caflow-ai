@@ -12,6 +12,7 @@
 # recurring-template parents, task_escalations).
 # 563 closes the six document headers and their six lines tables of POST-A-335 part 2 (client_sales_invoices, purchase_bills, credit_notes,
 # debit_notes, purchase_credit_notes, sales_debit_notes and the six lines tables).
+# 564 closes tds_lower_deduction_certificates (POST-A-359): the s.197 certificate is recorded by the API since POST-A-293.
 account_group_mappings
 account_period_balances
 activity_logs
@@ -189,6 +190,7 @@ task_tags
 task_templates
 task_timeline_events
 tax_audit_checklists
+tds_lower_deduction_certificates
 tds_section_limits
 team_members
 user_capacity
