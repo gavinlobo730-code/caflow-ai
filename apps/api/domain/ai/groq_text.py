@@ -92,6 +92,7 @@ from typing import Any, Optional
 import httpx
 
 from domain.ai import gateway
+from core.request_context import outbound_headers
 from domain.ai.gateway import JsonSchema, ProviderFailed  # noqa: F401 — re-exported
 from domain.ai.redaction import redact_messages
 
@@ -304,7 +305,7 @@ async def _one_attempt(
             response = await client.post(
                 GROQ_CHAT_URL,
                 headers={"Authorization": f"Bearer {api_key}",
-                         "Content-Type": "application/json"},
+                         "Content-Type": "application/json", **outbound_headers()},
                 json=payload,
             )
     except httpx.TimeoutException as exc:

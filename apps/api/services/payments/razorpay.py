@@ -18,6 +18,7 @@ import json
 import logging
 from typing import Optional
 
+from core.request_context import outbound_headers
 from services.payments.base import (
     PaymentProvider, PaymentLinkRequest, PaymentLinkResult, VerifiedEvent,
     CREATED, AUTHORIZED, CAPTURED, FAILED, REFUNDED,
@@ -71,7 +72,7 @@ class RazorpayProvider(PaymentProvider):
             body["notify"] = {"email": bool(req.customer_email), "sms": bool(req.customer_phone)}
         if req.expires_at:
             body["expire_by"] = req.expires_at
-        resp = requests.post(f"{_API}/payment_links", auth=self._auth(), json=body, timeout=20)
+        resp = requests.post(f"{_API}/payment_links", auth=self._auth(), json=body, headers=outbound_headers(), timeout=20)
         resp.raise_for_status()
         data = resp.json()
         return PaymentLinkResult(
@@ -84,7 +85,7 @@ class RazorpayProvider(PaymentProvider):
 
     def get_payment_status(self, provider_payment_id: str) -> str:
         import requests  # lazy
-        resp = requests.get(f"{_API}/payments/{provider_payment_id}", auth=self._auth(), timeout=20)
+        resp = requests.get(f"{_API}/payments/{provider_payment_id}", auth=self._auth(), headers=outbound_headers(), timeout=20)
         resp.raise_for_status()
         return _STATUS.get(resp.json().get("status", ""), CREATED)
 
