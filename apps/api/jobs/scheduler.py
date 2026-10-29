@@ -1006,6 +1006,52 @@ def run_pending_now(*, background: bool = True) -> dict:
     return {"started": True, "reason": "started in background", "pending": len(pending)}
 
 
+# ── a person's manual run: answer at once, run on a thread (POST-A-289, item 8) ───────────────────────────
+#
+# `POST /api/scheduler/run` and `POST /api/tasks/trigger-scheduler-run` used to run the whole sweep INSIDE the request. A sweep is
+# minutes (the health step alone is twenty-five reads per client), so the caller held a connection past a proxy's timeout and got a
+# 502 for a run that carried on. They start the run on a thread now, the way the token-protected external trigger does, and answer
+# with whether it started; `GET /api/scheduler/status` shows the outcome. One manual run per firm at a time in this process: a second
+# press while one runs is told so and starts nothing. Across instances the claims (`_begin`) decide, as for every other trigger.
+
+_manual_runs_lock = threading.Lock()
+_manual_runs_in_progress: set[str] = set()
+
+
+def start_daily_jobs(firm_id: Optional[str], force: bool = False, *, background: bool = True) -> dict:
+    """Start the daily jobs for ONE firm and return at once: {"started": bool, "reason": str}. Never raises.
+
+    A firm is required: `run_daily_jobs` given none runs every firm's jobs, and a person's request must never reach that far, so an
+    empty firm id starts nothing. `background=False` runs inline (the tests, and no route)."""
+    if not firm_id:
+        return {"started": False, "reason": "the run is for the caller's firm and none was named"}
+    with _manual_runs_lock:
+        if firm_id in _manual_runs_in_progress:
+            return {"started": False, "reason": "a run for this firm is already in progress in this process"}
+        _manual_runs_in_progress.add(firm_id)
+
+    def _worker() -> None:
+        try:
+            run_daily_jobs(firm_id=firm_id, force=force)
+        except Exception as e:  # pragma: no cover - defensive; run_daily_jobs logs each job's own failure
+            logger.error(f"Manual run for firm {firm_id} failed: {e}", exc_info=True)
+        finally:
+            with _manual_runs_lock:
+                _manual_runs_in_progress.discard(firm_id)
+
+    if not background:
+        _worker()
+        return {"started": True, "reason": "ran inline"}
+    try:
+        threading.Thread(target=_worker, name="scheduler-manual", daemon=True).start()
+    except Exception as e:  # pragma: no cover - defensive
+        with _manual_runs_lock:
+            _manual_runs_in_progress.discard(firm_id)
+        logger.error(f"Manual run thread could not start: {e}")
+        return {"started": False, "reason": "could not start the run"}
+    return {"started": True, "reason": "started in background; GET /api/scheduler/status shows the outcome"}
+
+
 # ── Phase 10B — Workflow Schedule Runner ──────────────────────────────────────
 
 def _compute_next_run(cron_expression: str, timezone_str: str = "Asia/Kolkata") -> str:

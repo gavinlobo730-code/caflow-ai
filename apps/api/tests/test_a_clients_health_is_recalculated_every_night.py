@@ -170,7 +170,7 @@ def test_a_run_that_scored_no_client_at_all_raises_so_the_sweep_records_it_faile
     _clients(db, {"id": "a"}, {"id": "b"})
     with pytest.raises(RuntimeError, match="most clients of firm f1 could not be scored"):
         job.run_health_scores_for_firm(FIRM)
-    assert expired == [] and "health_scores" not in db._tables
+    assert expired == [] and not db._tables.get("health_scores")
 
 
 def test_a_run_in_which_almost_every_client_failed_raises_too_and_keeps_the_ones_it_scored(monkeypatch):
@@ -332,7 +332,7 @@ def test_a_client_never_scored_whose_calculation_lost_a_read_stays_unscored(monk
     monkeypatch.setattr(hl, "_calculate_scores_db", calculate)
     with pytest.raises(RuntimeError, match="could not be scored"):
         job.run_health_scores_for_firm(FIRM)
-    assert "health_scores" not in db._tables
+    assert not db._tables.get("health_scores")
 
 
 def test_the_real_engine_over_a_database_whose_compliance_read_fails_does_not_overwrite_a_critical_score(monkeypatch):
@@ -509,3 +509,108 @@ def test_the_calculate_route_still_stores_a_complete_calculation(monkeypatch):
     assert row["overall_score"] == 61 and row["trend"] == "+27" and row["last_calculated_at"]
     assert [h["overall_score"] for h in db._tables["health_score_history"]] == [61]
     assert len(logged) == 1 and expired, "a changed score is on the timeline and the cached figures are marked stale"
+
+
+# ── the run's edges (POST-A-289, items 2 and 6) ──────────────────────────────
+
+def _stored(db, client_id, calculated_at, *, overall=60):
+    db.seed("health_scores", {"id": f"hs-{client_id}", "firm_id": FIRM, "client_id": client_id, "overall_score": overall,
+                              "last_calculated_at": calculated_at, "client_name": client_id})
+
+
+def test_the_clients_are_taken_never_scored_first_then_the_oldest_score(monkeypatch):
+    db, _, _ = _world(monkeypatch)
+    _clients(db, {"id": "b"}, {"id": "a"}, {"id": "c"}, {"id": "d"})
+    _stored(db, "a", "2026-10-27T00:00:00+00:00")
+    _stored(db, "b", "2026-10-20T00:00:00+00:00")
+    _stored(db, "c", "2026-10-25T00:00:00+00:00")
+    order = [c["id"] for c in job.oldest_score_first(hl.clients_to_score(db, FIRM), db._tables["health_scores"])]
+    assert order == ["d", "b", "c", "a"], "d has never been scored, then b (20 Oct), c (25 Oct), a (27 Oct)"
+
+
+def test_a_night_that_overruns_stops_starting_clients_and_says_how_many_it_did_not_reach(monkeypatch):
+    db, _, _ = _world(monkeypatch)
+    _clients(db, {"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"})
+    ticks = iter([0.0, 0.0, 1000.0, 1000.0, 1000.0, 1000.0])
+    monkeypatch.setattr(job, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(hl, "_monotonic", lambda: next(ticks))
+    monkeypatch.setattr(job, "SWEEP_BUDGET_SECONDS", 600)
+    out = job.run_health_scores_for_firm(FIRM)
+    assert out["updated"] == 1 and out["not_reached"] == 3, out
+    assert {r["client_id"] for r in db._tables["health_scores"]} == {"a"}
+
+
+def test_the_clients_a_night_did_not_reach_are_the_first_the_next_night_takes(monkeypatch):
+    db, _, _ = _world(monkeypatch)
+    _clients(db, {"id": "a"}, {"id": "b"}, {"id": "c"})
+    clock = {"now": 0.0, "after_first": False}
+
+    def stop_after_one():
+        # the budget has room for exactly one client: the first look is before it, every later look is after it
+        clock["now"] += 0 if not clock["after_first"] else 1000.0
+        clock["after_first"] = True
+        return clock["now"]
+
+    monkeypatch.setattr(job, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(hl, "_monotonic", stop_after_one)
+    monkeypatch.setattr(job, "SWEEP_BUDGET_SECONDS", 600)
+    job.run_health_scores_for_firm(FIRM)
+    first_night = {r["client_id"] for r in db._tables["health_scores"]}
+    assert len(first_night) == 1
+    _it_was_yesterday(db)
+    clock.update(now=0.0, after_first=False)
+    job.run_health_scores_for_firm(FIRM)
+    second_night = {r["client_id"] for r in db._tables["health_scores"]}
+    assert len(second_night) == 2 and first_night < second_night, "the second night began with a client the first had not reached"
+
+
+def test_an_ordinary_run_reports_no_not_reached_key(monkeypatch):
+    db, _, _ = _world(monkeypatch)
+    _clients(db, {"id": "a"})
+    assert "not_reached" not in job.run_health_scores_for_firm(FIRM)
+
+
+def test_the_stored_score_of_an_archived_deleted_or_practice_client_is_removed_and_its_history_kept(monkeypatch):
+    db, _, _ = _world(monkeypatch)
+    _clients(db, {"id": "live"}, {"id": "archived", "status": "archived"}, {"id": "deleted", "deleted_at": "2026-10-01T00:00:00+00:00"},
+             {"id": "practice", "is_internal": True})
+    for cid in ("live", "archived", "deleted", "practice"):
+        _stored(db, cid, "2026-10-27T00:00:00+00:00")
+        db.seed("health_score_history", {"id": f"h-{cid}", "firm_id": FIRM, "client_id": cid, "overall_score": 60, "recorded_at": "2026-10-27T00:00:00+00:00"})
+    out = job.run_health_scores_for_firm(FIRM)
+    assert out["forgotten"] == 3
+    assert [r["client_id"] for r in db._tables["health_scores"]] == ["live"]
+    assert len(db._tables["health_score_history"]) == 5, "four seeded plus the live client's new row: nothing in the history was deleted"
+
+
+def test_another_firms_score_is_not_touched_by_a_firms_clean_up(monkeypatch):
+    db, _, _ = _world(monkeypatch)
+    _clients(db, {"id": "live"})
+    db.seed("health_scores", {"id": "elsewhere-row", "firm_id": "other-firm", "client_id": "their-client", "overall_score": 50, "last_calculated_at": "2026-10-27T00:00:00+00:00"})
+    job.run_health_scores_for_firm(FIRM)
+    assert any(r["id"] == "elsewhere-row" for r in db._tables["health_scores"])
+
+
+def test_a_failed_delete_of_a_frozen_score_is_reported_and_the_run_still_succeeds(monkeypatch):
+    db, _, _ = _world(monkeypatch)
+    _clients(db, {"id": "live"}, {"id": "archived", "status": "archived"})
+    _stored(db, "archived", "2026-10-27T00:00:00+00:00")
+    seen: list = []
+    monkeypatch.setattr("core.observability.capture_soft_failure", lambda exc, **ctx: seen.append(ctx.get("operation")))
+    real = db.table
+
+    def table(name):
+        t = real(name)
+        if name == "health_scores":
+            original = t.delete
+
+            def boom():
+                raise RuntimeError("delete refused")
+            t.delete = boom
+            t._original_delete = original
+        return t
+
+    monkeypatch.setattr(db, "table", table)
+    out = job.run_health_scores_for_firm(FIRM)
+    assert out["updated"] == 1 and "forgotten" not in out
+    assert seen == ["health.forget_score_of_a_client_no_longer_scored"]

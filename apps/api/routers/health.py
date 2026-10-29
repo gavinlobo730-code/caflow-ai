@@ -40,6 +40,7 @@ from typing import Optional
 from datetime import datetime, timezone, date, time, timedelta
 import contextvars
 import uuid
+from time import monotonic as _monotonic
 
 from models.common import api_response
 from core.permissions import rbac
@@ -1411,7 +1412,7 @@ def clients_to_score(db, firm_id: str) -> list[dict]:
         key="id", label="health.clients_to_score")
 
 
-def recalculate_clients(db, firm_id: str, clients: list[dict]) -> dict:
+def recalculate_clients(db, firm_id: str, clients: list[dict], *, deadline: Optional[float] = None) -> dict:
     """Calculate, store and record the health score of each of `clients`, by the same function the single-client route uses.
 
     One client failing never stops the others (it is reported, and counted in `failed`). What was cached from the old scores (the
@@ -1421,10 +1422,17 @@ def recalculate_clients(db, firm_id: str, clients: list[dict]) -> dict:
     A client whose calculation lost a read (a dimension counts as 100 when its own read fails) is NOT stored: a figure computed from a
     failed read would replace the last good one with a falsely healthy score, and a nightly run would do it to a whole firm. And a client
     with nothing on record at all (`_NothingToScore`) is not stored either, loses any score it had, and is counted in `unscored`, not
-    in `failed`."""
-    updated = failed = unscored = cleared = 0
+    in `failed`.
+
+    `deadline` is a `time.monotonic()` instant after which no further client is STARTED (the one being scored finishes): the nightly sweep
+    passes one so a night that overruns stops and says how many it did not reach (`not_reached`, present only when above zero) and does
+    not run for hours (POST-A-289). The button passes none."""
+    updated = failed = unscored = cleared = not_reached = 0
     now = datetime.now(timezone.utc).isoformat()
-    for client in clients:
+    for position, client in enumerate(clients):
+        if deadline is not None and _monotonic() >= deadline:
+            not_reached = len(clients) - position
+            break
         try:
             scores = _calculate_scores_or_say_a_read_was_lost(db, client["id"], firm_id)
             trend = _trend_against_an_earlier_day(db, firm_id, client["id"], scores["overall_score"])
@@ -1462,7 +1470,10 @@ def recalculate_clients(db, firm_id: str, clients: list[dict]) -> dict:
             capture_soft_failure(exc, operation="health.recalculate_all", firm_id=firm_id, client_id=client.get("id"))
     if updated or cleared:
         _expire_what_was_cached_from_the_scores(firm_id)
-    return {"updated": updated, "failed": failed, "unscored": unscored}
+    outcome = {"updated": updated, "failed": failed, "unscored": unscored}
+    if not_reached:
+        outcome["not_reached"] = not_reached
+    return outcome
 
 
 @router.post("/recalculate-all")
