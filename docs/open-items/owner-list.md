@@ -1,8 +1,8 @@
-# The owner's list — one place (refreshed 15 October 2026, IST; S14 confirmed again and S15 added on 27 October 2026)
+# The owner's list — one place (refreshed 15 October 2026, IST; S14 confirmed again and S15 added on 27 October 2026; S16 to S20 added on 29 October 2026)
 
 Everything that is yours to decide, do or supply, and every statutory or legal point I will not assume. Kept in one place and refreshed, not scattered across replies. Each row names the ledger ids behind it (`decisions-taken-2026-10-14.md` has what I decided myself). Written in plain English: you decide the money and do what only you can do; the legal and statutory points need a primary text, a practising CA or counsel, and **nothing is built on a guess**.
 
-**At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (14, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
+**At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (20, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
 
 ## 1. The single most useful thing: let me read the primary texts
 
@@ -185,6 +185,46 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Who can supply it:** Claude once the government sites are reachable (section 1) for the text; a practising CA for the reading.
 - **Stays unbuilt meanwhile:** The change to the cash-flow classifier in the Python builder and the SQL function (POST-A-348). The new accumulated-amortisation ledger is classified to match the shared depreciation ledger, so it does not worsen the statement.
 - **Ledger:** POST-C-212, POST-A-348
+
+### S16. GST "turnover in the State": does it include a supply the recipient pays the tax on?
+
+- **Question:** For the Rule 43 turnover (F) that decides how much input credit on capital goods is reversed, is "turnover in the State" in the CGST Act the value of ALL taxable supplies except INWARD supplies on which the recipient pays tax under reverse charge, so that a goods transport agency's or an advocate's own OUTWARD supplies (tax paid by the recipient) belong in it? The code already says so in a warning beside the answer, but its figure leaves those supplies out; the error runs in the safe direction (credit reversed is larger than it should be).
+- **Needed:** CGST Act s.2(112) and Rule 43 as in force for the period.
+- **Who can supply it:** Claude once the government sites are reachable (section 1) for the text; a practising CA for the reading.
+- **Stays unbuilt meanwhile:** Adding outward reverse-charge supplies to F. The answer keeps naming the amount it left out.
+- **Ledger:** POST-A-055
+
+### S17. GSTR-3B Table 5 and Table 4(D)(2): which facts fill them
+
+- **Question:** (a) Table 5 (exempt, nil-rated and non-GST inward supplies): which class of inward supply goes in the portal's two rows (the one headed for composition-scheme, exempt and nil-rated supplies, and the non-GST one), and is the split inter-state or intra-state by the supplier's state against the recipient's? (b) Table 4(D)(2) (ineligible credit under s.16(4) and the place-of-supply rules): which facts about a purchase must be recorded to derive it, and how is a bill outside the s.16(4) time limit told from one inside?
+- **Needed:** The GSTR-3B form, its instructions and the GSTN JSON schema for the period; CGST Act s.16(4) and s.17(5) in force; the circular on Table 4 (170/02/2022-GST).
+- **Who can supply it:** Claude once the government sites are reachable (section 1) for the texts; a practising CA for the reading of the rows.
+- **Stays unbuilt meanwhile:** A classification field on purchase bills for Table 5 and the per-bill s.16(4) facts for 4(D)(2). Both rows stay nil and are named to the CA as rows this product cannot derive.
+- **Ledger:** POST-A-059, POST-A-064
+
+### S18. E-invoice: does the 30-day reporting limit reach credit and debit notes?
+
+- **Question:** Does the IRP's 30-day limit on reporting an invoice (for a taxpayer with turnover of Rs 10 crore and over, from 01-04-2025) also apply to credit and debit notes, and from when? The ledger's source is a research summary, not the notification.
+- **Needed:** The notification or the IRP's advisory that sets the limit, and the e-invoice schema's treatment of document types CRN and DBN.
+- **Who can supply it:** Claude once the government sites are reachable (section 1); a practising CA for the reading.
+- **Stays unbuilt meanwhile:** Extending the missing-IRN list to notes (it lists invoices only and says notes are not covered).
+- **Ledger:** POST-A-067
+
+### S19. Section 32(1)(iia): the second half of additional depreciation
+
+- **Question:** For an asset put to use for fewer than 180 days in the year it was acquired, the third proviso to s.32(1)(iia) is read as allowing the other half of the additional depreciation in the FOLLOWING year. Is that the reading, and does the 20% rate and the whole clause stand as the code holds them? The module marks the rate and the reading as unconfirmed.
+- **Needed:** Income-tax Act 1961 s.32(1)(iia) and its provisos as applicable to the year, and the position under the 2025 Act.
+- **Who can supply it:** Claude once the government sites are reachable (section 1) for the text; a practising CA for the reading.
+- **Stays unbuilt meanwhile:** The carry-forward of the second half to the next year. The answer keeps naming it as a gap.
+- **Ledger:** POST-A-114
+
+### S20. GSTR-9 Table 8A: what the portal fills and what the books must supply
+
+- **Question:** Table 8A (input credit as per the auto-populated statements) is derived from the GSTR-2B statements for the year. For which years is 8A filled from GSTR-2B and for which from GSTR-2A, and may the product store one total per month from the 2B reconciliation to fill it?
+- **Needed:** The GSTR-9 form and instructions for each year in the correction window; the notifications that moved 8A from 2A to 2B.
+- **Who can supply it:** Claude once the government sites are reachable (section 1); a practising CA for the reading.
+- **Stays unbuilt meanwhile:** The stored per-month 2B totals and the derived 8A. The return names 8A as a figure the product cannot see.
+- **Ledger:** POST-A-063
 
 ## 5. Wait-until-asked items the goal probably needs
 
