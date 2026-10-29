@@ -26,6 +26,7 @@ from domain.money_sentence import rupee_whole_text
 from core import db_provider
 from core.db_paging import fetch_window
 from core.list_window import probe, split
+from core.db_provider import privileged_for
 
 router = APIRouter(prefix="/api/relationships", tags=["relationships"])
 
@@ -345,7 +346,7 @@ def create_entity(
         )
         return api_response(True, row)
 
-    res = db.table("entities").insert({
+    res = privileged_for(db).table("entities").insert({
         "firm_id": firm_id,
         **data.model_dump(),
     }).execute()
@@ -383,7 +384,7 @@ def update_entity(
     if not existing:
         raise HTTPException(status_code=404, detail="Entity not found")
 
-    res = db.table("entities").update(update).eq("id", entity_id).eq("firm_id", firm_id).execute()
+    res = privileged_for(db).table("entities").update(update).eq("id", entity_id).eq("firm_id", firm_id).execute()
     return api_response(True, (res.data or [{}])[0])
 
 
@@ -557,7 +558,7 @@ def create_relationship(
     if not from_e or not to_e:
         raise HTTPException(status_code=404, detail="One or both entities not found in firm")
 
-    res = db.table("entity_relationships").insert(row).execute()
+    res = privileged_for(db).table("entity_relationships").insert(row).execute()
     created = (res.data or [row])[0]
 
     timeline_service.log(
@@ -835,7 +836,7 @@ def create_entity_to_entity_relationship(
     if not from_e or not to_e:
         raise HTTPException(status_code=404, detail="One or both entities not found in firm")
 
-    res = db.table("entity_to_entity_relationships").insert(row).execute()
+    res = privileged_for(db).table("entity_to_entity_relationships").insert(row).execute()
     return api_response(True, (res.data or [row])[0])
 
 

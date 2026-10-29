@@ -36,13 +36,31 @@ def _named(row_id) -> Optional[str]:
     return text or None
 
 
+def _find(query) -> list:
+    """The rows of one ownership lookup. A string that is not an id of the column's type (a UUID) makes PostgREST answer with a type error
+    (SQLSTATE 22P02), which the route used to turn into a 500; a row that could never exist is a row that is not there, so it answers
+    the way a missing row does. The check is made on the database's own answer and not in the helper's first line because the test
+    suites use readable ids that are not UUIDs, and the production column's type is the only authority on what an id is."""
+    try:
+        return query.execute().data or []
+    except Exception as exc:
+        if _is_a_malformed_id(exc):
+            return []
+        raise
+
+
+def _is_a_malformed_id(exc: Exception) -> bool:
+    code = getattr(exc, "code", None) or (exc.args[0].get("code") if exc.args and isinstance(exc.args[0], dict) else None)
+    return str(code) == "22P02" or "invalid input syntax for type uuid" in str(exc)
+
+
 def vendor_is_the_clients(db, firm_id: str, client_id: str, vendor_id) -> None:
     """404 "That vendor was not found." unless `vendor_id` is a vendor of this firm and this client. Nothing named, nothing asked."""
     named = _named(vendor_id)
     if db is None or named is None:
         return
-    rows = (db.table("vendors").select("id").eq("id", named)
-            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or []
+    rows = _find(db.table("vendors").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
     if not rows:
         raise _not_found("vendor")
 
@@ -52,8 +70,8 @@ def customer_is_the_clients(db, firm_id: str, client_id: str, customer_id) -> No
     named = _named(customer_id)
     if db is None or named is None:
         return
-    rows = (db.table("customers").select("id").eq("id", named)
-            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or []
+    rows = _find(db.table("customers").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
     if not rows:
         raise _not_found("customer")
 
@@ -63,8 +81,8 @@ def purchase_bill_is_the_clients(db, firm_id: str, client_id: str, bill_id) -> N
     named = _named(bill_id)
     if db is None or named is None:
         return
-    rows = (db.table("purchase_bills").select("id").eq("id", named)
-            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or []
+    rows = _find(db.table("purchase_bills").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
     if not rows:
         raise _not_found("bill")
 
@@ -76,8 +94,8 @@ def bank_account_is_the_clients(db, firm_id: str, client_id: str, bank_account_i
         return
     # A bank table is read with the privileged client, after the caller's firm and client are asserted (POST-A-339); the filter below
     # is that assertion, so the account has to be this firm's and this client's whoever is asking.
-    rows = (privileged_for(db).table("bank_accounts").select("id").eq("id", named)
-            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or []
+    rows = _find(privileged_for(db).table("bank_accounts").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
     if not rows:
         raise _not_found("bank account")
 
@@ -87,7 +105,7 @@ def sales_invoice_is_the_clients(db, firm_id: str, client_id: str, invoice_id) -
     named = _named(invoice_id)
     if db is None or named is None:
         return
-    rows = (db.table("client_sales_invoices").select("id").eq("id", named)
-            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or []
+    rows = _find(db.table("client_sales_invoices").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
     if not rows:
         raise _not_found("invoice")

@@ -8,6 +8,7 @@ from repositories.task_extras_repository import task_extras_repo
 from core.ist_clock import ist_today
 from core.observability import capture_soft_failure
 from core import db_provider
+from core.db_provider import privileged_for
 
 
 class EscalationService:
@@ -328,7 +329,7 @@ class EscalationService:
             Created escalation record
         """
         db = _get_db()
-        result = db.table("task_escalations").insert({
+        result = privileged_for(db).table("task_escalations").insert({
             "task_id": task_id,
             "escalation_rule_id": escalation_rule_id,
             "escalation_type": escalation_type,

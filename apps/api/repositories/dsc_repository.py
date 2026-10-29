@@ -25,6 +25,12 @@ _MOCK_DSC: list[dict] = []
 _get_db = db_provider.request_db
 
 
+def _writer():
+    """The writes below go on the server's own client, acting as the request's person: the signed-in role holds no write on
+    `dsc_records` (POST-A-329). It has no row security, so every statement names the firm; the routes check ownership first."""
+    return db_provider.privileged_for(_get_db())
+
+
 class DSCRepository(BaseRepository[dict]):
 
     def find_all(self, firm_id: Optional[str] = None) -> list[dict]:
@@ -58,6 +64,8 @@ class DSCRepository(BaseRepository[dict]):
         return result.data
 
     def create(self, data: dict) -> dict:
+        if not data.get("firm_id"):
+            raise ValueError("a DSC record is created for a firm")
         if _USE_MOCK:
             import uuid
             record = {
@@ -70,24 +78,24 @@ class DSCRepository(BaseRepository[dict]):
             }
             _MOCK_DSC.append(record)
             return record
-        result = _get_db().table("dsc_records").insert(
+        result = _writer().table("dsc_records").insert(
             {**data, "created_at": self.now_iso(), "updated_at": self.now_iso()}
         ).execute()
         return result.data[0]
 
-    def update(self, id: str, data: dict) -> Optional[dict]:
+    def update(self, id: str, data: dict, *, firm_id: str) -> Optional[dict]:
         if _USE_MOCK:
             record = next((x for x in _MOCK_DSC if x.get("id") == id), None)
             if not record or record.get("deleted_at"):
                 return None
             record.update({**data, "updated_at": self.now_iso()})
             return record
-        result = _get_db().table("dsc_records").update(
+        result = _writer().table("dsc_records").update(
             {**data, "updated_at": self.now_iso()}
-        ).eq("id", id).execute()
+        ).eq("id", id).eq("firm_id", firm_id).execute()
         return result.data[0] if result.data else None
 
-    def soft_delete(self, id: str, deleted_by: Optional[str] = None) -> bool:
+    def soft_delete(self, id: str, deleted_by: Optional[str] = None, *, firm_id: str) -> bool:
         if _USE_MOCK:
             record = next((x for x in _MOCK_DSC if x.get("id") == id), None)
             if not record or record.get("deleted_at"):
@@ -96,10 +104,10 @@ class DSCRepository(BaseRepository[dict]):
             record["deleted_by"] = deleted_by
             record["updated_at"] = self.now_iso()
             return True
-        result = _get_db().table("dsc_records").update({
+        result = _writer().table("dsc_records").update({
             "deleted_at": self.now_iso(),
             "deleted_by": deleted_by,
-        }).eq("id", id).execute()
+        }).eq("id", id).eq("firm_id", firm_id).execute()
         return bool(result.data)
 
 

@@ -207,7 +207,7 @@ def update_dsc(dsc_id: str, body: DSCUpdate, current_user: dict = Depends(rbac("
     if not updates:
         return api_response(True, {"dsc_record": existing})
 
-    row = dsc_repo.update(dsc_id, updates)
+    row = dsc_repo.update(dsc_id, updates, firm_id=firm_id)
     if not row:
         raise HTTPException(status_code=404, detail="DSC record not found")
 
@@ -231,7 +231,7 @@ def renew_dsc(dsc_id: str, body: DSCRenew, current_user: dict = Depends(rbac("ds
     if body.token_no is not None:
         updates["token_no"] = body.token_no
 
-    row = dsc_repo.update(dsc_id, updates)
+    row = dsc_repo.update(dsc_id, updates, firm_id=firm_id)
     if not row:
         raise HTTPException(status_code=404, detail="DSC record not found")
 
@@ -248,7 +248,7 @@ def delete_dsc(dsc_id: str, current_user: dict = Depends(rbac("dsc", "delete")))
     firm_id = current_user["firm_id"]
     existing = _get_owned_or_404(dsc_id, firm_id)
 
-    ok = dsc_repo.soft_delete(dsc_id, deleted_by=current_user.get("auth_user_id"))
+    ok = dsc_repo.soft_delete(dsc_id, deleted_by=current_user.get("auth_user_id"), firm_id=firm_id)
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to delete DSC record")
 

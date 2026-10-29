@@ -225,7 +225,7 @@ def evaluate_rules(trigger_type: str, trigger_data: dict, firm_id: Optional[str]
             "error_message": None,
             "executed_at": datetime.utcnow().isoformat(),
         }
-        automation_repo.log_execution(execution)
+        automation_repo.log_execution(execution, firm_id=firm_id)
         executed.append(execution)
     return executed
 

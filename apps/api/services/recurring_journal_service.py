@@ -58,6 +58,7 @@ from core.db_paging import fetch_all
 from domain import recurrence as _rec
 from core import db_provider
 from domain.money_sentence import rupee_text
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.recurring_journal")
 
@@ -209,7 +210,7 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str] = None,
         return row
 
     db = db or _db()
-    created = db.table("recurring_journal_templates").insert({
+    created = privileged_for(db).table("recurring_journal_templates").insert({
         "firm_id": firm_id,
         "client_id": data["client_id"],
         "name": data["name"].strip(),
@@ -258,7 +259,7 @@ def update_template(firm_id: str, template_id: str, data: dict, db=None) -> Opti
 
     db = db or _db()
     fields["updated_at"] = _now_iso()
-    res = (db.table("recurring_journal_templates").update(fields)
+    res = (privileged_for(db).table("recurring_journal_templates").update(fields)
            .eq("id", template_id).eq("firm_id", firm_id).execute())
     if not res.data:
         return None
@@ -343,7 +344,7 @@ def delete_template(firm_id: str, template_id: str, db=None) -> bool:
             if not (t["id"] == template_id and t["firm_id"] == firm_id)]
         return len(MOCK_JOURNAL_TEMPLATES) < before
     db = db or _db()
-    res = (db.table("recurring_journal_templates").delete()
+    res = (privileged_for(db).table("recurring_journal_templates").delete()
            .eq("id", template_id).eq("firm_id", firm_id).execute())
     return bool(res.data)
 
@@ -491,7 +492,7 @@ def _advance(firm_id: str, template: dict, to_date_iso: str, db=None) -> None:
     if _USE_MOCK and db is None:
         template["next_run_date"] = to_date_iso
         return
-    (db or _db()).table("recurring_journal_templates").update({
+    (privileged_for(db or _db())).table("recurring_journal_templates").update({
         "next_run_date": to_date_iso, "updated_at": _now_iso(),
     }).eq("id", template["id"]).eq("firm_id", firm_id).execute()
 
@@ -540,7 +541,7 @@ def _set_status(firm_id: str, template: dict, status: str, db=None) -> None:
     if _USE_MOCK and db is None:
         template["status"] = status
         return
-    (db or _db()).table("recurring_journal_templates").update({
+    (privileged_for(db or _db())).table("recurring_journal_templates").update({
         "status": status, "updated_at": _now_iso(),
     }).eq("id", template["id"]).eq("firm_id", firm_id).execute()
 

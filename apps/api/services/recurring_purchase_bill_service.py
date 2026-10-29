@@ -61,6 +61,7 @@ from core.ist_clock import ist_today
 from core import db_provider
 from services import named_row_ownership
 from services.line_item_ownership import assert_items_are_the_clients
+from core.db_provider import privileged_for
 
 # Mock stores (mock mode only).
 MOCK_RECURRING_BILL_TEMPLATES: list[dict] = []
@@ -204,7 +205,7 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None
     # Spelled out rather than `insert(payload)`: the column check above reads a
     # dict LITERAL at the call site, and `payload` is mutated by the mock branch
     # so it cannot be read even by the payload parser's local-binding pass.
-    row = db.table("recurring_purchase_bill_templates").insert({
+    row = privileged_for(db).table("recurring_purchase_bill_templates").insert({
         "firm_id": payload["firm_id"],
         "client_id": payload["client_id"],
         "vendor_id": payload["vendor_id"],
@@ -273,7 +274,7 @@ def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict
     db = db or _db()
     named_row_ownership.vendor_is_the_clients(db, firm_id, existing.get("client_id"), fields.get("vendor_id"))
     _assert_edited_lines_are_the_clients(db, firm_id, existing, data)
-    (db.table("recurring_purchase_bill_templates").update(fields)
+    (privileged_for(db).table("recurring_purchase_bill_templates").update(fields)
        .eq("id", template_id).eq("firm_id", firm_id).execute())
     if new_lines is not None:
         (db.table("recurring_purchase_bill_template_lines").delete()
@@ -298,7 +299,7 @@ def set_status(firm_id: str, template_id: str, status: str, db=None) -> dict:
         existing.update(fields)
         return dict(existing)
     db = db or _db()
-    (db.table("recurring_purchase_bill_templates")
+    (privileged_for(db).table("recurring_purchase_bill_templates")
        .update({"status": status, "updated_at": fields["updated_at"]})
        .eq("id", template_id).eq("firm_id", firm_id).execute())
     return get_template(firm_id, template_id, db=db)
@@ -448,7 +449,7 @@ def _set_next_run(firm_id: str, template_id: str, next_run_iso: Optional[str], d
                 t["next_run_date"] = next_run_iso
         return
     db = db or _db()
-    (db.table("recurring_purchase_bill_templates")
+    (privileged_for(db).table("recurring_purchase_bill_templates")
        .update({"next_run_date": next_run_iso, "updated_at": _now_iso()})
        .eq("id", template_id).eq("firm_id", firm_id).execute())
 

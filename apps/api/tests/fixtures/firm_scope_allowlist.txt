@@ -18,7 +18,6 @@ core/portal_auth.py | get_current_portal_client | call:list_portal_memberships |
 core/portal_auth.py | get_current_portal_employee | payroll_employees | read | 1 | principal-lookup
 domain/ai_copilot_service.py | AICopilotService._build_context | repo:client_repo.find_by_id | read | 1 | gated-by-route | route=routers/ai_copilot_v2.py::send_message via=chat
 domain/ai_copilot_service.py | AICopilotService.chat | repo:ai_copilot_repo.list_messages | read | 1 | gated-by-route | route=routers/ai_copilot_v2.py::send_message via=chat
-domain/automation_engine.py | evaluate_rules | repo:automation_repo.log_execution | insert | 1 | child-by-parent | source=domain/automation_engine.py::evaluate_rules
 domain/compliance_record_service.py | ComplianceRecordService.update_record | repo:compliance_records_repo.update | update | 1 | looked-up-first | lookup=get_record
 domain/inventory_service.py | _last_ledger_row | inventory_stock_ledger | read | 1 | helper-of-allowlisted-call
 domain/memory_pipeline.py | MemoryPipeline.compute_client_profile | repo:client_repo.find_by_id | read | 1 | gated-by-route | route=routers/memory_intelligence.py::compute_client_profile
@@ -34,12 +33,8 @@ repositories/ai_copilot_repository.py | AICopilotRepository.list_messages | ai_m
 repositories/ai_insights_repository.py | AIInsightsRepository.create | ai_insights | insert | 1 | repository-contract
 repositories/approval_repository.py | ApprovalRepository.create | approval_requests | insert | 1 | repository-contract
 repositories/assignment_rule_repository.py | AssignmentRuleRepository.create | assignment_rules | insert | 1 | repository-contract
-repositories/assignment_rule_repository.py | AssignmentRuleRepository.delete | assignment_rules | delete | 1 | repository-contract
-repositories/assignment_rule_repository.py | AssignmentRuleRepository.delete_by_recurring_config | assignment_rules | delete | 1 | repository-contract
 repositories/assignment_rule_repository.py | AssignmentRuleRepository.find_by_id | assignment_rules | read | 1 | repository-contract
 repositories/assignment_rule_repository.py | AssignmentRuleRepository.find_by_recurring_config | assignment_rules | read | 1 | repository-contract
-repositories/assignment_rule_repository.py | AssignmentRuleRepository.update | assignment_rules | update | 1 | repository-contract
-repositories/automation_repository.py | AutomationRepository.log_execution | automation_executions | insert | 1 | repository-contract
 repositories/branding_repository.py | BrandingRepository.create_invoice_template | invoice_templates | insert | 1 | repository-contract
 repositories/branding_repository.py | BrandingRepository.delete_email_template | email_templates | delete | 1 | repository-contract
 repositories/branding_repository.py | BrandingRepository.delete_invoice_template | invoice_templates | delete | 1 | repository-contract
@@ -61,8 +56,6 @@ repositories/compliance_repository.py | ComplianceRepository.find_by_id | compli
 repositories/compliance_repository.py | ComplianceRepository.update | compliance_tasks | update | 1 | repository-contract
 repositories/document_repository.py | DocumentRepository.create | documents | insert | 1 | repository-contract
 repositories/dsc_repository.py | DSCRepository.create | dsc_records | insert | 1 | repository-contract
-repositories/dsc_repository.py | DSCRepository.soft_delete | dsc_records | update | 1 | repository-contract
-repositories/dsc_repository.py | DSCRepository.update | dsc_records | update | 1 | repository-contract
 repositories/engagement_repository.py | EngagementRepository.create | fee_engagements | insert | 1 | repository-contract
 repositories/engagement_repository.py | EngagementRepository.find_by_id | fee_engagements | read | 1 | repository-contract
 repositories/engagement_repository.py | EngagementRepository.soft_delete | fee_engagements | update | 1 | repository-contract

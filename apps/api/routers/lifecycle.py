@@ -24,6 +24,7 @@ from models.fy import FYLabel, OptionalFYLabel
 from core import db_provider
 from core.db_paging import fetch_window
 from core.list_window import probe, split
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.lifecycle")
 
@@ -405,7 +406,7 @@ def advance_lead_stage(
             old_rank = _stage_rank(old_stage)
             if old_rank < 0 or old_rank >= target_rank:
                 return False
-            (db.table("leads")
+            (privileged_for(db).table("leads")
                .update({"stage": target_stage, "updated_at": now})
                .eq("id", lead_id).eq("firm_id", firm_id).execute())
         _audit_auto_stage_change(db, lead_id, firm_id, old_stage, target_stage, actor_id, actor_email, now)
@@ -568,7 +569,7 @@ def revert_lead_after_engagement_closed(
             new_stage = _compute_stage_from_engagements(live)
             if new_stage == old_stage:
                 return False
-            (db.table("leads")
+            (privileged_for(db).table("leads")
                .update({"stage": new_stage, "updated_at": now})
                .eq("id", lead_id).eq("firm_id", firm_id).execute())
         _audit_lead_stage_revert(db, lead_id, firm_id, old_stage, new_stage, actor_id, actor_email, now)
@@ -825,7 +826,7 @@ def create_lead(
         "updated_at":            now,
     }
     try:
-        db.table("leads").insert(db_row).execute()
+        privileged_for(db).table("leads").insert(db_row).execute()
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -897,7 +898,7 @@ def update_lead(
         raise HTTPException(status_code=404, detail="Lead not found")
 
     old_stage = existing.get("stage")
-    res = db.table("leads").update(update).eq("id", lead_id).eq("firm_id", current_user["firm_id"]).execute()
+    res = privileged_for(db).table("leads").update(update).eq("id", lead_id).eq("firm_id", current_user["firm_id"]).execute()
     result = (res.data or [{}])[0]
 
     if data.stage and data.stage != old_stage:
@@ -1195,7 +1196,7 @@ def convert_lead(
     # than corrupting the pipeline silently.
     if lead_in_db:
         try:
-            db.table("leads").update({
+            privileged_for(db).table("leads").update({
                 "is_converted":         True,
                 "stage":                "Active",
                 "converted_client_id":  client_id,

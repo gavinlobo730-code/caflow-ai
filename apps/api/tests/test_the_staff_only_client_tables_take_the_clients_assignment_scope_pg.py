@@ -206,6 +206,9 @@ _spec(
     null_row=True,
 )
 
+#: Tables a signed-in session no longer writes at all (the API writes them as the server): the write proofs below have nothing to try
+#: on them, and what keeps them closed is test_562_..._pg.py. The READ proofs still run.
+NOT_WRITABLE_BY_A_SIGNED_IN_SESSION = {"recurring_invoice_templates"}
 CLIENT_TABLES = [t for t, s in SPECS.items() if t not in {"ais_records", "ais_reconciliations", "tally_migration_items",
                                                           "onboarding_checklist_steps", "recurring_invoice_runs"}]
 CHILD_TABLES = {t: s["parent"] for t, s in SPECS.items() if t not in CLIENT_TABLES}
@@ -380,6 +383,8 @@ def _clear_for_insert(dsn: str, table: str) -> None:
 
 @pytest.mark.parametrize("table", list(SPECS))
 def test_an_assigned_manager_inserts_for_their_client_and_is_refused_for_another(dsn, table):
+    if table in NOT_WRITABLE_BY_A_SIGNED_IN_SESSION:
+        pytest.skip(f"{table}: the signed-in role holds no write on it (migration 562), so there is no write to scope; the effective privileges are held by test_562")
     spec = SPECS[table]
     parent_a, parent_b = _parent_id(dsn, table, CLIENT_A), _parent_id(dsn, table, CLIENT_B)
     _clear_for_insert(dsn, table)
@@ -415,6 +420,8 @@ def test_an_update_cannot_move_a_row_to_a_client_or_a_parent_the_person_may_not_
 
 @pytest.mark.parametrize("table", list(SPECS))
 def test_an_update_or_a_delete_of_another_clients_row_matches_nothing_and_of_their_own_matches(dsn, table):
+    if table in NOT_WRITABLE_BY_A_SIGNED_IN_SESSION:
+        pytest.skip(f"{table}: the signed-in role holds no write on it (migration 562), so there is no write to scope; the effective privileges are held by test_562")
     where_a, where_b = _where_client(table, CLIENT_A), _where_client(table, CLIENT_B)
     touch = "firm_id = firm_id"      # an update that changes nothing is still judged by the policy's USING and WITH CHECK
     assert _count_op(dsn, "manager_a", f"UPDATE {table} SET {touch} WHERE {where_b}") == "0", f"updated another client's {table} row"
@@ -453,6 +460,8 @@ def test_a_person_assigned_to_the_practice_is_still_refused_its_rows_and_a_clien
 
 @pytest.mark.parametrize("table", list(SPECS))
 def test_a_partner_inserts_for_every_client_the_internal_practice_included(dsn, table):
+    if table in NOT_WRITABLE_BY_A_SIGNED_IN_SESSION:
+        pytest.skip(f"{table}: the signed-in role holds no write on it (migration 562), so there is no write to scope; the effective privileges are held by test_562")
     """The WITH CHECK keeps the Partner branch: a slip that dropped it from the scope or the guard would lock the owner out of
     adding a row to every client but the first, straight after the deploy."""
     spec = SPECS[table]
@@ -466,6 +475,8 @@ def test_a_partner_inserts_for_every_client_the_internal_practice_included(dsn, 
 
 @pytest.mark.parametrize("table", [t for t, s in SPECS.items() if s["own_client"]])
 def test_a_partner_moves_a_row_to_another_client_and_to_the_internal_practice(dsn, table):
+    if table in NOT_WRITABLE_BY_A_SIGNED_IN_SESSION:
+        pytest.skip(f"{table}: the signed-in role holds no write on it (migration 562), so there is no write to scope; the effective privileges are held by test_562")
     for client in (CLIENT_B, INTERNAL):
         if SPECS[table]["collides"]:
             assert _psql(dsn, f"DELETE FROM {table} WHERE client_id = '{client}'").returncode == 0

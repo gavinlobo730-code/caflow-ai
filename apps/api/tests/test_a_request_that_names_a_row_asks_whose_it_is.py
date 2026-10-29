@@ -17,6 +17,13 @@ WHAT IS ASSERTED
       `_validate_bank_account`, a read of the named table filtered by `client_id`, or a read that is compared with the client's id. A door
       that does none is listed below with the reason it is safe, and that list only shrinks: an entry whose door has since been checked is
       a failure that says to delete it.
+    * WHAT THE SECOND READING ADDED (POST-A-353). The names are wider (`original_invoice_id`, `linked_bill_id` and a bare `invoice_id` or
+      `bill_id` are rows of the same tables), a model that CARRIES another model (a receipt's allocations, a payment's bills) names that
+      model's rows too, a QUERY or FORM parameter that names a row counts like a body field (a path parameter does not: it is the row the
+      route is about), and a body taken as a plain dict is its own kind, `dict_body`, because the AST cannot know its keys, so every such
+      door is on the reviewed list with what the dict carries. The first run of it found one real gap, the statement inspector, which
+      looked a saved column layout up by a bank account id and the firm alone: another client's account answered with that client's
+      layout. It asks whose the account is now, before it reads the file.
     * THE SCAN IS NOT BLIND. It finds more than forty doors and all seven kinds, it flags a synthetic route that writes without asking, it
       accepts one that asks in the route and one that asks two calls down, and it flags one whose check sits in a function nothing calls.
     * EACH DOOR THE RULE FOUND. A sibling client's row named under this client is answered in the words a missing row gets and nothing is
@@ -55,12 +62,13 @@ API = Path(__file__).resolve().parent.parent
 KINDS: dict[str, tuple[re.Pattern, set[str], set[str]]] = {
     "vendor": (re.compile(r"(^|_)vendor_id$"), {"vendor_is_the_clients"}, {"vendors"}),
     "customer": (re.compile(r"(^|_)customer_id$"), {"customer_is_the_clients"}, {"customers"}),
-    "bill": (re.compile(r"(^|_)purchase_bill_id$"), {"purchase_bill_is_the_clients"}, {"purchase_bills"}),
-    "invoice": (re.compile(r"(^|_)sales_invoice_id$"), {"sales_invoice_is_the_clients"}, {"client_sales_invoices"}),
+    "bill": (re.compile(r"(^|_)(purchase_)?bill_id$"), {"purchase_bill_is_the_clients"}, {"purchase_bills"}),
+    "invoice": (re.compile(r"(^|_)(sales_)?invoice_id$"), {"sales_invoice_is_the_clients"}, {"client_sales_invoices"}),
     "bank": (re.compile(r"(^|_)bank_account_id$"), {"bank_account_is_the_clients", "_validate_bank_account"}, {"bank_accounts"}),
     "order": (re.compile(r"(^|_)order_id$"), {"order_of_client", "row_of_client"}, {"purchase_orders", "sales_orders"}),
     "quotation": (re.compile(r"(^|_)quotation_id$"), {"row_of_client"}, {"sales_quotations"}),
 }
+DICT_BODY = re.compile(r"(Optional\[)?(dict|Dict)(\[[^\]]*\])?\]?")
 SCAN_DIRS = ("services", "domain", "repositories", "routers", "models", "core")      # not jobs: nothing a route calls lives there
 WRITING_VERBS = ("post", "put", "patch", "delete")
 DEPTH = 5
@@ -70,6 +78,28 @@ REVIEWED: dict[tuple[str, str, str], str] = {
     ("purchase_bills", "probe_near_duplicates", "vendor"):
         "a read-only probe (POST only because an invoice number does not belong in a URL): it lists the bills of THIS client that carry the "
         "vendor id, so a vendor of another client matches no bill of this one and the answer is the empty list a missing vendor gets.",
+    # THE SHAPES THE FIRST RULE COULD NOT SEE (POST-A-353). A body taken as a plain dict is the kind "dict_body": the AST cannot know its
+    # keys, so every such door is listed with what the dict carries, and a new one is a red test.
+    ("fx_revaluation", "preview_revaluation", "dict_body"):
+        "the payload is a period end and a map of currency to closing rate and names no row of any table; the client is a query "
+        "parameter that the route asserts for the caller with assert_client_access before it reads anything. It writes nothing.",
+    ("fx_revaluation", "run_revaluation", "dict_body"):
+        "the payload is a period end and a map of currency to closing rate and names no row of any table; the client is a query "
+        "parameter that the route asserts for the caller with assert_client_access before the revaluation is planned or posted.",
+    ("memory_intelligence", "update_anomaly_status", "dict_body"):
+        "the body carries a status word and nothing else; the row it acts on is the anomaly in the path, and the route reads that "
+        "anomaly and asks the caller's access to its client (_assert_anomaly_scope) before the update, answering a missing one's words.",
+    ("workflow_builder", "manually_trigger", "dict_body"):
+        "the payload's client_id is asserted for the caller before the run starts and the run is created for that client; the other keys "
+        "are the trigger's data, compared with the template's conditions and stored on the run. The one step that reads a client takes the "
+        "instance's asserted client before the payload's, and checks it belongs to the firm.",
+    # A NAMED ROW THE REQUEST CARRIES OUTSIDE THE BODY MODEL.
+    ("payments", "create_payment_link", "invoice"):
+        "the request names no client; the service reads the invoice by firm and asks can_access_client of the invoice's OWN client before "
+        "anything is created, so an invoice of a client outside the caller's reach answers as a missing invoice.",
+    ("purchase_bills", "preview_purchase_bill_tds", "bill"):
+        "the id only drops one row from the list of THIS vendor's bills that the year's aggregate is summed over (a comparison of ids in "
+        "services/vendor_tds), so a bill of another client matches nothing in it; the preview computes and writes nothing.",
 }
 
 
@@ -83,6 +113,7 @@ class _Tree(CallGraph):
 
     def _models_with_named_fields(self) -> dict[str, dict[str, set[str]]]:
         found: dict[str, dict[str, set[str]]] = {}
+        annotated: dict[str, list[tuple[str, str]]] = {}
         for mod, tree in self.mods.items():
             if not (mod.startswith("models.") or mod.startswith("routers.")):
                 continue
@@ -90,9 +121,26 @@ class _Tree(CallGraph):
                 if isinstance(c, ast.ClassDef):
                     for n in c.body:
                         if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
+                            annotated.setdefault(c.name, []).append((n.target.id, ast.unparse(n.annotation)))
                             for kind, (rx, _, _) in KINDS.items():
                                 if rx.search(n.target.id):
                                     found.setdefault(c.name, {}).setdefault(kind, set()).add(n.target.id)
+        # A model that CARRIES another model (a receipt's allocations, a payment's bills) names that model's rows too: the route
+        # takes the outer model, so the scan has to read through it. Followed to a fixed point, so a list of lists is read.
+        grew = True
+        while grew:
+            grew = False
+            for outer, fields in annotated.items():
+                for field, annotation in fields:
+                    for inner, by_kind in list(found.items()):
+                        if inner == outer or not re.search(rf"\b{inner}\b", annotation):
+                            continue
+                        for kind, names in by_kind.items():
+                            have = found.setdefault(outer, {}).setdefault(kind, set())
+                            for name in names:
+                                if f"{field}.{name}" not in have:
+                                    have.add(f"{field}.{name}")
+                                    grew = True
         return found
 
     @staticmethod
@@ -163,12 +211,25 @@ def doors(root: Path) -> list[tuple[str, str, set[str], set[str]]]:
             if not verbs or verbs[0] not in WRITING_VERBS:
                 continue
             named: dict[str, set[str]] = {}
+            route_path = next((d.args[0].value for d in fn.decorator_list
+                               if isinstance(d, ast.Call) and d.args and isinstance(d.args[0], ast.Constant)), "")
+            defaults = dict(zip(reversed(fn.args.args), reversed(fn.args.defaults), strict=False))      # defaults are the TAIL of the arguments
+            defaults.update({a: d for a, d in zip(fn.args.kwonlyargs, fn.args.kw_defaults, strict=True) if d is not None})
             for arg in fn.args.args + fn.args.kwonlyargs:
+                if "Depends" in ast.unparse(defaults[arg]) if arg in defaults else False:
+                    continue                                    # the caller's own identity, not something the caller named
                 annotation = ast.unparse(arg.annotation) if arg.annotation else ""
                 for model, by_kind in tree.models.items():
                     if re.search(rf"\b{model}\b", annotation):
                         for kind, fields in by_kind.items():
                             named.setdefault(kind, set()).update(fields)
+                if "{" + arg.arg + "}" in route_path:
+                    continue                                    # a path parameter is the row the route is about, not a second row it names
+                for kind, (rx, _, _) in KINDS.items():
+                    if rx.search(arg.arg):                      # a query or form parameter that names a row (the body is not the only door)
+                        named.setdefault(kind, set()).add(arg.arg)
+                if DICT_BODY.fullmatch(annotation):             # a body taken as a plain dict: the AST cannot know its keys
+                    named.setdefault("dict_body", set()).add(arg.arg)
             if not named or (mod, fn.name) not in tree.funcs:
                 continue
             found.append((mod.split(".")[-1], fn.name, set(named), set(named) - tree.asks((mod, fn.name))))
@@ -199,7 +260,7 @@ def test_a_reviewed_door_is_still_unasked_and_still_gives_its_reason(real):
 
 def test_the_scan_sees_the_doors_it_is_meant_to(real):
     assert len(real) >= 40, f"only {len(real)} routes found: the scan has gone blind"
-    seen_kinds = set().union(*(named for _r, _h, named, _m in real))
+    seen_kinds = set().union(*(named for _r, _h, named, _m in real)) - {"dict_body"}
     assert seen_kinds == set(KINDS), f"kinds never seen: {set(KINDS) - seen_kinds}"
     handlers = {(r, h) for r, h, _n, _m in real}
     for expected in (("receipts", "create_receipt"), ("purchase_payments", "create_purchase_payment"), ("eway_bill", "create_eway_bill"),
@@ -301,6 +362,72 @@ def test_a_read_of_the_table_by_id_alone_does_not_count(tmp_path):
 
 def test_a_route_that_asks_about_a_different_kind_is_still_flagged(tmp_path):
     assert _verdict(tmp_path, 'named_row_ownership.customer_is_the_clients(db, "f", data.client_id, "c")') == {"vendor"}
+
+
+def test_a_dict_body_is_flagged_until_it_is_reviewed(tmp_path):
+    (tmp_path / "models").mkdir(); (tmp_path / "routers").mkdir(); (tmp_path / "services").mkdir()
+    (tmp_path / "models" / "m.py").write_text("x = 1\n")
+    (tmp_path / "services" / "s.py").write_text("def noop():\n    return None\n")
+    (tmp_path / "routers" / "r.py").write_text(textwrap.dedent('''
+        from typing import Any
+        from fastapi import APIRouter, Depends
+        router = APIRouter()
+        @router.post("/x")
+        def make(payload: dict, current_user: dict = Depends(lambda: {})):
+            return payload
+        @router.post("/y/{thing_id}")
+        def other(thing_id: str, payload: dict[str, Any]):
+            return payload
+    '''))
+    out = doors(tmp_path)
+    assert sorted((h, sorted(named), sorted(missing)) for _r, h, named, missing in out) == [
+        ("make", ["dict_body"], ["dict_body"]), ("other", ["dict_body"], ["dict_body"])]
+
+
+def test_a_query_parameter_that_names_a_row_is_a_door_and_a_path_parameter_is_not(tmp_path):
+    (tmp_path / "models").mkdir(); (tmp_path / "routers").mkdir(); (tmp_path / "services").mkdir()
+    (tmp_path / "models" / "m.py").write_text("x = 1\n")
+    (tmp_path / "services" / "s.py").write_text("def noop():\n    return None\n")
+    (tmp_path / "routers" / "r.py").write_text(textwrap.dedent('''
+        from fastapi import APIRouter, Query
+        router = APIRouter()
+        @router.post("/a")
+        def by_query(vendor_id: str = Query(...)):
+            return vendor_id
+        @router.post("/b/{vendor_id}")
+        def by_path(vendor_id: str):
+            return vendor_id
+    '''))
+    assert [(h, sorted(missing)) for _r, h, _n, missing in doors(tmp_path)] == [("by_query", ["vendor"])]
+
+
+def test_a_model_that_carries_another_model_names_that_models_rows(tmp_path):
+    (tmp_path / "models").mkdir(); (tmp_path / "routers").mkdir(); (tmp_path / "services").mkdir()
+    (tmp_path / "models" / "m.py").write_text(textwrap.dedent('''
+        from pydantic import BaseModel
+        class LineIn(BaseModel):
+            linked_bill_id: str
+        class PayIn(BaseModel):
+            client_id: str
+            lines: list[LineIn]
+    '''))
+    (tmp_path / "services" / "s.py").write_text("def noop():\n    return None\n")
+    (tmp_path / "routers" / "r.py").write_text(textwrap.dedent('''
+        from fastapi import APIRouter
+        from models.m import PayIn
+        router = APIRouter()
+        @router.post("/p")
+        def pay(data: PayIn):
+            return data
+    '''))
+    assert [(h, sorted(missing)) for _r, h, _n, missing in doors(tmp_path)] == [("pay", ["bill"])]
+
+
+def test_the_names_that_the_ledger_listed_are_recognised():
+    for name, kind in (("original_invoice_id", "invoice"), ("linked_bill_id", "bill"), ("sales_invoice_id", "invoice"),
+                       ("purchase_bill_id", "bill"), ("exclude_bill_id", "bill")):
+        assert KINDS[kind][0].search(name), name
+    assert not KINDS["invoice"][0].search("fee_invoice_number")
 
 
 # ── each door the rule found ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -448,3 +575,28 @@ def test_a_sales_credit_note_cannot_be_re_pointed_at_a_sibling_clients_invoice(w
     note_id = created.json()["data"]["id"]
     _refused(client.patch(f"/api/credit-notes/{note_id}", json={"sales_invoice_id": "invoice-b"}), "That invoice was not found.")
     assert world.rows("credit_notes")[0]["sales_invoice_id"] == "invoice-a"
+
+
+def test_the_statement_inspector_names_a_bank_account_of_its_own_client_only(world, monkeypatch):
+    """The gap the second reading found: a saved column layout was looked up by the account id and the firm, so another client's
+    account answered with that client's layout."""
+    import io
+    import routers.banking as banking
+    from fastapi import HTTPException
+    from starlette.datastructures import UploadFile
+    monkeypatch.setattr(banking, "_db", lambda: world)
+    looked_up: list = []
+    monkeypatch.setattr(banking.column_mappings, "find_mapping",
+                        lambda db, firm, account, fingerprint: looked_up.append(account) or {"id": "m", "mapping": {"x": 1}, "match_scope": "account"})
+    csv = b"Date,Narration,Withdrawal,Deposit,Balance\n01/04/2026,Opening,0,0,100\n"
+
+    def call(account):
+        return banking.inspect_statement_file(file=UploadFile(file=io.BytesIO(csv), filename="s.csv"), client_id=A,
+                                              bank_account_id=account, pdf_password=None, current_user=PARTNER)
+
+    with pytest.raises(HTTPException) as refused:
+        call("bank-b")
+    assert refused.value.status_code == 404 and refused.value.detail == "That bank account was not found."
+    assert looked_up == [], "the sibling's saved layout was looked up before the account was asked about"
+    own = call("bank-a")
+    assert own["success"] is True and looked_up == ["bank-a"], own

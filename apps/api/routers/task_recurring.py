@@ -278,7 +278,7 @@ def update_assignment_rule(config_id: str, rule_id: str, body: AssignmentRuleUpd
             raise HTTPException(status_code=400, detail="Invalid user_id for fixed_user rule")
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
-    rule = assignment_rule_repo.update(rule_id, updates)
+    rule = assignment_rule_repo.update(rule_id, updates, firm_id=firm_id)
     return api_response(True, {"rule": rule})
 
 
@@ -296,5 +296,5 @@ def delete_assignment_rule(config_id: str, rule_id: str, current_user: dict = De
     if not rule_result.data:
         raise HTTPException(status_code=404, detail="Assignment rule not found")
 
-    assignment_rule_repo.delete(rule_id)
+    assignment_rule_repo.delete(rule_id, firm_id=firm_id)
     return api_response(True, {"deleted": True})

@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from models.firm_hsn_rate_history import FirmHsnRateHistoryIn
 from core.permissions import rbac
+from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.firm_hsn_rate_history")
@@ -142,7 +143,7 @@ def add_rate_version(
         if not owned_code:
             raise HTTPException(status_code=404, detail="That code is not in your library.")
         payload["created_at"] = now
-        resp = db.table("firm_hsn_rate_history").insert(payload).execute()
+        resp = privileged_for(db).table("firm_hsn_rate_history").insert(payload).execute()
         return api_response(True, resp.data[0] if resp.data else payload)
     except HTTPException:
         raise
@@ -177,7 +178,7 @@ def delete_rate_version(
                  .eq("id", rate_history_id).eq("firm_id", firm_id).execute().data or [])
         if not owned:
             raise HTTPException(status_code=404, detail="Rate version not found.")
-        db.table("firm_hsn_rate_history").delete().eq("id", rate_history_id).eq("firm_id", firm_id).execute()
+        privileged_for(db).table("firm_hsn_rate_history").delete().eq("id", rate_history_id).eq("firm_id", firm_id).execute()
         return api_response(True, {"id": rate_history_id})
     except HTTPException:
         raise

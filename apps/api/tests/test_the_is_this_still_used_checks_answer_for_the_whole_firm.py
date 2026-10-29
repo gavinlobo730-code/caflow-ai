@@ -13,9 +13,10 @@ WHAT THIS HOLDS
     * the purge, the bulk delete and the service delete refuse a code (a service) that a document the caller cannot see
       still uses, because the check is read with the privileged client; the control, run with no privileged client, is the
       caller's own view and deletes it, which is the defect;
-    * a code nothing uses is still deleted (the guard is not simply refusing everything), and the ownership lookup and the
-      DELETE itself stay on the CALLER's client (the privileged client reads the evidence and nothing else: the server double
-      holds no library row and no service row, so a lookup that wandered onto it would answer 404);
+    * a code nothing uses is still deleted (the guard is not simply refusing everything), and the ownership lookup stays on the
+      CALLER's client (the server double holds no library row and no service row, so a lookup that wandered onto it would answer
+      404). The DELETE of a library code is the SERVER's since POST-A-329 (the signed-in role holds no write on `firm_hsn_library`
+      and the statement names the firm); a service-catalogue delete is still the caller's;
     * the check counts the firm's own documents only: a line of another firm that carries the same code does not block the
       delete (the filters that keep the privileged read to one firm are the only thing doing that);
     * every call of either check passes `_usage_db(...)` as the client, so the next author cannot hand the caller's client
@@ -121,18 +122,20 @@ def test_the_same_purge_read_as_the_caller_deletes_it_which_is_the_defect(monkey
     assert caller.deleted == [("firm_hsn_library", ["LIB1"])]
 
 
-def test_a_code_nothing_uses_is_still_purged_and_the_delete_is_the_callers(monkeypatch):
+def test_a_code_nothing_uses_is_still_purged_and_the_delete_is_the_servers(monkeypatch):
     caller, server = _wire(monkeypatch, hsn, privileged_sees_the_line=True, with_use=False)
+    server.rows["firm_hsn_library"] = [dict(LIBRARY)]   # the delete is the server's, so the server holds the row it removes
     out = hsn.purge_code("LIB1", current_user=USER)
-    assert out["success"] is True and caller.deleted == [("firm_hsn_library", ["LIB1"])]
-    assert server.deleted == [], "the delete ran with the privileged client"
+    assert out["success"] is True and server.deleted == [("firm_hsn_library", ["LIB1"])]
+    assert caller.deleted == [], "the delete ran on the caller's session, which holds no write on the table (POST-A-329)"
 
 
-def test_the_bulk_delete_of_an_unused_code_deletes_as_the_caller(monkeypatch):
+def test_the_bulk_delete_of_an_unused_code_deletes_as_the_server(monkeypatch):
     caller, server = _wire(monkeypatch, hsn, privileged_sees_the_line=True, with_use=False)
+    server.rows["firm_hsn_library"] = [dict(LIBRARY)]   # the delete is the server's, so the server holds the row it removes
     out = hsn.bulk_purge_codes(hsn.FirmHsnLibraryBulkDeleteIn(ids=["LIB1"]), current_user=USER)
     assert out["data"]["deleted"] == ["LIB1"] and out["data"]["blocked"] == []
-    assert caller.deleted == [("firm_hsn_library", ["LIB1"])] and server.deleted == []
+    assert server.deleted == [("firm_hsn_library", ["LIB1"])] and caller.deleted == []
 
 
 def test_a_line_of_another_firm_with_the_same_code_does_not_block_the_purge(monkeypatch):
@@ -140,9 +143,10 @@ def test_a_line_of_another_firm_with_the_same_code_does_not_block_the_purge(monk
     caller, server = _wire(monkeypatch, hsn, privileged_sees_the_line=True, with_use=False)
     server.rows["client_sales_invoice_lines"] = [{**OTHER_CLIENTS_LINE, "client_sales_invoices.firm_id": "F2"}]
     server.rows["service_catalogue"] = [{"id": "S9", "firm_id": "F2", "hsn_sac": "9983"}]
+    server.rows["firm_hsn_library"] = [dict(LIBRARY)]   # the delete is the server's, so the server holds the row it removes
     out = hsn.purge_code("LIB1", current_user=USER)
     assert out["success"] is True, out
-    assert caller.deleted == [("firm_hsn_library", ["LIB1"])]
+    assert server.deleted == [("firm_hsn_library", ["LIB1"])]
 
 
 def test_the_firms_own_catalogue_entry_with_the_code_still_blocks_the_purge(monkeypatch):

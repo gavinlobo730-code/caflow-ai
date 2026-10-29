@@ -10,6 +10,13 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _get_db = db_provider.request_db
 
 
+def _writer():
+    """The client the writes below are made on: the server's own, acting as the request's person. The signed-in role holds no write on
+    `assignment_rules` (POST-A-329), so a write on the caller's session is refused; the routes check the firm and the recurring config
+    first, and every statement here names the firm itself because the privileged client has no row security."""
+    return db_provider.privileged_for(_get_db())
+
+
 class AssignmentRuleRepository(BaseRepository[dict]):
 
     def find_by_id(self, id: str) -> Optional[dict]:
@@ -44,37 +51,32 @@ class AssignmentRuleRepository(BaseRepository[dict]):
         return result.data or []
 
     def create(self, data: dict) -> dict:
+        if not data.get("firm_id"):
+            raise ValueError("an assignment rule is created for a firm")
         if _USE_MOCK:
             import uuid
             record = {"id": str(uuid.uuid4()), **data, "created_at": self.now_iso(), "updated_at": self.now_iso()}
             return record
-        result = _get_db().table("assignment_rules").insert({
+        result = _writer().table("assignment_rules").insert({
             **data,
             "created_at": self.now_iso(),
             "updated_at": self.now_iso()
         }).execute()
         return result.data[0] if result.data else None
 
-    def update(self, id: str, data: dict) -> Optional[dict]:
+    def update(self, id: str, data: dict, *, firm_id: str) -> Optional[dict]:
         if _USE_MOCK:
             return None
-        result = _get_db().table("assignment_rules").update({
+        result = _writer().table("assignment_rules").update({
             **data,
             "updated_at": self.now_iso()
-        }).eq("id", id).execute()
+        }).eq("id", id).eq("firm_id", firm_id).execute()
         return result.data[0] if result.data else None
 
-    def delete(self, id: str) -> bool:
+    def delete(self, id: str, *, firm_id: str) -> bool:
         if _USE_MOCK:
             return True
-        _get_db().table("assignment_rules").delete().eq("id", id).execute()
-        return True
-
-    def delete_by_recurring_config(self, recurring_config_id: str) -> bool:
-        """Delete all rules for a recurring config."""
-        if _USE_MOCK:
-            return True
-        _get_db().table("assignment_rules").delete().eq("recurring_config_id", recurring_config_id).execute()
+        _writer().table("assignment_rules").delete().eq("id", id).eq("firm_id", firm_id).execute()
         return True
 
     def evaluate_rules(self, firm_id: str, recurring_config_id: str, available_users: list[dict]) -> Optional[str]:

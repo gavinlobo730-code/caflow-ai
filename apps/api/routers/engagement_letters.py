@@ -30,6 +30,7 @@ from services.audit_service import log_event
 from core.ist_clock import ist_today
 from domain.money_sentence import rupee_text, rupee_whole_text
 from core import db_provider
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.engagement_letters")
 
@@ -509,7 +510,7 @@ def _seed_default_templates(db, firm_id: str, created_by: Optional[str]) -> list
         _MOCK_TEMPLATES.extend(seeded)
     else:
         try:
-            db.table("engagement_templates").insert(seeded).execute()
+            privileged_for(db).table("engagement_templates").insert(seeded).execute()
         except Exception:
             pass
     return seeded
@@ -869,7 +870,7 @@ def create_template(
         return api_response(True, {"template": row})
 
     try:
-        res = db.table("engagement_templates").insert(row).execute()
+        res = privileged_for(db).table("engagement_templates").insert(row).execute()
         created = (res.data or [row])[0]
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -972,7 +973,7 @@ def update_template(
     updates["version"] = existing["version"] + 1
     try:
         res = (
-            db.table("engagement_templates")
+            privileged_for(db).table("engagement_templates")
             .update(updates)
             .eq("id", template_id)
             .eq("firm_id", firm_id)
@@ -1032,7 +1033,7 @@ def delete_template(
         raise HTTPException(status_code=404, detail="Template not found")
 
     try:
-        db.table("engagement_templates").update({
+        privileged_for(db).table("engagement_templates").update({
             "is_deleted": True,
             "updated_at": now,
         }).eq("id", template_id).eq("firm_id", firm_id).execute()
