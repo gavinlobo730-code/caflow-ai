@@ -16,6 +16,7 @@
  * sidesteps both.
  */
 import type { InvoiceDetail } from "@/lib/invoices/shared";
+import { objectWithLists } from "@/lib/api/shape";
 
 const KEY = "practicesync_invoice_duplicate_seed_v1";
 
@@ -37,7 +38,7 @@ export function readAndClearDuplicateSeed(): InvoiceDetail | null {
     const raw = window.sessionStorage.getItem(KEY);
     if (!raw) return null;
     window.sessionStorage.removeItem(KEY);
-    return JSON.parse(raw) as InvoiceDetail;
+    return objectWithLists<InvoiceDetail>(JSON.parse(raw), "lines");
   } catch {
     return null;
   }

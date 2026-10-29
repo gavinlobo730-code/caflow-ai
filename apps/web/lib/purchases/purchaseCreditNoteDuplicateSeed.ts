@@ -7,6 +7,7 @@
  * same bill.
  */
 import type { PurchaseCreditNoteDetail } from "@/components/purchases/PurchaseCreditNoteEditor";
+import { objectWithLists } from "@/lib/api/shape";
 
 const KEY = "practicesync_purchase_credit_note_duplicate_seed_v1";
 
@@ -25,7 +26,7 @@ export function readAndClearPurchaseCreditNoteDuplicateSeed(): PurchaseCreditNot
     const raw = window.sessionStorage.getItem(KEY);
     if (!raw) return null;
     window.sessionStorage.removeItem(KEY);
-    return JSON.parse(raw) as PurchaseCreditNoteDetail;
+    return objectWithLists<PurchaseCreditNoteDetail>(JSON.parse(raw), "lines");
   } catch {
     return null;
   }

@@ -23,7 +23,7 @@ import { AmortisationReclassification } from "@/components/fixed-assets/Amortisa
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 import { Callout, GapList } from "@/components/ui/callout";
-import { objectWithLists } from "@/lib/api/shape";
+import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
@@ -805,7 +805,11 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     try {
       const j = await request<ApiEnvelope<AssetCategory[]>>(`/api/fixed-assets/categories?client_id=${clientId}`);
       if (!j.success) throw new Error(refusalMessage(j, "Failed to load categories"));
-      const cats: AssetCategory[] = j.data ?? [];
+      // A category without its list of classes keeps its place with none, and a payload that is not a list is no categories
+      // (POST-A-149): the class picker reads `selected.classes.length`.
+      const cats: AssetCategory[] = arrayOrEmpty<AssetCategory>(j.data)
+        .filter((c) => c !== null && typeof c === "object")
+        .map((c) => ({ ...c, classes: arrayOrEmpty(c.classes) }));
       setCategories(cats);
       setCatsFailed(cats.length === 0);
       if (cats.length) applyClass(cats, cats[0].category, 0);

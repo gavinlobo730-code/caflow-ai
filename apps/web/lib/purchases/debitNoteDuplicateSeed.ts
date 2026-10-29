@@ -10,6 +10,7 @@
  * default to the same bill on a fresh note.
  */
 import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
+import { objectWithLists } from "@/lib/api/shape";
 
 const KEY = "practicesync_debit_note_duplicate_seed_v1";
 
@@ -30,7 +31,7 @@ export function readAndClearDebitNoteDuplicateSeed(): DebitNoteDetail | null {
     const raw = window.sessionStorage.getItem(KEY);
     if (!raw) return null;
     window.sessionStorage.removeItem(KEY);
-    return JSON.parse(raw) as DebitNoteDetail;
+    return objectWithLists<DebitNoteDetail>(JSON.parse(raw), "lines");
   } catch {
     return null;
   }
