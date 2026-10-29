@@ -782,6 +782,7 @@ def test_the_functions_that_can_write_a_header_table_are_exactly_the_ones_named_
         "numbered_document_atomic__unguarded",            # INSERT of the four note tables: judged by the role setting, so not a bypass
         "post_journal_atomic__unguarded",                 # the journal tables only
         "refuse_a_signed_in_edit_of_lines_of_a_non_draft_document",   # migration 539's trigger: the line tables only
+        "replace_draft_document_lines",                   # migration 560 (POST-A-332): the line tables only, SECURITY INVOKER, the header locked first
     }
 
 
