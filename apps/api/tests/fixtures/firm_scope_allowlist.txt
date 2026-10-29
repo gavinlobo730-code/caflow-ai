@@ -51,9 +51,6 @@ repositories/compliance_records_repository.py | ComplianceRecordsRepository.crea
 repositories/compliance_records_repository.py | ComplianceRecordsRepository.find_by_id | compliance_records | read | 1 | repository-contract
 repositories/compliance_records_repository.py | ComplianceRecordsRepository.soft_delete | compliance_records | update | 1 | repository-contract
 repositories/compliance_records_repository.py | ComplianceRecordsRepository.update | compliance_records | update | 1 | repository-contract
-repositories/compliance_repository.py | ComplianceRepository.create | compliance_tasks | insert | 1 | repository-contract
-repositories/compliance_repository.py | ComplianceRepository.find_by_id | compliance_tasks | read | 1 | repository-contract
-repositories/compliance_repository.py | ComplianceRepository.update | compliance_tasks | update | 1 | repository-contract
 repositories/document_repository.py | DocumentRepository.create | documents | insert | 1 | repository-contract
 repositories/dsc_repository.py | DSCRepository.create | dsc_records | insert | 1 | repository-contract
 repositories/engagement_repository.py | EngagementRepository.create | fee_engagements | insert | 1 | repository-contract
@@ -79,7 +76,6 @@ repositories/user_repository.py | UserRepository.create | users | insert | 1 | r
 repositories/user_repository.py | UserRepository.find_by_invite_token | users | read | 1 | repository-contract
 repositories/workflow_repository.py | WorkflowRepository.list_schedules_due | workflow_schedules | read | 1 | repository-contract
 routers/banking.py | _delete_blockers._rows | <dynamic> | read | 1 | from-scoped-row | source=routers/banking.py::delete_bank_account
-routers/compliance.py | seed_compliance_calendar | repo:compliance_repo.create | insert | 1 | payload-with-firm
 routers/engagement_sign_public.py | _load_by_token | engagements | read | 1 | bearer-token | token=sign_token
 routers/engagement_sign_public.py | reject_letter | engagements | update | 1 | bearer-token | token=sign_token
 routers/engagement_sign_public.py | sign_letter | engagements | update | 1 | bearer-token | token=sign_token

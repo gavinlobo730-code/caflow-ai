@@ -433,12 +433,10 @@ class TestDashboardSummaryOverdueTasksFirmScoped:
 
         with patch("domain.task_service.client_repo") as mock_clients, \
              patch("domain.task_service.task_repo") as mock_tasks, \
-             patch("repositories.compliance_repository.compliance_repo") as mock_ctasks, \
              patch("domain.compliance_record_service.compliance_record_service") as mock_records:
             mock_clients.find_all.return_value = []
             mock_tasks.find_all.return_value = []
             mock_tasks.find_overdue.side_effect = fake_find_overdue
-            mock_ctasks.find_all.return_value = []
             mock_records.list_records.return_value = []
 
             result_a = task_domain_service.get_dashboard_summary(firm_id=FIRM_A)

@@ -670,7 +670,9 @@ def test_the_scan_covers_what_it_claims_to_and_no_evidence_kind_went_vacuous():
     assert census["judged"] >= 2200, census
     # 450 -> 440 on 26-10-2026 (POST-A-339): the four unscoped DocumentRepository methods took the firm in their own filter and left
     # the frozen list, so the fourteen call sites that had to be judged as queries on their account no longer are (462 -> 448).
-    assert census["calls_judged_as_queries"] >= 440, census
+    # 440 -> 430 on 29-10-2026 (POST-A-322): the retired compliance "System B" repository and its three routes took their
+    # queries with them, so the calls judged as queries fall by four (440+ -> 436); the floor stays a few under the count.
+    assert census["calls_judged_as_queries"] >= 430, census
     for kind in ("filter", "payload", "gate", "flow", "parent-read", "callers", "pass-through",
                  "principal", "post-fetch"):
         assert census["by_evidence"].get(kind, 0) > 0, (

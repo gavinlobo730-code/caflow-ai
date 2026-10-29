@@ -8,13 +8,12 @@ import uuid
 from datetime import timedelta
 
 from core.ist_clock import ist_today
-from services.compliance_engine import enrich_compliance_task
 
 # The firm's own day, not the host's. `date.today()` on a UTC container is the
 # PREVIOUS Indian day for the whole of 00:00-05:30 IST, so a seed built in that
 # window dated every due date, task and document one day early.
 # THE DAY THIS SEED WAS BUILT. Bound once, at import; every function that reads
-# it (`_compliance_tasks`, `_tasks`, `_documents`) is called at module level,
+# it (`_tasks`, `_documents`) is called at module level,
 # so for a script that is imported and run in the same breath it IS the current
 # day. The name says which moment it is rather than claiming to be "now", which
 # is what `tests/test_a_date_bound_at_import_says_so.py` requires of every
@@ -103,42 +102,6 @@ SEED_CLIENTS = [
 ]
 
 
-def _compliance_tasks() -> list[dict]:
-    tasks = []
-    types = ["GSTR1", "GSTR3B", "ITR", "TDS26Q"]
-    statuses = ["pending", "in_progress", "filed", "overdue", "pending", "pending"]
-    i = 0
-    for client in SEED_CLIENTS[:10]:  # 10 tasks each for first 10 clients
-        for ct in types[:2]:
-            offset = (i % 6) - 2
-            tasks.append(enrich_compliance_task({
-                "id": seed_id(f"sct-{i:03d}"),
-                "client_id": client["id"],
-                "compliance_type": ct,
-                "period_start": (_SEEDED_ON.replace(day=1) - timedelta(days=1)).replace(day=1).isoformat(),
-                "period_end": (_SEEDED_ON.replace(day=1) - timedelta(days=1)).isoformat(),
-                "due_date": (_SEEDED_ON + timedelta(days=offset * 3)).isoformat(),
-                "status": statuses[i % len(statuses)],
-                "assigned_to": DEMO_USERS[i % 3]["id"],
-            }))
-            i += 1
-    # Fill to 100
-    for j in range(i, 100):
-        client = SEED_CLIENTS[j % 20]
-        ct = types[j % len(types)]
-        tasks.append(enrich_compliance_task({
-            "id": seed_id(f"sct-{j:03d}"),
-            "client_id": client["id"],
-            "compliance_type": ct,
-            "period_start": (_SEEDED_ON - timedelta(days=60)).isoformat(),
-            "period_end": (_SEEDED_ON - timedelta(days=30)).isoformat(),
-            "due_date": (_SEEDED_ON + timedelta(days=(j % 30) - 10)).isoformat(),
-            "status": statuses[j % len(statuses)],
-            "assigned_to": DEMO_USERS[j % 3]["id"],
-        }))
-    return tasks
-
-
 def _tasks() -> list[dict]:
     titles = [
         "Collect invoices", "Verify GSTR-2B", "Prepare return data",
@@ -188,7 +151,6 @@ def _documents() -> list[dict]:
     return docs
 
 
-SEED_COMPLIANCE_TASKS = _compliance_tasks()
 SEED_TASKS = _tasks()
 SEED_DOCUMENTS = _documents()
 
@@ -198,7 +160,6 @@ def get_seed_summary() -> dict:
         "firm": DEMO_FIRM["name"],
         "users": len(DEMO_USERS),
         "clients": len(SEED_CLIENTS),
-        "compliance_tasks": len(SEED_COMPLIANCE_TASKS),
         "tasks": len(SEED_TASKS),
         "documents": len(SEED_DOCUMENTS),
     }

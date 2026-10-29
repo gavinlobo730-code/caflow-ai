@@ -2,8 +2,7 @@
 Tenant isolation unit tests.
 Verifies that cross-firm access is blocked at the router layer for:
   - GET /api/clients/{client_id}          (Critical fix)
-  - GET /api/compliance/tasks             (High fix)
-  - GET /api/compliance/calendar          (High fix)
+  - (GET /api/compliance/tasks and /calendar were here until POST-A-322 retired them with the System B table)
   - GET /api/documents/{doc_id}/download-url (Medium fix)
 
 Tests operate directly on router handler functions, bypassing HTTP
@@ -62,68 +61,6 @@ class TestClientWorkspaceTenantIsolation:
         # Should not raise — firm_id is None so ownership check is skipped
         result = self._call("c-legacy", USER_FIRM_A, client_no_firm)
         assert result["success"] is True
-
-
-# ── Compliance tenant isolation ───────────────────────────────────────────────
-
-class TestComplianceTenantIsolation:
-    """Compliance endpoints must only return data for the requesting firm."""
-
-    TASKS_MIXED = [
-        {"id": "t1", "client_id": "c1", "firm_id": FIRM_A, "status": "pending", "due_date": "2026-07-11", "compliance_type": "GSTR1"},
-        {"id": "t2", "client_id": "c2", "firm_id": FIRM_B, "status": "pending", "due_date": "2026-07-11", "compliance_type": "GSTR1"},
-        {"id": "t3", "client_id": "c3", "firm_id": None,   "status": "filed",   "due_date": "2026-06-30", "compliance_type": "GSTR9"},
-    ]
-
-    def _firm_a_tasks(self):
-        return [t for t in self.TASKS_MIXED if t.get("firm_id") == FIRM_A or t.get("firm_id") is None]
-
-    def _firm_b_tasks(self):
-        return [t for t in self.TASKS_MIXED if t.get("firm_id") == FIRM_B or t.get("firm_id") is None]
-
-    def test_list_tasks_only_returns_own_firm_and_legacy(self):
-        from routers.compliance import list_compliance_tasks
-        with patch("routers.compliance.compliance_repo") as mock_repo:
-            mock_repo.find_all.return_value = self._firm_a_tasks()
-            result = list_compliance_tasks(client_id=None, status=None, current_user=USER_FIRM_A)
-        ids = [t["id"] for t in result["data"]["tasks"]]
-        assert "t1" in ids     # own firm ✓
-        assert "t3" in ids     # no firm_id (legacy) ✓
-        assert "t2" not in ids # Firm B — must be excluded ✗
-        # Verify repo was called with the correct firm_id
-        mock_repo.find_all.assert_called_once_with(firm_id=FIRM_A, client_id=None, status=None)
-
-    def test_list_tasks_firm_b_excluded_from_firm_a(self):
-        from routers.compliance import list_compliance_tasks
-        with patch("routers.compliance.compliance_repo") as mock_repo:
-            mock_repo.find_all.return_value = self._firm_b_tasks()
-            result = list_compliance_tasks(client_id=None, status=None, current_user=USER_FIRM_B)
-        ids = [t["id"] for t in result["data"]["tasks"]]
-        assert "t2" in ids
-        assert "t1" not in ids
-        mock_repo.find_all.assert_called_once_with(firm_id=FIRM_B, client_id=None, status=None)
-
-    def test_calendar_only_returns_own_firm(self):
-        from routers.compliance import compliance_calendar
-        with patch("routers.compliance.compliance_repo") as mock_repo, \
-             patch("routers.compliance.client_repo") as mock_client_repo:
-            mock_repo.find_all.return_value = self._firm_a_tasks()
-            mock_client_repo.find_all.return_value = []
-            result = compliance_calendar(current_user=USER_FIRM_A)
-        ids = [e["id"] for e in result["data"]["events"]]
-        assert "t1" in ids
-        assert "t2" not in ids
-
-    def test_status_filter_still_applies_within_firm(self):
-        from routers.compliance import list_compliance_tasks
-        filed_only = [t for t in self._firm_a_tasks() if t["status"] == "filed"]
-        with patch("routers.compliance.compliance_repo") as mock_repo:
-            mock_repo.find_all.return_value = filed_only
-            result = list_compliance_tasks(client_id=None, status="filed", current_user=USER_FIRM_A)
-        ids = [t["id"] for t in result["data"]["tasks"]]
-        assert "t3" in ids
-        assert "t1" not in ids  # pending, filtered out by the repo call
-        mock_repo.find_all.assert_called_once_with(firm_id=FIRM_A, client_id=None, status="filed")
 
 
 # ── Document download URL tenant isolation ────────────────────────────────────

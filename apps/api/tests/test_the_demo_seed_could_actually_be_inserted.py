@@ -35,7 +35,7 @@ import uuid
 import pytest
 
 from seed.seed_data import (
-    DEMO_FIRM, DEMO_USERS, SEED_CLIENTS, SEED_COMPLIANCE_TASKS,
+    DEMO_FIRM, DEMO_USERS, SEED_CLIENTS,
     SEED_DOCUMENTS, SEED_TASKS, seed_id,
 )
 
@@ -43,7 +43,6 @@ GROUPS = {
     "firm": [DEMO_FIRM],
     "users": DEMO_USERS,
     "clients": SEED_CLIENTS,
-    "compliance_tasks": SEED_COMPLIANCE_TASKS,
     "tasks": SEED_TASKS,
     "documents": SEED_DOCUMENTS,
 }
@@ -100,13 +99,13 @@ def test_every_row_points_at_the_demo_firm_or_one_of_its_clients():
     client_ids = {c["id"] for c in SEED_CLIENTS}
     for row in DEMO_USERS + SEED_CLIENTS:
         assert row.get("firm_id") == DEMO_FIRM["id"], row
-    for row in SEED_COMPLIANCE_TASKS + SEED_TASKS + SEED_DOCUMENTS:
+    for row in SEED_TASKS + SEED_DOCUMENTS:
         assert row.get("client_id") in client_ids, row
 
 
 def test_the_fixture_is_not_empty():
     """A vacuity floor: every assertion above passes over an empty list."""
-    assert len(ALL_ROWS) >= 250, f"only {len(ALL_ROWS)} seed rows — the fixture shrank"
+    assert len(ALL_ROWS) >= 150, f"only {len(ALL_ROWS)} seed rows — the fixture shrank"   # was 250 until the 100 System B compliance_tasks rows left (POST-A-322); 176 remain
 
 
 def test_the_seed_reads_the_indian_day():
