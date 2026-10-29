@@ -110,7 +110,9 @@ def test_production_serves_none_of_the_three(apps, env):
         assert result[page] == 404, (env, page, result[page])
     # It is the pages that went, not the app.
     assert result["/health"] == 200
-    assert result["routes"] > 500
+    # The paths the app builds, not `len(app.routes)`: from FastAPI 0.141 an included router is ONE entry of app.routes, so the
+    # count of entries says nothing about how many routes the app serves (POST-A-171).
+    assert result["schema_in_process"] > 500
 
 
 def test_production_root_does_not_point_at_a_page_that_404s(apps):

@@ -356,3 +356,32 @@ def pg_template():
         # leave a stray session attached, and a template with any connection
         # cannot be dropped.
         _tpl_psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
+
+
+# ── FastAPI 0.141 stores an included router as ONE route; the suite's 72 route-walking modules read the flat list ───────────
+try:
+    from fastapi.routing import APIRoute as _APIRoute, _IncludedRouter as _Included
+    from starlette.applications import Starlette as _Starlette
+
+    def _flat_api_route(ctx):
+        return _APIRoute(
+            ctx.path, ctx.endpoint, methods=sorted(ctx.methods), name=ctx.name, dependencies=list(ctx.dependencies),
+            response_model=ctx.response_model, status_code=ctx.status_code, tags=list(ctx.tags), summary=ctx.summary,
+            description=ctx.description, response_description=ctx.response_description, responses=ctx.responses,
+            deprecated=ctx.deprecated, operation_id=ctx.operation_id, include_in_schema=ctx.include_in_schema,
+            response_class=ctx.response_class, callbacks=ctx.callbacks, openapi_extra=ctx.openapi_extra,
+            generate_unique_id_function=ctx.generate_unique_id_function)
+
+    def _flatten(routes):
+        out = []
+        for r in routes:
+            if isinstance(r, _Included):
+                out.extend(_flat_api_route(c) for c in r.effective_route_contexts() if getattr(c, "methods", None))
+            else:
+                out.append(r)
+        return out
+
+    _routes_property = _Starlette.routes
+    _Starlette.routes = property(lambda self: _flatten(_routes_property.fget(self)))
+except ImportError:                       # fastapi before 0.141 keeps the flat list itself
+    pass

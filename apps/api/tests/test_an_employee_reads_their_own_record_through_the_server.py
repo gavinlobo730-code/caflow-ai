@@ -30,6 +30,7 @@ from core.auth import get_jwt_user
 from core.portal_auth import get_current_portal_employee
 from domain.payroll.run_status import PAYROLL_RELEASED
 from tests.e2e_harness import FakeDB
+from tests._fastapi_compat import body_annotation
 
 FIRM, OTHER_FIRM = "F1", "F2"
 CLIENT, OTHER_CLIENT = "C1", "C2"
@@ -241,5 +242,6 @@ def test_no_new_route_takes_a_person_a_client_or_a_firm_from_the_request():
         assert not (params & forbidden), (route.path, params & forbidden)
         body = getattr(route, "body_field", None)
         if body is not None:
-            fields = set(body.type_.model_fields) if hasattr(body.type_, "model_fields") else set()
+            model = body_annotation(body)
+            fields = set(model.model_fields) if hasattr(model, "model_fields") else set()
             assert not (fields & forbidden), (route.path, fields & forbidden)

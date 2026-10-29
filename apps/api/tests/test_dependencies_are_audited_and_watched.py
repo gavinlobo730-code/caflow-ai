@@ -241,12 +241,18 @@ def test_the_baselines_exist_one_per_audit():
     assert names == {"pip-api.txt", *(f"pnpm-{a}.txt" for a in _npm_apps())}
 
 
+EMPTY_IS_A_BASELINE_TOO = {"pip-api.txt"}
+
+
 @pytest.mark.parametrize("path", _baseline_files(), ids=lambda p: p.name)
 def test_a_baseline_parses_holds_one_id_per_line_and_says_it_may_only_shrink(path):
     gate = _gate()
     text = path.read_text(encoding="utf-8")
     base = gate.read_baseline(text)     # raises on a duplicate or a line that is not an id
-    assert len(base) > 0
+    # A baseline that shrank to nothing is the END STATE of a ratchet and not a failed parse: the Python one did on 29-10-2026,
+    # when fastapi 0.141.1 took starlette 1.10.0 and the last seven advisories with it (POST-A-171). The header, which is what
+    # stops the file growing back into an allowlist, is still required below.
+    assert len(base) > 0 or path.name in EMPTY_IS_A_BASELINE_TOO
     assert "MAY ONLY SHRINK" in text, "the header that stops this file growing into an allowlist is missing"
     for advisory, note in base.items():
         assert note and "—" in note, f"{advisory} has no `package version [severity] — title` note"

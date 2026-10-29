@@ -37,6 +37,7 @@ from fastapi.routing import APIRoute
 from pydantic import ValidationError
 
 from domain.demo import fixture
+from tests._fastapi_compat import body_annotation
 
 _API_ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,9 +69,8 @@ def _doors(app) -> list[tuple[str, re.Pattern, type | None]]:
     for route in app.routes:
         if not isinstance(route, APIRoute):
             continue
-        params = [p for p in route.dependant.body_params
-                  if getattr(p, "type_", None) is not None]
-        model = params[0].type_ if len(params) == 1 else None
+        params = [p for p in route.dependant.body_params if body_annotation(p) is not None]
+        model = body_annotation(params[0]) if len(params) == 1 else None
         if model is not None and not hasattr(model, "model_validate"):
             model = None                   # a scalar body, nothing to check
         for method in route.methods:
