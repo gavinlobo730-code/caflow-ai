@@ -361,18 +361,13 @@ def test_the_defects_observed_while_writing_the_record_are_still_there():
 
     Four of the six were fixed on 18 October 2026 (POST-A-215, POST-A-216): a due schedule whose period already has an
     invoice now advances, billing's cadence is `domain/recurrence` against the schedule's anchor day, a `DRAFT-` number is
-    refused at issue, and `edit_article` retries a version collision. What is left is the snapshot customer (5) and the
-    unscheduled sweep (6), the second of which is DECIDED: a billing run prepares drafts a Partner has to number, so it runs
+    refused at issue, and `edit_article` retries a version collision; the snapshot customer (5) is refreshed from the client each time a
+    fee invoice is prepared (POST-A-216, 29-10-2026; `test_the_practices_customer_snapshot_follows_the_client`). What is left is the
+    unscheduled sweep (6), which is DECIDED: a billing run prepares drafts a Partner has to number, so it runs
     when a Partner presses it (§4, §9).
 
     When one fails: it was fixed. Delete its bullet from §9, delete its assertion, and say so in the commit.
     """
-    # 5. The G3 customer is a snapshot: only the billing service and the portal reader touch the link at all.
-    touching = {rel for rel, text in _production().items()
-                if re.search(r"""table\(["']client_firm_customer_links["']\)""", text)}
-    assert touching == {"services/billing_service.py", "services/portal_data_service.py"}, (
-        f"{sorted(touching)} touch client_firm_customer_links; if one refreshes the customer, fix §3 and §9")
-
     # 6. Nothing schedules draft generation, and nothing bills time.
     for name in ("run_due", "mark_time_entries_billed"):
         users = {rel for rel, text in _production().items()
