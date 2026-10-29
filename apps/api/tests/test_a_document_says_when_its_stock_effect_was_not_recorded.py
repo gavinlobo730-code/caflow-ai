@@ -61,9 +61,9 @@ def test_each_failure_shape_has_its_own_sentence_and_none_blames_the_exception()
     nothing = se.StockEffect("sales_invoice", 2, 0).problem()
     part = se.StockEffect("sales_invoice", 2, 1).problem()
     journal = se.StockEffect("sales_invoice", 2, 2, se.JOURNAL_NOT_POSTED).problem()
-    late = se.StockEffect("sales_invoice", 2, 2, se.JOURNAL_POSTED, "OSError").problem()
+    late = se.StockEffect("sales_invoice", 2, 2, se.JOURNAL_POSTED, "OSError", lines_done=True).problem()
     assert len({nothing, part, journal, late}) == 4
-    assert "taken out of stock" in nothing
+    assert "were not taken out of stock" in nothing
     assert "only 1 of its goods lines" in part
     assert "journal" in journal and "Inventory account and a Cost of Goods Sold account" in journal
     assert "may be incomplete" in late
@@ -191,6 +191,104 @@ def test_a_line_that_raised_stops_the_rest_and_the_effect_says_how_far_it_got(mo
     assert not [e for e in db.rows("journal_entries") if str(e.get("reference_no", "")).endswith("-COGS")]
 
 
+def test_a_service_only_invoice_whose_stock_step_broke_is_not_told_its_goods_did_not_move(monkeypatch):
+    """The failure came before the first goods line was counted, so nothing is known about what the document carries."""
+    db = FakeDB()
+    _chart(db)
+    service = str(uuid.uuid4())
+    db.seed("service_catalogue", {"id": service, "firm_id": FIRM, "client_id": CLIENT, "name": "Audit", "kind": "service"})
+    monkeypatch.setattr(inv, "resolve_costing_policy", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no policy")))
+    effect = _sell(db, _invoice(db, [service]))
+    assert not effect.recorded
+    assert "were not taken out of stock" not in effect.problem() and "Check the stock report" in effect.problem()
+
+
+def test_a_failure_partway_through_a_line_is_not_read_as_a_journal_failure(monkeypatch):
+    """`moved_lines == goods_lines` proves nothing while the loop is unfinished: a purchase whose first line raised AFTER its stock
+    row was written has moved one of two lines, and must not be reported as a journal-only failure."""
+    db = FakeDB()
+    _chart(db)
+    a, b = _good(db, "A"), _good(db, "B")
+    bill_id = str(uuid.uuid4())
+    for item in (a, b):
+        db.seed("purchase_bill_lines", {"bill_id": bill_id, "description": "x", "quantity": "1", "taxable_amount_paise": 100_000,
+                                        "expense_account_id": None, "service_catalogue_id": item})
+    monkeypatch.setattr(inv.landed, "split_pro_rata", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("after the row")))
+    effect = inv.apply_purchase_to_inventory(db, firm_id=FIRM, client_id=CLIENT,
+                                             bill={"id": bill_id, "bill_no": "B-9", "bill_date": "2026-04-05", "client_id": CLIENT})
+    assert effect.moved_lines == 1 and effect.lines_done is False and not effect.recorded
+    assert effect.journal == se.JOURNAL_NOT_OWED, "no journal was reached, so none is claimed unposted"
+    assert "only 1 of its goods lines" in effect.problem()
+
+
+@pytest.mark.parametrize("which", ["purchase_bill", "credit_note", "debit_note"])
+def test_a_first_line_that_raised_is_counted_as_reached_and_not_moved(monkeypatch, which):
+    db = FakeDB()
+    _chart(db)
+    item = _good(db)
+    _stocked(db, item)
+    boom = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("refused"))  # noqa: E731
+    if which == "purchase_bill":
+        bill_id = str(uuid.uuid4())
+        db.seed("purchase_bill_lines", {"bill_id": bill_id, "description": "x", "quantity": "1", "taxable_amount_paise": 100_000,
+                                        "expense_account_id": None, "service_catalogue_id": item})
+        monkeypatch.setattr(inv, "record_stock_in", boom)
+        effect = inv.apply_purchase_to_inventory(db, firm_id=FIRM, client_id=CLIENT,
+                                                 bill={"id": bill_id, "bill_no": "B-1", "bill_date": "2026-04-05", "client_id": CLIENT})
+    elif which == "credit_note":
+        db.seed("credit_note_lines", {"credit_note_id": "cn-1", "description": "x", "quantity": "1", "taxable_amount_paise": 1,
+                                      "service_catalogue_id": item})
+        monkeypatch.setattr(inv, "record_stock_in", boom)
+        effect = inv.apply_credit_note_to_inventory(db, firm_id=FIRM, client_id=CLIENT, credit_note={
+            "id": "cn-1", "credit_note_no": "CN-1", "credit_note_date": "2026-04-22", "client_id": CLIENT})
+    else:
+        db.seed("debit_note_lines", {"debit_note_id": "dn-1", "description": "x", "quantity": "1", "service_catalogue_id": item})
+        monkeypatch.setattr(inv, "record_stock_out", boom)
+        effect = inv.apply_debit_note_to_inventory(db, firm_id=FIRM, client_id=CLIENT, debit_note={
+            "id": "dn-1", "debit_note_no": "DN-1", "debit_note_date": "2026-04-23", "client_id": CLIENT})
+    assert (effect.goods_lines, effect.moved_lines, effect.stopped_by) == (1, 0, "RuntimeError")
+    assert "were not" in effect.problem() and effect.reference
+
+
+def test_the_advice_and_the_accounts_in_a_sentence_are_the_ones_that_document_has():
+    """A credit note and a debit note have no cancel route, so they are never told to cancel; a receipt and a purchase return
+    post against Purchases or Expense and a sale and a sales return against Cost of Goods Sold."""
+    for kind in ("credit_note", "debit_note"):
+        assert "cancel" not in se.StockEffect(kind, 1, 0).problem()
+        assert "cancel" not in se.StockEffect(kind, 1, 1, se.JOURNAL_NOT_POSTED, lines_done=True).problem()
+    for kind in ("sales_invoice", "purchase_bill"):
+        assert "cancel the document and enter it again" in se.StockEffect(kind, 1, 0).problem()
+
+    def journal(kind):
+        return se.StockEffect(kind, 1, 1, se.JOURNAL_NOT_POSTED, lines_done=True).problem()
+
+    assert "Cost of Goods Sold" in journal("sales_invoice") and "Purchases or Expense" not in journal("sales_invoice")
+    assert "Cost of Goods Sold" in journal("credit_note")
+    assert "Purchases or Expense" in journal("purchase_bill") and "Cost of Goods Sold" not in journal("purchase_bill")
+    assert "Purchases or Expense" in journal("debit_note")
+
+
+def test_a_purchase_whose_receipt_posted_but_whose_cost_true_up_did_not_is_not_recorded():
+    """A receipt that covers an earlier oversold sale posts two journals: the receipt and a Cost of Goods Sold true-up. A chart
+    with an Inventory account and no Cost of Goods Sold account posts the first and not the second, and the effect says so."""
+    db = FakeDB()
+    db.seed("chart_of_accounts", {"firm_id": FIRM, "client_id": CLIENT, "system_account_key": "inventory",
+                                  "account_name": "Inventory", "is_active": True})
+    db.seed("chart_of_accounts", {"firm_id": FIRM, "client_id": CLIENT, "system_account_key": None,
+                                  "account_name": "Purchases", "is_active": True})
+    item = _good(db)
+    # Sold before any stock was received: the movement exists at Rs 0 and a deficit is owed to a later receipt.
+    assert _sell(db, _invoice(db, [item], quantity="5")).moved_lines == 1
+    bill_id = str(uuid.uuid4())
+    db.seed("purchase_bill_lines", {"bill_id": bill_id, "description": "x", "quantity": "5", "taxable_amount_paise": 500_000,
+                                    "expense_account_id": None, "service_catalogue_id": item})
+    effect = inv.apply_purchase_to_inventory(
+        db, firm_id=FIRM, client_id=CLIENT,
+        bill={"id": bill_id, "bill_no": "B-T", "bill_date": "2026-04-05", "client_id": CLIENT})
+    assert effect.moved_lines == 1 and effect.lines_done
+    assert effect.journal == se.JOURNAL_NOT_POSTED and not effect.recorded
+
+
 def test_a_call_that_raised_after_every_line_moved_says_the_journal_was_not_posted(monkeypatch):
     """The journal helpers swallow their own failures, but a raise from anywhere after the last line moved is the same fact: the
     stock ledger is ahead of the general ledger."""
@@ -211,7 +309,9 @@ def test_a_call_that_raised_before_it_could_count_a_line_is_still_a_failure(monk
     monkeypatch.setattr(inv, "resolve_costing_policy", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no policy")))
     effect = _sell(db, _invoice(db, [item]))
     assert effect.involves_stock and not effect.recorded and effect.goods_lines == 0
-    assert "taken out of stock" in effect.problem()
+    # Nothing was counted, so the document may carry no goods at all: the sentence hedges and does not claim goods did not move.
+    assert "any goods on it may not have been taken out of stock" in effect.problem()
+    assert "were not taken out of stock" not in effect.problem()
 
 
 def test_a_purchase_reports_the_same_way():
@@ -350,7 +450,17 @@ def test_a_route_that_moves_stock_runs_it_through_guarded_and_attaches_what_it_d
     assert isinstance(work, ast.Lambda) and calls[0] in list(ast.walk(work)), f"{router}: the call is not what guarded runs"
     bound = [n for n in ast.walk(tree) if isinstance(n, ast.Assign) and n.value is guarded[0]]
     assert bound, f"{router} drops what guarded returns"
-    assert "stock_effects.attach(" in text, router
+    # The answer goes on the document BEFORE the route returns it: an attach written after a `{**document, ...}` spread, or after
+    # the return, would be a call that does nothing to the response.
+    handler = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and guarded[0] in list(ast.walk(n)))
+    attaches = [n for n in ast.walk(handler) if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
+                and ast.unparse(n.value.func) == "stock_effects.attach"]
+    assert len(attaches) == 1, router
+    assert attaches[0].lineno > bound[0].lineno, router
+    success_returns = [n for n in ast.walk(handler) if isinstance(n, ast.Return) and "api_response(True" in ast.unparse(n)
+                       and n.lineno > bound[0].lineno]
+    assert success_returns and all(n.lineno > attaches[0].lineno for n in success_returns), (
+        f"{router}: a success return sits between the call and the attach")
 
 
 def test_every_function_that_moves_a_documents_stock_returns_a_stock_effect():

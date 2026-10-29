@@ -32,6 +32,12 @@ export function stockEffectSummary(responses: readonly unknown[]): { count: numb
   return { count: problems.length, first: problems[0] ?? null };
 }
 
+/** Sentences joined into one message: each but the last loses its full stop so the join never reads "issued.. Credit note". */
+export function joinSentences(parts: readonly (string | null | undefined)[]): string {
+  const said = parts.filter((p): p is string => Boolean(p && p.trim() !== ""));
+  return said.map((p, i) => (i < said.length - 1 ? p.replace(/\.+$/, "") : p)).join(". ");
+}
+
 /** The toast for one issued document: the usual message, with the server's sentence after it when stock was not all recorded. */
 export function issuedMessage(message: string, data: unknown): { text: string; type: "success" | "warning" } {
   const problem = stockEffectProblem(data);

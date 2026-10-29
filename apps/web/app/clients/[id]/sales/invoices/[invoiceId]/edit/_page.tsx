@@ -119,7 +119,7 @@ export default function SalesInvoicePageClient() {
         customers={ctx.customers}
         existing={isNew ? null : invoice}
         duplicateSeed={isNew ? duplicateSeed : undefined}
-        onDone={(msg) => router.push(salesListFlashHref(clientId, msg))}
+        onDone={(msg, kind) => router.push(salesListFlashHref(clientId, msg, kind))}
         onCancel={() => router.push(salesListHref(clientId))}
       />
     );

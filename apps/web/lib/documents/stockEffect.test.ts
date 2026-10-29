@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  UNREADABLE_STOCK_EFFECT, bulkStockSentence, issuedMessage, stockEffectProblem, stockEffectSummary,
+  UNREADABLE_STOCK_EFFECT, bulkStockSentence, issuedMessage, joinSentences, stockEffectProblem, stockEffectSummary,
+  withMoreStockSentences,
 } from "./stockEffect.ts";
 
 // POST-A-092. The decision the browser makes about `stock_effect` on an issue response, as a decision: absent and recorded say
@@ -55,4 +56,18 @@ test("the bulk sentence is absent for none, singular for one and counted for sev
   assert.equal(bulkStockSentence({ count: 0, first: null }), null);
   assert.equal(bulkStockSentence({ count: 1, first: "Why." }), "One of them did not record all of its stock effect. For example: Why.");
   assert.equal(bulkStockSentence({ count: 3, first: "Why." }), "3 of them did not record all of their stock effect. For example: Why.");
+});
+
+test("joined sentences lose the full stop of all but the last, and nothing empty is joined", () => {
+  assert.equal(joinSentences(["Credit note issued", null, "Stock was not recorded."]), "Credit note issued. Stock was not recorded.");
+  assert.equal(joinSentences(["Invoice issued.", "Credit limit exceeded.", "Stock was not recorded."]),
+    "Invoice issued. Credit limit exceeded. Stock was not recorded.");
+  assert.equal(joinSentences(["Invoice issued", undefined, "  "]), "Invoice issued");
+  assert.equal(joinSentences([]), "");
+});
+
+test("a second document's sentence is added beside the first and a repeat is not shown twice", () => {
+  assert.deepEqual(withMoreStockSentences([], [null, "A."]), ["A."]);
+  assert.deepEqual(withMoreStockSentences(["A."], ["B.", "A.", null]), ["A.", "B."]);
+  assert.deepEqual(withMoreStockSentences(["A."], []), ["A."]);
 });

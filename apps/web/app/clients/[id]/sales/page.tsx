@@ -3,7 +3,7 @@
 import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { taxablePaise } from "@/lib/money/gstLine";
 import { templateBasePaise } from "@/lib/recurring/templateBase";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { pruneSelection } from "@/lib/table/pruneSelection";
 import { createPortal } from "react-dom";
 import {
@@ -23,7 +23,7 @@ import { bpsFromPercentInput, paiseFromRupeeInput, parseQuantity } from "@/lib/m
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import { Skeleton, TableSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
 import type { Column, FilterDef } from "@/lib/table/types";
-import { bulkStockSentence, issuedMessage, stockEffectProblem, stockEffectSummary } from "@/lib/documents/stockEffect";
+import { bulkStockSentence, issuedMessage, joinSentences, stockEffectProblem, stockEffectSummary } from "@/lib/documents/stockEffect";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import CsvImportModal from "@/components/LazyCsvImportModal";
@@ -1463,6 +1463,7 @@ function SalesInvoices({
   const router = useRouter();
   const [showImport, setShowImport] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" | "warning" } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sendModal, setSendModal] = useState<{ invoice: SalesInvoice; customerEmail: string | null } | null>(null);
   const [remindModal, setRemindModal] = useState<{ invoice: SalesInvoice; customerEmail: string | null } | null>(null);
   const [deliveryModal, setDeliveryModal] = useState<{ invoice: SalesInvoice; deliveries: InvoiceDelivery[] } | null>(null);
@@ -1514,8 +1515,10 @@ function SalesInvoices({
     // ?flash=<msg> → toast, then strip the param so a refresh doesn't repeat it.
     const flash = p.get("flash");
     if (flash) {
-      showToast(flash, "success");
+      // A flash that is a warning (the editor issued an invoice whose stock was not all recorded) is shown as one.
+      showToast(flash, p.get("flashKind") === "warning" ? "warning" : "success");
       p.delete("flash");
+      p.delete("flashKind");
       const qs = p.toString();
       window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
     }
@@ -1937,8 +1940,10 @@ function SalesInvoices({
 
   function showToast(msg: string, type: "success" | "error" | "warning") {
     setToast({ msg, type });
-    // A warning carries a sentence to read (what stock did not record), so it stays longer than a confirmation.
-    setTimeout(() => setToast(null), type === "warning" ? 15000 : 4000);
+    // A warning carries a sentence to read (what stock did not record), so it stays longer than a confirmation. The previous
+    // toast's timer is cleared, or it would wipe this one when it fires.
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), type === "warning" ? 15000 : 4000);
   }
 
   /**
@@ -4339,6 +4344,7 @@ function CreditNotes({
   // credit notes — otherwise a failed load reads as an empty FY (audit M17).
   const [loadFailed, setLoadFailed] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" | "warning" } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -4416,7 +4422,8 @@ function CreditNotes({
 
   function showToast(msg: string, type: "success" | "error" | "warning") {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), type === "warning" ? 15000 : 4000);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), type === "warning" ? 15000 : 4000);
   }
 
   /** Bulk-import handler for the CSV/XLSX modal. Maps flat rows → grouped
@@ -4458,8 +4465,7 @@ function CreditNotes({
       const lateNote = (result.data as { section_34_2_warning?: string | null } | null)?.section_34_2_warning;
       // POST-A-092: and the stock the returned goods should have gone back into, when that was not all recorded.
       const stock = stockEffectProblem(result.data);
-      showToast([lateNote ? `Credit note issued. ${lateNote}` : "Credit note issued", stock].filter(Boolean).join(" "),
-                lateNote || stock ? "warning" : "success");
+      showToast(joinSentences(["Credit note issued", lateNote, stock]), lateNote || stock ? "warning" : "success");
       load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Error issuing credit note", "error");

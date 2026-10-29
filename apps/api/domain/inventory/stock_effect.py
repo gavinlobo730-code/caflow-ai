@@ -42,17 +42,26 @@ JOURNAL_POSTED = "posted"
 JOURNAL_NOT_POSTED = "not_posted"
 JOURNAL_STATES = (JOURNAL_NOT_OWED, JOURNAL_POSTED, JOURNAL_NOT_POSTED)
 
-#: (the document as a person names it, what the CA did to it, what was meant to happen to stock). The same four
-#: documents `inventory_service.apply_*` serve; a purchase credit note and a sales debit note never move stock.
-DOCUMENTS = {
-    "sales_invoice": ("sales invoice", "issued", "the goods it sold were not taken out of stock"),
-    "purchase_bill": ("purchase bill", "received", "the goods it bought were not added to stock"),
-    "credit_note": ("credit note", "issued", "the goods it returns were not added back to stock"),
-    "debit_note": ("debit note", "issued", "the goods it returns to the supplier were not taken out of stock"),
-}
+REMEDY_CANCEL = "Adjust stock by hand, or cancel the document and enter it again once the cause is fixed."
+#: A credit note and a purchase debit note have no cancel route (a draft is deleted, an issued one is left), so the only
+#: thing the sentence can honestly offer for them is the stock adjustment.
+REMEDY_ADJUST = "Adjust stock by hand once the cause is fixed."
+_DISAGREE = "Until then the stock report and the Inventory account do not agree with this document."
 
-_CHECK = ("Adjust stock by hand, or cancel the document and enter it again once the cause is fixed. Until then the stock "
-          "report and the Inventory account do not agree with this document.")
+#: kind -> (the document as a person names it, what was done to it, what was meant to happen to stock, that in the passive
+#: for "any goods on it may not have been ...", the accounts its stock journal uses, what can be done about it). The accounts
+#: are the ones `inventory_service`'s journal helpers look up: Inventory with Cost of Goods Sold for a sale and a sales return,
+#: Inventory with a Purchases or Expense account for a receipt and a purchase return.
+DOCUMENTS = {
+    "sales_invoice": ("sales invoice", "issued", "the goods it sold were not taken out of stock", "taken out of stock",
+                      "an Inventory account and a Cost of Goods Sold account", REMEDY_CANCEL),
+    "purchase_bill": ("purchase bill", "received", "the goods it bought were not added to stock", "added to stock",
+                      "an Inventory account and a Purchases or Expense account", REMEDY_CANCEL),
+    "credit_note": ("credit note", "issued", "the goods it returns were not added back to stock", "added back to stock",
+                    "an Inventory account and a Cost of Goods Sold account", REMEDY_ADJUST),
+    "debit_note": ("debit note", "issued", "the goods it returns to the supplier were not taken out of stock",
+                   "taken out of stock", "an Inventory account and a Purchases or Expense account", REMEDY_ADJUST),
+}
 
 
 @dataclass
@@ -69,6 +78,9 @@ class StockEffect:
     stopped_by: Optional[str] = None
     #: The document's own number, so a sentence in a bulk run names the document it is about.
     reference: Optional[str] = None
+    #: Set once the loop over the goods lines has FINISHED. `moved_lines == goods_lines` proves nothing before this, because
+    #: `goods_lines` counts the lines reached and a call that raised partway through a line has reached it and not finished it.
+    lines_done: bool = False
 
     def __post_init__(self) -> None:
         if self.kind not in DOCUMENTS:
@@ -91,7 +103,7 @@ class StockEffect:
     @property
     def lines_not_moved(self) -> bool:
         """A goods line was reached and did not move, or the call stopped before it could say how many there were."""
-        return self.moved_lines < self.goods_lines or (self.stopped_by is not None and self.goods_lines == 0)
+        return self.moved_lines < self.goods_lines or (self.stopped_by is not None and not self.lines_done)
 
     @property
     def recorded(self) -> bool:
@@ -101,20 +113,25 @@ class StockEffect:
         """The sentence a screen prints, or None when there is nothing to say."""
         if self.recorded:
             return None
-        noun, verb, meant = DOCUMENTS[self.kind]
+        noun, verb, meant, action, accounts, remedy = DOCUMENTS[self.kind]
         ref = str(self.reference).strip() if self.reference else ""
         head = f"{noun.capitalize()} {ref} was {verb}, but " if ref else f"This {noun} was {verb}, but "
+        tail = f"{remedy} {_DISAGREE}"
+        if self.stopped_by is not None and self.goods_lines == 0:
+            # Nothing was counted, so nothing is known: the document may carry no goods at all. Say that, and send the CA to look.
+            return (f"{head}an error stopped the stock step before it could say what it did, so any goods on it may not have "
+                    f"been {action}. Check the stock report for this document.")
         if self.lines_not_moved:
             if self.moved_lines == 0:
-                return f"{head}{meant}. {_CHECK}"
+                return f"{head}{meant}. {tail}"
             return (f"{head}stock was recorded for only {self.moved_lines} of its goods lines before an error "
                     f"stopped the rest, and the journal that moves their value between Inventory and the cost accounts "
-                    f"was not posted. {_CHECK}")
+                    f"was not posted. {tail}")
         if self.journal == JOURNAL_NOT_POSTED:
-            return (f"{head}the journal that moves the value of its goods between Inventory and the cost accounts was "
+            return (f"{head}a journal that moves the value of its goods between Inventory and the cost accounts was "
                     f"not posted, so the stock ledger is ahead of the general ledger by this document. Check that the "
-                    f"chart of accounts has an Inventory account and a Cost of Goods Sold account. {_CHECK}")
-        return (f"{head}an error stopped part of its stock effect from being recorded, so it may be incomplete. {_CHECK}")
+                    f"chart of accounts has {accounts}. {tail}")
+        return f"{head}an error stopped part of its stock effect from being recorded, so it may be incomplete. {tail}"
 
     def as_dict(self) -> Optional[dict]:
         """The answer on the wire, or None when stock is not involved. `problem` is None exactly when `recorded`."""

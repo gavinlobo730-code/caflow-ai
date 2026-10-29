@@ -465,6 +465,8 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   const [registerNotes, setRegisterNotes] = useState<RegisterNote[]>([]);
   // Bills received whose stock effect was not all recorded (POST-A-092). Not a failure and not a TDS gap, so its own panel.
   const [stockNotes, setStockNotes] = useState<string[]>([]);
+  // A sentence names a document of the client it was shown for: switching client clears them.
+  useEffect(() => { setStockNotes([]); }, [clientId]);
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const router = useRouter();
 
@@ -3280,6 +3282,8 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
   const [registerNotes, setRegisterNotes] = useState<RegisterNote[]>([]);
   // Debit notes issued whose goods did not all leave stock in the books (POST-A-092).
   const [stockNotes, setStockNotes] = useState<string[]>([]);
+  // A sentence names a document of the client it was shown for: switching client clears them.
+  useEffect(() => { setStockNotes([]); }, [clientId]);
   const [issuingId, setIssuingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);

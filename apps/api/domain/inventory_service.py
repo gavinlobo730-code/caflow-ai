@@ -1350,11 +1350,12 @@ def post_opening_stock_journal_entry(
 # failure of the sale or purchase that triggered it.
 
 def _stopped(effect: "stock_effects.StockEffect", exc: Exception) -> None:
-    """Record that a per-document call stopped, and, when every goods line had already moved, that the journal behind
-    them was not posted. Only the exception's TYPE is kept: the message of a database error can carry an identifier, and
+    """Record that a per-document call stopped, and, when the loop over the goods lines had FINISHED and every line had moved, that
+    the journal behind them was not posted (a call that stopped partway through a line has not finished the loop, and
+    `moved == reached` proves nothing then). Only the exception's TYPE is kept: the message of a database error can carry an identifier, and
     the sentence a screen prints is written by `stock_effect`, never from an exception."""
     effect.stopped_by = type(exc).__name__
-    if (effect.goods_lines > 0 and effect.moved_lines == effect.goods_lines
+    if (effect.lines_done and effect.goods_lines > 0 and effect.moved_lines == effect.goods_lines
             and effect.journal == stock_effects.JOURNAL_NOT_OWED):
         effect.journal = stock_effects.JOURNAL_NOT_POSTED
 
@@ -1415,6 +1416,7 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
             total_value += abs(int(movement["value_delta_paise"]))
             if movement and movement.get("id"):
                 movement_ids.append(movement["id"])
+        effect.lines_done = True
         # ONE combined COGS journal for the WHOLE invoice, not one per line —
         # every line shares the same reference_no, and _create_journal's
         # idempotency guard (keyed on firm+client+reference_no+entry_date)
@@ -1685,6 +1687,7 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
                         })
             if movement and movement.get("id"):
                 movement_ids.append(movement["id"])
+        effect.lines_done = True
         # ONE combined journal for the WHOLE bill (grouped by resolved expense
         # account — see post_inventory_receipt_journal_entry's docstring),
         # not one per line — every line shares the same reference_no, and
@@ -1967,6 +1970,7 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
             total_value += value
             if movement and movement.get("id"):
                 movement_ids.append(movement["id"])
+        effect.lines_done = True
         if total_value > 0:
             journal_id = post_sale_return_journal_entry(
                 db, firm_id=firm_id, client_id=client_id, movement_date=credit_note.get("credit_note_date"),
@@ -2038,6 +2042,7 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
             total_value += abs(int(movement["value_delta_paise"]))
             if movement.get("id"):
                 movement_ids.append(movement["id"])
+        effect.lines_done = True
         if total_value > 0:
             journal_id = post_purchase_return_journal_entry(
                 db, firm_id=firm_id, client_id=client_id, movement_date=debit_note.get("debit_note_date"),

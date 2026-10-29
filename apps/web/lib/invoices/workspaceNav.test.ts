@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   salesListHref, newInvoiceHref, editInvoiceHref, parseInvoiceParam, withInvoiceParam,
-  practiceSalesHref, PRACTICE_SALES_TAB_IDS,
+  practiceSalesHref, PRACTICE_SALES_TAB_IDS, salesListFlashHref,
 } from "./workspaceNav.ts";
 
 test("route href builders", () => {
@@ -70,4 +70,10 @@ test("every tab a practice screen can ask for is one practiceSalesHref emits", (
   for (const tab of PRACTICE_SALES_TAB_IDS) {
     assert.equal(practiceSalesHref("abc", { tab }), `/clients/abc/sales?tab=${tab}`);
   }
+});
+
+test("a flash is a success unless it says it is a warning (POST-A-092: an issue that did not record all its stock)", () => {
+  assert.equal(salesListFlashHref("CL-1", "Invoice issued"), "/clients/CL-1/sales?flash=Invoice%20issued");
+  assert.equal(salesListFlashHref("CL-1", "Invoice issued", "warning"), "/clients/CL-1/sales?flash=Invoice%20issued&flashKind=warning");
+  assert.equal(salesListFlashHref("CL-1", "Invoice issued", undefined), "/clients/CL-1/sales?flash=Invoice%20issued");
 });
