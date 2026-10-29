@@ -21,6 +21,7 @@ from typing import Annotated, Optional
 from models.common import api_response
 from services import bank_erasure
 from services.audit_service import log_event
+from services.named_row_ownership import bank_account_is_the_clients
 from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from core.observability import capture_soft_failure, capture_posting_failure
 from core.list_window import MAX_LIST_LIMIT, split
@@ -1284,6 +1285,11 @@ def inspect_statement_file(
     being asked the same question twice.
     """
     assert_client_access(current_user, client_id)
+    # The account is read by id and firm alone below, so it has to be THIS client's before anything is read from it: a saved layout
+    # is another client's record, and naming that client's account here would hand it over (POST-A-353).
+    db = _db()
+    if db and bank_account_id:
+        bank_account_is_the_clients(db, current_user["firm_id"], client_id, bank_account_id)
     # Bounded read: at most _MAX_UPLOAD_BYTES + 1 bytes ever reach memory. It
     # used to read the whole body and then compare its length (SECURITY-PRIVACY-20).
     content = read_limited(file, _MAX_UPLOAD_BYTES, message="File too large (max 10 MB).")
@@ -1294,7 +1300,6 @@ def inspect_statement_file(
     except StatementParseError as e:
         raise _statement_refusal(e)
 
-    db = _db()
     saved = (column_mappings.find_mapping(db, current_user["firm_id"], bank_account_id,
                                           info["header_fingerprint"])
              if db and bank_account_id else None)
