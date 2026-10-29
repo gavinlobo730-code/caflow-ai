@@ -29,6 +29,8 @@ from core.db_paging import fetch_all
 from core.ist_clock import fy_bounds, ist_today
 from domain.tds import deductor_26as as D26
 from services import tds_register_lists_service as lists
+from services import lower_deduction_certificate_service as ldc_service
+from domain.tds import screen_counts
 from services.tds_register_lists_service import TDS_LIST_MAX
 from domain.money_sentence import rupee_text
 
@@ -41,6 +43,7 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _MOCK_CHALLANS: dict[str, dict] = {}
 _MOCK_RETURNS: dict[str, dict] = {}
 _MOCK_CERTIFICATES: dict[str, dict] = {}
+_MOCK_LOWER_DEDUCTION: dict[str, dict] = {}
 _MOCK_FORM26AS: dict[str, dict] = {}
 _MOCK_DEDUCTIONS: dict[str, dict] = {}
 
@@ -178,6 +181,21 @@ def _tds_quarter_end(quarter: str, fy: str) -> str:
 
 
 # ── Request Models ─────────────────────────────────────────────────────────────
+
+class LowerDeductionCertificateRequest(BaseModel):
+    """One IT Act §197 lower-deduction certificate (POST-A-293). The rate is basis points (0.5% is 50, a nil certificate is 0), the
+    ceiling integer paise; every refusal that has a sentence is said by `services/lower_deduction_certificate_service`, so the
+    ranges are not repeated here as a generic 422."""
+    client_id: str
+    vendor_id: str
+    section: str
+    certificate_no: str
+    rate_bps: int
+    valid_from: date
+    valid_to: date
+    ceiling_paise: int = Field(..., le=10**17)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
 
 class CreateChallanRequest(BaseModel):
     """One challan 281 deposit.
@@ -412,7 +430,10 @@ def tds_dashboard(
     client_id: str = Query(...),
     current_user: dict = Depends(rbac("tds", "read")),
 ):
-    """TDS filing dashboard — summary of deductions, challans, returns."""
+    """The four figures at the top of the client's TDS tab: how many challans and their total, how many returns and how many
+    certificates. They are counted over ALL of the client's rows by the database's own paging, in narrow columns, and nothing else
+    is returned (POST-A-293): this used to answer with the client's challans, returns and certificates in full, unordered and
+    unwindowed, and nothing called it while the tab counted the same three tables itself in the browser."""
     assert_client_access(current_user, client_id)
     try:
         firm_id = current_user["firm_id"]
@@ -423,22 +444,21 @@ def tds_dashboard(
         else:
             from core.supabase_client import get_supabase
             sb = get_supabase()
-            challans = sb.table("tds_challans").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
-            returns = sb.table("tds_returns").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
-            certs = sb.table("tds_certificates").select("*").eq("firm_id", firm_id).eq("client_id", client_id).execute().data or []
+            challans = fetch_all(lambda: sb.table("tds_challans").select("id, total_paise")
+                                 .eq("firm_id", firm_id).eq("client_id", client_id), label="tds.dashboard.challans")
+            returns = fetch_all(lambda: sb.table("tds_returns").select("id")
+                                .eq("firm_id", firm_id).eq("client_id", client_id), label="tds.dashboard.returns")
+            certs = fetch_all(lambda: sb.table("tds_certificates").select("id")
+                              .eq("firm_id", firm_id).eq("client_id", client_id), label="tds.dashboard.certificates")
 
-        # tds_challans has no amount_paise column (migration 037) — total_paise
-        # is the real grand-total column.
-        total_deposited_paise = sum(c.get("total_paise", 0) for c in challans)
+        # tds_challans has no amount_paise column (migration 037) — total_paise is the real grand-total column.
+        challan_figures = screen_counts.challan_totals(challans)
         return api_response(True, {
-            "challans": challans,
-            "returns": returns,
-            "certificates": certs,
             "summary": {
-                "total_challans": len(challans),
+                "total_challans": challan_figures["count"],
                 "total_returns": len(returns),
                 "total_certificates": len(certs),
-                "total_deposited_paise": total_deposited_paise,
+                "total_deposited_paise": challan_figures["total_paise"],
             },
         })
     except Exception as e:
@@ -1676,6 +1696,63 @@ def create_certificate(
         raise
     except Exception as e:
         return _could_not(e, "record the TDS certificate")
+
+
+@router.get("/lower-deduction-certificates")
+def list_lower_deduction_certificates(
+    client_id: str = Query(...),
+    limit: int = Query(50, ge=1, le=TDS_LIST_MAX),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(rbac("tds", "read")),
+):
+    """A client's IT Act §197 lower-deduction certificates, the latest validity first, as a window:
+    `{lower_deduction_certificates, has_more, limit, max_limit, vendors}`; `vendors` is every active supplier of the client, which
+    the certificate form offers (POST-A-293)."""
+    assert_client_access(current_user, client_id)
+    try:
+        firm_id = current_user["firm_id"]
+        if _USE_MOCK:
+            from routers.vendors import MOCK_VENDORS
+            out = lists.lower_deduction_certificates_in_memory(
+                [r for r in _MOCK_LOWER_DEDUCTION.values() if r["client_id"] == client_id and r["firm_id"] == firm_id],
+                limit=limit, offset=offset,
+                vendors=[v for v in MOCK_VENDORS if v.get("client_id") == client_id and v.get("firm_id") == firm_id
+                         and v.get("is_active", True)])
+        else:
+            from core.supabase_client import get_supabase
+            out = lists.lower_deduction_certificates(get_supabase(), firm_id, client_id, limit=limit, offset=offset)
+        return api_response(True, out)
+    except Exception as e:
+        return _could_not(e, "list the §197 certificates")
+
+
+@router.post("/lower-deduction-certificates")
+def record_lower_deduction_certificate(
+    body: LowerDeductionCertificateRequest,
+    current_user: dict = Depends(rbac("tds", "compute")),
+):
+    """Record a §197 lower-deduction certificate held on one of the client's suppliers. A certificate lowers what is withheld from a
+    real supplier, so the tier is Executive and above (as the table's own policy always said) and the section, the supplier and the
+    figures are judged here and refused in words (`services/lower_deduction_certificate_service`). Bills and advances to that
+    supplier withhold at the certified rate until the amount is used up (Rule 28AA(4))."""
+    try:
+        assert_client_access(current_user, body.client_id)
+        firm_id = current_user["firm_id"]
+        fields = dict(vendor_id=body.vendor_id, section=body.section, certificate_no=body.certificate_no, rate_bps=body.rate_bps,
+                      valid_from=body.valid_from, valid_to=body.valid_to, ceiling_paise=body.ceiling_paise, notes=body.notes)
+        if _USE_MOCK:
+            row = ldc_service.record(None, firm_id=firm_id, client_id=body.client_id, actor=current_user,
+                                     store=_MOCK_LOWER_DEDUCTION, **fields)
+        else:
+            from core.supabase_client import get_supabase
+            row = ldc_service.record(get_supabase(), firm_id=firm_id, client_id=body.client_id, actor=current_user, **fields)
+        log_event(firm_id, "tds_lower_deduction_certificate", row["id"], "create",
+                  actor_id=current_user.get("auth_user_id"), new_data=row)
+        return api_response(True, row)
+    except HTTPException:
+        raise
+    except Exception as e:
+        return _could_not(e, "record the §197 certificate")
 
 
 def _register_rows_for_fy(firm_id: str, client_id: str, fy: str) -> list[dict]:

@@ -42,6 +42,18 @@ def deduction_totals(rows: Iterable[dict]) -> dict:
     return {"count": count, "payment_amount_paise": gross, "tds_paise": tax}
 
 
+def challan_totals(rows: Iterable[dict]) -> dict:
+    """The dashboard's two challan figures over ALL of a client's challans: how many, and the sum of `total_paise`.
+
+    `total_paise` is the challan's grand-total column. `tds_challans` has never had an `amount_paise` (migration 037), and this
+    used to be the same sum written a second time in the browser (POST-A-293)."""
+    count = total = 0
+    for row in rows:
+        count += 1
+        total += _int(row.get("total_paise"))
+    return {"count": count, "total_paise": total}
+
+
 def is_filed(status: Optional[str]) -> bool:
     return str(status or "").strip().lower() in FILED_RETURN_STATUSES
 
