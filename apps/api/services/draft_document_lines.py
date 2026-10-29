@@ -3,7 +3,7 @@
 WHY THIS IS ONE CALL
     A draft invoice, bill or note had its lines replaced as a DELETE and then an INSERT, two requests, and the header updated after
     both. A session that issued the document between the two left an ISSUED document with no lines: the insert was refused by the
-    draft rule of migration 539 and the saver saw a generic failure. `public.replace_draft_document_lines` (migration 559) takes the
+    draft rule of migration 539 and the saver saw a generic failure. `public.replace_draft_document_lines` (migration 560) takes the
     header FOR UPDATE first, refuses in words when the document is no longer a draft, and replaces the lines in the one transaction
     the call is. This module is the one door to it: the six routers call `replace_draft_lines` and none of them deletes a draft's
     lines itself (`tests/test_the_lines_of_a_draft_are_replaced_through_one_call.py` holds that over the source).
@@ -11,7 +11,7 @@ WHY THIS IS ONE CALL
 WHAT IT DOES WHEN THE FUNCTION IS NOT THERE
     The API and the migration reach production at different moments. While the function is missing (PGRST202, or "function ... does
     not exist": the classifier the receipt and fee-billing services use) the old two-step replacement runs and a warning is logged;
-    the fallback is deleted once migration 559 is on production. Any other error is the caller's.
+    the fallback is deleted once migration 560 is on production. Any other error is the caller's.
 
 WHAT IT DOES NOT DO
     It does not update the header. The header's totals are written by the route afterwards, as before, and the issue routes ask the
@@ -71,7 +71,7 @@ def replace_draft_lines(db, document: str, document_id: str, firm_id: str, lines
 
 
 def _two_step(db, document: str, document_id: str, rows: list[dict]) -> None:
-    """The replacement the API made before migration 559, kept for the hour the function is not in the database. Every chain names
+    """The replacement the API made before migration 560, kept for the hour the function is not in the database. Every chain names
     its table as a literal, so the column and firm-scope guards read each one; the lines tables carry no firm of their own, and
     `document_id` is a draft the route has already read under the firm."""
     if document == "sales_invoice":

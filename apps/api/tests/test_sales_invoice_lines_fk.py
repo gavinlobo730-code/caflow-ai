@@ -123,7 +123,7 @@ class _FakeDB:
         cannot answer makes every period look shut. Nothing is seeded here, so
         the honest answer is the one an empty database gives: open.
 
-        A draft's lines are replaced through `replace_draft_document_lines` (migration 559, POST-A-332). The double records what that
+        A draft's lines are replaced through `replace_draft_document_lines` (migration 560, POST-A-332). The double records what that
         function does, a delete of the document's lines and an insert of the new ones with the document's own id as their foreign
         key, as the two events this file has always read, so what is asserted below is still the contract: the lines are keyed on
         `sales_invoice_id` and never on `invoice_id`."""

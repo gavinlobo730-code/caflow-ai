@@ -114,7 +114,7 @@ class _FakeDB:
         # every period look shut. Nothing is seeded, so answer as an empty
         # database does: open.
         if fn == "replace_draft_document_lines" and params:
-            # A draft's lines are replaced through this one call (migration 559, POST-A-332): record them as the insert this file
+            # A draft's lines are replaced through this one call (migration 560, POST-A-332): record them as the insert this file
             # has always read them from.
             from services.draft_document_lines import DOCUMENTS
             table = DOCUMENTS[params["p_document"]][0]

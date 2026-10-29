@@ -1,10 +1,10 @@
-"""The lines of a draft document are replaced through ONE call that locks the header first (ledger POST-A-332, migration 559).
+"""The lines of a draft document are replaced through ONE call that locks the header first (ledger POST-A-332, migration 560).
 
 WHAT WAS WRONG
     An invoice, bill or note PATCH replaced a draft's lines as a DELETE and then an INSERT (the notes one line per request), two
     requests or more, and updated the header after both. A session that issued the document in between left an ISSUED document with
     no lines, and the saver saw only a generic failure. The database function is proved against real Postgres in
-    `test_559_..._pg.py`; this file holds the rest, in the required job:
+    `test_560_..._pg.py`; this file holds the rest, in the required job:
 
     * THE HELPER: it replaces a draft's lines for each of the six documents with the document's own id as their foreign key, strips
       a foreign key an element carries, answers 409 in words when the document was issued meanwhile and 404 when it is not the firm's,
@@ -33,7 +33,7 @@ from tests.e2e_harness import FakeDB
 FIRM, OTHER_FIRM = "F1", "F2"
 HEADERS = {"sales_invoice": "client_sales_invoices", "purchase_bill": "purchase_bills", "credit_note": "credit_notes",
            "debit_note": "debit_notes", "sales_debit_note": "sales_debit_notes", "purchase_credit_note": "purchase_credit_notes"}
-MIGRATION = API_ROOT / "migrations" / "559_a_draft_documents_lines_are_replaced_in_one_transaction_that_locks_the_header_first.sql"
+MIGRATION = API_ROOT / "migrations" / "560_a_draft_documents_lines_are_replaced_in_one_transaction_that_locks_the_header_first.sql"
 
 
 def _db(kind: str, status: str = "draft") -> tuple[FakeDB, str]:
@@ -78,7 +78,7 @@ def test_another_firms_document_is_a_404(kind):
 
 
 class _WithoutTheFunction(FakeDB):
-    """A database that has not had migration 559 applied: PostgREST says so the way it says it for any missing function."""
+    """A database that has not had migration 560 applied: PostgREST says so the way it says it for any missing function."""
 
     def rpc(self, fn, params=None):
         if fn == "replace_draft_document_lines":
@@ -129,7 +129,7 @@ def test_the_helpers_kinds_are_the_functions_case():
 #: (file, function) -> why it may delete a document's lines itself. Each removes the lines of a draft it has JUST made, in the same
 #: call, to undo a half-built document; none edits a draft someone else may be issuing.
 REVIEWED = {
-    ("services/draft_document_lines.py", "_two_step"): "the fallback for the hour migration 559 is not in the database; deleted with it",
+    ("services/draft_document_lines.py", "_two_step"): "the fallback for the hour migration 560 is not in the database; deleted with it",
     ("services/recurring_invoice_service.py", "_stamp_recurring"): "the loser of a unique(template, occurrence) race removes the draft it just generated",
     ("services/recurring_purchase_bill_service.py", "_stamp_recurring"): "the same, for a bill generated from a recurring template",
     ("services/billing_service.py", "_stamp_billing_fields"): "the loser of a unique(schedule, period) race removes the draft invoice it just built",

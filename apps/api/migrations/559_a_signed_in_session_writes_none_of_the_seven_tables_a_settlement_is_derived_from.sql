@@ -1,4 +1,4 @@
--- Migration 558: a signed-in session writes none of the seven tables a document's settlement is derived from (ledger POST-A-336).
+-- Migration 559: a signed-in session writes none of the seven tables a document's settlement is derived from (ledger POST-A-336).
 --
 -- ═══════════════════════════════════════════════════════════════════════════
 -- WHAT WAS WRONG
@@ -63,17 +63,17 @@ BEGIN
         FOREACH r IN ARRAY ARRAY['authenticated', 'anon'] LOOP
             FOREACH verb IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'] LOOP
                 IF has_table_privilege(r, format('public.%I', t), verb) THEN
-                    RAISE EXCEPTION 'migration 558: % still holds % on %', r, verb, t;
+                    RAISE EXCEPTION 'migration 559: % still holds % on %', r, verb, t;
                 END IF;
             END LOOP;
             IF has_any_column_privilege(r, format('public.%I', t), 'INSERT')
                OR has_any_column_privilege(r, format('public.%I', t), 'UPDATE') THEN
-                RAISE EXCEPTION 'migration 558: % still holds a column-level write privilege on %', r, t;
+                RAISE EXCEPTION 'migration 559: % still holds a column-level write privilege on %', r, t;
             END IF;
         END LOOP;
         IF NOT has_table_privilege('service_role', format('public.%I', t), 'INSERT')
            OR NOT has_table_privilege('service_role', format('public.%I', t), 'UPDATE') THEN
-            RAISE EXCEPTION 'migration 558: service_role lost its write on %', t;
+            RAISE EXCEPTION 'migration 559: service_role lost its write on %', t;
         END IF;
     END LOOP;
 END $$;

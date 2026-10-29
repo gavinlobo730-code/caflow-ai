@@ -4,7 +4,7 @@
 # to a client that can. A table leaves this list when a migration grants the signed-in role a write back (then its writers may use the
 # caller's session); a table joins it in the migration that takes the write away. The real-Postgres half checks each name here that
 # exists in the migration-built database against the privileges themselves.
-# Joined by a migration in the change that moves its writers (the first line below the names is the migration): 558 closes
+# Joined by a migration in the change that moves its writers (the first line below the names is the migration): 559 closes
 # receipts, receipt_allocations, purchase_payments, purchase_payment_allocations and the three note-allocation tables.
 account_period_balances
 activity_logs

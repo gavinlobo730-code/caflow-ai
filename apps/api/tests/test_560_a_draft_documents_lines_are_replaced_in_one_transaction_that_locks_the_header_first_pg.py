@@ -1,4 +1,4 @@
-"""Migration 559 — a draft document's lines are replaced in ONE transaction that takes the header's lock first (ledger POST-A-332).
+"""Migration 560 — a draft document's lines are replaced in ONE transaction that takes the header's lock first (ledger POST-A-332).
 
 WHAT WAS WRONG
     The API replaced the lines of a draft invoice, bill or note as a DELETE and then an INSERT, two requests. A session that issued the
@@ -46,7 +46,7 @@ SPECS, FIRM = _m539.SPECS, _m539.FIRM
 from services.draft_document_lines import DOCUMENTS  # noqa: E402
 
 MIGRATIONS = _m539.MIGRATIONS
-_STEM = "559_a_draft_documents_lines_are_replaced_in_one_transaction_that_locks_the_header_first"
+_STEM = "560_a_draft_documents_lines_are_replaced_in_one_transaction_that_locks_the_header_first"
 MIGRATION = MIGRATIONS / f"{_STEM}.sql"
 ROLLBACK = MIGRATIONS / f"{_STEM}_rollback.sql"
 FUNCTION = "public.replace_draft_document_lines(text, uuid, uuid, jsonb)"

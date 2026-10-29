@@ -1,4 +1,4 @@
-"""Migration 558 — a signed-in session writes none of the seven tables a document's settlement is derived from (ledger POST-A-336).
+"""Migration 559 — a signed-in session writes none of the seven tables a document's settlement is derived from (ledger POST-A-336).
 
 WHAT WAS WRONG
     Migration 544 sealed the six document headers' settlement columns, but the figure those columns hold is derived from other
@@ -40,7 +40,7 @@ MIGRATIONS = API_ROOT / "migrations"
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
 _ADMIN = os.environ.get("HARNESS_PG")
 
-_STEM = "558_a_signed_in_session_writes_none_of_the_seven_tables_a_settlement_is_derived_from"
+_STEM = "559_a_signed_in_session_writes_none_of_the_seven_tables_a_settlement_is_derived_from"
 MIGRATION = MIGRATIONS / f"{_STEM}.sql"
 ROLLBACK = MIGRATIONS / f"{_STEM}_rollback.sql"
 
@@ -204,13 +204,13 @@ def test_the_closing_check_fails_the_migration_when_a_write_cannot_be_revoked(db
     """)
     try:
         r = _psql(db, MIGRATION.read_text(encoding="utf-8"))
-        assert r.returncode != 0 and "migration 558: authenticated still holds INSERT on purchase_payments" in r.stderr, (
+        assert r.returncode != 0 and "migration 559: authenticated still holds INSERT on purchase_payments" in r.stderr, (
             r.stdout, r.stderr)
     finally:
         _psql(db, f"DROP OWNED BY {grantor}; DROP ROLE IF EXISTS {grantor};")
 
 
-def test_558_is_idempotent(db):
+def test_559_is_idempotent(db):
     for _ in range(2):
         r = _psql(db, MIGRATION.read_text(encoding="utf-8"))
         assert r.returncode == 0, r.stderr

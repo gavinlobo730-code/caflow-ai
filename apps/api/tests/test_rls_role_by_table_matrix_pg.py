@@ -158,12 +158,12 @@ _M550_ROLLBACK = _M550.replace(".sql", "_rollback.sql")
 #: policies they had are measured, as the payroll and bank ones are, with its rollback applied (the second-lock file).
 _M551 = "551_a_signed_in_session_reads_and_writes_none_of_the_document_tables_and_opens_no_stored_file.sql"
 _M551_ROLLBACK = _M551.replace(".sql", "_rollback.sql")
-#: Migration 558 (POST-A-336) took INSERT, UPDATE and DELETE (not SELECT) from the seven tables a document's settlement is derived from.
+#: Migration 559 (POST-A-336) took INSERT, UPDATE and DELETE (not SELECT) from the seven tables a document's settlement is derived from.
 #: `receipts`, `receipt_allocations`, `purchase_payments` and `purchase_payment_allocations` are the four of them the matrix observes
 #: (the three note-allocation tables are held by their own test file); they read "no privilege" in every write cell of the main file
 #: and their policies are measured, as 499's are, with its rollback applied (the second-lock file).
-_M558 = "558_a_signed_in_session_writes_none_of_the_seven_tables_a_settlement_is_derived_from.sql"
-_M558_ROLLBACK = _M558.replace(".sql", "_rollback.sql")
+_M559 = "559_a_signed_in_session_writes_none_of_the_seven_tables_a_settlement_is_derived_from.sql"
+_M559_ROLLBACK = _M559.replace(".sql", "_rollback.sql")
 _ADMIN = os.environ.get("HARNESS_PG")
 
 _NEEDS_PG = pytest.mark.skipif(
@@ -1518,7 +1518,7 @@ def test_no_cell_differs_from_the_expectation_except_the_known_deviations(world,
                       for (a, t, op), (w, h) in sorted(unexplained.items())))
 
 
-def test_the_second_lock_file_covers_exactly_the_tables_migrations_499_515_549_550_551_and_558_revoke():
+def test_the_second_lock_file_covers_exactly_the_tables_migrations_499_515_549_550_551_and_559_revoke():
     """No database: the file measuring the policies and the list the migration revokes are one set, so a table added to
     the revoke without a second-lock row (its policies would then be measured by nothing) fails here."""
     sql = (_MIGRATIONS / "499_a_signed_in_session_writes_none_of_the_payroll_tables_the_browser_never_writes.sql").read_text()
@@ -1552,16 +1552,16 @@ def test_the_second_lock_file_covers_exactly_the_tables_migrations_499_515_549_5
     assert observed_551 == {"documents", "client_documents", "document_requests"}, sorted(observed_551)
     revoked |= observed_551 | set(STORAGE)
     observed_closed = observed_549 | observed_550 | observed_551
-    # and the seven tables migration 558 took every WRITE from (reading stays): four of them are tables the matrix observes, and the
-    # other three (the note allocations) are held by test_558. They are measured like 499's: the write cells read x in the main file.
-    sql_558 = (_MIGRATIONS / _M558).read_text()
-    revoked_558 = set(re.findall(r"'([a-z_]+)'", sql_558.split("tables text[] := ARRAY[", 1)[1].split("]", 1)[0]))
-    observed_558 = revoked_558 & set(matrix_tables())
-    assert observed_558 == {"receipts", "receipt_allocations", "purchase_payments", "purchase_payment_allocations"}, sorted(observed_558)
-    revoked |= observed_558
+    # and the seven tables migration 559 took every WRITE from (reading stays): four of them are tables the matrix observes, and the
+    # other three (the note allocations) are held by test_559. They are measured like 499's: the write cells read x in the main file.
+    sql_559 = (_MIGRATIONS / _M559).read_text()
+    revoked_559 = set(re.findall(r"'([a-z_]+)'", sql_559.split("tables text[] := ARRAY[", 1)[1].split("]", 1)[0]))
+    observed_559 = revoked_559 & set(matrix_tables())
+    assert observed_559 == {"receipts", "receipt_allocations", "purchase_payments", "purchase_payment_allocations"}, sorted(observed_559)
+    revoked |= observed_559
     second = load_second_lock()
     assert {t for _a, t in second} == revoked, (
-        f"rls_expected_second_lock.json covers a different set of tables than migrations 499, 515, 549, 550, 551 and 558 revoke: "
+        f"rls_expected_second_lock.json covers a different set of tables than migrations 499, 515, 549, 550, 551 and 559 revoke: "
         f"missing {sorted(revoked - {t for _a, t in second})}, extra {sorted({t for _a, t in second} - revoked)}")
     assert len(second) == len(revoked) * len(ACTORS)
     # and the main expectation reads "no privilege" in every cell of the tables 549 and 550 closed entirely, and in every WRITE
@@ -1594,7 +1594,7 @@ def test_the_second_lock_decides_when_the_first_is_lifted(world):
     exactly as they did before 550."""
     copy = clone_world(_ADMIN, world)
     try:
-        _ok(copy.dsn, _migration_sql(_M558_ROLLBACK))
+        _ok(copy.dsn, _migration_sql(_M559_ROLLBACK))
         _ok(copy.dsn, _migration_sql(_M551_ROLLBACK))
         _ok(copy.dsn, _migration_sql(_M549_ROLLBACK))
         _ok(copy.dsn, _migration_sql(_M550_ROLLBACK))

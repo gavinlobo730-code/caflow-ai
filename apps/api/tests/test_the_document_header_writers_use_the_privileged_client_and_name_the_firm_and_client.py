@@ -45,7 +45,7 @@ from tests.e2e_harness import FakeDB, _Query, seed_standard_coa, wire_e2e
 API_ROOT = Path(__file__).resolve().parents[1]
 DOOR = "services/document_header_writer.py"
 HEADER_TABLES = set(door.HEADER_TABLES)
-#: The seven tables a document's settlement is derived from (ledger POST-A-336, migration 558). The request's client refuses their writes
+#: The seven tables a document's settlement is derived from (ledger POST-A-336, migration 559). The request's client refuses their writes
 #: too, so every flow below proves the receipt, vendor payment, re-allocation, reversal and note-application writers are on the
 #: privileged client.
 SETTLEMENT_TABLES = {"receipts", "receipt_allocations", "purchase_payments", "purchase_payment_allocations",

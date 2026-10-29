@@ -1,4 +1,4 @@
--- Migration 559: a draft document's lines are replaced in ONE transaction that takes the header's lock first (ledger POST-A-332).
+-- Migration 560: a draft document's lines are replaced in ONE transaction that takes the header's lock first (ledger POST-A-332).
 --
 -- ═══════════════════════════════════════════════════════════════════════════
 -- WHAT WAS WRONG
@@ -105,13 +105,13 @@ GRANT EXECUTE ON FUNCTION public.replace_draft_document_lines(text, uuid, uuid, 
 DO $$
 BEGIN
     IF to_regprocedure('public.replace_draft_document_lines(text, uuid, uuid, jsonb)') IS NULL THEN
-        RAISE EXCEPTION 'migration 559: the function was not created';
+        RAISE EXCEPTION 'migration 560: the function was not created';
     END IF;
     IF has_function_privilege('anon', 'public.replace_draft_document_lines(text, uuid, uuid, jsonb)', 'EXECUTE')
        OR has_function_privilege('public', 'public.replace_draft_document_lines(text, uuid, uuid, jsonb)', 'EXECUTE') THEN
-        RAISE EXCEPTION 'migration 559: the function is executable by PUBLIC or anon';
+        RAISE EXCEPTION 'migration 560: the function is executable by PUBLIC or anon';
     END IF;
     IF (SELECT prosecdef FROM pg_proc WHERE oid = 'public.replace_draft_document_lines(text, uuid, uuid, jsonb)'::regprocedure) THEN
-        RAISE EXCEPTION 'migration 559: the function must be SECURITY INVOKER';
+        RAISE EXCEPTION 'migration 560: the function must be SECURITY INVOKER';
     END IF;
 END $$;

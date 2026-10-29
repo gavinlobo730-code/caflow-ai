@@ -580,7 +580,7 @@ class _Rpc:
         return _Result(handler())
 
     def _fn_replace_draft_document_lines(self):
-        """Mirror migration 559: the header is looked up for the firm and must be a draft, the old lines go and the new ones are
+        """Mirror migration 560: the header is looked up for the firm and must be a draft, the old lines go and the new ones are
         stored with the document's own id as their foreign key (trivially atomic in memory). The two refusals carry the words
         the real function raises, which `services/draft_document_lines` reads."""
         headers = {"sales_invoice": "client_sales_invoices", "purchase_bill": "purchase_bills", "credit_note": "credit_notes",
