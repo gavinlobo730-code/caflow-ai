@@ -1047,31 +1047,7 @@
       "suspended_partner": ["-", "-", "-", "-"],
       "anon": ["x", "x", "x", "x"]
     },
-    "tds_certificates": {
-      "partner": ["A,B", "A,B", "A,B", "A,B"],
-      "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "-"],
-      "exec_unassigned": ["-", "-", "-", "-"],
-      "reviewer": ["A", "-", "-", "-"],
-      "portal_client": ["-", "-", "-", "-"],
-      "employee": ["-", "-", "-", "-"],
-      "other_firm_partner": ["X", "X", "X", "X"],
-      "suspended_partner": ["-", "-", "-", "-"],
-      "anon": ["x", "x", "x", "x"]
-    },
     "tds_challans": {
-      "partner": ["A,B", "A,B", "A,B", "A,B"],
-      "manager": ["A", "A", "A", "A"],
-      "exec_assigned": ["A", "A", "A", "-"],
-      "exec_unassigned": ["-", "-", "-", "-"],
-      "reviewer": ["A", "-", "-", "-"],
-      "portal_client": ["-", "-", "-", "-"],
-      "employee": ["-", "-", "-", "-"],
-      "other_firm_partner": ["X", "X", "X", "X"],
-      "suspended_partner": ["-", "-", "-", "-"],
-      "anon": ["x", "x", "x", "x"]
-    },
-    "tds_lower_deduction_certificates": {
       "partner": ["A,B", "A,B", "A,B", "A,B"],
       "manager": ["A", "A", "A", "A"],
       "exec_assigned": ["A", "A", "A", "-"],

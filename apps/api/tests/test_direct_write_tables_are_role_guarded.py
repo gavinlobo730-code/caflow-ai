@@ -207,7 +207,10 @@ def test_the_scan_finds_direct_writes_at_all():
     below would iterate an empty set and pass."""
     found = _direct_write_tables()
 
-    assert len(found) >= 15, (
+    # The floor only has to be well above zero: the browser's direct writes SHRINK as screens move behind the API (the §197
+    # certificate form was the fifteenth to go, POST-A-293), and a floor that tracks the count turns every such move into a
+    # red test about the floor and not about a write.
+    assert len(found) >= 10, (
         f"only {len(found)} direct-write tables found; the .from(...).insert() "
         "pattern this scan depends on has probably changed"
     )

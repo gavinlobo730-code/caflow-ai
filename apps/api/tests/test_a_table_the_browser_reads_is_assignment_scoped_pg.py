@@ -158,9 +158,10 @@ def test_the_frontend_scan_finds_the_tables_it_is_supposed_to():
     # `bank_accounts` is the sixth and was taken off this list when its four
     # readers moved behind GET /api/banking/accounts (POST-A-010); it stays
     # scoped in the database, which the test below keeps asserting.
+    # `tds_lower_deduction_certificates` is the second to leave this list (POST-A-293): the client's TDS tab reads it behind
+    # GET /api/tds-workspace/lower-deduction-certificates now. It stays scoped in the database, which the test below keeps asserting.
     for t in ("debit_notes", "purchase_credit_notes",
-              "sales_debit_notes", "gstr2b_reconciliations",
-              "tds_lower_deduction_certificates"):
+              "sales_debit_notes", "gstr2b_reconciliations"):
         assert t in found, f"{t} is no longer read from the browser — if that "\
                            "is deliberate, drop it from this list"
 

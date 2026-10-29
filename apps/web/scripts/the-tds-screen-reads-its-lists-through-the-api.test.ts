@@ -65,8 +65,9 @@ test("a list that the server cut short says so, and a refused read is said, not 
   assert.equal((PAGE.match(/<ListWindowNotice /g) ?? []).length, 3, "deductions, challans and certificates each say when the server stopped them");
   assert.ok(/setTableError\(failures\.length > 0\)/.test(PAGE) && /Promise\.allSettled\(/.test(PAGE), "a failed list is not said");
   assert.ok(!/arrayOrEmpty/.test(TAB.replace(/`arrayOrEmpty`[^\n]*/g, "")), "the client's TDS tab reads a window as a bare array (every list would read as empty)");
-  assert.equal((TAB.match(/loadTdsWindow\(clientId, "/g) ?? []).length, 4, "the four tabs do not all read their window the same way");
-  assert.equal((TAB.match(/<ListWindowNotice /g) ?? []).length, 4, "a tab does not say when the server cut its list short");
+  // Four tabs for the register, and the §197 tab is the fifth window (POST-A-293).
+  assert.equal((TAB.match(/loadTdsWindow\(clientId, "/g) ?? []).length, 5, "the five tabs do not all read their window the same way");
+  assert.equal((TAB.match(/<ListWindowNotice /g) ?? []).length, 5, "a tab does not say when the server cut its list short");
   assert.equal((TAB.match(/setRows\(rows\); setMore\(hasMore\); setLoadError\(null\);/g) ?? []).length, 4, "a tab drops the server's has_more");
 });
 

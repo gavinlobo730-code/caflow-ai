@@ -77,6 +77,36 @@ REFUSED_TWO_IN_FORCE = "two_certificates_in_force"
 REFUSED_NO_PAN = "certificate_without_a_pan"
 
 
+def section_refusal(section: str, fy: Optional[str] = None) -> Optional[str]:
+    """Why a certificate cannot be RECORDED against this section for this financial year, in a sentence, or None when it can.
+
+    ONE QUESTION, ASKED BY THE SECTION LIST AND BY THE SAVE. `GET /api/tds/sections` marks a section `section_197_eligible` for the
+    screen to offer; this is the same test, so the dropdown and the door that records the certificate cannot disagree. Before
+    POST-A-293 the certificate was written by the browser straight into the table, so the dropdown was the only thing asking, and a
+    hand-made request could record a certificate against any text.
+
+    Two different reasons, which are not interchangeable (`position_for` names the second at read time):
+      * the registry holds no rate for the section, so a certificate could never be applied to a bill (§195 is the standing case:
+        §197(1) reaches it and the §195 figure is a comparison the statute already defines, which this engine does not price);
+      * the registry holds it and §197(1) does not reach it (§194Q, §194B).
+    A clause key such as "194I(a)" is judged by the section it belongs to (`parent_of`), because §197(1) names sections.
+    """
+    from domain.tds.section_rates import parent_of, tds_rates_for
+    key = (section or "").strip()
+    if not key:
+        return "Choose the section the certificate was issued under."
+    rates = tds_rates_for(fy)
+    if key not in rates.sections:
+        if key in SECTIONS_197:
+            return (f"§{key} is one that §197(1) reaches, but this product holds no withholding rate for it, so a certificate "
+                    f"recorded against it could never be applied to a bill.")
+        return f"§{key} is not a TDS section this product holds, so a certificate cannot be recorded against it."
+    if key not in SECTIONS_197 and parent_of(key, fy) not in SECTIONS_197:
+        return (f"§197(1) does not reach §{key}, so a certificate recorded against it could not lower the deduction. "
+                f"The sections it reaches are the ones the section list marks as eligible.")
+    return None
+
+
 @dataclass(frozen=True)
 class Certificate:
     """One §197 certificate, as the Assessing Officer issued it."""

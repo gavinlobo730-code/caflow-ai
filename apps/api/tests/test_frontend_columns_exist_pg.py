@@ -431,7 +431,12 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     # 10 + 9 + 9 + 7 = 35 columns, and 189 - 35 = 154 exactly (the floor stood at 188 with the count one above it). The
     # per-file tally against the previous commit moved on these four files and nothing else. The floor is the count: it
     # exists to catch a parser that stopped finding writes, and this value is what the parser finds today.
-    assert len(scan_writes(WEB)) >= 154, "write scan found too little — parser likely broke"
+    #
+    # 154 -> 144 on 29-10-2026 (POST-A-293), diagnosed the same way. One screen stopped writing straight over PostgREST:
+    # app/clients/[id]/compliance/tds/page.tsx 10 -> 0, the §197 lower-deduction certificate insert, which is now
+    # `POST /api/tds-workspace/lower-deduction-certificates` (the table's tier, the client assignment, the section and the supplier
+    # are asked there). 154 - 10 = 144 exactly, and the per-file tally against the previous commit moved on that one file only.
+    assert len(scan_writes(WEB)) >= 144, "write scan found too little — parser likely broke"
 
 
 @_NEEDS_PG

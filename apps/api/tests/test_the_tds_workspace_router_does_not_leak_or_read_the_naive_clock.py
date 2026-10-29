@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import ast
 import logging
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -226,6 +227,11 @@ def _call(name):
         "upload_form26as": lambda: fn(tw.Form26ASUploadRequest(client_id=c, financial_year="2025-26"),
                                       current_user=USER),
         "get_form26as": lambda: fn("u-1", current_user=USER),
+        "list_lower_deduction_certificates": lambda: fn(client_id=c, limit=50, offset=0, current_user=USER),
+        "record_lower_deduction_certificate": lambda: fn(tw.LowerDeductionCertificateRequest(
+            client_id=c, vendor_id="V-1", section="194C", certificate_no="N-1", rate_bps=50,
+            valid_from=date(2026, 4, 1), valid_to=date(2027, 3, 31), ceiling_paise=100000),
+            current_user=USER),
     }
     return calls[name]()
 
@@ -243,6 +249,8 @@ SITES = {
     "create_certificate": "record the TDS certificate",
     "upload_form26as": "reconcile the Form 26AS upload",
     "get_form26as": "read the Form 26AS reconciliation",
+    "list_lower_deduction_certificates": "list the §197 certificates",
+    "record_lower_deduction_certificate": "record the §197 certificate",
 }
 
 

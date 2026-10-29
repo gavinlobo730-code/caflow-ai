@@ -176,6 +176,15 @@ def init_error_reporting(
         function. The posting-failure TAGS chosen in `_capture` below are the only
         application data that should reach Sentry, and these two defaults were the
         rest of it.
+      * `max_breadcrumbs=0`: an event carries the trail of what the process did before it —
+        every logging line at INFO or above, and the URL, query string included, of every
+        call the server makes over HTTP (a PostgREST filter such as `pan=eq.ABCDE1234F`),
+        and the command line of a subprocess. None of that is chosen by `_capture`, and a
+        log line or a filter is exactly where an identifier sits. Measured with the real
+        SDK on 29-10-2026: a PAN logged at WARNING and a PAN in a request's query string
+        both arrived on the event under `breadcrumbs`. The trail is switched off whole
+        rather than filtered, because a filter keeping "the safe ones" is a list of
+        spellings; the tags and the stack are the diagnosis (POST-A-358).
 
     Returns False, and starts nothing, when `dsn` is empty.
     """
@@ -188,6 +197,7 @@ def init_error_reporting(
         send_default_pii=False,
         max_request_body_size="never",
         include_local_variables=False,
+        max_breadcrumbs=0,
     )
     release = _release()
     if release:

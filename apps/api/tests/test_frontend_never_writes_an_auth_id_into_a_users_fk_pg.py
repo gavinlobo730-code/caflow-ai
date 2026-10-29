@@ -147,7 +147,9 @@ def test_the_scan_reads_real_frontend_writes():
     # document and client-document inserts went to the API, where the server stores the file and writes the record with the
     # signed-in person as the uploader), and app/income-tax/notices/page.tsx 3 -> 2 (the path written onto a notice after
     # an upload). 19 - 5 = 14 exactly.
-    assert len(seen) > 13, (
+    # 14 -> 13 on 29-10-2026 (POST-A-293): app/clients/[id]/compliance/tds/page.tsx 1 -> 0, the §197 certificate insert went to
+    # `POST /api/tds-workspace/lower-deduction-certificates`. 14 - 1 = 13 exactly.
+    assert len(seen) > 12, (
         f"only {len(seen)} frontend write payloads found — the scan is not "
         "reading the code it claims to")
     assert "it_notices" in seen, (

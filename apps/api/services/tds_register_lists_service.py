@@ -135,3 +135,29 @@ def certificates(db, firm_id: str, client_id: str, *, limit: int, offset: int) -
 def certificates_in_memory(all_rows: list, *, limit: int, offset: int) -> dict:
     window, has_more = _cut(_sorted_latest_first(all_rows, "created_at"), limit, offset)
     return _window(window, limit, has_more, "certificates", counts=screen_counts.certificate_counts(all_rows))
+
+
+# ── §197 lower-deduction certificates (POST-A-293) ───────────────────────────
+
+#: What the §197 tab shows of a certificate. Narrow on purpose: the row is the certificate's own facts and nothing the screen does not draw.
+LOWER_DEDUCTION_COLUMNS = "id, vendor_id, section, certificate_no, rate_bps, valid_from, valid_to, ceiling_paise, notes"
+
+
+def lower_deduction_certificates(db, firm_id: str, client_id: str, *, limit: int, offset: int) -> dict:
+    """A client's §197 certificates, the latest validity first and then the id, as a window under `lower_deduction_certificates`,
+    with `vendors`: the client's active suppliers (`id`, `name`) the certificate form offers, read in full in keyset pages and not
+    cut at the window."""
+    rows, has_more = _read_window(
+        lambda: db.table("tds_lower_deduction_certificates").select(LOWER_DEDUCTION_COLUMNS)
+        .eq("firm_id", firm_id).eq("client_id", client_id), "valid_from", limit, offset)
+    vendors = fetch_all(lambda: db.table("vendors").select("id, name").eq("firm_id", firm_id).eq("client_id", client_id)
+                        .eq("is_active", True), label="tds.lists.lower_deduction_vendors")
+    return _window(rows, limit, has_more, "lower_deduction_certificates",
+                   vendors=sorted(({"id": v["id"], "name": v.get("name")} for v in vendors), key=lambda v: (str(v["name"] or ""), v["id"])))
+
+
+def lower_deduction_certificates_in_memory(all_rows: list, *, limit: int, offset: int, vendors: list | None = None) -> dict:
+    window, has_more = _cut(_sorted_latest_first(all_rows, "valid_from"), limit, offset)
+    return _window(window, limit, has_more, "lower_deduction_certificates",
+                   vendors=sorted(({"id": v["id"], "name": v.get("name")} for v in (vendors or [])),
+                                  key=lambda v: (str(v["name"] or ""), v["id"])))

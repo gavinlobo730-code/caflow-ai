@@ -9,8 +9,6 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 // The year picker comes from the clock, never a literal list (CLAUDE.md).
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { getUserProfile } from "@/lib/data/getFirmId";
-import { selectAll } from "@/lib/supabase/selectAll";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -51,15 +49,17 @@ const TDS_LIST_PATH = {
   challans: "/api/tds-workspace/challans",
   returns: "/api/tds-workspace/returns",
   certificates: "/api/tds-workspace/certificates",
+  // The §197 certificates are the fifth window, and the key is the field the server names the rows under.
+  lower_deduction_certificates: "/api/tds-workspace/lower-deduction-certificates",
 } as const;
 
 async function loadTdsWindow(clientId: string, which: keyof typeof TDS_LIST_PATH):
-    Promise<{ rows: Record<string, unknown>[]; hasMore: boolean }> {
+    Promise<{ rows: Record<string, unknown>[]; hasMore: boolean; payload: Record<string, unknown> }> {
   const r = await apiFetch(`${TDS_LIST_PATH[which]}?client_id=${encodeURIComponent(clientId)}&limit=${TDS_REGISTER_WINDOW_MAX}`);
   if (!r.success) throw new Error(r.error ?? `Couldn't load TDS ${which}.`);
   const win = readWindow<Record<string, unknown>>(r.data, which, TDS_REGISTER_WINDOW_MAX);
   if (!win) throw new Error(`The TDS ${which} came back in a form this screen cannot read.`);
-  return { rows: win.rows, hasMore: win.hasMore };
+  return { rows: win.rows, hasMore: win.hasMore, payload: r.data as Record<string, unknown> };
 }
 
 function rupees(paise: number) {
@@ -138,36 +138,19 @@ function TDSDashboard({ clientId }: { clientId: string }) {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const supabase = getSupabaseClient();
       try {
-        const [
-          { data: challans, error: e1 },
-          { data: returns, error: e2 },
-          { data: certs, error: e3 },
-        ] = await Promise.all([
-          selectAll(() => supabase.from("tds_challans").select("id, total_paise").eq("client_id", clientId)),
-          selectAll(() => supabase.from("tds_returns").select("id").eq("client_id", clientId)),
-          selectAll(() => supabase.from("tds_certificates").select("id").eq("client_id", clientId)),
-        ]);
+        // The four figures are the server's, counted over every row the client has (POST-A-293): the tab used to read three tables
+        // itself over PostgREST, where the caller's client assignment never runs, and add them up here.
+        const r = await apiFetch(`/api/tds-workspace/?client_id=${encodeURIComponent(clientId)}`);
         if (cancelled) return;
-        if (e1 || e2 || e3) {
-          setSummary(null);
+        const s = r?.success ? r.data?.summary : null;
+        const figures: unknown[] = s ? [s.total_challans, s.total_deposited_paise, s.total_returns, s.total_certificates] : [];
+        if (figures.length !== 4 || !figures.every((n): n is number => typeof n === "number" && Number.isFinite(n))) {
+          setSummary(null);            // renders "Failed to load TDS dashboard."; an unknown is never shown as a zero
           return;
         }
-
-        // Mirrors tds_workspace.py::tds_dashboard's summary math exactly:
-        // counts of each table's rows plus a plain sum of challan amounts.
-        // total_paise (not amount_paise, which tds_challans has never had —
-        // migration 037) is the challan's grand-total column.
-        const total_deposited_paise = (challans ?? []).reduce(
-          (sum, c) => sum + ((c as { total_paise: number | null }).total_paise ?? 0), 0,
-        );
-        setSummary({
-          total_challans: (challans ?? []).length,
-          total_deposited_paise,
-          total_returns: (returns ?? []).length,
-          total_certificates: (certs ?? []).length,
-        });
+        const [total_challans, total_deposited_paise, total_returns, total_certificates] = figures as number[];
+        setSummary({ total_challans, total_deposited_paise, total_returns, total_certificates });
       } catch {
         if (!cancelled) setSummary(null);   // renders "Failed to load TDS dashboard."
       } finally {
@@ -1209,6 +1192,8 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // The server stopped the list at its ceiling and said so.
+  const [more, setMore] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1229,19 +1214,18 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const sb = getSupabaseClient();
     try {
-      const [certs, vends, secs] = await Promise.all([
-        selectAll(() => sb.from("tds_lower_deduction_certificates")
-          .select("id, vendor_id, section, certificate_no, rate_bps, valid_from, valid_to, ceiling_paise, notes")
-          .eq("client_id", clientId).order("valid_from", { ascending: false }).order("id")),
-        selectAll(() => sb.from("vendors").select("id, name")
-          .eq("client_id", clientId).eq("is_active", true).order("name").order("id")),
+      // The certificates and the suppliers the form offers come from one server read (POST-A-293): the tab used to read
+      // `tds_lower_deduction_certificates` and `vendors` itself over PostgREST, where the caller's client assignment never runs.
+      const [certs, secs] = await Promise.all([
+        loadTdsWindow(clientId, "lower_deduction_certificates"),
         apiFetch("/api/tds/sections"),
       ]);
-      if (certs.error) throw certs.error;
-      setRows((certs.data as LowerDeductionRow[]) ?? []);
-      setVendors((vends.data as { id: string; name: string }[]) ?? []);
+      setRows(certs.rows as unknown as LowerDeductionRow[]);
+      setMore(certs.hasMore);
+      const offered = certs.payload.vendors;
+      if (!Array.isArray(offered)) throw new Error("The suppliers came back in a form this screen cannot read.");
+      setVendors(offered as { id: string; name: string }[]);
       const payload = secs?.success
         ? (secs.data as {
             sections?: { section: string; section_197_eligible?: boolean }[];
@@ -1256,6 +1240,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
       setLoadError(null);
     } catch {
       setRows([]);
+      setMore(false);
       setLoadError("Couldn't load §197 certificates. Please try again.");
     } finally {
       setLoading(false);
@@ -1286,28 +1271,19 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
     setSaving(true);
     let failure: string | null = null;
     try {
-      // The role-guarded write policies of migration 359 are the only check on
-      // this path: PostgREST reaches the table directly and rbac() never runs.
-      //
-      // `firm_id` IS SENT BECAUSE NOTHING ELSE WILL: the column is NOT NULL
-      // with no default and no trigger, and the table's one permissive policy
-      // checks `firm_id = get_my_firm_id()` — which is NULL without it, so
-      // every certificate was refused as "new row violates row-level security
-      // policy" (the RLS check runs before the NOT NULL one). `created_by` is
-      // the INTERNAL users.id, which is what its FK names.
-      const me = await getUserProfile();
-      const { error } = await getSupabaseClient()
-        .from("tds_lower_deduction_certificates").insert({
-          firm_id: me.firmId, created_by: me.userId,
+      // The server records it (POST-A-293): the tier, the client, the supplier, the section and every figure are judged there and
+      // refused in a sentence, and a duplicate number is a 409. FastAPI answers a refusal as `{ detail }`.
+      const res = await apiFetch("/api/tds-workspace/lower-deduction-certificates", {
+        method: "POST",
+        body: JSON.stringify({
           client_id: clientId, vendor_id: form.vendor_id,
           section: form.section, certificate_no: form.certificate_no.trim(),
           rate_bps: rateBps, valid_from: form.valid_from, valid_to: form.valid_to,
           ceiling_paise: ceiling,
-        });
-      if (error) {
-        failure = error.message.includes("uq_tds_ldc")
-          ? "That certificate number is already recorded for this vendor and section."
-          : `Couldn't save the certificate: ${error.message}`;
+        }),
+      });
+      if (!res?.success) {
+        failure = typeof res?.detail === "string" ? res.detail : (res?.error ?? "Couldn't save the certificate.");
       }
     } catch (e) {
       failure = e instanceof Error ? e.message : "Couldn't save the certificate.";
@@ -1343,6 +1319,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
       </div>
 
       {loadError && <p className="text-sm text-state-problem">{loadError}</p>}
+      <ListWindowNotice hasMore={more} what={`the latest ${rows.length} §197 certificates`} limit={rows.length} maxLimit={rows.length} />
 
       {/* NAMED RATHER THAN SILENTLY ABSENT. §197(1) reaches these too, and this
           product cannot price a bill under them — so a certificate recorded

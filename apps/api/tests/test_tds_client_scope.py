@@ -74,6 +74,7 @@ NAMED = [
     ("deposit_state", {}),
     ("list_returns", {"limit": 50, "offset": 0}),
     ("list_certificates", {"limit": 50, "offset": 0}),
+    ("list_lower_deduction_certificates", {"limit": 50, "offset": 0}),
 ]
 
 
@@ -131,6 +132,16 @@ def test_creating_a_certificate_for_another_clients_deductee_is_refused(deny):
             client_id=THEIRS, deductee_pan="ABCDE1234F", deductee_name="X",
             financial_year="2025-26", certificate_type="Form 16A",
             tds_amount_paise=1000, section="194A"), current_user=USER)
+
+
+def test_recording_a_section_197_certificate_for_another_clients_supplier_is_refused(deny):
+    """A certificate lowers what is withheld from a real supplier (POST-A-293); the client in the body is the one asked about."""
+    from datetime import date
+    with pytest.raises(HTTPException):
+        tw.record_lower_deduction_certificate(tw.LowerDeductionCertificateRequest(
+            client_id=THEIRS, vendor_id="V-1", section="194C", certificate_no="N-1", rate_bps=50,
+            valid_from=date(2026, 4, 1), valid_to=date(2027, 3, 31), ceiling_paise=100000), current_user=USER)
+    assert not tw._MOCK_LOWER_DEDUCTION
 
 
 def test_uploading_form26as_against_another_client_is_refused(deny):

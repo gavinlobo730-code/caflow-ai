@@ -100,13 +100,14 @@ test("the TDS register reads the columns tds_deductions has", () => {
   }
 });
 
-test("a §197 certificate is inserted with the firm it belongs to", () => {
+test("a §197 certificate is recorded by the server, which names the firm it belongs to", () => {
+  // It was inserted from the browser with `firm_id` in the payload, because the column is NOT NULL with no default and RLS checks it;
+  // since POST-A-293 the server records it and sets the firm itself, so the browser sends neither the firm nor the table.
   const src = code(TDS);
-  const at = src.indexOf('.from("tds_lower_deduction_certificates").insert({');
-  assert.ok(at >= 0, "the certificate insert moved — and its payload must stay INLINE");
-  const payload = src.slice(at, src.indexOf("})", at));
-  assert.match(payload, /\bfirm_id:/,
-    "firm_id is NOT NULL with no default and RLS checks it — without it every insert 403s");
+  assert.ok(!/tds_lower_deduction_certificates/.test(src), "the tab names the certificate table again: it must go through the API");
+  assert.ok(!/\bfirm_id:/.test(src), "the tab sends a firm id: the server knows the firm");
+  assert.match(src, /apiFetch\("\/api\/tds-workspace\/lower-deduction-certificates", \{\s*method: "POST"/,
+    "the certificate is not recorded through the API");
 });
 
 test("the client MCA screen renders capital through the one crore/lakh rule", () => {
