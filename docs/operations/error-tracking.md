@@ -62,6 +62,23 @@ cost is real and is worth stating: a Sentry issue no longer shows what the faili
 developer reproduces from the tags (`firm_id`, `source_type`, `source_id`) and the stack. That is the
 trade the original comment already intended.
 
+### 2c. The trail before an error was being sent (backend)
+
+An event also carries **breadcrumbs**: every logging line at INFO or above, the URL of every call the
+server makes over HTTP (query string included, so a PostgREST filter such as `pan=eq.ABCDE1234F`) and a
+subprocess's command line. Measured with the real SDK on 29-10-2026, a PAN logged at WARNING and a PAN in
+a query string both arrived on the event. It was found because a breadcrumb left by one test appeared on
+the event a different test captured. `init_error_reporting` sets `max_breadcrumbs=0`, so none is sent;
+`tests/test_the_posting_failure_alert_has_its_tags.py` plants a PAN both ways and finds it nowhere.
+
+The cost, stated: an event no longer lists the calls and log lines before it, so the tags and the stack
+are the whole diagnosis. If a trail is wanted back, it needs a `before_breadcrumb` that keeps a short
+allow-list of categories and no URL or message text, not a switch turned on again.
+
+Not covered by this and worth knowing: a line the application logs at ERROR becomes an event of its own
+with its message, so an identifier written into an ERROR line still leaves. The redaction there is the
+caller's, and nothing audits it yet.
+
 ## 3. Browser — steps for the owner
 
 1. **Create a Sentry project** for the browser (platform: *Next.js* or *JavaScript*). Copy its DSN.

@@ -149,6 +149,25 @@ def test_a_500_from_an_endpoint_does_not_send_the_request_body_or_its_secrets(se
     assert sent[0]["request"]["url"].endswith("/api/deductees"), "the route is kept: it is what a developer needs"
 
 
+def test_no_breadcrumb_carries_an_identifier_from_a_log_line_or_a_query_string(sent, caplog):
+    """The trail before an error is a third channel, after the request body and the frame locals.
+
+    A PAN is planted the two ways it really arrives: in a line the application logged, and in the URL of a call
+    the server made (a PostgREST filter), recorded by the SDK's own HTTP breadcrumb path. Neither may be on the
+    event, and no breadcrumb of any kind may be (POST-A-358).
+    """
+    logging.getLogger("caflow.test.breadcrumbs").warning("could not read the deductee %s", PAN)
+    sentry_sdk.add_breadcrumb(
+        category="httplib", type="http", level="info",
+        message=f"GET https://example.invalid/rest/v1/vendors?pan=eq.{PAN}",
+        data={"url": f"https://example.invalid/rest/v1/vendors?pan=eq.{PAN}", "http.query": f"pan=eq.{PAN}"},
+    )
+    _fail_and_report(obs.capture_posting_failure, firm_id="F1")
+    assert len(sent) == 1
+    assert PAN not in str(sent[0])
+    assert not sent[0].get("breadcrumbs", {}).get("values"), f"a breadcrumb was sent: {sent[0].get('breadcrumbs')}"
+
+
 # ── starting it, and saying whether it started ─────────────────────────────────
 
 def test_with_no_dsn_nothing_starts():
@@ -177,6 +196,7 @@ def test_the_options_that_keep_bodies_and_locals_out_are_the_ones_set():
         assert opts["send_default_pii"] is False
         assert opts["max_request_body_size"] == "never"
         assert opts["include_local_variables"] is False
+        assert opts["max_breadcrumbs"] == 0
     finally:
         sentry_sdk.init()
 
