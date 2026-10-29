@@ -542,6 +542,10 @@ def test_the_door_drives_the_service_end_to_end_and_audits_once(client, monkeypa
     monkeypatch.setenv("SUPABASE_URL", "http://fake")
     import core.supabase_client as sc
     monkeypatch.setattr(sc, "get_supabase", lambda: db)
+    # A URL is set, so the server's own client would be a real one pointed at nowhere; the writes of the opening documents are made on
+    # it (the signed-in role holds no write on the documents' headers, POST-A-335), and this test drives the fake instead.
+    import core.db_provider as db_provider
+    monkeypatch.setattr(db_provider, "service_db_or_none", lambda: None)
     events = []
     import services.audit_service as aud
     monkeypatch.setattr(aud, "log_event", lambda *a, **k: events.append((a, k)))

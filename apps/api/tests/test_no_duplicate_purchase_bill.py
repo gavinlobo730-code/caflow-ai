@@ -170,8 +170,8 @@ def test_the_ordinary_create_path_checks_before_inserting():
     import inspect
     from routers import purchase_bills as m
     src = inspect.getsource(m)
-    core = src[src.index("bill_resp = db.table(\"purchase_bills\").insert") - 1200:
-               src.index("bill_resp = db.table(\"purchase_bills\").insert")]
+    marker = "bill_resp = privileged_for(db).table(\"purchase_bills\").insert"
+    core = src[src.index(marker) - 2000:src.index(marker)]
     assert "_duplicate_bill_id(" in core
 
 

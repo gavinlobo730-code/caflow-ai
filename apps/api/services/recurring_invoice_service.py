@@ -39,6 +39,7 @@ from services.numbering import draft_placeholder_invoice_no
 from services import named_row_ownership
 from services.line_item_ownership import assert_items_are_the_clients
 from core import db_provider
+from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.recurring")
@@ -92,7 +93,6 @@ from domain.recurrence import (                                    # noqa: E402
 )
 from core.ist_clock import ist_today
 from core.observability import capture_soft_failure
-from core.db_provider import privileged_for
 
 # ── Due date (Decision 4) ────────────────────────────────────────────────────
 
@@ -361,13 +361,15 @@ def _stamp_recurring(firm_id: str, invoice: dict, template_id: str, occurrence_i
         return invoice
     db = db or _db()
     try:
-        upd = (db.table("client_sales_invoices").update(fields)
-               .eq("id", invoice["id"]).eq("firm_id", firm_id).execute())
+        upd = (privileged_for(db).table("client_sales_invoices").update(fields)
+               .eq("id", invoice["id"]).eq("firm_id", firm_id).eq("client_id", invoice.get("client_id")).execute())
         return upd.data[0] if upd.data else {**invoice, **fields}
     except Exception as e:  # unique(recurring_template_id, recurring_occurrence) race
         _logger.warning("duplicate recurring run for template %s occ %s: %s", template_id, occurrence_iso, e)
-        db.table("client_sales_invoice_lines").delete().eq("sales_invoice_id", invoice["id"]).execute()
-        db.table("client_sales_invoices").delete().eq("id", invoice["id"]).execute()
+        # The lines carry no firm of their own; the invoice is the draft this very call created from the firm's template.
+        privileged_for(db).table("client_sales_invoice_lines").delete().eq("sales_invoice_id", invoice["id"]).execute()
+        (privileged_for(db).table("client_sales_invoices").delete()
+         .eq("id", invoice["id"]).eq("firm_id", firm_id).eq("client_id", invoice.get("client_id")).execute())
         winner = _find_generated(firm_id, template_id, occurrence_iso, db)
         if winner:
             return winner

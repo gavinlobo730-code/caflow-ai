@@ -380,7 +380,7 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
             draft_document_lines.replace_draft_lines(db, "purchase_credit_note", pcn_id, firm_id or "", computed)
 
         if data:
-            upd = db.table("purchase_credit_notes").update(data).eq("id", pcn_id).eq("firm_id", firm_id).execute()
+            upd = privileged_for(db).table("purchase_credit_notes").update(data).eq("id", pcn_id).eq("firm_id", firm_id).eq("client_id", d.get("client_id")).execute()
             updated = upd.data[0] if upd.data else {**d, **data}
         else:
             updated = d
@@ -692,7 +692,7 @@ def delete_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("
         # still-draft note. The audit_log 'delete' event below (and the
         # 'create' event's full snapshot) survive independently —
         # audit_log.entity_id is a bare text column, not an FK.
-        db.table("purchase_credit_notes").delete().eq("id", pcn_id).eq("firm_id", firm_id).execute()
+        privileged_for(db).table("purchase_credit_notes").delete().eq("id", pcn_id).eq("firm_id", firm_id).eq("client_id", d.get("client_id")).execute()
         log_event(
             firm_id or "", "purchase_credit_note", pcn_id,
             "delete", actor_id=current_user.get("auth_user_id"),

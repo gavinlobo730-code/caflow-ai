@@ -23,6 +23,8 @@ import logging
 
 from fastapi import HTTPException
 
+from core.db_provider import privileged_for
+
 _logger = logging.getLogger("caflow.services")
 
 #: kind -> (lines table, the line's foreign key, what the document is called in a sentence)
@@ -49,6 +51,9 @@ def replace_draft_lines(db, document: str, document_id: str, firm_id: str, lines
     """
     _lines_table, fk, noun = DOCUMENTS[document]
     rows = [{k: v for k, v in ln.items() if k != fk} for ln in lines]
+    # Written as the API, after the route has read the draft under its firm and client: the signed-in role holds no write on the lines
+    # once the grant is taken away (POST-A-335), and the function itself refuses a document that is not the firm's.
+    db = privileged_for(db)
     try:
         db.rpc("replace_draft_document_lines", {
             "p_document": document, "p_document_id": document_id, "p_firm_id": firm_id, "p_lines": rows,

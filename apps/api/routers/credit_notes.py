@@ -18,6 +18,7 @@ from core.authz import assert_client_access, can_access_client
 from services import named_row_ownership
 from services import draft_document_lines
 from core.permissions import rbac
+from core.db_provider import privileged_for
 from services.audit_service import log_event
 from services.document_header_writer import update_header
 from domain.accounting import draft_integrity
@@ -607,7 +608,7 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
             draft_document_lines.replace_draft_lines(db, "credit_note", cn_id, firm_id or "", computed)
 
         if data:
-            upd = db.table("credit_notes").update(data).eq("id", cn_id).eq("firm_id", firm_id).execute()
+            upd = privileged_for(db).table("credit_notes").update(data).eq("id", cn_id).eq("firm_id", firm_id).eq("client_id", c.get("client_id")).execute()
             updated = upd.data[0] if upd.data else {**c, **data}
         else:
             updated = c
@@ -908,7 +909,7 @@ def delete_credit_note(
         # note. The audit_log 'delete' event below (and the 'create' event's
         # full snapshot) survive independently — audit_log.entity_id is a
         # bare text column, not an FK.
-        db.table("credit_notes").delete().eq("id", cn_id).eq("firm_id", firm_id).execute()
+        privileged_for(db).table("credit_notes").delete().eq("id", cn_id).eq("firm_id", firm_id).eq("client_id", cn.get("client_id")).execute()
 
         log_event(
             firm_id or "", "credit_note", cn_id,
