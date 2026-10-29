@@ -21,7 +21,7 @@ Registered in main.py WITHOUT the staff _CLIENT_GUARD (it is intentionally
 public, like the hosted invoice payment link).
 """
 import logging
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -34,6 +34,7 @@ from models.common import api_response
 # forward-only lead-advance behaviour as the staff path.
 from routers.engagement_letters import _log_engagement_event, _advance_lead, _revert_lead
 from core import db_provider
+from domain.engagement import expiry
 
 # ops-30: every route on this router answers a stranger holding a link, and each is a round trip to
 # Postgres. The limit is declared on the ROUTER so a route added here next year is covered by default.
@@ -50,11 +51,8 @@ _logger = logging.getLogger("caflow.engagement_sign_public")
 # Statuses from which a recipient may still act on the letter.
 _ACTIONABLE = {"Sent", "Viewed"}
 
-# Business timezone for date-only expiry comparisons. expiry_date is a DATE, and
-# the financial year / due dates are all reckoned in IST — comparing against UTC
-# would expire a letter up to 5.5h early (just after IST midnight). A letter
-# "expiring 30 Jun" therefore stays signable through all of 30 Jun IST.
-_IST = timezone(timedelta(hours=5, minutes=30))
+# A letter "expiring 30 Jun" stays signable through all of 30 Jun, the Indian day (`domain/engagement/expiry`): comparing against UTC
+# would expire it up to 5.5 hours early.
 
 
 class _LookupError(Exception):
@@ -152,15 +150,8 @@ def _get_letter_or_http(db, token: str) -> dict:
 
 def _is_expired(eng: dict) -> bool:
     """True when the letter is past its expiry_date (date-only, reckoned in IST).
-    Letters with no expiry_date never expire."""
-    exp = eng.get("expiry_date")
-    if not exp:
-        return False
-    try:
-        exp_date = date.fromisoformat(str(exp)[:10])
-    except Exception:
-        return False
-    return datetime.now(_IST).date() > exp_date
+    Letters with no expiry_date never expire. The rule is `domain/engagement/expiry`, the one the staff list uses."""
+    return expiry.is_past_expiry(eng.get("expiry_date"))
 
 
 def _firm_name(db, firm_id) -> str:

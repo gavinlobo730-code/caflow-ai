@@ -2373,7 +2373,9 @@ function SalesInvoices({
 // address and a `note`. Until a gateway is set up the modal shows the reason and offers no Generate, Copy or
 // Email: the server refuses those calls with the same words in any case.
 
-interface PaymentLinkRow { id: string; short_url: string | null; amount_paise: number; status: string; provider: string; created_at?: string; note?: string | null }
+/** `displayed_status` is what the link is NOW, served by the API: a link still waiting to be paid whose expiry has passed reads "expired",
+ *  because nothing stores that word. The stored `status` stands when the server sent none. */
+interface PaymentLinkRow { id: string; short_url: string | null; amount_paise: number; status: string; displayed_status?: string; provider: string; created_at?: string; note?: string | null }
 interface CustomerPaymentRow { id: string; amount_paise: number; status: string; provider: string; provider_payment_id: string | null; receipt_id: string | null; created_at?: string }
 interface PaymentHistory {
   outstanding_paise: number; links: PaymentLinkRow[]; payments: CustomerPaymentRow[];
@@ -2496,13 +2498,13 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
               <div key={l.id} className="border border-ps-border rounded-lg p-2.5 text-xs">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-ps-body truncate">{l.short_url ?? "—"}</span>
-                  <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${PAY_STATUS_BADGE[l.status] ?? "bg-ps-muted text-ps-label"}`}>{l.status}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${PAY_STATUS_BADGE[l.displayed_status ?? l.status] ?? "bg-ps-muted text-ps-label"}`}>{l.displayed_status ?? l.status}</span>
                 </div>
                 {/* A link the server cannot stand behind has no address and says why (`note`). */}
                 {l.note && <p className="mt-1 text-2xs text-ps-hint">{l.note}</p>}
                 <div className="flex items-center justify-between mt-1.5">
                   <span className="font-mono text-ps-label">{fmt(l.amount_paise)}</span>
-                  {gatewayOn && l.short_url && (
+                  {gatewayOn && l.short_url && (l.displayed_status ?? l.status) !== "expired" && (
                     <div className="flex items-center gap-3">
                       <button onClick={() => copy(l.short_url)} className="text-ps-label hover:text-indigo-600 flex items-center gap-1"><Copy size={11} /> Copy</button>
                       <Button variant="plain" size="none" onClick={() => send(l.id)} disabled={busy} className="text-emerald-600 hover:underline flex items-center gap-1 disabled:opacity-50"><Send size={11} /> Email</Button>

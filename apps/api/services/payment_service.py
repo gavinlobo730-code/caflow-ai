@@ -102,11 +102,14 @@ def create_link(db, firm_id: str, invoice_id: str, actor: dict,
     # Idempotency: reuse an existing open link of the same amount, made by THIS provider. A link a different
     # provider made (the test double's `mock-pay.local` address, say) points nowhere under this one and is never
     # handed back as if it were this gateway's.
-    existing = (db.table("customer_payment_links").select("*")
-                .eq("firm_id", firm_id).eq("invoice_id", invoice_id)
-                .eq("amount_paise", outstanding).eq("provider", provider.name)
-                .in_("status", list(_OPEN_LINK))
-                .limit(1).execute().data or [])
+    # An open link whose own expiry has passed is NOT reused: it points at a gateway page that no longer takes money, and handing it
+    # back as the link for this invoice sent the customer to a dead address. Newest first, so the first one still live wins.
+    existing = [r for r in (db.table("customer_payment_links").select("*")
+                            .eq("firm_id", firm_id).eq("invoice_id", invoice_id)
+                            .eq("amount_paise", outstanding).eq("provider", provider.name)
+                            .in_("status", list(_OPEN_LINK))
+                            .order("created_at", desc=True).limit(20).execute().data or [])
+                if not payable.link_is_expired(r)]
     if existing:
         return existing[0]
 
