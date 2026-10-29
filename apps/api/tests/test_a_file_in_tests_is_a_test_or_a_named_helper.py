@@ -70,6 +70,9 @@ HELPERS = {
     # The one call graph of the API's own source (imports, singletons and methods resolved) that two rules read: the named-row rule and
     # the rule over the client a write of a closed table is made on. Imported by both, so neither carries its own resolver.
     "_call_graph.py",
+    # What a test reads off a FastAPI body parameter, the same on the version in the lock and on the next (0.141 has no `ModelField.type_`).
+    # Two test modules read the model a route takes, so the spelling is here once (POST-A-171).
+    "_fastapi_compat.py",
     "e2e_harness.py",
     # A stand-in for the health engine's stored scores (`repositories/health_scores_repository`) for the tests whose fixture clients carry a
     # `health_score`; five test files use it, so none of them grows its own copy.

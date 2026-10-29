@@ -14,11 +14,8 @@
 # the gate is a ratchet instead of "fail on anything".
 #
 # Format: one advisory id per line, then `# package version [severity] - title (fix: ...)`.
+#
+# EMPTY SINCE 29-10-2026. fastapi 0.141.1 moved starlette from 0.36.3 to 1.10.0 (POST-A-171), which took the last seven advisories with
+# it; pip-audit 2.10.1 reports none against the lock. The file stays, with this header, so that the next advisory is a NEW one the gate
+# fails on and not a line somebody adds here. Adding a line is still a decision with its reason beside it.
 
-PYSEC-2026-161           # starlette 0.36.3 — Starlette reconstructs the requested URL based on the HTTP Host request header and request (fix: 1.0.1)
-PYSEC-2026-1941          # starlette 0.36.3 — ### Summary When parsing a multi-part form with large files (greater than the [default max (fix: 0.47.2)
-PYSEC-2026-1943          # starlette 0.36.3 — ### Summary Starlette treats `multipart/form-data` parts without a `filename` as text form (fix: 0.40.0)
-PYSEC-2026-2280          # starlette 0.36.3 — ### Summary  When dispatching a request, `HTTPEndpoint` selects the handler by lowercasing (fix: 1.1.0)
-PYSEC-2026-2281          # starlette 0.36.3 — ### Summary  When serving static files on Windows, `StaticFiles` resolves the requested pa (fix: 1.1.0)
-PYSEC-2026-248           # starlette 0.36.3 — ### Summary  In affected versions, the HTTP request path is not validated before being use (fix: 1.3.0)
-PYSEC-2026-249           # starlette 0.36.3 — ### Summary `request.form()` accepts `max_fields` and `max_part_size` to bound resource co (fix: 1.3.1)

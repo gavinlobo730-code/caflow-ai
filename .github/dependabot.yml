@@ -36,11 +36,11 @@
 #     after the 1 November 2026 demo. An ignored version produces no pull request and no group
 #     member, so it cannot sit beside the safe bumps as a red check. Delete the entry in the same
 #     change that adopts the version; nothing else removes it.
-#       fastapi, supabase   minor and major ignored (0.x numbering: a minor IS the breaking one).
-#                           fastapi moves starlette to 1.x and breaks every test that walks app.routes,
-#                           and turns a missing required query parameter from a 422 into a 500;
+#       supabase            minor and major ignored (0.x numbering: a minor IS the breaking one).
 #                           supabase removes the client class core/supabase_client._force_http1 patches,
 #                           which silently reopens the HTTP/2 multi-thread bug. Patch releases still arrive.
+#                           (fastapi was in this entry until POST-A-171, 29 October 2026: 0.141.1 is adopted, and
+#                           the suite reads the flat route list through a shim in tests/conftest.py.)
 #       gunicorn            majors beyond 22 ignored (26 proposed). 22.0.0 is adopted (POST-A-173,
 #                           18 October 2026): it is the first release that closes the two Transfer-Encoding
 #                           request-smuggling advisories, and the production command (the uvicorn worker
@@ -79,8 +79,6 @@ updates:
       python-minor-and-patch:
         update-types: ["minor", "patch"]
     ignore:
-      - dependency-name: "fastapi"
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "supabase"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "gunicorn"
