@@ -21,6 +21,7 @@ from typing import Any, Optional
 from fastapi import HTTPException
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 from domain.accounting import opening_documents as od
 
 _logger = logging.getLogger("caflow.opening_documents")
@@ -179,10 +180,10 @@ def create(db, firm_id: str, client_id: str, *, kind: str, party_id: str,
         row["created_by"] = actor_id
 
     if kind == od.RECEIVABLE:
-        written = (db.table("client_sales_invoices").insert(row)
+        written = (privileged_for(db).table("client_sales_invoices").insert(row)
                    .execute().data) or []
     else:
-        written = (db.table("purchase_bills").insert(row).execute().data) or []
+        written = (privileged_for(db).table("purchase_bills").insert(row).execute().data) or []
     out = written[0] if written else row
     return _as_listing(out, kind) | {"party_name": party[0].get("name")}
 
@@ -225,11 +226,11 @@ def remove(db, firm_id: str, client_id: str, *, kind: str,
     # `stamp` would make both writes invisible to it.
     now = datetime.now(timezone.utc).isoformat()
     if kind == od.RECEIVABLE:
-        (db.table("client_sales_invoices").update({"deleted_at": now})
-         .eq("id", document_id).eq("firm_id", firm_id).execute())
+        (privileged_for(db).table("client_sales_invoices").update({"deleted_at": now})
+         .eq("id", document_id).eq("firm_id", firm_id).eq("client_id", client_id).execute())
     else:
-        (db.table("purchase_bills").update({"deleted_at": now})
-         .eq("id", document_id).eq("firm_id", firm_id).execute())
+        (privileged_for(db).table("purchase_bills").update({"deleted_at": now})
+         .eq("id", document_id).eq("firm_id", firm_id).eq("client_id", client_id).execute())
     return {"id": document_id, "deleted": True}
 
 
@@ -307,7 +308,7 @@ def _write_receivables(db, firm_id: str, client_id: str, verdicts: list,
     `row_for` stays the definition — `tests/test_bulk_opening_documents.py` asserts
     these keys are exactly its keys, so the two cannot drift.
     """
-    return (db.table("client_sales_invoices").insert([
+    return (privileged_for(db).table("client_sales_invoices").insert([
         {
             "firm_id": firm_id,
             "client_id": client_id,
@@ -336,7 +337,7 @@ def _write_payables(db, firm_id: str, client_id: str, verdicts: list) -> list[di
     generates `outstanding_paise` from it on this table — writing only the total
     would leave every opening bill outstanding at nil, invisible to AP ageing.
     """
-    return (db.table("purchase_bills").insert([
+    return (privileged_for(db).table("purchase_bills").insert([
         {
             "firm_id": firm_id,
             "client_id": client_id,

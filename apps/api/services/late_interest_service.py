@@ -74,6 +74,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from core.db_paging import fetch_all, fetch_all_in
+from core.db_provider import privileged_for
 from core.ist_clock import ist_today
 from domain.sales import late_interest as L
 from core.observability import capture_soft_failure
@@ -357,12 +358,12 @@ def _invoice_facts(db, firm_id: str, client_id: str, invoice_ids: list[str]) -> 
     return out
 
 
-def _delete_draft(db, firm_id: str, invoice_id: str) -> None:
-    """Take back a draft this module just made (a draft has no journal)."""
+def _delete_draft(db, firm_id: str, client_id: str, invoice_id: str) -> None:
+    """Take back a draft this module just made (a draft has no journal). Written as the API, naming the draft's firm and client."""
     try:
-        db.table("client_sales_invoice_lines").delete().eq("sales_invoice_id", invoice_id).execute()
-        (db.table("client_sales_invoices").delete()
-         .eq("id", invoice_id).eq("firm_id", firm_id).eq("status", "draft").execute())
+        privileged_for(db).table("client_sales_invoice_lines").delete().eq("sales_invoice_id", invoice_id).execute()
+        (privileged_for(db).table("client_sales_invoices").delete()
+         .eq("id", invoice_id).eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "draft").execute())
     except Exception as e:                                # pragma: no cover - logged, never raised
         _logger.error("could not remove draft %s after a failed claim: %s", invoice_id, e)
 
@@ -468,7 +469,7 @@ def prepare_drafts(db, firm_id: str, client_id: str, customer_id: str, as_of: Op
         except Exception as e:
             # The unique index says another click got there first. The draft
             # this one made has no claim behind it, so it goes.
-            _delete_draft(db, firm_id, draft["id"])
+            _delete_draft(db, firm_id, client_id, draft["id"])
             failed.append({"reason": ("The interest for these invoices up to this date "
                                       "was just drafted by another request. "
                                       f"({type(e).__name__})"),

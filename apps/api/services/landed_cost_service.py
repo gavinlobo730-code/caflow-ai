@@ -25,6 +25,7 @@ from decimal import Decimal
 from typing import Optional
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 from domain.gst import bill_of_entry as boe_domain
 from domain.inventory import landed_cost as landed
 
@@ -203,7 +204,7 @@ def set_basis(db, *, firm_id: str, client_id: str, basis: Optional[str],
             return {"ok": False, "refusal": refusal}
         basis = basis.strip().lower()
     if bill_id:
-        db.table("purchase_bills").update({"landed_cost_basis": basis}).eq(
+        privileged_for(db).table("purchase_bills").update({"landed_cost_basis": basis}).eq(
             "firm_id", firm_id).eq("client_id", client_id).eq("id", bill_id).execute()
         return {"ok": True, "scope": "bill", "basis": basis}
     if basis is None:

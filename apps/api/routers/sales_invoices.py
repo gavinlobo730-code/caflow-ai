@@ -20,6 +20,7 @@ from domain.sales.line_tax import compute_line_gst
 from domain.sales import credit_limit
 from domain.gst import compensation_cess
 from core.authz import assert_client_access, filter_by_client
+from core.db_provider import privileged_for
 from core.permissions import rbac
 from services.audit_service import log_event
 from services import draft_document_lines
@@ -1284,7 +1285,9 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     # retrying with a DIFFERENT number would silently override what the CA typed.
     from services.numbering import is_unique_violation
     try:
-        ins_resp = db.table("client_sales_invoices").insert(invoice_payload).execute()
+        # The header is written as the API, after the checks above, and names its firm and client in the row (the signed-in role
+        # holds no write on it once the grant is taken away, POST-A-335).
+        ins_resp = privileged_for(db).table("client_sales_invoices").insert(invoice_payload).execute()
         invoice = (ins_resp.data or [invoice_payload])[0]
     except HTTPException:
         raise
@@ -1323,9 +1326,9 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     # the line insert fails we compensate by deleting the just-created header.
     # This guarantees we never leave an orphan invoice (header with no lines).
     try:
-        lines_resp = db.table("client_sales_invoice_lines").insert(line_payloads).execute()  # type: ignore[possibly-undefined]
+        lines_resp = privileged_for(db).table("client_sales_invoice_lines").insert(line_payloads).execute()  # type: ignore[possibly-undefined]
     except Exception:
-        db.table("client_sales_invoices").delete().eq("id", invoice_id).execute()  # type: ignore[possibly-undefined]
+        privileged_for(db).table("client_sales_invoices").delete().eq("id", invoice_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()  # type: ignore[possibly-undefined]
         raise
     invoice["lines"] = lines_resp.data or computed_lines
 
@@ -2074,7 +2077,8 @@ def update_invoice(
         # unit never affects rate/quantity/amount/GST.
         if line_units:
             for line_id, unit in line_units.items():
-                db.table("client_sales_invoice_lines").update(
+                # `invoice_id` was read under the firm and the client above, and a line is confined to it.
+                privileged_for(db).table("client_sales_invoice_lines").update(
                     {"unit": unit or "NOS"}
                 ).eq("id", line_id).eq("sales_invoice_id", invoice_id).execute()
 
@@ -2102,7 +2106,8 @@ def update_invoice(
         if _conflict:
             raise HTTPException(status_code=422, detail=_conflict)
 
-        upd_resp = db.table("client_sales_invoices").update(data).eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
+        upd_resp = (privileged_for(db).table("client_sales_invoices").update(data)
+                    .eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).eq("client_id", _client_id).execute())
         updated = upd_resp.data[0] if upd_resp.data else data
         log_event(
             current_user.get("firm_id", ""), "sales_invoice", invoice_id,
@@ -2470,7 +2475,7 @@ def delete_invoice(
         # bills only attach to issued invoices). The audit_log 'delete' event
         # below (and the 'create' event's full snapshot) survive
         # independently — audit_log.entity_id is a bare text column, not an FK.
-        db.table("client_sales_invoices").delete().eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
+        privileged_for(db).table("client_sales_invoices").delete().eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).eq("client_id", inv.get("client_id")).execute()
 
         log_event(
             current_user.get("firm_id", ""), "sales_invoice", invoice_id,

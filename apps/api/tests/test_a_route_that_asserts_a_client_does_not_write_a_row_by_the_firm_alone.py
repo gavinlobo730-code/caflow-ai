@@ -50,7 +50,6 @@ REVIEWED: dict[tuple[str, str], str] = {
     ("gst_credit_ledger.py", "delete_opening"): "deletes the row a read filtered on firm, client, GSTIN and window just returned",
     ("gst_workspace.py", "save_gstr1"): "updates the return `_existing_return` found by client and period",
     ("gst_workspace.py", "save_gstr3b"): "updates the return `_existing_return` found by client and period",
-    ("late_interest.py", "prepare_drafts"): "takes back the draft this request created a moment ago, keyed by the id it just got",
     ("payroll.py", "import_employees"): "updates ids of the client's own roster, read by firm and client in the same request",
     ("payroll.py", "create_run"): "rolls back the run this request created a moment ago",
     ("payroll.py", "record_settlement"): "the employee was read by `_employee_of_client` (firm and client) before the status is written",

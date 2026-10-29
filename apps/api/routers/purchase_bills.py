@@ -22,6 +22,7 @@ from models.common import api_response
 from models.gst_period import PeriodMMYYYY
 from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocumentIn
 from core.authz import assert_client_access
+from core.db_provider import privileged_for
 from core.observability import capture_soft_failure
 from core.exceptions import document_failure_detail
 from core.permissions import rbac
@@ -1108,7 +1109,9 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         bill_date=bill_payload.get("bill_date"),
         total_paise=bill_payload.get("total_paise") or 0)
 
-    bill_resp = db.table("purchase_bills").insert(bill_payload).execute()  # type: ignore[possibly-undefined]
+    # Written as the API, after the checks above; the row names its firm and client (the signed-in role holds no write on the header
+    # once the grant is taken away, POST-A-335).
+    bill_resp = privileged_for(db).table("purchase_bills").insert(bill_payload).execute()  # type: ignore[possibly-undefined]
     bill      = bill_resp.data[0] if bill_resp.data else bill_payload
     bill_id   = bill.get("id", str(uuid.uuid4()))
 
@@ -1142,7 +1145,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         }
         for ln in computed_lines
     ]
-    lines_resp = db.table("purchase_bill_lines").insert(line_payloads).execute()  # type: ignore[possibly-undefined]
+    lines_resp = privileged_for(db).table("purchase_bill_lines").insert(line_payloads).execute()  # type: ignore[possibly-undefined]
     bill["lines"] = lines_resp.data or computed_lines
 
     # Per-bill audit/timeline writes — skipped in bulk mode (see the
@@ -1479,7 +1482,7 @@ def delete_purchase_bill(
         # received bills). The audit_log 'delete' event below (and the 'create'
         # event's full snapshot, logged when the bill was made) survive
         # independently — audit_log.entity_id is a bare text column, not an FK.
-        db.table("purchase_bills").delete().eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+        privileged_for(db).table("purchase_bills").delete().eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).eq("client_id", bill.get("client_id")).execute()
 
         log_event(
             current_user.get("firm_id", ""), "purchase_bill", bill_id,
@@ -1687,7 +1690,8 @@ def update_purchase_bill(
         # unit never affects rate/quantity/amount/GST.
         if line_units:
             for line_id, unit in line_units.items():
-                db.table("purchase_bill_lines").update(
+                # `bill_id` was read under the firm above, and a line is confined to it.
+                privileged_for(db).table("purchase_bill_lines").update(
                     {"unit": unit or "NOS"}
                 ).eq("id", line_id).eq("bill_id", bill_id).execute()
 
@@ -1772,7 +1776,8 @@ def update_purchase_bill(
             })
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        upd = db.table("purchase_bills").update(data).eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).execute()
+        upd = (privileged_for(db).table("purchase_bills").update(data)
+               .eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).eq("client_id", _client_id).execute())
         updated = upd.data[0] if upd.data else data
         log_event(
             current_user.get("firm_id", ""), "purchase_bill", bill_id,

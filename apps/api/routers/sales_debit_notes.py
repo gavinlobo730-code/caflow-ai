@@ -369,7 +369,7 @@ def update_sales_debit_note(sdn_id: str, data: SalesDebitNoteUpdateIn, current_u
             draft_document_lines.replace_draft_lines(db, "sales_debit_note", sdn_id, firm_id or "", computed)
 
         if data:
-            upd = db.table("sales_debit_notes").update(data).eq("id", sdn_id).eq("firm_id", firm_id).execute()
+            upd = privileged_for(db).table("sales_debit_notes").update(data).eq("id", sdn_id).eq("firm_id", firm_id).eq("client_id", d.get("client_id")).execute()
             updated = upd.data[0] if upd.data else {**d, **data}
         else:
             updated = d
@@ -587,7 +587,7 @@ def delete_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("acco
         # still-draft note. The audit_log 'delete' event below (and the
         # 'create' event's full snapshot) survive independently —
         # audit_log.entity_id is a bare text column, not an FK.
-        db.table("sales_debit_notes").delete().eq("id", sdn_id).eq("firm_id", firm_id).execute()
+        privileged_for(db).table("sales_debit_notes").delete().eq("id", sdn_id).eq("firm_id", firm_id).eq("client_id", d.get("client_id")).execute()
         log_event(
             firm_id or "", "sales_debit_note", sdn_id,
             "delete", actor_id=current_user.get("auth_user_id"),

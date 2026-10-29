@@ -39,6 +39,14 @@ API = Path(__file__).resolve().parent.parent
 LIST_FILE = API / "tests" / "fixtures" / "tables_the_signed_in_role_cannot_write.txt"
 CLOSED = [ln.strip() for ln in LIST_FILE.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")]
 
+#: Tables whose writers have moved to the privileged client AHEAD of the migration that takes the signed-in write away. The Python ships
+#: first and the grant follows at least an hour later, because the old API against a revoked grant fails soft and wrong (the entry on
+#: POST-A-319 in docs/design-record/tenancy-and-security.md). A table is held to this rule from the day its writers move, and moves
+#: from this file to the closed list in the migration that revokes it; the file is empty between such changes.
+IN_FLIGHT_FILE = API / "tests" / "fixtures" / "tables_about_to_be_closed.txt"
+ABOUT_TO_BE_CLOSED = ([ln.strip() for ln in IN_FLIGHT_FILE.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")]
+                      if IN_FLIGHT_FILE.exists() else [])
+
 #: Names whose call hands back the privileged client, and the request's.
 PRIVILEGED = {"privileged_for", "service_db", "service_db_or_none", "service_db_or_503", "get_service_supabase", "_service_client",
               "fx_writer", "acting_as_request_person"}
@@ -52,6 +60,10 @@ REVIEWED: dict[tuple[str, str], str] = {
         "that reach this; the writer cannot succeed and is retired by POST-A-322, not moved.",
     ("repositories/compliance_repository.py", "update"):
         "compliance 'System B': the same dead repository as `create` (POST-A-322).",
+    ("services/document_header_writer.py", "<module>"):
+        "the six UPDATE statements are held in lambdas at module level, one literal chain per table so the firm-scope reader can read each; "
+        "the only caller is `update_header`, which hands them the client `header_writer` returns (the privileged one wherever there is one) "
+        "and the document, firm and client it was asked to name, and refuses a call that names none of the three.",
     ("services/phase2_journal_service.py", "_create_journal"):
         "the two inserts are the branch for a database double that has no `rpc()`; the real client always has one, so production posts "
         "through the privileged ledger door (`ledger_rpc`, POST-A-317) a few lines above and never reaches them.",
@@ -257,7 +269,7 @@ def _bad(found: dict) -> dict:
 
 @pytest.fixture(scope="module")
 def found():
-    return verdicts(API, CLOSED)
+    return verdicts(API, CLOSED + ABOUT_TO_BE_CLOSED)
 
 
 def test_every_write_of_a_closed_table_is_on_a_client_that_can_write_it_or_is_reviewed(found):

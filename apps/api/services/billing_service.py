@@ -39,6 +39,7 @@ from core.ist_clock import ist_today
 from domain import recurrence
 from domain.billing import time_rate
 from core import db_provider
+from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.billing")
@@ -188,7 +189,8 @@ def _stamp_billing_fields(firm_id: str, invoice: dict, schedule_id: str, period:
         return invoice
     invoice_id = invoice["id"]
     try:
-        upd = _db().table("client_sales_invoices").update(fields).eq("id", invoice_id).execute()
+        upd = (privileged_for(_db()).table("client_sales_invoices").update(fields)
+               .eq("id", invoice_id).eq("firm_id", firm_id).eq("client_id", invoice.get("client_id")).execute())
         return upd.data[0] if upd.data else {**invoice, **fields}
     except Exception as e:  # unique(billing_schedule_id, billing_period) race
         _logger.warning("duplicate billing run for schedule %s period %s: %s", schedule_id, period, e)
@@ -197,8 +199,10 @@ def _stamp_billing_fields(firm_id: str, invoice: dict, schedule_id: str, period:
         # raised 42703, so the recovery path never reached the two statements
         # below it: the orphan draft invoice was left behind AND the caller got
         # an "unknown column" error instead of the winning invoice.
-        _db().table("client_sales_invoice_lines").delete().eq("sales_invoice_id", invoice_id).execute()
-        _db().table("client_sales_invoices").delete().eq("id", invoice_id).execute()
+        # The lines carry no firm of their own; `invoice_id` is the draft this very call created for the firm's own practice client.
+        privileged_for(_db()).table("client_sales_invoice_lines").delete().eq("sales_invoice_id", invoice_id).execute()
+        (privileged_for(_db()).table("client_sales_invoices").delete()
+         .eq("id", invoice_id).eq("firm_id", firm_id).eq("client_id", invoice.get("client_id")).execute())
         winner = _find_generated(firm_id, schedule_id, period)
         if winner:
             return winner

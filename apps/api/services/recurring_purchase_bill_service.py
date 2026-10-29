@@ -59,9 +59,9 @@ _d = _rec.to_date
 from domain.recurrence import next_occurrence                       # noqa: E402
 from core.ist_clock import ist_today
 from core import db_provider
+from core.db_provider import privileged_for
 from services import named_row_ownership
 from services.line_item_ownership import assert_items_are_the_clients
-from core.db_provider import privileged_for
 
 # Mock stores (mock mode only).
 MOCK_RECURRING_BILL_TEMPLATES: list[dict] = []
@@ -397,10 +397,10 @@ def _stamp_recurring(firm_id: str, bill: dict, template_id: str,
         return bill
     db = db or _db()
     try:
-        upd = (db.table("purchase_bills")
+        upd = (privileged_for(db).table("purchase_bills")
                .update({"recurring_template_id": template_id,
                         "recurring_occurrence": occurrence_iso})
-               .eq("id", bill["id"]).eq("firm_id", firm_id).execute())
+               .eq("id", bill["id"]).eq("firm_id", firm_id).eq("client_id", bill.get("client_id")).execute())
         return upd.data[0] if upd.data else {**bill, **fields}
     except Exception as e:
         # uq_purchase_bills_recurring lost the race. Delete the loser rather
@@ -410,8 +410,10 @@ def _stamp_recurring(firm_id: str, bill: dict, template_id: str,
         # exists behind it (all three happen at RECEIVE).
         _logger.warning("duplicate recurring bill for template %s occ %s: %s",
                         template_id, occurrence_iso, e)
-        db.table("purchase_bill_lines").delete().eq("bill_id", bill["id"]).execute()
-        db.table("purchase_bills").delete().eq("id", bill["id"]).execute()
+        # The lines carry no firm of their own; the bill is the draft this very call created from the firm's template.
+        privileged_for(db).table("purchase_bill_lines").delete().eq("bill_id", bill["id"]).execute()
+        (privileged_for(db).table("purchase_bills").delete()
+         .eq("id", bill["id"]).eq("firm_id", firm_id).eq("client_id", bill.get("client_id")).execute())
         winner = _find_generated(firm_id, template_id, occurrence_iso, db)
         if winner:
             return winner

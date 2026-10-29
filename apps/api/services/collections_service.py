@@ -25,8 +25,8 @@ from core.ist_clock import ist_today
 from domain.money_sentence import rupee_whole_text
 from core.db_paging import fetch_all, fetch_all_in
 from core import db_provider
-from core.observability import capture_soft_failure
 from core.db_provider import privileged_for
+from core.observability import capture_soft_failure
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.collections")
@@ -182,10 +182,10 @@ def sweep_overdue(firm_id: str, today: Optional[date] = None) -> dict:
             inv.update({"is_overdue": m["is_overdue"], "days_overdue": m["days_overdue"],
                         "aging_bucket": m["aging_bucket"]})
         else:
-            _db().table("client_sales_invoices").update({
+            privileged_for(_db()).table("client_sales_invoices").update({
                 "is_overdue": m["is_overdue"], "days_overdue": m["days_overdue"],
                 "aging_bucket": m["aging_bucket"],
-            }).eq("id", inv["id"]).execute()
+            }).eq("id", inv["id"]).eq("firm_id", firm_id).eq("client_id", internal_id).execute()
         updated += 1
     return {"swept": updated}
 
@@ -434,10 +434,10 @@ def flag_overdue_for_internal_followup(firm_id: str, today: Optional[date] = Non
             inv.update({"last_internal_followup_at": now_iso,
                         "internal_followup_count": count})
         else:
-            _db().table("client_sales_invoices").update({
+            privileged_for(_db()).table("client_sales_invoices").update({
                 "last_internal_followup_at": now_iso,
                 "internal_followup_count": count,
-            }).eq("id", inv["id"]).execute()
+            }).eq("id", inv["id"]).eq("firm_id", firm_id).eq("client_id", inv.get("client_id")).execute()
         try:
             timeline_service.log(
                 inv.get("client_id", ""), "ai", "Flagged for Collections Follow-up",
@@ -619,9 +619,9 @@ def _dispatch_invoice_reminder(db, firm_id: str, inv: dict, customer: dict,
 
     if success:
         try:
-            db.table("client_sales_invoices").update({
+            privileged_for(db).table("client_sales_invoices").update({
                 "last_reminded_at": now_iso, "reminder_count": reminder_number,
-            }).eq("id", invoice_id).eq("firm_id", firm_id).execute()
+            }).eq("id", invoice_id).eq("firm_id", firm_id).eq("client_id", inv.get("client_id")).execute()
         except Exception as swallowed:
             capture_soft_failure(swallowed, operation="collections.reminder_counter", firm_id=firm_id, invoice_id=invoice_id)
         try:
