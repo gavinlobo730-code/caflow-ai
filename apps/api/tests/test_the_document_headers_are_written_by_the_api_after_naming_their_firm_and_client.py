@@ -92,11 +92,15 @@ def test_the_detector_reads_the_shapes_it_must_and_leaves_the_rest():
     assert statements(via_match)[0][3] >= {"id", "firm_id", "client_id"}
 
 
-def test_the_in_flight_list_names_exactly_the_twelve_tables():
-    listed = {ln.strip() for ln in (API_ROOT / "tests" / "fixtures" / "tables_about_to_be_closed.txt").read_text().splitlines()
-              if ln.strip() and not ln.startswith("#")}
+def test_the_twelve_tables_are_on_the_closed_list_and_the_in_flight_list_is_empty():
+    """Migration 563 revoked the signed-in write on the twelve, so they moved from the in-flight list to the closed one in the same
+    change (a table is on one list, never both). The writer rule reads both lists, so the twelve are held to it either way."""
+    in_flight = {ln.strip() for ln in (API_ROOT / "tests" / "fixtures" / "tables_about_to_be_closed.txt").read_text().splitlines()
+                 if ln.strip() and not ln.startswith("#")}
     closed = {ln.strip() for ln in (API_ROOT / "tests" / "fixtures" / "tables_the_signed_in_role_cannot_write.txt").read_text().splitlines()
               if ln.strip() and not ln.startswith("#")}
-    assert listed == set(HEADERS) | {"client_sales_invoice_lines", "purchase_bill_lines", "credit_note_lines", "debit_note_lines",
-                                     "purchase_credit_note_lines", "sales_debit_note_lines"}
-    assert not listed & closed, "a table is on both lists: the migration that closes it moves it, it does not copy it"
+    twelve = set(HEADERS) | {"client_sales_invoice_lines", "purchase_bill_lines", "credit_note_lines", "debit_note_lines",
+                             "purchase_credit_note_lines", "sales_debit_note_lines"}
+    assert twelve <= closed
+    assert not in_flight & closed, "a table is on both lists: the migration that closes it moves it, it does not copy it"
+    assert not in_flight & twelve

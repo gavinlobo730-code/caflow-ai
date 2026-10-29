@@ -420,7 +420,9 @@ def test_a_portal_client_still_cannot_write_any_of_the_eight(post_fix_db):
             f"INSERT INTO client_sales_invoices (firm_id, client_id, customer_id, invoice_no, "
             f"invoice_date, total_paise) VALUES ('{FIRM}','{INTERNAL_CLIENT}','{CUST1}',"
             f"'HACK/0001','2026-05-01',1000);")
-    assert r.returncode != 0 and "row-level security" in r.stderr.lower()
+    # Refused by the privilege since migration 563 took every signed-in write on the invoice header (POST-A-335), and by the missing
+    # PERMISSIVE policy before it: either way a portal client does not write an invoice, which is what this case is about.
+    assert r.returncode != 0 and ("row-level security" in r.stderr.lower() or "permission denied" in r.stderr.lower())
 
     r = _as(post_fix_db, PORTAL_AUTH_1,
             f"UPDATE customers SET name = 'HACKED' WHERE id = '{CUST1}';")
@@ -433,11 +435,12 @@ def test_a_portal_client_still_cannot_write_any_of_the_eight(post_fix_db):
 
 
 def test_the_authenticated_grants_are_the_documented_set(post_fix_db):
-    """SELECT/INSERT/UPDATE/DELETE on six of the eight, SELECT alone on `receipts` and `receipt_allocations` — matches what this
-    environment's own information_schema shows today (194's grant sweep gave invoice_deliveries and customer_statement_deliveries
-    DELETE on top of their own creating migrations' SELECT/INSERT/UPDATE; migration 559 took every write from the two receipt
-    tables, which only the API writes, POST-A-336)."""
-    read_only = {"receipts", "receipt_allocations"}
+    """SELECT/INSERT/UPDATE/DELETE on three of the eight, SELECT alone on the other five — matches what this environment's own
+    information_schema shows today (194's grant sweep gave invoice_deliveries and customer_statement_deliveries DELETE on top of
+    their own creating migrations' SELECT/INSERT/UPDATE; migration 559 took every write from the two receipt tables, which only
+    the API writes, POST-A-336; migration 563 took every write from the invoice, credit note and sales debit note headers,
+    POST-A-335)."""
+    read_only = {"receipts", "receipt_allocations", "client_sales_invoices", "credit_notes", "sales_debit_notes"}
     for table in ("client_sales_invoices", "invoice_deliveries", "customers",
                   "receipts", "receipt_allocations", "credit_notes",
                   "sales_debit_notes", "customer_statement_deliveries"):

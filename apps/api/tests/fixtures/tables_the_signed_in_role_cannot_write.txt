@@ -10,6 +10,8 @@
 # firm-level tables of POST-A-329 (account_group_mappings, firm_hsn_library, firm_hsn_rate_history, assignment_rules, entities, entity_relationships,
 # entity_to_entity_relationships, leads, dsc_records, automation_rules, automation_executions, reminder_settings, engagement_templates and the three
 # recurring-template parents, task_escalations).
+# 563 closes the six document headers and their six lines tables of POST-A-335 part 2 (client_sales_invoices, purchase_bills, credit_notes,
+# debit_notes, purchase_credit_notes, sales_debit_notes and the six lines tables).
 account_group_mappings
 account_period_balances
 activity_logs
@@ -55,12 +57,18 @@ client_portal_users
 client_profile_history
 client_profiles
 client_pt_registrations
+client_sales_invoice_lines
+client_sales_invoices
 client_statutory_identity
 client_year_locks
 compliance_tasks
 credit_note_allocations
+credit_note_lines
+credit_notes
 currencies
 debit_note_allocations
+debit_note_lines
+debit_notes
 delivery_challan_lines
 delivery_challan_returns
 delivery_challans
@@ -141,7 +149,11 @@ post_dated_cheques
 practice_email_log
 price_list_items
 price_lists
+purchase_bill_lines
+purchase_bills
 purchase_credit_note_allocations
+purchase_credit_note_lines
+purchase_credit_notes
 purchase_order_lines
 purchase_orders
 purchase_payment_allocations
@@ -159,6 +171,8 @@ reminder_settings
 retainer_logs
 salary_structures
 sales_debit_note_allocations
+sales_debit_note_lines
+sales_debit_notes
 sales_invoices
 sales_order_lines
 sales_orders

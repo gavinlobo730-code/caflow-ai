@@ -164,6 +164,12 @@ _M551_ROLLBACK = _M551.replace(".sql", "_rollback.sql")
 #: and their policies are measured, as 499's are, with its rollback applied (the second-lock file).
 _M559 = "559_a_signed_in_session_writes_none_of_the_seven_tables_a_settlement_is_derived_from.sql"
 _M559_ROLLBACK = _M559.replace(".sql", "_rollback.sql")
+#: Migration 563 (POST-A-335 part 2) took INSERT, UPDATE and DELETE (not SELECT) from the six document headers and their six lines
+#: tables. The six headers are the ones the matrix observes (the lines tables are held by `test_539_..._pg.py`, which gives the write
+#: back to measure its trigger and policies); they read "no privilege" in every write cell of the main file and their policies are
+#: measured, as 559's are, with its rollback applied (the second-lock file).
+_M563 = "563_a_signed_in_session_writes_none_of_the_six_document_headers_or_their_lines.sql"
+_M563_ROLLBACK = _M563.replace(".sql", "_rollback.sql")
 _ADMIN = os.environ.get("HARNESS_PG")
 
 _NEEDS_PG = pytest.mark.skipif(
@@ -1214,7 +1220,10 @@ CONTROLS = (
      # 524's read tier hides a bank line from a Reviewer, and an UPDATE has to find the row it changes, so with 524 in
      # place rolling back 487 alone changes nothing on `bank_transactions`: two layers close that hole. 524 is rolled back
      # first so this control measures 487 and the 524 control below measures 524.
-     lambda: _migration_sql(_M550_ROLLBACK) + "\n"
+     # 563 took the signed-in write from the six headers, so its privilege comes back first and the 487 rollback is what turns the
+     # reviewer's cells red on them (against the second-lock file, which is why this control is in _AGAINST_THE_SECOND_LOCK).
+     lambda: _migration_sql(_M563_ROLLBACK) + "\n"
+     + _migration_sql(_M550_ROLLBACK) + "\n"
      + _migration_sql("524_the_database_asks_the_banking_tier_when_a_clients_bank_lines_are_read_rollback.sql") + "\n"
      + _migration_sql("487_a_reviewer_cannot_write_the_accounting_documents_or_the_bank_tables_rollback.sql"),
      ("client_sales_invoices", "purchase_bills", "receipts", "receipt_allocations", "purchase_payments",
@@ -1559,9 +1568,17 @@ def test_the_second_lock_file_covers_exactly_the_tables_migrations_499_515_549_5
     observed_559 = revoked_559 & set(matrix_tables())
     assert observed_559 == {"receipts", "receipt_allocations", "purchase_payments", "purchase_payment_allocations"}, sorted(observed_559)
     revoked |= observed_559
+    # and the twelve document tables migration 563 took every WRITE from (reading stays): the six headers are tables the matrix
+    # observes, and the six lines tables are held by test_539 (which gives the write back to measure its trigger and policies).
+    sql_563 = (_MIGRATIONS / _M563).read_text()
+    revoked_563 = set(re.findall(r"'([a-z_]+)'", sql_563.split("tables text[] := ARRAY[", 1)[1].split("]", 1)[0]))
+    observed_563 = revoked_563 & set(matrix_tables())
+    assert observed_563 == {"client_sales_invoices", "purchase_bills", "credit_notes", "debit_notes", "purchase_credit_notes",
+                            "sales_debit_notes"}, sorted(observed_563)
+    revoked |= observed_563
     second = load_second_lock()
     assert {t for _a, t in second} == revoked, (
-        f"rls_expected_second_lock.json covers a different set of tables than migrations 499, 515, 549, 550, 551 and 559 revoke: "
+        f"rls_expected_second_lock.json covers a different set of tables than migrations 499, 515, 549, 550, 551, 559 and 563 revoke: "
         f"missing {sorted(revoked - {t for _a, t in second})}, extra {sorted({t for _a, t in second} - revoked)}")
     assert len(second) == len(revoked) * len(ACTORS)
     # and the main expectation reads "no privilege" in every cell of the tables 549 and 550 closed entirely, and in every WRITE
@@ -1594,6 +1611,7 @@ def test_the_second_lock_decides_when_the_first_is_lifted(world):
     exactly as they did before 550."""
     copy = clone_world(_ADMIN, world)
     try:
+        _ok(copy.dsn, _migration_sql(_M563_ROLLBACK))
         _ok(copy.dsn, _migration_sql(_M559_ROLLBACK))
         _ok(copy.dsn, _migration_sql(_M551_ROLLBACK))
         _ok(copy.dsn, _migration_sql(_M549_ROLLBACK))

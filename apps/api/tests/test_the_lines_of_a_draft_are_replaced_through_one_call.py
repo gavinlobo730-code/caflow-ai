@@ -78,7 +78,7 @@ def test_another_firms_document_is_a_404(kind):
 
 
 class _WithoutTheFunction(FakeDB):
-    """A database that has not had migration 560 applied: PostgREST says so the way it says it for any missing function."""
+    """A database without the function: PostgREST says so the way it says it for any missing function."""
 
     def rpc(self, fn, params=None):
         if fn == "replace_draft_document_lines":
@@ -88,17 +88,22 @@ class _WithoutTheFunction(FakeDB):
 
 
 @pytest.mark.parametrize("kind", sorted(DOCUMENTS))
-def test_while_the_function_is_missing_the_two_step_replacement_runs(kind, caplog):
+def test_a_missing_function_is_the_callers_error_and_there_is_no_second_way_to_write_the_lines(kind):
+    """Until 29-10-2026 a missing function ran a delete-then-insert for the hour migration 560 was not on production. It is on
+    production, and the fallback is deleted (POST-A-335 step 2): the error reaches the route, and no line is written."""
     db = _WithoutTheFunction()
     doc = db.seed(HEADERS[kind], {"firm_id": FIRM, "status": "draft"})
     table, fk, _ = DOCUMENTS[kind]
     db.seed(table, {fk: doc["id"], "description": "old"})
-    db.seed(table, {fk: "another-document", "description": "not ours"})
-    with caplog.at_level("WARNING", logger="caflow.services"):
-        n = replace_draft_lines(db, kind, doc["id"], FIRM, [{"description": "new", fk: doc["id"]}])
-    assert n == 1
-    assert sorted((r[fk], r["description"]) for r in db.rows(table)) == sorted([(doc["id"], "new"), ("another-document", "not ours")])
-    assert "is not in the database yet" in caplog.text
+    with pytest.raises(Exception, match="PGRST202"):
+        replace_draft_lines(db, kind, doc["id"], FIRM, [{"description": "new", fk: doc["id"]}])
+    assert [r["description"] for r in db.rows(table)] == ["old"]
+
+
+def test_the_helper_holds_no_second_writer():
+    import inspect
+    source = inspect.getsource(ddl)
+    assert "_two_step" not in source and ".insert(" not in source and ".delete(" not in source
 
 
 def test_any_other_error_is_the_callers_and_nothing_is_replaced():
@@ -129,7 +134,6 @@ def test_the_helpers_kinds_are_the_functions_case():
 #: (file, function) -> why it may delete a document's lines itself. Each removes the lines of a draft it has JUST made, in the same
 #: call, to undo a half-built document; none edits a draft someone else may be issuing.
 REVIEWED = {
-    ("services/draft_document_lines.py", "_two_step"): "the fallback for the hour migration 560 is not in the database; deleted with it",
     ("services/recurring_invoice_service.py", "_stamp_recurring"): "the loser of a unique(template, occurrence) race removes the draft it just generated",
     ("services/recurring_purchase_bill_service.py", "_stamp_recurring"): "the same, for a bill generated from a recurring template",
     ("services/billing_service.py", "_stamp_billing_fields"): "the loser of a unique(schedule, period) race removes the draft invoice it just built",
