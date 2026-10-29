@@ -269,7 +269,8 @@ def test_issuing_a_legacy_draft_with_an_illegal_number_is_refused(monkeypatch):
         "supply_state_code": "27", "deleted_at": None})
     with pytest.raises(HTTPException) as e:
         si.issue_invoice("INV-LEGACY", CALLER)
-    assert e.value.status_code == 422 and "46(b)" in e.value.detail
+    assert e.value.status_code == 422 and "46(b)" in e.value.detail["message"]      # {message, code, action} since POST-A-125
+    assert e.value.detail["code"] == "INVOICE_NO_NOT_ALLOWED"
 
 
 class _Payload:

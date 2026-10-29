@@ -1,3 +1,4 @@
+import type { IssuePreflight } from "@/lib/invoices/issueReadiness";
 import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { withReference } from "@/lib/api/requestReference";
@@ -6807,6 +6808,9 @@ export const api = {
       request(`/api/sales-invoices/?client_id=${clientId}${params ? "&" + new URLSearchParams(params) : ""}`),
     get: (id: string) => request(`/api/sales-invoices/${id}`),
     issue: (id: string) => request(`/api/sales-invoices/${id}/issue`, { method: "POST" }),
+    /** Everything that would stop `issue` right now, as the server lists it (POST-A-125). Reads and writes nothing. */
+    issuePreflight: (id: string) =>
+      request<ApiResp<IssuePreflight>>(`/api/sales-invoices/${id}/issue-preflight`),
     unposted: (clientId?: string) =>
       request(`/api/sales-invoices/maintenance/unposted${clientId ? `?client_id=${clientId}` : ""}`),
     downloadPdf: (id: string, invoiceNo?: string) =>

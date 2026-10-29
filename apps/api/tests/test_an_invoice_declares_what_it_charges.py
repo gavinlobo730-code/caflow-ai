@@ -136,10 +136,19 @@ def test_issue_requires_a_valid_place_of_supply():
     import re
     import routers.sales_invoices as si
 
-    body = inspect.getsource(si.issue_invoice)
-    body = re.sub(r"#[^\n]*", "", body)
-    body = re.sub(r'"""[\s\S]*?"""', "", body)
-    assert "VALID_STATE_CODES" in body, (
+    from domain.sales import issue_readiness
+    from services import issue_readiness_service
+
+    def code(obj):
+        text = inspect.getsource(obj)
+        text = re.sub(r"#[^\n]*", "", text)
+        return re.sub(r'"""[\s\S]*?"""', "", text)
+
+    # POST-A-125: the checks moved out of the route into the readiness list the route refuses from. The rule is unchanged and is
+    # held on its three links: the route asks the list, the list asks the place of supply, and that asks the valid state codes.
+    assert "blockers_for_sales_invoice" in code(si.issue_invoice) and "refuse(" in code(si.issue_invoice)
+    assert "place_of_supply_problem" in code(issue_readiness_service._place)
+    assert "VALID_STATE_CODES" in code(issue_readiness.place_of_supply_problem), (
         "issue_invoice no longer checks the place of supply, so an invoice can "
         "again be issued, posted and sent and first fail at the GSTR-1 build")
 

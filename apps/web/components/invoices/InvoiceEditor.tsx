@@ -49,6 +49,8 @@ import {
 } from "@/lib/invoices/shared";
 import { Callout } from "@/components/ui/callout";
 import { ActivityMini } from "@/components/documents/ActivityMini";
+import { IssueReadinessPanel } from "@/components/invoices/IssueReadinessPanel";
+import { HELD_SENTENCE, holdsTheIssue, type ReadinessState } from "@/lib/invoices/issueReadiness";
 import { formatPaise } from "@/lib/money/format";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
@@ -294,6 +296,12 @@ export function InvoiceEditor({
   const nextKey = () => keyRef.current++;
   const [saving, setSaving] = useState<SaveAction | null>(null);
   const { flight } = useSingleFlight();
+  // POST-A-125. A new invoice that was saved as a draft and then refused at the issue is a DRAFT ON THE SERVER, and the editor must
+  // know its id: without it the next click on Save & Issue creates a second invoice with the same number. `readiness` is the
+  // server's pre-flight answer for the draft as last saved, and `checkNonce` asks again after every attempt.
+  const [createdDraftId, setCreatedDraftId] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessState>({ status: "loading" });
+  const [checkNonce, setCheckNonce] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
   // A date typed as text that is not a date reads as blank to the form; the
@@ -721,11 +729,12 @@ export function InvoiceEditor({
     setError(null);
     try {
       const token = await getAuthToken();
-      let invoiceId = existing?.id ?? "";
+      const patchId = existing?.id ?? createdDraftId;
+      let invoiceId = patchId ?? "";
       let creditWarning: string | null = null;
       const trimmedInvoiceNo = invoiceNo.trim();
 
-      if (isEdit && existing) {
+      if (patchId) {
         if (isLocked) {
           // Issued invoice: only soft fields change (reference/notes/due date/
           // terms + per-line units); everything else is frozen and needs a
@@ -737,7 +746,7 @@ export function InvoiceEditor({
           const lineUnits = Object.fromEntries(
             lines.filter((l) => l.id).map((l) => [l.id as string, l.unit || "NOS"]),
           );
-          const upd = await apiCall(`/api/sales-invoices/${existing.id}`, "PATCH", {
+          const upd = await apiCall(`/api/sales-invoices/${patchId}`, "PATCH", {
             reference_no: referenceNo.trim() || undefined,
             notes: notes.trim() || undefined,
             due_date: dueDate || undefined,
@@ -753,7 +762,7 @@ export function InvoiceEditor({
           onDone(`${trimmedInvoiceNo || "Invoice"} updated`);
           return;
         }
-        const upd = await apiCall(`/api/sales-invoices/${existing.id}`, "PATCH", {
+        const upd = await apiCall(`/api/sales-invoices/${patchId}`, "PATCH", {
           customer_id: customerId,
           invoice_no: trimmedInvoiceNo,
           invoice_date: invoiceDate,
@@ -776,6 +785,8 @@ export function InvoiceEditor({
           ...docDiscountPayload,
         }, token);
         if (!upd.success) throw new Error(upd.error ?? "Failed to update invoice");
+        // The draft on the server is what the editor shows now, so a failed issue below leaves nothing unsaved.
+        initialSnapshot.current = currentSnapshot;
       } else {
         const created = await apiCall("/api/sales-invoices/", "POST", {
           client_id: clientId,
@@ -807,6 +818,10 @@ export function InvoiceEditor({
           credit_limit?: { state?: string; message?: string | null };
         };
         invoiceId = inv?.id ?? "";
+        if (invoiceId) {
+          setCreatedDraftId(invoiceId);
+          initialSnapshot.current = currentSnapshot;
+        }
         // A firm that switched BLOCKING on never reaches here — the server
         // 422s and the catch below shows the same sentence. This is the
         // warning case, which is the default: the invoice IS saved, as a
@@ -843,6 +858,7 @@ export function InvoiceEditor({
       setError(err instanceof Error ? err.message : "Failed to save invoice");
     } finally {
       setSaving(null);
+      setCheckNonce((n) => n + 1);
     }
   }
 
@@ -851,6 +867,18 @@ export function InvoiceEditor({
   }
 
   const busy = saving !== null;
+  // POST-A-125: the server says the draft AS LAST SAVED cannot be issued, and nothing has changed since, so the click can only fail.
+  // With unsaved changes the answer describes an older draft and the chain below (save, then issue, which asks again) stands.
+  const issueHeld = holdsTheIssue(readiness, dirty);
+  const heldTitle = issueHeld ? HELD_SENTENCE : undefined;
+  // What the panel's "fix" buttons do: take the CA to the field. The server names the field and this maps it to a control.
+  function focusField(field: "invoice_no" | "supply_state" | "lines") {
+    const target = field === "invoice_no" ? document.getElementById("inv-invoice-no")
+      : field === "supply_state" ? document.querySelector<HTMLElement>("#inv-supply-state input, #inv-supply-state button")
+      : document.getElementById("inv-lines");
+    target?.scrollIntoView?.({ block: "center" });
+    target?.focus?.();
+  }
   // In locked mode the frozen fields aren't validated (see save()) — never
   // surface a create-time field error on a field the CA can't change here.
   const fieldErr = (msg?: string) => (!isLocked && attempted && msg ? <p className="mt-1 text-3xs text-red-600">{msg}</p> : null);
@@ -899,14 +927,16 @@ export function InvoiceEditor({
       </Button>
       <Button variant="plain" size="none" flight={flight} icon={<Send size={12} />}
         onClick={() => save("send")}
-        disabled={busy}
+        disabled={busy || issueHeld}
+        title={heldTitle}
         className="text-xs px-3 py-1.5 border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-50 disabled:opacity-50 inline-flex items-center gap-1.5"
       >
         Save &amp; Send
       </Button>
       <Button variant="plain" size="none" flight={flight} icon={<CheckCircle size={12} />}
         onClick={() => save("issue")}
-        disabled={busy}
+        disabled={busy || issueHeld}
+        title={heldTitle}
         className="text-xs px-3.5 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 inline-flex items-center gap-1.5"
       >
         Save &amp; Issue
@@ -1007,6 +1037,11 @@ export function InvoiceEditor({
         </div>
       )}
     </div>
+    {/* POST-A-125: what stands between the draft AS SAVED and its issue, as the server lists it. Not shown once issued. */}
+    {!isLocked && (
+      <IssueReadinessPanel invoiceId={existing?.id ?? createdDraftId} checkNonce={checkNonce} unsavedChanges={dirty}
+        onState={setReadiness} onFix={focusField} />
+    )}
     {/* The invoice's own latest events, read by the component (the editor asks for nothing): POST-A-150. */}
     {isEdit && existing?.id && <ActivityMini clientId={clientId} entityType="sales_invoice" entityId={existing.id} />}
     </>
@@ -1051,7 +1086,7 @@ export function InvoiceEditor({
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Invoice Number *</label>
-              <input value={invoiceNo}
+              <input id="inv-invoice-no" value={invoiceNo}
                 onChange={(e) => { numberTouched.current = true; setInvoiceNo(e.target.value); }}
                 disabled={isLocked}
                 placeholder="e.g. INV-0001" aria-label="Invoice number" maxLength={16}
@@ -1112,7 +1147,7 @@ export function InvoiceEditor({
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               <p className="mt-1 text-3xs text-ps-hint">Auto-set from terms; edit for a custom date.</p>
             </div>
-            <div>
+            <div id="inv-supply-state">
               <label className="block text-xs font-medium text-ps-label mb-1">Supply State</label>
               <StateLookup placeOfSupply value={supplyStateCode ?? ""} onChange={onSupplyStateChange}
                 placeholder="— Select —" ariaLabel="Supply state" disabled={isLocked} />
@@ -1288,7 +1323,7 @@ export function InvoiceEditor({
             cell. "Add line" and end-of-row Tab both create a new row whose
             first field is the Product/Service selector, never a blank
             Description box. */}
-        <section className="bg-white rounded-xl border border-ps-border p-4">
+        <section id="inv-lines" tabIndex={-1} className="bg-white rounded-xl border border-ps-border p-4 focus:outline-none focus:ring-2 focus:ring-brand">
           <div className="mb-2 flex items-center justify-between gap-3">
             <h2 className="text-xs font-semibold text-ps-body">Line items</h2>
             {!isLocked && (
