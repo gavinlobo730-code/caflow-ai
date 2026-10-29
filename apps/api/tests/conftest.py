@@ -110,6 +110,28 @@ def _ai_rate_limit_windows_start_empty():
 
 
 @pytest.fixture(autouse=True)
+def _sentry_breadcrumbs_do_not_cross_from_one_test_to_the_next():
+    """A breadcrumb recorded in one test is on the event of a later one.
+
+    Breadcrumbs live on the SDK's scopes, which belong to the process and not to a client, and `sentry_sdk.init()` (the way the suites
+    switch the client off again) does not empty them. Once any test has left default integrations switched on, a later `subprocess` or
+    `logging` call adds a breadcrumb, and the next event another test captures carries it. Found in CI on 29-10-2026: the browser-rule
+    test that runs `node` with a PAN on its command line left a breadcrumb, and `test_no_stack_frame_carries_its_local_variables`, which
+    holds that the PAN is nowhere in its event, failed when the two landed on one worker. Passing alone, and in most groupings, is what
+    made it a flake and not a failure; the scopes are emptied around every test so the grouping stops mattering.
+    """
+    import sentry_sdk
+
+    def empty():
+        for scope in (sentry_sdk.get_global_scope(), sentry_sdk.get_isolation_scope(), sentry_sdk.get_current_scope()):
+            scope.clear_breadcrumbs()
+
+    empty()
+    yield
+    empty()
+
+
+@pytest.fixture(autouse=True)
 def ai_usage_events(monkeypatch):
     """The AI gateway's pauses and usage rows, kept out of the suite.
 
