@@ -26,6 +26,7 @@ from domain.money_sentence import rupee_whole_text
 from core.db_paging import fetch_all, fetch_all_in
 from core import db_provider
 from core.observability import capture_soft_failure
+from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.collections")
@@ -497,7 +498,7 @@ def update_reminder_settings(firm_id: str, fields: dict, db=None) -> dict:
     payload = {k: v for k, v in fields.items() if k == "attach_pdf" and v is not None}
     payload["firm_id"] = firm_id
     payload["updated_at"] = datetime.now(timezone.utc).isoformat()
-    db.table("reminder_settings").upsert(payload, on_conflict="firm_id").execute()
+    privileged_for(db).table("reminder_settings").upsert(payload, on_conflict="firm_id").execute()
     return reminder_settings(firm_id, db=db)
 
 

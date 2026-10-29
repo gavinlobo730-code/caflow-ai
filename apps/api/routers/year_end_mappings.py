@@ -36,6 +36,7 @@ from domain.reporting.year_end_lines import (
     schedule_line_for_account,
     statement_type_for,
 )
+from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -169,7 +170,7 @@ def create_or_update_mapping(
     if existing:
         # Update
         updated = (
-            db.table("account_group_mappings")
+            privileged_for(db).table("account_group_mappings")
             .update({k: v for k, v in record.items() if k not in ("firm_id",)})
             .eq("firm_id", firm_id)
             .eq("account_id", data.account_id)
@@ -180,7 +181,7 @@ def create_or_update_mapping(
 
     # Insert
     new_record = {"id": str(uuid.uuid4()), "created_at": now, **record}
-    inserted = db.table("account_group_mappings").insert(new_record).execute().data[0]
+    inserted = privileged_for(db).table("account_group_mappings").insert(new_record).execute().data[0]
     log_event(
         firm_id, "account_group_mapping", inserted["id"], "create",
         actor_id=current_user.get("auth_user_id"),
@@ -244,7 +245,7 @@ def bulk_update_mappings(
             .data
         )
         if existing:
-            db.table("account_group_mappings").update({
+            privileged_for(db).table("account_group_mappings").update({
                 "schedule_line":  record["schedule_line"],
                 "account_type":   record["account_type"],
                 "normal_balance": record["normal_balance"],
@@ -253,7 +254,7 @@ def bulk_update_mappings(
                 "updated_at":     now,
             }).eq("firm_id", firm_id).eq("account_id", record["account_id"]).execute()
         else:
-            db.table("account_group_mappings").insert(record).execute()
+            privileged_for(db).table("account_group_mappings").insert(record).execute()
 
     log_event(
         firm_id, "account_group_mapping", firm_id, "bulk_update",

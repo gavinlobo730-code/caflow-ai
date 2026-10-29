@@ -6,6 +6,11 @@
 # exists in the migration-built database against the privileges themselves.
 # Joined by a migration in the change that moves its writers (the first line below the names is the migration): 559 closes
 # receipts, receipt_allocations, purchase_payments, purchase_payment_allocations and the three note-allocation tables.
+# 562 closes the seventeen
+# firm-level tables of POST-A-329 (account_group_mappings, firm_hsn_library, firm_hsn_rate_history, assignment_rules, entities, entity_relationships,
+# entity_to_entity_relationships, leads, dsc_records, automation_rules, automation_executions, reminder_settings, engagement_templates and the three
+# recurring-template parents, task_escalations).
+account_group_mappings
 account_period_balances
 activity_logs
 advance_tax_payments
@@ -24,8 +29,11 @@ ai_summaries
 ai_trigger_registry
 ai_usage_events
 approval_requests
+assignment_rules
 attendance
 audit_log
+automation_executions
+automation_rules
 bank_accounts
 bank_matching_rules
 bank_reconciliation_matches
@@ -61,18 +69,25 @@ document_extractions
 document_requests
 document_risks
 documents
+dsc_records
 ecommerce_operator_supplies
 ecommerce_operator_unregistered_supplies
 email_outbox
 email_suppressions
 email_templates
+engagement_templates
+entities
 entity_addresses
 entity_documents
+entity_relationships
+entity_to_entity_relationships
 epfo_ecr_filings
 escalation_rules
 fee_receipts
 filings
 firm_branding
+firm_hsn_library
+firm_hsn_rate_history
 firm_lock_pins
 firm_profiles
 firm_pt_slabs
@@ -99,6 +114,7 @@ journal_lines
 late_interest_charges
 lead_activities
 lead_contacts
+leads
 leave_balances
 login_events
 party_credit_balances
@@ -135,7 +151,11 @@ receipt_allocations
 receipts
 reconciliation_findings
 reconciliation_runs
+recurring_invoice_templates
 recurring_journal_template_lines
+recurring_journal_templates
+recurring_purchase_bill_templates
+reminder_settings
 retainer_logs
 salary_structures
 sales_debit_note_allocations
@@ -150,6 +170,7 @@ statutory_remittances
 stock_count_lines
 stock_count_sessions
 task_dependencies
+task_escalations
 task_tags
 task_templates
 task_timeline_events

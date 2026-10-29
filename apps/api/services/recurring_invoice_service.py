@@ -92,6 +92,7 @@ from domain.recurrence import (                                    # noqa: E402
 )
 from core.ist_clock import ist_today
 from core.observability import capture_soft_failure
+from core.db_provider import privileged_for
 
 # ── Due date (Decision 4) ────────────────────────────────────────────────────
 
@@ -180,7 +181,7 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None
     named_row_ownership.customer_is_the_clients(db, firm_id, data["client_id"], data["customer_id"])
     # A template whose line names another client's item could never generate (every run would refuse it): say so now (POST-A-246).
     assert_items_are_the_clients(db, firm_id, data["client_id"], data["lines"])
-    row = db.table("recurring_invoice_templates").insert(payload).execute().data[0]
+    row = privileged_for(db).table("recurring_invoice_templates").insert(payload).execute().data[0]
     for ln in lines:
         ln["template_id"] = row["id"]
     if lines:
@@ -232,7 +233,7 @@ def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict
         return dict(existing)
     db = db or _db()
     _assert_edited_lines_are_the_clients(db, firm_id, existing, data)
-    db.table("recurring_invoice_templates").update(fields).eq("id", template_id).eq("firm_id", firm_id).execute()
+    privileged_for(db).table("recurring_invoice_templates").update(fields).eq("id", template_id).eq("firm_id", firm_id).execute()
     if new_lines is not None:
         db.table("recurring_invoice_template_lines").delete().eq("template_id", template_id).execute()
         for ln in new_lines:
@@ -256,7 +257,7 @@ def set_status(firm_id: str, template_id: str, status: str, db=None) -> dict:
         existing.update(fields)
         return dict(existing)
     db = db or _db()
-    db.table("recurring_invoice_templates").update(fields).eq("id", template_id).eq("firm_id", firm_id).execute()
+    privileged_for(db).table("recurring_invoice_templates").update(fields).eq("id", template_id).eq("firm_id", firm_id).execute()
     return get_template(firm_id, template_id, db=db)
 
 
@@ -396,7 +397,7 @@ def _set_next_run(firm_id: str, template_id: str, next_run_iso: Optional[str], d
                 t["next_run_date"] = next_run_iso
         return
     db = db or _db()
-    db.table("recurring_invoice_templates").update(
+    privileged_for(db).table("recurring_invoice_templates").update(
         {"next_run_date": next_run_iso, "updated_at": _now_iso()}
     ).eq("id", template_id).eq("firm_id", firm_id).execute()
 

@@ -14,6 +14,13 @@ if _USE_MOCK:
 _get_db = db_provider.request_db
 
 
+def _writer():
+    """The writes below go on the server's own client, acting as the request's person: the signed-in role holds no write on
+    `automation_rules` or `automation_executions` (POST-A-329). The privileged client has no row security, so each statement names
+    the firm itself."""
+    return db_provider.privileged_for(_get_db())
+
+
 class AutomationRepository(BaseRepository[dict]):
 
     def get_rules(self, firm_id: Optional[str] = None) -> list[dict]:
@@ -27,25 +34,27 @@ class AutomationRepository(BaseRepository[dict]):
         return result.data or []
 
     def toggle_rule(self, rule_id: str, enabled: bool, firm_id: Optional[str] = None) -> Optional[dict]:
+        if not _USE_MOCK and not firm_id:
+            raise ValueError("an automation rule is switched for a firm")
         if _USE_MOCK:
             rule = _rule_index.get(rule_id)
             if rule:
                 rule["is_enabled"] = enabled
             return rule
 
-        query = _get_db().table("automation_rules").update({"is_enabled": enabled}).eq("id", rule_id)
-        if firm_id:
-            query = query.eq("firm_id", firm_id)
-        result = query.execute()
+        result = _writer().table("automation_rules").update({"is_enabled": enabled}).eq("id", rule_id).eq("firm_id", firm_id).execute()
         return result.data[0] if result.data else None
 
-    def log_execution(self, execution: dict) -> dict:
+    def log_execution(self, execution: dict, firm_id: Optional[str] = None) -> dict:
         if _USE_MOCK:
             MOCK_AUTOMATION_EXECUTIONS.append(execution)
             return execution
 
-        payload = {k: v for k, v in execution.items() if v is not None and k != "rule_name"}
-        result = _get_db().table("automation_executions").insert(payload).execute()
+        if not firm_id:
+            raise ValueError("an automation execution is recorded for a firm")
+        # The firm is stamped here: the execution carries only its rule, and a row with no firm is one no member can ever read back.
+        payload = {**{k: v for k, v in execution.items() if v is not None and k != "rule_name"}, "firm_id": firm_id}
+        result = _writer().table("automation_executions").insert(payload).execute()
         return result.data[0]
 
     def get_executions(self, firm_id: Optional[str] = None, limit: int = 50) -> list[dict]:

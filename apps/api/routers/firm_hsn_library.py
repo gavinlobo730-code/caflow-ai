@@ -26,6 +26,7 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.firm_hsn_library import FirmHsnLibraryIn, FirmHsnLibraryUpdateIn
 from core import db_provider
+from core.db_provider import privileged_for
 from core.list_window import split
 from core.permissions import rbac
 from domain.gst.goods_or_services import kind_word
@@ -187,12 +188,12 @@ def add_code(
         if existing:
             patch = {**payload, "is_active": True, "updated_at": now}
             patch.pop("firm_id", None)
-            resp = (db.table("firm_hsn_library").update(patch)
-                    .eq("id", existing["id"]).execute())
+            resp = (privileged_for(db).table("firm_hsn_library").update(patch)
+                    .eq("id", existing["id"]).eq("firm_id", firm_id).execute())
             return api_response(True, resp.data[0] if resp.data else {**existing, **patch})
         payload["created_at"] = now
         payload["updated_at"] = now
-        resp = db.table("firm_hsn_library").insert(payload).execute()
+        resp = privileged_for(db).table("firm_hsn_library").insert(payload).execute()
         return api_response(True, resp.data[0] if resp.data else payload)
     except Exception as e:
         _logger.error("add_code: %s", e)
@@ -294,7 +295,7 @@ def bulk_add_codes(
                     MOCK_LIBRARY.append(payload)
                     created.append(payload)
             else:
-                resp = db.table("firm_hsn_library").insert([p for _, p in to_insert]).execute()
+                resp = privileged_for(db).table("firm_hsn_library").insert([p for _, p in to_insert]).execute()
                 created.extend(resp.data or [p for _, p in to_insert])
 
         # ── Step 5: reactivations — per-row (see docstring: expected rare). ──
@@ -306,7 +307,7 @@ def bulk_add_codes(
                 existing.update(patch)
                 reactivated.append(existing)
             else:
-                resp = db.table("firm_hsn_library").update(patch).eq("id", existing["id"]).execute()
+                resp = privileged_for(db).table("firm_hsn_library").update(patch).eq("id", existing["id"]).eq("firm_id", firm_id).execute()
                 reactivated.append(resp.data[0] if resp.data else {**existing, **patch})
 
         return api_response(True, {"created": created, "reactivated": reactivated, "duplicates": duplicates, "errors": errors})
@@ -343,7 +344,7 @@ def update_code(
                  .eq("id", library_id).eq("firm_id", firm_id).execute().data or [])
         if not owned:
             raise HTTPException(status_code=404, detail="Code not found in your library.")
-        resp = (db.table("firm_hsn_library").update(patch)
+        resp = (privileged_for(db).table("firm_hsn_library").update(patch)
                 .eq("id", library_id).eq("firm_id", firm_id).execute())
         return api_response(True, resp.data[0] if resp.data else {**owned[0], **patch})
     except HTTPException:
@@ -379,7 +380,7 @@ def retire_code(
                  .eq("id", library_id).eq("firm_id", firm_id).execute().data or [])
         if not owned:
             raise HTTPException(status_code=404, detail="Code not found in your library.")
-        db.table("firm_hsn_library").update(
+        privileged_for(db).table("firm_hsn_library").update(
             {"is_active": False, "updated_at": now}
         ).eq("id", library_id).eq("firm_id", firm_id).execute()
         return api_response(True, {"id": library_id, "is_active": False})
@@ -520,7 +521,7 @@ def purge_code(
         used_in = _find_hsn_usage(_usage_db(db), firm_id, owned[0]["hsn_code"])
         if used_in:
             return api_response(False, None, _blocked_message(used_in))
-        db.table("firm_hsn_library").delete().eq("id", library_id).eq("firm_id", firm_id).execute()
+        privileged_for(db).table("firm_hsn_library").delete().eq("id", library_id).eq("firm_id", firm_id).execute()
         return api_response(True, {"id": library_id})
     except HTTPException:
         raise
@@ -572,7 +573,7 @@ def bulk_purge_codes(
             if used_in:
                 blocked.append({"id": row["id"], "hsn_code": row["hsn_code"], "used_in": used_in})
                 continue
-            db.table("firm_hsn_library").delete().eq("id", row["id"]).eq("firm_id", firm_id).execute()
+            privileged_for(db).table("firm_hsn_library").delete().eq("id", row["id"]).eq("firm_id", firm_id).execute()
             deleted.append(row["id"])
         return api_response(True, {"deleted": deleted, "blocked": blocked})
     except Exception as e:
