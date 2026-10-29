@@ -1,4 +1,4 @@
--- Migration 560: eleven column defaults the migrations and production disagree about (ledger POST-A-168).
+-- Migration 561: eleven column defaults the migrations and production disagree about (ledger POST-A-168).
 --
 -- ═══════════════════════════════════════════════════════════════════════════
 -- WHAT WAS WRONG
@@ -78,7 +78,7 @@ BEGIN
             SELECT 1 FROM information_schema.columns
              WHERE table_schema = 'public' AND table_name = want[i][1] AND column_name = want[i][2]
                AND column_default IS NOT NULL) THEN
-            RAISE EXCEPTION 'migration 560: %.% has no default', want[i][1], want[i][2];
+            RAISE EXCEPTION 'migration 561: %.% has no default', want[i][1], want[i][2];
         END IF;
     END LOOP;
 END $$;

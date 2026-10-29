@@ -1,4 +1,4 @@
--- Rollback of migration 560: removes the nine defaults it gave. The two it changed to production's values
+-- Rollback of migration 561: removes the nine defaults it gave. The two it changed to production's values
 -- (tally_migration_jobs.is_dry_run and form_26as_reconciliations.status) are left as they are: on production they are
 -- what was already there.
 ALTER TABLE public.brought_forward_losses
