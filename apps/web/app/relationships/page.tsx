@@ -9,6 +9,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatDate } from "@/lib/services/formatting";
+import { objectOrNull } from "@/lib/api/shape";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -321,7 +322,9 @@ export default function RelationshipsPage() {
         }),
       });
       if (!json.success) throw new Error(json.error ?? "Failed to create entity");
-      setEntities((prev) => [json.data, ...prev]);
+      const created = objectOrNull<Entity>(json.data);
+      if (!created) throw new Error("The new entry came back in a form this screen cannot read. Reload to see it.");
+      setEntities((prev) => [created, ...prev]);
       setModalOpen(false);
       setForm(EMPTY_FORM);
     } catch (e) {

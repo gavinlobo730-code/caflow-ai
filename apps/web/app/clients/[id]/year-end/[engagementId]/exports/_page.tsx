@@ -11,6 +11,7 @@ import { useClientEntityType } from "@/lib/clients/useClientEntityType";
 import { usesScheduleIII } from "@/lib/entityObligations";
 import { formatDate } from "@/lib/dates/format";
 import { Button } from "@/components/ui/button";
+import { objectOrNull } from "@/lib/api/shape";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -149,7 +150,9 @@ export default function ExportsPage() {
     try {
       const res = await yearEndApi.exports.generate(engagementId, type);
       if (!res.success) throw new Error(res.error ?? "Failed to generate");
-      setExports((prev) => [res.data, ...prev]);
+      const created = objectOrNull<ExportRecord>(res.data);
+      if (!created) throw new Error("The answer came back in a form this screen cannot read. Reload to see the current state.");
+      setExports((prev) => [created, ...prev]);
       showToast(`${TYPE_LABELS[type]} generated successfully.`, true);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Generation failed", false);

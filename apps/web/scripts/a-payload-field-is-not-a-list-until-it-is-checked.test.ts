@@ -56,9 +56,9 @@
  *   `setRows(prev => [json.data, ...prev])` — a functional update that INSERTS
  *   one item. That does not make the state undefined; it puts `undefined` in
  *   as an ELEMENT, and the row renders blank instead of the screen crashing.
- *   15 of those exist. Folding them in here would make the count bigger and
- *   the claim weaker, because a blank row and a dead screen are not the same
- *   defect and do not have the same fix.
+ *   It has its own test below (POST-A-159): a blank row and a dead screen are
+ *   not the same defect and do not have the same fix, so the two rules stay
+ *   apart, but both fail now.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -160,17 +160,17 @@ test("the sweep is not vacuous — it finds the files it is meant to read", () =
   );
 });
 
-test("the functional-insert variant is counted apart, not swept in", () => {
-  // A DIFFERENT defect: `setRows(prev => [json.data, ...prev])` inserts
-  // undefined as an ELEMENT, so a row renders blank and the screen survives.
-  // Recorded with a number so it cannot quietly grow into the crashing kind,
-  // and NOT failed, because its fix is different and it is not urgent.
+test("no screen puts an unchecked payload into a list as an ELEMENT either", () => {
+  // The functional variant: `setRows(prev => [json.data, ...prev])` or `prev.map(r => r.id === id ? res.data : r)`. It does not make the
+  // state undefined; it puts `undefined` in as an element, so a row renders blank, and a `.map` that reads `r.id` on the next render
+  // throws. It was counted apart (15 on 24-09-2026) and swept on 29-10-2026 (POST-A-159): every site narrows the element with
+  // `objectOrNull` first and says so when it cannot read the answer. The count is a failing assertion now.
   const functional = sweep().filter((h) => h.functional);
-  assert.ok(
-    functional.length <= 15,
-    `functional inserts from an unchecked payload rose to ${functional.length} ` +
-      `(was 15 on 24-09-2026):\n  ` +
-      functional.map((h) => `${h.file}: ${h.setter}`).join("\n  "),
+  assert.deepEqual(
+    functional.map((h) => `${h.file}: ${h.setter}( ${h.arg} )`),
+    [],
+    "these put an element read straight from an API payload into a list. Narrow it first: " +
+      "`const created = objectOrNull<T>(json.data); if (!created) throw …`, from @/lib/api/shape.",
   );
 });
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { objectOrNull } from "@/lib/api/shape";
 import { Sparkles, Lock, Unlock, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { yearEndApi, type NoteToAccount, type NoteData } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -106,7 +107,9 @@ export default function NotesPage() {
     try {
       const res = await yearEndApi.notes.update(engagementId, note.id, { content });
       if (!res.success) throw new Error(res.error ?? "Failed to save");
-      setNotes((prev) => prev.map((n) => (n.id === note.id ? res.data : n)));
+      const updated = objectOrNull<NoteToAccount>(res.data);
+      if (!updated) throw new Error("The answer came back in a form this screen cannot read. Reload to see the current state.");
+      setNotes((prev) => prev.map((n) => (n.id === note.id ? updated : n)));
       setEditContent((prev) => { const n = { ...prev }; delete n[note.id]; return n; });
       showToast("Note saved", true);
     } catch (err) {
@@ -121,7 +124,9 @@ export default function NotesPage() {
     try {
       const res = await yearEndApi.notes.lock(engagementId, note.id);
       if (!res.success) throw new Error(res.error ?? "Failed to lock");
-      setNotes((prev) => prev.map((n) => (n.id === note.id ? res.data : n)));
+      const updated = objectOrNull<NoteToAccount>(res.data);
+      if (!updated) throw new Error("The answer came back in a form this screen cannot read. Reload to see the current state.");
+      setNotes((prev) => prev.map((n) => (n.id === note.id ? updated : n)));
       showToast("Note locked", true);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Lock failed", false);

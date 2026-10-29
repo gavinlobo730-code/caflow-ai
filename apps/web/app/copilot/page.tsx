@@ -12,6 +12,7 @@ import { formatDate } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
+import { objectOrNull } from "@/lib/api/shape";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -211,9 +212,17 @@ export default function CopilotPage() {
 
     let convId = activeConv;
     if (!convId) {
-      const res = (await api.copilotV2.createConversation({ context_type: contextType })) as { data: Conversation };
-      convId = res.data.id;
-      setConversations((prev: Conversation[]) => [res.data, ...prev]);
+      let created: Conversation | null = null;
+      try {
+        const res = (await api.copilotV2.createConversation({ context_type: contextType })) as { data?: unknown };
+        created = objectOrNull<Conversation>(res?.data);
+      } catch { /* said below, once, with the same words as an unreadable answer */ }
+      if (!created?.id) {
+        setChatError("Couldn't start a conversation. Please try again.");
+        return;
+      }
+      convId = created.id;
+      setConversations((prev: Conversation[]) => [created as Conversation, ...prev]);
       setActiveConv(convId);
     }
 

@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
+import { objectOrNull } from "@/lib/api/shape";
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
   if (paise === 0) return "₹0";
@@ -115,7 +116,9 @@ export default function AdjustmentsPage() {
       else if (action === "approve") res = await yearEndApi.adjustments.approve(engagementId, adjId);
       else res = await yearEndApi.adjustments.post(engagementId, adjId);
       if (!res.success) throw new Error(res.error ?? "Action failed");
-      setAdjustments((prev) => prev.map((a) => (a.id === adjId ? res.data : a)));
+      const updated = objectOrNull<Adjustment>(res.data);
+      if (!updated) throw new Error("The answer came back in a form this screen cannot read. Reload to see the current state.");
+      setAdjustments((prev) => prev.map((a) => (a.id === adjId ? updated : a)));
       showToast("Action completed successfully", true);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Action failed", false);
