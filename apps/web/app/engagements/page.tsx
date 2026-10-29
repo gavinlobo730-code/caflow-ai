@@ -67,6 +67,9 @@ interface EngagementLetter {
   engagement_number: string;
   title: string;
   status: "Draft" | "Generated" | "Sent" | "Viewed" | "Signed" | "Rejected" | "Expired";
+  /** What the letter is NOW: "Expired" for one still waiting on the client whose last day has passed. Served by the API, which derives it
+   *  from the date (nothing stores that word). Absent on a row the server did not present, and then the stored status stands. */
+  displayed_status?: EngagementLetter["status"];
   fee_amount_paise: number;
   recipient_name: string | null;
   recipient_email: string | null;
@@ -96,7 +99,12 @@ interface EngagementTemplate {
   is_default: boolean;
 }
 
-type ActiveTab = "all" | "draft" | "sent" | "signed" | "templates";
+type ActiveTab = "all" | "draft" | "sent" | "signed" | "expired" | "templates";
+
+/** The status a screen shows for a letter: the server's `displayed_status` (which carries Expired) and the stored one when it sent none. */
+function shownStatus(l: Pick<EngagementLetter, "status" | "displayed_status">): EngagementLetter["status"] {
+  return l.displayed_status ?? l.status;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers — integer paise arithmetic (never floating point, per CGST Act)
@@ -800,7 +808,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
             <h2 className="text-base font-semibold text-ps-ink">{letter.title}</h2>
           </div>
           <div className="flex items-center gap-3">
-            <StatusBadge status={letter.status} />
+            <StatusBadge status={shownStatus(letter)} />
             <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
               <X size={18} />
             </button>
@@ -1177,7 +1185,7 @@ function EngagementsPageInner() {
   // no duplicated React state to keep in sync.
   const tabParam = searchParams.get("tab");
   const activeTab: ActiveTab =
-    tabParam === "draft" || tabParam === "sent" || tabParam === "signed" || tabParam === "templates"
+    tabParam === "draft" || tabParam === "sent" || tabParam === "signed" || tabParam === "expired" || tabParam === "templates"
       ? tabParam
       : "all";
 
@@ -1253,15 +1261,17 @@ function EngagementsPageInner() {
   // Filter letters by active tab
   const filteredLetters = letters.filter((l) => {
     if (activeTab === "all") return true;
-    if (activeTab === "draft") return l.status === "Draft" || l.status === "Generated";
-    if (activeTab === "sent") return l.status === "Sent" || l.status === "Viewed";
-    if (activeTab === "signed") return l.status === "Signed";
+    const shown = shownStatus(l);
+    if (activeTab === "draft") return shown === "Draft" || shown === "Generated";
+    if (activeTab === "sent") return shown === "Sent" || shown === "Viewed";
+    if (activeTab === "signed") return shown === "Signed";
+    if (activeTab === "expired") return shown === "Expired";
     return true;
   });
 
   // Summary stats
-  const draftCount = letters.filter((l) => l.status === "Draft" || l.status === "Generated").length;
-  const awaitingCount = letters.filter((l) => l.status === "Sent" || l.status === "Viewed").length;
+  const draftCount = letters.filter((l) => shownStatus(l) === "Draft" || shownStatus(l) === "Generated").length;
+  const awaitingCount = letters.filter((l) => shownStatus(l) === "Sent" || shownStatus(l) === "Viewed").length;
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const signedThisMonth = letters.filter(
@@ -1284,6 +1294,7 @@ function EngagementsPageInner() {
     { id: "draft", label: "Draft" },
     { id: "sent", label: "Sent" },
     { id: "signed", label: "Signed" },
+    { id: "expired", label: "Expired" },
     { id: "templates", label: "Templates" },
   ];
 
@@ -1324,8 +1335,8 @@ function EngagementsPageInner() {
       ),
     },
     {
-      key: "status", header: "Status", accessor: (l) => l.status, sortable: true,
-      render: (l) => <StatusBadge status={l.status} />,
+      key: "status", header: "Status", accessor: (l) => shownStatus(l), sortable: true,
+      render: (l) => <StatusBadge status={shownStatus(l)} />,
     },
     {
       key: "fee", header: "Fee", accessor: (l) => l.fee_amount_paise, sortable: true, align: "right",
@@ -1345,7 +1356,7 @@ function EngagementsPageInner() {
 
   const letterFilters: FilterDef<EngagementLetter>[] = useMemo(() => [
     {
-      key: "status", label: "Status", type: "select", accessor: (l) => l.status,
+      key: "status", label: "Status", type: "select", accessor: (l) => shownStatus(l),
       options: (["Draft", "Generated", "Sent", "Viewed", "Signed", "Rejected", "Expired"] as EngagementLetter["status"][])
         .map((s) => ({ value: s, label: s })),
     },

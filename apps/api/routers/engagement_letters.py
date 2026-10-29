@@ -17,7 +17,7 @@ CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT any letter without explicit CA approva
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone, date
 import logging
 import os
 import secrets
@@ -28,6 +28,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access, filter_by_client
 from services.audit_service import log_event
 from core.ist_clock import ist_today
+from domain.engagement import expiry
 from domain.money_sentence import rupee_text, rupee_whole_text
 from core import db_provider
 from core.db_provider import privileged_for
@@ -555,24 +556,16 @@ _GENERIC_SEND_FAILURE = (
 # it has already been sent to the client and is awaiting their signature.
 _RESENDABLE = {"Sent", "Viewed"}
 
-# Business timezone for date-only expiry checks (the FY and all due dates are
-# reckoned in IST; comparing expiry_date against UTC would expire a letter up to
-# 5.5h early). Mirrors engagement_sign_public._IST — kept local to avoid a
-# circular import (engagement_sign_public already imports from this module).
-_IST = timezone(timedelta(hours=5, minutes=30))
-
-
 def _is_expired(eng: dict) -> bool:
-    """True when the letter is past its expiry_date (date-only, IST). Letters
-    with no expiry_date never expire."""
-    exp = eng.get("expiry_date")
-    if not exp:
-        return False
-    try:
-        exp_date = date.fromisoformat(str(exp)[:10])
-    except Exception:
-        return False
-    return datetime.now(_IST).date() > exp_date
+    """True when the letter is past its expiry_date (date-only, the Indian day). Letters with no expiry_date never expire. The rule is
+    `domain/engagement/expiry`, the one the public signing page uses too."""
+    return expiry.is_past_expiry(eng.get("expiry_date"))
+
+
+def _presented_and_filtered(rows: list[dict], status: Optional[str]) -> list[dict]:
+    """Each letter with its displayed status, and only those whose DISPLAYED status is the one asked for (all of them when none is)."""
+    shown = [expiry.present(e) for e in rows]
+    return [e for e in shown if e["displayed_status"] == status] if status else shown
 
 
 def _build_sign_url(sign_token: Optional[str]) -> Optional[str]:
@@ -1074,14 +1067,13 @@ def list_engagements(
             e for e in _MOCK_ENGAGEMENTS
             if e.get("firm_id") == firm_id and not e.get("is_deleted")
         ]
-        if status:
-            result = [e for e in result if e.get("status") == status]
         if lead_id:
             result = [e for e in result if e.get("lead_id") == lead_id]
         if client_id:
             result = [e for e in result if e.get("client_id") == client_id]
         else:
             result = filter_by_client(current_user, result)
+        result = _presented_and_filtered(result, status)
         return api_response(True, {"engagements": result, "total": len(result)})
 
     try:
@@ -1091,8 +1083,8 @@ def list_engagements(
             .eq("firm_id", firm_id)
             .eq("is_deleted", False)
         )
-        if status:
-            q = q.eq("status", status)
+        # A status filter is applied to the DISPLAYED status below, after the rows are read: "Expired" is not stored, and "Sent" must not
+        # list a letter whose last day has passed.
         if lead_id:
             q = q.eq("lead_id", lead_id)
         if client_id:
@@ -1104,6 +1096,7 @@ def list_engagements(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    engagements = _presented_and_filtered(engagements, status)
     return api_response(True, {"engagements": engagements, "total": len(engagements)})
 
 
@@ -1249,7 +1242,7 @@ def get_engagement(
         if not eng:
             raise HTTPException(status_code=404, detail="Engagement not found")
         events = [ev for ev in _MOCK_EVENTS if ev.get("engagement_id") == engagement_id]
-        return api_response(True, {"engagement": eng, "events": events})
+        return api_response(True, {"engagement": expiry.present(eng), "events": events})
 
     try:
         eng_res = (
@@ -1278,7 +1271,7 @@ def get_engagement(
     except Exception:
         events = []
 
-    return api_response(True, {"engagement": eng, "events": events})
+    return api_response(True, {"engagement": expiry.present(eng), "events": events})
 
 
 @router.patch("/{engagement_id}")
@@ -1618,7 +1611,7 @@ def send_engagement(
         pass
     # Objective 1: sending a letter advances the linked lead to "Engagement Sent".
     _advance_lead(eng.get("lead_id"), firm_id, "Engagement Sent", current_user)
-    return api_response(True, {"engagement": updated, "delivery": delivery})
+    return api_response(True, {"engagement": expiry.present(updated), "delivery": delivery})
 
 
 @router.post("/{engagement_id}/resend")
@@ -1679,8 +1672,8 @@ def resend_engagement(
 
     delivery = _do_resend(db, eng, firm_id, override, current_user)
     if not delivery["success"]:
-        return api_response(False, {"engagement": eng, "delivery": delivery}, delivery["error"])
-    return api_response(True, {"engagement": eng, "delivery": delivery})
+        return api_response(False, {"engagement": expiry.present(eng), "delivery": delivery}, delivery["error"])
+    return api_response(True, {"engagement": expiry.present(eng), "delivery": delivery})
 
 
 @router.get("/{engagement_id}/signing-link")

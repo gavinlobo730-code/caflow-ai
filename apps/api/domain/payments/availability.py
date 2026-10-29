@@ -170,11 +170,33 @@ def invoice_is_payable(status: Optional[str], outstanding_paise: Optional[int]) 
     return (status or "").strip().lower() in PAYABLE_STATUSES and owed > 0
 
 
+#: The stored statuses of a link that is still waiting to be paid. A date can expire only these.
+OPEN_LINK_STATUSES = ("created", "active")
+
+
+def link_is_expired(link: dict, now: Optional[datetime] = None) -> bool:
+    """True when the link's own expiry has passed. Nothing writes `expired` (the gateway's webhook says paid or cancelled, never that a
+    week went by), so the instant is what says so; a link with no readable expiry has not expired."""
+    expires = _parse_instant(link.get("expires_at"))
+    return expires is not None and expires <= (now or datetime.now(timezone.utc))
+
+
+def displayed_link_status(link: dict, now: Optional[datetime] = None) -> str:
+    """The status a screen shows for a stored link: `expired` for one still waiting to be paid whose expiry has passed, otherwise the
+    stored status as it is (a paid link stays paid however old it is)."""
+    stored = (link.get("status") or "").strip().lower()
+    if stored in OPEN_LINK_STATUSES and link_is_expired(link, now):
+        return "expired"
+    return stored
+
+
 def mask_link(link: dict) -> dict:
-    """The link as a screen may show it: a link made by the test double has no address and says why."""
+    """The link as a screen may show it: a link made by the test double has no address and says why, and every link says what it
+    is NOW (`displayed_status`), because its stored status is never moved to expired."""
+    shown = {**link, "displayed_status": displayed_link_status(link)}
     if (link.get("provider") or "").strip().lower() in NEVER_SHOWN_PROVIDERS:
-        return {**link, "short_url": None, "note": MASKED_LINK_NOTE}
-    return link
+        return {**shown, "short_url": None, "note": MASKED_LINK_NOTE}
+    return shown
 
 
 def _parse_instant(value: object) -> Optional[datetime]:
@@ -204,7 +226,6 @@ def link_problem(link: dict, configured_provider: str, now: Optional[datetime] =
         return f"This payment link is not active (its status is {status or 'unknown'}), so it is not emailed."
     if not (link.get("short_url") or "").strip():
         return "This payment link has no address to send."
-    expires = _parse_instant(link.get("expires_at"))
-    if expires is not None and expires <= (now or datetime.now(timezone.utc)):
+    if link_is_expired(link, now):
         return "This payment link has expired and cannot be emailed. Create a new one."
     return None

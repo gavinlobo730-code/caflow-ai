@@ -8,6 +8,7 @@ import {
   Edit3,
   Send,
   CheckCircle,
+  Clock,
   LayoutTemplate,
 } from "lucide-react";
 import { cn, isExactPath } from "@/lib/utils";
@@ -17,6 +18,7 @@ const ENGAGEMENTS_ITEMS = [
   { href: "/engagements?tab=draft", label: "Drafts", icon: Edit3, tabParam: "draft" },
   { href: "/engagements?tab=sent", label: "Awaiting Signature", icon: Send, tabParam: "sent" },
   { href: "/engagements?tab=signed", label: "Signed", icon: CheckCircle, tabParam: "signed" },
+  { href: "/engagements?tab=expired", label: "Expired", icon: Clock, tabParam: "expired" },
   { href: "/engagements?tab=templates", label: "Templates", icon: LayoutTemplate, tabParam: "templates" },
 ];
 
