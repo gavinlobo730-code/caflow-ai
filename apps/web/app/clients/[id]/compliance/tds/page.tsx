@@ -1310,6 +1310,8 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
             What a vendor&apos;s Assessing Officer certified: the rate, the certificate
             number, the period, and the amount it applies up to (Rule 28AA(4)). Bills and
             advances to that vendor withhold at the certified rate until the amount is used up.
+            A certificate cannot be changed or removed from the product once it is recorded, so
+            check the number, the rate and the period before you save.
           </p>
         </div>
         <button onClick={() => setShowNew((s) => !s)}
