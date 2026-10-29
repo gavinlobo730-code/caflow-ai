@@ -13,6 +13,7 @@ from models.common import api_response
 from models.invoices import ReceiptIn, ReceiptAllocationsUpdateIn
 from models.accounting import JournalReversalIn
 from core.exceptions import document_failure_detail
+from core.db_provider import privileged_for
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from services.audit_service import log_event
@@ -308,7 +309,7 @@ def update_allocations(
         # but their amounts were never subtracted from paid_paise.)
         for old in prior:
             _adjust_invoice_paid(db, firm_id, receipt_client_id, old.get("sales_invoice_id"), -int(old.get("allocated_paise", 0) or 0), actor=current_user)
-        db.table("receipt_allocations").delete().eq("receipt_id", receipt_id).execute()
+        privileged_for(db).table("receipt_allocations").delete().eq("receipt_id", receipt_id).execute()
 
         alloc_payloads = []
         for alloc in allocations:
@@ -324,12 +325,12 @@ def update_allocations(
             _adjust_invoice_paid(db, firm_id, receipt_client_id, inv_id, alloc_amt, actor=current_user)
 
         if alloc_payloads:
-            db.table("receipt_allocations").insert(alloc_payloads).execute()
+            privileged_for(db).table("receipt_allocations").insert(alloc_payloads).execute()
 
         # Update unallocated balance — settlement basis (cash + TDS), matching
         # create_receipt_core's "unallocated_paise = settlement - allocated".
         unallocated = amount_paise + tds_paise - total_allocated
-        db.table("receipts").update({"unallocated_paise": unallocated}).eq("id", receipt_id).execute()
+        privileged_for(db).table("receipts").update({"unallocated_paise": unallocated}).eq("id", receipt_id).eq("firm_id", firm_id).eq("client_id", receipt_client_id).execute()
 
         log_event(
             current_user.get("firm_id", ""), "receipt", receipt_id,

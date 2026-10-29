@@ -433,10 +433,11 @@ def test_a_portal_client_still_cannot_write_any_of_the_eight(post_fix_db):
 
 
 def test_the_authenticated_grants_are_the_documented_set(post_fix_db):
-    """SELECT/INSERT/UPDATE/DELETE on all eight — matches what this
-    environment's own information_schema shows today (194's grant sweep gave
-    invoice_deliveries and customer_statement_deliveries DELETE on top of
-    their own creating migrations' SELECT/INSERT/UPDATE)."""
+    """SELECT/INSERT/UPDATE/DELETE on six of the eight, SELECT alone on `receipts` and `receipt_allocations` — matches what this
+    environment's own information_schema shows today (194's grant sweep gave invoice_deliveries and customer_statement_deliveries
+    DELETE on top of their own creating migrations' SELECT/INSERT/UPDATE; migration 559 took every write from the two receipt
+    tables, which only the API writes, POST-A-336)."""
+    read_only = {"receipts", "receipt_allocations"}
     for table in ("client_sales_invoices", "invoice_deliveries", "customers",
                   "receipts", "receipt_allocations", "credit_notes",
                   "sales_debit_notes", "customer_statement_deliveries"):
@@ -448,7 +449,7 @@ def test_the_authenticated_grants_are_the_documented_set(post_fix_db):
             capture_output=True, text=True,
         )
         assert got.returncode == 0, got.stderr
-        assert got.stdout.strip().splitlines() == ["DELETE", "INSERT", "SELECT", "UPDATE"], table
+        assert got.stdout.strip().splitlines() == (["SELECT"] if table in read_only else ["DELETE", "INSERT", "SELECT", "UPDATE"]), table
 
 
 # ── Structural guards: the split lives per-command, not FOR ALL ─────────────

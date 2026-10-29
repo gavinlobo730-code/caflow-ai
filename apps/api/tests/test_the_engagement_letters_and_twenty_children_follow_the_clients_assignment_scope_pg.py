@@ -106,11 +106,12 @@ CHILDREN: dict[str, list[tuple[str, str]]] = {
     "task_tags": [("tasks", "task_id")],
     "task_timeline_events": [("tasks", "task_id")],
 }
-# a signed-in session is granted SELECT and nothing else on these six (their rows are written with the API's privileged client):
+# a signed-in session is granted SELECT and nothing else on these nine (their rows are written with the API's privileged client; migration
+# 559, POST-A-336, took the writes of the three note-allocation tables the way 513 took `credit_note_allocations`'s):
 # the proof for them is the reads, the policies and the plan, and `test_the_tables_a_signed_in_session_cannot_write_are_the_ones_
 # this_file_says` fails the day a write grant is added, so that the write proof applies to them from then on
-READ_ONLY = {"credit_note_allocations", "task_tags", "task_timeline_events", "workflow_approvals", "workflow_executions",
-             "workflow_failures"}
+READ_ONLY = {"credit_note_allocations", "debit_note_allocations", "purchase_credit_note_allocations", "sales_debit_note_allocations",
+             "task_tags", "task_timeline_events", "workflow_approvals", "workflow_executions", "workflow_failures"}
 WRITABLE_CHILDREN = [t for t in CHILDREN if t not in READ_ONLY]
 WRITABLE = ["engagements", *WRITABLE_CHILDREN]
 NULLABLE_PARENT = {"customer_payment_events", "onboarding_tasks"}          # a row with no parent stays open to the firm
@@ -377,7 +378,7 @@ def world(seeded):
 # ── WHAT A SIGNED-IN SESSION CAN WRITE ──────────────────────────────────────────
 
 def test_the_tables_a_signed_in_session_cannot_write_are_the_ones_this_file_says(world):
-    """The write proof below covers the tables the `authenticated` role is granted a write on. The six that are read-only
+    """The write proof below covers the tables the `authenticated` role is granted a write on. The nine that are read-only
     today are named in READ_ONLY; if a grant is added to one, this fails and the write proof must cover it, and if one of the
     others loses its write grants this fails too, so the list is not a place where a table can hide."""
     rows = _rows(world.dsn, "SELECT c.relname, (has_table_privilege('authenticated', c.oid, 'INSERT') "

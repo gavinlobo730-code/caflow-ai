@@ -16,6 +16,7 @@ from models.invoices import InvoiceLineIn
 from core import db_provider
 from core.authz import assert_client_access, can_access_client
 from services import named_row_ownership
+from services import draft_document_lines
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.document_header_writer import update_header
@@ -603,9 +604,7 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
                 "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
                 "total_gst_paise": total_cgst + total_sgst + total_igst,
             })
-            db.table("credit_note_lines").delete().eq("credit_note_id", cn_id).execute()
-            for ln in computed:
-                db.table("credit_note_lines").insert({**ln, "credit_note_id": cn_id}).execute()
+            draft_document_lines.replace_draft_lines(db, "credit_note", cn_id, firm_id or "", computed)
 
         if data:
             upd = db.table("credit_notes").update(data).eq("id", cn_id).eq("firm_id", firm_id).execute()

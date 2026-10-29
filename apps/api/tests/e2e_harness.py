@@ -579,6 +579,28 @@ class _Rpc:
             raise Exception(f"FakeDB: unsupported rpc {self.fn!r}")
         return _Result(handler())
 
+    def _fn_replace_draft_document_lines(self):
+        """Mirror migration 560: the header is looked up for the firm and must be a draft, the old lines go and the new ones are
+        stored with the document's own id as their foreign key (trivially atomic in memory). The two refusals carry the words
+        the real function raises, which `services/draft_document_lines` reads."""
+        headers = {"sales_invoice": "client_sales_invoices", "purchase_bill": "purchase_bills", "credit_note": "credit_notes",
+                   "debit_note": "debit_notes", "sales_debit_note": "sales_debit_notes",
+                   "purchase_credit_note": "purchase_credit_notes"}
+        kind, doc_id, firm = self.params["p_document"], self.params["p_document_id"], self.params["p_firm_id"]
+        header = next((r for r in self.db.rows(headers[kind]) if r.get("id") == doc_id and r.get("firm_id") == firm), None)
+        if header is None:
+            raise Exception("document_not_found")
+        if header.get("status") != "draft":
+            raise Exception("document_not_draft")
+        table, fk = _LINE_TABLE[kind]
+        store = self.db._tables.setdefault(table, [])
+        store[:] = [r for r in store if r.get(fk) != doc_id]
+        for ln in self.params["p_lines"]:
+            row = {**ln, fk: doc_id}
+            row.setdefault("id", str(uuid.uuid4()))
+            store.append(row)
+        return len(self.params["p_lines"])
+
     def _fn_tds_deposit_position(self):
         """DELEGATES to domain.tds.undeposited, the Python twin of migration 523's SQL function (the challan register's answer):
         one row of the two figures, as PostgREST returns a function that RETURNS TABLE."""

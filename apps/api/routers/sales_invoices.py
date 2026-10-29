@@ -22,6 +22,7 @@ from domain.gst import compensation_cess
 from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.audit_service import log_event
+from services import draft_document_lines
 from services.document_header_writer import update_header
 from domain.accounting import draft_integrity
 from services import draft_integrity_service
@@ -1971,9 +1972,10 @@ def update_invoice(
                     "service_catalogue_id": ln.get("service_catalogue_id"),
                 })
 
-            # Delete existing lines and reinsert
-            db.table("client_sales_invoice_lines").delete().eq("sales_invoice_id", invoice_id).execute()
-            db.table("client_sales_invoice_lines").insert(computed_lines).execute()
+            # Replace the lines in ONE transaction that locks the header first and refuses if the invoice was issued meanwhile
+            # (POST-A-332): a delete and then an insert, two requests, left an issued invoice with no lines.
+            draft_document_lines.replace_draft_lines(
+                db, "sales_invoice", invoice_id, current_user.get("firm_id") or "", computed_lines)
 
             # Learn HSN/SAC choices (incl. overrides) for smart suggestions.
             _record_hsn_preferences(

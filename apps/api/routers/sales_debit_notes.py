@@ -38,7 +38,9 @@ from models.common import api_response
 from models.invoices import InvoiceLineIn
 from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
+from core.db_provider import privileged_for
 from services import named_row_ownership
+from services import draft_document_lines
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.document_header_writer import update_header
@@ -364,9 +366,7 @@ def update_sales_debit_note(sdn_id: str, data: SalesDebitNoteUpdateIn, current_u
                 "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
                 "total_gst_paise": total_cgst + total_sgst + total_igst,
             })
-            db.table("sales_debit_note_lines").delete().eq("debit_note_id", sdn_id).execute()
-            for ln in computed:
-                db.table("sales_debit_note_lines").insert({**ln, "debit_note_id": sdn_id}).execute()
+            draft_document_lines.replace_draft_lines(db, "sales_debit_note", sdn_id, firm_id or "", computed)
 
         if data:
             upd = db.table("sales_debit_notes").update(data).eq("id", sdn_id).eq("firm_id", firm_id).execute()
@@ -466,7 +466,7 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
             else:
                 raise HTTPException(status_code=409, detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
             try:
-                db.table("sales_debit_note_allocations").insert({
+                privileged_for(db).table("sales_debit_note_allocations").insert({
                     "firm_id": firm_id, "debit_note_id": sdn_id,
                     "sales_invoice_id": inv_id, "allocated_paise": sdn_total,
                 }).execute()
@@ -491,7 +491,7 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
         except Exception as jerr:
             if prior_inv is not None and inv_id:
                 try:
-                    db.table("sales_debit_note_allocations").delete().eq("debit_note_id", sdn_id).eq("sales_invoice_id", inv_id).execute()
+                    privileged_for(db).table("sales_debit_note_allocations").delete().eq("debit_note_id", sdn_id).eq("sales_invoice_id", inv_id).eq("firm_id", firm_id).execute()
                     update_header(
                         db, "client_sales_invoices", inv_id,
                         {"debit_note_paise": prior_inv["debit_note_paise"], "status": prior_inv["status"]},

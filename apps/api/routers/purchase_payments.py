@@ -17,6 +17,7 @@ from models.common import api_response
 from models.invoices import PurchasePaymentIn, PurchasePaymentAllocationsUpdateIn
 from models.accounting import JournalReversalIn
 from core.exceptions import document_failure_detail
+from core.db_provider import privileged_for
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from domain.accounting.payment_account import (
@@ -88,7 +89,7 @@ def _insert_payment_or_compensate(db, firm_id: str, payload: dict, journal_entry
     purchase_payments row already claims this exact journal_entry_id.
     """
     try:
-        resp = db.table("purchase_payments").insert(payload).execute()
+        resp = privileged_for(db).table("purchase_payments").insert(payload).execute()
         return (resp.data or [payload])[0]
     except Exception as e:
         if journal_entry_id:

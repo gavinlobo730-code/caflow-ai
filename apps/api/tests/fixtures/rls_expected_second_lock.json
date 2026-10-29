@@ -1,5 +1,5 @@
 {
-  "_what": "What each actor may select, insert, update and delete in the tables the signed-in roles lost privileges on, WITH THAT PRIVILEGE GIVEN BACK (each migration's own rollback applied): i.e. what the row policies decide, the SECOND LOCK. Payroll: migration 499 took INSERT, UPDATE and DELETE from seventeen tables, 515 from leave_balances, and 549 SELECT and the rest from the twenty payroll tables the matrix observes (the tax declaration and its lines among them); the policies of migrations 262, 296, 297, 485 and 490 and the triggers of 498 decide. Bank: 550 took every privilege from bank_accounts and bank_transactions, the two of its eight tables the matrix observes; the policies of 093, 261, 370, 487, 524, 527 and 530 decide. Documents: 551 took every privilege from documents, client_documents and document_requests, the three of its five tables the matrix observes, and DROPPED the object policies of 005, 426 and 469 on storage.objects, which were the only lock on the two stored-file buckets (the rows storage/Documents and storage/year-end-exports): for those the cells are what the policies decided before 551, restored by its rollback, so the rollback is held to leave a database whose files open for the people the policies name. Same vocabulary as rls_expected_access.json. These are the cells that file held before each migration, unchanged; test_rls_role_by_table_matrix_pg.py::test_the_second_lock_decides_when_the_first_is_lifted fails the day a policy moves one, and the controls payroll-tier-485-reopened, payroll-tier-490-reopened and storage-second-folder-dropped are measured against it.",
+  "_what": "What each actor may select, insert, update and delete in the tables the signed-in roles lost privileges on, WITH THAT PRIVILEGE GIVEN BACK (each migration's own rollback applied): i.e. what the row policies decide, the SECOND LOCK. Payroll: migration 499 took INSERT, UPDATE and DELETE from seventeen tables, 515 from leave_balances, and 549 SELECT and the rest from the twenty payroll tables the matrix observes (the tax declaration and its lines among them); the policies of migrations 262, 296, 297, 485 and 490 and the triggers of 498 decide. Bank: 550 took every privilege from bank_accounts and bank_transactions, the two of its eight tables the matrix observes; the policies of 093, 261, 370, 487, 524, 527 and 530 decide. Documents: 551 took every privilege from documents, client_documents and document_requests, the three of its five tables the matrix observes, and DROPPED the object policies of 005, 426 and 469 on storage.objects, which were the only lock on the two stored-file buckets (the rows storage/Documents and storage/year-end-exports): for those the cells are what the policies decided before 551, restored by its rollback, so the rollback is held to leave a database whose files open for the people the policies name. Settlement: 559 took INSERT, UPDATE and DELETE from the seven tables a document's settlement is derived from, receipts, receipt_allocations, purchase_payments and purchase_payment_allocations being the four of them the matrix observes (reading stays granted); the row policies on them decide. Same vocabulary as rls_expected_access.json. These are the cells that file held before each migration, unchanged; test_rls_role_by_table_matrix_pg.py::test_the_second_lock_decides_when_the_first_is_lifted fails the day a policy moves one, and the controls payroll-tier-485-reopened, payroll-tier-490-reopened and storage-second-folder-dropped are measured against it.",
   "actors": ["partner", "manager", "exec_assigned", "exec_unassigned", "reviewer", "portal_client", "employee", "other_firm_partner", "suspended_partner", "anon"],
   "ops": ["select", "insert", "update", "delete"],
   "tables": {
@@ -275,6 +275,54 @@
       "reviewer": ["-", "-", "-", "-"],
       "portal_client": ["-", "-", "-", "-"],
       "employee": ["A", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "purchase_payment_allocations": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "-", "A"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["A", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "purchase_payments": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "-", "A"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["A", "-", "-", "-"],
+      "portal_client": ["-", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "receipt_allocations": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "-", "A"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["A", "-", "-", "-"],
+      "portal_client": ["A", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
+      "other_firm_partner": ["X", "X", "X", "X"],
+      "suspended_partner": ["-", "-", "-", "-"],
+      "anon": ["x", "x", "x", "x"]
+    },
+    "receipts": {
+      "partner": ["A,B", "A,B", "A,B", "A,B"],
+      "manager": ["A", "A", "A", "A"],
+      "exec_assigned": ["A", "A", "-", "A"],
+      "exec_unassigned": ["-", "-", "-", "-"],
+      "reviewer": ["A", "-", "-", "-"],
+      "portal_client": ["A", "-", "-", "-"],
+      "employee": ["-", "-", "-", "-"],
       "other_firm_partner": ["X", "X", "X", "X"],
       "suspended_partner": ["-", "-", "-", "-"],
       "anon": ["x", "x", "x", "x"]

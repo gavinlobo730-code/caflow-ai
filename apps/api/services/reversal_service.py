@@ -19,6 +19,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from core.db_provider import privileged_for
 from services.document_header_writer import update_header
 
 from fastapi import HTTPException
@@ -166,7 +167,7 @@ def reverse_receipt(db, firm_id: str, receipt_id: str, reversal_date: str,
         if inv_id and (amt > 0 or txn_amt > 0):
             _rollback_invoice_paid(db, firm_id, client_id, inv_id, amt, txn_amt, actor=actor)
     if allocations:
-        db.table("receipt_allocations").update({"is_voided": True}).eq("receipt_id", receipt_id).execute()
+        privileged_for(db).table("receipt_allocations").update({"is_voided": True}).eq("receipt_id", receipt_id).execute()
 
     journal_id = receipt.get("journal_entry_id")
     if not journal_id:
@@ -177,7 +178,7 @@ def reverse_receipt(db, firm_id: str, receipt_id: str, reversal_date: str,
         created_by=created_by,
     )
 
-    db.table("receipts").update({"is_reversed": True, "updated_at": _now()}).eq("id", receipt_id).execute()
+    privileged_for(db).table("receipts").update({"is_reversed": True, "updated_at": _now()}).eq("id", receipt_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
 
     _logger.info("Reversed receipt %s (firm=%s client=%s), %d allocation(s) undone",
                 receipt_id, firm_id, client_id, len(allocations))
@@ -248,7 +249,7 @@ def reverse_payment(db, firm_id: str, payment_id: str, reversal_date: str,
                 _rollback_bill_paid(db, firm_id, client_id, _bill_id, amt, txn_amt, actor=actor)
                 bills_adjusted.append(_bill_id)
         if allocations:
-            db.table("purchase_payment_allocations").update({"is_voided": True}).eq("purchase_payment_id", payment_id).execute()
+            privileged_for(db).table("purchase_payment_allocations").update({"is_voided": True}).eq("purchase_payment_id", payment_id).execute()
 
     journal_id = payment.get("journal_entry_id")
     if not journal_id:
@@ -259,7 +260,7 @@ def reverse_payment(db, firm_id: str, payment_id: str, reversal_date: str,
         created_by=created_by,
     )
 
-    db.table("purchase_payments").update({"is_reversed": True, "updated_at": _now()}).eq("id", payment_id).execute()
+    privileged_for(db).table("purchase_payments").update({"is_reversed": True, "updated_at": _now()}).eq("id", payment_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
 
     # AND THE REGISTER, because the deduction is undone. An advance withholds
     # under §194/§195 at the moment it is paid (migration 358), so reversing it
