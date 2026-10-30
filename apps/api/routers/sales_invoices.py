@@ -18,6 +18,7 @@ from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from domain.gst import discount as gst_discount
 from domain.sales.line_tax import compute_line_gst
 from domain.sales import credit_limit
+from domain.inventory import stock_effect as stock_effects
 from domain.gst import compensation_cess
 from core.authz import assert_client_access, filter_by_client
 from core.db_provider import privileged_for
@@ -2252,20 +2253,24 @@ def issue_invoice(
         # not set up yet) must never affect an already-issued invoice.
         # apply_sale_to_inventory itself never raises; this try/except is
         # belt-and-suspenders.
-        try:
-            from domain.inventory_service import apply_sale_to_inventory
-            apply_sale_to_inventory(
+        # What it did comes back and rides on the response (POST-A-092): an invoice whose stock effect was not
+        # all recorded is issued all the same, and the CA is told on the same screen that issued it.
+        from domain.inventory_service import apply_sale_to_inventory
+        stock = stock_effects.guarded(
+            "sales_invoice", updated_inv.get("invoice_no"),
+            lambda: apply_sale_to_inventory(
                 db, firm_id=current_user.get("firm_id", ""), client_id=updated_inv.get("client_id", ""),
                 # journal_entries.created_by FK references users(id), not the
                 # auth_user_id (JWT sub / auth.users.id) — see
                 # phase2_journal_service.reverse_entry's created_by a few
                 # lines above, which already gets this right.
                 invoice=updated_inv, created_by=current_user.get("id"),
-            )
-        except Exception as e:
-            _logger.error("issue_invoice: inventory posting failed for %s: %s", invoice_id, e, exc_info=True)
+            ),
+            lambda e: _logger.error("issue_invoice: inventory posting failed for %s: %s", invoice_id, e, exc_info=True),
+        )
 
         updated_inv["journal_entry_id"] = journal_id
+        stock_effects.attach(updated_inv, stock)
         return api_response(True, updated_inv)
     except HTTPException:
         raise

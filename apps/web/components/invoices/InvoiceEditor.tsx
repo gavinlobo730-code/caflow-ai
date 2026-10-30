@@ -24,6 +24,7 @@ import { StateLookup } from "@/components/lookups/StateLookup";
 import { formatMoney } from "@/lib/services/formatting";
 import { estimateBaseMinor } from "@/lib/services/currencyPreview";
 import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
+import { joinSentences, stockEffectProblem } from "@/lib/documents/stockEffect";
 import { computeLineGst, discountPaise, gstRateBpsFromPercent,
          quantityFromInput, splitLineGst } from "@/lib/money/gstLine";
 import { lineCess } from "@/lib/money/cessLine";
@@ -142,7 +143,8 @@ export function InvoiceEditor({
    * invoice. Ignored once `existing` is set (edit mode). */
   duplicateSeed?: InvoiceDetail | null;
   /** Called after a successful save with a human message (the caller navigates). */
-  onDone: (message: string) => void;
+  /** `kind` is "warning" when the message carries something the CA must read (POST-A-092: the stock was not all recorded). */
+  onDone: (message: string, kind?: "warning") => void;
   /** Called when the user cancels (the caller navigates; guarded by dirty check). */
   onCancel: () => void;
 }) {
@@ -735,6 +737,8 @@ export function InvoiceEditor({
       const patchId = existing?.id ?? createdDraftId;
       let invoiceId = patchId ?? "";
       let creditWarning: string | null = null;
+      // POST-A-092: what the issue says about the stock the invoice should have taken out, when that was not all recorded.
+      let stockWarning: string | null = null;
       const trimmedInvoiceNo = invoiceNo.trim();
 
       if (patchId) {
@@ -838,13 +842,15 @@ export function InvoiceEditor({
         // failure leaves the invoice a re-tryable draft (server guarantee).
         const iss = await apiCall(`/api/sales-invoices/${invoiceId}/issue`, "POST", undefined, token);
         if (!iss.success) throw new Error(iss.error ?? "Saved as draft, but posting failed. It remains a draft — retry.");
+        stockWarning = stockEffectProblem(iss.data);
       }
       if (action === "send") {
         const snd = await apiCall(`/api/sales-invoices/${invoiceId}/send`, "POST", { to_email: custEmail }, token);
         if (!snd.success) {
           // The invoice IS issued — only delivery failed. Return to the list with a
           // warning rather than stranding the user on an already-issued invoice.
-          onDone(`${trimmedInvoiceNo || "Invoice"} issued — email failed to send; use Send from the invoice.`);
+          onDone(joinSentences([`${trimmedInvoiceNo || "Invoice"} issued — email failed to send; use Send from the invoice.`, stockWarning]),
+                 stockWarning ? "warning" : undefined);
           return;
         }
       }
@@ -856,7 +862,7 @@ export function InvoiceEditor({
       // The credit-limit sentence rides on the SAME message rather than a
       // second toast: two notices about one save is how a CA learns to dismiss
       // both, and this one names four figures they would otherwise look up.
-      onDone(creditWarning ? `${saved}. ${creditWarning}` : saved);
+      onDone(joinSentences([saved, creditWarning, stockWarning]), stockWarning ? "warning" : undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save invoice");
     } finally {

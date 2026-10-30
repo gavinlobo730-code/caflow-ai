@@ -6807,7 +6807,6 @@ export const api = {
     list: (clientId: string, params?: Record<string, string>) =>
       request(`/api/sales-invoices/?client_id=${clientId}${params ? "&" + new URLSearchParams(params) : ""}`),
     get: (id: string) => request(`/api/sales-invoices/${id}`),
-    issue: (id: string) => request(`/api/sales-invoices/${id}/issue`, { method: "POST" }),
     /** Everything that would stop `issue` right now, as the server lists it (POST-A-125). Reads and writes nothing. */
     issuePreflight: (id: string) =>
       request<ApiResp<IssuePreflight>>(`/api/sales-invoices/${id}/issue-preflight`),

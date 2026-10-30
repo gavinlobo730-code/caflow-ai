@@ -3,7 +3,7 @@
 import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { taxablePaise } from "@/lib/money/gstLine";
 import { templateBasePaise } from "@/lib/recurring/templateBase";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { pruneSelection } from "@/lib/table/pruneSelection";
 import { createPortal } from "react-dom";
 import {
@@ -23,6 +23,7 @@ import { bpsFromPercentInput, paiseFromRupeeInput, parseQuantity } from "@/lib/m
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import { Skeleton, TableSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
 import type { Column, FilterDef } from "@/lib/table/types";
+import { bulkStockSentence, issuedMessage, joinSentences, stockEffectProblem, stockEffectSummary } from "@/lib/documents/stockEffect";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import CsvImportModal from "@/components/LazyCsvImportModal";
@@ -1461,7 +1462,8 @@ function SalesInvoices({
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const [showImport, setShowImport] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" | "warning" } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sendModal, setSendModal] = useState<{ invoice: SalesInvoice; customerEmail: string | null } | null>(null);
   const [remindModal, setRemindModal] = useState<{ invoice: SalesInvoice; customerEmail: string | null } | null>(null);
   const [deliveryModal, setDeliveryModal] = useState<{ invoice: SalesInvoice; deliveries: InvoiceDelivery[] } | null>(null);
@@ -1513,8 +1515,10 @@ function SalesInvoices({
     // ?flash=<msg> → toast, then strip the param so a refresh doesn't repeat it.
     const flash = p.get("flash");
     if (flash) {
-      showToast(flash, "success");
+      // A flash that is a warning (the editor issued an invoice whose stock was not all recorded) is shown as one.
+      showToast(flash, p.get("flashKind") === "warning" ? "warning" : "success");
       p.delete("flash");
+      p.delete("flashKind");
       const qs = p.toString();
       window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
     }
@@ -1671,7 +1675,9 @@ function SalesInvoices({
       const token = await getAuthToken();
       const result = await apiCall(`/api/sales-invoices/${id}/issue`, "POST", undefined, token);
       if (!result.success) throw new Error(result.error ?? "Failed to issue invoice");
-      showToast("Invoice issued successfully", "success");
+      // POST-A-092: the server says on this response when the invoice's stock effect was not all recorded.
+      const issued = issuedMessage("Invoice issued successfully", result.data);
+      showToast(issued.text, issued.type);
       load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Error issuing invoice", "error");
@@ -1867,11 +1873,11 @@ function SalesInvoices({
     const draftRows = selected.filter((inv) => inv.status === "draft");
     const skipped = selected.length - draftRows.length;
 
-    type IssueResult = { ok: true } | { ok: false; reason: string };
+    type IssueResult = { ok: true; data: unknown } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (inv): Promise<IssueResult> => {
       try {
         const result = await apiCall(`/api/sales-invoices/${inv.id}/issue`, "POST", undefined, token);
-        if (result.success) return { ok: true };
+        if (result.success) return { ok: true, data: result.data };
         return { ok: false, reason: result.error ?? "Failed to issue invoice" };
       } catch (e) {
         return { ok: false, reason: e instanceof Error ? e.message : "Failed to issue invoice" };
@@ -1891,7 +1897,10 @@ function SalesInvoices({
       const reasons = Array.from(new Set(failures.map((f) => f.reason)));
       parts.push(`${failed} failed (${reasons.join("; ")})`);
     }
-    showToast(parts.length > 0 ? `${parts.join(", ")}.` : "No draft invoices selected.", (skipped > 0 || failed > 0) ? "error" : "success");
+    // POST-A-092: an invoice that issued but did not record all of its stock effect is counted and one sentence is shown.
+    const stock = bulkStockSentence(stockEffectSummary(results.flatMap((r) => (r.ok ? [r.data] : []))));
+    const text = parts.length > 0 ? `${parts.join(", ")}.` : "No draft invoices selected.";
+    showToast(stock ? `${text} ${stock}` : text, (skipped > 0 || failed > 0) ? "error" : stock ? "warning" : "success");
     return skipped === 0 && failed === 0;
   }
 
@@ -1929,9 +1938,12 @@ function SalesInvoices({
     }
   }
 
-  function showToast(msg: string, type: "success" | "error") {
+  function showToast(msg: string, type: "success" | "error" | "warning") {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 4000);
+    // A warning carries a sentence to read (what stock did not record), so it stays longer than a confirmation. The previous
+    // toast's timer is cleared, or it would wipe this one when it fires.
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), type === "warning" ? 15000 : 4000);
   }
 
   /**
@@ -4332,6 +4344,7 @@ function CreditNotes({
   // credit notes — otherwise a failed load reads as an empty FY (audit M17).
   const [loadFailed, setLoadFailed] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" | "warning" } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -4409,7 +4422,8 @@ function CreditNotes({
 
   function showToast(msg: string, type: "success" | "error" | "warning") {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 4000);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), type === "warning" ? 15000 : 4000);
   }
 
   /** Bulk-import handler for the CSV/XLSX modal. Maps flat rows → grouped
@@ -4449,8 +4463,9 @@ function CreditNotes({
       // it is caught here. It is still issued — the section bars the tax
       // adjustment, not the document — and the drawer keeps saying so.
       const lateNote = (result.data as { section_34_2_warning?: string | null } | null)?.section_34_2_warning;
-      showToast(lateNote ? `Credit note issued. ${lateNote}` : "Credit note issued",
-                lateNote ? "warning" : "success");
+      // POST-A-092: and the stock the returned goods should have gone back into, when that was not all recorded.
+      const stock = stockEffectProblem(result.data);
+      showToast(joinSentences(["Credit note issued", lateNote, stock]), lateNote || stock ? "warning" : "success");
       load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Error issuing credit note", "error");
@@ -4522,11 +4537,11 @@ function CreditNotes({
     const draftRows = selected.filter((cn) => cn.status === "draft");
     const skipped = selected.length - draftRows.length;
 
-    type IssueResult = { ok: true } | { ok: false; reason: string };
+    type IssueResult = { ok: true; data: unknown } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (cn): Promise<IssueResult> => {
       try {
         const result = await apiCall(`/api/credit-notes/${cn.id}/issue`, "POST", undefined, token);
-        if (result.success) return { ok: true };
+        if (result.success) return { ok: true, data: result.data };
         return { ok: false, reason: result.error ?? "Failed to issue credit note" };
       } catch (e) {
         return { ok: false, reason: e instanceof Error ? e.message : "Failed to issue credit note" };
@@ -4546,7 +4561,10 @@ function CreditNotes({
       const reasons = Array.from(new Set(failures.map((f) => f.reason)));
       parts.push(`${failed} failed (${reasons.join("; ")})`);
     }
-    showToast(parts.length > 0 ? `${parts.join(", ")}.` : "No draft credit notes selected.", (skipped > 0 || failed > 0) ? "error" : "success");
+    // POST-A-092: as for invoices, a credit note whose returned goods did not all go back into stock is counted.
+    const stock = bulkStockSentence(stockEffectSummary(results.flatMap((r) => (r.ok ? [r.data] : []))));
+    const text = parts.length > 0 ? `${parts.join(", ")}.` : "No draft credit notes selected.";
+    showToast(stock ? `${text} ${stock}` : text, (skipped > 0 || failed > 0) ? "error" : stock ? "warning" : "success");
     return skipped === 0 && failed === 0;
   }
 

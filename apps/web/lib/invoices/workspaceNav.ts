@@ -26,9 +26,10 @@ export function invoiceBreadcrumbs(
   ];
 }
 
-/** Return to the Sales list with a one-shot flash message (?flash=…) for a toast. */
-export function salesListFlashHref(clientId: string, message: string): string {
-  return `${salesListHref(clientId)}?flash=${encodeURIComponent(message)}`;
+/** Return to the Sales list with a one-shot flash message (?flash=…) for a toast. A message that is a warning (an invoice that
+ * was issued but did not record all of its stock effect, POST-A-092) says so with `kind`, and the list shows it as one. */
+export function salesListFlashHref(clientId: string, message: string, kind?: "warning"): string {
+  return `${salesListHref(clientId)}?flash=${encodeURIComponent(message)}${kind === "warning" ? "&flashKind=warning" : ""}`;
 }
 
 /** Edit a draft invoice — or create one, via the "new" id sentinel (the
