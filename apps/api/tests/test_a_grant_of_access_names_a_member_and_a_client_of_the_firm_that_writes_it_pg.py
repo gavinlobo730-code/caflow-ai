@@ -306,7 +306,8 @@ def test_an_update_cannot_re_point_a_permission_at_a_member_of_another_firm(dsn)
 
 
 def _plant_permissions(dsn: str) -> None:
-    done = _psql(dsn, f"{_grant(G, 'manager_f', 'assignment', 'write', 'true')}; {_grant(G, 'manager_f', 'client', 'read', 'false')}")
+    # The rows name a member of ANOTHER firm on purpose: that is the planting 530 closed. Migration 566 would refuse the planting first.
+    done = _psql(dsn, LEGACY_ROWS_ALLOWED + f"{_grant(G, 'manager_f', 'assignment', 'write', 'true')}; {_grant(G, 'manager_f', 'client', 'read', 'false')}")
     assert done.returncode == 0, done.stderr
 
 
@@ -325,6 +326,7 @@ def test_a_planted_permission_grants_nothing_and_takes_nothing_away(dsn):
 
 
 def test_the_planted_permission_would_have_opened_the_door_before_the_migration(dsn):
+    allow_legacy_rows(dsn)   # migrations 565 and 566 would refuse the planting before the rolled-back 530 policy is asked; this is the control for 530
     assert _psql_file(dsn, ROLLBACK).returncode == 0
     assert _count_op(dsn, "partner_g", _grant(G, "manager_f")) == "1", "the rolled-back policy no longer lets the planting through"
     _plant_permissions(dsn)

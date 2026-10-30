@@ -336,6 +336,9 @@ USERS_READERS_THAT_DO_NOT_AUTHORISE = {
     # The caller is still resolved by get_my_firm_id(), which is NULL for a suspended or signed-out member, so a
     # suspension reaches it (the comparison with NULL is never true); `users` is read for the TARGET, not for the caller.
     "user_is_in_my_firm",
+    # Migration 566 (POST-A-361): the two trigger functions that refuse a row naming a member of another firm. They read `users` for the
+    # member the ROW names, compare its firm with the row's, and run for whoever writes; they decide nothing about what the caller may do.
+    "assert_inserted_rows_name_a_member_of_their_firm", "assert_updated_row_names_a_member_of_its_firm",
 }
 
 _READS_USERS = r"(from|join)[[:space:]]+(public\.)?users([^a-z_]|$)"
