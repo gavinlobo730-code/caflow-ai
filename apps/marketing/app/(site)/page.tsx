@@ -196,8 +196,8 @@ export default function HomePage() {
           layout="split"
           index="05"
           eyebrow="The product"
-          lines={[{ text: "This is the software," }, { text: "not an impression of it.", italic: true }]}
-          subtitle="Four screens a CA would use in an ordinary week, built from the product's own components and carrying its own words."
+          lines={[{ text: "Four screens from" }, { text: "an ordinary week.", italic: true }]}
+          subtitle="Redrawn by hand to show the layout, not screenshots: a label or a figure on one may differ from the live software."
         />
         <div className="mt-14">
           <ProductShowcase />

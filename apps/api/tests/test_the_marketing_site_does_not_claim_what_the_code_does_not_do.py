@@ -111,6 +111,12 @@ FORBIDDEN = [
     # (`tally-masters-only` in the claims ledger).
     ("a sync or integration with Tally",
      re.compile(r"\b(sync\w*|integrat\w*|connect\w*)\b[^.\n]{0,24}\bTally\b|\bTally\b[^.\n]{0,24}\b(sync|integration|connector)\b", re.I)),
+    # The four screens in the product showcase are hand-drawn recreations (components/home/screens), copied on 16-09-2026 and tied to
+    # nothing since: the client Overview still draws the sidebar the product replaced on 25-09-2026. The page called them "the software,
+    # not an impression of it", "built from the product's own components" and "carrying its own words" (POST-A-121, 30-10-2026).
+    ("hand-drawn screens passed off as the software itself",
+     re.compile(r"not an impression of it|(?:built|rebuilt) from the product(?:'|&apos;|\u2019|&#39;)s own components"
+                r"|carrying its own words|the words are the ones the software uses", re.I)),
 ]
 
 
@@ -157,6 +163,12 @@ def test_each_pattern_detects_what_it_claims_to(name, pattern):
             "The tools it replaces\n  are the ones you already pay for",
         ),
         "a sync or integration with Tally": ("Two-way sync with Tally keeps both ledgers in step",),
+        "hand-drawn screens passed off as the software itself": (
+            "This is the software, not an impression of it.",
+            "built from the product's own components and carrying its own words",
+            "Rebuilt from the product&apos;s own components, so the words are the ones the software uses.",
+            "Rebuilt from the product\u2019s own components",
+        ),
     }
     one_or_many = samples[name]
     for sample in ((one_or_many,) if isinstance(one_or_many, str) else one_or_many):
@@ -227,3 +239,14 @@ def test_the_resources_page_quotes_every_quarter_from_the_engine():
 def test_the_resources_page_no_longer_says_the_31st_of_the_following_month():
     page = _text(MARKETING / "app" / "(site)" / "resources" / "page.tsx")
     assert "31st of the month" not in page
+
+
+def test_the_showcase_says_the_screens_are_redrawn_by_hand_and_illustrative():
+    """The cheap interim of POST-A-121: until the four recreations are re-copied from the product and tied to it by a check, the
+    page says what they are. The caption and the section's subtitle both carry it, and the caption keeps its other half (the client
+    names and figures are illustrative)."""
+    caption = " ".join(_text(MARKETING / "components/home/ProductShowcase.tsx").split())
+    assert "Redrawn by hand, not screenshots" in caption, "the showcase caption no longer says the screens are redrawn by hand"
+    assert "The client names and figures are illustrative" in caption
+    home = " ".join(_text(MARKETING / "app/(site)/page.tsx").split())
+    assert "Redrawn by hand to show the layout, not screenshots" in home, "the section subtitle no longer says it"
