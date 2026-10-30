@@ -105,7 +105,7 @@ def test_a_comment_mentioning_apps_web_is_not_a_read() -> None:
     )
 
 
-def test_finding_nothing_is_a_failure_not_an_empty_run() -> None:
+def test_finding_nothing_is_a_failure_not_an_empty_run(tmp_path: pathlib.Path) -> None:
     """An empty argv makes pytest collect everything — that must not happen."""
     # Matched by SHAPE rather than by the exact pattern string: the pattern
     # legitimately changes (it gained "marketing" on 16-09-2026) and a test
@@ -120,7 +120,17 @@ def test_finding_nothing_is_a_failure_not_an_empty_run() -> None:
     )
     assert n == 1, "_BUILDS_WEB_PATH assignment not found — rewrite this test"
 
-    tmp = API_ROOT / "tests" / "_selector_negative_control.py"
+    # ⚠️ NOT IN `tests/`. `test_a_file_in_tests_is_a_test_or_a_named_helper` reads every file in that folder and, under pytest-xdist,
+    # runs on another worker at the same moment: it listed this copy, this `finally` deleted it, and that test failed with
+    # FileNotFoundError (seen once in 30,000 tests; POST-A-363). The script finds the tests and the web app by its OWN location
+    # (`parents[2] / "tests"`, `parents[3] / "apps" / "web"`), so the copy goes at the same depth inside a temporary tree that
+    # holds an empty `tests/` and no web app: a selector that finds nothing, which is the case this test is about. (Written in
+    # `tests/`, the same lookups resolved to a folder that does not exist and the test passed by accident of the path; patching
+    # the web-path pattern alone no longer empties the result, because the script has a second way to recognise a web read.)
+    root = tmp_path / "apps" / "api"
+    (root / "tests").mkdir(parents=True)
+    (root / "scripts" / "ci").mkdir(parents=True)
+    tmp = root / "scripts" / "ci" / "tests_reading_the_browser.py"
     tmp.write_text(broken)
     try:
         run = subprocess.run(
